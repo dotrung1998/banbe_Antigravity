@@ -1,0 +1,91 @@
+* {
+  box-sizing: border-box;
+}
+
+:root, [data-bb-theme="light"] {
+  --bb-bg: #F7F4EC;
+  --bb-fg: #1B1916;
+  --bb-ink-deep: #0C0B09;
+  --bb-rule: rgba(27,25,22,0.16);
+  --bb-field: #EEE8DA;
+  --bb-card: rgba(224,214,194,0.58);
+  --bb-card2: rgba(236,229,214,0.46);
+  --bb-button: rgba(12,11,9,0.62);
+  --bb-button-text: #FFFFFF;
+  --bb-white: rgba(255,255,255,0.62);
+  --bb-shadow: rgba(27,25,22,0.08);
+}
+
+[data-bb-theme="dark"] {
+  --bb-bg: #14120E;
+  --bb-fg: #F2EDE1;
+  --bb-ink-deep: #F2EDE1;
+  --bb-rule: rgba(242,237,225,0.20);
+  --bb-field: #4A4439;
+  --bb-card: rgba(74,68,57,0.55);
+  --bb-card2: rgba(86,79,66,0.40);
+  --bb-button: rgba(242,237,225,0.92);
+  --bb-button-text: #14120E;
+  --bb-white: rgba(242,237,225,0.19);
+  --bb-shadow: rgba(0,0,0,0.28);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #EFEBE0;
+  font-family: var(--bb-face, 'Be Vietnam Pro'), system-ui, sans-serif;
+  min-height: 100vh;
+  color: var(--bb-fg);
+}
+
+a {
+  color: inherit;
+}
+
+input {
+  font-family: inherit;
+}
+
+input::placeholder {
+  color: rgba(27, 25, 22, 0.35);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@keyframes gocIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bbIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes gocSheetIn {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes gocFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes gocTumble {
+  0% { transform: rotate(0deg); }
+  22% { transform: rotate(180deg); }
+  50% { transform: rotate(180deg); }
+  72% { transform: rotate(360deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes gocOrbit {
+  to { transform: rotate(360deg); }
+}
