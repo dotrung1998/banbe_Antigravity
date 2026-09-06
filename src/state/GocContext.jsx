@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { EVENTS, findEvent } from '../data/events.js';
-import { supabase } from '../lib/supabase.js';
+import { getAuthRedirectUrl, supabase } from '../lib/supabase.js';
 
 const GocCtx = createContext(null);
 
@@ -333,7 +333,7 @@ export function GocProvider({ children }) {
     if (emailValid(s.loginEmail)) {
       const email = s.loginEmail.trim();
       try {
-        const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin, data: { account_type: s.accountType } } });
+        const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: getAuthRedirectUrl(), data: { account_type: s.accountType } } });
         if (error) throw error;
         set({ loginSent: true });
       } catch (e) {
@@ -347,7 +347,7 @@ export function GocProvider({ children }) {
     if (s.accountType === 'admin' && s.authMode === 'signup') return set({ reserveError: 'Admin accounts are provisioned by banbe.' });
     const phone = s.loginPhoneNumber.trim();
     if (!phone) return set({ reserveError: 'Enter your phone number first.' });
-    const { error } = await supabase.auth.signInWithOtp({ phone, options: { emailRedirectTo: window.location.origin, data: { account_type: s.accountType } } });
+    const { error } = await supabase.auth.signInWithOtp({ phone, options: { data: { account_type: s.accountType } } });
     set(error ? { reserveError: error.message } : { loginSent: true, reserveError: '' });
   }, [set, s.loginPhoneNumber]);
   const verifyLoginCode = useCallback(async () => {
