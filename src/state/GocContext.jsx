@@ -137,14 +137,20 @@ export function GocProvider({ children }) {
   const splashTimer = useRef(null);
   useEffect(() => {
     splashTimer.current = setTimeout(() => {
-      setStateRaw(prev => (prev.screen === 'splash' ? { ...prev, screen: 'home' } : prev));
+      setStateRaw(prev => (prev.screen === 'splash' ? { ...prev, screen: 'langPick' } : prev));
     }, 2600);
     return () => clearTimeout(splashTimer.current);
   }, []);
   const dismissSplash = useCallback(() => {
     clearTimeout(splashTimer.current);
-    set(prev => (prev.screen === 'splash' ? { screen: 'home' } : {}));
+    set(prev => (prev.screen === 'splash' ? { screen: 'langPick' } : {}));
   }, [set]);
+
+  const pickVi = useCallback(() => set({ lang: 'vi', screen: 'themePick' }), [set]);
+  const pickEn = useCallback(() => set({ lang: 'en', screen: 'themePick' }), [set]);
+  const pickLight = useCallback(() => set({ theme: 'light' }), [set]);
+  const pickDark = useCallback(() => set({ theme: 'dark' }), [set]);
+  const finishOnboarding = useCallback(() => set({ screen: 'home' }), [set]);
 
   const EN = s.lang === 'en';
   const T = useCallback((vi, en) => (EN ? en : vi), [EN]);
@@ -436,6 +442,7 @@ export function GocProvider({ children }) {
     goHome, goProfile, goInbox, goEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
+    pickVi, pickEn, pickLight, pickDark, finishOnboarding,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, toggleTheme, pickTheme, openPreferences,
     pickFilter, clearFilters, shareEvent,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
@@ -452,6 +459,7 @@ export function GocProvider({ children }) {
     goHome, goProfile, goInbox, goEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
+    pickVi, pickEn, pickLight, pickDark, finishOnboarding,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, toggleTheme, pickTheme, openPreferences,
     pickFilter, clearFilters, shareEvent,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,

@@ -2,6 +2,8 @@ import { useLayoutEffect, useRef } from 'react';
 import { GocProvider, useGoc } from './state/GocContext.jsx';
 
 import Splash from './screens/Splash.jsx';
+import LangPick from './screens/LangPick.jsx';
+import ThemePick from './screens/ThemePick.jsx';
 import Loading from './screens/Loading.jsx';
 import Home from './screens/Home.jsx';
 import Account from './screens/Account.jsx';
@@ -23,6 +25,8 @@ import Preferences from './screens/Preferences.jsx';
 
 const SCREENS = {
   splash: Splash,
+  langPick: LangPick,
+  themePick: ThemePick,
   home: Home,
   profile: Account,
   inbox: Inbox,
