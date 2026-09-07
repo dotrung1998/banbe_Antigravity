@@ -6,6 +6,10 @@ export async function requestAuthEmail({ email, mode, accountType }) {
   });
 
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || 'AUTH_EMAIL_SEND_FAILED');
+  if (!response.ok) {
+    const error = new Error(payload.error || 'AUTH_EMAIL_SEND_FAILED');
+    error.code = payload.error;
+    throw error;
+  }
   return payload;
 }

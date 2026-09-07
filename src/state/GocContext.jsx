@@ -394,7 +394,9 @@ export function GocProvider({ children }) {
         await requestAuthEmail({ email, mode: s.authMode, accountType: s.accountType });
         set({ loginSent: true });
       } catch (e) {
-        set({ reserveError: e.message || 'Unable to send the login code.' });
+        set({ reserveError: e.code === 'AUTH_ACCOUNT_NOT_FOUND'
+          ? 'No account exists for this email. Choose Sign up first.'
+          : e.message || 'Unable to send the login code.' });
       }
     }
   }, [set, s.loginEmail, s.accountType]);

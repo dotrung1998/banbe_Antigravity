@@ -60,25 +60,29 @@ export default async function handler(req, res) {
   if (mode === 'signup' && accountType === 'admin') return res.status(400).json({ error: 'ADMIN_SIGNUP_NOT_ALLOWED' });
 
   try {
+    let authUser = null;
+    const { data: authData, error: authLookupError } = await admin.auth.admin.getUserByEmail(email);
+    if (authLookupError && authLookupError.status !== 404) throw authLookupError;
+    authUser = authData?.user || null;
+
+    if (mode === 'login' && !authUser) {
+      return res.status(404).json({ error: 'AUTH_ACCOUNT_NOT_FOUND' });
+    }
+
     let existingRole = null;
-    try {
-      const { data: authUser } = await admin.auth.admin.getUserByEmail(email);
-      if (authUser?.user) {
-        try {
-          const { data: profile } = await admin.from('profiles').select('role').eq('id', authUser.user.id).maybeSingle();
-          if (profile?.role) {
-            existingRole = profile.role;
-          } else {
-            existingRole = authUser.user.user_metadata?.account_type || authUser.user.raw_user_meta_data?.account_type;
-          }
-        } catch (profileError) {
-          console.warn('Profile query failed:', profileError);
-          existingRole = authUser.user.user_metadata?.account_type || authUser.user.raw_user_meta_data?.account_type;
+    if (authUser) {
+      try {
+        const { data: profile } = await admin.from('profiles').select('role').eq('id', authUser.id).maybeSingle();
+        if (profile?.role) {
+          existingRole = profile.role;
+        } else {
+          existingRole = authUser.user_metadata?.account_type || authUser.raw_user_meta_data?.account_type;
         }
-        if (!existingRole) existingRole = 'participant';
+      } catch (profileError) {
+        console.warn('Profile query failed:', profileError);
+        existingRole = authUser.user_metadata?.account_type || authUser.raw_user_meta_data?.account_type;
       }
-    } catch (e) {
-      console.warn('Failed to check existing user role:', e);
+      if (!existingRole) existingRole = 'participant';
     }
 
     if (!existingRole) {
