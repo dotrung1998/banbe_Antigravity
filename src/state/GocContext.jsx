@@ -235,7 +235,7 @@ export function GocProvider({ children }) {
     if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
       set({ screen: 'create', mode: 'host' });
     } else if (s.user) {
-      set({ reserveError: 'Only organizers can create events.' });
+      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'create', authBackScreen: 'hostIntro', reserveError: 'This account is registered as a participant. Please complete organizer registration to continue.' });
     } else {
       set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'create', authBackScreen: 'hostIntro' });
     }
@@ -246,7 +246,7 @@ export function GocProvider({ children }) {
     if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
       set({ screen: 'hostIntro' });
     } else if (s.user) {
-      set({ reserveError: 'Only organizers can access this page.' });
+      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile', reserveError: 'This account is registered as a participant. Please complete organizer registration to continue.' });
     } else {
       set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile' });
     }
@@ -258,7 +258,7 @@ export function GocProvider({ children }) {
     if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
       set({ mode: 'host', screen: 'dashboard' });
     } else if (s.user) {
-      set({ reserveError: 'Only organizers can switch to host mode.' });
+      set({ screen: 'login', accountType: 'organizer', authReturnScreen: 'dashboard', authBackScreen: 'home', reserveError: 'This account is registered as a participant. Please complete organizer registration to continue.' });
     } else {
       set({ screen: 'login', accountType: 'organizer', authReturnScreen: 'dashboard', authBackScreen: 'home' });
     }
@@ -268,7 +268,7 @@ export function GocProvider({ children }) {
     if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
       set({ screen: 'hostIntro' });
     } else if (s.user) {
-      set({ reserveError: 'Only organizers can access this page.' });
+      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile', reserveError: 'This account is registered as a participant. Please complete organizer registration to continue.' });
     } else {
       set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile' });
     }

@@ -64,8 +64,18 @@ export default async function handler(req, res) {
     try {
       const { data: authUser } = await admin.auth.admin.getUserByEmail(email);
       if (authUser?.user) {
-        const { data: profile } = await admin.from('profiles').select('role').eq('id', authUser.user.id).maybeSingle();
-        existingRole = profile?.role || authUser.user.user_metadata?.account_type || authUser.user.raw_user_meta_data?.account_type;
+        try {
+          const { data: profile } = await admin.from('profiles').select('role').eq('id', authUser.user.id).maybeSingle();
+          if (profile?.role) {
+            existingRole = profile.role;
+          } else {
+            existingRole = authUser.user.user_metadata?.account_type || authUser.user.raw_user_meta_data?.account_type;
+          }
+        } catch (profileError) {
+          console.warn('Profile query failed:', profileError);
+          existingRole = authUser.user.user_metadata?.account_type || authUser.user.raw_user_meta_data?.account_type;
+        }
+        if (!existingRole) existingRole = 'participant';
       }
     } catch (e) {
       console.warn('Failed to check existing user role:', e);
