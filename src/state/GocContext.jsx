@@ -113,20 +113,39 @@ export function GocProvider({ children }) {
 
   useEffect(() => {
     let active = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (active && data.session?.user) {
-        const accountType = data.session.user.user_metadata?.account_type || data.session.user.raw_user_meta_data?.account_type || 'participant';
-        set({ user: data.session.user, accountType, mode: accountType === 'organizer' ? 'host' : 'goer' });
+    const syncUser = async (user) => {
+      if (!active) return;
+      if (!user) {
+        set({ user: null });
+        return;
       }
-    });
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+      const role =
+        profile?.role ||
+        user.user_metadata?.account_type ||
+        user.raw_user_meta_data?.account_type ||
+        'participant';
+      set({ user, accountType: role, mode: role === 'organizer' ? 'host' : 'goer' });
+    };
+    supabase.auth.getSession().then(({ data }) => syncUser(data.session?.user));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (active && session?.user) {
-        const accountType = session.user.user_metadata?.account_type || session.user.raw_user_meta_data?.account_type || 'participant';
-        set(prev => ({ user: session.user, accountType, mode: accountType === 'organizer' ? 'host' : 'goer', screen: prev.screen === 'login' ? prev.authReturnScreen : prev.screen, loginSent: false }));
+        set(prev => ({
+          screen: prev.screen === 'login' ? prev.authReturnScreen : prev.screen,
+          loginSent: false,
+        }));
+        syncUser(session.user);
       }
       if (active && !session) set({ user: null });
     });
-    return () => { active = false; listener.subscription.unsubscribe(); };
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
   }, [set]);
 
   useEffect(() => {
@@ -212,16 +231,48 @@ export function GocProvider({ children }) {
   const goChat = useCallback(() => set({ screen: s.user ? 'chat' : 'login', chatBack: 'organizer' }), [set, s.user]);
   const goLogin = useCallback(() => set({ screen: 'login', authMode: 'login', accountType: 'participant', authReturnScreen: 'profile', authBackScreen: 'home' }), [set]);
   const goDashboard = useCallback(() => set({ screen: 'dashboard' }), [set]);
-  const goCreate = useCallback(() => set(s.user ? { screen: 'create', mode: 'host' } : { screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'create', authBackScreen: 'hostIntro' }), [set, s.user]);
+  const goCreate = useCallback(() => {
+    if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
+      set({ screen: 'create', mode: 'host' });
+    } else if (s.user) {
+      set({ reserveError: 'Only organizers can create events.' });
+    } else {
+      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'create', authBackScreen: 'hostIntro' });
+    }
+  }, [set, s.user, s.hasHosted, s.accountType]);
   const openAttendance = useCallback((key) => set({ screen: 'attendance', attendanceEventKey: key }), [set]);
   const openHeld = useCallback(() => set({ screen: 'confirmed' }), [set]);
-  const goHostIntro = useCallback(() => set(s.user ? { screen: 'hostIntro' } : { screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile' }), [set, s.user]);
+  const goHostIntro = useCallback(() => {
+    if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
+      set({ screen: 'hostIntro' });
+    } else if (s.user) {
+      set({ reserveError: 'Only organizers can access this page.' });
+    } else {
+      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile' });
+    }
+  }, [set, s.user, s.hasHosted, s.accountType]);
   const createBack = useCallback(() => set(prev => ({ screen: prev.hasHosted ? 'dashboard' : 'hostIntro' })), [set]);
 
   // ---- roles ----
-  const switchToHost = useCallback(() => set(s.user ? { mode: 'host', screen: 'dashboard' } : { screen: 'login', accountType: 'organizer', authReturnScreen: 'dashboard', authBackScreen: 'home' }), [set, s.user]);
+  const switchToHost = useCallback(() => {
+    if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
+      set({ mode: 'host', screen: 'dashboard' });
+    } else if (s.user) {
+      set({ reserveError: 'Only organizers can switch to host mode.' });
+    } else {
+      set({ screen: 'login', accountType: 'organizer', authReturnScreen: 'dashboard', authBackScreen: 'home' });
+    }
+  }, [set, s.user, s.hasHosted, s.accountType]);
   const switchToGoer = useCallback(() => set({ mode: 'goer', screen: 'home' }), [set]);
-  const becomeHost = useCallback(() => set({ screen: 'hostIntro' }), [set]);
+  const becomeHost = useCallback(() => {
+    if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
+      set({ screen: 'hostIntro' });
+    } else if (s.user) {
+      set({ reserveError: 'Only organizers can access this page.' });
+    } else {
+      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile' });
+    }
+  }, [set, s.user, s.hasHosted, s.accountType]);
   const logout = useCallback(async () => { await supabase.auth.signOut(); set({ user: null, mode: 'goer', screen: 'home' }); }, [set]);
 
   // ---- lang / area / location ----
