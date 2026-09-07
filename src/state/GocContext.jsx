@@ -114,10 +114,16 @@ export function GocProvider({ children }) {
   useEffect(() => {
     let active = true;
     supabase.auth.getSession().then(({ data }) => {
-      if (active && data.session?.user) set({ user: data.session.user });
+      if (active && data.session?.user) {
+        const accountType = data.session.user.user_metadata?.account_type || data.session.user.raw_user_meta_data?.account_type || 'participant';
+        set({ user: data.session.user, accountType, mode: accountType === 'organizer' ? 'host' : 'goer' });
+      }
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (active && session?.user) set(prev => ({ user: session.user, mode: prev.accountType === 'organizer' ? 'host' : 'goer', screen: prev.screen === 'login' ? prev.authReturnScreen : prev.screen, loginSent: false }));
+      if (active && session?.user) {
+        const accountType = session.user.user_metadata?.account_type || session.user.raw_user_meta_data?.account_type || 'participant';
+        set(prev => ({ user: session.user, accountType, mode: accountType === 'organizer' ? 'host' : 'goer', screen: prev.screen === 'login' ? prev.authReturnScreen : prev.screen, loginSent: false }));
+      }
       if (active && !session) set({ user: null });
     });
     return () => { active = false; listener.subscription.unsubscribe(); };
