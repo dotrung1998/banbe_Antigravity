@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { EVENTS, findEvent } from '../data/events.js';
-import { getAuthRedirectUrl, supabase } from '../lib/supabase.js';
+import { supabase } from '../lib/supabase.js';
+import { requestAuthEmail } from '../lib/authEmail.js';
 
 const GocCtx = createContext(null);
 
@@ -333,8 +334,7 @@ export function GocProvider({ children }) {
     if (emailValid(s.loginEmail)) {
       const email = s.loginEmail.trim();
       try {
-        const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: getAuthRedirectUrl(), data: { account_type: s.accountType } } });
-        if (error) throw error;
+        await requestAuthEmail({ email, mode: s.authMode, accountType: s.accountType });
         set({ loginSent: true });
       } catch (e) {
         set({ reserveError: e.message || 'Unable to send the login code.' });

@@ -26,7 +26,9 @@ npm install nodemailer
 
 The project is JavaScript-only, so `@types/nodemailer` is not needed. For a TypeScript route, install it with `npm install -D @types/nodemailer`.
 
-Set `GMAIL_USER` and `GMAIL_APP_PASSWORD` in local `.env.local` and in Vercel Project Settings > Environment Variables. The app password is generated in Google Account > Security > 2-Step Verification > App passwords; regular Gmail passwords are not supported.
+Set `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `AUTH_REDIRECT_URL` in local `.env.local` and in Vercel Project Settings > Environment Variables. The app password is generated in Google Account > Security > 2-Step Verification > App passwords; regular Gmail passwords are not supported. Never expose `SUPABASE_SERVICE_ROLE_KEY` to the browser or prefix it with `VITE_`.
+
+Email sign-up and login links are generated server-side with Supabase Admin and delivered through Gmail by `POST /api/auth/send-email-link`. Supabase Auth does not send these email messages, so its two-per-hour email limit does not apply. Phone OTP continues to use the existing Supabase flow.
 
 The request body must contain `to`, `subject`, and at least one of `text` or `html`:
 
