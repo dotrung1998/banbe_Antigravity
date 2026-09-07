@@ -24,7 +24,7 @@ function getRedirectUrl(req) {
 }
 
 function getSupabaseAdmin() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceRoleKey) return null;
 
@@ -43,7 +43,7 @@ export default async function handler(req, res) {
   const missing = [
     ...getMissingEmailVariables(),
     !admin && 'SUPABASE_SERVICE_ROLE_KEY',
-    !admin && !(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) && 'SUPABASE_URL',
+    !admin && !(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL) && 'SUPABASE_URL',
   ].filter(Boolean);
   if (missing.length) {
     return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED', missing });
