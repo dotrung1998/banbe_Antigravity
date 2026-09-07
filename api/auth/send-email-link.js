@@ -60,6 +60,23 @@ export default async function handler(req, res) {
   if (mode === 'signup' && accountType === 'admin') return res.status(400).json({ error: 'ADMIN_SIGNUP_NOT_ALLOWED' });
 
   try {
+    let existingRole = null;
+    try {
+      const { data: authUser } = await admin.auth.admin.getUserByEmail(email);
+      if (authUser?.user) {
+        const { data: profile } = await admin.from('profiles').select('role').eq('id', authUser.user.id).maybeSingle();
+        existingRole = profile?.role || authUser.user.user_metadata?.account_type || authUser.user.raw_user_meta_data?.account_type;
+      }
+    } catch (e) {
+      console.warn('Failed to check existing user role:', e);
+    }
+
+    if (existingRole && existingRole !== accountType) {
+      return res.status(400).json({
+        error: `This email is registered as a ${existingRole}. To continue as an ${accountType}, please complete the ${accountType} registration process.`,
+      });
+    }
+
     const { data, error } = await admin.auth.admin.generateLink({
       type: mode === 'signup' ? 'signup' : 'magiclink',
       email,
