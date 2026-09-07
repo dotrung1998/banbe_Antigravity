@@ -15,6 +15,30 @@ The React Compiler is not enabled on this template because of its impact on dev 
 ## Authentication redirect
 
 Set `VITE_AUTH_REDIRECT_URL` in the deployed app environment to the public app origin, for example `https://your-domain.example`. `VITE_SITE_URL` is accepted as a fallback name. If neither variable is set, local development uses the current browser origin.
+
+## Email API
+
+This Vite app uses a Vercel Function at `POST /api/send-email` rather than a Next.js App Router route. Install the mailer with:
+
+```sh
+npm install nodemailer
+```
+
+The project is JavaScript-only, so `@types/nodemailer` is not needed. For a TypeScript route, install it with `npm install -D @types/nodemailer`.
+
+Set `GMAIL_USER` and `GMAIL_APP_PASSWORD` in local `.env.local` and in Vercel Project Settings > Environment Variables. The app password is generated in Google Account > Security > 2-Step Verification > App passwords; regular Gmail passwords are not supported.
+
+The request body must contain `to`, `subject`, and at least one of `text` or `html`:
+
+```js
+import { sendEmail } from './lib/sendEmail';
+
+await sendEmail({
+	to: 'recipient@example.com',
+	subject: 'Hello',
+	text: 'Message body',
+});
+```
 ## Expanding the Oxlint configuration
 
 If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
