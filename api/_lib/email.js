@@ -6,12 +6,15 @@ const transporter = nodemailer.createTransport({
   secure: true,
   auth: {
     user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
+    pass: process.env.GMAIL_APP_PASSWORD?.replace(/\s+/g, ''),
   },
 });
 
-export function isEmailConfigured() {
-  return Boolean(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
+export function getMissingEmailVariables() {
+  return [
+    !process.env.GMAIL_USER && 'GMAIL_USER',
+    !process.env.GMAIL_APP_PASSWORD && 'GMAIL_APP_PASSWORD',
+  ].filter(Boolean);
 }
 
 export function sendWithGmail(message) {

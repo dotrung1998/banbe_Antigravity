@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { isEmailConfigured, sendWithGmail } from '../_lib/email.js';
+import { getMissingEmailVariables, sendWithGmail } from '../_lib/email.js';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ACCOUNT_TYPES = new Set(['participant', 'organizer', 'admin']);
@@ -40,8 +40,13 @@ export default async function handler(req, res) {
   }
 
   const admin = getSupabaseAdmin();
-  if (!isEmailConfigured() || !admin) {
-    return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED' });
+  const missing = [
+    ...getMissingEmailVariables(),
+    !admin && 'SUPABASE_SERVICE_ROLE_KEY',
+    !admin && !(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) && 'SUPABASE_URL',
+  ].filter(Boolean);
+  if (missing.length) {
+    return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED', missing });
   }
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
