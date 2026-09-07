@@ -81,6 +81,15 @@ export default async function handler(req, res) {
       console.warn('Failed to check existing user role:', e);
     }
 
+    if (!existingRole) {
+      try {
+        const { data: emailReg } = await admin.from('email_registrations').select('role').eq('email', email).maybeSingle();
+        if (emailReg?.role) existingRole = emailReg.role;
+      } catch (e) {
+        console.warn('Failed to check email_registrations:', e);
+      }
+    }
+
     if (existingRole && existingRole !== accountType) {
       return res.status(400).json({
         error: `This email is registered as a ${existingRole}. To continue as an ${accountType}, please complete the ${accountType} registration process.`,
