@@ -383,6 +383,24 @@ export function GocProvider({ children }) {
   const loginPhoneType = useCallback((e) => set({ loginPhoneNumber: e.target.value }), [set]);
   const loginCodeType = useCallback((e) => set({ loginCode: e.target.value }), [set]);
   const emailValid = (v) => /\S+@\S+\.\S+/.test(v);
+  const authEmailErrorMessage = useCallback((error, mode) => {
+    const code = error?.code || error?.message;
+    if (code === 'AUTH_ACCOUNT_NOT_FOUND') {
+      return T('Không tìm thấy tài khoản với email này. Hãy chọn Đăng ký trước.', 'No account exists for this email. Choose Sign up first.');
+    }
+    if (code === 'AUTH_EMAIL_DELIVERY_FAILED') {
+      return T('Không thể gửi email lúc này. Vui lòng thử lại sau.', 'We could not send the email right now. Please try again later.');
+    }
+    if (code === 'AUTH_LINK_GENERATION_FAILED') {
+      return T('Không thể tạo liên kết xác thực. Vui lòng thử lại sau.', 'We could not create the verification link. Please try again later.');
+    }
+    if (code === 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED') {
+      return T('Dịch vụ email chưa được cấu hình. Vui lòng thử lại sau.', 'The email service is not configured yet. Please try again later.');
+    }
+    return mode === 'signup'
+      ? T('Không thể gửi link đăng ký. Vui lòng thử lại sau.', 'We could not send the sign-up link. Please try again later.')
+      : T('Không thể gửi link đăng nhập. Vui lòng thử lại sau.', 'We could not send the sign-in link. Please try again later.');
+  }, [T]);
   const loginEmailSubmit = useCallback(async () => {
     if (s.accountType === 'admin' && s.authMode === 'signup') {
       set({ reserveError: 'Admin accounts are provisioned by banbe. Please use a participant or organizer account.' });
@@ -392,14 +410,12 @@ export function GocProvider({ children }) {
       const email = s.loginEmail.trim();
       try {
         await requestAuthEmail({ email, mode: s.authMode, accountType: s.accountType });
-        set({ loginSent: true });
+        set({ loginSent: true, reserveError: '' });
       } catch (e) {
-        set({ reserveError: e.code === 'AUTH_ACCOUNT_NOT_FOUND'
-          ? 'No account exists for this email. Choose Sign up first.'
-          : e.message || 'Unable to send the login code.' });
+        set({ loginSent: false, reserveError: authEmailErrorMessage(e, s.authMode) });
       }
     }
-  }, [set, s.loginEmail, s.accountType]);
+  }, [set, s.loginEmail, s.accountType, s.authMode, authEmailErrorMessage]);
   const loginEmailKey = useCallback((e) => { if (e.key === 'Enter') loginEmailSubmit(); }, [loginEmailSubmit]);
   const loginZalo = useCallback(() => set({ reserveError: 'Zalo login is not available yet. Use email or phone OTP.' }), [set]);
   const loginPhone = useCallback(async () => {
