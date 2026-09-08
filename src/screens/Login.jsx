@@ -9,6 +9,8 @@ export default function Login() {
   const s = state;
   const valid = emailValid(s.loginEmail);
   const typeLabel = s.accountType === 'organizer' ? T('người tổ chức', 'organizer') : s.accountType === 'admin' ? T('quản trị viên', 'admin') : T('người tham gia', 'participant');
+  const changeAuthMode = (authMode) => set({ authMode, reserveError: '', loginSent: false });
+  const changeAccountType = (accountType) => set({ accountType, reserveError: '', loginSent: false });
 
   const loginBtnStyle = {
     marginTop: 12, fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 15, cursor: valid ? 'pointer' : 'default',
@@ -32,13 +34,13 @@ export default function Login() {
       <div onClick={() => set({ screen: s.authBackScreen })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 26px' }}>
         <div style={{ display: 'flex', gap: 16, borderBottom: '1px solid rgba(27,25,22,0.16)', paddingBottom: 8 }}>
-          {['login', 'signup'].map(mode => <span key={mode} onClick={() => set({ authMode: mode })} style={{ fontSize: 11.5, color: ink, fontWeight: s.authMode === mode ? 600 : 400, borderBottom: s.authMode === mode ? `2px solid ${ink}` : '2px solid transparent', paddingBottom: 6, cursor: 'pointer' }}>{mode === 'login' ? T('Đăng nhập', 'Log in') : T('Đăng ký', 'Sign up')}</span>)}
+          {['login', 'signup'].map(mode => <span key={mode} onClick={() => changeAuthMode(mode)} style={{ fontSize: 11.5, color: ink, fontWeight: s.authMode === mode ? 600 : 400, borderBottom: s.authMode === mode ? `2px solid ${ink}` : '2px solid transparent', paddingBottom: 6, cursor: 'pointer' }}>{mode === 'login' ? T('Đăng nhập', 'Log in') : T('Đăng ký', 'Sign up')}</span>)}
         </div>
         <h2 style={{ ...display(25, { lineHeight: 1.3, margin: '10px 0 0' }) }}>{s.authMode === 'signup' ? T('Tạo tài khoản ' + typeLabel, 'Create a ' + typeLabel + ' account') : T('Tiếp tục với tư cách ' + typeLabel, 'Continue as a ' + typeLabel)}</h2>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '12px 0 0' }}>{T('Chọn loại tài khoản trước khi đăng nhập hoặc đăng ký.', 'Choose an account type before logging in or signing up.')}</p>
         <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
           {[['participant', T('Người tham gia', 'Participant')], ['organizer', T('Người tổ chức', 'Organizer')], ['admin', T('Quản trị viên', 'Admin')]].map(([key, label]) => (
-            <div key={key} onClick={() => set({ accountType: key })} style={{ ...typeChip, border: s.accountType === key ? `1.5px solid ${ink}` : '1px solid rgba(27,25,22,0.16)', fontWeight: s.accountType === key ? 600 : 400 }}>{label}</div>
+            <div key={key} onClick={() => changeAccountType(key)} style={{ ...typeChip, border: s.accountType === key ? `1.5px solid ${ink}` : '1px solid rgba(27,25,22,0.16)', fontWeight: s.accountType === key ? 600 : 400 }}>{label}</div>
           ))}
         </div>
         {s.accountType === 'admin' && <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0' }}>{T('Tài khoản quản trị viên do banbe cấp, không thể tự đăng ký.', 'Admin accounts are provisioned by banbe and cannot self-register.')}</p>}
