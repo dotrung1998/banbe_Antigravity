@@ -6,7 +6,8 @@ export default function Account() {
   const s = state;
 
   const profileName = s.user ? (s.user.name || (s.user.email ? s.user.email.split('@')[0] : T('Bạn', 'You'))) : T('Khách', 'Guest');
-  const profileSub = s.hasHosted ? T('Người tham gia ▪︎ Người tổ chức', 'Goer ▪︎ Host') : T('Người tham gia', 'Goer');
+  const isOrganizer = s.accountType === 'organizer' || s.hasHosted;
+  const profileSub = s.accountType === 'admin' ? T('Quản trị viên', 'Admin') : isOrganizer ? T('Người tham gia ▪︎ Người tổ chức', 'Goer ▪︎ Host') : T('Người tham gia', 'Goer');
   const profileOrgName = (s.orgRegName && s.orgRegName.trim()) || 'Bếp Nhỏ';
 
   return (
@@ -52,7 +53,7 @@ export default function Account() {
 
       <div style={{ padding: '22px 20px 0' }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Tổ chức', 'Hosting')}</span>
-        {s.hasHosted ? (
+        {isOrganizer ? (
           <div onClick={switchToHost} style={{ ...cardGlass({ marginTop: 10, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
               <span style={{ ...display(17, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{profileOrgName}</span>

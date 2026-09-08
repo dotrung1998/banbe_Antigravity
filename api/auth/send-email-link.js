@@ -24,6 +24,21 @@ function getRedirectUrl(req) {
   return host ? `${protocol}://${host}` : 'http://localhost:5173';
 }
 
+// Look up an auth user by email. This supabase-js version has no
+// getUserByEmail, so page through the admin user list instead.
+async function findAuthUserByEmail(admin, email) {
+  const perPage = 200;
+  for (let page = 1; page <= 20; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    const users = data?.users || [];
+    const match = users.find(u => (u.email || '').toLowerCase() === email);
+    if (match) return match;
+    if (!data || users.length < perPage) break;
+  }
+  return null;
+}
+
 // Persist the requested role across the auth user, profile, and email
 // registry. Without this the account_type only travels inside the email
 // link metadata, and if that metadata is dropped (or the profile row
@@ -33,8 +48,8 @@ async function enforceAccountRole(admin, email, role, userId) {
   try {
     let id = userId;
     if (!id) {
-      const { data: found } = await admin.auth.admin.getUserByEmail(email);
-      id = found?.user?.id || null;
+      const found = await findAuthUserByEmail(admin, email);
+      id = found?.id || null;
     }
     if (!id) return;
 
@@ -115,16 +130,16 @@ export default async function handler(req, res) {
   // and re-created, or when the backfill migration has not run yet).
   if (!registration?.auth_user_id) {
     try {
-      const { data: authUser } = await admin.auth.admin.getUserByEmail(email);
-      if (authUser?.user) {
+      const authUser = await findAuthUserByEmail(admin, email);
+      if (authUser) {
         try {
-          const { data: profile } = await admin.from('profiles').select('role').eq('id', authUser.user.id).maybeSingle();
-          const role = profile?.role || authUser.user.user_metadata?.account_type || authUser.user.raw_user_meta_data?.account_type;
-          registration = { role, auth_user_id: authUser.user.id };
+          const { data: profile } = await admin.from('profiles').select('role').eq('id', authUser.id).maybeSingle();
+          const role = profile?.role || authUser.user_metadata?.account_type || authUser.raw_user_meta_data?.account_type;
+          registration = { role, auth_user_id: authUser.id };
         } catch (profileError) {
           console.warn('Profile query failed:', profileError);
-          const role = authUser.user.user_metadata?.account_type || authUser.user.raw_user_meta_data?.account_type;
-          registration = role ? { role, auth_user_id: authUser.user.id } : null;
+          const role = authUser.user_metadata?.account_type || authUser.raw_user_meta_data?.account_type;
+          registration = role ? { role, auth_user_id: authUser.id } : null;
         }
       }
     } catch (e) {
