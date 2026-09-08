@@ -24,6 +24,38 @@ function getRedirectUrl(req) {
   return host ? `${protocol}://${host}` : 'http://localhost:5173';
 }
 
+// Persist the requested role across the auth user, profile, and email
+// registry. Without this the account_type only travels inside the email
+// link metadata, and if that metadata is dropped (or the profile row
+// already exists as a participant) the user silently ends up as a
+// participant even though they signed up as an organizer.
+async function enforceAccountRole(admin, email, role, userId) {
+  try {
+    let id = userId;
+    if (!id) {
+      const { data: found } = await admin.auth.admin.getUserByEmail(email);
+      id = found?.user?.id || null;
+    }
+    if (!id) return;
+
+    try {
+      await admin.auth.admin.updateUserById(id, { user_metadata: { account_type: role } });
+    } catch (metaError) {
+      console.warn('Auth metadata role update failed:', metaError);
+    }
+
+    const { error: profileError } = await admin.from('profiles').update({ role }).eq('id', id);
+    if (profileError) console.warn('Profile role update failed:', profileError);
+
+    const { error: registryError } = await admin
+      .from('email_registrations')
+      .upsert({ email, role, auth_user_id: id, updated_at: new Date().toISOString() }, { onConflict: 'email' });
+    if (registryError) console.warn('Email registry role update failed:', registryError);
+  } catch (e) {
+    console.warn('Account role enforcement failed:', e);
+  }
+}
+
 function getSupabaseAdmin() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -104,17 +136,25 @@ export default async function handler(req, res) {
     return res.status(404).json({ error: 'AUTH_ACCOUNT_NOT_FOUND' });
   }
 
+  const existingRole = registration?.role || null;
+  // A participant account may upgrade itself to organizer: the UI routes
+  // participants who try to host here ("complete organizer registration"),
+  // so blocking them with AUTH_ACCOUNT_EXISTS/AUTH_ROLE_MISMATCH would leave
+  // them permanently stuck as participants.
+  const isUpgrade = mode === 'signup'
+    && existingRole === 'participant'
+    && accountType === 'organizer'
+    && Boolean(registration?.auth_user_id);
+
   // The email already has a live auth account, so a sign-up link cannot be
   // generated for it (Supabase rejects duplicate signups). Direct the user
   // to log in instead of failing with a generic link-generation error.
-  if (mode === 'signup' && registration?.auth_user_id) {
+  if (mode === 'signup' && registration?.auth_user_id && !isUpgrade) {
     return res.status(409).json({ error: 'AUTH_ACCOUNT_EXISTS' });
   }
 
   try {
-    const existingRole = registration?.role || null;
-
-    if (existingRole && existingRole !== accountType) {
+    if (existingRole && existingRole !== accountType && !isUpgrade) {
       return res.status(400).json({
         error: 'AUTH_ROLE_MISMATCH',
         message: `This email is already registered as ${/^[aeiou]/i.test(existingRole) ? 'an' : 'a'} ${existingRole}. Choose that account type to continue.`,
@@ -122,15 +162,19 @@ export default async function handler(req, res) {
       });
     }
 
+    // A brand-new account gets a sign-up link; an upgrade reuses a sign-in
+    // link because the auth user already exists.
+    const linkType = mode === 'signup' && !registration?.auth_user_id ? 'signup' : 'magiclink';
+
     const linkRequest = {
-      type: mode === 'signup' ? 'signup' : 'magiclink',
+      type: linkType,
       email,
       options: {
         redirectTo: getRedirectUrl(req),
         data: { account_type: accountType },
       },
     };
-    if (mode === 'signup') {
+    if (linkType === 'signup') {
       linkRequest.password = randomBytes(32).toString('base64url');
     }
 
@@ -141,8 +185,14 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'AUTH_LINK_GENERATION_FAILED' });
     }
 
+    // Make the role real before the user even clicks the link, so the
+    // profile/registry no longer depend on the link metadata surviving.
+    if (linkType === 'signup' || isUpgrade) {
+      await enforceAccountRole(admin, email, accountType, data?.user?.id || registration?.auth_user_id || null);
+    }
+
     const actionLink = data.properties.action_link;
-    const subject = mode === 'signup' ? 'Confirm your banbe account' : 'Your banbe sign-in link';
+    const subject = linkType === 'signup' ? 'Confirm your banbe account' : 'Your banbe sign-in link';
     const safeLink = escapeHtml(actionLink);
     try {
       await sendWithGmail({
@@ -156,7 +206,7 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'AUTH_EMAIL_DELIVERY_FAILED' });
     }
 
-    return res.status(200).json({ sent: true });
+    return res.status(200).json({ sent: true, upgraded: isUpgrade });
   } catch (error) {
     console.error('Auth email request failed:', error);
     return res.status(502).json({ error: 'AUTH_EMAIL_REQUEST_FAILED' });

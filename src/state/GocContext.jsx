@@ -42,6 +42,7 @@ const initialState = {
   loginCode: '',
   loginSent: false,
   loginSentVia: null,
+  loginUpgraded: false,
   payMode: 'now',
   qty: 1,
   lang: 'vi',
@@ -139,6 +140,7 @@ export function GocProvider({ children }) {
           screen: prev.screen === 'login' ? prev.authReturnScreen : prev.screen,
           loginSent: false,
           loginSentVia: null,
+          loginUpgraded: false,
         }));
         syncUser(session.user);
       }
@@ -428,10 +430,10 @@ export function GocProvider({ children }) {
     if (emailValid(s.loginEmail)) {
       const email = s.loginEmail.trim();
       try {
-        await requestAuthEmail({ email, mode: s.authMode, accountType: s.accountType });
-        set({ loginSent: true, loginSentVia: 'email', reserveError: '' });
+        const payload = await requestAuthEmail({ email, mode: s.authMode, accountType: s.accountType });
+        set({ loginSent: true, loginSentVia: 'email', loginUpgraded: Boolean(payload?.upgraded), reserveError: '' });
       } catch (e) {
-        set({ loginSent: false, loginSentVia: null, reserveError: authEmailErrorMessage(e, s.authMode) });
+        set({ loginSent: false, loginSentVia: null, loginUpgraded: false, reserveError: authEmailErrorMessage(e, s.authMode) });
       }
     }
   }, [set, s.loginEmail, s.accountType, s.authMode, authEmailErrorMessage, T]);
