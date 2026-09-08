@@ -71,9 +71,15 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Supabase account registry lookup failed:', error);
     if (error?.code === 'PGRST205') {
-      return res.status(503).json({ error: 'AUTH_ACCOUNT_REGISTRY_NOT_CONFIGURED' });
+      if (mode === 'login') {
+        return res.status(503).json({ error: 'AUTH_ACCOUNT_REGISTRY_NOT_CONFIGURED' });
+      }
+      // Explicit sign-up can still create the account and send its Gmail link.
+      // The registry migration will record it after it is applied.
+      registration = null;
+    } else {
+      return res.status(502).json({ error: 'AUTH_ACCOUNT_LOOKUP_FAILED' });
     }
-    return res.status(502).json({ error: 'AUTH_ACCOUNT_LOOKUP_FAILED' });
   }
 
   if (mode === 'login' && !registration?.auth_user_id) {
