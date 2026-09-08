@@ -67,15 +67,19 @@ export default async function handler(req, res) {
 
   let authUser = null;
   try {
-    const { data: authData, error: authLookupError } = await admin.auth.admin.getUserByEmail(email);
-    if (authLookupError && !isUserNotFound(authLookupError)) {
-      console.error('Supabase auth user lookup failed:', authLookupError);
-      return res.status(502).json({ error: 'AUTH_ACCOUNT_LOOKUP_FAILED' });
+    const response = await fetch(`${admin.auth.admin.url}/admin/users?email=${encodeURIComponent(email)}`, {
+      headers: admin.auth.admin.headers,
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw errorData;
     }
-    authUser = authData?.user || null;
+    const result = await response.json();
+    const users = result.users || result.data?.users || [];
+    authUser = users.find((u) => u.email === email) || null;
   } catch (error) {
     if (!isUserNotFound(error)) {
-      console.error('Supabase auth user lookup crashed:', error);
+      console.error('Supabase auth user lookup failed:', error);
       return res.status(502).json({ error: 'AUTH_ACCOUNT_LOOKUP_FAILED' });
     }
   }
@@ -112,7 +116,9 @@ export default async function handler(req, res) {
 
     if (existingRole && existingRole !== accountType) {
       return res.status(400).json({
-        error: `This email is registered as a ${existingRole}. To continue as an ${accountType}, please complete the ${accountType} registration process.`,
+        error: 'AUTH_ROLE_MISMATCH',
+        message: `This email is registered as a ${existingRole}. To continue as an ${accountType}, please complete the ${accountType} registration process.`,
+        existingRole,
       });
     }
 

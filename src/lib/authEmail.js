@@ -7,8 +7,9 @@ export async function requestAuthEmail({ email, mode, accountType }) {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(payload.error || 'AUTH_EMAIL_SEND_FAILED');
-    error.code = payload.error;
+    const error = new Error(payload.error || payload.message || 'AUTH_EMAIL_SEND_FAILED');
+    error.code = payload.error || payload.code;
+    if (payload.message) error.message = payload.message;
     throw error;
   }
   return payload;

@@ -403,6 +403,9 @@ export function GocProvider({ children }) {
     if (code === 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED') {
       return T('Dịch vụ email chưa được cấu hình. Vui lòng thử lại sau.', 'The email service is not configured yet. Please try again later.');
     }
+    if (code === 'AUTH_ROLE_MISMATCH') {
+      return error.message || T('This email is registered with a different role.', 'This email is registered with a different role.');
+    }
     return mode === 'signup'
       ? T('Không thể gửi link đăng ký. Vui lòng thử lại sau.', 'We could not send the sign-up link. Please try again later.')
       : T('Không thể gửi link đăng nhập. Vui lòng thử lại sau.', 'We could not send the sign-in link. Please try again later.');
