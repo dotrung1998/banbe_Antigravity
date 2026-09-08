@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { randomBytes } from 'node:crypto';
 import { getMissingEmailVariables, sendWithGmail } from '../_lib/email.js';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -97,14 +98,19 @@ export default async function handler(req, res) {
       });
     }
 
-    const { data, error } = await admin.auth.admin.generateLink({
+    const linkRequest = {
       type: mode === 'signup' ? 'signup' : 'magiclink',
       email,
       options: {
         redirectTo: getRedirectUrl(req),
         data: { account_type: accountType },
       },
-    });
+    };
+    if (mode === 'signup') {
+      linkRequest.password = randomBytes(32).toString('base64url');
+    }
+
+    const { data, error } = await admin.auth.admin.generateLink(linkRequest);
 
     if (error || !data?.properties?.action_link) {
       console.error('Supabase auth link generation failed:', error);
