@@ -391,6 +391,12 @@ export function GocProvider({ children }) {
     if (code === 'AUTH_EMAIL_DELIVERY_FAILED') {
       return T('Không thể gửi email lúc này. Vui lòng thử lại sau.', 'We could not send the email right now. Please try again later.');
     }
+    if (code === 'AUTH_ACCOUNT_LOOKUP_FAILED') {
+      return T('Không thể kiểm tra tài khoản lúc này. Vui lòng thử lại sau.', 'We could not check the account right now. Please try again later.');
+    }
+    if (code === 'AUTH_EMAIL_REQUEST_FAILED') {
+      return T('Không thể xử lý yêu cầu email. Vui lòng thử lại sau.', 'We could not process the email request. Please try again later.');
+    }
     if (code === 'AUTH_LINK_GENERATION_FAILED') {
       return T('Không thể tạo liên kết xác thực. Vui lòng thử lại sau.', 'We could not create the verification link. Please try again later.');
     }

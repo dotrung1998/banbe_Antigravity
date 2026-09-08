@@ -33,6 +33,12 @@ function getSupabaseAdmin() {
   });
 }
 
+function isUserNotFound(error) {
+  return error?.status === 404
+    || error?.code === 'user_not_found'
+    || /user.*not found|not found.*user/i.test(error?.message || '');
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -59,16 +65,26 @@ export default async function handler(req, res) {
   if (!ACCOUNT_TYPES.has(accountType)) return res.status(400).json({ error: 'VALID_ACCOUNT_TYPE_REQUIRED' });
   if (mode === 'signup' && accountType === 'admin') return res.status(400).json({ error: 'ADMIN_SIGNUP_NOT_ALLOWED' });
 
+  let authUser = null;
   try {
-    let authUser = null;
     const { data: authData, error: authLookupError } = await admin.auth.admin.getUserByEmail(email);
-    if (authLookupError && authLookupError.status !== 404) throw authLookupError;
-    authUser = authData?.user || null;
-
-    if (mode === 'login' && !authUser) {
-      return res.status(404).json({ error: 'AUTH_ACCOUNT_NOT_FOUND' });
+    if (authLookupError && !isUserNotFound(authLookupError)) {
+      console.error('Supabase auth user lookup failed:', authLookupError);
+      return res.status(502).json({ error: 'AUTH_ACCOUNT_LOOKUP_FAILED' });
     }
+    authUser = authData?.user || null;
+  } catch (error) {
+    if (!isUserNotFound(error)) {
+      console.error('Supabase auth user lookup crashed:', error);
+      return res.status(502).json({ error: 'AUTH_ACCOUNT_LOOKUP_FAILED' });
+    }
+  }
 
+  if (mode === 'login' && !authUser) {
+    return res.status(404).json({ error: 'AUTH_ACCOUNT_NOT_FOUND' });
+  }
+
+  try {
     let existingRole = null;
     if (authUser) {
       try {
@@ -117,16 +133,21 @@ export default async function handler(req, res) {
     const actionLink = data.properties.action_link;
     const subject = mode === 'signup' ? 'Confirm your banbe account' : 'Your banbe sign-in link';
     const safeLink = escapeHtml(actionLink);
-    await sendWithGmail({
-      to: email,
-      subject,
-      text: `${subject}\n\nOpen this link to continue: ${actionLink}\n\nIf you did not request this email, you can ignore it.`,
-      html: `<p>${subject}</p><p><a href="${safeLink}">Continue to banbe</a></p><p>If you did not request this email, you can ignore it.</p>`,
-    });
+    try {
+      await sendWithGmail({
+        to: email,
+        subject,
+        text: `${subject}\n\nOpen this link to continue: ${actionLink}\n\nIf you did not request this email, you can ignore it.`,
+        html: `<p>${subject}</p><p><a href="${safeLink}">Continue to banbe</a></p><p>If you did not request this email, you can ignore it.</p>`,
+      });
+    } catch (error) {
+      console.error('Gmail auth email delivery failed:', error);
+      return res.status(502).json({ error: 'AUTH_EMAIL_DELIVERY_FAILED' });
+    }
 
     return res.status(200).json({ sent: true });
   } catch (error) {
-    console.error('Auth email delivery failed:', error);
-    return res.status(502).json({ error: 'AUTH_EMAIL_DELIVERY_FAILED' });
+    console.error('Auth email request failed:', error);
+    return res.status(502).json({ error: 'AUTH_EMAIL_REQUEST_FAILED' });
   }
 }
