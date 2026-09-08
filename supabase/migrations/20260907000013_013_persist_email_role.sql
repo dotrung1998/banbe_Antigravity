@@ -3,23 +3,26 @@
 CREATE TABLE IF NOT EXISTS public.email_registrations (
   email text PRIMARY KEY,
   role text NOT NULL DEFAULT 'participant',
+  auth_user_id uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 -- Backfill existing auth users
-INSERT INTO public.email_registrations (email, role)
+INSERT INTO public.email_registrations (email, role, auth_user_id)
 SELECT
   lower(email),
   COALESCE(
     p.role,
     trim(u.raw_user_meta_data->>'account_type')
-  )
+  ),
+  u.id
 FROM auth.users u
 LEFT JOIN public.profiles p ON p.id = u.id
 WHERE u.email IS NOT NULL
 ON CONFLICT (email) DO UPDATE SET
   role = EXCLUDED.role,
+  auth_user_id = EXCLUDED.auth_user_id,
   updated_at = now();
 
 CREATE OR REPLACE FUNCTION handle_new_user()
@@ -39,17 +42,19 @@ BEGIN
     )
     ON CONFLICT (id) DO NOTHING;
 
-    INSERT INTO public.email_registrations (email, role)
+    INSERT INTO public.email_registrations (email, role, auth_user_id)
     VALUES (
         lower(NEW.email),
         CASE trim(NEW.raw_user_meta_data->>'account_type')
           WHEN 'organizer' THEN 'organizer'
           WHEN 'admin' THEN 'admin'
           ELSE 'participant'
-        END
+        END,
+        NEW.id
     )
     ON CONFLICT (email) DO UPDATE SET
       role = EXCLUDED.role,
+      auth_user_id = EXCLUDED.auth_user_id,
       updated_at = now();
 
     RETURN NEW;
