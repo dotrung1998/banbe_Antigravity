@@ -390,6 +390,9 @@ export function GocProvider({ children }) {
     if (code === 'AUTH_ACCOUNT_NOT_FOUND' && mode !== 'signup') {
       return T('Không tìm thấy tài khoản với email này. Hãy chọn Đăng ký trước.', 'No account exists for this email. Choose Sign up first.');
     }
+    if (code === 'AUTH_ACCOUNT_EXISTS') {
+      return T('Email này đã có tài khoản. Hãy chọn Đăng nhập để tiếp tục.', 'This email already has an account. Choose Log in to continue.');
+    }
     if (code === 'AUTH_EMAIL_DELIVERY_FAILED') {
       return T('Không thể gửi email lúc này. Vui lòng thử lại sau.', 'We could not send the email right now. Please try again later.');
     }

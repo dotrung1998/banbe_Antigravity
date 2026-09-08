@@ -78,7 +78,10 @@ export default async function handler(req, res) {
     }
   }
 
-  if (!registration) {
+  // Fall back to Auth whenever the registry row is missing OR is not linked
+  // to a live auth user (auth_user_id can be NULL after a user was deleted
+  // and re-created, or when the backfill migration has not run yet).
+  if (!registration?.auth_user_id) {
     try {
       const { data: authUser } = await admin.auth.admin.getUserByEmail(email);
       if (authUser?.user) {
@@ -99,6 +102,13 @@ export default async function handler(req, res) {
 
   if (mode === 'login' && !registration?.auth_user_id) {
     return res.status(404).json({ error: 'AUTH_ACCOUNT_NOT_FOUND' });
+  }
+
+  // The email already has a live auth account, so a sign-up link cannot be
+  // generated for it (Supabase rejects duplicate signups). Direct the user
+  // to log in instead of failing with a generic link-generation error.
+  if (mode === 'signup' && registration?.auth_user_id) {
+    return res.status(409).json({ error: 'AUTH_ACCOUNT_EXISTS' });
   }
 
   try {
