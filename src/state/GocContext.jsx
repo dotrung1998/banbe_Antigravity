@@ -396,9 +396,6 @@ export function GocProvider({ children }) {
     if (code === 'AUTH_ACCOUNT_LOOKUP_FAILED') {
       return T('Không thể kiểm tra tài khoản lúc này. Vui lòng thử lại sau.', 'We could not check the account right now. Please try again later.');
     }
-    if (code === 'AUTH_ACCOUNT_REGISTRY_NOT_CONFIGURED') {
-      return T('Hệ thống tài khoản chưa được cấu hình đầy đủ. Vui lòng thử lại sau.', 'The account system is not fully configured yet. Please try again later.');
-    }
     if (code === 'AUTH_EMAIL_REQUEST_FAILED') {
       return T('Không thể xử lý yêu cầu email. Vui lòng thử lại sau.', 'We could not process the email request. Please try again later.');
     }

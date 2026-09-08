@@ -72,14 +72,28 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Supabase account registry lookup failed:', error);
     if (error?.code === 'PGRST205') {
-      if (mode === 'login') {
-        return res.status(503).json({ error: 'AUTH_ACCOUNT_REGISTRY_NOT_CONFIGURED' });
-      }
-      // Explicit sign-up can still create the account and send its Gmail link.
-      // The registry migration will record it after it is applied.
       registration = null;
     } else {
       return res.status(502).json({ error: 'AUTH_ACCOUNT_LOOKUP_FAILED' });
+    }
+  }
+
+  if (!registration) {
+    try {
+      const { data: authUser } = await admin.auth.admin.getUserByEmail(email);
+      if (authUser?.user) {
+        try {
+          const { data: profile } = await admin.from('profiles').select('role').eq('id', authUser.user.id).maybeSingle();
+          const role = profile?.role || authUser.user.user_metadata?.account_type || authUser.user.raw_user_meta_data?.account_type;
+          registration = { role, auth_user_id: authUser.user.id };
+        } catch (profileError) {
+          console.warn('Profile query failed:', profileError);
+          const role = authUser.user.user_metadata?.account_type || authUser.user.raw_user_meta_data?.account_type;
+          registration = role ? { role, auth_user_id: authUser.user.id } : null;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to check existing user role:', e);
     }
   }
 
