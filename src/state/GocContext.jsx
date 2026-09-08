@@ -41,6 +41,7 @@ const initialState = {
   loginPhoneNumber: '',
   loginCode: '',
   loginSent: false,
+  loginSentVia: null,
   payMode: 'now',
   qty: 1,
   lang: 'vi',
@@ -137,6 +138,7 @@ export function GocProvider({ children }) {
         set(prev => ({
           screen: prev.screen === 'login' ? prev.authReturnScreen : prev.screen,
           loginSent: false,
+          loginSentVia: null,
         }));
         syncUser(session.user);
       }
@@ -235,22 +237,22 @@ export function GocProvider({ children }) {
     if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
       set({ screen: 'create', mode: 'host' });
     } else if (s.user) {
-      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'create', authBackScreen: 'hostIntro', reserveError: 'This account is registered as a participant. Please complete organizer registration to continue.' });
+      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'create', authBackScreen: 'hostIntro', reserveError: T('Tài khoản này đã đăng ký với tư cách người tham gia. Hãy hoàn tất đăng ký người tổ chức để tiếp tục.', 'This account is registered as a participant. Complete organizer registration to continue.') });
     } else {
       set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'create', authBackScreen: 'hostIntro' });
     }
-  }, [set, s.user, s.hasHosted, s.accountType]);
+  }, [set, s.user, s.hasHosted, s.accountType, T]);
   const openAttendance = useCallback((key) => set({ screen: 'attendance', attendanceEventKey: key }), [set]);
   const openHeld = useCallback(() => set({ screen: 'confirmed' }), [set]);
   const goHostIntro = useCallback(() => {
     if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
       set({ screen: 'hostIntro' });
     } else if (s.user) {
-      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile', reserveError: 'This account is registered as a participant. Please complete organizer registration to continue.' });
+      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile', reserveError: T('Tài khoản này đã đăng ký với tư cách người tham gia. Hãy hoàn tất đăng ký người tổ chức để tiếp tục.', 'This account is registered as a participant. Complete organizer registration to continue.') });
     } else {
       set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile' });
     }
-  }, [set, s.user, s.hasHosted, s.accountType]);
+  }, [set, s.user, s.hasHosted, s.accountType, T]);
   const createBack = useCallback(() => set(prev => ({ screen: prev.hasHosted ? 'dashboard' : 'hostIntro' })), [set]);
 
   // ---- roles ----
@@ -258,21 +260,21 @@ export function GocProvider({ children }) {
     if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
       set({ mode: 'host', screen: 'dashboard' });
     } else if (s.user) {
-      set({ screen: 'login', accountType: 'organizer', authReturnScreen: 'dashboard', authBackScreen: 'home', reserveError: 'This account is registered as a participant. Please complete organizer registration to continue.' });
+      set({ screen: 'login', accountType: 'organizer', authReturnScreen: 'dashboard', authBackScreen: 'home', reserveError: T('Tài khoản này đã đăng ký với tư cách người tham gia. Hãy hoàn tất đăng ký người tổ chức để tiếp tục.', 'This account is registered as a participant. Complete organizer registration to continue.') });
     } else {
       set({ screen: 'login', accountType: 'organizer', authReturnScreen: 'dashboard', authBackScreen: 'home' });
     }
-  }, [set, s.user, s.hasHosted, s.accountType]);
+  }, [set, s.user, s.hasHosted, s.accountType, T]);
   const switchToGoer = useCallback(() => set({ mode: 'goer', screen: 'home' }), [set]);
   const becomeHost = useCallback(() => {
     if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
       set({ screen: 'hostIntro' });
     } else if (s.user) {
-      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile', reserveError: 'This account is registered as a participant. Please complete organizer registration to continue.' });
+      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile', reserveError: T('Tài khoản này đã đăng ký với tư cách người tham gia. Hãy hoàn tất đăng ký người tổ chức để tiếp tục.', 'This account is registered as a participant. Complete organizer registration to continue.') });
     } else {
       set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile' });
     }
-  }, [set, s.user, s.hasHosted, s.accountType]);
+  }, [set, s.user, s.hasHosted, s.accountType, T]);
   const logout = useCallback(async () => { await supabase.auth.signOut(); set({ user: null, mode: 'goer', screen: 'home' }); }, [set]);
 
   // ---- lang / area / location ----
@@ -385,7 +387,7 @@ export function GocProvider({ children }) {
   const emailValid = (v) => /\S+@\S+\.\S+/.test(v);
   const authEmailErrorMessage = useCallback((error, mode) => {
     const code = error?.code || error?.message;
-    if (code === 'AUTH_ACCOUNT_NOT_FOUND') {
+    if (code === 'AUTH_ACCOUNT_NOT_FOUND' && mode !== 'signup') {
       return T('Không tìm thấy tài khoản với email này. Hãy chọn Đăng ký trước.', 'No account exists for this email. Choose Sign up first.');
     }
     if (code === 'AUTH_EMAIL_DELIVERY_FAILED') {
@@ -406,10 +408,13 @@ export function GocProvider({ children }) {
     if (code === 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED') {
       return T('Dịch vụ email chưa được cấu hình. Vui lòng thử lại sau.', 'The email service is not configured yet. Please try again later.');
     }
+    if (code === 'ADMIN_SIGNUP_NOT_ALLOWED') {
+      return T('Tài khoản quản trị viên do banbe cấp, không thể tự đăng ký.', 'Admin accounts are issued by banbe and cannot be created here.');
+    }
     if (code === 'AUTH_ROLE_MISMATCH') {
-      const role = error.role === 'organizer' ? T('người tổ chức', 'organizer') : T('người tham gia', 'participant');
-      const requested = mode === 'signup' ? T('đăng ký', 'sign up') : T('đăng nhập', 'log in');
-      return T(`Email này đã đăng ký với tư cách ${role}. Không thể ${requested} bằng vai trò hiện tại.`, `This email is registered as an ${role}. You cannot ${requested} with the current role.`);
+      const role = error.role === 'organizer' ? T('người tổ chức', 'organizer') : error.role === 'admin' ? T('quản trị viên', 'admin') : T('người tham gia', 'participant');
+      const article = /^[aeiou]/i.test(role) ? 'an' : 'a';
+      return T(`Email này đã được đăng ký với tư cách ${role}. Hãy chọn đúng loại tài khoản để tiếp tục.`, `This email is already registered as ${article} ${role}. Choose that account type to continue.`);
     }
     return mode === 'signup'
       ? T('Không thể gửi link đăng ký. Vui lòng thử lại sau.', 'We could not send the sign-up link. Please try again later.')
@@ -417,35 +422,35 @@ export function GocProvider({ children }) {
   }, [T]);
   const loginEmailSubmit = useCallback(async () => {
     if (s.accountType === 'admin' && s.authMode === 'signup') {
-      set({ reserveError: 'Admin accounts are provisioned by banbe. Please use a participant or organizer account.' });
+      set({ reserveError: T('Tài khoản quản trị viên do banbe cấp. Hãy dùng tài khoản người tham gia hoặc người tổ chức.', 'Admin accounts are issued by banbe. Use a participant or organizer account.') });
       return;
     }
     if (emailValid(s.loginEmail)) {
       const email = s.loginEmail.trim();
       try {
         await requestAuthEmail({ email, mode: s.authMode, accountType: s.accountType });
-        set({ loginSent: true, reserveError: '' });
+        set({ loginSent: true, loginSentVia: 'email', reserveError: '' });
       } catch (e) {
-        set({ loginSent: false, reserveError: authEmailErrorMessage(e, s.authMode) });
+        set({ loginSent: false, loginSentVia: null, reserveError: authEmailErrorMessage(e, s.authMode) });
       }
     }
-  }, [set, s.loginEmail, s.accountType, s.authMode, authEmailErrorMessage]);
+  }, [set, s.loginEmail, s.accountType, s.authMode, authEmailErrorMessage, T]);
   const loginEmailKey = useCallback((e) => { if (e.key === 'Enter') loginEmailSubmit(); }, [loginEmailSubmit]);
-  const loginZalo = useCallback(() => set({ reserveError: 'Zalo login is not available yet. Use email or phone OTP.' }), [set]);
+  const loginZalo = useCallback(() => set({ reserveError: T('Zalo chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Zalo is not available yet. Use email or phone OTP.') }), [set, T]);
   const loginPhone = useCallback(async () => {
-    if (s.accountType === 'admin' && s.authMode === 'signup') return set({ reserveError: 'Admin accounts are provisioned by banbe.' });
+    if (s.accountType === 'admin' && s.authMode === 'signup') return set({ reserveError: T('Tài khoản quản trị viên do banbe cấp, không thể tự đăng ký.', 'Admin accounts are issued by banbe and cannot be created here.') });
     const phone = s.loginPhoneNumber.trim();
-    if (!phone) return set({ reserveError: 'Enter your phone number first.' });
+    if (!phone) return set({ reserveError: T('Nhập số điện thoại trước.', 'Enter your phone number first.') });
     const { error } = await supabase.auth.signInWithOtp({ phone, options: { data: { account_type: s.accountType } } });
-    set(error ? { reserveError: error.message } : { loginSent: true, reserveError: '' });
-  }, [set, s.loginPhoneNumber]);
+    set(error ? { reserveError: error.message } : { loginSent: true, loginSentVia: 'phone', reserveError: '' });
+  }, [set, s.loginPhoneNumber, s.accountType, s.authMode, T]);
   const verifyLoginCode = useCallback(async () => {
-    if (!s.loginPhoneNumber.trim() || !s.loginCode.trim()) return set({ reserveError: 'Enter the OTP code.' });
+    if (!s.loginPhoneNumber.trim() || !s.loginCode.trim()) return set({ reserveError: T('Nhập mã OTP.', 'Enter the OTP code.') });
     const { error } = await supabase.auth.verifyOtp({ phone: s.loginPhoneNumber.trim(), token: s.loginCode.trim(), type: 'sms' });
     if (error) set({ reserveError: error.message });
-  }, [set, s.loginPhoneNumber, s.loginCode]);
-  const loginFacebook = useCallback(() => set({ reserveError: 'Facebook login is not available yet. Use email OTP.' }), [set]);
-  const loginInstagram = useCallback(() => set({ reserveError: 'Instagram login is not available yet. Use email OTP.' }), [set]);
+  }, [set, s.loginPhoneNumber, s.loginCode, T]);
+  const loginFacebook = useCallback(() => set({ reserveError: T('Facebook chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Facebook is not available yet. Use email or phone OTP.') }), [set, T]);
+  const loginInstagram = useCallback(() => set({ reserveError: T('Instagram chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Instagram is not available yet. Use email or phone OTP.') }), [set, T]);
 
   // ---- chat ----
   const chatOnType = useCallback((e) => set({ chatDraft: e.target.value }), [set]);

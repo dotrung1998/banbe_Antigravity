@@ -93,7 +93,7 @@ export default async function handler(req, res) {
     if (existingRole && existingRole !== accountType) {
       return res.status(400).json({
         error: 'AUTH_ROLE_MISMATCH',
-        message: `This email is registered as a ${existingRole}. To continue as an ${accountType}, please complete the ${accountType} registration process.`,
+        message: `This email is already registered as ${/^[aeiou]/i.test(existingRole) ? 'an' : 'a'} ${existingRole}. Choose that account type to continue.`,
         existingRole,
       });
     }

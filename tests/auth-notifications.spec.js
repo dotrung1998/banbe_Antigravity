@@ -26,7 +26,7 @@ test.describe('Login & Signup Notification Messages', () => {
     });
 
     await page.locator('input[placeholder="ban@email.com"]').fill('nonexistent@example.com');
-    await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng nhập/).click();
+    await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng nhập/).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Không tìm thấy tài khoản với email này/);
   });
@@ -46,7 +46,7 @@ test.describe('Login & Signup Notification Messages', () => {
     await page.locator('input[placeholder="ban@email.com"]').fill('nonexistent@example.com');
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng ký/).click();
 
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Không tìm thấy tài khoản với email này/);
+    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Không thể gửi link đăng ký/);
   });
 
   test('shows AUTH_ACCOUNT_LOOKUP_FAILED when Supabase lookup errors', async ({ page }) => {
@@ -61,7 +61,7 @@ test.describe('Login & Signup Notification Messages', () => {
     });
 
     await page.locator('input[placeholder="ban@email.com"]').fill('test@example.com');
-    await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng nhập/).click();
+    await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng nhập/).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Không thể kiểm tra tài khoản lúc này/);
   });
@@ -78,7 +78,7 @@ test.describe('Login & Signup Notification Messages', () => {
     });
 
     await page.locator('input[placeholder="ban@email.com"]').fill('test@example.com');
-    await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng nhập/).click();
+    await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng nhập/).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Không thể gửi email lúc này/);
   });
@@ -95,7 +95,7 @@ test.describe('Login & Signup Notification Messages', () => {
     });
 
     await page.locator('input[placeholder="ban@email.com"]').fill('test@example.com');
-    await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng nhập/).click();
+    await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng nhập/).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Không thể xử lý yêu cầu email/);
   });
@@ -112,7 +112,7 @@ test.describe('Login & Signup Notification Messages', () => {
     });
 
     await page.locator('input[placeholder="ban@email.com"]').fill('test@example.com');
-    await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng nhập/).click();
+    await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng nhập/).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Không thể tạo liên kết xác thực/);
   });
@@ -129,7 +129,7 @@ test.describe('Login & Signup Notification Messages', () => {
     });
 
     await page.locator('input[placeholder="ban@email.com"]').fill('test@example.com');
-    await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng nhập/).click();
+    await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng nhập/).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Dịch vụ email chưa được cấu hình/);
   });
@@ -146,7 +146,7 @@ test.describe('Login & Signup Notification Messages', () => {
     });
 
     await page.locator('input[placeholder="ban@email.com"]').fill('test@example.com');
-    await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng nhập/).click();
+    await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng nhập/).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Không thể gửi link đăng nhập/);
   });
@@ -177,7 +177,7 @@ test.describe('Login & Signup Notification Messages', () => {
     await page.locator('input[placeholder="ban@email.com"]').fill('test@example.com');
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng ký/).click();
 
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Admin accounts are provisioned by banbe/);
+    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Tài khoản quản trị viên do banbe cấp/);
   });
 
   test('shows success message when email is sent successfully', async ({ page }) => {
@@ -192,7 +192,7 @@ test.describe('Login & Signup Notification Messages', () => {
     });
 
     await page.locator('input[placeholder="ban@email.com"]').fill('test@example.com');
-    await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng nhập/).click();
+    await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng nhập/).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Đã gửi link đăng nhập/);
   });
@@ -206,7 +206,7 @@ test.describe('Login & Signup Notification Messages', () => {
         contentType: 'application/json',
         body: JSON.stringify({
           error: 'AUTH_ROLE_MISMATCH',
-          message: 'This email is registered as a participant. To continue as an organizer, please complete the organizer registration process.',
+          message: 'This email is already registered as a participant. Choose that account type to continue.',
           existingRole: 'participant',
         }),
       });
@@ -217,31 +217,31 @@ test.describe('Login & Signup Notification Messages', () => {
     await page.locator('input[placeholder="ban@email.com"]').fill('existing@example.com');
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng ký/).click();
 
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/registered as a participant/);
+    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/đã được đăng ký với tư cách người tham gia/);
   });
 
   test('shows Zalo not available error', async ({ page }) => {
     await openLogin(page);
     await page.locator('[data-screen-label="Login"]').getByText('Tiếp tục với Zalo').click();
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Zalo login is not available yet/);
+    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Zalo chưa khả dụng/);
   });
 
   test('shows Facebook not available error', async ({ page }) => {
     await openLogin(page);
     await page.locator('[data-screen-label="Login"]').getByText('Facebook').click();
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Facebook login is not available yet/);
+    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Facebook chưa khả dụng/);
   });
 
   test('shows Instagram not available error', async ({ page }) => {
     await openLogin(page);
     await page.locator('[data-screen-label="Login"]').getByText('Instagram').click();
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Instagram login is not available yet/);
+    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Instagram chưa khả dụng/);
   });
 
   test('shows phone required error when sending OTP without phone number', async ({ page }) => {
     await openLogin(page);
     await page.locator('[data-screen-label="Login"]').getByText('Gửi OTP').click();
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Enter your phone number first/);
+    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Nhập số điện thoại trước/);
   });
 
   test('shows OTP code required error when verifying without code', async ({ page }) => {
@@ -268,6 +268,6 @@ test.describe('Login & Signup Notification Messages', () => {
     await page.locator('input[placeholder="+84 901 234 567"]').fill('+84901234567');
     await page.locator('[data-screen-label="Login"]').getByText('Gửi OTP').click();
     await page.locator('[data-screen-label="Login"]').getByText('Xác nhận').click();
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Enter the OTP code/);
+    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Nhập mã OTP/);
   });
 });

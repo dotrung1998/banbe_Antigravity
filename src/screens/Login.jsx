@@ -9,8 +9,9 @@ export default function Login() {
   const s = state;
   const valid = emailValid(s.loginEmail);
   const typeLabel = s.accountType === 'organizer' ? T('người tổ chức', 'organizer') : s.accountType === 'admin' ? T('quản trị viên', 'admin') : T('người tham gia', 'participant');
-  const changeAuthMode = (authMode) => set({ authMode, reserveError: '', loginSent: false });
-  const changeAccountType = (accountType) => set({ accountType, reserveError: '', loginSent: false });
+  const typeArticle = /^[aeiou]/i.test(typeLabel) ? 'an' : 'a';
+  const changeAuthMode = (authMode) => set({ authMode, reserveError: '', loginSent: false, loginSentVia: null });
+  const changeAccountType = (accountType) => set({ accountType, reserveError: '', loginSent: false, loginSentVia: null });
 
   const loginBtnStyle = {
     marginTop: 12, fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 15, cursor: valid ? 'pointer' : 'default',
@@ -36,14 +37,14 @@ export default function Login() {
         <div style={{ display: 'flex', gap: 16, borderBottom: '1px solid rgba(27,25,22,0.16)', paddingBottom: 8 }}>
           {['login', 'signup'].map(mode => <span key={mode} onClick={() => changeAuthMode(mode)} style={{ fontSize: 11.5, color: ink, fontWeight: s.authMode === mode ? 600 : 400, borderBottom: s.authMode === mode ? `2px solid ${ink}` : '2px solid transparent', paddingBottom: 6, cursor: 'pointer' }}>{mode === 'login' ? T('Đăng nhập', 'Log in') : T('Đăng ký', 'Sign up')}</span>)}
         </div>
-        <h2 style={{ ...display(25, { lineHeight: 1.3, margin: '10px 0 0' }) }}>{s.authMode === 'signup' ? T('Tạo tài khoản ' + typeLabel, 'Create a ' + typeLabel + ' account') : T('Tiếp tục với tư cách ' + typeLabel, 'Continue as a ' + typeLabel)}</h2>
+        <h2 style={{ ...display(25, { lineHeight: 1.3, margin: '10px 0 0' }) }}>{s.authMode === 'signup' ? T('Tạo tài khoản ' + typeLabel, `Create ${typeArticle} ${typeLabel} account`) : T('Tiếp tục với tư cách ' + typeLabel, `Continue as ${typeArticle} ${typeLabel}`)}</h2>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '12px 0 0' }}>{T('Chọn loại tài khoản trước khi đăng nhập hoặc đăng ký.', 'Choose an account type before logging in or signing up.')}</p>
         <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
           {[['participant', T('Người tham gia', 'Participant')], ['organizer', T('Người tổ chức', 'Organizer')], ['admin', T('Quản trị viên', 'Admin')]].map(([key, label]) => (
             <div key={key} onClick={() => changeAccountType(key)} style={{ ...typeChip, border: s.accountType === key ? `1.5px solid ${ink}` : '1px solid rgba(27,25,22,0.16)', fontWeight: s.accountType === key ? 600 : 400 }}>{label}</div>
           ))}
         </div>
-        {s.accountType === 'admin' && <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0' }}>{T('Tài khoản quản trị viên do banbe cấp, không thể tự đăng ký.', 'Admin accounts are provisioned by banbe and cannot self-register.')}</p>}
+        {s.accountType === 'admin' && <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0' }}>{T('Tài khoản quản trị viên do banbe cấp, không thể tự đăng ký.', 'Admin accounts are issued by banbe and cannot be created here.')}</p>}
         <div onClick={loginZalo} style={zaloBtn}>{T('Tiếp tục với Zalo', 'Continue with Zalo')}</div>
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
           <div onClick={loginPhone} style={{ ...fieldGlass({ padding: '13px 4px', border: 'none' }), ...socialBtn }}>{T('Gửi OTP', 'Send OTP')}</div>
@@ -57,9 +58,10 @@ export default function Login() {
         </div>
         <input value={s.loginEmail} onChange={loginEmailType} onKeyDown={loginEmailKey} placeholder="ban@email.com" style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
         <input value={s.loginPhoneNumber} onChange={loginPhoneType} placeholder="+84 901 234 567" inputMode="tel" style={{ ...fieldGlass({ marginTop: 10, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
-        {s.loginSent && s.loginPhoneNumber && <div style={{ display: 'flex', gap: 8, marginTop: 10 }}><input value={s.loginCode} onChange={loginCodeType} placeholder={T('Mã OTP', 'OTP code')} inputMode="numeric" style={{ ...fieldGlass({ flex: 1, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} /><div onClick={verifyLoginCode} style={{ ...fieldGlass({ padding: '14px 12px', border: 'none' }), fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Xác nhận', 'Verify')}</div></div>}
-        <div onClick={loginEmailSubmit} style={loginBtnStyle}>{s.authMode === 'signup' ? T('Gửi link đăng ký', 'Send sign-up link') : T('Gửi mã đăng nhập', 'Send login code')}</div>
-        {s.loginSent && <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0', textAlign: 'center' }}>{T('Đã gửi link đăng nhập. Mở email trên thiết bị này để tiếp tục.', 'Login link sent. Open the email on this device to continue.')}</p>}
+        {s.loginSentVia === 'phone' && <div style={{ display: 'flex', gap: 8, marginTop: 10 }}><input value={s.loginCode} onChange={loginCodeType} placeholder={T('Mã OTP', 'OTP code')} inputMode="numeric" style={{ ...fieldGlass({ flex: 1, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} /><div onClick={verifyLoginCode} style={{ ...fieldGlass({ padding: '14px 12px', border: 'none' }), fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Xác nhận', 'Verify')}</div></div>}
+        <div onClick={loginEmailSubmit} style={loginBtnStyle}>{s.authMode === 'signup' ? T('Gửi link đăng ký', 'Send sign-up link') : T('Gửi link đăng nhập', 'Send sign-in link')}</div>
+        {s.loginSentVia === 'email' && <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0', textAlign: 'center' }}>{s.authMode === 'signup' ? T('Đã gửi link đăng ký. Mở email trên thiết bị này để tiếp tục.', 'Sign-up link sent. Open the email on this device to continue.') : T('Đã gửi link đăng nhập. Mở email trên thiết bị này để tiếp tục.', 'Sign-in link sent. Open the email on this device to continue.')}</p>}
+        {s.loginSentVia === 'phone' && <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0', textAlign: 'center' }}>{T('Đã gửi mã OTP. Hãy nhập mã để tiếp tục.', 'OTP sent. Enter the code to continue.')}</p>}
         {s.reserveError && <p style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '12px 0 0', textAlign: 'center' }}>{s.reserveError}</p>}
         <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: '16px 0 0', textAlign: 'center' }}>{T('Đã giữ chỗ sự kiện nào thì bạn đã đăng nhập sẵn.', "If you've already reserved a spot, you're already logged in.")}</p>
       </div>
