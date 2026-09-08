@@ -33,12 +33,6 @@ function getSupabaseAdmin() {
   });
 }
 
-function isUserNotFound(error) {
-  return error?.status === 404
-    || error?.code === 'user_not_found'
-    || /user.*not found|not found.*user/i.test(error?.message || '');
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -65,54 +59,29 @@ export default async function handler(req, res) {
   if (!ACCOUNT_TYPES.has(accountType)) return res.status(400).json({ error: 'VALID_ACCOUNT_TYPE_REQUIRED' });
   if (mode === 'signup' && accountType === 'admin') return res.status(400).json({ error: 'ADMIN_SIGNUP_NOT_ALLOWED' });
 
-  let authUser = null;
+  let registration = null;
   try {
-    const response = await fetch(`${admin.auth.admin.url}/admin/users?email=${encodeURIComponent(email)}`, {
-      headers: admin.auth.admin.headers,
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw errorData;
-    }
-    const result = await response.json();
-    const users = result.users || result.data?.users || [];
-    authUser = users.find((u) => u.email === email) || null;
+    const { data, error } = await admin
+      .from('email_registrations')
+      .select('role, auth_user_id')
+      .eq('email', email)
+      .maybeSingle();
+    if (error) throw error;
+    registration = data;
   } catch (error) {
-    if (!isUserNotFound(error)) {
-      console.error('Supabase auth user lookup failed:', error);
-      return res.status(502).json({ error: 'AUTH_ACCOUNT_LOOKUP_FAILED' });
+    console.error('Supabase account registry lookup failed:', error);
+    if (error?.code === 'PGRST205') {
+      return res.status(503).json({ error: 'AUTH_ACCOUNT_REGISTRY_NOT_CONFIGURED' });
     }
+    return res.status(502).json({ error: 'AUTH_ACCOUNT_LOOKUP_FAILED' });
   }
 
-  if (mode === 'login' && !authUser) {
+  if (mode === 'login' && !registration?.auth_user_id) {
     return res.status(404).json({ error: 'AUTH_ACCOUNT_NOT_FOUND' });
   }
 
   try {
-    let existingRole = null;
-    if (authUser) {
-      try {
-        const { data: profile } = await admin.from('profiles').select('role').eq('id', authUser.id).maybeSingle();
-        if (profile?.role) {
-          existingRole = profile.role;
-        } else {
-          existingRole = authUser.user_metadata?.account_type || authUser.raw_user_meta_data?.account_type;
-        }
-      } catch (profileError) {
-        console.warn('Profile query failed:', profileError);
-        existingRole = authUser.user_metadata?.account_type || authUser.raw_user_meta_data?.account_type;
-      }
-      if (!existingRole) existingRole = 'participant';
-    }
-
-    if (!existingRole) {
-      try {
-        const { data: emailReg } = await admin.from('email_registrations').select('role').eq('email', email).maybeSingle();
-        if (emailReg?.role) existingRole = emailReg.role;
-      } catch (e) {
-        console.warn('Failed to check email_registrations:', e);
-      }
-    }
+    const existingRole = registration?.role || null;
 
     if (existingRole && existingRole !== accountType) {
       return res.status(400).json({

@@ -394,6 +394,9 @@ export function GocProvider({ children }) {
     if (code === 'AUTH_ACCOUNT_LOOKUP_FAILED') {
       return T('Không thể kiểm tra tài khoản lúc này. Vui lòng thử lại sau.', 'We could not check the account right now. Please try again later.');
     }
+    if (code === 'AUTH_ACCOUNT_REGISTRY_NOT_CONFIGURED') {
+      return T('Hệ thống tài khoản chưa được cấu hình đầy đủ. Vui lòng thử lại sau.', 'The account system is not fully configured yet. Please try again later.');
+    }
     if (code === 'AUTH_EMAIL_REQUEST_FAILED') {
       return T('Không thể xử lý yêu cầu email. Vui lòng thử lại sau.', 'We could not process the email request. Please try again later.');
     }
@@ -404,7 +407,9 @@ export function GocProvider({ children }) {
       return T('Dịch vụ email chưa được cấu hình. Vui lòng thử lại sau.', 'The email service is not configured yet. Please try again later.');
     }
     if (code === 'AUTH_ROLE_MISMATCH') {
-      return error.message || T('This email is registered with a different role.', 'This email is registered with a different role.');
+      const role = error.role === 'organizer' ? T('người tổ chức', 'organizer') : T('người tham gia', 'participant');
+      const requested = mode === 'signup' ? T('đăng ký', 'sign up') : T('đăng nhập', 'log in');
+      return T(`Email này đã đăng ký với tư cách ${role}. Không thể ${requested} bằng vai trò hiện tại.`, `This email is registered as an ${role}. You cannot ${requested} with the current role.`);
     }
     return mode === 'signup'
       ? T('Không thể gửi link đăng ký. Vui lòng thử lại sau.', 'We could not send the sign-up link. Please try again later.')
