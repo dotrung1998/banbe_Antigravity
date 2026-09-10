@@ -30,3 +30,7 @@ dist-ssr
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Supabase CLI local link cache — holds the project ref, org id, and pooler
+# hostname for whichever project this machine is linked to; never commit it.
+/supabase/.temp/
