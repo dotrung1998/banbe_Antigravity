@@ -14,13 +14,13 @@ const FILTER_DEFS = [
 export default function Home() {
   const {
     state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, toggleFav,
-    goProfile, goInbox, openArea, toggleLang, pickFilter, clearFilters,
+    goProfile, goInbox, goEvent, openArea, toggleLang, pickFilter, clearFilters,
     openHeld, becomeHost, switchToHost,
   } = useGoc();
 
   const s = state;
   const hasHosted = s.hasHosted;
-  const openSaved = (sv) => set({ screen: sv.toEvent, eventKey: sv.key });
+  const openSaved = (sv) => (sv.toEvent === 'event' ? goEvent(sv.key) : set({ screen: sv.toEvent, eventKey: sv.key }));
   const heldEv = s.holdDeadline && s.holdDeadline > s.now ? EVENTS.find(e => e.key === s.eventKey) : null;
 
   const filters = FILTER_DEFS.map(f => ({
@@ -146,7 +146,7 @@ export default function Home() {
       </div>
 
       {feed.map(ev => (
-        <div key={ev.key} onClick={() => set({ screen: 'event', eventKey: ev.key })} style={{ cursor: 'pointer', paddingBottom: 6 }}>
+        <div key={ev.key} onClick={() => goEvent(ev.key)} style={{ cursor: 'pointer', paddingBottom: 6 }}>
           <div style={{ position: 'relative' }}>
             <div style={bg(ev.img, { width: 'calc(100% - 40px)', height: 272, margin: '0 20px', borderRadius: '14px 14px 0 0' })} />
             <div style={{ position: 'absolute', left: 20, right: 20, bottom: 0, height: 58, background: `linear-gradient(to bottom, rgba(247,244,236,0) 0%, rgba(247,244,236,0.3) 62%, ${paper} 100%)`, pointerEvents: 'none' }} />

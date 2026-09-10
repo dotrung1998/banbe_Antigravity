@@ -51,4 +51,31 @@ test.describe('Navigation & Event Exploration', () => {
 
     await expect(page.locator('[data-screen-label="Organizer"]')).toBeVisible({ timeout: 3000 });
   });
+
+  test('going back from an event opens where you actually came from, not always Home', async ({ page }) => {
+    // Home -> Event (came from Home, so back still means Home).
+    await page.getByText('Bếp Nhỏ №12').first().click();
+    const eventScreen = page.locator('[data-screen-label="Event"]');
+    await expect(eventScreen).toBeVisible({ timeout: 3000 });
+    await expect(eventScreen.getByText('‹ banbe')).toBeVisible();
+
+    // Event -> Organizer -> the same event again from the organizer's own
+    // event list. This time Event Detail was opened from the Organizer
+    // screen, so its back pill must say so instead of defaulting to Home.
+    await page.getByText(/Ghé.*›/).first().click();
+    const organizerScreen = page.locator('[data-screen-label="Organizer"]');
+    await expect(organizerScreen).toBeVisible({ timeout: 3000 });
+    await organizerScreen.getByText('Bếp Nhỏ №12', { exact: true }).click();
+
+    await expect(eventScreen).toBeVisible({ timeout: 3000 });
+    await expect(eventScreen.getByText('‹ banbe')).toHaveCount(0);
+    await expect(eventScreen.getByText('‹ Trang tổ chức')).toBeVisible();
+    // A distinct, separate way back to Home is still available.
+    await expect(eventScreen.getByText('Về trang chính')).toBeVisible();
+
+    // Following the contextual back pill returns to the Organizer screen,
+    // not Home.
+    await eventScreen.getByText('‹ Trang tổ chức').click();
+    await expect(organizerScreen).toBeVisible({ timeout: 3000 });
+  });
 });

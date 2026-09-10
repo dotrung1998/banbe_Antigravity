@@ -10,6 +10,7 @@ const initialState = {
   mode: 'goer',
   hasHosted: false,
   eventKey: 'bepnho',
+  eventBackScreen: 'home',
   loading: false,
   filter: 'all',
   formName: '',
@@ -311,7 +312,13 @@ export function GocProvider({ children }) {
   const goHome = useCallback(() => set({ screen: 'home' }), [set]);
   const goProfile = useCallback(() => set({ screen: 'profile' }), [set]);
   const goInbox = useCallback(() => set(s.user ? { screen: 'inbox' } : { screen: 'login', authMode: 'login', authReturnScreen: 'inbox', authBackScreen: 'home' }), [set, s.user]);
-  const goEvent = useCallback((key) => set({ screen: 'event', eventKey: key }), [set]);
+  // Event Detail is reached from several different sections (the home feed,
+  // an organizer dashboard, an organizer profile, the create-event preview),
+  // so remember whichever one we came from — its own back arrow used to be
+  // hardcoded to Home, which is what made "back" feel like it always
+  // returned to the very start regardless of where you'd drilled in from.
+  const goEvent = useCallback((key) => set(prev => ({ screen: 'event', eventKey: key, eventBackScreen: prev.screen === 'event' ? prev.eventBackScreen : prev.screen })), [set]);
+  const backFromEvent = useCallback(() => set(prev => ({ screen: prev.eventBackScreen || 'home' })), [set]);
   const goOrganizer = useCallback(() => set({ screen: 'organizer' }), [set]);
   const goReserve = useCallback(() => set(s.user ? { screen: 'reserve' } : { screen: 'login', authMode: 'login', authReturnScreen: 'reserve', authBackScreen: 'event' }), [set, s.user]);
   const backToEvent = useCallback(() => set({ screen: 'event' }), [set]);
@@ -601,7 +608,7 @@ export function GocProvider({ children }) {
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
-    goHome, goProfile, goInbox, goEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
+    goHome, goProfile, goInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
     canHost, toggleOrganizerMode, enableOrganizerMode,
@@ -619,7 +626,7 @@ export function GocProvider({ children }) {
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
-    goHome, goProfile, goInbox, goEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
+    goHome, goProfile, goInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
     canHost, toggleOrganizerMode, enableOrganizerMode,

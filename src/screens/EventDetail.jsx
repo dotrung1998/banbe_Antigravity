@@ -3,8 +3,22 @@ import { bg } from '../data/events.js';
 import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 
 export default function EventDetail() {
-  const { state, T, trStatus, stripKm, curEvent: ev, goHome, goOrganizer, goReserve, goChat, shareEvent } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent: ev, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent } = useGoc();
   const s = state;
+
+  // Event Detail is reached from several different places (the home feed, an
+  // organizer's dashboard, an organizer profile, the create-event preview),
+  // so its "back" pill returns to whichever of those you actually came from,
+  // labelled accordingly. A separate, always-available link below it goes
+  // straight to Home instead — the two are kept distinct on purpose.
+  const BACK_LABELS = {
+    home: 'banbe',
+    dashboard: T('Trang của bạn', 'Your dashboard'),
+    organizer: T('Trang tổ chức', 'Organizer page'),
+    create: T('Tạo sự kiện', 'Create event'),
+  };
+  const backLabel = BACK_LABELS[s.eventBackScreen] || 'banbe';
+  const cameFromHome = (s.eventBackScreen || 'home') === 'home';
 
   const evCat = trStatus(ev.cat);
   const evWhere = trStatus(stripKm(ev.where));
@@ -27,12 +41,15 @@ export default function EventDetail() {
       <div style={{ position: 'relative', height: 400 }}>
         <div style={bg(ev.img, { width: '100%', height: '100%', borderRadius: 0 })} />
         <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 78, pointerEvents: 'none', background: `linear-gradient(to bottom, rgba(247,244,236,0) 0%, rgba(247,244,236,0.3) 62%, ${paper} 100%)` }} />
-        <div onClick={goHome} style={photoPill({ top: 66, left: 16, padding: '8px 13px' })}>‹ banbe</div>
+        <div onClick={backFromEvent} style={photoPill({ top: 66, left: 16, padding: '8px 13px' })}>‹ {backLabel}</div>
         <div onClick={() => shareEvent(ev)} style={photoPill({ top: 66, right: 16, padding: '8px 13px' })}>
           {s.shared ? T('Đã sao chép link', 'Link copied') : T('Chia sẻ', 'Share')}
         </div>
       </div>
       <div style={{ padding: '22px 22px 30px', display: 'flex', flexDirection: 'column' }}>
+        {!cameFromHome && (
+          <div onClick={goHome} style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer', marginBottom: 10 }}>{T('▪︎ Về trang chính', '▪︎ Back to home')}</div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11.5, color: ink }}>{evCat}</span>
           {ev.inviteOnly && (
