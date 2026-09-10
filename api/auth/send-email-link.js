@@ -23,8 +23,10 @@ function getRedirectUrl(req) {
   return host ? `${protocol}://${host}` : 'http://localhost:5173';
 }
 
-// Look up an auth user by email. This supabase-js version has no
-// getUserByEmail, so page through the admin user list instead.
+// Look up an auth user by email through the Auth Admin API. This
+// supabase-js version has no getUserByEmail, so page through the admin
+// user list instead. Used only as a last-resort fallback below: it needs a
+// real service-role key and pages through every user in the project.
 async function findAuthUserByEmail(admin, email) {
   const perPage = 200;
   for (let page = 1; page <= 20; page += 1) {
@@ -47,6 +49,60 @@ async function linkRegistration(admin, email, userId) {
     .from('email_registrations')
     .upsert({ email, auth_user_id: userId, updated_at: new Date().toISOString() }, { onConflict: 'email' });
   if (error) console.warn('Email registry link failed:', error);
+}
+
+// Answer "does this email already have an account?" — and, crucially, be able
+// to say "I could not find out". Each source below can be unavailable (the
+// registry row can be missing or unlinked, the RPC may not be migrated yet,
+// the Auth Admin API can reject the configured key or simply error), and
+// silently treating an unavailable source as "no such account" is exactly
+// what produced a false AUTH_ACCOUNT_NOT_FOUND for an email that had in fact
+// just registered successfully. Only a source that actually answered counts;
+// everything else is reported as "unresolved" instead of "absent".
+async function resolveAuthUserId(admin, email) {
+  const sources = [];
+
+  // 1. The registry: a plain table read, no admin privileges needed. Cheap,
+  // but only populated for accounts created after the registry existed, or
+  // once linkRegistration has run for this email.
+  try {
+    const { data, error } = await admin
+      .from('email_registrations')
+      .select('auth_user_id')
+      .eq('email', email)
+      .maybeSingle();
+    if (error && error.code !== 'PGRST205') throw error;
+    if (data?.auth_user_id) {
+      sources.push({ source: 'registry', ok: true, found: true });
+      return { userId: data.auth_user_id, resolved: true, sources };
+    }
+    sources.push({ source: 'registry', ok: true, found: false });
+  } catch (error) {
+    sources.push({ source: 'registry', ok: false, code: error?.code || error?.message });
+  }
+
+  // 2. auth.users itself, via a SECURITY DEFINER RPC. Authoritative and a
+  // single round trip, but only exists once its migration has run.
+  try {
+    const { data, error } = await admin.rpc('find_auth_user_by_email', { p_email: email });
+    if (error) throw error;
+    sources.push({ source: 'rpc', ok: true, found: Boolean(data) });
+    return { userId: data || null, resolved: true, sources };
+  } catch (error) {
+    sources.push({ source: 'rpc', ok: false, code: error?.code || error?.message });
+  }
+
+  // 3. Auth Admin API. Also authoritative, but the most fragile (needs a
+  // real service-role key and can page through thousands of users).
+  try {
+    const user = await findAuthUserByEmail(admin, email);
+    sources.push({ source: 'adminApi', ok: true, found: Boolean(user) });
+    return { userId: user?.id || null, resolved: true, sources };
+  } catch (error) {
+    sources.push({ source: 'adminApi', ok: false, code: error?.code || error?.message });
+  }
+
+  return { userId: null, resolved: false, sources };
 }
 
 function getSupabaseAdmin() {
@@ -82,33 +138,18 @@ export default async function handler(req, res) {
   if (!EMAIL_PATTERN.test(email)) return res.status(400).json({ error: 'VALID_EMAIL_REQUIRED' });
   if (mode !== 'signup' && mode !== 'login') return res.status(400).json({ error: 'VALID_AUTH_MODE_REQUIRED' });
 
-  // Does this email already have a live auth user? The registry answers first
-  // because it is a plain table read; Auth is the fallback when the row is
-  // missing or unlinked (auth_user_id is NULL after a user was deleted, or
-  // when the backfill migration has not run yet).
-  let authUserId = null;
-  try {
-    const { data, error } = await admin
-      .from('email_registrations')
-      .select('auth_user_id')
-      .eq('email', email)
-      .maybeSingle();
-    if (error && error.code !== 'PGRST205') throw error;
-    authUserId = data?.auth_user_id || null;
-  } catch (error) {
-    console.error('Supabase account registry lookup failed:', error);
+  const { userId: authUserId, resolved, sources } = await resolveAuthUserId(admin, email);
+
+  // Not knowing is not the same as not existing. Say so, instead of telling
+  // someone with a perfectly good account — like one that just registered —
+  // to go sign up again.
+  if (!resolved) {
+    console.error('Account lookup could not be completed:', sources);
     return res.status(502).json({ error: 'AUTH_ACCOUNT_LOOKUP_FAILED' });
   }
 
-  if (!authUserId) {
-    try {
-      const authUser = await findAuthUserByEmail(admin, email);
-      authUserId = authUser?.id || null;
-      if (authUserId) await linkRegistration(admin, email, authUserId);
-    } catch (e) {
-      console.warn('Failed to check for an existing auth user:', e);
-    }
-  }
+  // Keep the registry current so the cheap path works next time.
+  if (authUserId) await linkRegistration(admin, email, authUserId);
 
   if (mode === 'login' && !authUserId) {
     return res.status(404).json({ error: 'AUTH_ACCOUNT_NOT_FOUND' });
