@@ -35,7 +35,6 @@ const initialState = {
   user: null,
   accountType: 'participant',
   organizerMode: false,
-  organizerModeError: '',
   authMode: 'login',
   authReturnScreen: 'home',
   authBackScreen: 'home',
@@ -231,23 +230,14 @@ export function GocProvider({ children }) {
   const applyOrganizerMode = useCallback(async (enabled) => {
     if (s.accountType === 'admin') return;
     const rollback = { organizerMode: s.organizerMode, accountType: s.accountType };
-    set({ organizerMode: enabled, accountType: enabled ? 'organizer' : 'participant', mode: enabled ? 'host' : 'goer', organizerModeError: '', ...(enabled ? {} : { hasHosted: false }) });
+    set({ organizerMode: enabled, accountType: enabled ? 'organizer' : 'participant', mode: enabled ? 'host' : 'goer', ...(enabled ? {} : { hasHosted: false }) });
     const { data, error } = await supabase.rpc('set_organizer_mode', { p_enabled: enabled });
     if (error) {
-      // Reverting in silence is what makes this look like the switch "won't
-      // stay on", so always say why it went back.
       console.warn('Organizer mode update failed:', error);
-      const notMigrated = error.code === 'PGRST202';
-      return set({
-        ...rollback,
-        mode: rollback.organizerMode ? 'host' : 'goer',
-        organizerModeError: notMigrated
-          ? T('Máy chủ chưa cài đặt chế độ tổ chức. Hãy chạy các migration Supabase còn thiếu.', 'Organizer mode is not installed on the server yet. Apply the pending Supabase migrations.')
-          : T('Không thể đổi chế độ tổ chức lúc này. Vui lòng thử lại.', 'We could not change organizer mode right now. Please try again.'),
-      });
+      return set(rollback);
     }
-    if (data) set({ accountType: data, organizerMode: data === 'organizer' || data === 'admin', organizerModeError: '' });
-  }, [set, s.accountType, s.organizerMode, T]);
+    if (data) set({ accountType: data, organizerMode: data === 'organizer' || data === 'admin' });
+  }, [set, s.accountType, s.organizerMode]);
   const enableOrganizerMode = useCallback(() => applyOrganizerMode(true), [applyOrganizerMode]);
   const toggleOrganizerMode = useCallback(() => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'profile' });

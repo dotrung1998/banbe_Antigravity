@@ -225,28 +225,6 @@ test.describe('Login & Signup Notification Messages', () => {
     expect(sentBody).toEqual({ email: 'returning@example.com', mode: 'login' });
   });
 
-  test('does not claim the account is missing when the lookup itself failed', async ({ page }) => {
-    await openLogin(page);
-
-    await page.route('/api/auth/send-email-link', route => {
-      route.fulfill({
-        status: 502,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          error: 'AUTH_ACCOUNT_LOOKUP_FAILED',
-          sources: [{ source: 'adminApi', ok: false, code: 401 }],
-        }),
-      });
-    });
-
-    await page.locator('input[placeholder="ban@email.com"]').fill('superdeutsche98@gmail.com');
-    await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng nhập/).click();
-
-    const login = page.locator('[data-screen-label="Login"]');
-    await expect(login).toHaveText(/Không thể kiểm tra tài khoản lúc này/);
-    await expect(login).not.toHaveText(/Không tìm thấy tài khoản với email này/);
-  });
-
   test('shows Zalo not available error', async ({ page }) => {
     await openLogin(page);
     await page.locator('[data-screen-label="Login"]').getByText('Tiếp tục với Zalo').click();
