@@ -66,4 +66,20 @@ test.describe('Application Launch & Onboarding Flow', () => {
 
     await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 5000 });
   });
+
+  test('a returning visitor skips onboarding and keeps their language and theme', async ({ page }) => {
+    // Complete onboarding once, picking English + Dark.
+    await page.locator('[data-screen-label="Splash"]').click();
+    await page.getByText('English', { exact: true }).click();
+    await page.locator('[data-screen-label="Appearance"]').getByText('Dark', { exact: true }).click();
+    await page.getByText('Continue', { exact: true }).click();
+    await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 5000 });
+
+    // Revisiting the app should land straight on Home with the same
+    // preferences, never back through the splash/language/theme pickers.
+    await page.reload();
+    await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-screen-label="Splash"]')).toHaveCount(0);
+    await expect(page.locator('[data-bb-theme]')).toHaveAttribute('data-bb-theme', 'dark');
+  });
 });

@@ -91,13 +91,27 @@ export const AREAS = [
 export function GocProvider({ children }) {
   const [state, setStateRaw] = useState(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem('banbe.preferences') || '{}');
-      return { ...initialState, lang: saved.lang === 'en' ? 'en' : 'vi', theme: saved.theme === 'dark' ? 'dark' : 'light' };
+      const raw = localStorage.getItem('banbe.preferences');
+      const saved = JSON.parse(raw || '{}');
+      return {
+        ...initialState,
+        lang: saved.lang === 'en' ? 'en' : 'vi',
+        theme: saved.theme === 'dark' ? 'dark' : 'light',
+        // A saved preferences record means this browser has been through
+        // onboarding before — replaying the splash/language/theme pickers on
+        // every single revisit is what made the choice look like it "resets"
+        // even though the value itself was never actually lost.
+        screen: raw !== null ? 'home' : 'splash',
+      };
     } catch {
       return initialState;
     }
   });
   const s = state;
+  const prefsRef = useRef({ lang: state.lang, theme: state.theme });
+  useEffect(() => {
+    prefsRef.current = { lang: state.lang, theme: state.theme };
+  }, [state.lang, state.theme]);
 
   const set = useCallback((partial) => {
     setStateRaw(prev => ({ ...prev, ...(typeof partial === 'function' ? partial(prev) : partial) }));
@@ -124,7 +138,7 @@ export function GocProvider({ children }) {
       }
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, locale, theme, prefs_saved')
         .eq('id', user.id)
         .maybeSingle();
       const role =
@@ -134,6 +148,28 @@ export function GocProvider({ children }) {
         'participant';
       const canHostNow = role === 'organizer' || role === 'admin';
       set({ user, accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer' });
+
+      // Language & theme follow the account once it has a saved preference,
+      // so signing in on any device restores them instead of falling back to
+      // this browser's own (possibly never-set) local copy.
+      if (profile?.prefs_saved) {
+        set(prev => ({
+          lang: profile.locale === 'en' ? 'en' : 'vi',
+          theme: profile.theme === 'dark' ? 'dark' : 'light',
+          screen: ['splash', 'langPick', 'themePick'].includes(prev.screen) ? 'home' : prev.screen,
+        }));
+      } else if (profile) {
+        // First time this account is seen with no saved preference yet:
+        // capture whatever this browser currently has (e.g. picked just now
+        // during onboarding, or as a signed-out guest) as the account's
+        // preference going forward, instead of silently leaving it unset.
+        const { lang, theme } = prefsRef.current;
+        const { error } = await supabase
+          .from('profiles')
+          .update({ locale: lang, theme, prefs_saved: true })
+          .eq('id', user.id);
+        if (error) console.warn('Failed to save initial preferences to account:', error);
+      }
     };
     supabase.auth.getSession().then(({ data }) => syncUser(data.session?.user));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -177,16 +213,33 @@ export function GocProvider({ children }) {
     set(prev => (prev.screen === 'splash' ? { screen: 'langPick' } : {}));
   }, [set]);
 
-  const pickVi = useCallback(() => set({ lang: 'vi', screen: 'themePick' }), [set]);
-  const pickEn = useCallback(() => set({ lang: 'en', screen: 'themePick' }), [set]);
-  const pickLight = useCallback(() => set({ theme: 'light' }), [set]);
-  const pickDark = useCallback(() => set({ theme: 'dark' }), [set]);
+  // Once signed in, language & theme are account preferences, not just this
+  // browser's — persist every change so it follows the account anywhere.
+  const persistAccountPreference = useCallback((patch) => {
+    if (!s.user?.id) return;
+    supabase
+      .from('profiles')
+      .update({ ...patch, prefs_saved: true })
+      .eq('id', s.user.id)
+      .then(({ error }) => {
+        if (error) console.warn('Failed to save preferences to account:', error);
+      });
+  }, [s.user?.id]);
+
+  const pickVi = useCallback(() => { set({ lang: 'vi', screen: 'themePick' }); persistAccountPreference({ locale: 'vi' }); }, [set, persistAccountPreference]);
+  const pickEn = useCallback(() => { set({ lang: 'en', screen: 'themePick' }); persistAccountPreference({ locale: 'en' }); }, [set, persistAccountPreference]);
+  const pickLight = useCallback(() => { set({ theme: 'light' }); persistAccountPreference({ theme: 'light' }); }, [set, persistAccountPreference]);
+  const pickDark = useCallback(() => { set({ theme: 'dark' }); persistAccountPreference({ theme: 'dark' }); }, [set, persistAccountPreference]);
   const finishOnboarding = useCallback(() => set({ screen: 'home' }), [set]);
 
   const EN = s.lang === 'en';
   const T = useCallback((vi, en) => (EN ? en : vi), [EN]);
-  const toggleTheme = useCallback(() => set(prev => ({ theme: prev.theme === 'dark' ? 'light' : 'dark' })), [set]);
-  const pickTheme = useCallback((theme) => set({ theme }), [set]);
+  const toggleTheme = useCallback(() => {
+    const next = s.theme === 'dark' ? 'light' : 'dark';
+    set({ theme: next });
+    persistAccountPreference({ theme: next });
+  }, [set, s.theme, persistAccountPreference]);
+  const pickTheme = useCallback((theme) => { set({ theme }); persistAccountPreference({ theme }); }, [set, persistAccountPreference]);
   const openPreferences = useCallback(() => set({ screen: 'preferences' }), [set]);
 
   const trStatus = useCallback((str) => {
@@ -300,7 +353,11 @@ export function GocProvider({ children }) {
   }, [set]);
 
   // ---- lang / area / location ----
-  const toggleLang = useCallback(() => set({ lang: EN ? 'vi' : 'en' }), [set, EN]);
+  const toggleLang = useCallback(() => {
+    const next = EN ? 'vi' : 'en';
+    set({ lang: next });
+    persistAccountPreference({ locale: next });
+  }, [set, EN, persistAccountPreference]);
   const openArea = useCallback(() => set({ areaAsking: true }), [set]);
   const pickArea = useCallback((key) => set({ area: key, areaAsking: false }), [set]);
   const allowLocation = useCallback(() => {
