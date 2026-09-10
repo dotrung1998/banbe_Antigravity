@@ -7,6 +7,16 @@ test.describe('Navigation & Event Exploration', () => {
     await setupToHome(page);
   });
 
+  test('a fresh unregistered visitor sees the public feed with no "Your events" section', async ({ page }) => {
+    const homeScreen = page.locator('[data-screen-label="Home"]');
+    await expect(homeScreen).toBeVisible();
+
+    // No placeholder demo activity — just the public list.
+    await expect(page.getByText('Sự kiện của bạn')).toHaveCount(0);
+    await expect(page.getByText('Bếp Nhỏ №12').first()).toBeVisible();
+    await expect(page.getByText('ORBIT: Afterlight').first()).toBeVisible();
+  });
+
   test('displays Home screen feed and allows event detail navigation', async ({ page }) => {
     const homeScreen = page.locator('[data-screen-label="Home"]');
     await expect(homeScreen).toBeVisible();

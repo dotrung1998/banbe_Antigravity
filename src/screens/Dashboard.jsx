@@ -1,10 +1,16 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { EVENTS, bg } from '../data/events.js';
+import { EVENTS, findEvent, bg } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
 
 export default function Dashboard() {
-  const { state, T, trStatus, stripKm, curEvent: ev, goHome, switchToGoer, goCreate, openAttendance, goEvent, requestVerify } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent, goHome, switchToGoer, goCreate, openAttendance, goEvent, requestVerify } = useGoc();
   const s = state;
+
+  // The header shows the org branding for one of the account's own events
+  // when it actually owns any (see myOrgEventKeys) — otherwise it falls back
+  // to whichever demo event is "current", same as before real assignment
+  // existed.
+  const ev = s.myOrgEventKeys.length ? findEvent(s.myOrgEventKeys[0]) : curEvent;
 
   const verifyState = ev.orgTrusted ? 'verified' : (s.orgVerifyRequested ? 'pending' : 'none');
   const badgeMap = {
@@ -16,9 +22,18 @@ export default function Dashboard() {
 
   const dashStatsLine = T('Tổ chức từ ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' sự kiện', 'Hosting since ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' events');
 
-  const upcoming = EVENTS.filter(e => e.orgName === ev.orgName && !e.cancelled && e.endedHoursAgo == null)
+  // Once the signed-in account actually owns events in the database (see
+  // GocContext's myOrgEventKeys), the dashboard lists those — the real
+  // assignment — instead of every demo event that happens to share the
+  // currently-viewed org's name. Accounts with no real assignment yet (a
+  // fresh dev database, or before the demo catalogue has been seeded) still
+  // see the old name-matched demo behavior, so the prototype keeps working.
+  const myEvents = s.myOrgEventKeys.length
+    ? EVENTS.filter(e => s.myOrgEventKeys.includes(e.key))
+    : EVENTS.filter(e => e.orgName === ev.orgName);
+  const upcoming = myEvents.filter(e => !e.cancelled && e.endedHoursAgo == null)
     .sort((a, c) => (a.until ?? 999) - (c.until ?? 999));
-  const past = EVENTS.filter(e => e.orgName === ev.orgName && !e.cancelled && e.endedHoursAgo != null)
+  const past = myEvents.filter(e => !e.cancelled && e.endedHoursAgo != null)
     .sort((a, c) => a.endedHoursAgo - c.endedHoursAgo);
 
   return (

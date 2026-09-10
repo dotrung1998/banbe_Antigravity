@@ -29,8 +29,13 @@ const initialState = {
     ],
   },
   shared: false,
-  attending: ['bepnho', 'orbit'],
-  tickets: { bepnho: 2, orbit: 1 },
+  // Never pre-seeded: a brand-new, unregistered visitor should see only the
+  // public event feed, not a "Your events" shelf built from placeholder
+  // demo activity. Once signed in, these are replaced by that account's
+  // real bookings (see the effect that loads them below).
+  attending: [],
+  tickets: {},
+  myOrgEventKeys: [],
   located: null,
   askingLocation: false,
   userCoords: null,
@@ -77,8 +82,8 @@ const initialState = {
   areaAsking: false,
   holdDeadline: null,
   now: Date.now(),
-  favorites: ['bepnho', 'bandai', 'motlop'],
-  invited: ['banrieng'],
+  favorites: [],
+  invited: [],
   orgVerifyRequested: false,
   attendanceEventKey: null,
   checkins: {},
@@ -228,6 +233,45 @@ export function GocProvider({ children }) {
         .limit(50);
       if (!active || error) return;
       set({ notifications: data || [], unreadNotifications: (data || []).filter(n => !n.read_at).length });
+    })();
+    return () => { active = false; };
+  }, [set, s.user?.id]);
+
+  // Real event assignment for the signed-in account: which of the catalogue
+  // events they're attending (from actual bookings) and which they organize
+  // (from owning the organizer row events.organizer_id points at). The
+  // frontend catalogue (src/data/events.js) still supplies all the cosmetic
+  // detail — photos, galleries, descriptions — that the database rows don't
+  // duplicate; this only resolves *which* catalogue keys are genuinely
+  // "mine", by real id, instead of from placeholder demo state.
+  useEffect(() => {
+    if (!s.user?.id) return;
+    let active = true;
+    (async () => {
+      const [{ data: bookings }, { data: organizers }] = await Promise.all([
+        supabase
+          .from('bookings')
+          .select('event_id, qty, status')
+          .eq('user_id', s.user.id)
+          .in('status', ['pending', 'confirmed', 'attended']),
+        supabase
+          .from('organizers')
+          .select('id')
+          .or(`owner_id.eq.${s.user.id},user_id.eq.${s.user.id}`),
+      ]);
+      if (!active) return;
+
+      if (bookings?.length) {
+        const attending = [...new Set(bookings.map(b => b.event_id))];
+        const tickets = Object.fromEntries(bookings.map(b => [b.event_id, b.qty]));
+        set(prev => ({ attending: [...new Set([...prev.attending, ...attending])], tickets: { ...tickets, ...prev.tickets } }));
+      }
+
+      const organizerIds = (organizers || []).map(o => o.id);
+      if (organizerIds.length) {
+        const { data: events } = await supabase.from('events').select('id').in('organizer_id', organizerIds);
+        if (active && events?.length) set({ myOrgEventKeys: events.map(e => e.id) });
+      }
     })();
     return () => { active = false; };
   }, [set, s.user?.id]);
