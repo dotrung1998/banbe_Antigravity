@@ -8,13 +8,18 @@ CREATE TABLE IF NOT EXISTS public.email_registrations (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Backfill existing auth users
+-- Backfill existing auth users. Neither source of "role" is guaranteed: a
+-- profile row may not exist yet, and raw_user_meta_data may carry no
+-- account_type (or an empty one) for an account that signed up before that
+-- field existed — so always fall back to 'participant' rather than leaving
+-- the NOT NULL column with nothing to write.
 INSERT INTO public.email_registrations (email, role, auth_user_id)
 SELECT
   lower(email),
   COALESCE(
     p.role,
-    trim(u.raw_user_meta_data->>'account_type')
+    NULLIF(trim(u.raw_user_meta_data->>'account_type'), ''),
+    'participant'
   ),
   u.id
 FROM auth.users u
