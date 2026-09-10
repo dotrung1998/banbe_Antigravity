@@ -169,17 +169,6 @@ test.describe('Login & Signup Notification Messages', () => {
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Không thể gửi link đăng ký/);
   });
 
-  test('shows admin signup block when admin account type is selected', async ({ page }) => {
-    await openLogin(page);
-
-    await page.getByText('Quản trị viên', { exact: true }).click();
-    await page.getByText('Đăng ký', { exact: true }).click();
-    await page.locator('input[placeholder="ban@email.com"]').fill('test@example.com');
-    await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng ký/).click();
-
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Tài khoản quản trị viên do banbe cấp/);
-  });
-
   test('shows success message when email is sent successfully', async ({ page }) => {
     await openLogin(page);
 
@@ -197,27 +186,43 @@ test.describe('Login & Signup Notification Messages', () => {
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Đã gửi link đăng nhập/);
   });
 
-  test('shows role mismatch error for existing participant trying organizer signup', async ({ page }) => {
+  test('points an existing email at the log-in tab instead of signing up again', async ({ page }) => {
     await openLogin(page);
 
     await page.route('/api/auth/send-email-link', route => {
       route.fulfill({
-        status: 400,
+        status: 409,
         contentType: 'application/json',
-        body: JSON.stringify({
-          error: 'AUTH_ROLE_MISMATCH',
-          message: 'This email is already registered as a participant. Choose that account type to continue.',
-          existingRole: 'participant',
-        }),
+        body: JSON.stringify({ error: 'AUTH_ACCOUNT_EXISTS' }),
       });
     });
 
-    await page.getByText('Người tổ chức', { exact: true }).click();
     await page.getByText('Đăng ký', { exact: true }).click();
     await page.locator('input[placeholder="ban@email.com"]').fill('existing@example.com');
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng ký/).click();
 
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/đã được đăng ký với tư cách người tham gia/);
+    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Email này đã có tài khoản/);
+  });
+
+  test('sends a sign-in link without asking for an account type', async ({ page }) => {
+    await openLogin(page);
+
+    /** @type {any} */
+    let sentBody = null;
+    await page.route('/api/auth/send-email-link', route => {
+      sentBody = route.request().postDataJSON();
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ sent: true }),
+      });
+    });
+
+    await page.locator('input[placeholder="ban@email.com"]').fill('returning@example.com');
+    await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng nhập/).click();
+
+    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Đã gửi link đăng nhập/);
+    expect(sentBody).toEqual({ email: 'returning@example.com', mode: 'login' });
   });
 
   test('shows Zalo not available error', async ({ page }) => {

@@ -3,7 +3,6 @@ import { randomBytes } from 'node:crypto';
 import { getMissingEmailVariables, sendWithGmail } from '../_lib/email.js';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ACCOUNT_TYPES = new Set(['participant', 'organizer', 'admin']);
 
 function getText(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -39,36 +38,15 @@ async function findAuthUserByEmail(admin, email) {
   return null;
 }
 
-// Persist the requested role across the auth user, profile, and email
-// registry. Without this the account_type only travels inside the email
-// link metadata, and if that metadata is dropped (or the profile row
-// already exists as a participant) the user silently ends up as a
-// participant even though they signed up as an organizer.
-async function enforceAccountRole(admin, email, role, userId) {
-  try {
-    let id = userId;
-    if (!id) {
-      const found = await findAuthUserByEmail(admin, email);
-      id = found?.id || null;
-    }
-    if (!id) return;
-
-    try {
-      await admin.auth.admin.updateUserById(id, { user_metadata: { account_type: role } });
-    } catch (metaError) {
-      console.warn('Auth metadata role update failed:', metaError);
-    }
-
-    const { error: profileError } = await admin.from('profiles').update({ role }).eq('id', id);
-    if (profileError) console.warn('Profile role update failed:', profileError);
-
-    const { error: registryError } = await admin
-      .from('email_registrations')
-      .upsert({ email, role, auth_user_id: id, updated_at: new Date().toISOString() }, { onConflict: 'email' });
-    if (registryError) console.warn('Email registry role update failed:', registryError);
-  } catch (e) {
-    console.warn('Account role enforcement failed:', e);
-  }
+// Keep the registry pointed at the live auth user so the login lookup can tell
+// "never registered" apart from "registered". The role column is descriptive
+// only — organizer mode is a toggle and never gates sign-in.
+async function linkRegistration(admin, email, userId) {
+  if (!userId) return;
+  const { error } = await admin
+    .from('email_registrations')
+    .upsert({ email, auth_user_id: userId, updated_at: new Date().toISOString() }, { onConflict: 'email' });
+  if (error) console.warn('Email registry link failed:', error);
 }
 
 function getSupabaseAdmin() {
@@ -100,94 +78,52 @@ export default async function handler(req, res) {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   const email = getText(body.email).toLowerCase();
   const mode = getText(body.mode).toLowerCase();
-  const accountType = getText(body.accountType);
 
   if (!EMAIL_PATTERN.test(email)) return res.status(400).json({ error: 'VALID_EMAIL_REQUIRED' });
   if (mode !== 'signup' && mode !== 'login') return res.status(400).json({ error: 'VALID_AUTH_MODE_REQUIRED' });
-  if (!ACCOUNT_TYPES.has(accountType)) return res.status(400).json({ error: 'VALID_ACCOUNT_TYPE_REQUIRED' });
-  if (mode === 'signup' && accountType === 'admin') return res.status(400).json({ error: 'ADMIN_SIGNUP_NOT_ALLOWED' });
 
-  let registration = null;
+  // Does this email already have a live auth user? The registry answers first
+  // because it is a plain table read; Auth is the fallback when the row is
+  // missing or unlinked (auth_user_id is NULL after a user was deleted, or
+  // when the backfill migration has not run yet).
+  let authUserId = null;
   try {
     const { data, error } = await admin
       .from('email_registrations')
-      .select('role, auth_user_id')
+      .select('auth_user_id')
       .eq('email', email)
       .maybeSingle();
-    if (error) throw error;
-    registration = data;
+    if (error && error.code !== 'PGRST205') throw error;
+    authUserId = data?.auth_user_id || null;
   } catch (error) {
     console.error('Supabase account registry lookup failed:', error);
-    if (error?.code === 'PGRST205') {
-      registration = null;
-    } else {
-      return res.status(502).json({ error: 'AUTH_ACCOUNT_LOOKUP_FAILED' });
-    }
+    return res.status(502).json({ error: 'AUTH_ACCOUNT_LOOKUP_FAILED' });
   }
 
-  // Fall back to Auth whenever the registry row is missing OR is not linked
-  // to a live auth user (auth_user_id can be NULL after a user was deleted
-  // and re-created, or when the backfill migration has not run yet).
-  if (!registration?.auth_user_id) {
+  if (!authUserId) {
     try {
       const authUser = await findAuthUserByEmail(admin, email);
-      if (authUser) {
-        try {
-          const { data: profile } = await admin.from('profiles').select('role').eq('id', authUser.id).maybeSingle();
-          const role = profile?.role || authUser.user_metadata?.account_type || authUser.raw_user_meta_data?.account_type;
-          registration = { role, auth_user_id: authUser.id };
-        } catch (profileError) {
-          console.warn('Profile query failed:', profileError);
-          const role = authUser.user_metadata?.account_type || authUser.raw_user_meta_data?.account_type;
-          registration = role ? { role, auth_user_id: authUser.id } : null;
-        }
-      }
+      authUserId = authUser?.id || null;
+      if (authUserId) await linkRegistration(admin, email, authUserId);
     } catch (e) {
-      console.warn('Failed to check existing user role:', e);
+      console.warn('Failed to check for an existing auth user:', e);
     }
   }
 
-  if (mode === 'login' && !registration?.auth_user_id) {
+  if (mode === 'login' && !authUserId) {
     return res.status(404).json({ error: 'AUTH_ACCOUNT_NOT_FOUND' });
   }
-
-  const existingRole = registration?.role || null;
-  // A participant account may upgrade itself to organizer: the UI routes
-  // participants who try to host here ("complete organizer registration"),
-  // so blocking them with AUTH_ACCOUNT_EXISTS/AUTH_ROLE_MISMATCH would leave
-  // them permanently stuck as participants.
-  const isUpgrade = mode === 'signup'
-    && existingRole === 'participant'
-    && accountType === 'organizer'
-    && Boolean(registration?.auth_user_id);
-
-  // The email already has a live auth account, so a sign-up link cannot be
-  // generated for it (Supabase rejects duplicate signups). Direct the user
-  // to log in instead of failing with a generic link-generation error.
-  if (mode === 'signup' && registration?.auth_user_id && !isUpgrade) {
+  if (mode === 'signup' && authUserId) {
     return res.status(409).json({ error: 'AUTH_ACCOUNT_EXISTS' });
   }
 
   try {
-    if (existingRole && existingRole !== accountType && !isUpgrade) {
-      return res.status(400).json({
-        error: 'AUTH_ROLE_MISMATCH',
-        message: `This email is already registered as ${/^[aeiou]/i.test(existingRole) ? 'an' : 'a'} ${existingRole}. Choose that account type to continue.`,
-        existingRole,
-      });
-    }
-
-    // A brand-new account gets a sign-up link; an upgrade reuses a sign-in
-    // link because the auth user already exists.
-    const linkType = mode === 'signup' && !registration?.auth_user_id ? 'signup' : 'magiclink';
+    const linkType = authUserId ? 'magiclink' : 'signup';
 
     const linkRequest = {
       type: linkType,
       email,
-      options: {
-        redirectTo: getRedirectUrl(req),
-        data: { account_type: accountType },
-      },
+      options: { redirectTo: getRedirectUrl(req) },
     };
     if (linkType === 'signup') {
       linkRequest.password = randomBytes(32).toString('base64url');
@@ -200,11 +136,7 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'AUTH_LINK_GENERATION_FAILED' });
     }
 
-    // Make the role real before the user even clicks the link, so the
-    // profile/registry no longer depend on the link metadata surviving.
-    if (linkType === 'signup' || isUpgrade) {
-      await enforceAccountRole(admin, email, accountType, data?.user?.id || registration?.auth_user_id || null);
-    }
+    if (linkType === 'signup') await linkRegistration(admin, email, data?.user?.id || null);
 
     const actionLink = data.properties.action_link;
     const subject = linkType === 'signup' ? 'Confirm your banbe account' : 'Your banbe sign-in link';
@@ -221,7 +153,7 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'AUTH_EMAIL_DELIVERY_FAILED' });
     }
 
-    return res.status(200).json({ sent: true, upgraded: isUpgrade });
+    return res.status(200).json({ sent: true });
   } catch (error) {
     console.error('Auth email request failed:', error);
     return res.status(502).json({ error: 'AUTH_EMAIL_REQUEST_FAILED' });

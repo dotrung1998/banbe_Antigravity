@@ -34,6 +34,7 @@ const initialState = {
   askingLocation: false,
   user: null,
   accountType: 'participant',
+  organizerMode: false,
   authMode: 'login',
   authReturnScreen: 'home',
   authBackScreen: 'home',
@@ -42,7 +43,6 @@ const initialState = {
   loginCode: '',
   loginSent: false,
   loginSentVia: null,
-  loginUpgraded: false,
   payMode: 'now',
   qty: 1,
   lang: 'vi',
@@ -131,7 +131,8 @@ export function GocProvider({ children }) {
         user.user_metadata?.account_type ||
         user.raw_user_meta_data?.account_type ||
         'participant';
-      set({ user, accountType: role, mode: role === 'organizer' ? 'host' : 'goer' });
+      const canHostNow = role === 'organizer' || role === 'admin';
+      set({ user, accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer' });
     };
     supabase.auth.getSession().then(({ data }) => syncUser(data.session?.user));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -140,7 +141,6 @@ export function GocProvider({ children }) {
           screen: prev.screen === 'login' ? prev.authReturnScreen : prev.screen,
           loginSent: false,
           loginSentVia: null,
-          loginUpgraded: false,
         }));
         syncUser(session.user);
       }
@@ -223,61 +223,71 @@ export function GocProvider({ children }) {
 
   const curArea = AREAS.find(a => a.key === s.area) || AREAS[0];
 
+  // ---- organizer mode ----
+  // Any account can host: organizer mode is a switch on the profile, so
+  // sign-up and sign-in never have to know which "type" of account this is.
+  const canHost = s.organizerMode || s.accountType === 'admin' || s.hasHosted;
+  const applyOrganizerMode = useCallback(async (enabled) => {
+    if (s.accountType === 'admin') return;
+    const rollback = { organizerMode: s.organizerMode, accountType: s.accountType };
+    set({ organizerMode: enabled, accountType: enabled ? 'organizer' : 'participant', mode: enabled ? 'host' : 'goer', ...(enabled ? {} : { hasHosted: false }) });
+    const { data, error } = await supabase.rpc('set_organizer_mode', { p_enabled: enabled });
+    if (error) {
+      console.warn('Organizer mode update failed:', error);
+      return set(rollback);
+    }
+    if (data) set({ accountType: data, organizerMode: data === 'organizer' || data === 'admin' });
+  }, [set, s.accountType, s.organizerMode]);
+  const enableOrganizerMode = useCallback(() => applyOrganizerMode(true), [applyOrganizerMode]);
+  const toggleOrganizerMode = useCallback(() => {
+    if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'profile' });
+    applyOrganizerMode(!canHost);
+  }, [set, s.user, canHost, applyOrganizerMode]);
+
   // ---- navigation ----
   const goHome = useCallback(() => set({ screen: 'home' }), [set]);
   const goProfile = useCallback(() => set({ screen: 'profile' }), [set]);
-  const goInbox = useCallback(() => set(s.user ? { screen: 'inbox' } : { screen: 'login', authMode: 'login', accountType: 'participant', authReturnScreen: 'inbox', authBackScreen: 'home' }), [set, s.user]);
+  const goInbox = useCallback(() => set(s.user ? { screen: 'inbox' } : { screen: 'login', authMode: 'login', authReturnScreen: 'inbox', authBackScreen: 'home' }), [set, s.user]);
   const goEvent = useCallback((key) => set({ screen: 'event', eventKey: key }), [set]);
   const goOrganizer = useCallback(() => set({ screen: 'organizer' }), [set]);
-  const goReserve = useCallback(() => set(s.user ? { screen: 'reserve' } : { screen: 'login', authMode: 'login', accountType: 'participant', authReturnScreen: 'reserve', authBackScreen: 'event' }), [set, s.user]);
+  const goReserve = useCallback(() => set(s.user ? { screen: 'reserve' } : { screen: 'login', authMode: 'login', authReturnScreen: 'reserve', authBackScreen: 'event' }), [set, s.user]);
   const backToEvent = useCallback(() => set({ screen: 'event' }), [set]);
   const backToOrganizer = useCallback(() => set({ screen: 'organizer' }), [set]);
   const goChat = useCallback(() => set({ screen: s.user ? 'chat' : 'login', chatBack: 'organizer' }), [set, s.user]);
-  const goLogin = useCallback(() => set({ screen: 'login', authMode: 'login', accountType: 'participant', authReturnScreen: 'profile', authBackScreen: 'home' }), [set]);
+  const goLogin = useCallback(() => set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'home' }), [set]);
   const goDashboard = useCallback(() => set({ screen: 'dashboard' }), [set]);
   const goCreate = useCallback(() => {
-    if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
-      set({ screen: 'create', mode: 'host' });
-    } else if (s.user) {
-      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'create', authBackScreen: 'hostIntro', reserveError: T('Tài khoản này đã đăng ký với tư cách người tham gia. Hãy hoàn tất đăng ký người tổ chức để tiếp tục.', 'This account is registered as a participant. Complete organizer registration to continue.') });
-    } else {
-      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'create', authBackScreen: 'hostIntro' });
-    }
-  }, [set, s.user, s.hasHosted, s.accountType, T]);
+    if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'create', authBackScreen: 'hostIntro' });
+    if (!canHost) enableOrganizerMode();
+    set({ screen: 'create', mode: 'host' });
+  }, [set, s.user, canHost, enableOrganizerMode]);
   const openAttendance = useCallback((key) => set({ screen: 'attendance', attendanceEventKey: key }), [set]);
   const openHeld = useCallback(() => set({ screen: 'confirmed' }), [set]);
   const goHostIntro = useCallback(() => {
-    if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
-      set({ screen: 'hostIntro' });
-    } else if (s.user) {
-      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile', reserveError: T('Tài khoản này đã đăng ký với tư cách người tham gia. Hãy hoàn tất đăng ký người tổ chức để tiếp tục.', 'This account is registered as a participant. Complete organizer registration to continue.') });
-    } else {
-      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile' });
-    }
-  }, [set, s.user, s.hasHosted, s.accountType, T]);
+    if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'hostIntro', authBackScreen: 'profile' });
+    if (!canHost) enableOrganizerMode();
+    set({ screen: 'hostIntro' });
+  }, [set, s.user, canHost, enableOrganizerMode]);
   const createBack = useCallback(() => set(prev => ({ screen: prev.hasHosted ? 'dashboard' : 'hostIntro' })), [set]);
 
   // ---- roles ----
   const switchToHost = useCallback(() => {
-    if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
-      set({ mode: 'host', screen: 'dashboard' });
-    } else if (s.user) {
-      set({ screen: 'login', accountType: 'organizer', authReturnScreen: 'dashboard', authBackScreen: 'home', reserveError: T('Tài khoản này đã đăng ký với tư cách người tham gia. Hãy hoàn tất đăng ký người tổ chức để tiếp tục.', 'This account is registered as a participant. Complete organizer registration to continue.') });
-    } else {
-      set({ screen: 'login', accountType: 'organizer', authReturnScreen: 'dashboard', authBackScreen: 'home' });
-    }
-  }, [set, s.user, s.hasHosted, s.accountType, T]);
+    if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'dashboard', authBackScreen: 'home' });
+    if (!canHost) enableOrganizerMode();
+    set({ mode: 'host', screen: 'dashboard' });
+  }, [set, s.user, canHost, enableOrganizerMode]);
   const switchToGoer = useCallback(() => set({ mode: 'goer', screen: 'home' }), [set]);
   const becomeHost = useCallback(() => {
-    if (s.user && (s.hasHosted || s.accountType === 'organizer')) {
-      set({ screen: 'hostIntro' });
-    } else if (s.user) {
-      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile', reserveError: T('Tài khoản này đã đăng ký với tư cách người tham gia. Hãy hoàn tất đăng ký người tổ chức để tiếp tục.', 'This account is registered as a participant. Complete organizer registration to continue.') });
-    } else {
-      set({ screen: 'login', authMode: 'signup', accountType: 'organizer', authReturnScreen: 'hostIntro', authBackScreen: 'profile' });
-    }
-  }, [set, s.user, s.hasHosted, s.accountType, T]);
-  const logout = useCallback(async () => { await supabase.auth.signOut(); set({ user: null, mode: 'goer', screen: 'home' }); }, [set]);
+    if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'hostIntro', authBackScreen: 'profile' });
+    if (!canHost) enableOrganizerMode();
+    set({ screen: 'hostIntro' });
+  }, [set, s.user, canHost, enableOrganizerMode]);
+  const logout = useCallback(async () => {
+    await supabase.auth.signOut();
+    // Roles belong to the account that just left; leaving them behind would
+    // leak the previous user's hosting state into the next sign-in.
+    set({ user: null, accountType: 'participant', organizerMode: false, hasHosted: false, mode: 'goer', screen: 'home' });
+  }, [set]);
 
   // ---- lang / area / location ----
   const toggleLang = useCallback(() => set({ lang: EN ? 'vi' : 'en' }), [set, EN]);
@@ -410,42 +420,28 @@ export function GocProvider({ children }) {
     if (code === 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED') {
       return T('Dịch vụ email chưa được cấu hình. Vui lòng thử lại sau.', 'The email service is not configured yet. Please try again later.');
     }
-    if (code === 'ADMIN_SIGNUP_NOT_ALLOWED') {
-      return T('Tài khoản quản trị viên do banbe cấp, không thể tự đăng ký.', 'Admin accounts are issued by banbe and cannot be created here.');
-    }
-    if (code === 'AUTH_ROLE_MISMATCH') {
-      const role = error.role === 'organizer' ? T('người tổ chức', 'organizer') : error.role === 'admin' ? T('quản trị viên', 'admin') : T('người tham gia', 'participant');
-      const article = /^[aeiou]/i.test(role) ? 'an' : 'a';
-      return T(`Email này đã được đăng ký với tư cách ${role}. Hãy chọn đúng loại tài khoản để tiếp tục.`, `This email is already registered as ${article} ${role}. Choose that account type to continue.`);
-    }
     return mode === 'signup'
       ? T('Không thể gửi link đăng ký. Vui lòng thử lại sau.', 'We could not send the sign-up link. Please try again later.')
       : T('Không thể gửi link đăng nhập. Vui lòng thử lại sau.', 'We could not send the sign-in link. Please try again later.');
   }, [T]);
   const loginEmailSubmit = useCallback(async () => {
-    if (s.accountType === 'admin' && s.authMode === 'signup') {
-      set({ reserveError: T('Tài khoản quản trị viên do banbe cấp. Hãy dùng tài khoản người tham gia hoặc người tổ chức.', 'Admin accounts are issued by banbe. Use a participant or organizer account.') });
-      return;
+    if (!emailValid(s.loginEmail)) return;
+    const email = s.loginEmail.trim();
+    try {
+      await requestAuthEmail({ email, mode: s.authMode });
+      set({ loginSent: true, loginSentVia: 'email', reserveError: '' });
+    } catch (e) {
+      set({ loginSent: false, loginSentVia: null, reserveError: authEmailErrorMessage(e, s.authMode) });
     }
-    if (emailValid(s.loginEmail)) {
-      const email = s.loginEmail.trim();
-      try {
-        const payload = await requestAuthEmail({ email, mode: s.authMode, accountType: s.accountType });
-        set({ loginSent: true, loginSentVia: 'email', loginUpgraded: Boolean(payload?.upgraded), reserveError: '' });
-      } catch (e) {
-        set({ loginSent: false, loginSentVia: null, loginUpgraded: false, reserveError: authEmailErrorMessage(e, s.authMode) });
-      }
-    }
-  }, [set, s.loginEmail, s.accountType, s.authMode, authEmailErrorMessage, T]);
+  }, [set, s.loginEmail, s.authMode, authEmailErrorMessage]);
   const loginEmailKey = useCallback((e) => { if (e.key === 'Enter') loginEmailSubmit(); }, [loginEmailSubmit]);
   const loginZalo = useCallback(() => set({ reserveError: T('Zalo chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Zalo is not available yet. Use email or phone OTP.') }), [set, T]);
   const loginPhone = useCallback(async () => {
-    if (s.accountType === 'admin' && s.authMode === 'signup') return set({ reserveError: T('Tài khoản quản trị viên do banbe cấp, không thể tự đăng ký.', 'Admin accounts are issued by banbe and cannot be created here.') });
     const phone = s.loginPhoneNumber.trim();
     if (!phone) return set({ reserveError: T('Nhập số điện thoại trước.', 'Enter your phone number first.') });
-    const { error } = await supabase.auth.signInWithOtp({ phone, options: { data: { account_type: s.accountType } } });
+    const { error } = await supabase.auth.signInWithOtp({ phone });
     set(error ? { reserveError: error.message } : { loginSent: true, loginSentVia: 'phone', reserveError: '' });
-  }, [set, s.loginPhoneNumber, s.accountType, s.authMode, T]);
+  }, [set, s.loginPhoneNumber, T]);
   const verifyLoginCode = useCallback(async () => {
     if (!s.loginPhoneNumber.trim() || !s.loginCode.trim()) return set({ reserveError: T('Nhập mã OTP.', 'Enter the OTP code.') });
     const { error } = await supabase.auth.verifyOtp({ phone: s.loginPhoneNumber.trim(), token: s.loginCode.trim(), type: 'sms' });
@@ -493,6 +489,9 @@ export function GocProvider({ children }) {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session?.user) throw new Error('AUTH_REQUIRED');
+      // Publishing an event is the act of hosting, so make sure organizer
+      // mode is on before create_event_draft checks the profile role.
+      if (!canHost) await applyOrganizerMode(true);
       const priceVnd = parseInt((s.createPrice.match(/[\d.]+/) || ['0'])[0].replace(/\./g, ''), 10) || 0;
       const capacity = parseInt(s.createSeats, 10) || 0;
       const dateMatch = s.createDate.match(/(\d{1,2})\.(\d{1,2})/);
@@ -516,7 +515,7 @@ export function GocProvider({ children }) {
       console.warn('Event draft creation failed:', err);
       set({ loading: false, createError: err.message || 'Unable to submit this event.' });
     }
-  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createDate, s.createPrice, s.createSeats, s.orgRegName, s.orgRegIg, s.orgRegDesc]);
+  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createDate, s.createPrice, s.createSeats, s.orgRegName, s.orgRegIg, s.orgRegDesc, canHost, applyOrganizerMode]);
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
 
   // ---- attendance ----
@@ -538,6 +537,7 @@ export function GocProvider({ children }) {
     goHome, goProfile, goInbox, goEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
+    canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, toggleTheme, pickTheme, openPreferences,
     pickFilter, clearFilters, shareEvent,
@@ -555,6 +555,7 @@ export function GocProvider({ children }) {
     goHome, goProfile, goInbox, goEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
+    canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, toggleTheme, pickTheme, openPreferences,
     pickFilter, clearFilters, shareEvent,

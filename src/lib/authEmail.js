@@ -1,15 +1,14 @@
-export async function requestAuthEmail({ email, mode, accountType }) {
+export async function requestAuthEmail({ email, mode }) {
   const response = await fetch('/api/auth/send-email-link', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, mode, accountType }),
+    body: JSON.stringify({ email, mode }),
   });
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(payload.error || payload.message || 'AUTH_EMAIL_SEND_FAILED');
     error.code = payload.error || payload.code;
-    error.role = payload.existingRole;
     if (payload.message) error.message = payload.message;
     throw error;
   }

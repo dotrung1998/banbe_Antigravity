@@ -7,7 +7,7 @@ test.describe('Authentication & Booking Flows', () => {
     await setupToHome(page);
   });
 
-  test('navigates to Login screen and switches account types', async ({ page }) => {
+  test('navigates to Login screen and switches between log in and sign up', async ({ page }) => {
     // Tap "Tài khoản" to open Account screen
     await page.getByText('Tài khoản').first().click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 3000 });
@@ -19,20 +19,17 @@ test.describe('Authentication & Booking Flows', () => {
     const loginScreen = page.locator('[data-screen-label="Login"]');
     await expect(loginScreen).toBeVisible({ timeout: 3000 });
 
-    // The h2 shows "Tiếp tục với tư cách người tham gia" by default (participant)
-    await expect(page.getByText('Tiếp tục với tư cách người tham gia')).toBeVisible();
+    // Log in is the default tab, and there is no account type to pick:
+    // organizer mode is a toggle on the account, not a kind of account.
+    await expect(page.getByText('Chào mừng trở lại')).toBeVisible();
+    await expect(loginScreen.getByText('Quản trị viên', { exact: true })).toHaveCount(0);
+    await expect(loginScreen.getByText('Người tổ chức', { exact: true })).toHaveCount(0);
 
-    // Switch to Organizer
-    await page.getByText('Người tổ chức', { exact: true }).click();
-    await expect(page.getByText('Tiếp tục với tư cách người tổ chức')).toBeVisible();
+    await page.getByText('Đăng ký', { exact: true }).click();
+    await expect(page.getByText('Tạo tài khoản banbe')).toBeVisible();
 
-    // Switch to Admin
-    await page.getByText('Quản trị viên', { exact: true }).click();
-    await expect(page.getByText('Tiếp tục với tư cách quản trị viên')).toBeVisible();
-
-    // Switch back to Participant
-    await page.getByText('Người tham gia', { exact: true }).click();
-    await expect(page.getByText('Tiếp tục với tư cách người tham gia')).toBeVisible();
+    await page.getByText('Đăng nhập', { exact: true }).click();
+    await expect(page.getByText('Chào mừng trở lại')).toBeVisible();
 
     // Verify email input exists and can be filled
     const emailInput = page.locator('input[type="email"], input[placeholder="ban@email.com"]');

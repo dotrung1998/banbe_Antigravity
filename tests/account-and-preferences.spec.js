@@ -36,6 +36,20 @@ test.describe('Account & Preferences Screen', () => {
     await expect(accountScreen).toBeVisible({ timeout: 3000 });
   });
 
+  test('shows an organizer mode toggle instead of an organizer sign-up', async ({ page }) => {
+    await page.getByText('Tài khoản').first().click();
+    const accountScreen = page.locator('[data-screen-label="Account"]');
+    await expect(accountScreen).toBeVisible({ timeout: 3000 });
+
+    const toggle = accountScreen.getByTestId('organizer-mode-toggle');
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toContainText('Chế độ tổ chức');
+
+    // A guest has nothing to toggle yet, so the switch sends them to Login.
+    await toggle.click();
+    await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 3000 });
+  });
+
   test('can return from Account to Home', async ({ page }) => {
     await page.getByText('Tài khoản').first().click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 3000 });
