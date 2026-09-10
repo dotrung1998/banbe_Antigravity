@@ -22,6 +22,8 @@ import Attendance from './screens/Attendance.jsx';
 import AreaSheet from './screens/sheets/AreaSheet.jsx';
 import LocationSheet from './screens/sheets/LocationSheet.jsx';
 import Preferences from './screens/Preferences.jsx';
+import EditName from './screens/EditName.jsx';
+import Notifications from './screens/Notifications.jsx';
 
 const SCREENS = {
   splash: Splash,
@@ -42,6 +44,8 @@ const SCREENS = {
   create: CreateEvent,
   attendance: Attendance,
   preferences: Preferences,
+  editName: EditName,
+  notifications: Notifications,
 };
 
 function Shell() {

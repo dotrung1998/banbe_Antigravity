@@ -14,7 +14,7 @@ const FILTER_DEFS = [
 export default function Home() {
   const {
     state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, toggleFav,
-    goProfile, goInbox, goEvent, openArea, toggleLang, pickFilter, clearFilters,
+    goProfile, goInbox, goEvent, goNotifications, openArea, toggleLang, pickFilter, clearFilters,
     openHeld, becomeHost, switchToHost,
   } = useGoc();
 
@@ -97,6 +97,16 @@ export default function Home() {
             <span onClick={openArea} style={{ fontSize: 11, color: ink, cursor: 'pointer' }}>banbe ▪︎ {curArea.key === 'all' ? 'Sài Gòn' : curArea.label} ▾</span>
           </div>
           <div style={{ display: 'flex', gap: 14, alignItems: 'baseline' }}>
+            {!!s.user && (
+              <span onClick={goNotifications} data-testid="notification-bell" style={{ position: 'relative', fontSize: 15, color: ink, cursor: 'pointer', lineHeight: 1 }}>
+                🔔
+                {s.unreadNotifications > 0 && (
+                  <span style={{ position: 'absolute', top: -4, right: -7, minWidth: 14, height: 14, padding: '0 3px', borderRadius: 7, background: ink, color: paper, fontSize: 9, fontWeight: 700, lineHeight: '14px', textAlign: 'center' }}>
+                    {s.unreadNotifications > 9 ? '9+' : s.unreadNotifications}
+                  </span>
+                )}
+              </span>
+            )}
             {!!s.user && <span onClick={goInbox} style={{ fontSize: 12, color: ink, cursor: 'pointer', borderBottom: `1px solid ${ink}`, paddingBottom: 2 }}>Tin nhắn</span>}
             <span onClick={goProfile} style={{ fontSize: 12, color: ink, cursor: 'pointer', borderBottom: `1px solid ${ink}`, paddingBottom: 2 }}>{T('Tài khoản', 'Account')}</span>
           </div>

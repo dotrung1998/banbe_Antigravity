@@ -134,9 +134,11 @@ export default async function handler(req, res) {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   const email = getText(body.email).toLowerCase();
   const mode = getText(body.mode).toLowerCase();
+  const displayName = getText(body.displayName).slice(0, 60);
 
   if (!EMAIL_PATTERN.test(email)) return res.status(400).json({ error: 'VALID_EMAIL_REQUIRED' });
   if (mode !== 'signup' && mode !== 'login') return res.status(400).json({ error: 'VALID_AUTH_MODE_REQUIRED' });
+  if (mode === 'signup' && !displayName) return res.status(400).json({ error: 'VALID_NAME_REQUIRED' });
 
   const { userId: authUserId, resolved, sources } = await resolveAuthUserId(admin, email);
 
@@ -168,6 +170,10 @@ export default async function handler(req, res) {
     };
     if (linkType === 'signup') {
       linkRequest.password = randomBytes(32).toString('base64url');
+      // Becomes raw_user_meta_data, which handle_new_user() already reads
+      // to seed profiles.display_name — no extra plumbing needed on the DB
+      // side beyond what's already there.
+      linkRequest.options.data = { display_name: displayName };
     }
 
     const { data, error } = await admin.auth.admin.generateLink(linkRequest);

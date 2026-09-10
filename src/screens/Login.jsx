@@ -4,10 +4,12 @@ import { paper, ink, display, fieldGlass } from '../theme.js';
 export default function Login() {
   const {
     state, T, set,
-    loginEmailType, loginEmailSubmit, loginEmailKey, loginPhoneType, loginCodeType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, emailValid,
+    loginEmailType, loginNicknameType, loginEmailSubmit, loginEmailKey, loginPhoneType, loginCodeType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, emailValid,
   } = useGoc();
   const s = state;
-  const valid = emailValid(s.loginEmail);
+  const isSignup = s.authMode === 'signup';
+  const nicknameValid = !isSignup || s.loginNickname.trim().length > 0;
+  const valid = emailValid(s.loginEmail) && nicknameValid;
   const changeAuthMode = (authMode) => set({ authMode, reserveError: '', loginSent: false, loginSentVia: null });
 
   const loginBtnStyle = {
@@ -47,6 +49,9 @@ export default function Login() {
           <span style={{ fontSize: 11, color: ink }}>{T('hoặc dùng email', 'or use email')}</span>
           <span style={{ flex: 1, height: 1, background: 'rgba(27,25,22,0.16)' }} />
         </div>
+        {isSignup && (
+          <input value={s.loginNickname} onChange={loginNicknameType} placeholder={T('Tên hiển thị của bạn', 'Your display name')} style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
+        )}
         <input value={s.loginEmail} onChange={loginEmailType} onKeyDown={loginEmailKey} placeholder="ban@email.com" style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
         <input value={s.loginPhoneNumber} onChange={loginPhoneType} placeholder="+84 901 234 567" inputMode="tel" style={{ ...fieldGlass({ marginTop: 10, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
         {s.loginSentVia === 'phone' && <div style={{ display: 'flex', gap: 8, marginTop: 10 }}><input value={s.loginCode} onChange={loginCodeType} placeholder={T('Mã OTP', 'OTP code')} inputMode="numeric" style={{ ...fieldGlass({ flex: 1, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} /><div onClick={verifyLoginCode} style={{ ...fieldGlass({ padding: '14px 12px', border: 'none' }), fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Xác nhận', 'Verify')}</div></div>}

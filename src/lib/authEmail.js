@@ -1,8 +1,8 @@
-export async function requestAuthEmail({ email, mode }) {
+export async function requestAuthEmail({ email, mode, displayName }) {
   const response = await fetch('/api/auth/send-email-link', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, mode }),
+    body: JSON.stringify({ email, mode, ...(displayName ? { displayName } : {}) }),
   });
 
   const payload = await response.json().catch(() => ({}));

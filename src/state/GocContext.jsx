@@ -38,10 +38,16 @@ const initialState = {
   accountType: 'participant',
   organizerMode: false,
   organizerModeError: '',
+  editNameValue: '',
+  editNameError: '',
+  editNameSaving: false,
+  notifications: [],
+  unreadNotifications: 0,
   authMode: 'login',
   authReturnScreen: 'home',
   authBackScreen: 'home',
   loginEmail: '',
+  loginNickname: '',
   loginPhoneNumber: '',
   loginCode: '',
   loginSent: false,
@@ -144,7 +150,7 @@ export function GocProvider({ children }) {
       }
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, locale, theme, prefs_saved')
+        .select('role, locale, theme, prefs_saved, display_name')
         .eq('id', user.id)
         .maybeSingle();
       const role =
@@ -153,7 +159,8 @@ export function GocProvider({ children }) {
         user.raw_user_meta_data?.account_type ||
         'participant';
       const canHostNow = role === 'organizer' || role === 'admin';
-      set({ user, accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer' });
+      const displayName = (profile?.display_name || '').trim() || user.user_metadata?.display_name || '';
+      set({ user: { ...user, name: displayName }, accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer' });
 
       // Language & theme follow the account once it has a saved preference,
       // so signing in on any device restores them instead of falling back to
@@ -206,6 +213,24 @@ export function GocProvider({ children }) {
     })();
     return () => { active = false; };
   }, [set, s.user?.id, s.eventKey]);
+
+  // Unread count for the notification bell — refreshed on login so the badge
+  // is right without having to open the notifications screen first.
+  useEffect(() => {
+    if (!s.user?.id) { set({ notifications: [], unreadNotifications: 0 }); return; }
+    let active = true;
+    (async () => {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('recipient_id', s.user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (!active || error) return;
+      set({ notifications: data || [], unreadNotifications: (data || []).filter(n => !n.read_at).length });
+    })();
+    return () => { active = false; };
+  }, [set, s.user?.id]);
 
   const splashTimer = useRef(null);
   useEffect(() => {
@@ -374,6 +399,63 @@ export function GocProvider({ children }) {
     set({ user: null, accountType: 'participant', organizerMode: false, hasHosted: false, mode: 'goer', screen: 'home' });
   }, [set]);
 
+  // ---- display name ----
+  const goEditName = useCallback(() => set({ screen: 'editName', editNameValue: s.user?.name || '', editNameError: '' }), [set, s.user?.name]);
+  const editNameType = useCallback((e) => set({ editNameValue: e.target.value }), [set]);
+  const saveDisplayName = useCallback(async () => {
+    const newName = s.editNameValue.trim();
+    if (!newName) return set({ editNameError: T('Hãy nhập tên hiển thị.', 'Please enter a display name.') });
+    if (newName === s.user?.name) return set({ screen: 'profile' });
+
+    set({ editNameSaving: true, editNameError: '' });
+    const oldName = s.user?.name || '';
+    const { data, error } = await supabase.rpc('rename_display_name', { p_new_name: newName });
+    if (error) {
+      set({ editNameSaving: false, editNameError: T('Không thể đổi tên lúc này. Vui lòng thử lại.', 'We could not change your name right now. Please try again.') });
+      return;
+    }
+    set({ editNameSaving: false, user: { ...s.user, name: data?.new_name || newName }, screen: 'profile' });
+
+    // The in-app notification rows are already written by the RPC above —
+    // this only dispatches the email side, and re-derives its own recipient
+    // list server-side rather than trusting anything from this client.
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (token) {
+        fetch('/api/notify-name-change', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ oldName, newName: data?.new_name || newName }),
+        }).catch(() => {});
+      }
+    } catch { /* best-effort email dispatch; the in-app notification already landed */ }
+  }, [set, s.editNameValue, s.user, T]);
+
+  // ---- notifications ----
+  const loadNotifications = useCallback(async () => {
+    if (!s.user?.id) return;
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('recipient_id', s.user.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) { console.warn('Failed to load notifications:', error); return; }
+    set({ notifications: data || [], unreadNotifications: (data || []).filter(n => !n.read_at).length });
+  }, [set, s.user?.id]);
+  const goNotifications = useCallback(() => {
+    set({ screen: 'notifications' });
+    loadNotifications();
+  }, [set, loadNotifications]);
+  const markNotificationsRead = useCallback(async () => {
+    const unreadIds = s.notifications.filter(n => !n.read_at).map(n => n.id);
+    if (unreadIds.length === 0) return;
+    set({ unreadNotifications: 0, notifications: s.notifications.map(n => (n.read_at ? n : { ...n, read_at: new Date().toISOString() })) });
+    const { error } = await supabase.from('notifications').update({ read_at: new Date().toISOString() }).in('id', unreadIds);
+    if (error) console.warn('Failed to mark notifications read:', error);
+  }, [set, s.notifications]);
+
   // ---- lang / area / location ----
   const toggleLang = useCallback(() => {
     const next = EN ? 'vi' : 'en';
@@ -507,6 +589,7 @@ export function GocProvider({ children }) {
 
   // ---- login ----
   const loginEmailType = useCallback((e) => set({ loginEmail: e.target.value }), [set]);
+  const loginNicknameType = useCallback((e) => set({ loginNickname: e.target.value }), [set]);
   const loginPhoneType = useCallback((e) => set({ loginPhoneNumber: e.target.value }), [set]);
   const loginCodeType = useCallback((e) => set({ loginCode: e.target.value }), [set]);
   const emailValid = (v) => /\S+@\S+\.\S+/.test(v);
@@ -517,6 +600,9 @@ export function GocProvider({ children }) {
     }
     if (code === 'AUTH_ACCOUNT_EXISTS') {
       return T('Email này đã có tài khoản. Hãy chọn Đăng nhập để tiếp tục.', 'This email already has an account. Choose Log in to continue.');
+    }
+    if (code === 'VALID_NAME_REQUIRED') {
+      return T('Hãy nhập tên hiển thị của bạn.', 'Please enter a display name.');
     }
     if (code === 'AUTH_EMAIL_DELIVERY_FAILED') {
       return T('Không thể gửi email lúc này. Vui lòng thử lại sau.', 'We could not send the email right now. Please try again later.');
@@ -540,13 +626,17 @@ export function GocProvider({ children }) {
   const loginEmailSubmit = useCallback(async () => {
     if (!emailValid(s.loginEmail)) return;
     const email = s.loginEmail.trim();
+    const displayName = s.loginNickname.trim();
+    if (s.authMode === 'signup' && !displayName) {
+      return set({ reserveError: authEmailErrorMessage({ code: 'VALID_NAME_REQUIRED' }, s.authMode) });
+    }
     try {
-      await requestAuthEmail({ email, mode: s.authMode });
+      await requestAuthEmail({ email, mode: s.authMode, ...(s.authMode === 'signup' ? { displayName } : {}) });
       set({ loginSent: true, loginSentVia: 'email', reserveError: '' });
     } catch (e) {
       set({ loginSent: false, loginSentVia: null, reserveError: authEmailErrorMessage(e, s.authMode) });
     }
-  }, [set, s.loginEmail, s.authMode, authEmailErrorMessage]);
+  }, [set, s.loginEmail, s.loginNickname, s.authMode, authEmailErrorMessage]);
   const loginEmailKey = useCallback((e) => { if (e.key === 'Enter') loginEmailSubmit(); }, [loginEmailSubmit]);
   const loginZalo = useCallback(() => set({ reserveError: T('Zalo chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Zalo is not available yet. Use email or phone OTP.') }), [set, T]);
   const loginPhone = useCallback(async () => {
@@ -650,13 +740,14 @@ export function GocProvider({ children }) {
     goHome, goProfile, goInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
+    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationsRead,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences,
     pickFilter, clearFilters, shareEvent,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
-    loginEmailType, loginEmailSubmit, loginEmailKey, loginPhoneType, loginCodeType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, emailValid,
+    loginEmailType, loginNicknameType, loginEmailSubmit, loginEmailKey, loginPhoneType, loginCodeType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, emailValid,
     chatOnType, chatSend, chatOnKey, chatBackFn, openChatFor,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
@@ -668,13 +759,14 @@ export function GocProvider({ children }) {
     goHome, goProfile, goInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
+    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationsRead,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences,
     pickFilter, clearFilters, shareEvent,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
-    loginEmailType, loginEmailSubmit, loginEmailKey, loginPhoneType, loginCodeType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram,
+    loginEmailType, loginNicknameType, loginEmailSubmit, loginEmailKey, loginPhoneType, loginCodeType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram,
     chatOnType, chatSend, chatOnKey, chatBackFn, openChatFor,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,

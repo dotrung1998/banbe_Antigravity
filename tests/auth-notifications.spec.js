@@ -43,6 +43,7 @@ test.describe('Login & Signup Notification Messages', () => {
     });
 
     await page.getByText('Đăng ký', { exact: true }).click();
+    await page.locator('input[placeholder="Tên hiển thị của bạn"]').fill('Nguyễn An');
     await page.locator('input[placeholder="ban@email.com"]').fill('nonexistent@example.com');
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng ký/).click();
 
@@ -163,6 +164,7 @@ test.describe('Login & Signup Notification Messages', () => {
     });
 
     await page.getByText('Đăng ký', { exact: true }).click();
+    await page.locator('input[placeholder="Tên hiển thị của bạn"]').fill('Nguyễn An');
     await page.locator('input[placeholder="ban@email.com"]').fill('test@example.com');
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng ký/).click();
 
@@ -198,6 +200,7 @@ test.describe('Login & Signup Notification Messages', () => {
     });
 
     await page.getByText('Đăng ký', { exact: true }).click();
+    await page.locator('input[placeholder="Tên hiển thị của bạn"]').fill('Nguyễn An');
     await page.locator('input[placeholder="ban@email.com"]').fill('existing@example.com');
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng ký/).click();
 
@@ -223,6 +226,37 @@ test.describe('Login & Signup Notification Messages', () => {
 
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Đã gửi link đăng nhập/);
     expect(sentBody).toEqual({ email: 'returning@example.com', mode: 'login' });
+  });
+
+  test('requires a display name to sign up, and sends it with the request', async ({ page }) => {
+    await openLogin(page);
+
+    // No display name field on the log-in tab (the default).
+    await expect(page.locator('input[placeholder="Tên hiển thị của bạn"]')).toHaveCount(0);
+    await page.getByText('Đăng ký', { exact: true }).click();
+    await expect(page.locator('input[placeholder="Tên hiển thị của bạn"]')).toBeVisible();
+
+    /** @type {any} */
+    let sentBody = null;
+    await page.route('/api/auth/send-email-link', route => {
+      sentBody = route.request().postDataJSON();
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ sent: true }),
+      });
+    });
+
+    // Submitting without a name does nothing — no request is made.
+    await page.locator('input[placeholder="ban@email.com"]').fill('newperson@example.com');
+    await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng ký/).click();
+    expect(sentBody).toBeNull();
+
+    await page.locator('input[placeholder="Tên hiển thị của bạn"]').fill('Nguyễn An');
+    await page.locator('[data-screen-label="Login"]').getByText(/Gửi link đăng ký/).click();
+
+    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Đã gửi link đăng ký/);
+    expect(sentBody).toEqual({ email: 'newperson@example.com', mode: 'signup', displayName: 'Nguyễn An' });
   });
 
   test('does not claim the account is missing when the lookup itself failed', async ({ page }) => {

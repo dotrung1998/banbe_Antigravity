@@ -2,7 +2,7 @@ import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
 
 export default function Account() {
-  const { state, T, goHome, goInbox, openPreferences, switchToHost, goLogin, logout, canHost, toggleOrganizerMode } = useGoc();
+  const { state, T, goHome, goInbox, goEditName, openPreferences, switchToHost, goLogin, logout, canHost, toggleOrganizerMode } = useGoc();
   const s = state;
 
   const profileName = s.user ? (s.user.name || (s.user.email ? s.user.email.split('@')[0] : T('Bạn', 'You'))) : T('Khách', 'Guest');
@@ -20,7 +20,10 @@ export default function Account() {
       <div style={{ padding: '22px 20px 0', display: 'flex', gap: 14, alignItems: 'center' }}>
         <div style={{ ...fieldGlass({ flex: 'none', width: 56, height: 56, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }), ...display(22) }}>G</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-          <span style={{ ...display(22, { lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{profileName}</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+            <span style={{ ...display(22, { lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{profileName}</span>
+            {s.user && <span onClick={goEditName} style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer', flex: 'none' }}>{T('Đổi tên', 'Rename')}</span>}
+          </div>
           <span style={{ fontSize: 11, letterSpacing: '0.06em', color: ink }}>{profileSub}</span>
         </div>
       </div>
