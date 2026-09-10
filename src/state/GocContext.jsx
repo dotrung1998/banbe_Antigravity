@@ -543,12 +543,20 @@ export function GocProvider({ children }) {
     set({ screen: 'notifications' });
     loadNotifications();
   }, [set, loadNotifications]);
-  const markNotificationsRead = useCallback(async () => {
-    const unreadIds = s.notifications.filter(n => !n.read_at).map(n => n.id);
-    if (unreadIds.length === 0) return;
-    set({ unreadNotifications: 0, notifications: s.notifications.map(n => (n.read_at ? n : { ...n, read_at: new Date().toISOString() })) });
-    const { error } = await supabase.from('notifications').update({ read_at: new Date().toISOString() }).in('id', unreadIds);
-    if (error) console.warn('Failed to mark notifications read:', error);
+  // Marks one notification read — never all of them at once, and never just
+  // from opening the screen. Read status is the visible signal of "have I
+  // actually looked at this one", so it has to follow an actual tap on that
+  // specific notification, not merely arriving on the list.
+  const markNotificationRead = useCallback(async (id) => {
+    const target = s.notifications.find(n => n.id === id);
+    if (!target || target.read_at) return;
+    const readAt = new Date().toISOString();
+    set(prev => ({
+      notifications: prev.notifications.map(n => (n.id === id ? { ...n, read_at: readAt } : n)),
+      unreadNotifications: Math.max(0, prev.unreadNotifications - 1),
+    }));
+    const { error } = await supabase.from('notifications').update({ read_at: readAt }).eq('id', id);
+    if (error) console.warn('Failed to mark notification read:', error);
   }, [set, s.notifications]);
 
   // ---- lang / area / location ----
@@ -948,7 +956,7 @@ export function GocProvider({ children }) {
     goHome, goProfile, goInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationsRead,
+    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences,
@@ -967,7 +975,7 @@ export function GocProvider({ children }) {
     goHome, goProfile, goInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationsRead,
+    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences,
