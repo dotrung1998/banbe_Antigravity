@@ -129,8 +129,8 @@ function areaCoords(area) {
   return AREA_COORDS[match] || AREA_COORDS['Quận 1'];
 }
 
-// Same tiny seeded PRNG pattern used by GUESTS() below — deterministic so an
-// event's coordinates never jump around between renders.
+// A tiny seeded PRNG — deterministic so an event's coordinates never jump
+// around between renders.
 function seededJitter(key) {
   let seed = 0;
   for (const ch of key) seed = (seed * 31 + ch.charCodeAt(0)) % 9973;
@@ -212,21 +212,6 @@ export const EVENTS = ROWS.map((r, idx) => {
 
 export function findEvent(key) {
   return EVENTS.find(e => e.key === key) || EVENTS[0];
-}
-
-export function GUESTS(key, count) {
-  const FIRST = ['Anh', 'Bình', 'Chi', 'Dũng', 'Hà', 'Khánh', 'Linh', 'Minh', 'Ngọc', 'Phương', 'Quân', 'Thảo', 'Trang', 'Tuấn', 'Vy', 'Yến'];
-  const LAST = ['Nguyễn', 'Trần', 'Lê', 'Phạm', 'Hoàng', 'Vũ', 'Đặng', 'Bùi'];
-  let seed = 0; for (const ch of key) seed = (seed * 31 + ch.charCodeAt(0)) % 9973;
-  const out = [];
-  for (let i = 0; i < count; i++) {
-    seed = (seed * 137 + 11) % 9973; const last = LAST[seed % LAST.length];
-    seed = (seed * 137 + 11) % 9973; const first = FIRST[seed % FIRST.length];
-    seed = (seed * 137 + 11) % 9973; const qty = seed % 4 === 0 ? 2 : 1;
-    seed = (seed * 137 + 11) % 9973; const held = seed % 6 === 0;
-    out.push({ id: key + '-' + i, name: last + ' ' + first, qty, held });
-  }
-  return out;
 }
 
 export const CREATE_PALETTES = [

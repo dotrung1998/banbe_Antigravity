@@ -1,5 +1,5 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { findEvent, GUESTS } from '../data/events.js';
+import { findEvent } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass } from '../theme.js';
 
 export default function Attendance() {
@@ -17,10 +17,10 @@ export default function Attendance() {
     );
   }
 
-  const bookedCount = Math.max(4, Math.min(9, 20 - (attEv.seats.match(/\d+/) ? parseInt(attEv.seats.match(/\d+/)[0], 10) : 6)));
-  const guests = GUESTS(attKey, bookedCount);
-  const checkedMap = s.checkins[attKey] || {};
-  const checkedCount = guests.filter(g => checkedMap[g.id]).length;
+  // The guest list is whoever actually holds a real booking for this event
+  // (GocContext's loadAttendanceGuests), not a generated placeholder list.
+  const guests = s.attendanceGuests;
+  const checkedCount = guests.filter(g => g.checkedIn).length;
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
@@ -37,20 +37,22 @@ export default function Attendance() {
       <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, margin: '10px 22px 0' }}>{T('Chạm vào tên khách khi họ tới nơi.', "Tap a guest's name when they arrive.")}</p>
       <div style={{ ...fieldGlass({ margin: '14px 22px 40px', display: 'flex', flexDirection: 'column' }) }}>
         {guests.map(g => {
-          const checked = !!checkedMap[g.id];
-          const meta = (g.qty > 1 ? (g.qty + T(' vé', ' tickets')) : T('1 vé', '1 ticket')) + (g.held ? T(' ▪︎ đang giữ chỗ', ' ▪︎ on hold') : '');
+          const meta = g.qty > 1 ? (g.qty + T(' vé', ' tickets')) : T('1 vé', '1 ticket');
           return (
-            <div key={g.id} onClick={() => toggleCheckin(attKey, g.id, checked)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer', background: checked ? 'rgba(27,25,22,0.16)' : 'transparent' }}>
+            <div key={g.id} onClick={() => toggleCheckin(g.id, g.checkedIn)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer', background: g.checkedIn ? 'rgba(27,25,22,0.16)' : 'transparent' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                 <span style={{ ...display(15) }}>{g.name}</span>
                 <span style={{ fontSize: 11.5, color: ink }}>{meta}</span>
               </div>
-              <span style={{ fontSize: 11.5, fontWeight: 600, flex: 'none', padding: '5px 10px', color: checked ? paper : ink, background: checked ? ink : 'rgba(27,25,22,0.16)' }}>
-                {checked ? T('Đã đến ✓', 'Here ✓') : T('Chưa đến', 'Not yet')}
+              <span style={{ fontSize: 11.5, fontWeight: 600, flex: 'none', padding: '5px 10px', color: g.checkedIn ? paper : ink, background: g.checkedIn ? ink : 'rgba(27,25,22,0.16)' }}>
+                {g.checkedIn ? T('Đã đến ✓', 'Here ✓') : T('Chưa đến', 'Not yet')}
               </span>
             </div>
           );
         })}
+        {guests.length === 0 && (
+          <p style={{ fontSize: 12.5, color: ink, padding: '14px 16px', margin: 0 }}>{s.attendanceLoading ? T('Đang tải danh sách khách…', 'Loading guest list…') : T('Chưa có ai đặt chỗ cho sự kiện này.', 'No one has booked this event yet.')}</p>
+        )}
       </div>
     </div>
   );

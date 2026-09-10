@@ -5,7 +5,9 @@ export default function Chat() {
   const { state, T, curEvent: ev, chatBackFn, chatOnType, chatOnKey, chatSend } = useGoc();
   const s = state;
 
-  const thread = s.chats[ev.key] || [{ who: 'host', text: ev.greeting }];
+  const thread = s.chatMessages.length
+    ? s.chatMessages.map(m => ({ who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body }))
+    : [{ who: 'host', text: ev.greeting }];
   const chatBackLabel = s.chatBack === 'inbox' ? T('Tin nhắn', 'Messages') : ev.orgName;
   const signedInAs = s.user ? ({ zalo: T('qua Zalo', 'via Zalo'), phone: T('qua số điện thoại', 'via phone'), facebook: T('qua Facebook', 'via Facebook'), instagram: T('qua Instagram', 'via Instagram') }[s.user.via] || s.user.email || '') : '';
 
@@ -37,10 +39,11 @@ export default function Chat() {
       <div style={{ padding: '12px 18px 30px', borderTop: `1px solid ${rule}`, display: 'flex', gap: 8 }}>
         <input
           value={s.chatDraft} onChange={chatOnType} onKeyDown={chatOnKey}
-          placeholder={'Viết cho ' + ev.hostShort + '…'}
-          style={{ ...fieldGlass({ flex: 1, padding: '12px 14px', borderRadius: 999, border: 'none' }), fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }}
+          placeholder={s.chatThreadId ? ('Viết cho ' + ev.hostShort + '…') : T('Đang mở cuộc trò chuyện…', 'Opening conversation…')}
+          disabled={!s.chatThreadId}
+          style={{ ...fieldGlass({ flex: 1, padding: '12px 14px', borderRadius: 999, border: 'none' }), fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none', opacity: s.chatThreadId ? 1 : 0.6 }}
         />
-        <div onClick={chatSend} style={{ ...inkButton({ borderRadius: 999, padding: '12px 20px', display: 'flex', alignItems: 'center', flex: 'none' }) }}>Gửi</div>
+        <div onClick={s.chatThreadId ? chatSend : undefined} style={{ ...inkButton({ borderRadius: 999, padding: '12px 20px', display: 'flex', alignItems: 'center', flex: 'none' }), opacity: s.chatThreadId ? 1 : 0.5, cursor: s.chatThreadId ? 'pointer' : 'default' }}>Gửi</div>
       </div>
     </div>
   );

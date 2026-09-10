@@ -17,17 +17,6 @@ const initialState = {
   formEmail: '',
   chatDraft: '',
   chatBack: 'organizer',
-  chats: {
-    bepnho: [
-      { who: 'host', text: 'Chào bạn, mình là Minh. Cứ hỏi thoải mái nhé.' },
-      { who: 'me', text: 'Tối thứ bảy còn chỗ cho 2 người không anh?' },
-      { who: 'host', text: 'Còn đúng 2 chỗ, mình giữ cho bạn nhé.' },
-    ],
-    orbit: [
-      { who: 'host', text: 'Rue Miche đây. Có gì cần hỏi về buổi diễn không?' },
-      { who: 'me', text: 'Dress code có gì đặc biệt không?' },
-    ],
-  },
   shared: false,
   // Never pre-seeded: a brand-new, unregistered visitor should see only the
   // public event feed, not a "Your events" shelf built from placeholder
@@ -86,7 +75,11 @@ const initialState = {
   invited: [],
   orgVerifyRequested: false,
   attendanceEventKey: null,
-  checkins: {},
+  attendanceGuests: [],
+  attendanceLoading: false,
+  chatThreadId: null,
+  chatMessages: [],
+  inboxThreads: [],
   calAdded: false,
   booking: null,
   reserveError: '',
@@ -276,6 +269,62 @@ export function GocProvider({ children }) {
     return () => { active = false; };
   }, [set, s.user?.id]);
 
+  // Real conversations for the signed-in account, on either side: as the
+  // guest (threads.guest_id = me) and as the organizer (threads.organizer_id
+  // owned by me). Replaces the old local-only `chats` object.
+  const loadInboxThreads = useCallback(async () => {
+    const uid = s.user?.id;
+    if (!uid) return set({ inboxThreads: [] });
+
+    const [{ data: asGuest }, { data: myOrgs }] = await Promise.all([
+      supabase.from('threads').select('id, event_id, guest_id, organizer_id').eq('guest_id', uid),
+      supabase.from('organizers').select('id').or(`owner_id.eq.${uid},user_id.eq.${uid}`),
+    ]);
+
+    const orgIds = (myOrgs || []).map(o => o.id);
+    let asHost = [];
+    if (orgIds.length) {
+      const { data } = await supabase.from('threads').select('id, event_id, guest_id, organizer_id').in('organizer_id', orgIds);
+      asHost = data || [];
+    }
+    const seen = new Set();
+    const allThreads = [...(asGuest || []), ...asHost].filter(t => (seen.has(t.id) ? false : (seen.add(t.id), true)));
+    if (!allThreads.length) return set({ inboxThreads: [] });
+
+    const threadIds = allThreads.map(t => t.id);
+    const { data: msgs } = await supabase
+      .from('messages')
+      .select('thread_id, body, sender_id, created_at')
+      .in('thread_id', threadIds)
+      .order('created_at', { ascending: false });
+    const lastByThread = {};
+    for (const m of msgs || []) if (!lastByThread[m.thread_id]) lastByThread[m.thread_id] = m;
+
+    const guestIds = [...new Set(allThreads.filter(t => t.guest_id !== uid).map(t => t.guest_id).filter(Boolean))];
+    let guestNames = {};
+    if (guestIds.length) {
+      const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', guestIds);
+      guestNames = Object.fromEntries((profiles || []).map(p => [p.id, p.display_name]));
+    }
+
+    const rows = allThreads.map(t => {
+      const ev = findEvent(t.event_id);
+      const last = lastByThread[t.id];
+      const iAmGuest = t.guest_id === uid;
+      const name = iAmGuest ? ev.orgName : ((guestNames[t.guest_id] || '').trim() || 'Khách');
+      return {
+        threadId: t.id,
+        eventKey: t.event_id,
+        name,
+        img: ev.img,
+        snippet: last ? ((last.sender_id === uid ? 'Bạn: ' : '') + last.body) : '',
+        lastAt: last?.created_at || null,
+      };
+    }).sort((a, b) => new Date(b.lastAt || 0) - new Date(a.lastAt || 0));
+
+    set({ inboxThreads: rows });
+  }, [set, s.user?.id]);
+
   const splashTimer = useRef(null);
   useEffect(() => {
     splashTimer.current = setTimeout(() => {
@@ -395,7 +444,11 @@ export function GocProvider({ children }) {
   // ---- navigation ----
   const goHome = useCallback(() => set({ screen: 'home' }), [set]);
   const goProfile = useCallback(() => set({ screen: 'profile' }), [set]);
-  const goInbox = useCallback(() => set(s.user ? { screen: 'inbox' } : { screen: 'login', authMode: 'login', authReturnScreen: 'inbox', authBackScreen: 'home' }), [set, s.user]);
+  const goInbox = useCallback(() => {
+    if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'inbox', authBackScreen: 'home' });
+    set({ screen: 'inbox' });
+    loadInboxThreads();
+  }, [set, s.user, loadInboxThreads]);
   // Event Detail is reached from several different sections (the home feed,
   // an organizer dashboard, an organizer profile, the create-event preview),
   // so remember whichever one we came from — its own back arrow used to be
@@ -407,7 +460,6 @@ export function GocProvider({ children }) {
   const goReserve = useCallback(() => set(s.user ? { screen: 'reserve' } : { screen: 'login', authMode: 'login', authReturnScreen: 'reserve', authBackScreen: 'event' }), [set, s.user]);
   const backToEvent = useCallback(() => set({ screen: 'event' }), [set]);
   const backToOrganizer = useCallback(() => set({ screen: 'organizer' }), [set]);
-  const goChat = useCallback(() => set({ screen: s.user ? 'chat' : 'login', chatBack: 'organizer' }), [set, s.user]);
   const goLogin = useCallback(() => set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'home' }), [set]);
   const goDashboard = useCallback(() => set({ screen: 'dashboard' }), [set]);
   const goCreate = useCallback(() => {
@@ -415,7 +467,6 @@ export function GocProvider({ children }) {
     if (!canHost) enableOrganizerMode();
     set({ screen: 'create', mode: 'host' });
   }, [set, s.user, canHost, enableOrganizerMode]);
-  const openAttendance = useCallback((key) => set({ screen: 'attendance', attendanceEventKey: key }), [set]);
   const openHeld = useCallback(() => set({ screen: 'confirmed' }), [set]);
   const goHostIntro = useCallback(() => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'hostIntro', authBackScreen: 'profile' });
@@ -698,20 +749,89 @@ export function GocProvider({ children }) {
   const loginInstagram = useCallback(() => set({ reserveError: T('Instagram chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Instagram is not available yet. Use email or phone OTP.') }), [set, T]);
 
   // ---- chat ----
+  // Real threads/messages (supabase/migrations/003_social_chat.sql) — this
+  // used to be pure local state (`chats`) with no server backing at all.
   const chatOnType = useCallback((e) => set({ chatDraft: e.target.value }), [set]);
-  const chatSend = useCallback(() => {
-    set(prev => {
-      const t = prev.chatDraft.trim();
-      if (!t) return prev;
-      const chatKey = prev.eventKey;
-      const ev = findEvent(chatKey);
-      const thread = prev.chats[chatKey] || [{ who: 'host', text: ev.greeting }];
-      return { chatDraft: '', chats: { ...prev.chats, [chatKey]: [...thread, { who: 'me', text: t }] } };
-    });
+  const loadChatMessages = useCallback(async (threadId) => {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('id, sender_id, body, created_at')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: true });
+    if (!error) set({ chatMessages: data || [] });
   }, [set]);
+  // Get-or-create the one thread between the signed-in guest and this
+  // event's organizer. Never called for the organizer's own side of a
+  // conversation — that always opens a specific, already-known thread
+  // (see openThread, used from Inbox).
+  const openChatFor = useCallback(async (key, back) => {
+    if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'chat', authBackScreen: 'organizer' });
+    set({ screen: 'chat', eventKey: key, chatBack: back || 'organizer', chatThreadId: null, chatMessages: [] });
+
+    const { data: existing } = await supabase.from('threads').select('id').eq('event_id', key).eq('guest_id', s.user.id).maybeSingle();
+    if (existing?.id) { set({ chatThreadId: existing.id }); loadChatMessages(existing.id); return; }
+
+    const { data: event } = await supabase.from('events').select('organizer_id').eq('id', key).maybeSingle();
+    if (!event?.organizer_id) return; // no real DB row for this event yet — nothing to open
+    const { data: created, error } = await supabase
+      .from('threads')
+      .insert({ event_id: key, guest_id: s.user.id, organizer_id: event.organizer_id })
+      .select('id')
+      .maybeSingle();
+    if (error) {
+      // Another tab/request created it first — fetch what's there now.
+      const { data: retry } = await supabase.from('threads').select('id').eq('event_id', key).eq('guest_id', s.user.id).maybeSingle();
+      if (retry?.id) { set({ chatThreadId: retry.id }); loadChatMessages(retry.id); }
+      return;
+    }
+    if (created?.id) { set({ chatThreadId: created.id }); loadChatMessages(created.id); }
+  }, [set, s.user, loadChatMessages]);
+  // "Message the host" from an event/organizer/refund screen — always about
+  // whichever event is currently open.
+  const goChat = useCallback(() => openChatFor(s.eventKey, 'organizer'), [openChatFor, s.eventKey]);
+  // Opens a specific, already-known thread — used from Inbox, on either side
+  // (guest continuing a conversation, or organizer replying to a guest).
+  const openThread = useCallback((threadId, eventKey, back) => {
+    set({ screen: 'chat', eventKey, chatBack: back || 'inbox', chatThreadId: threadId, chatMessages: [] });
+    loadChatMessages(threadId);
+  }, [set, loadChatMessages]);
+  const chatSend = useCallback(async () => {
+    const text = s.chatDraft.trim();
+    if (!text || !s.chatThreadId || !s.user) return;
+    set({ chatDraft: '' });
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({ thread_id: s.chatThreadId, sender_id: s.user.id, body: text, kind: 'text' })
+      .select('id, sender_id, body, created_at')
+      .maybeSingle();
+    if (error) {
+      console.warn('Failed to send message:', error);
+      set({ chatDraft: text });
+      return;
+    }
+    set(prev => ({ chatMessages: [...prev.chatMessages, data] }));
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (token) {
+        fetch('/api/notify-chat-message', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ threadId: s.chatThreadId, body: text }),
+        }).catch(() => {});
+      }
+    } catch { /* best-effort email; the in-app notification already landed via trigger */ }
+  }, [set, s.chatDraft, s.chatThreadId, s.user]);
   const chatOnKey = useCallback((e) => { if (e.key === 'Enter') chatSend(); }, [chatSend]);
   const chatBackFn = useCallback(() => set(prev => ({ screen: prev.chatBack === 'inbox' ? 'inbox' : 'organizer' })), [set]);
-  const openChatFor = useCallback((key, back) => set({ screen: 'chat', eventKey: key, chatBack: back || 'organizer' }), [set]);
+
+  // While the chat screen is open, poll for messages the other side sent —
+  // there's no realtime subscription here, just a simple refresh.
+  useEffect(() => {
+    if (s.screen !== 'chat' || !s.chatThreadId) return;
+    const id = setInterval(() => loadChatMessages(s.chatThreadId), 4000);
+    return () => clearInterval(id);
+  }, [s.screen, s.chatThreadId, loadChatMessages]);
 
   // ---- create / org profile ----
   const orgRegNameType = useCallback((e) => set({ orgRegName: e.target.value }), [set]);
@@ -766,16 +886,60 @@ export function GocProvider({ children }) {
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
 
   // ---- attendance ----
-  const toggleCheckin = useCallback(async (eventKey, guestId, checked) => {
-    set(prev => ({ checkins: { ...prev.checkins, [eventKey]: { ...(prev.checkins[eventKey] || {}), [guestId]: !checked } } }));
-    try {
-      if (!checked) {
-        // If guestId is a valid UUID or reservation id, execute atomic check-in
-        await supabase.rpc('check_in_guest', { p_reservation_id: guestId }).catch(() => {});
-      }
-    } catch (e) {
-      console.log('Check-in RPC sync:', e);
+  // The guest list is real bookings for this event (not the old fake
+  // GUESTS() generator), resolved to display names via the profiles row a
+  // check-in host is now allowed to read (see the RLS policy added
+  // alongside check_in_guest()'s notification).
+  const loadAttendanceGuests = useCallback(async (key) => {
+    set({ attendanceLoading: true });
+    const { data: bookings, error } = await supabase
+      .from('bookings')
+      .select('id, user_id, qty, status')
+      .eq('event_id', key)
+      .in('status', ['confirmed', 'attended']);
+    if (error) {
+      console.warn('Failed to load attendance list:', error);
+      set({ attendanceGuests: [], attendanceLoading: false });
+      return;
     }
+    const userIds = [...new Set((bookings || []).map(b => b.user_id).filter(Boolean))];
+    let names = {};
+    if (userIds.length) {
+      const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', userIds);
+      names = Object.fromEntries((profiles || []).map(p => [p.id, p.display_name]));
+    }
+    const guests = (bookings || []).map(b => ({
+      id: b.id,
+      name: (names[b.user_id] || '').trim() || 'Khách',
+      qty: b.qty,
+      checkedIn: b.status === 'attended',
+    }));
+    set({ attendanceGuests: guests, attendanceLoading: false });
+  }, [set]);
+  const openAttendance = useCallback((key) => {
+    set({ screen: 'attendance', attendanceEventKey: key, attendanceGuests: [] });
+    loadAttendanceGuests(key);
+  }, [set, loadAttendanceGuests]);
+  const toggleCheckin = useCallback(async (bookingId, checked) => {
+    if (checked) return; // the server only supports checking in, not undoing it
+    set(prev => ({ attendanceGuests: prev.attendanceGuests.map(g => (g.id === bookingId ? { ...g, checkedIn: true } : g)) }));
+    const { data, error } = await supabase.rpc('check_in_guest', { p_reservation_id: bookingId });
+    if (error || !data?.success) {
+      console.warn('Check-in failed:', error || data?.error);
+      set(prev => ({ attendanceGuests: prev.attendanceGuests.map(g => (g.id === bookingId ? { ...g, checkedIn: false } : g)) }));
+      return;
+    }
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (token) {
+        fetch('/api/notify-check-in', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ bookingId }),
+        }).catch(() => {});
+      }
+    } catch { /* best-effort email; the in-app notification already landed */ }
   }, [set]);
 
   const value = useMemo(() => ({
@@ -792,7 +956,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
     loginEmailType, loginNicknameType, loginEmailSubmit, loginEmailKey, loginPhoneType, loginCodeType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, emailValid,
-    chatOnType, chatSend, chatOnKey, chatBackFn, openChatFor,
+    chatOnType, chatSend, chatOnKey, chatBackFn, openChatFor, openThread,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
@@ -811,7 +975,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
     loginEmailType, loginNicknameType, loginEmailSubmit, loginEmailKey, loginPhoneType, loginCodeType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram,
-    chatOnType, chatSend, chatOnKey, chatBackFn, openChatFor,
+    chatOnType, chatSend, chatOnKey, chatBackFn, openChatFor, openThread,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
