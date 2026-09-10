@@ -78,4 +78,48 @@ test.describe('Navigation & Event Exploration', () => {
     await eventScreen.getByText('‹ Trang tổ chức').click();
     await expect(organizerScreen).toBeVisible({ timeout: 3000 });
   });
+
+  test('the event address opens Google Maps and offers to show distance', async ({ page, context }) => {
+    await page.getByText('Bếp Nhỏ №12').first().click();
+    const eventScreen = page.locator('[data-screen-label="Event"]');
+    await expect(eventScreen).toBeVisible({ timeout: 3000 });
+
+    const addressLink = eventScreen.getByRole('link', { name: /Bình Thạnh/ });
+    await expect(addressLink).toBeVisible();
+    const href = await addressLink.getAttribute('href');
+    expect(href).toMatch(/^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=-?\d+\.\d+,-?\d+\.\d+$/);
+    expect(await addressLink.getAttribute('target')).toBe('_blank');
+
+    // Clicking it opens Maps in a new tab...
+    const [popup] = await Promise.all([
+      context.waitForEvent('page'),
+      addressLink.click(),
+    ]);
+    await popup.close();
+
+    // ...and, since location has never been decided on this device, also
+    // offers to turn on distance — without blocking the maps navigation.
+    await expect(page.getByText('Cho banbe biết bạn đang ở đâu?')).toBeVisible({ timeout: 3000 });
+  });
+
+  test('shows a real computed distance once location is shared', async ({ page, context }) => {
+    await context.grantPermissions(['geolocation']);
+    await context.setGeolocation({ latitude: 10.8, longitude: 106.7 });
+
+    await page.getByText('Bếp Nhỏ №12').first().click();
+    const eventScreen = page.locator('[data-screen-label="Event"]');
+    await expect(eventScreen).toBeVisible({ timeout: 3000 });
+
+    // Before sharing location, the placeholder distance from the demo data
+    // is hidden entirely rather than shown as if it meant something.
+    await expect(eventScreen.getByText(/km/)).toHaveCount(0);
+
+    await eventScreen.getByRole('link', { name: /Bình Thạnh/ }).click();
+    await page.getByText('Dùng vị trí của tôi').click();
+
+    // 10.8000,106.7000 to this event's coordinates is ~1.6 km by the same
+    // Haversine formula the app uses — a real, computed number, not the
+    // static placeholder ("2,1 km") baked into the demo data.
+    await expect(eventScreen.getByText(/1,6 km từ bạn/)).toBeVisible({ timeout: 3000 });
+  });
 });

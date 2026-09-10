@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { EVENTS, findEvent } from '../data/events.js';
+import { EVENTS, findEvent, haversineKm } from '../data/events.js';
 import { supabase } from '../lib/supabase.js';
 import { requestAuthEmail } from '../lib/authEmail.js';
 
@@ -33,6 +33,7 @@ const initialState = {
   tickets: { bepnho: 2, orbit: 1 },
   located: null,
   askingLocation: false,
+  userCoords: null,
   user: null,
   accountType: 'participant',
   organizerMode: false,
@@ -98,6 +99,10 @@ export function GocProvider({ children }) {
         ...initialState,
         lang: saved.lang === 'en' ? 'en' : 'vi',
         theme: saved.theme === 'dark' ? 'dark' : 'light',
+        // Remember only the yes/no decision, never the coordinates
+        // themselves — matches what the location sheet promises ("not
+        // stored"). A fresh position is requested again each session below.
+        located: saved.located === true ? true : saved.located === false ? false : null,
         // A saved preferences record means this browser has been through
         // onboarding before — replaying the splash/language/theme pickers on
         // every single revisit is what made the choice look like it "resets"
@@ -119,8 +124,8 @@ export function GocProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('banbe.preferences', JSON.stringify({ lang: state.lang, theme: state.theme }));
-  }, [state.lang, state.theme]);
+    localStorage.setItem('banbe.preferences', JSON.stringify({ lang: state.lang, theme: state.theme, located: state.located }));
+  }, [state.lang, state.theme, state.located]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -266,7 +271,17 @@ export function GocProvider({ children }) {
   }, [EN]);
 
   const located = s.located === true;
-  const stripKm = useCallback((str) => (located ? str : str.replace(/ ▪︎ \d+[.,]\d+ km(?: từ bạn| away)?/g, '')), [located]);
+  // With no location permission, the km segment is stripped out entirely (we
+  // don't show the demo's placeholder number as if it meant something). Once
+  // the user has shared their location, pass the event in too and its
+  // baked-in placeholder distance is swapped for the real, computed one as
+  // soon as a fresh position is available.
+  const stripKm = useCallback((str, ev) => {
+    if (!located) return str.replace(/ ▪︎ \d+[.,]\d+ km(?: từ bạn| away)?/g, '');
+    const km = ev ? haversineKm(s.userCoords, ev) : null;
+    if (km == null) return str;
+    return str.replace(/\d+[.,]\d+(?= km)/, km.toFixed(1).replace('.', ','));
+  }, [located, s.userCoords]);
 
   const curEvent = useMemo(() => findEvent(s.eventKey), [s.eventKey]);
   const palette = curEvent.palette;
@@ -367,11 +382,35 @@ export function GocProvider({ children }) {
   }, [set, EN, persistAccountPreference]);
   const openArea = useCallback(() => set({ areaAsking: true }), [set]);
   const pickArea = useCallback((key) => set({ area: key, areaAsking: false }), [set]);
+  const requestFreshCoords = useCallback(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => set({ userCoords: { lat: pos.coords.latitude, lng: pos.coords.longitude } }),
+      () => {}, // permission revoked at the OS level, or a transient error — the
+      // baked-in placeholder distance stays as the fallback, silently.
+      { maximumAge: 5 * 60 * 1000, timeout: 10000 },
+    );
+  }, [set]);
   const allowLocation = useCallback(() => {
     set({ askingLocation: false, areaAsking: false, located: true });
-    if (navigator.geolocation) navigator.geolocation.getCurrentPosition(() => {}, () => {});
-  }, [set]);
-  const denyLocation = useCallback(() => set({ askingLocation: false, located: false }), [set]);
+    requestFreshCoords();
+  }, [set, requestFreshCoords]);
+  const denyLocation = useCallback(() => set({ askingLocation: false, located: false, userCoords: null }), [set]);
+
+  // If location was already allowed in an earlier session, quietly get a
+  // fresh position once per visit — the coordinates themselves are never
+  // persisted, only the yes/no decision, so there's nothing to reuse from
+  // localStorage.
+  const initialLocated = useRef(s.located);
+  useEffect(() => {
+    if (initialLocated.current === true) requestFreshCoords();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // If it's never been decided, only ask when the user actually reaches for
+  // a distance — an unprompted permission dialog on every fresh visit is the
+  // kind of thing that trains people to reflexively deny it.
+  const askLocation = useCallback(() => set({ askingLocation: true }), [set]);
 
   // ---- filter ----
   const pickFilter = useCallback((key) => set({ filter: key }), [set]);
@@ -613,7 +652,7 @@ export function GocProvider({ children }) {
     switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
-    toggleLang, openArea, pickArea, allowLocation, denyLocation, toggleTheme, pickTheme, openPreferences,
+    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences,
     pickFilter, clearFilters, shareEvent,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
@@ -631,7 +670,7 @@ export function GocProvider({ children }) {
     switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
-    toggleLang, openArea, pickArea, allowLocation, denyLocation, toggleTheme, pickTheme, openPreferences,
+    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences,
     pickFilter, clearFilters, shareEvent,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,

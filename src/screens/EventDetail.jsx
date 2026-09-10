@@ -1,9 +1,9 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { bg } from '../data/events.js';
+import { bg, mapsUrl } from '../data/events.js';
 import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 
 export default function EventDetail() {
-  const { state, T, trStatus, stripKm, curEvent: ev, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent: ev, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, askLocation } = useGoc();
   const s = state;
 
   // Event Detail is reached from several different places (the home feed, an
@@ -21,7 +21,8 @@ export default function EventDetail() {
   const cameFromHome = (s.eventBackScreen || 'home') === 'home';
 
   const evCat = trStatus(ev.cat);
-  const evWhere = trStatus(stripKm(ev.where));
+  const evWhere = trStatus(stripKm(ev.where, ev));
+  const evMapsUrl = mapsUrl(ev);
   const evSeatsLong = trStatus(ev.soldOut ? 'Hết chỗ' : ev.seatsLong);
   const evOrgStats = T('Tổ chức từ ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' sự kiện', 'Hosting since ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' events');
   const showRefund = !ev.cancelled && ev.endedHoursAgo == null && !/Miễn phí|Free/.test(ev.price);
@@ -57,7 +58,23 @@ export default function EventDetail() {
           )}
         </div>
         <h1 style={{ ...display(29, { lineHeight: 1.2, margin: '8px 0 10px' }) }}>{ev.name}</h1>
-        <div style={{ fontSize: 13, color: ink }}>{evWhere}</div>
+        {evMapsUrl ? (
+          <a
+            href={evMapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            // Opening directions is the natural moment to also offer to show
+            // the distance, if that hasn't been decided yet — this never
+            // blocks the click itself, since the maps link still opens via
+            // the normal href navigation regardless of what's clicked here.
+            onClick={() => { if (s.located === null) askLocation(); }}
+            style={{ fontSize: 13, color: ink, textDecoration: 'underline', textDecorationColor: 'rgba(27,25,22,0.35)', textUnderlineOffset: 2 }}
+          >
+            {evWhere} ↗
+          </a>
+        ) : (
+          <div style={{ fontSize: 13, color: ink }}>{evWhere}</div>
+        )}
         <div style={{ fontSize: 13, color: ink, marginTop: 5 }}>{evSeatsLong}</div>
         {ev.inviteOnly && (
           <div style={{ fontSize: 12.5, color: ink, marginTop: 6 }}>{T('Bạn có thể mời thêm 1 người.', 'You can bring one +1.')}</div>

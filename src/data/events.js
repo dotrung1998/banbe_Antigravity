@@ -109,6 +109,52 @@ const CAT2 = {
 
 const TODAY = new Date(2026, 6, 8);
 
+// Approximate district centers in Ho Chi Minh City. The demo data only has a
+// district name per event (no street address), so each event's coordinates
+// are the district center plus a small deterministic offset — enough to open
+// the right neighborhood in Google Maps and compute a real, if approximate,
+// distance once the browser shares the user's location.
+const AREA_COORDS = {
+  'Bình Thạnh': [10.8034, 106.7108],
+  'Quận 1': [10.7769, 106.7009],
+  'Quận 3': [10.7756, 106.6917],
+  'Quận 4': [10.7593, 106.7033],
+  'Quận 5': [10.7551, 106.6667],
+  'Gò Vấp': [10.8386, 106.6652],
+  'Thảo Điền': [10.8033, 106.7378],
+};
+
+function areaCoords(area) {
+  const match = Object.keys(AREA_COORDS).find(name => area.includes(name));
+  return AREA_COORDS[match] || AREA_COORDS['Quận 1'];
+}
+
+// Same tiny seeded PRNG pattern used by GUESTS() below — deterministic so an
+// event's coordinates never jump around between renders.
+function seededJitter(key) {
+  let seed = 0;
+  for (const ch of key) seed = (seed * 31 + ch.charCodeAt(0)) % 9973;
+  const a = (seed % 1000) / 1000 - 0.5;
+  const b = ((seed * 7) % 1000) / 1000 - 0.5;
+  return [a * 0.012, b * 0.012]; // roughly ±650m
+}
+
+export function haversineKm(a, b) {
+  if (!a || !b || a.lat == null || a.lng == null || b.lat == null || b.lng == null) return null;
+  const R = 6371;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+  const lat1 = a.lat * Math.PI / 180;
+  const lat2 = b.lat * Math.PI / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+export function mapsUrl(ev) {
+  if (ev.lat == null || ev.lng == null) return null;
+  return 'https://www.google.com/maps/search/?api=1&query=' + ev.lat + ',' + ev.lng;
+}
+
 export function img(id) {
   return '/photos/' + id;
 }
@@ -143,9 +189,12 @@ export const EVENTS = ROWS.map((r, idx) => {
   const org = ORG[r[0]] || { name: r[15], ig: '', desc: '' };
   const orgStat = ORG_STATS[r[0]] || { since: 2026, count: 1 };
   const trusted = orgStat.count >= 20;
+  const [baseLat, baseLng] = areaCoords(r[5]);
+  const [jitterLat, jitterLng] = seededJitter(r[0]);
   return {
     key: r[0], catKey: r[1], cat: r[2], name: r[3],
     img: img(heroPhoto),
+    lat: baseLat + jitterLat, lng: baseLng + jitterLng,
     meta: r[5] + ' ▪︎ ' + r[6] + ' km ▪︎ ' + r[7].split(', ')[0] + ', ' + r[9],
     where: r[5] + ' ▪︎ ' + r[6] + ' km từ bạn ▪︎ ' + r[8] + ' ▪︎ ' + r[9],
     when: r[7] + ' ▪︎ ' + r[9],
