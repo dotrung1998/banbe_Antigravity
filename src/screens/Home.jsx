@@ -47,7 +47,7 @@ export default function Home() {
       const going = isGoing(e.key) && !e.cancelled && e.endedHoursAgo == null;
       return {
         ...e,
-        metaDisplay: trStatus(e.catDisplay) + ' ▪︎ ' + trStatus(stripKm(e.meta)),
+        metaDisplay: trStatus(e.catDisplay) + ' ▪︎ ' + trStatus(stripKm(e.meta, e)),
         seatsDisplay: trStatus(seats),
         saved, going,
         goingLabel: trStatus('Đang tham gia' + ((s.tickets[e.key] || 1) > 1 ? ' ▪︎ ' + s.tickets[e.key] + ' vé' : '')),

@@ -131,5 +131,14 @@ test.describe('Navigation & Event Exploration', () => {
     // Haversine formula the app uses — a real, computed number, not the
     // static placeholder ("2,1 km") baked into the demo data.
     await expect(eventScreen.getByText(/1,6 km từ bạn/)).toBeVisible({ timeout: 3000 });
+
+    // The same live number replaces the old static placeholder everywhere
+    // else the event's distance is shown too — not just its own detail page.
+    await page.getByText('‹ banbe').first().click();
+    const homeScreen = page.locator('[data-screen-label="Home"]');
+    await expect(homeScreen).toBeVisible({ timeout: 3000 });
+    const homeCard = homeScreen.locator('div', { hasText: 'Bếp Nhỏ №12' }).first();
+    await expect(homeCard.getByText(/1,6 km/)).toBeVisible();
+    await expect(homeCard.getByText('2,1 km')).toHaveCount(0);
   });
 });
