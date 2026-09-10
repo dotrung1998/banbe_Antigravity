@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 
@@ -14,7 +16,9 @@ export default function Confirmed() {
 
   const name = s.formName.trim() || T('Bạn', 'You');
   const confirmEyebrow = holdActive ? T('Đang giữ chỗ cho bạn', 'Holding your spot') : T('Đã xác nhận', 'Confirmed');
-  const confirmHeading = name + T(', chỗ của bạn đang được giữ.', ', your spot is being held.');
+  const confirmHeading = holdActive
+    ? name + T(', chỗ của bạn đang được giữ.', ', your spot is being held.')
+    : name + T(', vé của bạn đã sẵn sàng.', ', your ticket is ready.');
   const confirmNote = T('banbe không thu tiền. Hãy chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn; nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.', 'banbe does not collect money. Pay the organizer directly using the instructions in chat; if they cancel, they are responsible for your refund.');
 
   const showQr = !!s.booking;
@@ -47,7 +51,7 @@ export default function Confirmed() {
             {s.booking?.status && <span style={{ fontSize: 11.5, color: ink }}>{T('Trạng thái: ', 'Status: ')}{s.booking.status}</span>}
             {showQr && <span style={{ fontSize: 10.5, color: ink }}>{T('Đưa mã này ở cửa', 'Show this code at the door')}</span>}
           </div>
-          {showQr && <QrCode eventKey={s.booking.code || ev.key} />}
+          {showQr && <QrCode value={s.booking.id} />}
         </div>
       </div>
       {showQr && (
@@ -59,20 +63,23 @@ export default function Confirmed() {
   );
 }
 
-function QrCode({ eventKey }) {
-  let seed = 0;
-  for (const ch of eventKey) seed = (seed * 31 + ch.charCodeAt(0)) % 9973;
-  let cells = '';
-  for (let y = 0; y < 15; y++) {
-    for (let x = 0; x < 15; x++) {
-      seed = (seed * 137 + 11) % 9973;
-      const corner = (x < 4 && y < 4) || (x > 10 && y < 4) || (x < 4 && y > 10);
-      const on = corner ? ((x === 0 || y === 0 || x === 3 || y === 3 || (x > 0 && x < 3 && y > 0 && y < 3)) && !(x > 10 && y > 10)) : seed % 2;
-      if (on) cells += '<rect x="' + x + '" y="' + y + '" width="1" height="1"/>';
-    }
-  }
-  const src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15 15" fill="' + paper + '">' + cells + '</svg>');
+// A real, scannable QR — encodes the booking's own id, which
+// check_in_guest() (the same RPC the manual check-in list already uses)
+// accepts directly. Fixed black-on-white regardless of theme: it has to
+// stay scannable by a phone camera, which doesn't know about --bb-fg/--bb-bg.
+function QrCode({ value }) {
+  const [src, setSrc] = useState(null);
+  useEffect(() => {
+    let active = true;
+    QRCode.toDataURL(value, { margin: 1, width: 152, color: { dark: '#000000', light: '#FFFFFF' } })
+      .then(url => { if (active) setSrc(url); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [value]);
+
   return (
-    <div style={{ flex: 'none', width: 76, height: 76, background: ink, padding: 6, backgroundImage: 'url(' + src + ')', backgroundSize: '76px 76px', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', backgroundOrigin: 'content-box', backgroundClip: 'content-box' }} />
+    <div style={{ flex: 'none', width: 76, height: 76, background: '#FFFFFF', padding: 6 }}>
+      {src && <img src={src} alt="QR" style={{ width: '100%', height: '100%', display: 'block' }} />}
+    </div>
   );
 }

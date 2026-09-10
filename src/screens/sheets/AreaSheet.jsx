@@ -3,13 +3,16 @@ import { EVENTS } from '../../data/events.js';
 import { paper, ink, rule } from '../../theme.js';
 
 export default function AreaSheet() {
-  const { state, set, located, pickArea, allowLocation } = useGoc();
+  const { state, set, located, pickArea, allowLocation, denyLocation } = useGoc();
   const s = state;
   const closeArea = () => set({ areaAsking: false });
 
-  // Area names/counts stay in Vietnamese regardless of language, matching the source prototype.
+  // Area names/counts stay in Vietnamese regardless of language, matching the
+  // source prototype. Must match the Home feed's own filter exactly (it also
+  // excludes invite-only events) — otherwise the count promises more events
+  // than a user picking that area will actually ever see in the list.
   const areas = AREAS.map(a => {
-    const n = EVENTS.filter(e => a.match(e) && !e.cancelled && e.endedHoursAgo == null).length;
+    const n = EVENTS.filter(e => a.match(e) && !e.cancelled && e.endedHoursAgo == null && !e.inviteOnly).length;
     return {
       key: a.key,
       label: a.label,
@@ -17,7 +20,10 @@ export default function AreaSheet() {
     };
   });
 
-  const locationLabel2 = located ? 'Vị trí đang bật ▪︎ khoảng cách hiển thị' : 'Dùng vị trí của tôi để xem khoảng cách';
+  // A genuine on/off toggle — this used to always call allowLocation(), so
+  // once sharing was on there was no way back to off from here.
+  const locationLabel2 = located ? 'Tắt vị trí ▪︎ đang hiển thị khoảng cách' : 'Dùng vị trí của tôi để xem khoảng cách';
+  const toggleLocation = located ? denyLocation : allowLocation;
 
   return (
     <div onClick={closeArea} style={{ position: 'absolute', inset: 0, zIndex: 21, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'gocFade 0.2s ease both' }}>
@@ -31,7 +37,7 @@ export default function AreaSheet() {
             </div>
           ))}
         </div>
-        <div onClick={allowLocation} style={{ marginTop: 14, color: ink, fontSize: 13, textAlign: 'center', padding: 8, cursor: 'pointer' }}>{locationLabel2}</div>
+        <div onClick={toggleLocation} style={{ marginTop: 14, color: ink, fontSize: 13, textAlign: 'center', padding: 8, cursor: 'pointer' }}>{locationLabel2}</div>
       </div>
     </div>
   );

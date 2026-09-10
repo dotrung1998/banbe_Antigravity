@@ -77,6 +77,8 @@ const initialState = {
   attendanceEventKey: null,
   attendanceGuests: [],
   attendanceLoading: false,
+  scanningQr: false,
+  qrScanError: '',
   chatThreadId: null,
   chatMessages: [],
   inboxThreads: [],
@@ -205,9 +207,12 @@ export function GocProvider({ children }) {
     let active = true;
     (async () => {
       const { data: event } = await supabase.from('events').select('id').eq('slug', s.eventKey).maybeSingle();
-      if (!event) return;
+      if (!event) { if (active) set({ booking: null, holdDeadline: null }); return; }
       const { data: booking } = await supabase.from('bookings').select('*').eq('event_id', event.id).eq('user_id', s.user.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
-      if (active && booking) set({ booking, holdDeadline: booking.expires_at ? new Date(booking.expires_at).getTime() : null });
+      // Always set (even to null) — this used to only update on a hit, so
+      // navigating from a booked event to one you have no booking for kept
+      // showing the previous event's stale booking/countdown.
+      if (active) set({ booking: booking || null, holdDeadline: booking?.expires_at ? new Date(booking.expires_at).getTime() : null });
     })();
     return () => { active = false; };
   }, [set, s.user?.id, s.eventKey]);
@@ -928,15 +933,7 @@ export function GocProvider({ children }) {
     set({ screen: 'attendance', attendanceEventKey: key, attendanceGuests: [] });
     loadAttendanceGuests(key);
   }, [set, loadAttendanceGuests]);
-  const toggleCheckin = useCallback(async (bookingId, checked) => {
-    if (checked) return; // the server only supports checking in, not undoing it
-    set(prev => ({ attendanceGuests: prev.attendanceGuests.map(g => (g.id === bookingId ? { ...g, checkedIn: true } : g)) }));
-    const { data, error } = await supabase.rpc('check_in_guest', { p_reservation_id: bookingId });
-    if (error || !data?.success) {
-      console.warn('Check-in failed:', error || data?.error);
-      set(prev => ({ attendanceGuests: prev.attendanceGuests.map(g => (g.id === bookingId ? { ...g, checkedIn: false } : g)) }));
-      return;
-    }
+  const notifyCheckIn = useCallback(async (bookingId) => {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
@@ -948,7 +945,35 @@ export function GocProvider({ children }) {
         }).catch(() => {});
       }
     } catch { /* best-effort email; the in-app notification already landed */ }
-  }, [set]);
+  }, []);
+  const toggleCheckin = useCallback(async (bookingId, checked) => {
+    if (checked) return; // the server only supports checking in, not undoing it
+    set(prev => ({ attendanceGuests: prev.attendanceGuests.map(g => (g.id === bookingId ? { ...g, checkedIn: true } : g)) }));
+    const { data, error } = await supabase.rpc('check_in_guest', { p_reservation_id: bookingId });
+    if (error || !data?.success) {
+      console.warn('Check-in failed:', error || data?.error);
+      set(prev => ({ attendanceGuests: prev.attendanceGuests.map(g => (g.id === bookingId ? { ...g, checkedIn: false } : g)) }));
+      return;
+    }
+    notifyCheckIn(bookingId);
+  }, [set, notifyCheckIn]);
+
+  // ---- QR check-in ----
+  // A guest's ticket QR encodes their booking id directly (Confirmed.jsx),
+  // so scanning it calls the exact same, already-authorized RPC the manual
+  // tap-to-check-in list uses — just without needing that guest to already
+  // be visible in a loaded list first.
+  const openQrScan = useCallback(() => set({ scanningQr: true, qrScanError: '' }), [set]);
+  const closeQrScan = useCallback(() => set({ scanningQr: false }), [set]);
+  const checkInByScan = useCallback(async (bookingId) => {
+    const { data, error } = await supabase.rpc('check_in_guest', { p_reservation_id: bookingId });
+    if (error || !data?.success) {
+      return { success: false, error: (data && data.error) || error?.message || 'CHECK_IN_FAILED' };
+    }
+    notifyCheckIn(bookingId);
+    if (s.attendanceEventKey) loadAttendanceGuests(s.attendanceEventKey);
+    return { success: true };
+  }, [notifyCheckIn, s.attendanceEventKey, loadAttendanceGuests]);
 
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
@@ -968,7 +993,7 @@ export function GocProvider({ children }) {
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
-    toggleCheckin,
+    toggleCheckin, openQrScan, closeQrScan, checkInByScan,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
@@ -987,7 +1012,7 @@ export function GocProvider({ children }) {
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
-    toggleCheckin,
+    toggleCheckin, openQrScan, closeQrScan, checkInByScan,
   ]);
 
   return <GocCtx.Provider value={value}>{children}</GocCtx.Provider>;

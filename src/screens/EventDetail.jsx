@@ -3,7 +3,7 @@ import { bg, mapsUrl } from '../data/events.js';
 import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 
 export default function EventDetail() {
-  const { state, T, trStatus, stripKm, curEvent: ev, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, askLocation } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent: ev, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, askLocation, openHeld } = useGoc();
   const s = state;
 
   // Event Detail is reached from several different places (the home feed, an
@@ -28,13 +28,22 @@ export default function EventDetail() {
   const showRefund = !ev.cancelled && ev.endedHoursAgo == null && !/Miễn phí|Free/.test(ev.price);
   const refundNote = T('Nếu sự kiện bị hủy, bạn được hoàn tiền tự động 100%.', 'If the event is cancelled, you are automatically refunded in full.');
 
-  const reserveBarLabel = ev.soldOut
+  // If the signed-in user already holds a live booking for this exact event,
+  // the bar should open their ticket (QR + entry code) instead of running
+  // them through Reserve again — this used to show "Reserve" regardless.
+  const myBooking = s.booking && s.booking.event_id === ev.key && ['pending', 'confirmed', 'attended'].includes(s.booking.status)
+    ? s.booking
+    : null;
+
+  const reserveBarLabel = myBooking
+    ? T('Xem vé của bạn ▪︎ mã ' + myBooking.code, 'View your ticket ▪︎ code ' + myBooking.code)
+    : ev.soldOut
     ? T('Hết chỗ ▪︎ nhắn để vào danh sách chờ', 'Sold out ▪︎ message for waitlist')
     : (T('Giữ chỗ ▪︎ ', 'Reserve ▪︎ ') + trStatus(ev.price));
-  const reserveBarTap = ev.soldOut ? goChat : goReserve;
-  const reserveBarStyle = ev.soldOut
-    ? { flex: 'none', margin: '0 20px 22px', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 0', borderRadius: 18, cursor: 'pointer', background: 'rgba(238,232,218,0.92)', color: ink }
-    : { ...inkButton({ flex: 'none', margin: '0 20px 22px', padding: '15px 0' }) };
+  const reserveBarTap = myBooking ? openHeld : (ev.soldOut ? goChat : goReserve);
+  const reserveBarStyle = (myBooking || !ev.soldOut)
+    ? { ...inkButton({ flex: 'none', margin: '0 20px 22px', padding: '15px 0' }) }
+    : { flex: 'none', margin: '0 20px 22px', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 0', borderRadius: 18, cursor: 'pointer', background: 'rgba(238,232,218,0.92)', color: ink };
 
   return (
     <div style={{ animation: 'gocFade 0.32s ease both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Event">

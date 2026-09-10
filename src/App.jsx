@@ -21,6 +21,7 @@ import CreateEvent from './screens/CreateEvent.jsx';
 import Attendance from './screens/Attendance.jsx';
 import AreaSheet from './screens/sheets/AreaSheet.jsx';
 import LocationSheet from './screens/sheets/LocationSheet.jsx';
+import QrScanSheet from './screens/sheets/QrScanSheet.jsx';
 import Preferences from './screens/Preferences.jsx';
 import EditName from './screens/EditName.jsx';
 import Notifications from './screens/Notifications.jsx';
@@ -73,6 +74,7 @@ function Shell() {
         <Screen key={state.screen} />
         {state.areaAsking && <AreaSheet />}
         {state.askingLocation && <LocationSheet />}
+        {state.scanningQr && <QrScanSheet />}
         {state.loading && <Loading label={T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
     </div>
