@@ -3,7 +3,7 @@ import { findEvent } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass } from '../theme.js';
 
 export default function Attendance() {
-  const { state, T, trStatus, goDashboard, toggleCheckin, openQrScan } = useGoc();
+  const { state, T, trStatus, goDashboard, toggleCheckin, openQrScan, openCancelBooking } = useGoc();
   const s = state;
 
   const attKey = s.attendanceEventKey;
@@ -46,6 +46,12 @@ export default function Attendance() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                 <span style={{ ...display(15) }}>{g.name}</span>
                 <span style={{ fontSize: 11.5, color: ink }}>{meta}</span>
+                <span
+                  onClick={(e) => { e.stopPropagation(); openCancelBooking(g.id); }}
+                  style={{ fontSize: 11, color: '#9A3E2D', opacity: 0.8, width: 'fit-content', cursor: 'pointer' }}
+                >
+                  {T('Huỷ vé', 'Cancel booking')}
+                </span>
               </div>
               <span style={{ fontSize: 11.5, fontWeight: 600, flex: 'none', padding: '5px 10px', color: g.checkedIn ? paper : ink, background: g.checkedIn ? ink : 'rgba(27,25,22,0.16)' }}>
                 {g.checkedIn ? T('Đã đến ✓', 'Here ✓') : T('Chưa đến', 'Not yet')}

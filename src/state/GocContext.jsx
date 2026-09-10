@@ -79,6 +79,9 @@ const initialState = {
   attendanceLoading: false,
   scanningQr: false,
   qrScanError: '',
+  reasonPrompt: null,
+  reasonPromptBusy: false,
+  reasonPromptError: '',
   chatThreadId: null,
   chatMessages: [],
   inboxThreads: [],
@@ -94,6 +97,23 @@ export const AREAS = [
   { key: 'binhthanh', label: 'Bình Thạnh', match: e => e.meta.includes('Bình Thạnh') },
   { key: 'other', label: 'Quận khác', match: e => !e.meta.includes('Quận 1') && !e.meta.includes('Thảo Điền') && !e.meta.includes('Bình Thạnh') },
   { key: 'danang', label: 'Đà Nẵng', match: () => false },
+];
+
+// Predefined reasons — an organizer reversing a check-in or cancelling a paid
+// booking must pick one of these (no free text) so the guest's notification
+// always says something concrete.
+export const UNDO_CHECKIN_REASONS = [
+  { key: 'wrong_person', vi: 'Nhầm người', en: 'Wrong person' },
+  { key: 'tapped_by_mistake', vi: 'Bấm nhầm', en: 'Tapped by mistake' },
+  { key: 'not_arrived', vi: 'Khách chưa thực sự có mặt', en: "Guest hasn't actually arrived" },
+  { key: 'other', vi: 'Khác', en: 'Other' },
+];
+export const CANCEL_BOOKING_REASONS = [
+  { key: 'event_changed', vi: 'Sự kiện đổi lịch hoặc huỷ', en: 'Event rescheduled or cancelled' },
+  { key: 'guest_requested', vi: 'Khách yêu cầu huỷ', en: 'Guest asked to cancel' },
+  { key: 'payment_incomplete', vi: 'Không thanh toán đúng hạn', en: 'Payment not completed in time' },
+  { key: 'policy_violation', vi: 'Vi phạm quy định', en: 'Policy violation' },
+  { key: 'other', vi: 'Khác', en: 'Other' },
 ];
 
 export function GocProvider({ children }) {
@@ -946,8 +966,58 @@ export function GocProvider({ children }) {
       }
     } catch { /* best-effort email; the in-app notification already landed */ }
   }, []);
+  // ---- reason-required status changes (undo check-in, cancel booking) ----
+  // Reversing a check-in or cancelling an already-paid booking always
+  // requires picking one of a fixed list of reasons (never free text), so
+  // the guest's notification always says something concrete — see
+  // UNDO_CHECKIN_REASONS / CANCEL_BOOKING_REASONS above.
+  const openUndoCheckin = useCallback((bookingId) => {
+    const guest = s.attendanceGuests.find(g => g.id === bookingId);
+    set({ reasonPrompt: { kind: 'undoCheckin', bookingId, guestName: guest?.name || '' }, reasonPromptError: '' });
+  }, [set, s.attendanceGuests]);
+  const openCancelBooking = useCallback((bookingId) => {
+    const guest = s.attendanceGuests.find(g => g.id === bookingId);
+    set({ reasonPrompt: { kind: 'cancelBooking', bookingId, guestName: guest?.name || '' }, reasonPromptError: '' });
+  }, [set, s.attendanceGuests]);
+  const closeReasonPrompt = useCallback(() => set({ reasonPrompt: null, reasonPromptError: '' }), [set]);
+  const submitReasonPrompt = useCallback(async (reasonLabel) => {
+    const prompt = s.reasonPrompt;
+    if (!prompt) return;
+    set({ reasonPromptBusy: true, reasonPromptError: '' });
+
+    const rpcName = prompt.kind === 'undoCheckin' ? 'undo_check_in' : 'cancel_booking';
+    const rpcArgs = prompt.kind === 'undoCheckin'
+      ? { p_booking_id: prompt.bookingId, p_reason: reasonLabel }
+      : { p_booking: prompt.bookingId, p_reason: reasonLabel };
+    const { data, error } = await supabase.rpc(rpcName, rpcArgs);
+    if (error || !data?.success) {
+      set({
+        reasonPromptBusy: false,
+        reasonPromptError: prompt.kind === 'undoCheckin'
+          ? T('Không thể huỷ điểm danh. Vui lòng thử lại.', 'Could not undo the check-in. Please try again.')
+          : T('Không thể huỷ vé. Vui lòng thử lại.', 'Could not cancel the booking. Please try again.'),
+      });
+      return;
+    }
+
+    set({ reasonPrompt: null, reasonPromptBusy: false });
+    if (s.attendanceEventKey) loadAttendanceGuests(s.attendanceEventKey);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      const endpoint = prompt.kind === 'undoCheckin' ? '/api/notify-checkin-undo' : '/api/notify-booking-cancelled';
+      if (token) {
+        fetch(endpoint, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ bookingId: prompt.bookingId, reason: reasonLabel }),
+        }).catch(() => {});
+      }
+    } catch { /* best-effort email; the in-app notification already landed */ }
+  }, [set, s.reasonPrompt, s.attendanceEventKey, loadAttendanceGuests, T]);
+
   const toggleCheckin = useCallback(async (bookingId, checked) => {
-    if (checked) return; // the server only supports checking in, not undoing it
+    if (checked) { openUndoCheckin(bookingId); return; } // reversing requires a reason — see below
     set(prev => ({ attendanceGuests: prev.attendanceGuests.map(g => (g.id === bookingId ? { ...g, checkedIn: true } : g)) }));
     const { data, error } = await supabase.rpc('check_in_guest', { p_reservation_id: bookingId });
     if (error || !data?.success) {
@@ -956,7 +1026,7 @@ export function GocProvider({ children }) {
       return;
     }
     notifyCheckIn(bookingId);
-  }, [set, notifyCheckIn]);
+  }, [set, notifyCheckIn, openUndoCheckin]);
 
   // ---- QR check-in ----
   // A guest's ticket QR encodes their booking id directly (Confirmed.jsx),
@@ -993,7 +1063,7 @@ export function GocProvider({ children }) {
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
-    toggleCheckin, openQrScan, closeQrScan, checkInByScan,
+    toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, closeReasonPrompt, submitReasonPrompt,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
@@ -1012,7 +1082,7 @@ export function GocProvider({ children }) {
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
-    toggleCheckin, openQrScan, closeQrScan, checkInByScan,
+    toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, closeReasonPrompt, submitReasonPrompt,
   ]);
 
   return <GocCtx.Provider value={value}>{children}</GocCtx.Provider>;

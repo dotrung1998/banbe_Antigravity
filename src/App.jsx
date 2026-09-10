@@ -22,6 +22,7 @@ import Attendance from './screens/Attendance.jsx';
 import AreaSheet from './screens/sheets/AreaSheet.jsx';
 import LocationSheet from './screens/sheets/LocationSheet.jsx';
 import QrScanSheet from './screens/sheets/QrScanSheet.jsx';
+import ReasonSheet from './screens/sheets/ReasonSheet.jsx';
 import Preferences from './screens/Preferences.jsx';
 import EditName from './screens/EditName.jsx';
 import Notifications from './screens/Notifications.jsx';
@@ -75,6 +76,7 @@ function Shell() {
         {state.areaAsking && <AreaSheet />}
         {state.askingLocation && <LocationSheet />}
         {state.scanningQr && <QrScanSheet />}
+        {state.reasonPrompt && <ReasonSheet />}
         {state.loading && <Loading label={T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
     </div>
