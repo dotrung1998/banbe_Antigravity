@@ -11,25 +11,62 @@ struct CatalogPhoto: View {
 
     @EnvironmentObject private var app: AppState
 
+    /// Longest edge to decode at, in pixels — a 52pt avatar has no use for
+    /// a 1000px decode. Falls back to a full-width card's worth when the
+    /// view sizes itself from the container.
+    private var maxPixel: CGFloat {
+        let points = max(width ?? 0, height ?? 0)
+        let longest = points > 0 ? points : 420
+        return longest * UIScreen.main.scale
+    }
+
     var body: some View {
         // The frame comes from the placeholder rectangle, and the photo is
         // drawn as an overlay on top of it: an overlay can never change its
-        // parent's size, whereas a loaded AsyncImage sized directly would
-        // report its full pixel width and stretch the whole scroll view
-        // sideways once it finished downloading.
+        // parent's size, whereas an image sized directly would report its
+        // full pixel width and stretch the whole scroll view sideways once
+        // it finished downloading.
         Rectangle()
             .fill(app.palette.field)
             .frame(width: width, height: height)
             .frame(maxWidth: width == nil ? .infinity : nil)
-            .overlay {
-                AsyncImage(url: CatalogEvent.photoURL(path)) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().scaledToFill()
-                    }
-                }
-            }
+            .overlay { RemoteImage(path: path, maxPixel: maxPixel) }
             .clipped()
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+}
+
+/// Draws a catalogue photo through PhotoLoader. Starts from the memory
+/// cache synchronously, so scrolling back to an already-seen card paints
+/// immediately rather than flashing its placeholder again.
+struct RemoteImage: View {
+    let path: String
+    let maxPixel: CGFloat
+    @State private var image: UIImage?
+
+    init(path: String, maxPixel: CGFloat) {
+        self.path = path
+        self.maxPixel = maxPixel
+        _image = State(initialValue: PhotoLoader.cached(path: path, maxPixel: maxPixel))
+    }
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .transition(.opacity)
+            } else {
+                Color.clear
+            }
+        }
+        .task(id: path) {
+            guard image == nil else { return }
+            let loaded = await PhotoLoader.load(path: path, maxPixel: maxPixel)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.2)) { image = loaded }
+        }
     }
 }
 

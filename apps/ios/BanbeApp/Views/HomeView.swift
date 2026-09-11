@@ -16,7 +16,10 @@ struct HomeView: View {
 
     var body: some View {
         ScreenScaffold {
-            VStack(alignment: .leading, spacing: 0) {
+            // Lazy, so only the cards actually on screen fetch their photo —
+            // the eager VStack kicked off all ~21 hero downloads at launch
+            // and they all fought for the same bandwidth.
+            LazyVStack(alignment: .leading, spacing: 0) {
                 header
                 if let held = app.heldEvent { heldBanner(held) }
                 if !app.savedStrip.isEmpty { savedStrip }
@@ -134,7 +137,7 @@ struct HomeView: View {
                 Text(app.T("Tự xóa sau 48 giờ", "Clears after 48h")).font(.system(size: 11.5))
             }
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 10) {
+                LazyHStack(alignment: .top, spacing: 10) {
                     ForEach(app.savedStrip) { event in
                         Button { app.goEvent(event.key) } label: {
                             VStack(alignment: .leading, spacing: 7) {

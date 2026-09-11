@@ -59,8 +59,8 @@ second hand-written copy that drifts, `Tools/generate-catalog.mjs` emits
 node apps/ios/Tools/generate-catalog.mjs   # after editing src/data/events.js
 ```
 
-Photos are the same static files the web app serves, loaded from the
-deployed origin (`AppConfig.apiBaseURL`).
+Photos are the same files the web app serves, shipped in the app bundle
+as optimized derivatives — see **Photos** below.
 
 ## Screens
 
@@ -98,6 +98,36 @@ cleared by `BiometricAuthService`). Off by default, stored in
 credential created the session — it gates a device that's already signed
 in. `NSFaceIDUsageDescription` is set in `project.yml`.
 
+## Photos
+
+The catalogue photos in `public/photos` are only 1000px wide but were
+saved at very high JPEG quality — ~360KB each, 3-4x more than that
+resolution needs. `Tools/optimize-photos.sh` re-encodes them to WebP at
+q82 (visually indistinguishable, checked side by side) into
+`public/photos/optimized`, which is **74% smaller overall: 20.8MB → 5.4MB**:
+
+```bash
+brew install webp
+./apps/ios/Tools/optimize-photos.sh
+```
+
+Those derivatives ship *inside the app bundle*, for the same reason
+`events.json` does — it's the same static catalogue — so the feed paints
+from local files with no network round trip at all and works offline. A
+cold launch went from photos trickling in over ~30s to everything visible
+in about 3s.
+
+`PhotoLoader` handles the rest: it downsamples while decoding (a 52pt
+avatar no longer decodes a 1000px image at full size), keeps decoded
+images in an `NSCache`, and for anything *not* bundled — a future
+user-uploaded photo from storage — falls back to the network with a
+256MB disk cache and a policy that doesn't re-validate on every scroll.
+The lists that carry photos are `LazyVStack`/`LazyHStack`, so only the
+cards actually on screen load anything.
+
+The web app still serves the original JPEGs; it could point at
+`/photos/optimized/*.webp` for the same saving whenever that's wanted.
+
 ## Known gaps
 
 - **Sign-in is email-code only.** The web app also has password
@@ -107,11 +137,6 @@ in. `NSFaceIDUsageDescription` is set in `project.yml`.
   (Supabase's own mailer is rate-limited to a handful per hour) and
   verifies it with `supabase.auth.verifyOTP`. The Zalo/Facebook/Instagram
   and phone-OTP buttons on the web login screen aren't here either.
-- **Photos are full-resolution.** The catalogue photos are ~300–400KB each
-  and the feed loads about twenty, so a cold first scroll takes a while on
-  a slow connection — the web app pulls the same files, but a phone feels
-  it more. The fix is server-side resizing (Vercel image optimization, or
-  pre-generated thumbnails alongside the originals), not an app change.
 - **Light/dark follows the account; system appearance is ignored**, same
   as the web app.
 - **Create-event photo upload** isn't wired (the web screen's photo slots

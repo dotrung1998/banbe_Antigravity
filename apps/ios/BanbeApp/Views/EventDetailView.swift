@@ -174,7 +174,7 @@ struct EventDetailView: View {
                 .font(.system(size: 11.5))
                 .padding(.top, 28)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                LazyHStack(spacing: 8) {
                     ForEach(Array(event.gallery.enumerated()), id: \.offset) { _, path in
                         CatalogPhoto(path: path, height: 186, width: 148)
                     }

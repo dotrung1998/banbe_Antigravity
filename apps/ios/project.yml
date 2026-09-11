@@ -18,6 +18,15 @@ targets:
       - path: BanbeApp
         excludes:
           - "**/.DS_Store"
+      # The catalogue's photos, as the WebP derivatives produced by
+      # Tools/optimize-photos.sh (~5MB for all 66). They ship with the app
+      # for the same reason events.json does — it's the same static
+      # catalogue — so the feed paints instantly and works offline instead
+      # of pulling 20MB of JPEG over the network on first run. Referenced
+      # in place rather than copied, so there's one source of truth.
+      - path: ../../public/photos/optimized
+        type: folder
+        buildPhase: resources
     resources:
       - BanbeApp/Resources
     dependencies:
