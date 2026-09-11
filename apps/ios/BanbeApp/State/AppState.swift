@@ -331,7 +331,11 @@ final class AppState: ObservableObject {
     /// this filtered to their own set.
     var eventListEvents: [CatalogEvent] {
         switch eventListMode {
-        case .going: return attending.compactMap { key in EventCatalog.all.first { $0.key == key } }
+        case .going:
+            // Once an event ends it belongs in Completed instead of sitting
+            // in Going forever.
+            return attending.compactMap { key in EventCatalog.all.first { $0.key == key } }
+                .filter { $0.endedHoursAgo == nil }
         case .saved: return favorites.compactMap { key in EventCatalog.all.first { $0.key == key } }
         case .completed:
             var keys: [String] = []
@@ -342,6 +346,13 @@ final class AppState: ObservableObject {
             return keys.compactMap { key in EventCatalog.all.first { $0.key == key } }
                 .filter { $0.endedHoursAgo != nil }
         }
+    }
+
+    /// Backs the count on Account's "Going" card — attending minus anything
+    /// that's already over (that belongs in Completed instead).
+    var goingEventsCount: Int {
+        attending.compactMap { key in EventCatalog.all.first { $0.key == key } }
+            .filter { $0.endedHoursAgo == nil }.count
     }
 
     /// Backs the count on Account's "Sự kiện đã lưu"/"Completed events" row.

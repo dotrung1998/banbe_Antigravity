@@ -44,7 +44,7 @@ struct AccountView: View {
                 .padding(.top, 22)
 
                 HStack(spacing: 10) {
-                    counter(value: app.attending.count, label: app.T("Đang tham gia", "Going")) { app.goGoingList() }
+                    counter(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going")) { app.goGoingList() }
                     counter(value: app.favorites.count, label: app.T("Đã lưu", "Saved")) { app.goSavedList() }
                 }
                 .padding(.top, 22)

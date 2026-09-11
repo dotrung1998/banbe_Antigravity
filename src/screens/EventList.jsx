@@ -30,7 +30,10 @@ export default function EventList() {
   let list = keys.map(k => EVENTS.find(e => e.key === k)).filter(Boolean);
   // "Completed" means it already happened — anything still upcoming (or
   // just favorited but never actually attended/held) doesn't belong here.
+  // Conversely, "Going" is only what's still ahead — once an event ends it
+  // moves to Completed instead of sitting in Going forever.
   if (mode === 'completed') list = list.filter(e => e.endedHoursAgo != null);
+  if (mode === 'going') list = list.filter(e => e.endedHoursAgo == null);
 
   const title = T(...TITLES[mode]);
   const emptyMsg = T(...EMPTY_MESSAGES[mode]);

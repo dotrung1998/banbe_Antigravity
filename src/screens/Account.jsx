@@ -8,6 +8,11 @@ export default function Account() {
   const completedCount = [...new Set([...(s.favorites || []), ...s.attending])]
     .map(k => EVENTS.find(e => e.key === k))
     .filter(e => e && e.endedHoursAgo != null).length;
+  // Once an event is over it belongs in "Completed", not "Going" — otherwise
+  // it just sits there forever looking like something still upcoming.
+  const goingCount = s.attending
+    .map(k => EVENTS.find(e => e.key === k))
+    .filter(e => e && e.endedHoursAgo == null).length;
 
   const profileName = s.user ? (s.user.name || (s.user.email ? s.user.email.split('@')[0] : T('Bạn', 'You'))) : T('Khách', 'Guest');
   const isOrganizer = canHost;
@@ -34,7 +39,7 @@ export default function Account() {
 
       <div style={{ display: 'flex', gap: 10, padding: '22px 20px 0' }}>
         <div onClick={goGoingList} data-testid="account-going-card" style={{ ...cardGlass({ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }) }}>
-          <span style={{ ...display(24) }}>{s.attending.length}</span>
+          <span style={{ ...display(24) }}>{goingCount}</span>
           <span style={{ fontSize: 11, color: ink }}>{T('Đang tham gia', 'Going')}</span>
         </div>
         <div onClick={goSavedList} data-testid="account-saved-card" style={{ ...cardGlass({ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }) }}>
