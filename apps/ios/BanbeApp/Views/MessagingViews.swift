@@ -11,7 +11,7 @@ struct InboxView: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(app.T("Tin nhắn", "Messages")).font(BanbeTheme.display(27))
                     Spacer()
-                    Button(app.T("Xong", "Done")) { app.goHome() }
+                    Button(app.T("Xong", "Done")) { app.backFromInbox() }
                         .font(.system(size: 12)).buttonStyle(.plain)
                 }
                 .padding(.bottom, 14)

@@ -85,7 +85,7 @@ export default function Home() {
   );
 
   const homeHostLinkLabel = hasHosted ? T('Trang tổ chức của bạn', 'Your host page') : T('Dành cho người tổ chức ▪︎ hoàn toàn miễn phí', 'For organizers ▪︎ completely free');
-  const homeHostLink = hasHosted ? switchToHost : becomeHost;
+  const homeHostLink = hasHosted ? () => switchToHost('home') : becomeHost;
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Home">

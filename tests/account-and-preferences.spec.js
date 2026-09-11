@@ -58,4 +58,23 @@ test.describe('Account & Preferences Screen', () => {
     await page.getByText('Xong').click();
     await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 3000 });
   });
+
+  // "Going"/"Saved" used to be inert stat cards; they now open their own
+  // list view and — the point of the fix — a single tap back lands on
+  // Account again, not Home.
+  test('"Going" and "Saved" open their own list, and back returns to Account', async ({ page }) => {
+    await page.getByText('Tài khoản').first().click();
+    const accountScreen = page.locator('[data-screen-label="Account"]');
+    await expect(accountScreen).toBeVisible({ timeout: 3000 });
+
+    await accountScreen.getByTestId('account-going-card').click();
+    await expect(page.locator('[data-screen-label="Going"]')).toBeVisible({ timeout: 3000 });
+    await page.getByTestId('event-list-back').click();
+    await expect(accountScreen).toBeVisible({ timeout: 3000 });
+
+    await accountScreen.getByTestId('account-saved-card').click();
+    await expect(page.locator('[data-screen-label="Saved"]')).toBeVisible({ timeout: 3000 });
+    await page.getByTestId('event-list-back').click();
+    await expect(accountScreen).toBeVisible({ timeout: 3000 });
+  });
 });

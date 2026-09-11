@@ -3,14 +3,14 @@ import { bg } from '../data/events.js';
 import { paper, ink, display } from '../theme.js';
 
 export default function Inbox() {
-  const { state, T, goHome, openThread } = useGoc();
+  const { state, T, backFromInbox, openThread } = useGoc();
   const s = state;
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Inbox">
       <div style={{ padding: '70px 24px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <span style={{ ...display(27) }}>{T('Tin nhắn', 'Messages')}</span>
-        <span onClick={goHome} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('Xong', 'Done')}</span>
+        <span onClick={backFromInbox} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('Xong', 'Done')}</span>
       </div>
       {s.inboxThreads.length > 0 ? (
         <div style={{ padding: '14px 24px 40px' }}>

@@ -44,15 +44,15 @@ struct AccountView: View {
                 .padding(.top, 22)
 
                 HStack(spacing: 10) {
-                    counter(value: app.attending.count, label: app.T("Đang tham gia", "Going"))
-                    counter(value: app.favorites.count, label: app.T("Đã lưu", "Saved"))
+                    counter(value: app.attending.count, label: app.T("Đang tham gia", "Going")) { app.goGoingList() }
+                    counter(value: app.favorites.count, label: app.T("Đã lưu", "Saved")) { app.goSavedList() }
                 }
                 .padding(.top, 22)
 
                 VStack(spacing: 0) {
                     row(app.T("Tin nhắn", "Messages"), trailing: "›") { app.goInbox() }
                     Divider().overlay(app.palette.rule)
-                    row(app.T("Sự kiện đã lưu", "Saved events"), trailing: "\(app.favorites.count) ›") { app.goHome() }
+                    row(app.T("Sự kiện đã lưu", "Saved events"), trailing: "\(app.favorites.count) ›") { app.goSavedList() }
                     Divider().overlay(app.palette.rule)
                     row(app.T("Ngôn ngữ & hiển thị", "Language & appearance"),
                         identifier: "account.preferences",
@@ -102,12 +102,14 @@ struct AccountView: View {
                 }
 
                 if app.canHost {
-                    Button { app.switchToHost() } label: {
+                    Button { app.switchToHost(back: .profile) } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(app.orgRegName.isEmpty ? "Bếp Nhỏ" : app.orgRegName)
                                     .font(BanbeTheme.display(17))
-                                Text(app.T("Chuyển sang chế độ tổ chức", "Switch to hosting"))
+                                Text(app.mode == "host"
+                                     ? app.T("Xem trang tổ chức của bạn", "View your host page")
+                                     : app.T("Chuyển sang chế độ tổ chức", "Switch to hosting"))
                                     .font(.system(size: 12))
                             }
                             Spacer()
@@ -157,14 +159,18 @@ struct AccountView: View {
         }
     }
 
-    private func counter(value: Int, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("\(value)").font(BanbeTheme.display(24))
-            Text(label).font(.system(size: 11))
+    private func counter(value: Int, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(value)").font(BanbeTheme.display(24))
+                Text(label).font(.system(size: 11))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .foregroundStyle(app.palette.ink)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16).padding(.vertical, 14)
-        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .buttonStyle(.plain)
     }
 
     private func row(_ title: String, identifier: String? = nil, trailing: String,

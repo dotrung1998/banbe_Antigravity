@@ -32,6 +32,7 @@ struct RootView: View {
             case .preferences: PreferencesView()
             case .editName: EditNameView()
             case .notifications: NotificationsView()
+            case .eventList: EventListView()
             }
 
             // Names the current screen for UI tests, the same way the web

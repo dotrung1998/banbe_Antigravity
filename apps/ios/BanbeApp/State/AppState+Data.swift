@@ -44,6 +44,7 @@ struct NotificationReadUpdate: Encodable {
 
 // Decodable shapes for the handful of narrow selects below.
 private struct IDRow: Decodable { let id: String }
+private struct OrganizerRow: Decodable { let id: String; let name: String }
 private struct UUIDRow: Decodable { let id: UUID }
 private struct OrganizerRef: Decodable { let organizerId: String?
     enum CodingKeys: String, CodingKey { case organizerId = "organizer_id" } }
@@ -125,6 +126,7 @@ extension AppState {
             attending = []
             tickets = [:]
             myOrgEventKeys = []
+            orgRegName = ""
             notifications = []
             booking = nil
             holdDeadline = nil
@@ -188,12 +190,18 @@ extension AppState {
             attending = going
             tickets = counts
 
-            let organizers: [IDRow] = try await SupabaseService.client
+            let organizers: [OrganizerRow] = try await SupabaseService.client
                 .from("organizers")
-                .select("id")
+                .select("id, name")
                 .or("owner_id.eq.\(uid.uuidString),user_id.eq.\(uid.uuidString)")
                 .execute().value
             if !organizers.isEmpty {
+                // The account's actual host page name — Account used to
+                // always fall back to the generic "Bếp Nhỏ" placeholder
+                // here, since this was the only place an organizer's name
+                // could be restored on a fresh session and it was never
+                // actually fetched.
+                if let name = organizers.first?.name, !name.isEmpty { orgRegName = name }
                 let events: [IDRow] = try await SupabaseService.client
                     .from("events")
                     .select("id")

@@ -27,6 +27,7 @@ import ReasonSheet from './screens/sheets/ReasonSheet.jsx';
 import Preferences from './screens/Preferences.jsx';
 import EditName from './screens/EditName.jsx';
 import Notifications from './screens/Notifications.jsx';
+import EventList from './screens/EventList.jsx';
 
 const SCREENS = {
   splash: Splash,
@@ -50,6 +51,7 @@ const SCREENS = {
   preferences: Preferences,
   editName: EditName,
   notifications: Notifications,
+  eventList: EventList,
 };
 
 function Shell() {

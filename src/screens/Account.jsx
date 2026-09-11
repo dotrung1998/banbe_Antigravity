@@ -2,7 +2,7 @@ import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
 
 export default function Account() {
-  const { state, T, goHome, goInbox, goEditName, openPreferences, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral } = useGoc();
+  const { state, T, goHome, goInbox, goEditName, openPreferences, goGoingList, goSavedList, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral } = useGoc();
   const s = state;
 
   const profileName = s.user ? (s.user.name || (s.user.email ? s.user.email.split('@')[0] : T('Bạn', 'You'))) : T('Khách', 'Guest');
@@ -29,11 +29,11 @@ export default function Account() {
       </div>
 
       <div style={{ display: 'flex', gap: 10, padding: '22px 20px 0' }}>
-        <div style={{ ...cardGlass({ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3 }) }}>
+        <div onClick={goGoingList} data-testid="account-going-card" style={{ ...cardGlass({ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }) }}>
           <span style={{ ...display(24) }}>{s.attending.length}</span>
           <span style={{ fontSize: 11, color: ink }}>{T('Đang tham gia', 'Going')}</span>
         </div>
-        <div style={{ ...cardGlass({ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3 }) }}>
+        <div onClick={goSavedList} data-testid="account-saved-card" style={{ ...cardGlass({ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }) }}>
           <span style={{ ...display(24) }}>{(s.favorites || []).length}</span>
           <span style={{ fontSize: 11, color: ink }}>{T('Đã lưu', 'Saved')}</span>
         </div>
@@ -58,7 +58,7 @@ export default function Account() {
           <span style={{ fontSize: 14, color: ink }}>{T('Tin nhắn', 'Messages')}</span>
           <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
         </div>
-        <div onClick={goHome} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+        <div onClick={goSavedList} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
           <span style={{ fontSize: 14, color: ink }}>{T('Sự kiện đã lưu', 'Saved events')}</span>
           <span style={{ fontSize: 13, color: ink }}>{(s.favorites || []).length} ›</span>
         </div>
@@ -81,10 +81,12 @@ export default function Account() {
         </div>
         {s.organizerModeError && <p style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '10px 0 0' }}>{s.organizerModeError}</p>}
         {isOrganizer ? (
-          <div onClick={switchToHost} style={{ ...cardGlass({ marginTop: 10, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
+          <div onClick={() => switchToHost('profile')} style={{ ...cardGlass({ marginTop: 10, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
               <span style={{ ...display(17, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{profileOrgName}</span>
-              <span style={{ fontSize: 12, color: ink }}>{T('Chuyển sang chế độ tổ chức', 'Switch to hosting')}</span>
+              <span style={{ fontSize: 12, color: ink }}>
+                {s.mode === 'host' ? T('Xem trang tổ chức của bạn', 'View your host page') : T('Chuyển sang chế độ tổ chức', 'Switch to hosting')}
+              </span>
             </div>
             <span style={{ fontSize: 17, color: ink, flex: 'none', lineHeight: 1 }}>›</span>
           </div>

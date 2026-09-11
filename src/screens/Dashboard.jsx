@@ -3,7 +3,7 @@ import { EVENTS, findEvent, bg } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
 
 export default function Dashboard() {
-  const { state, T, trStatus, stripKm, curEvent, goHome, switchToGoer, goCreate, openAttendance, goEvent, requestVerify } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent, backFromDashboard, switchToGoer, goCreate, openAttendance, goEvent, requestVerify } = useGoc();
   const s = state;
 
   // The header shows the org branding for one of the account's own events
@@ -40,7 +40,7 @@ export default function Dashboard() {
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Organizer dashboard">
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div style={{ padding: '66px 22px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div onClick={goHome} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+        <div onClick={backFromDashboard} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
           <span style={{ fontSize: 14, color: ink, lineHeight: 1 }}>‹</span>
           <img src="/banbe-mark.png" alt="banbe" crossOrigin="anonymous" style={{ height: 34, width: 'auto' }} />
         </div>

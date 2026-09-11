@@ -31,6 +31,17 @@ const initialState = {
   hasHosted: false,
   eventKey: 'bepnho',
   eventBackScreen: 'home',
+  // The "Going"/"Saved" cards on Account open a filtered list of events —
+  // always entered from (and returned to) Account, so there's no need for
+  // a whole back-stack, just which filter is showing.
+  eventListMode: 'going',
+  // Which screen to return to from Inbox/Dashboard — both are reachable
+  // from more than one place (Home's message icon vs Account's "Messages"
+  // row; Home's host-page link vs Account's "Hosting" card), so a single
+  // hardcoded back target sends at least one of those callers somewhere
+  // it didn't come from.
+  inboxBack: 'home',
+  dashboardBack: 'home',
   loading: false,
   filter: 'all',
   formName: '',
@@ -223,6 +234,19 @@ export function GocProvider({ children }) {
         user: { ...user, name: displayName }, accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer',
         referralCode: profile?.referral_code || null,
       });
+
+      // The account's actual host page name — Account's "Hosting" card used
+      // to always fall back to the generic "Bếp Nhỏ" placeholder here,
+      // because orgRegName is otherwise only ever filled in locally while
+      // filling out the create-event form, never restored for an organizer
+      // returning on a new session.
+      const { data: org } = await supabase
+        .from('organizers')
+        .select('name')
+        .or(`owner_id.eq.${user.id},user_id.eq.${user.id}`)
+        .limit(1)
+        .maybeSingle();
+      if (org?.name) set({ orgRegName: org.name, hasHosted: true });
 
       // Language & theme follow the account once it has a saved preference,
       // so signing in on any device restores them instead of falling back to
@@ -516,9 +540,13 @@ export function GocProvider({ children }) {
   const goProfile = useCallback(() => set({ screen: 'profile' }), [set]);
   const goInbox = useCallback(() => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'inbox', authBackScreen: 'home' });
-    set({ screen: 'inbox' });
+    // Reached from both Home (message icon) and Account ("Messages" row) —
+    // remember whichever it was so the way back matches the way in, instead
+    // of always landing on Home regardless of where the tap came from.
+    set(prev => ({ screen: 'inbox', inboxBack: prev.screen === 'profile' ? 'profile' : 'home' }));
     loadInboxThreads();
   }, [set, s.user, loadInboxThreads]);
+  const backFromInbox = useCallback(() => set(prev => ({ screen: prev.inboxBack || 'home' })), [set]);
   // Event Detail is reached from several different sections (the home feed,
   // an organizer dashboard, an organizer profile, the create-event preview),
   // so remember whichever one we came from — its own back arrow used to be
@@ -545,12 +573,23 @@ export function GocProvider({ children }) {
   }, [set, s.user, canHost, enableOrganizerMode]);
   const createBack = useCallback(() => set(prev => ({ screen: prev.hasHosted ? 'dashboard' : 'hostIntro' })), [set]);
 
+  // The "Going"/"Saved" cards on Account — always opened from (and closed
+  // back to) Account, so unlike Inbox/Dashboard there's no other entry point
+  // to remember.
+  const goGoingList = useCallback(() => set({ screen: 'eventList', eventListMode: 'going' }), [set]);
+  const goSavedList = useCallback(() => set({ screen: 'eventList', eventListMode: 'saved' }), [set]);
+  const backFromEventList = useCallback(() => set({ screen: 'profile' }), [set]);
+
   // ---- roles ----
-  const switchToHost = useCallback(() => {
+  // Reached from both Home's "Your host page" link and Account's "Hosting"
+  // card — `back` says which one so the dashboard's back arrow returns
+  // there instead of always landing on Home.
+  const switchToHost = useCallback((back = 'home') => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'dashboard', authBackScreen: 'home' });
     if (!canHost) enableOrganizerMode();
-    set({ mode: 'host', screen: 'dashboard' });
+    set({ mode: 'host', screen: 'dashboard', dashboardBack: back });
   }, [set, s.user, canHost, enableOrganizerMode]);
+  const backFromDashboard = useCallback(() => set(prev => ({ screen: prev.dashboardBack || 'home' })), [set]);
   const switchToGoer = useCallback(() => set({ mode: 'goer', screen: 'home' }), [set]);
   const becomeHost = useCallback(() => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'hostIntro', authBackScreen: 'profile' });
@@ -561,7 +600,7 @@ export function GocProvider({ children }) {
     await supabase.auth.signOut();
     // Roles belong to the account that just left; leaving them behind would
     // leak the previous user's hosting state into the next sign-in.
-    set({ user: null, accountType: 'participant', organizerMode: false, hasHosted: false, mode: 'goer', screen: 'home', referralCode: null });
+    set({ user: null, accountType: 'participant', organizerMode: false, hasHosted: false, mode: 'goer', screen: 'home', referralCode: null, orgRegName: '' });
   }, [set]);
 
   // ---- display name ----
@@ -1262,9 +1301,10 @@ export function GocProvider({ children }) {
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
-    goHome, goProfile, goInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
+    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
-    switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
+    goGoingList, goSavedList, backFromEventList,
+    switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
@@ -1281,9 +1321,10 @@ export function GocProvider({ children }) {
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
-    goHome, goProfile, goInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
+    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
-    switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
+    goGoingList, goSavedList, backFromEventList,
+    switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,

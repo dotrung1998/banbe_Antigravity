@@ -39,7 +39,7 @@ struct DashboardView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack {
-                            Button { app.goHome() } label: {
+                            Button { app.backFromDashboard() } label: {
                                 HStack(spacing: 6) {
                                     Text("‹").font(.system(size: 14))
                                     BanbeLogo(kind: .mark, height: 34)

@@ -8,7 +8,13 @@ import Supabase
 enum Screen: String {
     case splash, langPick, themePick, home, profile, inbox, event, organizer
     case reserve, confirmed, refunded, login, chat, dashboard, hostIntro
-    case create, attendance, preferences, editName, notifications
+    case create, attendance, preferences, editName, notifications, eventList
+}
+
+/// Which set of events EventListView shows — ports the same split used by
+/// the "Going"/"Saved" counters on Account.
+enum EventListMode: String {
+    case going, saved
 }
 
 /// Feed area filter — ports AREAS in src/state/GocContext.jsx. Labels stay
@@ -93,6 +99,13 @@ final class AppState: ObservableObject {
     @Published var authBackScreen: Screen = .home
     @Published var chatBack: Screen = .organizer
     @Published var mode: String = "goer"
+    // Inbox and Dashboard are each reachable from more than one place (Home's
+    // message icon/host link vs Account's "Messages" row/hosting card), so a
+    // single hardcoded back target sends at least one of those callers
+    // somewhere it didn't come from.
+    @Published var inboxBack: Screen = .home
+    @Published var dashboardBack: Screen = .home
+    @Published var eventListMode: EventListMode = .going
 
     // MARK: Preferences (persisted per-device and, once signed in, per-account)
     @Published var lang: String = UserDefaults.standard.string(forKey: "banbe.lang") ?? "vi" {
@@ -313,6 +326,13 @@ final class AppState: ObservableObject {
         return EventCatalog.all.first { $0.key == eventKey }
     }
 
+    /// What EventListView shows for the current `eventListMode` — the
+    /// "Going"/"Saved" cards on Account each open this filtered to their own set.
+    var eventListEvents: [CatalogEvent] {
+        let keys = eventListMode == .going ? attending : favorites
+        return keys.compactMap { key in EventCatalog.all.first { $0.key == key } }
+    }
+
     // MARK: - Onboarding
 
     func dismissSplash() { screen = .langPick }
@@ -374,9 +394,15 @@ final class AppState: ObservableObject {
 
     func goInbox() {
         guard isSignedIn else { return requireAuth(returnTo: .inbox, backTo: .home) }
+        inboxBack = screen == .profile ? .profile : .home
         screen = .inbox
         Task { await loadInboxThreads() }
     }
+    func backFromInbox() { screen = inboxBack }
+
+    func goGoingList() { eventListMode = .going; screen = .eventList }
+    func goSavedList() { eventListMode = .saved; screen = .eventList }
+    func backFromEventList() { screen = .profile }
 
     func goReserve() {
         guard isSignedIn else { return requireAuth(returnTo: .reserve, backTo: .event) }
@@ -402,13 +428,15 @@ final class AppState: ObservableObject {
 
     func createBack() { screen = hasHosted ? .dashboard : .hostIntro }
 
-    func switchToHost() {
+    func switchToHost(back: Screen = .home) {
         guard isSignedIn else { return requireAuth(returnTo: .dashboard, backTo: .home) }
         if !canHost { Task { await applyOrganizerMode(true) } }
         mode = "host"
+        dashboardBack = back
         screen = .dashboard
         Task { await loadMyEvents() }
     }
+    func backFromDashboard() { screen = dashboardBack }
 
     func switchToGoer() {
         mode = "goer"
