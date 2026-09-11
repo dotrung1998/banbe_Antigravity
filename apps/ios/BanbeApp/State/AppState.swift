@@ -9,6 +9,7 @@ enum Screen: String {
     case splash, langPick, themePick, home, profile, inbox, event, organizer
     case reserve, confirmed, refunded, login, chat, dashboard, hostIntro
     case create, attendance, preferences, editName, notifications, eventList
+    case security
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -432,6 +433,7 @@ final class AppState: ObservableObject {
     func backToEvent() { screen = .event }
     func openHeld() { screen = .confirmed }
     func openPreferences() { screen = .preferences }
+    func openSecurity() { screen = .security }
     func goLogin() { requireAuth(returnTo: .profile, backTo: .home) }
 
     func goInbox() {
@@ -518,7 +520,7 @@ final class AppState: ObservableObject {
         case .hostIntro: goProfile()
         case .create: createBack()
         case .attendance: goDashboard()
-        case .preferences, .editName: screen = .profile
+        case .preferences, .editName, .security: screen = .profile
         case .login: screen = authBackScreen
         case .confirmed, .refunded, .notifications: goHome()
         default: break
@@ -542,7 +544,7 @@ final class AppState: ObservableObject {
         case .hostIntro: return .profile
         case .create: return hasHosted ? .dashboard : .hostIntro
         case .attendance: return .dashboard
-        case .preferences, .editName: return .profile
+        case .preferences, .editName, .security: return .profile
         case .login: return authBackScreen
         case .confirmed, .refunded, .notifications: return .home
         default: return .home

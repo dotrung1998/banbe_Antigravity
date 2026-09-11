@@ -122,6 +122,27 @@ final class NavigationUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Ngôn ngữ & hiển thị"].waitForExistence(timeout: 5))
     }
 
+    /// Security used to be a subsection buried inside Language & appearance;
+    /// it's its own row on Account and its own screen now.
+    func testSecurityIsItsOwnScreenOffAccount() {
+        let app = launchToHome()
+        app.buttons["header.account"].tap()
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
+
+        // It is no longer reachable from inside Preferences.
+        app.buttons["account.preferences"].tap()
+        XCTAssertTrue(app.otherElements["screen.preferences"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Bảo mật"].exists)
+        app.buttons["‹ Tài khoản"].tap()
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
+
+        // It is reachable as its own row, and back returns to Account.
+        app.buttons["account.security"].tap()
+        XCTAssertTrue(app.otherElements["screen.security"].waitForExistence(timeout: 5))
+        app.buttons["‹ Tài khoản"].tap()
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
+    }
+
     func testDarkThemeRepaintsTheApp() {
         let app = launchToHome()
         app.buttons["header.account"].tap()

@@ -55,6 +55,19 @@ enum AuthAPIService {
         try await post(path: "/api/auth/send-email-code", body: body)
     }
 
+    /// Sends the "choose a new password" email — the same endpoint and the
+    /// same branded template the web app uses. Unlike sign-in, this stays a
+    /// link rather than a code: it opens the web app with a Supabase
+    /// recovery session already established, which is where the new
+    /// password actually gets set (see api/auth/send-password-reset.js).
+    ///
+    /// The server answers 200 whether or not an account exists, so callers
+    /// must show the same "check your email" message either way rather than
+    /// branching on the result.
+    static func requestPasswordReset(email: String) async throws {
+        try await post(path: "/api/auth/send-password-reset", body: ["email": email])
+    }
+
     /// Fire-and-forget call to one of the /api/notify-* endpoints, with the
     /// caller's session token attached. Those endpoints re-derive their own
     /// recipient and authorization from the database using that token, so

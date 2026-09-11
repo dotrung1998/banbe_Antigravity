@@ -127,6 +127,41 @@ final class AuthViewModel: ObservableObject {
         isLocked = true
     }
 
+    // MARK: - Security settings
+
+    /// Turning the app-lock on runs a real Face ID check there and then,
+    /// which is what surfaces iOS's own "banbe would like to use Face ID"
+    /// permission alert the first time (it only ever appears when a policy
+    /// is actually evaluated — flipping a stored flag never prompted
+    /// anything). It doubles as proof the lock will work before anyone
+    /// depends on it: if the prompt is denied, cancelled or biometry isn't
+    /// usable, the setting stays off instead of locking someone out of
+    /// their own app on next launch. Turning it off needs no prompt.
+    func setFaceIDEnabled(_ enabled: Bool, reason: String) async -> Bool {
+        guard enabled else {
+            faceIDEnabled = false
+            return true
+        }
+        let approved = await BiometricAuthService.authenticate(reason: reason)
+        faceIDEnabled = approved
+        return approved
+    }
+
+    /// Sets (or replaces) this account's password. Works for an account
+    /// that has only ever signed in with an emailed code as well as one
+    /// that already has a password — Supabase treats both as the same
+    /// update on the signed-in user, so there's nothing to branch on.
+    func updatePassword(_ newPassword: String) async throws {
+        _ = try await SupabaseService.client.auth.update(user: UserAttributes(password: newPassword))
+    }
+
+    /// "Forgot password" — emails the recovery link. Deliberately resolves
+    /// the same way whether or not the address has an account (the server
+    /// won't say, on purpose).
+    func sendPasswordReset(to email: String) async throws {
+        try await AuthAPIService.requestPasswordReset(email: email)
+    }
+
     func signOut() async {
         try? await SupabaseService.client.auth.signOut()
     }

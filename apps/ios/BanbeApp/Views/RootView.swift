@@ -198,6 +198,7 @@ struct RootView: View {
         case .editName: EditNameView()
         case .notifications: NotificationsView()
         case .eventList: EventListView()
+        case .security: SecurityView()
         }
     }
 

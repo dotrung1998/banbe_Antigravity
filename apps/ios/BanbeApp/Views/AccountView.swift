@@ -60,6 +60,12 @@ struct AccountView: View {
                             + (app.theme == "dark" ? app.T("Tối", "Dark") : app.T("Sáng", "Light"))) {
                         app.openPreferences()
                     }
+                    Divider().overlay(app.palette.rule)
+                    row(app.T("Bảo mật", "Security"),
+                        identifier: "account.security",
+                        trailing: "›") {
+                        app.openSecurity()
+                    }
                 }
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.top, 20)

@@ -4,7 +4,6 @@ import SwiftUI
 /// which follow the signed-in account (see AppState.persistPreference).
 struct PreferencesView: View {
     @EnvironmentObject var app: AppState
-    @EnvironmentObject var auth: AuthViewModel
 
     var body: some View {
         ScreenScaffold {
@@ -42,19 +41,6 @@ struct PreferencesView: View {
                     choice(title: app.T("Tối", "Dark"), subtitle: app.T("Nền mực dịu mắt", "Soft ink background"),
                            active: app.theme == "dark") { app.pickTheme("dark") }
                         .accessibilityIdentifier("pref.theme.dark")
-                }
-
-                // iOS-only: the web app has no equivalent, since Face ID
-                // gates access to a device that's already signed in.
-                if BiometricAuthService.canAuthenticate() {
-                    section(app.T("Bảo mật", "Security")) {
-                        choice(title: app.T("Mở khoá bằng Face ID", "Unlock with Face ID"),
-                               subtitle: app.T("Hỏi Face ID mỗi lần bạn mở lại ứng dụng.",
-                                               "Ask for Face ID each time you return to the app."),
-                               active: auth.faceIDEnabled) {
-                            auth.faceIDEnabled.toggle()
-                        }
-                    }
                 }
             }
             .foregroundStyle(app.palette.ink)
