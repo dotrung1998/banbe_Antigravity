@@ -42,3 +42,30 @@ targets:
         NSLocationWhenInUseUsageDescription: "banbe uses your location to show how far events are and to filter the area picker."
         NSCameraUsageDescription: "banbe uses your camera to scan a guest's ticket QR code at check-in."
         NSFaceIDUsageDescription: "banbe uses Face ID to unlock the app for a returning signed-in user."
+
+  BanbeAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: BanbeAppUITests
+    dependencies:
+      - target: BanbeApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.banbe.ios.uitests
+        SWIFT_VERSION: "5.0"
+        TEST_TARGET_NAME: BanbeApp
+        GENERATE_INFOPLIST_FILE: "YES"
+
+schemes:
+  BanbeApp:
+    build:
+      targets:
+        BanbeApp: all
+        BanbeAppUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - BanbeAppUITests

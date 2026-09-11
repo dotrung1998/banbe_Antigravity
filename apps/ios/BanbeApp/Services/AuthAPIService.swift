@@ -55,6 +55,23 @@ enum AuthAPIService {
         try await post(path: "/api/auth/send-email-code", body: body)
     }
 
+    /// Fire-and-forget call to one of the /api/notify-* endpoints, with the
+    /// caller's session token attached. Those endpoints re-derive their own
+    /// recipient and authorization from the database using that token, so
+    /// nothing here is trusted; the in-app notification has already been
+    /// written by the RPC regardless, which is why a failure is silent.
+    static func notify(path: String, body: [String: String]) async {
+        guard let url = URL(string: AppConfig.apiBaseURL + path),
+              let token = try? await SupabaseService.client.auth.session.accessToken
+        else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
     private static func post(path: String, body: [String: String]) async throws {
         guard let url = URL(string: AppConfig.apiBaseURL + path) else {
             throw AuthAPIError(code: "AUTH_EMAIL_REQUEST_FAILED")
