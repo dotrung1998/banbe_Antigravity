@@ -4,13 +4,31 @@ import { paper, ink, display, fieldGlass } from '../theme.js';
 export default function Login() {
   const {
     state, T, set,
-    loginEmailType, loginNicknameType, loginEmailSubmit, loginEmailKey, loginPhoneType, loginCodeType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, emailValid,
+    loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType,
+    loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram,
+    emailValid, passwordValid, setAuthMethod, requestPasswordResetSubmit, submitCurrentForm,
   } = useGoc();
   const s = state;
   const isSignup = s.authMode === 'signup';
+  const isPassword = s.authMethod === 'password';
+  const awaitingCode = s.loginSentVia === 'email';
   const nicknameValid = !isSignup || s.loginNickname.trim().length > 0;
-  const valid = emailValid(s.loginEmail) && nicknameValid;
-  const changeAuthMode = (authMode) => set({ authMode, reserveError: '', loginSent: false, loginSentVia: null });
+
+  const valid = awaitingCode
+    ? s.loginEmailCode.trim().length > 0
+    : isPassword
+      ? emailValid(s.loginEmail) && nicknameValid && (isSignup
+        ? passwordValid(s.loginPassword) && s.loginPassword === s.loginPasswordConfirm
+        : s.loginPassword.length > 0)
+      : emailValid(s.loginEmail) && nicknameValid;
+
+  const changeAuthMode = (authMode) => set({ authMode, reserveError: '', loginSent: false, loginSentVia: null, loginEmailCode: '', resetRequested: false });
+
+  const submitLabel = awaitingCode
+    ? T('Xác nhận', 'Verify')
+    : isPassword
+      ? (isSignup ? T('Tạo tài khoản', 'Create account') : T('Đăng nhập', 'Log in'))
+      : (isSignup ? T('Gửi mã đăng ký', 'Send sign-up code') : T('Gửi mã đăng nhập', 'Send sign-in code'));
 
   const loginBtnStyle = {
     marginTop: 12, fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 15, cursor: valid ? 'pointer' : 'default',
@@ -28,6 +46,12 @@ export default function Login() {
     borderRadius: 18, textShadow: '0 1px 2px rgba(0,60,150,0.35)', fontSize: 15, fontWeight: 600,
     textAlign: 'center', padding: 15, cursor: 'pointer',
   };
+
+  const methodTabStyle = (method) => ({
+    flex: 1, textAlign: 'center', fontSize: 12, fontWeight: s.authMethod === method ? 600 : 400,
+    color: ink, padding: '9px 0', cursor: 'pointer',
+    background: s.authMethod === method ? 'rgba(27,25,22,0.1)' : 'transparent',
+  });
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Login">
@@ -49,15 +73,52 @@ export default function Login() {
           <span style={{ fontSize: 11, color: ink }}>{T('hoặc dùng email', 'or use email')}</span>
           <span style={{ flex: 1, height: 1, background: 'rgba(27,25,22,0.16)' }} />
         </div>
-        {isSignup && (
+
+        {!awaitingCode && (
+          <div style={{ ...fieldGlass({ marginTop: 14, padding: 3, border: 'none', display: 'flex' }) }}>
+            <div onClick={() => setAuthMethod('code')} style={methodTabStyle('code')}>{T('Mã qua email', 'Email code')}</div>
+            <div onClick={() => setAuthMethod('password')} style={methodTabStyle('password')}>{T('Mật khẩu', 'Password')}</div>
+          </div>
+        )}
+
+        {isSignup && !awaitingCode && (
           <input value={s.loginNickname} onChange={loginNicknameType} placeholder={T('Tên hiển thị của bạn', 'Your display name')} style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
         )}
-        <input value={s.loginEmail} onChange={loginEmailType} onKeyDown={loginEmailKey} placeholder="ban@email.com" style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
-        <input value={s.loginPhoneNumber} onChange={loginPhoneType} placeholder="+84 901 234 567" inputMode="tel" style={{ ...fieldGlass({ marginTop: 10, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
+        {!awaitingCode && (
+          <input value={s.loginEmail} onChange={loginEmailType} onKeyDown={loginEmailKey} placeholder="ban@email.com" style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
+        )}
+        {!awaitingCode && isPassword && (
+          <input value={s.loginPassword} onChange={loginPasswordType} onKeyDown={loginEmailKey} type="password" placeholder={T('Mật khẩu', 'Password')} style={{ ...fieldGlass({ marginTop: 10, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
+        )}
+        {!awaitingCode && isPassword && isSignup && (
+          <input value={s.loginPasswordConfirm} onChange={loginPasswordConfirmType} onKeyDown={loginEmailKey} type="password" placeholder={T('Nhập lại mật khẩu', 'Confirm password')} style={{ ...fieldGlass({ marginTop: 10, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
+        )}
+        {!awaitingCode && isPassword && !isSignup && (
+          <div onClick={requestPasswordResetSubmit} style={{ fontSize: 12, color: ink, opacity: 0.75, textAlign: 'right', marginTop: 8, cursor: 'pointer' }}>{T('Quên mật khẩu?', 'Forgot password?')}</div>
+        )}
+
+        {!awaitingCode && (
+          <input value={s.loginPhoneNumber} onChange={loginPhoneType} placeholder="+84 901 234 567" inputMode="tel" style={{ ...fieldGlass({ marginTop: 10, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
+        )}
         {s.loginSentVia === 'phone' && <div style={{ display: 'flex', gap: 8, marginTop: 10 }}><input value={s.loginCode} onChange={loginCodeType} placeholder={T('Mã OTP', 'OTP code')} inputMode="numeric" style={{ ...fieldGlass({ flex: 1, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} /><div onClick={verifyLoginCode} style={{ ...fieldGlass({ padding: '14px 12px', border: 'none' }), fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Xác nhận', 'Verify')}</div></div>}
-        <div onClick={loginEmailSubmit} style={loginBtnStyle}>{s.authMode === 'signup' ? T('Gửi link đăng ký', 'Send sign-up link') : T('Gửi link đăng nhập', 'Send sign-in link')}</div>
-        {s.loginSentVia === 'email' && <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0', textAlign: 'center' }}>{s.authMode === 'signup' ? T('Đã gửi link đăng ký. Mở email trên thiết bị này để tiếp tục.', 'Sign-up link sent. Open the email on this device to continue.') : T('Đã gửi link đăng nhập. Mở email trên thiết bị này để tiếp tục.', 'Sign-in link sent. Open the email on this device to continue.')}</p>}
+
+        {awaitingCode && (
+          <input value={s.loginEmailCode} onChange={loginEmailCodeType} onKeyDown={loginEmailKey} placeholder={T('Mã 6 số', '6-digit code')} inputMode="numeric" autoFocus style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 20, letterSpacing: '0.2em', textAlign: 'center', fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
+        )}
+
+        <div onClick={submitCurrentForm} style={loginBtnStyle}>{submitLabel}</div>
+
+        {awaitingCode && (
+          <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0', textAlign: 'center' }}>
+            {T('Đã gửi mã tới email của bạn. Nhập mã để tiếp tục.', 'A code was sent to your email. Enter it to continue.')}
+          </p>
+        )}
         {s.loginSentVia === 'phone' && <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0', textAlign: 'center' }}>{T('Đã gửi mã OTP. Hãy nhập mã để tiếp tục.', 'OTP sent. Enter the code to continue.')}</p>}
+        {s.resetRequested && !s.reserveError && (
+          <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0', textAlign: 'center' }}>
+            {T('Nếu email này có tài khoản, một email đặt lại mật khẩu vừa được gửi.', 'If that email has an account, a password reset email was just sent.')}
+          </p>
+        )}
         {s.reserveError && <p style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '12px 0 0', textAlign: 'center' }}>{s.reserveError}</p>}
         <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: '16px 0 0', textAlign: 'center' }}>{T('Đã giữ chỗ sự kiện nào thì bạn đã đăng nhập sẵn.', "If you've already reserved a spot, you're already logged in.")}</p>
       </div>

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { EVENTS, findEvent, haversineKm } from '../data/events.js';
 import { supabase } from '../lib/supabase.js';
-import { requestAuthEmail } from '../lib/authEmail.js';
+import { requestAuthEmail, requestPasswordSignup, requestPasswordReset } from '../lib/authEmail.js';
 
 const GocCtx = createContext(null);
 
@@ -40,10 +40,26 @@ const initialState = {
   authMode: 'login',
   authReturnScreen: 'home',
   authBackScreen: 'home',
+  // 'code' (email a one-time code) or 'password' — a per-tab choice, not
+  // persisted; every account can use either, regardless of which one it was
+  // created with (password sign-up still confirms via an emailed code).
+  authMethod: 'code',
   loginEmail: '',
   loginNickname: '',
   loginPhoneNumber: '',
   loginCode: '',
+  loginEmailCode: '',
+  loginPassword: '',
+  loginPasswordConfirm: '',
+  // Which supabase.auth.verifyOtp `type` the pending emailed code should be
+  // verified as — set when the code is requested, since the login/signup
+  // tab could in principle change before the code is entered.
+  pendingEmailMode: null,
+  resetRequested: false,
+  newPassword: '',
+  newPasswordConfirm: '',
+  resetPasswordBusy: false,
+  resetPasswordError: '',
   loginSent: false,
   loginSentVia: null,
   payMode: 'now',
@@ -207,8 +223,11 @@ export function GocProvider({ children }) {
     supabase.auth.getSession().then(({ data }) => syncUser(data.session?.user));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (active && session?.user) {
+        // A password-reset link lands here as a real session too — but it
+        // must go to the "choose a new password" screen, never straight
+        // into whatever authReturnScreen was pending.
         set(prev => ({
-          screen: prev.screen === 'login' ? prev.authReturnScreen : prev.screen,
+          screen: _event === 'PASSWORD_RECOVERY' ? 'resetPassword' : (prev.screen === 'login' ? prev.authReturnScreen : prev.screen),
           loginSent: false,
           loginSentVia: null,
         }));
@@ -720,7 +739,17 @@ export function GocProvider({ children }) {
   const loginNicknameType = useCallback((e) => set({ loginNickname: e.target.value }), [set]);
   const loginPhoneType = useCallback((e) => set({ loginPhoneNumber: e.target.value }), [set]);
   const loginCodeType = useCallback((e) => set({ loginCode: e.target.value }), [set]);
+  const loginEmailCodeType = useCallback((e) => set({ loginEmailCode: e.target.value }), [set]);
+  const loginPasswordType = useCallback((e) => set({ loginPassword: e.target.value }), [set]);
+  const loginPasswordConfirmType = useCallback((e) => set({ loginPasswordConfirm: e.target.value }), [set]);
   const emailValid = (v) => /\S+@\S+\.\S+/.test(v);
+  const passwordValid = (v) => v.length >= 8;
+  // Switching between "code" and "password" (or Login/Signup) always clears
+  // whatever partial attempt was in flight — a stale error or a code sent
+  // for the other method would otherwise linger and confuse the new one.
+  const setAuthMethod = useCallback((authMethod) => set({
+    authMethod, reserveError: '', loginSent: false, loginSentVia: null, loginEmailCode: '', resetRequested: false,
+  }), [set]);
   const authEmailErrorMessage = useCallback((error, mode) => {
     const code = error?.code || error?.message;
     if (code === 'AUTH_ACCOUNT_NOT_FOUND' && mode !== 'signup') {
@@ -732,6 +761,9 @@ export function GocProvider({ children }) {
     if (code === 'VALID_NAME_REQUIRED') {
       return T('Hãy nhập tên hiển thị của bạn.', 'Please enter a display name.');
     }
+    if (code === 'VALID_PASSWORD_REQUIRED') {
+      return T('Mật khẩu phải có ít nhất 8 ký tự.', 'Password must be at least 8 characters.');
+    }
     if (code === 'AUTH_EMAIL_DELIVERY_FAILED') {
       return T('Không thể gửi email lúc này. Vui lòng thử lại sau.', 'We could not send the email right now. Please try again later.');
     }
@@ -742,16 +774,21 @@ export function GocProvider({ children }) {
       return T('Không thể xử lý yêu cầu email. Vui lòng thử lại sau.', 'We could not process the email request. Please try again later.');
     }
     if (code === 'AUTH_LINK_GENERATION_FAILED') {
-      return T('Không thể tạo liên kết xác thực. Vui lòng thử lại sau.', 'We could not create the verification link. Please try again later.');
+      return T('Không thể tạo mã xác thực. Vui lòng thử lại sau.', 'We could not create the verification code. Please try again later.');
     }
     if (code === 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED') {
       return T('Dịch vụ email chưa được cấu hình. Vui lòng thử lại sau.', 'The email service is not configured yet. Please try again later.');
     }
+    if (mode === 'reset') {
+      return T('Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau.', 'We could not send the password reset email. Please try again later.');
+    }
     return mode === 'signup'
-      ? T('Không thể gửi link đăng ký. Vui lòng thử lại sau.', 'We could not send the sign-up link. Please try again later.')
-      : T('Không thể gửi link đăng nhập. Vui lòng thử lại sau.', 'We could not send the sign-in link. Please try again later.');
+      ? T('Không thể gửi mã đăng ký. Vui lòng thử lại sau.', 'We could not send the sign-up code. Please try again later.')
+      : T('Không thể gửi mã đăng nhập. Vui lòng thử lại sau.', 'We could not send the sign-in code. Please try again later.');
   }, [T]);
-  const loginEmailSubmit = useCallback(async () => {
+  // "Code" method: request a 6-digit code by email, for either Login or
+  // Signup. Verifying it (below) is what actually establishes the session.
+  const codeRequestSubmit = useCallback(async () => {
     if (!emailValid(s.loginEmail)) return;
     const email = s.loginEmail.trim();
     const displayName = s.loginNickname.trim();
@@ -760,12 +797,83 @@ export function GocProvider({ children }) {
     }
     try {
       await requestAuthEmail({ email, mode: s.authMode, ...(s.authMode === 'signup' ? { displayName } : {}) });
-      set({ loginSent: true, loginSentVia: 'email', reserveError: '' });
+      set({ loginSent: true, loginSentVia: 'email', pendingEmailMode: s.authMode, reserveError: '' });
     } catch (e) {
       set({ loginSent: false, loginSentVia: null, reserveError: authEmailErrorMessage(e, s.authMode) });
     }
   }, [set, s.loginEmail, s.loginNickname, s.authMode, authEmailErrorMessage]);
-  const loginEmailKey = useCallback((e) => { if (e.key === 'Enter') loginEmailSubmit(); }, [loginEmailSubmit]);
+  // "Password" method, Signup: creates the account with the password
+  // actually chosen, then — same as the code method — still requires
+  // entering the emailed confirmation code once to finish.
+  const passwordSignupSubmit = useCallback(async () => {
+    if (!emailValid(s.loginEmail)) return;
+    const email = s.loginEmail.trim();
+    const displayName = s.loginNickname.trim();
+    if (!displayName) return set({ reserveError: authEmailErrorMessage({ code: 'VALID_NAME_REQUIRED' }, 'signup') });
+    if (!passwordValid(s.loginPassword)) return set({ reserveError: authEmailErrorMessage({ code: 'VALID_PASSWORD_REQUIRED' }, 'signup') });
+    if (s.loginPassword !== s.loginPasswordConfirm) {
+      return set({ reserveError: T('Mật khẩu xác nhận không khớp.', 'Passwords do not match.') });
+    }
+    try {
+      await requestPasswordSignup({ email, password: s.loginPassword, displayName });
+      set({ loginSent: true, loginSentVia: 'email', pendingEmailMode: 'signup', reserveError: '' });
+    } catch (e) {
+      set({ loginSent: false, loginSentVia: null, reserveError: authEmailErrorMessage(e, 'signup') });
+    }
+  }, [set, s.loginEmail, s.loginNickname, s.loginPassword, s.loginPasswordConfirm, authEmailErrorMessage, T]);
+  // "Password" method, Login: straight to Supabase, no code step — the
+  // account already has a password. (The onAuthStateChange listener handles
+  // moving off the Login screen once the session lands.)
+  const passwordLoginSubmit = useCallback(async () => {
+    if (!emailValid(s.loginEmail)) return;
+    if (!s.loginPassword) return set({ reserveError: T('Nhập mật khẩu của bạn.', 'Enter your password.') });
+    const { error } = await supabase.auth.signInWithPassword({ email: s.loginEmail.trim(), password: s.loginPassword });
+    if (error) {
+      set({ reserveError: T('Sai email hoặc mật khẩu.', 'Wrong email or password.') });
+      return;
+    }
+    set({ reserveError: '' });
+  }, [set, s.loginEmail, s.loginPassword, T]);
+  // Finishes either code flow above — Login-by-code, Signup-by-code, or
+  // Signup-by-password's confirmation step — by verifying the code directly
+  // against Supabase itself; a real session comes back on success and the
+  // onAuthStateChange listener takes it from there.
+  const verifyEmailCode = useCallback(async () => {
+    const email = s.loginEmail.trim();
+    const token = s.loginEmailCode.trim();
+    if (!token) return set({ reserveError: T('Nhập mã đã gửi tới email của bạn.', 'Enter the code sent to your email.') });
+    const type = s.pendingEmailMode === 'signup' ? 'signup' : 'email';
+    const { error } = await supabase.auth.verifyOtp({ email, token, type });
+    if (error) {
+      set({ reserveError: T('Mã không đúng hoặc đã hết hạn. Vui lòng thử lại.', 'That code is wrong or has expired. Please try again.') });
+      return;
+    }
+    set({ reserveError: '', loginEmailCode: '' });
+  }, [set, s.loginEmail, s.loginEmailCode, s.pendingEmailMode, T]);
+  // "Forgot password?" — always shows the same generic confirmation
+  // regardless of whether the account actually exists (see
+  // send-password-reset.js); only a real failure to even attempt sending
+  // gets its own message.
+  const requestPasswordResetSubmit = useCallback(async () => {
+    if (!emailValid(s.loginEmail)) return set({ reserveError: T('Nhập email của bạn trước.', 'Enter your email first.') });
+    try {
+      await requestPasswordReset({ email: s.loginEmail.trim() });
+      set({ resetRequested: true, reserveError: '' });
+    } catch (e) {
+      set({ resetRequested: false, reserveError: authEmailErrorMessage(e, 'reset') });
+    }
+  }, [set, s.loginEmail, authEmailErrorMessage, T]);
+  // Single Enter-key / submit dispatcher for the Login screen — routes to
+  // whichever action the currently-visible form actually needs.
+  const submitCurrentForm = useCallback(() => {
+    if (s.loginSentVia === 'email') { verifyEmailCode(); return; }
+    if (s.authMethod === 'password') {
+      if (s.authMode === 'signup') passwordSignupSubmit(); else passwordLoginSubmit();
+      return;
+    }
+    codeRequestSubmit();
+  }, [s.loginSentVia, s.authMethod, s.authMode, verifyEmailCode, passwordSignupSubmit, passwordLoginSubmit, codeRequestSubmit]);
+  const loginEmailKey = useCallback((e) => { if (e.key === 'Enter') submitCurrentForm(); }, [submitCurrentForm]);
   const loginZalo = useCallback(() => set({ reserveError: T('Zalo chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Zalo is not available yet. Use email or phone OTP.') }), [set, T]);
   const loginPhone = useCallback(async () => {
     const phone = s.loginPhoneNumber.trim();
@@ -780,6 +888,26 @@ export function GocProvider({ children }) {
   }, [set, s.loginPhoneNumber, s.loginCode, T]);
   const loginFacebook = useCallback(() => set({ reserveError: T('Facebook chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Facebook is not available yet. Use email or phone OTP.') }), [set, T]);
   const loginInstagram = useCallback(() => set({ reserveError: T('Instagram chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Instagram is not available yet. Use email or phone OTP.') }), [set, T]);
+
+  // ---- reset-password screen (landed on via the emailed recovery link —
+  // see the PASSWORD_RECOVERY branch of onAuthStateChange above) ----
+  const newPasswordType = useCallback((e) => set({ newPassword: e.target.value, resetPasswordError: '' }), [set]);
+  const newPasswordConfirmType = useCallback((e) => set({ newPasswordConfirm: e.target.value, resetPasswordError: '' }), [set]);
+  const submitNewPassword = useCallback(async () => {
+    if (!passwordValid(s.newPassword)) {
+      return set({ resetPasswordError: T('Mật khẩu phải có ít nhất 8 ký tự.', 'Password must be at least 8 characters.') });
+    }
+    if (s.newPassword !== s.newPasswordConfirm) {
+      return set({ resetPasswordError: T('Mật khẩu không khớp.', 'Passwords do not match.') });
+    }
+    set({ resetPasswordBusy: true, resetPasswordError: '' });
+    const { error } = await supabase.auth.updateUser({ password: s.newPassword });
+    if (error) {
+      set({ resetPasswordBusy: false, resetPasswordError: T('Không thể đặt mật khẩu mới. Vui lòng thử lại.', 'Could not set the new password. Please try again.') });
+      return;
+    }
+    set({ resetPasswordBusy: false, newPassword: '', newPasswordConfirm: '', screen: 'home' });
+  }, [set, s.newPassword, s.newPasswordConfirm, T]);
 
   // ---- chat ----
   // Real threads/messages (supabase/migrations/003_social_chat.sql) — this
@@ -1059,7 +1187,7 @@ export function GocProvider({ children }) {
     pickFilter, clearFilters, shareEvent,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
-    loginEmailType, loginNicknameType, loginEmailSubmit, loginEmailKey, loginPhoneType, loginCodeType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, emailValid,
+    loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, openChatFor, openThread,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
@@ -1078,7 +1206,7 @@ export function GocProvider({ children }) {
     pickFilter, clearFilters, shareEvent,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
-    loginEmailType, loginNicknameType, loginEmailSubmit, loginEmailKey, loginPhoneType, loginCodeType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram,
+    loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, openChatFor, openThread,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,

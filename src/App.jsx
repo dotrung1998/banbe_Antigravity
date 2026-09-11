@@ -14,6 +14,7 @@ import Reserve from './screens/Reserve.jsx';
 import Confirmed from './screens/Confirmed.jsx';
 import Refunded from './screens/Refunded.jsx';
 import Login from './screens/Login.jsx';
+import ResetPassword from './screens/ResetPassword.jsx';
 import Chat from './screens/Chat.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import HostIntro from './screens/HostIntro.jsx';
@@ -40,6 +41,7 @@ const SCREENS = {
   confirmed: Confirmed,
   refunded: Refunded,
   login: Login,
+  resetPassword: ResetPassword,
   chat: Chat,
   dashboard: Dashboard,
   hostIntro: HostIntro,
