@@ -62,31 +62,51 @@ test.describe('Navigation & Event Exploration', () => {
     await expect(page.locator('[data-screen-label="Organizer"]')).toBeVisible({ timeout: 3000 });
   });
 
-  test('going back from an event opens where you actually came from, not always Home', async ({ page }) => {
-    // Home -> Event (came from Home, so back still means Home).
+  // An organizer page has no back target of its own — its back link just
+  // re-opens whichever event is currently open. So an event reached from
+  // one must NOT point back at it: that used to leave event and organizer
+  // bouncing off each other forever with no way to reach Home short of
+  // reloading the app. Both screens are one cluster about the same
+  // organizer; back leaves the whole cluster.
+  test('back from an event opened via the organizer page reaches Home, never loops', async ({ page }) => {
+    // Home -> Event (came from Home, so back means Home).
     await page.getByText('Bếp Nhỏ №12').first().click();
     const eventScreen = page.locator('[data-screen-label="Event"]');
+    const organizerScreen = page.locator('[data-screen-label="Organizer"]');
+    const homeScreen = page.locator('[data-screen-label="Home"]');
     await expect(eventScreen).toBeVisible({ timeout: 3000 });
     await expect(eventScreen.getByText('‹ banbe')).toBeVisible();
 
-    // Event -> Organizer -> the same event again from the organizer's own
-    // event list. This time Event Detail was opened from the Organizer
-    // screen, so its back pill must say so instead of defaulting to Home.
+    // Event -> Organizer -> an event from the organizer's own "Sự kiện đang
+    // mở" list. That list includes the event we arrived from, which is the
+    // exact path that used to trap the two screens in a loop.
+    await page.getByText(/Ghé.*›/).first().click();
+    await expect(organizerScreen).toBeVisible({ timeout: 3000 });
+    await organizerScreen.getByText('Bếp Nhỏ №12', { exact: true }).click();
+    await expect(eventScreen).toBeVisible({ timeout: 3000 });
+
+    // The back pill still points at Home, so one tap leaves the cluster.
+    await expect(eventScreen.getByText('‹ banbe')).toBeVisible();
+    await eventScreen.getByText('‹ banbe').click();
+    await expect(homeScreen).toBeVisible({ timeout: 3000 });
+    await expect(organizerScreen).toHaveCount(0);
+  });
+
+  test('the organizer page itself still goes back to the event it was opened from', async ({ page }) => {
+    await page.getByText('Bếp Nhỏ №12').first().click();
+    const eventScreen = page.locator('[data-screen-label="Event"]');
+    await expect(eventScreen).toBeVisible({ timeout: 3000 });
+
     await page.getByText(/Ghé.*›/).first().click();
     const organizerScreen = page.locator('[data-screen-label="Organizer"]');
     await expect(organizerScreen).toBeVisible({ timeout: 3000 });
-    await organizerScreen.getByText('Bếp Nhỏ №12', { exact: true }).click();
 
+    // "‹ <event name>" returns to the event, and from there one more tap
+    // reaches Home rather than bouncing back to the organizer.
+    await organizerScreen.getByText('‹ Bếp Nhỏ №12').click();
     await expect(eventScreen).toBeVisible({ timeout: 3000 });
-    await expect(eventScreen.getByText('‹ banbe')).toHaveCount(0);
-    await expect(eventScreen.getByText('‹ Trang tổ chức')).toBeVisible();
-    // A distinct, separate way back to Home is still available.
-    await expect(eventScreen.getByText('Về trang chính')).toBeVisible();
-
-    // Following the contextual back pill returns to the Organizer screen,
-    // not Home.
-    await eventScreen.getByText('‹ Trang tổ chức').click();
-    await expect(organizerScreen).toBeVisible({ timeout: 3000 });
+    await eventScreen.getByText('‹ banbe').click();
+    await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 3000 });
   });
 
   test('the event address opens Google Maps and offers to show distance', async ({ page, context }) => {

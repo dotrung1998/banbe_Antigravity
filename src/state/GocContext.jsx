@@ -552,24 +552,24 @@ export function GocProvider({ children }) {
   // so remember whichever one we came from — its own back arrow used to be
   // hardcoded to Home, which is what made "back" feel like it always
   // returned to the very start regardless of where you'd drilled in from.
-  // Re-opening the SAME event from its own organizer page (its own "Current
-  // events" list includes itself) is a deliberate two-way toggle — back
-  // means "organizer", and organizer's own back means this event, exactly
-  // as tested. But tapping a DIFFERENT event in that list must carry
-  // forward the ORIGINAL back target instead, treating "organizer" as a
-  // pass-through the same way "event" itself already is. Otherwise the new
-  // event's back screen becomes "organizer" — whose own back button
-  // re-opens whichever event is now current (the new one, not the one that
-  // was actually open when Organizer was entered) — trapping event <->
-  // organizer in a loop that never reaches Home.
-  const goEvent = useCallback((key) => set(prev => {
-    const skipOrganizer = prev.screen === 'organizer' && prev.eventKey !== key;
-    return {
-      screen: 'event',
-      eventKey: key,
-      eventBackScreen: (prev.screen === 'event' || skipOrganizer) ? prev.eventBackScreen : prev.screen,
-    };
-  }), [set]);
+  // "organizer" is a pass-through, exactly like "event" itself already is:
+  // entering an event from an organizer page keeps whatever back target
+  // brought us into this event/organizer cluster in the first place.
+  //
+  // Pointing back at "organizer" instead is what trapped the two screens in
+  // an inescapable loop. Organizer has no back target of its own — its back
+  // link just re-opens whichever event is current — so event's back would
+  // go to organizer, organizer's back would come straight back to the same
+  // event, forever, with no way to reach Home. That's true whichever row of
+  // its "Current events" list is tapped, including the event you arrived
+  // from (that list contains it too).
+  const goEvent = useCallback((key) => set(prev => ({
+    screen: 'event',
+    eventKey: key,
+    eventBackScreen: (prev.screen === 'event' || prev.screen === 'organizer')
+      ? prev.eventBackScreen
+      : prev.screen,
+  })), [set]);
   const backFromEvent = useCallback(() => set(prev => ({ screen: prev.eventBackScreen || 'home' })), [set]);
   const goOrganizer = useCallback(() => set({ screen: 'organizer' }), [set]);
   const goReserve = useCallback(() => set(s.user ? { screen: 'reserve' } : { screen: 'login', authMode: 'login', authReturnScreen: 'reserve', authBackScreen: 'event' }), [set, s.user]);

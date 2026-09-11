@@ -409,18 +409,20 @@ final class AppState: ObservableObject {
 
     func goHome() { screen = .home }
     func goProfile() { screen = .profile }
-    // Re-opening the SAME event from its own organizer page is a deliberate
-    // two-way toggle — back means "organizer", and organizer's own back
-    // means this event. But tapping a DIFFERENT event in that list must
-    // carry forward the ORIGINAL back target instead, treating "organizer"
-    // as a pass-through the same way "event" itself already is. Otherwise
-    // the new event's back screen becomes "organizer" — whose own back
-    // button re-opens whichever event is now current (the new one, not the
-    // one that was open when Organizer was entered) — trapping event <->
-    // organizer in a loop that never reaches Home.
+    // "organizer" is a pass-through, exactly like "event" itself already
+    // is: entering an event from an organizer page keeps whatever back
+    // target brought us into this event/organizer cluster in the first
+    // place.
+    //
+    // Pointing back at "organizer" instead is what trapped the two screens
+    // in an inescapable loop. Organizer has no back target of its own — its
+    // back link just re-opens whichever event is current — so event's back
+    // would go to organizer, organizer's back would come straight back to
+    // the same event, forever, with no way to reach Home. That's true
+    // whichever row of its "Current events" list is tapped, including the
+    // event you arrived from (that list contains it too).
     func goEvent(_ key: String) {
-        let skipOrganizer = screen == .organizer && eventKey != key
-        if screen != .event && !skipOrganizer { eventBackScreen = screen }
+        if screen != .event && screen != .organizer { eventBackScreen = screen }
         eventKey = key
         screen = .event
         Task { await loadBookingForCurrentEvent() }
