@@ -10,8 +10,13 @@ struct RootView: View {
     // Live-follows the finger while an edge swipe is in progress, the same
     // way UIKit's interactivePopGestureRecognizer drags the current view
     // along with the touch instead of just reacting once the gesture ends.
-    @GestureState private var dragTranslation: CGFloat = 0
+    // A plain @State (not @GestureState) so every touch update can apply
+    // with NO implicit animation — layering a spring on top of an already
+    // continuous, per-frame gesture value is what was making the drag feel
+    // laggy, since it was smoothing toward a target that kept moving.
+    @State private var dragTranslation: CGFloat = 0
     @State private var isCommittingBack = false
+    @State private var isDragTracking = false
 
     private var dragProgress: CGFloat {
         guard !isCommittingBack else { return 1 }
@@ -20,15 +25,27 @@ struct RootView: View {
     }
 
     private var edgeSwipe: some Gesture {
-        DragGesture(minimumDistance: 8, coordinateSpace: .local)
-            .updating($dragTranslation) { value, state, _ in
-                guard app.canSwipeBack, value.startLocation.x < 32 else { return }
-                state = max(0, value.translation.width)
+        DragGesture(minimumDistance: 4, coordinateSpace: .local)
+            .onChanged { value in
+                // Only the very first touch of the gesture decides whether
+                // this is an edge swipe — checking on every update (as the
+                // finger drifts inward past x:32) is what made it sometimes
+                // need a second attempt to register at all.
+                if !isDragTracking {
+                    guard app.canSwipeBack, value.startLocation.x < 32 else { return }
+                    isDragTracking = true
+                }
+                guard isDragTracking else { return }
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { dragTranslation = max(0, value.translation.width) }
             }
             .onEnded { value in
-                guard app.canSwipeBack, value.startLocation.x < 32,
-                      abs(value.translation.height) < 80
-                else { return }
+                defer { isDragTracking = false }
+                guard isDragTracking, abs(value.translation.height) < 80 else {
+                    withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) { dragTranslation = 0 }
+                    return
+                }
                 // A firm flick commits even if it hasn't crossed the
                 // halfway mark yet — matches how forgiving the system
                 // gesture is about a fast, short swipe.
@@ -37,6 +54,8 @@ struct RootView: View {
                 let flicked = value.predictedEndTranslation.width > width * 0.6
                 if crossedDistance || flicked {
                     withAnimation(.easeOut(duration: 0.22)) { isCommittingBack = true }
+                } else {
+                    withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) { dragTranslation = 0 }
                 }
             }
     }
@@ -104,12 +123,14 @@ struct RootView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: app.areaAsking)
         .animation(.easeInOut(duration: 0.2), value: app.askingLocation)
-        .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.86), value: dragTranslation)
         // The screen switch above is a plain ZStack, not a NavigationStack,
         // so it never got the system's edge-swipe-to-go-back for free —
         // this reproduces it, tracking the finger live rather than jumping
-        // only once the gesture ends.
-        .gesture(edgeSwipe)
+        // only once the gesture ends. `simultaneous` so it always gets to
+        // recognize alongside a screen's own ScrollView/buttons instead of
+        // sometimes losing that arbitration outright — which is what made
+        // the swipe occasionally need a second attempt to register at all.
+        .simultaneousGesture(edgeSwipe)
         .onChange(of: isCommittingBack) { _, committing in
             guard committing else { return }
             // Let the slide-off animation actually play before switching
