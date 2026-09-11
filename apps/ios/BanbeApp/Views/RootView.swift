@@ -106,6 +106,13 @@ struct RootView: View {
             // the plain paper the outer ZStack already paints behind this
             // is enough to read as "the previous page" peeking through.
             .shadow(color: .black.opacity(dragProgress * 0.16), radius: 16, x: -6, y: 0)
+            // Without this, a screen's own ScrollView keeps recognizing its
+            // vertical pan at the same time as the edge swipe (that's the
+            // whole point of `simultaneousGesture`), so the content visibly
+            // jiggles/scrolls up and down while it's being dragged sideways.
+            // `scrollDisabled` is environment-based, so setting it here
+            // reaches every ScrollView inside whichever screen is showing.
+            .scrollDisabled(isDragTracking || isCommittingBack)
 
             // Names the current screen for UI tests, the same way the web
             // screens carry a data-screen-label attribute for Playwright.
