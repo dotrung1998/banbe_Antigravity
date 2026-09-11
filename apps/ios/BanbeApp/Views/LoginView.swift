@@ -1,21 +1,36 @@
 import SwiftUI
 
-/// Port of src/screens/Login.jsx's email-code path — a Log in/Sign up
-/// toggle, then a 6-digit code by email (requested through the same
-/// Gmail-backed API the web app uses; see AuthAPIService). There is no
-/// "sign in via link": that used to be requested with a
-/// `banbe://login-callback` redirect no URL scheme was ever registered for.
-/// Password login/signup and the social buttons are still web-only.
+/// Port of src/screens/Login.jsx — a Log in/Sign up toggle, then either an
+/// emailed 6-digit code or an email + password, the same two methods the
+/// web app offers. There is no "sign in via link": that used to be
+/// requested with a `banbe://login-callback` redirect no URL scheme was
+/// ever registered for. The social buttons are still web-only.
 struct LoginView: View {
+    /// Mirrors the web's `authMethod` — which of the two ways in is showing.
+    private enum Method { case code, password }
+
     @EnvironmentObject var app: AppState
     @EnvironmentObject var auth: AuthViewModel
     @State private var mode: AuthMode = .login
+    @State private var method: Method = .code
     @State private var email = ""
     @State private var displayName = ""
     @State private var code = ""
+    @State private var password = ""
+    @State private var passwordConfirm = ""
+    @State private var resetRequested = false
+    @State private var localError = ""
 
     private var canRequest: Bool {
-        !email.isEmpty && (mode == .login || !displayName.isEmpty)
+        guard !email.isEmpty else { return false }
+        if mode == .signup && displayName.isEmpty { return false }
+        if method == .password {
+            // Signing up needs a password worth keeping and a matching
+            // confirmation; logging in just needs something typed.
+            return mode == .login ? !password.isEmpty
+                                  : (password.count >= 8 && password == passwordConfirm)
+        }
+        return true
     }
 
     var body: some View {
@@ -27,8 +42,7 @@ struct LoginView: View {
                     ForEach([AuthMode.login, AuthMode.signup], id: \.self) { option in
                         Button {
                             mode = option
-                            auth.codeSent = false
-                            auth.errorMessage = nil
+                            resetFormState()
                         } label: {
                             VStack(spacing: 6) {
                                 Text(option == .login ? app.T("Đăng nhập", "Log in") : app.T("Đăng ký", "Sign up"))
@@ -65,26 +79,58 @@ struct LoginView: View {
                                text: $code, keyboard: .numberPad)
                         .padding(.top, 22)
                 } else {
+                    methodTabs
+                        .padding(.top, 20)
+
                     VStack(spacing: 12) {
                         if mode == .signup {
                             BanbeField(label: nil, placeholder: app.T("Tên hiển thị của bạn", "Your display name"),
                                        text: $displayName)
                         }
                         BanbeField(label: nil, placeholder: "ban@email.com", text: $email, keyboard: .emailAddress)
+                            .accessibilityIdentifier("login.email")
+                        if method == .password {
+                            BanbeField(label: nil, placeholder: app.T("Mật khẩu", "Password"),
+                                       text: $password, secure: true)
+                                .accessibilityIdentifier("login.password")
+                            if mode == .signup {
+                                BanbeField(label: nil, placeholder: app.T("Nhập lại mật khẩu", "Re-enter password"),
+                                           text: $passwordConfirm, secure: true)
+                                    .accessibilityIdentifier("login.passwordConfirm")
+                            }
+                        }
                     }
-                    .padding(.top, 22)
+                    .padding(.top, 14)
+
+                    if method == .password && mode == .login {
+                        Button(app.T("Quên mật khẩu?", "Forgot password?")) {
+                            Task { await sendReset() }
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(app.palette.ink.opacity(0.75))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.top, 8)
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("login.forgotPassword")
+                    }
                 }
 
                 InkButton(title: submitLabel, enabled: !auth.isSendingCode && (auth.codeSent ? !code.isEmpty : canRequest)) {
-                    Task {
-                        if auth.codeSent {
-                            await auth.verifyEmailCode(email: email, code: code, mode: mode)
-                        } else {
-                            await auth.sendEmailCode(to: email, mode: mode, displayName: displayName)
-                        }
-                    }
+                    Task { await submit() }
                 }
                 .padding(.top, 14)
+                .accessibilityIdentifier("login.submit")
+
+                if resetRequested {
+                    // Same message whether or not that address has an
+                    // account — the endpoint won't say, on purpose.
+                    Text(app.T("Nếu email đó có tài khoản, chúng tôi đã gửi link đặt lại mật khẩu.",
+                               "If that email has an account, we've sent it a reset link."))
+                        .font(.system(size: 12))
+                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 12)
+                }
 
                 if auth.codeSent {
                     Text(app.T("Đã gửi mã tới email của bạn. Nhập mã để tiếp tục.",
@@ -94,8 +140,7 @@ struct LoginView: View {
                         .multilineTextAlignment(.center)
                         .padding(.top, 12)
                     Button(app.T("Dùng email khác", "Use a different email")) {
-                        auth.codeSent = false
-                        code = ""
+                        resetFormState()
                     }
                     .font(.system(size: 12))
                     .frame(maxWidth: .infinity)
@@ -103,7 +148,7 @@ struct LoginView: View {
                     .buttonStyle(.plain)
                 }
 
-                if let error = auth.errorMessage {
+                if let error = localError.isEmpty ? auth.errorMessage : localError {
                     Text(error)
                         .font(.system(size: 12))
                         .foregroundStyle(BanbeTheme.alert)
@@ -119,9 +164,91 @@ struct LoginView: View {
         }
     }
 
+    private var methodTabs: some View {
+        HStack(spacing: 0) {
+            methodTab(.code, label: app.T("Mã qua email", "Email code"))
+            methodTab(.password, label: app.T("Mật khẩu", "Password"))
+        }
+        .padding(3)
+        .background(app.palette.field, in: Capsule())
+    }
+
+    private func methodTab(_ option: Method, label: String) -> some View {
+        Button {
+            method = option
+            resetFormState()
+        } label: {
+            Text(label)
+                .font(.system(size: 12, weight: method == option ? .semibold : .regular))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(method == option ? app.palette.ink.opacity(0.1) : .clear, in: Capsule())
+                .foregroundStyle(app.palette.ink)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(option == .code ? "login.method.code" : "login.method.password")
+    }
+
+    private func submit() async {
+        localError = ""
+        resetRequested = false
+
+        // The emailed code finishes every flow that has one, including a
+        // password sign-up — the account exists by then but is unconfirmed.
+        if auth.codeSent {
+            await auth.verifyEmailCode(email: email, code: code, mode: mode)
+            return
+        }
+
+        switch (method, mode) {
+        case (.code, _):
+            await auth.sendEmailCode(to: email, mode: mode, displayName: displayName)
+        case (.password, .login):
+            await auth.signInWithPassword(email: email, password: password)
+        case (.password, .signup):
+            guard password.count >= 8 else {
+                localError = app.T("Mật khẩu cần ít nhất 8 ký tự.", "Passwords need at least 8 characters.")
+                return
+            }
+            guard password == passwordConfirm else {
+                localError = app.T("Mật khẩu xác nhận không khớp.", "Passwords do not match.")
+                return
+            }
+            await auth.signUpWithPassword(email: email, password: password,
+                                          displayName: displayName, locale: app.lang)
+        }
+    }
+
+    private func sendReset() async {
+        localError = ""
+        guard !email.isEmpty else {
+            localError = app.T("Nhập email của bạn trước.", "Enter your email first.")
+            return
+        }
+        // Shown as sent either way: the endpoint already refuses to reveal
+        // whether an address has an account, and surfacing a failure here
+        // would leak the same thing by omission.
+        try? await auth.sendPasswordReset(to: email)
+        resetRequested = true
+    }
+
+    private func resetFormState() {
+        auth.codeSent = false
+        auth.errorMessage = nil
+        localError = ""
+        resetRequested = false
+        code = ""
+        password = ""
+        passwordConfirm = ""
+    }
+
     private var submitLabel: String {
         if auth.isSendingCode { return app.T("Đang gửi…", "Sending…") }
         if auth.codeSent { return app.T("Xác nhận", "Verify") }
+        if method == .password {
+            return mode == .signup ? app.T("Tạo tài khoản", "Create account")
+                                   : app.T("Đăng nhập", "Log in")
+        }
         return mode == .signup ? app.T("Gửi mã đăng ký", "Send sign-up code")
                                : app.T("Gửi mã đăng nhập", "Send sign-in code")
     }

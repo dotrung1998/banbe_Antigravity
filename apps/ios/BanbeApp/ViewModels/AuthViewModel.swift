@@ -119,6 +119,43 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Password sign-in
+
+    /// Logs in with an email and password, straight to Supabase — no code
+    /// step, since the account already has a password. (Just checking a
+    /// credential, not sending mail, so none of the rate limiting that
+    /// pushed the code path onto our own API applies here.) The
+    /// auth-state listener above takes it from there.
+    func signInWithPassword(email: String, password: String) async {
+        isSendingCode = true
+        errorMessage = nil
+        defer { isSendingCode = false }
+        do {
+            _ = try await SupabaseService.client.auth.signIn(email: email, password: password)
+        } catch {
+            // Deliberately the same message for a wrong password and an
+            // email with no account — a login form shouldn't say which.
+            errorMessage = "Wrong email or password."
+        }
+    }
+
+    /// Creates an account with a chosen password, then — exactly like the
+    /// code path — waits on the emailed 6-digit confirmation, which
+    /// verifyEmailCode(mode: .signup) finishes.
+    func signUpWithPassword(email: String, password: String, displayName: String, locale: String) async {
+        isSendingCode = true
+        errorMessage = nil
+        defer { isSendingCode = false }
+        do {
+            try await AuthAPIService.requestPasswordSignup(
+                email: email, password: password, displayName: displayName, locale: locale
+            )
+            codeSent = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     /// Re-locks the app immediately — call this if biometry ever becomes
     /// unavailable (e.g. removed in Settings) while the toggle is still on,
     /// or from a manual "Lock now" affordance if one gets added later.

@@ -3,7 +3,7 @@ import { EVENTS } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
 
 export default function Account() {
-  const { state, T, goHome, goInbox, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral } = useGoc();
+  const { state, T, goHome, goInbox, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, openSecurity, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral } = useGoc();
   const s = state;
   const completedCount = [...new Set([...(s.favorites || []), ...s.attending])]
     .map(k => EVENTS.find(e => e.key === k))
@@ -71,9 +71,13 @@ export default function Account() {
           <span style={{ fontSize: 14, color: ink }}>{T('Sự kiện đã hoàn thành', 'Completed events')}</span>
           <span style={{ fontSize: 13, color: ink }}>{completedCount} ›</span>
         </div>
-        <div onClick={openPreferences} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', cursor: 'pointer' }}>
+        <div onClick={openPreferences} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
           <span style={{ fontSize: 14, color: ink }}>{T('Ngôn ngữ & hiển thị', 'Language & appearance')}</span>
           <span style={{ fontSize: 13, color: ink }}>{s.lang === 'en' ? 'English' : 'Tiếng Việt'} ▪︎ {s.theme === 'dark' ? T('Tối', 'Dark') : T('Sáng', 'Light')}</span>
+        </div>
+        <div onClick={openSecurity} data-testid="account-security" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', cursor: 'pointer' }}>
+          <span style={{ fontSize: 14, color: ink }}>{T('Bảo mật', 'Security')}</span>
+          <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
         </div>
       </div>
 

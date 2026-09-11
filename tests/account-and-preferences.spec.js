@@ -59,6 +59,25 @@ test.describe('Account & Preferences Screen', () => {
     await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 3000 });
   });
 
+  test('Security opens from Account and offers a password form', async ({ page }) => {
+    await page.getByText('Tài khoản').first().click();
+    const accountScreen = page.locator('[data-screen-label="Account"]');
+    await expect(accountScreen).toBeVisible({ timeout: 3000 });
+
+    await accountScreen.getByTestId('account-security').click();
+    const securityScreen = page.locator('[data-screen-label="Security"]');
+    await expect(securityScreen).toBeVisible({ timeout: 3000 });
+
+    // Signed out there's nothing to set a password on yet, so the form
+    // must not render an empty/broken version of itself.
+    await expect(securityScreen.getByText('Đăng nhập để đặt mật khẩu cho tài khoản.')).toBeVisible();
+    await expect(securityScreen.locator('input[type="password"]')).toHaveCount(0);
+
+    // One tap back returns to Account, not Home.
+    await securityScreen.getByText('‹ Tài khoản').click();
+    await expect(accountScreen).toBeVisible({ timeout: 3000 });
+  });
+
   // "Going"/"Saved" used to be inert stat cards; they now open their own
   // list view and — the point of the fix — a single tap back lands on
   // Account again, not Home.

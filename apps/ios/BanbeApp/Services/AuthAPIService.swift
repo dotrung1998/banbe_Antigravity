@@ -23,6 +23,8 @@ struct AuthAPIError: LocalizedError {
             return "This email already has an account. Try Log in instead."
         case "VALID_NAME_REQUIRED":
             return "Please enter a display name."
+        case "VALID_PASSWORD_REQUIRED":
+            return "Passwords need at least 8 characters."
         case "VALID_EMAIL_REQUIRED":
             return "Enter a valid email address."
         case "AUTH_EMAIL_DELIVERY_FAILED":
@@ -53,6 +55,19 @@ enum AuthAPIService {
             body["displayName"] = displayName
         }
         try await post(path: "/api/auth/send-email-code", body: body)
+    }
+
+    /// Creates an account with a password of the person's own choosing.
+    /// Like the code path this still finishes with the emailed 6-digit
+    /// confirmation (verified as `.signup`) — the account exists but is
+    /// unconfirmed until then. Mirrors src/lib/authEmail.js's
+    /// requestPasswordSignup.
+    static func requestPasswordSignup(email: String, password: String,
+                                      displayName: String, locale: String) async throws {
+        try await post(path: "/api/auth/signup-password", body: [
+            "email": email, "password": password,
+            "displayName": displayName, "locale": locale,
+        ])
     }
 
     /// Sends the "choose a new password" email — the same endpoint and the

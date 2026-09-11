@@ -28,6 +28,7 @@ import Preferences from './screens/Preferences.jsx';
 import EditName from './screens/EditName.jsx';
 import Notifications from './screens/Notifications.jsx';
 import EventList from './screens/EventList.jsx';
+import Security from './screens/Security.jsx';
 
 const SCREENS = {
   splash: Splash,
@@ -52,6 +53,7 @@ const SCREENS = {
   editName: EditName,
   notifications: Notifications,
   eventList: EventList,
+  security: Security,
 };
 
 function Shell() {

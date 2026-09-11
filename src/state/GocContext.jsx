@@ -90,6 +90,14 @@ const initialState = {
   // tab could in principle change before the code is entered.
   pendingEmailMode: null,
   resetRequested: false,
+  // Account > Security: setting this account's own password while already
+  // signed in (the Login screen's fields are a separate, signed-out flow).
+  securityPassword: '',
+  securityPasswordConfirm: '',
+  securityBusy: false,
+  securityError: '',
+  securitySaved: false,
+  securityResetSent: false,
   newPassword: '',
   newPasswordConfirm: '',
   resetPasswordBusy: false,
@@ -459,6 +467,10 @@ export function GocProvider({ children }) {
   }, [set, s.theme, persistAccountPreference]);
   const pickTheme = useCallback((theme) => { set({ theme }); persistAccountPreference({ theme }); }, [set, persistAccountPreference]);
   const openPreferences = useCallback(() => set({ screen: 'preferences' }), [set]);
+  const openSecurity = useCallback(() => set({
+    screen: 'security', securityPassword: '', securityPasswordConfirm: '',
+    securityError: '', securitySaved: false, securityResetSent: false,
+  }), [set]);
 
   const trStatus = useCallback((str) => {
     if (!EN) return str;
@@ -1031,6 +1043,45 @@ export function GocProvider({ children }) {
   const loginFacebook = useCallback(() => set({ reserveError: T('Facebook chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Facebook is not available yet. Use email or phone OTP.') }), [set, T]);
   const loginInstagram = useCallback(() => set({ reserveError: T('Instagram chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Instagram is not available yet. Use email or phone OTP.') }), [set, T]);
 
+  // ---- Account > Security ----
+  const securityPasswordType = useCallback((e) => set({ securityPassword: e.target.value, securityError: '', securitySaved: false }), [set]);
+  const securityPasswordConfirmType = useCallback((e) => set({ securityPasswordConfirm: e.target.value, securityError: '', securitySaved: false }), [set]);
+
+  // Deliberately one form for both cases this section has to serve: an
+  // account that has only ever used emailed sign-in codes setting its first
+  // password, and one replacing a password it already has. Supabase treats
+  // both as the same update on the signed-in user, and nothing the client
+  // can read reliably says which of the two an account is — so branching
+  // here would mean guessing at the label and getting it wrong half the time.
+  const saveSecurityPassword = useCallback(async () => {
+    if (!passwordValid(s.securityPassword)) {
+      return set({ securityError: T('Mật khẩu cần ít nhất 8 ký tự.', 'Passwords need at least 8 characters.'), securitySaved: false });
+    }
+    if (s.securityPassword !== s.securityPasswordConfirm) {
+      return set({ securityError: T('Mật khẩu xác nhận không khớp.', 'Passwords do not match.'), securitySaved: false });
+    }
+    set({ securityBusy: true, securityError: '', securitySaved: false });
+    const { error } = await supabase.auth.updateUser({ password: s.securityPassword });
+    if (error) {
+      return set({ securityBusy: false, securityError: T('Không lưu được mật khẩu lúc này. Vui lòng thử lại.', "We couldn't save that password right now. Please try again.") });
+    }
+    set({ securityBusy: false, securityPassword: '', securityPasswordConfirm: '', securitySaved: true });
+  }, [set, s.securityPassword, s.securityPasswordConfirm, T]);
+
+  // "Forgot your current password?" — emails the recovery link to this
+  // account's own address. Shown as sent either way: the endpoint already
+  // refuses to reveal whether an address has an account, and surfacing a
+  // failure here would leak the same thing by omission.
+  const sendSecurityPasswordReset = useCallback(async () => {
+    const email = s.user?.email;
+    if (!email) return;
+    set({ securityBusy: true, securityError: '' });
+    try {
+      await requestPasswordReset({ email });
+    } catch { /* same message either way — see above */ }
+    set({ securityBusy: false, securityResetSent: true });
+  }, [set, s.user?.email]);
+
   // ---- reset-password screen (landed on via the emailed recovery link —
   // see the PASSWORD_RECOVERY branch of onAuthStateChange above) ----
   const newPasswordType = useCallback((e) => set({ newPassword: e.target.value, resetPasswordError: '' }), [set]);
@@ -1326,7 +1377,8 @@ export function GocProvider({ children }) {
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
-    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences,
+    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity,
+    securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
@@ -1346,7 +1398,8 @@ export function GocProvider({ children }) {
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
-    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences,
+    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity,
+    securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
