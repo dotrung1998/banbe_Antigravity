@@ -42,7 +42,7 @@ struct HomeView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            BanbeLogo(kind: .wordmarkSmall, width: 126)
+            BanbeLogo(kind: .wordmark, width: 126)
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
                 HStack(spacing: 10) {

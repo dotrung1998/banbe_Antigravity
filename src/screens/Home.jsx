@@ -90,7 +90,7 @@ export default function Home() {
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Home">
       <div style={{ padding: '70px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <img src="/banbe-wordmark-sm.png" alt="banbe" crossOrigin="anonymous" style={{ width: 126, height: 'auto', display: 'block', margin: '0 0 2px' }} />
+        <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 126, height: 'auto', display: 'block', margin: '0 0 2px' }} />
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
             <span onClick={toggleLang} style={{ fontSize: 11, color: ink, cursor: 'pointer', letterSpacing: '0.06em' }}>{T('English', 'Tiếng Việt')}</span>
