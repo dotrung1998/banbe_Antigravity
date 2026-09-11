@@ -85,7 +85,13 @@ used in HomeViewModel.
 ## SweetPad (VS Code)
 
 `.vscode/settings.json` at the repo root points SweetPad at
-`apps/ios/BanbeApp.xcodeproj` / scheme `BanbeApp`. Since the `.xcodeproj`
-isn't committed, run `xcodegen generate` (above) once after cloning before
-SweetPad's build/run commands will find it. Also see `.vscode/extensions.json`
-(recommends the `sweetpad.sweetpad` extension).
+`apps/ios/BanbeApp.xcodeproj/project.xcworkspace` / scheme `BanbeApp`.
+That's the workspace bundle Xcode automatically creates *inside* every
+`.xcodeproj` — SweetPad always builds with `xcodebuild -workspace`, which
+rejects a bare `.xcodeproj` path ("is not a workspace file"), so this is
+the path to use even though there's no separate top-level `.xcworkspace`
+here. Since the `.xcodeproj` isn't committed, run `xcodegen generate`
+(above) once after cloning — that also regenerates
+`project.xcworkspace` — before SweetPad's build/run commands will find it.
+Also see `.vscode/extensions.json` (recommends the `sweetpad.sweetpad`
+extension).

@@ -42,3 +42,7 @@ dist-ssr
 /apps/ios/BanbeApp.xcodeproj/
 /apps/ios/.build/
 /apps/ios/DerivedData/
+
+# SweetPad's generated SourceKit-LSP build server config — machine-local
+# absolute paths, regenerated automatically per machine.
+/buildServer.json

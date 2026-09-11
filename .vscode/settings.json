@@ -3,8 +3,12 @@
     // Regenerate the .xcodeproj with `xcodegen generate` from apps/ios
     // (see apps/ios/README.md) any time apps/ios/project.yml changes or
     // files are added/removed — the project itself isn't committed.
-    "sweetpad.build.xcodeWorkspacePath": "apps/ios/BanbeApp.xcodeproj",
+    "sweetpad.build.xcodeWorkspacePath": "apps/ios/BanbeApp.xcodeproj/project.xcworkspace",
     "sweetpad.build.scheme": "BanbeApp",
     "sweetpad.build.configuration": "Debug",
-    "sweetpad.build.derivedDataPath": "apps/ios/.build/DerivedData"
+    "sweetpad.build.derivedDataPath": "apps/ios/.build/DerivedData",
+    "sweetpad.build.destination": {
+        "id": "iossimulator-EDC78AEE-0643-474E-85CB-DAC5051F561F",
+        "type": "iOSSimulator"
+    }
 }
