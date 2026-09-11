@@ -1,0 +1,10 @@
+{
+    // SweetPad — points at the generated Xcode project for the iOS app.
+    // Regenerate the .xcodeproj with `xcodegen generate` from apps/ios
+    // (see apps/ios/README.md) any time apps/ios/project.yml changes or
+    // files are added/removed — the project itself isn't committed.
+    "sweetpad.build.xcodeWorkspacePath": "apps/ios/BanbeApp.xcodeproj",
+    "sweetpad.build.scheme": "BanbeApp",
+    "sweetpad.build.configuration": "Debug",
+    "sweetpad.build.derivedDataPath": "apps/ios/.build/DerivedData"
+}
