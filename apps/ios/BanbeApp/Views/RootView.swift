@@ -51,6 +51,21 @@ struct RootView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: app.areaAsking)
         .animation(.easeInOut(duration: 0.2), value: app.askingLocation)
+        // The screen switch above is a plain ZStack, not a NavigationStack,
+        // so it never got the system's edge-swipe-to-go-back for free —
+        // this reproduces it by watching for a drag that starts at the left
+        // edge and calls the same back action each screen's own button uses.
+        .gesture(
+            DragGesture(minimumDistance: 24, coordinateSpace: .local)
+                .onEnded { value in
+                    guard app.canSwipeBack,
+                          value.startLocation.x < 32,
+                          value.translation.width > 72,
+                          abs(value.translation.height) < 60
+                    else { return }
+                    app.goBack()
+                }
+        )
         .preferredColorScheme(app.theme == "dark" ? .dark : .light)
         .fullScreenCover(isPresented: $app.scanningQr) { QRScannerView() }
         // The session is owned by AuthViewModel (it also drives the Face ID

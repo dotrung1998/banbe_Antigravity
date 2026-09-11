@@ -449,6 +449,39 @@ final class AppState: ObservableObject {
         screen = .login
     }
 
+    /// Whether an edge swipe should do anything on the current screen — the
+    /// entry/onboarding screens and Home (nothing to go back to) opt out.
+    var canSwipeBack: Bool {
+        switch screen {
+        case .splash, .langPick, .themePick, .home: return false
+        default: return true
+        }
+    }
+
+    /// Drives the right-edge swipe gesture in RootView — mirrors whatever
+    /// each screen's own back/"Done" control already does, since this app
+    /// switches one explicit `screen` at a time instead of using a
+    /// NavigationStack (which is what gives UIKit apps swipe-to-back for
+    /// free).
+    func goBack() {
+        switch screen {
+        case .profile: goHome()
+        case .inbox: backFromInbox()
+        case .eventList: backFromEventList()
+        case .event: backFromEvent()
+        case .organizer, .reserve: backToEvent()
+        case .chat: chatBackAction()
+        case .dashboard: backFromDashboard()
+        case .hostIntro: goProfile()
+        case .create: createBack()
+        case .attendance: goDashboard()
+        case .preferences, .editName: screen = .profile
+        case .login: screen = authBackScreen
+        case .confirmed, .refunded, .notifications: goHome()
+        default: break
+        }
+    }
+
     // MARK: - Feed interactions
 
     func toggleFavorite(_ key: String) {
