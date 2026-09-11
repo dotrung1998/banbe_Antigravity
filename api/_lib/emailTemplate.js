@@ -51,7 +51,7 @@ export function renderEmail({ preheader, eyebrow, heading, paragraphs, cta, code
   <body style="margin:0;padding:0;background:${PAPER};">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(preheader || '')}</div>
     <div style="max-width:480px;margin:0 auto;padding:40px 24px 32px;">
-      <div style="font-family:Georgia,'Times New Roman',serif;font-weight:700;font-size:20px;letter-spacing:-0.01em;color:${INK};margin-bottom:32px;">banbe</div>
+      <img src="https://banbe-two.vercel.app/banbe-wordmark.png" alt="banbe" width="104" style="display:block;width:104px;height:auto;margin-bottom:32px;" />
       <div style="background:${PAPER};border:1px solid ${RULE};border-radius:16px;padding:28px 26px;">
         ${eyebrow ? `<div style="font-size:11.5px;font-weight:600;letter-spacing:0.03em;color:${MUTED};text-transform:uppercase;margin-bottom:10px;">${escapeHtml(eyebrow)}</div>` : ''}
         <h1 style="margin:0 0 16px;font-family:Georgia,'Times New Roman',serif;font-size:22px;line-height:1.3;color:${INK};font-weight:700;">${escapeHtml(heading)}</h1>
