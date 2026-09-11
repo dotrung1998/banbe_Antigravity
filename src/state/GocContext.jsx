@@ -689,7 +689,7 @@ export function GocProvider({ children }) {
   // code, minted automatically at signup (migration 023). Redeemed by
   // whoever follows it via the module-level "?ref=" capture at the top of
   // this file + claimPendingReferralAndWelcome() above.
-  const referralLink = s.referralCode ? `https://banbe.app/?ref=${s.referralCode}` : null;
+  const referralLink = s.referralCode ? `https://banbe-two.vercel.app/?ref=${s.referralCode}` : null;
   const shareReferral = useCallback(() => {
     if (!referralLink) return;
     const title = T('Tham gia banbe cùng mình', 'Join me on banbe');
