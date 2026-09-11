@@ -1,10 +1,15 @@
 import { getMissingEmailVariables, sendWithGmail } from '../_lib/email.js';
 import { getSupabaseAdmin, resolveAuthUserId, linkRegistration } from '../_lib/authLookup.js';
+import { renderEmail, renderEmailText } from '../_lib/emailTemplate.js';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function getText(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function t(locale, vi, en) {
+  return locale === 'en' ? en : vi;
 }
 
 // Password-based sign-up. Creates the auth user with the password the
@@ -33,6 +38,7 @@ export default async function handler(req, res) {
   const email = getText(body.email).toLowerCase();
   const password = typeof body.password === 'string' ? body.password : '';
   const displayName = getText(body.displayName).slice(0, 60);
+  const locale = body.locale === 'en' ? 'en' : 'vi';
 
   if (!EMAIL_PATTERN.test(email)) return res.status(400).json({ error: 'VALID_EMAIL_REQUIRED' });
   if (!displayName) return res.status(400).json({ error: 'VALID_NAME_REQUIRED' });
@@ -64,13 +70,22 @@ export default async function handler(req, res) {
 
     await linkRegistration(admin, email, data?.user?.id || null);
 
-    const subject = 'Confirm your banbe account';
+    const subject = t(locale, 'Xác nhận tài khoản banbe của bạn', 'Confirm your banbe account');
+    const heading = t(locale, 'Nhập mã này để tiếp tục', 'Enter this code to continue');
+    const paragraphs = [
+      t(locale, 'Nhập mã bên dưới trong ứng dụng banbe để hoàn tất đăng ký.', 'Enter the code below in the banbe app to finish creating your account.'),
+    ];
+    const footNote = t(
+      locale,
+      'Mã hết hạn sau ít phút. Nếu bạn không yêu cầu email này, bạn có thể bỏ qua nó.',
+      "This code expires in a few minutes. If you didn't request this, you can safely ignore this email."
+    );
     try {
       await sendWithGmail({
         to: email,
         subject,
-        text: `${subject}\n\nEnter this code in the app: ${code}\n\nThis code expires shortly. If you did not request this, you can ignore it.`,
-        html: `<p>${subject}</p><p style="font-size:28px;font-weight:700;letter-spacing:4px;">${code}</p><p>Enter this code in the app. It expires shortly. If you did not request this, you can ignore it.</p>`,
+        text: renderEmailText({ heading, paragraphs, code, footNote }),
+        html: renderEmail({ preheader: subject, eyebrow: subject, heading, paragraphs, code, footNote }),
       });
     } catch (error) {
       console.error('Gmail auth email delivery failed:', error);

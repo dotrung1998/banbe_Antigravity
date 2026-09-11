@@ -1,5 +1,6 @@
 import { getMissingEmailVariables, sendWithGmail } from '../_lib/email.js';
 import { getSupabaseAdmin, resolveAuthUserId, linkRegistration, getRedirectUrl } from '../_lib/authLookup.js';
+import { renderEmail, renderEmailText } from '../_lib/emailTemplate.js';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -7,10 +8,8 @@ function getText(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function escapeHtml(value) {
-  return value.replace(/[&<>"']/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[character]));
+function t(locale, vi, en) {
+  return locale === 'en' ? en : vi;
 }
 
 // "Automatic" password reset: unlike sign-in/sign-up, this stays a link
@@ -52,6 +51,9 @@ export default async function handler(req, res) {
   await linkRegistration(admin, email, authUserId);
 
   try {
+    const { data: profile } = await admin.from('profiles').select('locale').eq('id', authUserId).maybeSingle();
+    const locale = profile?.locale === 'en' ? 'en' : 'vi';
+
     const { data, error } = await admin.auth.admin.generateLink({
       type: 'recovery',
       email,
@@ -64,14 +66,34 @@ export default async function handler(req, res) {
     }
 
     const actionLink = data.properties.action_link;
-    const subject = 'Reset your banbe password';
-    const safeLink = escapeHtml(actionLink);
+    const subject = t(locale, 'Đặt lại mật khẩu banbe của bạn', 'Reset your banbe password');
+    const heading = t(locale, 'Chọn mật khẩu mới', 'Choose a new password');
+    const paragraphs = [
+      t(
+        locale,
+        'Bấm nút bên dưới để chọn mật khẩu mới cho tài khoản banbe của bạn.',
+        'Tap the button below to choose a new password for your banbe account.'
+      ),
+    ];
+    const footNote = t(
+      locale,
+      'Nếu bạn không yêu cầu đặt lại mật khẩu, bạn có thể bỏ qua email này — mật khẩu hiện tại của bạn vẫn giữ nguyên.',
+      "If you didn't request a password reset, you can ignore this email — your current password stays unchanged."
+    );
+
     try {
       await sendWithGmail({
         to: email,
         subject,
-        text: `${subject}\n\nOpen this link to choose a new password: ${actionLink}\n\nIf you did not request this, you can ignore it.`,
-        html: `<p>${subject}</p><p><a href="${safeLink}">Choose a new password</a></p><p>If you did not request this, you can ignore it.</p>`,
+        text: renderEmailText({ heading, paragraphs, cta: { label: t(locale, 'Đặt mật khẩu mới', 'Choose a new password'), href: actionLink }, footNote }),
+        html: renderEmail({
+          preheader: subject,
+          eyebrow: t(locale, 'Đặt lại mật khẩu', 'Password reset'),
+          heading,
+          paragraphs,
+          cta: { label: t(locale, 'Đặt mật khẩu mới', 'Choose a new password'), href: actionLink },
+          footNote,
+        }),
       });
     } catch (error) {
       console.error('Gmail auth email delivery failed:', error);

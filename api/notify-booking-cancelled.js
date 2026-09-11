@@ -1,14 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { getMissingEmailVariables, sendWithGmail } from './_lib/email.js';
+import { renderEmail, renderEmailText, escapeHtml } from './_lib/emailTemplate.js';
 
 function getText(value) {
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function escapeHtml(value) {
-  return value.replace(/[&<>"']/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[character]));
 }
 
 function getSupabaseAdmin() {
@@ -19,6 +14,10 @@ function getSupabaseAdmin() {
   return createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
+
+function t(locale, vi, en) {
+  return locale === 'en' ? en : vi;
 }
 
 export default async function handler(req, res) {
@@ -84,21 +83,39 @@ export default async function handler(req, res) {
     const { data: guest, error: guestError } = await admin.auth.admin.getUserById(booking.user_id);
     if (guestError || !guest?.user?.email) return res.status(200).json({ sent: 0 });
 
-    const eventName = event.name || 'sự kiện';
-    const refundLine = booking.paid_marked_at
-      ? 'Khoản bạn đã thanh toán sẽ được hoàn lại.'
-      : '';
-    const reasonLine = reason ? `Lý do: ${reason}` : '';
+    const { data: guestProfile } = await admin.from('profiles').select('locale').eq('id', booking.user_id).maybeSingle();
+    const locale = guestProfile?.locale === 'en' ? 'en' : 'vi';
 
-    const subject = `Vé của bạn đã bị huỷ ▪︎ ${eventName}`;
-    const text = [`${eventName} đã huỷ vé của bạn trên banbe.`, refundLine, reasonLine].filter(Boolean).join('\n\n');
-    const html = [
-      `<p><strong>${escapeHtml(eventName)}</strong> đã huỷ vé của bạn trên banbe.</p>`,
-      refundLine ? `<p>${escapeHtml(refundLine)}</p>` : '',
-      reasonLine ? `<p>${escapeHtml(reasonLine)}</p>` : '',
-    ].filter(Boolean).join('');
+    const eventNameRaw = event.name || t(locale, 'sự kiện', 'this event');
+    const eventName = escapeHtml(eventNameRaw);
+    const reasonSafe = reason ? escapeHtml(reason) : '';
 
-    await sendWithGmail({ to: guest.user.email, subject, text, html });
+    const subject = t(locale, `Vé của bạn đã bị huỷ ▪︎ ${eventNameRaw}`, `Your ticket was cancelled ▪︎ ${eventNameRaw}`);
+    const heading = t(locale, 'Vé của bạn đã bị huỷ', 'Your ticket was cancelled');
+    const paragraphs = [
+      t(
+        locale,
+        `<strong>${eventName}</strong> đã huỷ vé của bạn trên banbe.`,
+        `<strong>${eventName}</strong> cancelled your booking on banbe.`
+      ),
+    ];
+    if (booking.paid_marked_at) {
+      paragraphs.push(t(
+        locale,
+        'Khoản bạn đã thanh toán sẽ được hoàn lại.',
+        "The payment you made will be refunded."
+      ));
+    }
+    if (reasonSafe) {
+      paragraphs.push(t(locale, `Lý do: ${reasonSafe}`, `Reason: ${reasonSafe}`));
+    }
+
+    await sendWithGmail({
+      to: guest.user.email,
+      subject,
+      text: renderEmailText({ heading, paragraphs }),
+      html: renderEmail({ preheader: subject, eyebrow: t(locale, 'Vé đã huỷ', 'Booking cancelled'), heading, paragraphs }),
+    });
     return res.status(200).json({ sent: 1 });
   } catch (error) {
     console.error('Booking-cancelled notification failed:', error);

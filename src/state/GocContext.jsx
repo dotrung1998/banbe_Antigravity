@@ -5,6 +5,26 @@ import { requestAuthEmail, requestPasswordSignup, requestPasswordReset } from '.
 
 const GocCtx = createContext(null);
 
+// The one place a "?ref=CODE" link is ever read from — runs once at module
+// load (before React even mounts), so it survives however many redirects
+// onboarding takes before someone actually finishes signing up. Stashed in
+// localStorage (not component state) for the same reason: the code has to
+// outlive a full page reload if that happens mid-flow, and the referral
+// isn't redeemed until claimPendingReferralAndWelcome() runs, well after
+// this. The query param is stripped from the visible URL immediately so it
+// doesn't linger if the page gets shared or bookmarked from here.
+const REFERRAL_STORAGE_KEY = 'banbe.pendingReferral';
+if (typeof window !== 'undefined') {
+  const params = new URLSearchParams(window.location.search);
+  const ref = params.get('ref');
+  if (ref && /^[A-Za-z0-9]{4,12}$/.test(ref)) {
+    try { localStorage.setItem(REFERRAL_STORAGE_KEY, ref.toUpperCase()); } catch { /* private browsing, etc. */ }
+    params.delete('ref');
+    const rest = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''));
+  }
+}
+
 const initialState = {
   screen: 'splash',
   mode: 'goer',
@@ -37,6 +57,9 @@ const initialState = {
   editNameSaving: false,
   notifications: [],
   unreadNotifications: 0,
+  // This account's own shareable code — null until signed in and loaded.
+  referralCode: null,
+  referralShared: false,
   authMode: 'login',
   authReturnScreen: 'home',
   authBackScreen: 'home',
@@ -181,12 +204,12 @@ export function GocProvider({ children }) {
     const syncUser = async (user) => {
       if (!active) return;
       if (!user) {
-        set({ user: null });
+        set({ user: null, referralCode: null });
         return;
       }
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, locale, theme, prefs_saved, display_name')
+        .select('role, locale, theme, prefs_saved, display_name, referral_code')
         .eq('id', user.id)
         .maybeSingle();
       const role =
@@ -196,7 +219,10 @@ export function GocProvider({ children }) {
         'participant';
       const canHostNow = role === 'organizer' || role === 'admin';
       const displayName = (profile?.display_name || '').trim() || user.user_metadata?.display_name || '';
-      set({ user: { ...user, name: displayName }, accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer' });
+      set({
+        user: { ...user, name: displayName }, accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer',
+        referralCode: profile?.referral_code || null,
+      });
 
       // Language & theme follow the account once it has a saved preference,
       // so signing in on any device restores them instead of falling back to
@@ -535,7 +561,7 @@ export function GocProvider({ children }) {
     await supabase.auth.signOut();
     // Roles belong to the account that just left; leaving them behind would
     // leak the previous user's hosting state into the next sign-in.
-    set({ user: null, accountType: 'participant', organizerMode: false, hasHosted: false, mode: 'goer', screen: 'home' });
+    set({ user: null, accountType: 'participant', organizerMode: false, hasHosted: false, mode: 'goer', screen: 'home', referralCode: null });
   }, [set]);
 
   // ---- display name ----
@@ -658,6 +684,29 @@ export function GocProvider({ children }) {
       navigator.clipboard.writeText(url).then(done, done);
     } else { done(); }
   }, [set]);
+
+  // Every account's own invite link — this account's share-with-friends
+  // code, minted automatically at signup (migration 023). Redeemed by
+  // whoever follows it via the module-level "?ref=" capture at the top of
+  // this file + claimPendingReferralAndWelcome() above.
+  const referralLink = s.referralCode ? `https://banbe.app/?ref=${s.referralCode}` : null;
+  const shareReferral = useCallback(() => {
+    if (!referralLink) return;
+    const title = T('Tham gia banbe cùng mình', 'Join me on banbe');
+    const text = T(
+      'Mỗi tuần một vài buổi hay ho — supper club, phòng tranh, gig nhạc nhỏ. Tham gia qua link của mình nhé:',
+      "A few good things happening every week — supper clubs, small galleries, tucked-away gigs. Join through my link:"
+    );
+    const done = () => {
+      set({ referralShared: true });
+      setTimeout(() => set({ referralShared: false }), 1800);
+    };
+    if (navigator.share) {
+      navigator.share({ title, text, url: referralLink }).catch(done);
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(referralLink).then(done, done);
+    } else { done(); }
+  }, [set, referralLink, T]);
 
   // ---- reserve ----
   const qtyMinus = useCallback(() => set(prev => ({ qty: Math.max(1, prev.qty - 1) })), [set]);
@@ -796,7 +845,7 @@ export function GocProvider({ children }) {
       return set({ reserveError: authEmailErrorMessage({ code: 'VALID_NAME_REQUIRED' }, s.authMode) });
     }
     try {
-      await requestAuthEmail({ email, mode: s.authMode, ...(s.authMode === 'signup' ? { displayName } : {}) });
+      await requestAuthEmail({ email, mode: s.authMode, locale: s.lang, ...(s.authMode === 'signup' ? { displayName } : {}) });
       set({ loginSent: true, loginSentVia: 'email', pendingEmailMode: s.authMode, reserveError: '' });
     } catch (e) {
       set({ loginSent: false, loginSentVia: null, reserveError: authEmailErrorMessage(e, s.authMode) });
@@ -815,7 +864,7 @@ export function GocProvider({ children }) {
       return set({ reserveError: T('Mật khẩu xác nhận không khớp.', 'Passwords do not match.') });
     }
     try {
-      await requestPasswordSignup({ email, password: s.loginPassword, displayName });
+      await requestPasswordSignup({ email, password: s.loginPassword, displayName, locale: s.lang });
       set({ loginSent: true, loginSentVia: 'email', pendingEmailMode: 'signup', reserveError: '' });
     } catch (e) {
       set({ loginSent: false, loginSentVia: null, reserveError: authEmailErrorMessage(e, 'signup') });
@@ -834,6 +883,41 @@ export function GocProvider({ children }) {
     }
     set({ reserveError: '' });
   }, [set, s.loginEmail, s.loginPassword, T]);
+  // Runs exactly once, right after a brand-new account's first sign-in
+  // (never on an ordinary login — see the isSignup guard at the call site).
+  // Redeems whatever referral code was stashed from the "?ref=" link they
+  // followed (if any), then always sends the welcome email introducing
+  // this account's own link, regardless of whether they arrived via
+  // someone else's. Both dispatches are best-effort: a failure here never
+  // blocks the sign-up itself, since the account already exists by the
+  // time this runs.
+  const claimPendingReferralAndWelcome = useCallback(async () => {
+    let referredSomeone = false;
+    try {
+      const pendingCode = localStorage.getItem(REFERRAL_STORAGE_KEY);
+      if (pendingCode) {
+        localStorage.removeItem(REFERRAL_STORAGE_KEY);
+        const { data, error } = await supabase.rpc('redeem_referral', { p_code: pendingCode });
+        referredSomeone = !error && data?.success === true;
+      }
+    } catch { /* best-effort — the account itself is already created */ }
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) return;
+      fetch('/api/notify-welcome', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+      if (referredSomeone) {
+        fetch('/api/notify-referral-joined', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        }).catch(() => {});
+      }
+    } catch { /* best-effort; the account and any redemption already landed */ }
+  }, []);
   // Finishes either code flow above — Login-by-code, Signup-by-code, or
   // Signup-by-password's confirmation step — by verifying the code directly
   // against Supabase itself; a real session comes back on success and the
@@ -842,14 +926,15 @@ export function GocProvider({ children }) {
     const email = s.loginEmail.trim();
     const token = s.loginEmailCode.trim();
     if (!token) return set({ reserveError: T('Nhập mã đã gửi tới email của bạn.', 'Enter the code sent to your email.') });
-    const type = s.pendingEmailMode === 'signup' ? 'signup' : 'email';
-    const { error } = await supabase.auth.verifyOtp({ email, token, type });
+    const isSignup = s.pendingEmailMode === 'signup';
+    const { error } = await supabase.auth.verifyOtp({ email, token, type: isSignup ? 'signup' : 'email' });
     if (error) {
       set({ reserveError: T('Mã không đúng hoặc đã hết hạn. Vui lòng thử lại.', 'That code is wrong or has expired. Please try again.') });
       return;
     }
     set({ reserveError: '', loginEmailCode: '' });
-  }, [set, s.loginEmail, s.loginEmailCode, s.pendingEmailMode, T]);
+    if (isSignup) claimPendingReferralAndWelcome();
+  }, [set, s.loginEmail, s.loginEmailCode, s.pendingEmailMode, T, claimPendingReferralAndWelcome]);
   // "Forgot password?" — always shows the same generic confirmation
   // regardless of whether the account actually exists (see
   // send-password-reset.js); only a real failure to even attempt sending
@@ -1184,7 +1269,7 @@ export function GocProvider({ children }) {
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences,
-    pickFilter, clearFilters, shareEvent,
+    pickFilter, clearFilters, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
@@ -1203,7 +1288,7 @@ export function GocProvider({ children }) {
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences,
-    pickFilter, clearFilters, shareEvent,
+    pickFilter, clearFilters, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,

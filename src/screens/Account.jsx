@@ -2,7 +2,7 @@ import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
 
 export default function Account() {
-  const { state, T, goHome, goInbox, goEditName, openPreferences, switchToHost, goLogin, logout, canHost, toggleOrganizerMode } = useGoc();
+  const { state, T, goHome, goInbox, goEditName, openPreferences, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral } = useGoc();
   const s = state;
 
   const profileName = s.user ? (s.user.name || (s.user.email ? s.user.email.split('@')[0] : T('Bạn', 'You'))) : T('Khách', 'Guest');
@@ -38,6 +38,20 @@ export default function Account() {
           <span style={{ fontSize: 11, color: ink }}>{T('Đã lưu', 'Saved')}</span>
         </div>
       </div>
+
+      {referralLink && (
+        <div style={{ ...cardGlass({ margin: '20px 20px 0', padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, cursor: 'pointer' }) }} onClick={shareReferral}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+            <span style={{ ...display(16) }}>{T('Mời bạn bè', 'Invite friends')}</span>
+            <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink, opacity: 0.7 }}>
+              {s.referralShared
+                ? T('Đã sao chép link mời ▪︎ gửi cho bạn bè thôi!', 'Invite link copied ▪︎ send it to a friend!')
+                : T('Rủ bạn bè cùng tham gia banbe qua link riêng của bạn.', 'Bring friends onto banbe with your own link.')}
+            </span>
+          </div>
+          <span style={{ flex: 'none', fontSize: 12, fontWeight: 600, color: paper, background: ink, borderRadius: 999, padding: '9px 16px' }}>{T('Chia sẻ', 'Share')}</span>
+        </div>
+      )}
 
       <div style={{ ...fieldGlass({ margin: '20px 20px 0', display: 'flex', flexDirection: 'column' }) }}>
         <div onClick={goInbox} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>

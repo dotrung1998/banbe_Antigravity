@@ -1,14 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { getMissingEmailVariables, sendWithGmail } from './_lib/email.js';
+import { renderEmail, renderEmailText, escapeHtml } from './_lib/emailTemplate.js';
 
 function getText(value) {
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function escapeHtml(value) {
-  return value.replace(/[&<>"']/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[character]));
 }
 
 function getSupabaseAdmin() {
@@ -19,6 +14,10 @@ function getSupabaseAdmin() {
   return createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
+
+function t(locale, vi, en) {
+  return locale === 'en' ? en : vi;
 }
 
 export default async function handler(req, res) {
@@ -82,12 +81,35 @@ export default async function handler(req, res) {
     const { data: guest, error: guestError } = await admin.auth.admin.getUserById(booking.user_id);
     if (guestError || !guest?.user?.email) return res.status(200).json({ sent: 0 });
 
-    const eventName = event.name || 'sự kiện';
-    const subject = `Điểm danh của bạn đã được huỷ ▪︎ ${eventName}`;
-    const text = `${eventName} vừa huỷ điểm danh có mặt của bạn trên banbe.\n\nLý do: ${reason}`;
-    const html = `<p><strong>${escapeHtml(eventName)}</strong> vừa huỷ điểm danh có mặt của bạn trên banbe.</p><p>Lý do: ${escapeHtml(reason)}</p>`;
+    const { data: guestProfile } = await admin.from('profiles').select('locale').eq('id', booking.user_id).maybeSingle();
+    const locale = guestProfile?.locale === 'en' ? 'en' : 'vi';
 
-    await sendWithGmail({ to: guest.user.email, subject, text, html });
+    const eventNameRaw = event.name || t(locale, 'sự kiện', 'this event');
+    const eventName = escapeHtml(eventNameRaw);
+    const reasonSafe = escapeHtml(reason);
+
+    const subject = t(locale, `Điểm danh của bạn đã được huỷ ▪︎ ${eventNameRaw}`, `Your check-in was reversed ▪︎ ${eventNameRaw}`);
+    const heading = t(locale, 'Điểm danh của bạn đã được huỷ', 'Your check-in was reversed');
+    const paragraphs = [
+      t(
+        locale,
+        `<strong>${eventName}</strong> vừa huỷ điểm danh có mặt của bạn trên banbe.`,
+        `<strong>${eventName}</strong> just reversed your check-in on banbe.`
+      ),
+      t(locale, `Lý do: ${reasonSafe}`, `Reason: ${reasonSafe}`),
+    ];
+    const footNote = t(
+      locale,
+      'Nếu bạn vẫn đang ở sự kiện, người tổ chức có thể điểm danh lại cho bạn bất cứ lúc nào.',
+      'If you\'re still at the event, the organizer can check you back in any time.'
+    );
+
+    await sendWithGmail({
+      to: guest.user.email,
+      subject,
+      text: renderEmailText({ heading, paragraphs, footNote }),
+      html: renderEmail({ preheader: subject, eyebrow: t(locale, 'Cập nhật vé', 'Ticket update'), heading, paragraphs, footNote }),
+    });
     return res.status(200).json({ sent: 1 });
   } catch (error) {
     console.error('Check-in undo notification failed:', error);

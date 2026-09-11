@@ -17,17 +17,20 @@ async function postJson(path, body) {
 
 // Sends a 6-digit sign-in/sign-up code by email. The caller still has to
 // finish the flow with supabase.auth.verifyOtp({ email, token, type }) —
-// this only triggers the email, it never returns a session.
-export async function requestAuthEmail({ email, mode, displayName }) {
-  return postJson('/api/auth/send-email-code', { email, mode, ...(displayName ? { displayName } : {}) });
+// this only triggers the email, it never returns a session. `locale` only
+// actually matters for a brand-new signup (an existing login's email
+// follows that account's own saved profiles.locale instead) — see
+// api/auth/send-email-code.js.
+export async function requestAuthEmail({ email, mode, displayName, locale }) {
+  return postJson('/api/auth/send-email-code', { email, mode, locale, ...(displayName ? { displayName } : {}) });
 }
 
 // Password-based sign-up. Also finishes with
 // supabase.auth.verifyOtp({ email, token, type: 'signup' }) once the emailed
 // confirmation code comes back — this only creates the (unconfirmed) account
 // and sends that code.
-export async function requestPasswordSignup({ email, password, displayName }) {
-  return postJson('/api/auth/signup-password', { email, password, displayName });
+export async function requestPasswordSignup({ email, password, displayName, locale }) {
+  return postJson('/api/auth/signup-password', { email, password, displayName, locale });
 }
 
 // "Forgot password" — always resolves the same way whether or not the

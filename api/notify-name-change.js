@@ -1,14 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { getMissingEmailVariables, sendWithGmail } from './_lib/email.js';
+import { renderEmail, renderEmailText, escapeHtml } from './_lib/emailTemplate.js';
 
 function getText(value) {
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function escapeHtml(value) {
-  return value.replace(/[&<>"']/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[character]));
 }
 
 function getSupabaseAdmin() {
@@ -19,6 +14,10 @@ function getSupabaseAdmin() {
   return createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
+
+function t(locale, vi, en) {
+  return locale === 'en' ? en : vi;
 }
 
 // Every organizer this guest has ever booked with — the same relationship
@@ -56,13 +55,14 @@ async function findOrganizerRecipients(admin, guestId) {
     if (org.user_id && org.user_id !== guestId) targetIds.add(org.user_id);
   }
 
-  const emails = [];
+  const recipients = [];
   for (const uid of targetIds) {
     const { data, error } = await admin.auth.admin.getUserById(uid);
     if (error || !data?.user?.email) continue;
-    emails.push(data.user.email);
+    const { data: profile } = await admin.from('profiles').select('locale').eq('id', uid).maybeSingle();
+    recipients.push({ email: data.user.email, locale: profile?.locale === 'en' ? 'en' : 'vi' });
   }
-  return emails;
+  return recipients;
 }
 
 export default async function handler(req, res) {
@@ -95,15 +95,28 @@ export default async function handler(req, res) {
     const recipients = await findOrganizerRecipients(admin, userData.user.id);
     if (recipients.length === 0) return res.status(200).json({ sent: 0 });
 
-    const subject = 'Một khách đã đổi tên trên banbe';
-    const displayOld = oldName || '(không rõ)';
-    const text = `${displayOld} đã đổi tên thành ${newName} trên banbe.`;
-    const html = `<p>${escapeHtml(displayOld)} đã đổi tên thành <strong>${escapeHtml(newName)}</strong> trên banbe.</p>`;
-
     let sent = 0;
-    for (const to of recipients) {
+    for (const { email: to, locale } of recipients) {
+      const displayOld = escapeHtml(oldName || t(locale, '(không rõ)', '(unknown)'));
+      const displayNew = escapeHtml(newName);
+
+      const subject = t(locale, 'Một khách đã đổi tên trên banbe', 'A guest changed their name on banbe');
+      const heading = t(locale, 'Một khách đã đổi tên', 'A guest changed their name');
+      const paragraphs = [
+        t(
+          locale,
+          `${displayOld} đã đổi tên thành <strong>${displayNew}</strong> trên banbe.`,
+          `${displayOld} is now shown as <strong>${displayNew}</strong> on banbe.`
+        ),
+      ];
+
       try {
-        await sendWithGmail({ to, subject, text, html });
+        await sendWithGmail({
+          to,
+          subject,
+          text: renderEmailText({ heading, paragraphs }),
+          html: renderEmail({ preheader: subject, eyebrow: t(locale, 'Khách của bạn', 'Your guest'), heading, paragraphs }),
+        });
         sent += 1;
       } catch (error) {
         console.error('Name-change notification email failed for', to, error);

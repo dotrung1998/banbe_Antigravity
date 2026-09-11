@@ -226,7 +226,7 @@ test.describe('Login & Signup Notification Messages', () => {
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng nhập/).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Đã gửi mã tới email của bạn/);
-    expect(sentBody).toEqual({ email: 'returning@example.com', mode: 'login' });
+    expect(sentBody).toEqual({ email: 'returning@example.com', mode: 'login', locale: 'vi' });
   });
 
   test('requires a display name to sign up, and sends it with the request', async ({ page }) => {
@@ -257,7 +257,7 @@ test.describe('Login & Signup Notification Messages', () => {
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng ký/).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Đã gửi mã tới email của bạn/);
-    expect(sentBody).toEqual({ email: 'newperson@example.com', mode: 'signup', displayName: 'Nguyễn An' });
+    expect(sentBody).toEqual({ email: 'newperson@example.com', mode: 'signup', locale: 'vi', displayName: 'Nguyễn An' });
   });
 
   test('does not claim the account is missing when the lookup itself failed', async ({ page }) => {
@@ -367,7 +367,7 @@ test.describe('Login & Signup Notification Messages', () => {
       await page.locator('input[placeholder="Confirm password"], input[placeholder="Nhập lại mật khẩu"]').fill('correcthorse1');
       await page.locator('[data-screen-label="Login"]').getByText('Tạo tài khoản', { exact: true }).click();
 
-      expect(sentBody).toEqual({ email: 'newperson@example.com', password: 'correcthorse1', displayName: 'Nguyễn An' });
+      expect(sentBody).toEqual({ email: 'newperson@example.com', password: 'correcthorse1', displayName: 'Nguyễn An', locale: 'vi' });
       await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Đã gửi mã tới email của bạn/);
     });
 
