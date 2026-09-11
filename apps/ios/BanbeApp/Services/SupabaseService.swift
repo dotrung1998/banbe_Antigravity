@@ -10,11 +10,13 @@ import Supabase
 /// for sign-in/sign-up (a typed 6-digit code by email, or a chosen
 /// password — see api/auth/send-email-code.js and signup-password.js).
 /// Those server routes have no iOS equivalent yet — this client instead
-/// uses Supabase's own built-in `signInWithOTP` magic-link flow, which
-/// talks to the same `auth.users` table and is fully interoperable with
-/// accounts created via the web app. If the web app's code/password flows
-/// need to be matched exactly here too, route auth through those same
-/// endpoints instead.
+/// uses Supabase's own built-in email-OTP endpoint directly
+/// (`signInWithOTP` to request a code, `verifyOTP(type: .email)` to
+/// redeem it — no redirect link involved), which talks to the same
+/// `auth.users` table and is fully interoperable with accounts created via
+/// the web app. If the web app's code/password flows need to be matched
+/// exactly here too (its own branded email, a chosen password), route auth
+/// through those same endpoints instead.
 enum SupabaseService {
     static let client: SupabaseClient = {
         guard let url = URL(string: AppConfig.supabaseURL) else {

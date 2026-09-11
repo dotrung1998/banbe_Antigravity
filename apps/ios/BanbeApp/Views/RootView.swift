@@ -6,6 +6,9 @@ struct RootView: View {
     @EnvironmentObject var auth: AuthViewModel
 
     var body: some View {
+        // No onOpenURL here — sign-in is code-entry only (see
+        // AuthViewModel.sendEmailCode/verifyEmailCode), so there's no
+        // emailed link to catch a redirect from.
         Group {
             if auth.isSignedIn {
                 HomeView()
@@ -19,9 +22,6 @@ struct RootView: View {
             } else {
                 LoginView()
             }
-        }
-        .onOpenURL { url in
-            Task { await auth.handleAuthCallback(url: url) }
         }
     }
 }

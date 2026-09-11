@@ -51,8 +51,8 @@ xcodebuild -project BanbeApp.xcodeproj -scheme BanbeApp \
   `supabase/migrations/` (001 core schema, 002 booking lifecycle, 003 social
   chat, 019 notifications).
 - **AuthViewModel** — session restore + listener (mirrors GocContext's
-  `onAuthStateChange` handling), magic-link sign-in, profile load, and a
-  Face ID app-lock (below).
+  `onAuthStateChange` handling), email-code sign-in (request + verify),
+  profile load, and a Face ID app-lock (below).
 - **BiometricAuthService** — thin `LocalAuthentication` wrapper used only
   for that app-lock, nothing more.
 - **HomeViewModel** — fetches `events` where `status = 'live'`, same rows
@@ -70,26 +70,32 @@ Settings (the gear icon on Home) and the next cold launch shows
 `FaceIDLockView` instead of the app content until Face ID succeeds
 (`AuthViewModel.isLocked`, cleared by `BiometricAuthService.authenticate`).
 It's off by default, persisted in `UserDefaults` (`banbe.faceIDEnabled`),
-and has nothing to do with which Supabase credential (code, password, or
-magic link) originally created the session — it gates access to a device
-that's already signed in, the same way it would for a banking or notes
-app. `NSFaceIDUsageDescription` is set in `project.yml`.
+and has nothing to do with which Supabase credential (code or password)
+originally created the session — it gates access to a device that's
+already signed in, the same way it would for a banking or notes app.
+`NSFaceIDUsageDescription` is set in `project.yml`.
 
 ## Known gap: sign-in flow doesn't match the web app exactly
 
-The web app has three sign-in methods (see the root README's auth
-migration): an emailed 6-digit code (`api/auth/send-email-code.js`),
+The web app has two sign-in methods (see the root README's auth
+migration): an emailed 6-digit code (`api/auth/send-email-code.js`) and
 password login/signup with a "forgot password" recovery link
-(`api/auth/signup-password.js`, `send-password-reset.js`), and a nickname
-at sign-up. `AuthViewModel.sendMagicLink` instead uses Supabase's own
-built-in `signInWithOTP` **magic-link** flow directly against the Supabase
-Auth API — still a real session against the same `auth.users` table (an
-account works across both apps), but the emailed template is Supabase's
-default rather than the app's, there's no code/password choice, and no
-nickname field at sign-up yet. Matching the web flow exactly here is
-future work: point a rewritten sign-in view at those same three endpoints
-instead (they need a reachable HTTPS URL for the deployed API, not
-`localhost`), verifying with `supabase.auth.verifyOtp` for the code paths.
+(`api/auth/signup-password.js`, `send-password-reset.js`), plus a nickname
+at sign-up. `AuthViewModel.sendEmailCode`/`verifyEmailCode` instead call
+Supabase's own built-in email-OTP endpoint directly (`signInWithOTP` /
+`verifyOTP(type: .email)`) against the Supabase Auth API — still a real
+session against the same `auth.users` table (an account works across both
+apps), but the emailed template is Supabase's default rather than the
+app's, there's no password option, and no nickname field at sign-up yet.
+Matching the web flow exactly here is future work: point a rewritten
+sign-in view at those same endpoints instead (they need a reachable
+HTTPS URL for the deployed API, not `localhost`).
+
+There is deliberately no "sign in via link" option — an earlier version of
+this screen requested one via `signInWithOTP(redirectTo: "banbe://login-
+callback")`, but that URL scheme was never registered anywhere (no
+`CFBundleURLTypes` in `project.yml`, no `onOpenURL` wired to it), so
+tapping the emailed link did nothing. Sign-in here is code-entry only.
 
 ## Not yet ported (only Home/Login exist so far)
 

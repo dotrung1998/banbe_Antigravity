@@ -8,8 +8,8 @@ import Supabase
 final class AuthViewModel: ObservableObject {
     @Published var session: Session?
     @Published var profile: Profile?
-    @Published var isSendingLink = false
-    @Published var linkSent = false
+    @Published var isSendingCode = false
+    @Published var codeSent = false
     @Published var errorMessage: String?
 
     /// True whenever there's a restored session but Face ID app-lock (see
@@ -79,29 +79,35 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    /// Sends a magic-link email via Supabase's built-in OTP flow. See the
-    /// note in SupabaseService.swift about this vs. the web app's
-    /// /api/auth/send-email-code endpoint (a typed 6-digit code, not a link).
-    func sendMagicLink(to email: String) async {
-        isSendingLink = true
+    /// Requests a 6-digit sign-in code by email via Supabase's built-in OTP
+    /// endpoint. Deliberately no `redirectTo` — this used to pass
+    /// `banbe://login-callback`, but that URL scheme was never actually
+    /// registered anywhere in the app (no CFBundleURLTypes entry in
+    /// project.yml, no onOpenURL handling wired to it either), so the
+    /// emailed "sign in via link" option just failed silently when tapped.
+    /// Since the app only ever verifies with a typed code, not a link,
+    /// there's no reason to ask Supabase to include one — see the note in
+    /// SupabaseService.swift about matching the web app's
+    /// /api/auth/send-email-code endpoint more exactly in the future.
+    func sendEmailCode(to email: String) async {
+        isSendingCode = true
         errorMessage = nil
-        defer { isSendingLink = false }
+        defer { isSendingCode = false }
         do {
-            try await SupabaseService.client.auth.signInWithOTP(
-                email: email,
-                redirectTo: URL(string: "banbe://login-callback")
-            )
-            linkSent = true
+            try await SupabaseService.client.auth.signInWithOTP(email: email)
+            codeSent = true
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    /// Call from the app's onOpenURL when the magic link redirects back into
-    /// the app (requires the `banbe` URL scheme registered in Info.plist).
-    func handleAuthCallback(url: URL) async {
+    /// Verifies the code from that email and establishes the session
+    /// directly — the auth-state listener above takes it from there.
+    func verifyEmailCode(email: String, code: String) async {
+        errorMessage = nil
         do {
-            try await SupabaseService.client.auth.session(from: url)
+            try await SupabaseService.client.auth.verifyOTP(email: email, token: code, type: .email)
+            codeSent = false
         } catch {
             errorMessage = error.localizedDescription
         }
