@@ -513,6 +513,30 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Where goBack() would land, computed without any of its side effects
+    /// (no mutation, no network calls) — lets RootView render that screen
+    /// peeking in behind the current one while an edge swipe is in
+    /// progress, the same way UIKit reveals the real previous view instead
+    /// of blank space.
+    var backTargetScreen: Screen {
+        switch screen {
+        case .profile: return .home
+        case .inbox: return inboxBack
+        case .eventList: return .profile
+        case .event: return eventBackScreen
+        case .organizer, .reserve: return .event
+        case .chat: return chatBack == .inbox ? .inbox : .organizer
+        case .dashboard: return dashboardBack
+        case .hostIntro: return .profile
+        case .create: return hasHosted ? .dashboard : .hostIntro
+        case .attendance: return .dashboard
+        case .preferences, .editName: return .profile
+        case .login: return authBackScreen
+        case .confirmed, .refunded, .notifications: return .home
+        default: return .home
+        }
+    }
+
     // MARK: - Feed interactions
 
     func toggleFavorite(_ key: String) {

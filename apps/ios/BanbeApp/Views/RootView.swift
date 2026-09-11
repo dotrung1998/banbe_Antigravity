@@ -60,35 +60,31 @@ struct RootView: View {
             }
     }
 
+    private var isPeeking: Bool { isDragTracking || isCommittingBack }
+
+    /// A sliver of parallax on the revealed screen — it drifts in from
+    /// slightly off-frame rather than sitting flush at 0, the same subtle
+    /// depth cue UIKit's pop transition gives the view underneath.
+    private var peekOffset: CGFloat {
+        -(1 - dragProgress) * UIScreen.main.bounds.width * 0.28
+    }
+
     var body: some View {
         ZStack {
             app.palette.paper.ignoresSafeArea()
 
-            ZStack {
-                switch app.screen {
-                case .splash: SplashView()
-                case .langPick: LangPickView()
-                case .themePick: ThemePickView()
-                case .home: HomeView()
-                case .profile: AccountView()
-                case .inbox: InboxView()
-                case .event: EventDetailView()
-                case .organizer: OrganizerView()
-                case .reserve: ReserveView()
-                case .confirmed: ConfirmedView()
-                case .refunded: RefundedView()
-                case .login: LoginView()
-                case .chat: ChatView()
-                case .dashboard: DashboardView()
-                case .hostIntro: HostIntroView()
-                case .create: CreateEventView()
-                case .attendance: AttendanceView()
-                case .preferences: PreferencesView()
-                case .editName: EditNameView()
-                case .notifications: NotificationsView()
-                case .eventList: EventListView()
-                }
+            // The screen a swipe-back would land on, revealed underneath as
+            // it drags instead of leaving blank paper — this is what was
+            // missing: dragging used to uncover empty space because nothing
+            // was actually rendered behind the current screen.
+            if isPeeking {
+                screenView(for: app.backTargetScreen)
+                    .offset(x: peekOffset)
+                    .overlay(Color.black.opacity((1 - dragProgress) * 0.1))
+                    .allowsHitTesting(false)
             }
+
+            screenView(for: app.screen)
             // Every screen change — swiped back, tapped back, or pushed
             // forward — cross-fades with a slight horizontal drift instead
             // of the previous hard cut, which is most of what made it feel
@@ -102,9 +98,7 @@ struct RootView: View {
             // the slide off-screen (commit) or springs back to place
             // (cancel) — the same two outcomes the system gesture has.
             .offset(x: isCommittingBack ? UIScreen.main.bounds.width : dragTranslation)
-            // Depth cue on the dragged edge, same as UIKit's pop shadow —
-            // the plain paper the outer ZStack already paints behind this
-            // is enough to read as "the previous page" peeking through.
+            // Depth cue on the dragged edge, same as UIKit's pop shadow.
             .shadow(color: .black.opacity(dragProgress * 0.16), radius: 16, x: -6, y: 0)
             // Without this, a screen's own ScrollView keeps recognizing its
             // vertical pan at the same time as the edge swipe (that's the
@@ -162,6 +156,36 @@ struct RootView: View {
         .onChange(of: auth.session?.user.id) { _, _ in
             // Signing in from a gated screen returns to whatever asked for it.
             if auth.session != nil && app.screen == .login { app.screen = app.authReturnScreen }
+        }
+    }
+
+    /// The SCREENS map, factored out so both the current screen and the
+    /// peeked-at previous one (during a swipe) can render from the same
+    /// switch instead of keeping two copies in sync.
+    @ViewBuilder
+    private func screenView(for screen: Screen) -> some View {
+        switch screen {
+        case .splash: SplashView()
+        case .langPick: LangPickView()
+        case .themePick: ThemePickView()
+        case .home: HomeView()
+        case .profile: AccountView()
+        case .inbox: InboxView()
+        case .event: EventDetailView()
+        case .organizer: OrganizerView()
+        case .reserve: ReserveView()
+        case .confirmed: ConfirmedView()
+        case .refunded: RefundedView()
+        case .login: LoginView()
+        case .chat: ChatView()
+        case .dashboard: DashboardView()
+        case .hostIntro: HostIntroView()
+        case .create: CreateEventView()
+        case .attendance: AttendanceView()
+        case .preferences: PreferencesView()
+        case .editName: EditNameView()
+        case .notifications: NotificationsView()
+        case .eventList: EventListView()
         }
     }
 
