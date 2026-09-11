@@ -39,9 +39,13 @@ struct DashboardView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack {
-                            Button("‹ banbe") { app.goHome() }
-                                .font(BanbeTheme.display(17))
-                                .buttonStyle(.plain)
+                            Button { app.goHome() } label: {
+                                HStack(spacing: 6) {
+                                    Text("‹").font(.system(size: 14))
+                                    BanbeLogo(kind: .mark, height: 34)
+                                }
+                            }
+                            .buttonStyle(.plain)
                             Spacer()
                             Button(app.T("Xem như khách", "View as goer")) { app.switchToGoer() }
                                 .font(.system(size: 11.5))
@@ -246,11 +250,15 @@ struct HostIntroView: View {
                                 .font(.system(size: 13))
                                 .lineSpacing(3)
                                 .padding(.top, 12)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(app.T("Chưa có sự kiện nào", "No events yet"))
-                                    .font(.system(size: 13.5, weight: .semibold))
-                                Text(app.T("Sự kiện đầu tiên của bạn sẽ nằm ở đây.", "Your first event will sit here."))
-                                    .font(.system(size: 11.5))
+                            HStack(spacing: 14) {
+                                BanbeLogo(kind: .mark, width: 38, height: 38)
+                                    .opacity(0.75)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(app.T("Chưa có sự kiện nào", "No events yet"))
+                                        .font(.system(size: 13.5, weight: .semibold))
+                                    Text(app.T("Sự kiện đầu tiên của bạn sẽ nằm ở đây.", "Your first event will sit here."))
+                                        .font(.system(size: 11.5))
+                                }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(16)

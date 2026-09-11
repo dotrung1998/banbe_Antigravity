@@ -42,9 +42,7 @@ struct HomeView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("banbe")
-                .font(BanbeTheme.display(28))
-                .foregroundStyle(app.palette.ink)
+            BanbeLogo(kind: .wordmarkSmall, width: 126)
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
                 HStack(spacing: 10) {

@@ -128,6 +128,21 @@ cards actually on screen load anything.
 The web app still serves the original JPEGs; it could point at
 `/photos/optimized/*.webp` for the same saving whenever that's wanted.
 
+## Logos
+
+The app draws the web app's own artwork — `public/banbe-mark.png` and the
+two wordmarks — referenced in place rather than copied, so both frontends
+show the same mark. `BanbeLogo` renders them, at the same sizes the web
+uses: the mark at 44pt on the language screen, the wordmark at 252pt on
+the splash, the small wordmark at 126pt in the feed header, the mark at
+34pt on the dashboard and 38pt in the host-intro card.
+
+They're drawn as **template images tinted with the current ink colour**.
+The artwork is near-black, which is right on the light paper but would be
+invisible on the dark one — the web renders the PNG as-is and does lose
+its logo in dark mode. Tinting keeps the design system's "one ink" rule
+and is identical to the web in light mode.
+
 ## Known gaps
 
 - **Sign-in is email-code only.** The web app also has password

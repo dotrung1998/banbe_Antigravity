@@ -36,6 +36,47 @@ struct CatalogPhoto: View {
     }
 }
 
+/// The banbe logo, drawn from the same PNGs the web app uses
+/// (public/banbe-mark.png and the two wordmarks), so both frontends show
+/// the same artwork rather than iOS approximating it with text.
+///
+/// Drawn as a template tinted with the current ink colour: the artwork is
+/// near-black, which is right on the light paper but would be invisible on
+/// the dark one. The web app renders the PNG as-is and does lose the logo
+/// in its dark theme — tinting keeps the design system's "one ink" rule
+/// and stays identical in light mode.
+struct BanbeLogo: View {
+    enum Kind: String {
+        case mark = "banbe-mark"
+        case wordmark = "banbe-wordmark"
+        case wordmarkSmall = "banbe-wordmark-sm"
+    }
+
+    let kind: Kind
+    var width: CGFloat?
+    var height: CGFloat?
+
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        Group {
+            if let image = UIImage(named: kind.rawValue) {
+                Image(uiImage: image)
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                // Never expected — but a missing asset shouldn't blank the
+                // header on the one screen someone is looking at.
+                Text("banbe").font(BanbeTheme.display(height ?? 24))
+            }
+        }
+        .frame(width: width, height: height)
+        .foregroundStyle(app.palette.ink)
+        .accessibilityLabel("banbe")
+    }
+}
+
 /// Draws a catalogue photo through PhotoLoader. Starts from the memory
 /// cache synchronously, so scrolling back to an already-seen card paints
 /// immediately rather than flashing its placeholder again.

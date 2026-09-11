@@ -10,9 +10,7 @@ struct SplashView: View {
         ZStack {
             app.palette.paper.ignoresSafeArea()
             VStack(spacing: 0) {
-                Text("banbe")
-                    .font(.system(size: 56, weight: .semibold, design: .rounded))
-                    .foregroundStyle(app.palette.ink)
+                BanbeLogo(kind: .wordmark, width: 252)
                 Text("bạn mới mỗi tuần")
                     .font(.system(size: 14))
                     .foregroundStyle(app.palette.ink)
@@ -43,13 +41,16 @@ struct LangPickView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Chào bạn").font(.system(size: 11.5))
-                Text("Bạn muốn dùng banbe bằng tiếng nào?")
+                // Same mark, at the same 44pt, as src/screens/LangPick.jsx.
+                BanbeLogo(kind: .mark, width: 44, height: 44)
+                    .padding(.bottom, 26)
+
+                Text("Chọn ngôn ngữ")
                     .font(BanbeTheme.display(27))
-                    .padding(.top, 8)
-                Text("You can change this anytime in your account.")
-                    .font(.system(size: 13.5))
-                    .padding(.top, 10)
+                Text("Choose your language")
+                    .font(.system(size: 19))
+                    .opacity(0.52)
+                    .padding(.top, 5)
 
                 VStack(spacing: 10) {
                     choice(title: "Tiếng Việt", subtitle: "Mặc định", active: app.lang == "vi") {

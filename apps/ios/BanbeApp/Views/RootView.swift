@@ -66,6 +66,8 @@ struct RootView: View {
         ZStack {
             app.palette.paper.opacity(0.9).ignoresSafeArea()
             VStack(spacing: 14) {
+                // src/screens/Loading.jsx tumbles the mark while it waits.
+                BanbeLogo(kind: .mark, width: 54, height: 54)
                 ProgressView()
                 Text(app.T("Đang giữ chỗ cho bạn…", "Holding your seat…"))
                     .font(.system(size: 13))

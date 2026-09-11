@@ -27,6 +27,14 @@ targets:
       - path: ../../public/photos/optimized
         type: folder
         buildPhase: resources
+      # The logo artwork the web app uses, referenced in place so both
+      # frontends draw the same mark (see BanbeLogo).
+      - path: ../../public/banbe-mark.png
+        buildPhase: resources
+      - path: ../../public/banbe-wordmark.png
+        buildPhase: resources
+      - path: ../../public/banbe-wordmark-sm.png
+        buildPhase: resources
     resources:
       - BanbeApp/Resources
     dependencies:
