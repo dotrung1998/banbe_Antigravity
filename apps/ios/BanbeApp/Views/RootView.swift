@@ -139,6 +139,11 @@ struct RootView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
                 app.goBack()
                 isCommittingBack = false
+                // The offset formula falls back to dragTranslation once
+                // isCommittingBack flips back off — leaving it at the
+                // drag's last value pushed the newly-arrived screen off to
+                // the right instead of resetting to 0.
+                dragTranslation = 0
             }
         }
         .preferredColorScheme(app.theme == "dark" ? .dark : .light)
