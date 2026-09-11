@@ -143,6 +143,26 @@ invisible on the dark one — the web renders the PNG as-is and does lose
 its logo in dark mode. Tinting keeps the design system's "one ink" rule
 and is identical to the web in light mode.
 
+### App icon
+
+The springboard icon is `public/banbe-favicon.png` (the same mark), flattened
+onto an opaque copy of the light-theme paper color and resized to exactly
+1024×1024 — an app icon can't carry a transparent background (App Store
+Connect rejects one that does; the favicon's is transparent outside its own
+black square), so `banbe-icon.png` in `AppIcon.appiconset` is a baked, opaque
+copy rather than the raw favicon. iOS applies its own rounded-corner mask on
+top. Regenerate it if the favicon artwork ever changes:
+
+```python
+from PIL import Image
+src = Image.open("public/banbe-favicon.png").convert("RGBA")
+bg = Image.new("RGBA", src.size, (247, 244, 236, 255))  # #F7F4EC
+bg.paste(src, (0, 0), src)
+bg.convert("RGB").resize((1024, 1024), Image.LANCZOS).save(
+    "apps/ios/BanbeApp/Resources/Assets.xcassets/AppIcon.appiconset/banbe-icon.png"
+)
+```
+
 ## Known gaps
 
 - **Sign-in is email-code only.** The web app also has password
