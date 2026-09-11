@@ -79,22 +79,22 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    /// Requests a 6-digit sign-in code by email via Supabase's built-in OTP
-    /// endpoint. Deliberately no `redirectTo` — this used to pass
-    /// `banbe://login-callback`, but that URL scheme was never actually
-    /// registered anywhere in the app (no CFBundleURLTypes entry in
-    /// project.yml, no onOpenURL handling wired to it either), so the
-    /// emailed "sign in via link" option just failed silently when tapped.
-    /// Since the app only ever verifies with a typed code, not a link,
-    /// there's no reason to ask Supabase to include one — see the note in
-    /// SupabaseService.swift about matching the web app's
-    /// /api/auth/send-email-code endpoint more exactly in the future.
-    func sendEmailCode(to email: String) async {
+    /// Requests a 6-digit sign-in/sign-up code by email — via
+    /// AuthAPIService (Gmail delivery through the same Vercel function the
+    /// web app uses), not Supabase's own `signInWithOTP`. Supabase's
+    /// built-in mailer is capped at a handful of emails per hour on this
+    /// project and was failing almost immediately with "email rate limit
+    /// exceeded"; the server function has no such limit. Also deliberately
+    /// asks for no redirect link — this used to pass
+    /// `redirectTo: "banbe://login-callback"`, a URL scheme that was never
+    /// actually registered anywhere in the app, so that option just failed
+    /// silently when tapped. Sign-in here is code-entry only.
+    func sendEmailCode(to email: String, mode: AuthMode, displayName: String? = nil) async {
         isSendingCode = true
         errorMessage = nil
         defer { isSendingCode = false }
         do {
-            try await SupabaseService.client.auth.signInWithOTP(email: email)
+            try await AuthAPIService.requestEmailCode(email: email, mode: mode, displayName: displayName)
             codeSent = true
         } catch {
             errorMessage = error.localizedDescription
@@ -102,11 +102,17 @@ final class AuthViewModel: ObservableObject {
     }
 
     /// Verifies the code from that email and establishes the session
-    /// directly — the auth-state listener above takes it from there.
-    func verifyEmailCode(email: String, code: String) async {
+    /// directly against Supabase (just checking a token, not sending
+    /// anything — no rate limit involved) — the auth-state listener above
+    /// takes it from there. `mode` must match whichever mode the code was
+    /// requested for: a signup confirmation code verifies as `.signup`, a
+    /// login code as `.email`.
+    func verifyEmailCode(email: String, code: String, mode: AuthMode) async {
         errorMessage = nil
         do {
-            try await SupabaseService.client.auth.verifyOTP(email: email, token: code, type: .email)
+            try await SupabaseService.client.auth.verifyOTP(
+                email: email, token: code, type: mode == .signup ? .signup : .email
+            )
             codeSent = false
         } catch {
             errorMessage = error.localizedDescription

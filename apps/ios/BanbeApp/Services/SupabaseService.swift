@@ -6,17 +6,15 @@ import Supabase
 /// safe to ship in the client; it only ever acts under RLS as `anon` or
 /// `authenticated`, exactly like the web app's bundled copy.
 ///
-/// The web app additionally posts to custom /api/auth/* Vercel functions
-/// for sign-in/sign-up (a typed 6-digit code by email, or a chosen
-/// password — see api/auth/send-email-code.js and signup-password.js).
-/// Those server routes have no iOS equivalent yet — this client instead
-/// uses Supabase's own built-in email-OTP endpoint directly
-/// (`signInWithOTP` to request a code, `verifyOTP(type: .email)` to
-/// redeem it — no redirect link involved), which talks to the same
-/// `auth.users` table and is fully interoperable with accounts created via
-/// the web app. If the web app's code/password flows need to be matched
-/// exactly here too (its own branded email, a chosen password), route auth
-/// through those same endpoints instead.
+/// Requesting the sign-in code itself goes through the same
+/// /api/auth/send-email-code Vercel function the web app uses (see
+/// AuthAPIService) rather than Supabase's own `signInWithOTP` — that
+/// function delivers via Gmail with no meaningful limit, where Supabase's
+/// own built-in mailer is capped at a handful of emails per hour and
+/// starts failing with "email rate limit exceeded" almost immediately.
+/// Only *verifying* the code (`verifyOTP(type: .email)`) talks to Supabase
+/// directly — that's just checking a token, not sending anything, so it
+/// isn't subject to that limit and needs no server round trip.
 enum SupabaseService {
     static let client: SupabaseClient = {
         guard let url = URL(string: AppConfig.supabaseURL) else {
@@ -40,4 +38,12 @@ enum SupabaseService {
 enum AppConfig {
     static let supabaseURL = "https://ukchdgdnwytretvqjjqu.supabase.co"
     static let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVrY2hkZ2Rud3l0cmV0dnFqanF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MjMyMjYsImV4cCI6MjEwNDI5OTIyNn0.TgyEJLTXTZgCa6ulsseY3JlrdSmEfOgqVPNh0nSgu90"
+
+    /// Base URL of the deployed web app's /api/* Vercel functions — the
+    /// same origin AUTH_REDIRECT_URL points at in .env.example. A relative
+    /// fetch('/api/...'), which is how the web app calls this, only works
+    /// because the web app is served from that origin; iOS has no origin
+    /// of its own, so this needs to be an absolute URL to wherever the API
+    /// is actually deployed. Update this if that changes.
+    static let apiBaseURL = "https://banbe-two.vercel.app"
 }

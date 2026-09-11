@@ -53,6 +53,11 @@ xcodebuild -project BanbeApp.xcodeproj -scheme BanbeApp \
 - **AuthViewModel** — session restore + listener (mirrors GocContext's
   `onAuthStateChange` handling), email-code sign-in (request + verify),
   profile load, and a Face ID app-lock (below).
+- **AuthAPIService** — requests the sign-in/sign-up code from
+  `/api/auth/send-email-code` (the same Vercel function the web app uses,
+  delivering via Gmail), rather than Supabase's own `signInWithOTP` mailer.
+  Verifying the code is still a direct `supabase.auth.verifyOTP` call —
+  just checking a token, not sending anything.
 - **BiometricAuthService** — thin `LocalAuthentication` wrapper used only
   for that app-lock, nothing more.
 - **HomeViewModel** — fetches `events` where `status = 'live'`, same rows
@@ -75,27 +80,40 @@ originally created the session — it gates access to a device that's
 already signed in, the same way it would for a banking or notes app.
 `NSFaceIDUsageDescription` is set in `project.yml`.
 
-## Known gap: sign-in flow doesn't match the web app exactly
+## Why sign-in goes through the web app's API, not straight to Supabase
 
-The web app has two sign-in methods (see the root README's auth
-migration): an emailed 6-digit code (`api/auth/send-email-code.js`) and
-password login/signup with a "forgot password" recovery link
-(`api/auth/signup-password.js`, `send-password-reset.js`), plus a nickname
-at sign-up. `AuthViewModel.sendEmailCode`/`verifyEmailCode` instead call
-Supabase's own built-in email-OTP endpoint directly (`signInWithOTP` /
-`verifyOTP(type: .email)`) against the Supabase Auth API — still a real
-session against the same `auth.users` table (an account works across both
-apps), but the emailed template is Supabase's default rather than the
-app's, there's no password option, and no nickname field at sign-up yet.
-Matching the web flow exactly here is future work: point a rewritten
-sign-in view at those same endpoints instead (they need a reachable
-HTTPS URL for the deployed API, not `localhost`).
+Requesting the code is a POST to `AppConfig.apiBaseURL +
+"/api/auth/send-email-code"` (`AuthAPIService.requestEmailCode`) — the
+exact same Vercel function the web app calls, which delivers via Gmail
+with no meaningful limit. Calling Supabase's own `signInWithOTP` directly
+(what an earlier version of this did) hits Supabase's own built-in mailer
+instead, which on this project is capped at a handful of emails per hour
+and fails almost immediately with "email rate limit exceeded" — a real
+bug, not a hypothetical one. `AppConfig.apiBaseURL` is hardcoded to the
+deployed origin (`https://banbe-two.vercel.app`, matching
+`AUTH_REDIRECT_URL` in `.env.example`) since iOS has no origin of its own
+the way the web app's relative `fetch('/api/...')` relies on — update it
+if the app is deployed elsewhere.
+
+Verifying the code is still a direct `supabase.auth.verifyOTP(email:
+token: type:)` call — that only checks a token against Supabase, it
+doesn't send anything, so it isn't subject to that limit and needs no
+server round trip. `type` is `.signup` for a sign-up confirmation code or
+`.email` for a login code, matching whichever mode (`AuthMode.login` /
+`.signup`) the code was requested for — the screen now has the same
+Log in/Sign up toggle (and a display-name field on Sign up) the web
+Login screen has, rather than one flow that both created and signed in an
+account.
 
 There is deliberately no "sign in via link" option — an earlier version of
 this screen requested one via `signInWithOTP(redirectTo: "banbe://login-
 callback")`, but that URL scheme was never registered anywhere (no
 `CFBundleURLTypes` in `project.yml`, no `onOpenURL` wired to it), so
 tapping the emailed link did nothing. Sign-in here is code-entry only.
+
+Password login/signup and "forgot password" (`api/auth/signup-password.js`,
+`send-password-reset.js` on the web side) have no iOS equivalent yet —
+future work, following the same AuthAPIService pattern.
 
 ## Not yet ported (only Home/Login exist so far)
 
