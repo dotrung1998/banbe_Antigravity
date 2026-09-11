@@ -3,7 +3,7 @@ import { agoLabel } from '../data/events.js';
 import { paper, ink, display } from '../theme.js';
 
 export default function Notifications() {
-  const { state, T, trStatus, goHome, markNotificationRead } = useGoc();
+  const { state, T, trStatus, goHome, openNotification } = useGoc();
   const s = state;
 
   const withAgo = (n) => ({
@@ -24,13 +24,13 @@ export default function Notifications() {
           {unread.length > 0 && (
             <Section title={T('Chưa đọc', 'Unread')}>
               {unread.map(n => (
-                <Row key={n.id} n={n} unread onClick={() => markNotificationRead(n.id)} />
+                <Row key={n.id} n={n} unread onClick={() => openNotification(n)} />
               ))}
             </Section>
           )}
           {read.length > 0 && (
             <Section title={T('Đã đọc', 'Read')}>
-              {read.map(n => <Row key={n.id} n={n} />)}
+              {read.map(n => <Row key={n.id} n={n} onClick={() => openNotification(n)} />)}
             </Section>
           )}
         </div>
@@ -59,7 +59,7 @@ function Row({ n, unread, onClick }) {
       style={{
         display: 'flex', gap: 10, padding: '14px 0',
         borderBottom: '1px solid rgba(27,25,22,0.16)',
-        cursor: unread ? 'pointer' : 'default',
+        cursor: onClick ? 'pointer' : 'default',
         opacity: unread ? 1 : 0.6,
       }}
     >

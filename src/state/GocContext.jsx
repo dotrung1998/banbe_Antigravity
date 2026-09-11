@@ -828,6 +828,15 @@ export function GocProvider({ children }) {
     set({ screen: 'chat', eventKey, chatBack: back || 'inbox', chatThreadId: threadId, chatMessages: [] });
     loadChatMessages(threadId);
   }, [set, loadChatMessages]);
+  // Tapping a notification marks it read and, for the kinds that point at
+  // somewhere real, takes you there — a 'new_message' notification opens the
+  // actual thread it's about instead of just sitting there read.
+  const openNotification = useCallback((n) => {
+    markNotificationRead(n.id);
+    if (n.kind === 'new_message' && n.data?.thread_id) {
+      openThread(n.data.thread_id, n.data.event_id, 'inbox');
+    }
+  }, [markNotificationRead, openThread]);
   const chatSend = useCallback(async () => {
     const text = s.chatDraft.trim();
     if (!text || !s.chatThreadId || !s.user) return;
@@ -843,17 +852,9 @@ export function GocProvider({ children }) {
       return;
     }
     set(prev => ({ chatMessages: [...prev.chatMessages, data] }));
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
-      if (token) {
-        fetch('/api/notify-chat-message', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ threadId: s.chatThreadId, body: text }),
-        }).catch(() => {});
-      }
-    } catch { /* best-effort email; the in-app notification already landed via trigger */ }
+    // No email here any more — the in-app notification (via the
+    // notify_new_message trigger) is the only notification a new message
+    // gets; tapping it now takes you straight to the thread.
   }, [set, s.chatDraft, s.chatThreadId, s.user]);
   const chatOnKey = useCallback((e) => { if (e.key === 'Enter') chatSend(); }, [chatSend]);
   const chatBackFn = useCallback(() => set(prev => ({ screen: prev.chatBack === 'inbox' ? 'inbox' : 'organizer' })), [set]);
@@ -1051,7 +1052,7 @@ export function GocProvider({ children }) {
     goHome, goProfile, goInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead,
+    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences,
@@ -1070,7 +1071,7 @@ export function GocProvider({ children }) {
     goHome, goProfile, goInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     switchToHost, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead,
+    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences,
