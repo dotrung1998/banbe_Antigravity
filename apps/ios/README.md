@@ -62,9 +62,17 @@ xcodebuild -project BanbeApp.xcodeproj -scheme BanbeApp \
   for that app-lock, nothing more.
 - **HomeViewModel** — fetches `events` where `status = 'live'`, same rows
   the web Home screen's "All" section reads via `events_select_public` RLS.
+- **PhotoCatalog** — the same `LOCAL_PHOTOS` rotation as
+  src/data/events.js, so each card gets a real photo (served from the
+  deployed web app's `/photos/*`, since the `events` table itself has no
+  photo column — the web feed doesn't either, it picks by list position
+  the same way).
+- **BanbeTheme** — the web app's light-mode paper/ink colors
+  (src/index.css), so cards read the same on both.
 - **Views** — `RootView` (auth gate + Face ID lock overlay), `LoginView`,
-  `HomeView` + `EventRow` (auth → fetch → render), `SettingsView` (Face ID
-  toggle, sign out), `FaceIDLockView`.
+  `HomeView` + `EventRow` (photo card: hero photo, name, category ▪︎ area
+  ▪︎ date, price/seats — mirrors the web feed card), `SettingsView` (Face
+  ID toggle, sign out), `FaceIDLockView`.
 
 ## Face ID (for a returning, already-signed-in user)
 
@@ -116,6 +124,13 @@ Password login/signup and "forgot password" (`api/auth/signup-password.js`,
 future work, following the same AuthAPIService pattern.
 
 ## Not yet ported (only Home/Login exist so far)
+
+The Home feed's card now looks like the web version (photo, name, meta
+line, price/seats) but doesn't yet have: the language/area header row and
+its "banbe ▪︎ Sài Gòn" area picker, the "Your events"/saved-events strip,
+per-card Save toggle and "Going" chip, or category filter tabs — those all
+need more state/RPCs wired up (favorites, area matching, etc.), not just a
+visual pass.
 
 Profile, Feed detail, Reserve/booking, Chat, Attendance/check-in
 (camera QR scan), Notifications, Organizer/dashboard screens, and the

@@ -12,12 +12,17 @@ struct HomeView: View {
         NavigationStack {
             List {
                 if let error = viewModel.errorMessage {
-                    Text(error).foregroundStyle(.red)
+                    Text(error)
+                        .foregroundStyle(.red)
+                        .listRowBackground(BanbeTheme.paper)
                 }
-                ForEach(viewModel.events) { event in
-                    EventRow(event: event)
+                ForEach(Array(viewModel.events.enumerated()), id: \.element.id) { index, event in
+                    EventRow(event: event, index: index)
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(BanbeTheme.paper)
             .navigationTitle("banbe")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
