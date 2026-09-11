@@ -409,8 +409,18 @@ final class AppState: ObservableObject {
 
     func goHome() { screen = .home }
     func goProfile() { screen = .profile }
+    // Re-opening the SAME event from its own organizer page is a deliberate
+    // two-way toggle — back means "organizer", and organizer's own back
+    // means this event. But tapping a DIFFERENT event in that list must
+    // carry forward the ORIGINAL back target instead, treating "organizer"
+    // as a pass-through the same way "event" itself already is. Otherwise
+    // the new event's back screen becomes "organizer" — whose own back
+    // button re-opens whichever event is now current (the new one, not the
+    // one that was open when Organizer was entered) — trapping event <->
+    // organizer in a loop that never reaches Home.
     func goEvent(_ key: String) {
-        if screen != .event { eventBackScreen = screen }
+        let skipOrganizer = screen == .organizer && eventKey != key
+        if screen != .event && !skipOrganizer { eventBackScreen = screen }
         eventKey = key
         screen = .event
         Task { await loadBookingForCurrentEvent() }
