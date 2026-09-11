@@ -203,6 +203,11 @@ struct EventDetailView: View {
         .contentShape(Rectangle())
     }
 
+    // A completed event has nothing left to reserve — showing "Reserve"
+    // (or even the sold-out waitlist prompt) on something that already
+    // happened reads as broken, not just unnecessary.
+    private var ended: Bool { event.endedHoursAgo != nil }
+
     private var actionBar: some View {
         Group {
             if let booking = myBooking {
@@ -210,6 +215,13 @@ struct EventDetailView: View {
                                        "View your ticket ▪︎ code \(booking.code ?? "")")) {
                     app.openHeld()
                 }
+            } else if ended {
+                Text(app.T("Sự kiện đã kết thúc", "Event has ended"))
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .foregroundStyle(app.palette.ink)
             } else if event.soldOut {
                 Button { app.goChat() } label: {
                     Text(app.T("Hết chỗ ▪︎ nhắn để vào danh sách chờ", "Sold out ▪︎ message for waitlist"))

@@ -1,9 +1,13 @@
 import { useGoc } from '../state/GocContext.jsx';
+import { EVENTS } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
 
 export default function Account() {
-  const { state, T, goHome, goInbox, goEditName, openPreferences, goGoingList, goSavedList, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral } = useGoc();
+  const { state, T, goHome, goInbox, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral } = useGoc();
   const s = state;
+  const completedCount = [...new Set([...(s.favorites || []), ...s.attending])]
+    .map(k => EVENTS.find(e => e.key === k))
+    .filter(e => e && e.endedHoursAgo != null).length;
 
   const profileName = s.user ? (s.user.name || (s.user.email ? s.user.email.split('@')[0] : T('Bạn', 'You'))) : T('Khách', 'Guest');
   const isOrganizer = canHost;
@@ -58,9 +62,9 @@ export default function Account() {
           <span style={{ fontSize: 14, color: ink }}>{T('Tin nhắn', 'Messages')}</span>
           <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
         </div>
-        <div onClick={goSavedList} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-          <span style={{ fontSize: 14, color: ink }}>{T('Sự kiện đã lưu', 'Saved events')}</span>
-          <span style={{ fontSize: 13, color: ink }}>{(s.favorites || []).length} ›</span>
+        <div onClick={goCompletedList} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+          <span style={{ fontSize: 14, color: ink }}>{T('Sự kiện đã hoàn thành', 'Completed events')}</span>
+          <span style={{ fontSize: 13, color: ink }}>{completedCount} ›</span>
         </div>
         <div onClick={openPreferences} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', cursor: 'pointer' }}>
           <span style={{ fontSize: 14, color: ink }}>{T('Ngôn ngữ & hiển thị', 'Language & appearance')}</span>

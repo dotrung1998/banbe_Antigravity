@@ -35,15 +35,21 @@ export default function EventDetail() {
     ? s.booking
     : null;
 
+  // A completed event has nothing left to reserve — showing "Reserve"
+  // (or even "Sold out ▪︎ message for waitlist") on something that already
+  // happened reads as broken, not just unnecessary.
+  const ended = ev.endedHoursAgo != null;
   const reserveBarLabel = myBooking
     ? T('Xem vé của bạn ▪︎ mã ' + myBooking.code, 'View your ticket ▪︎ code ' + myBooking.code)
+    : ended
+    ? T('Sự kiện đã kết thúc', 'Event has ended')
     : ev.soldOut
     ? T('Hết chỗ ▪︎ nhắn để vào danh sách chờ', 'Sold out ▪︎ message for waitlist')
     : (T('Giữ chỗ ▪︎ ', 'Reserve ▪︎ ') + trStatus(ev.price));
-  const reserveBarTap = myBooking ? openHeld : (ev.soldOut ? goChat : goReserve);
-  const reserveBarStyle = (myBooking || !ev.soldOut)
+  const reserveBarTap = myBooking ? openHeld : ended ? undefined : (ev.soldOut ? goChat : goReserve);
+  const reserveBarStyle = (myBooking || (!ev.soldOut && !ended))
     ? { ...inkButton({ flex: 'none', margin: '0 20px 22px', padding: '15px 0' }) }
-    : { flex: 'none', margin: '0 20px 22px', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 0', borderRadius: 18, cursor: 'pointer', background: 'rgba(238,232,218,0.92)', color: ink };
+    : { flex: 'none', margin: '0 20px 22px', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 0', borderRadius: 18, cursor: ended ? 'default' : 'pointer', background: 'rgba(238,232,218,0.92)', color: ink };
 
   return (
     <div style={{ animation: 'gocFade 0.32s ease both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Event">

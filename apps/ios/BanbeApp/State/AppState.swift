@@ -12,9 +12,9 @@ enum Screen: String {
 }
 
 /// Which set of events EventListView shows — ports the same split used by
-/// the "Going"/"Saved" counters on Account.
+/// the "Going"/"Saved" counters and the "Completed events" row on Account.
 enum EventListMode: String {
-    case going, saved
+    case going, saved, completed
 }
 
 /// Feed area filter — ports AREAS in src/state/GocContext.jsx. Labels stay
@@ -327,10 +327,29 @@ final class AppState: ObservableObject {
     }
 
     /// What EventListView shows for the current `eventListMode` — the
-    /// "Going"/"Saved" cards on Account each open this filtered to their own set.
+    /// "Going"/"Saved" cards and "Completed events" row on Account each open
+    /// this filtered to their own set.
     var eventListEvents: [CatalogEvent] {
-        let keys = eventListMode == .going ? attending : favorites
+        switch eventListMode {
+        case .going: return attending.compactMap { key in EventCatalog.all.first { $0.key == key } }
+        case .saved: return favorites.compactMap { key in EventCatalog.all.first { $0.key == key } }
+        case .completed:
+            var keys: [String] = []
+            for key in favorites + attending where !keys.contains(key) { keys.append(key) }
+            // "Completed" means it already happened — anything still
+            // upcoming (or just favorited but never actually attended)
+            // doesn't belong here.
+            return keys.compactMap { key in EventCatalog.all.first { $0.key == key } }
+                .filter { $0.endedHoursAgo != nil }
+        }
+    }
+
+    /// Backs the count on Account's "Sự kiện đã lưu"/"Completed events" row.
+    var completedEventsCount: Int {
+        var keys: [String] = []
+        for key in favorites + attending where !keys.contains(key) { keys.append(key) }
         return keys.compactMap { key in EventCatalog.all.first { $0.key == key } }
+            .filter { $0.endedHoursAgo != nil }.count
     }
 
     // MARK: - Onboarding
@@ -402,6 +421,7 @@ final class AppState: ObservableObject {
 
     func goGoingList() { eventListMode = .going; screen = .eventList }
     func goSavedList() { eventListMode = .saved; screen = .eventList }
+    func goCompletedList() { eventListMode = .completed; screen = .eventList }
     func backFromEventList() { screen = .profile }
 
     func goReserve() {

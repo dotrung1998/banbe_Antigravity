@@ -578,6 +578,7 @@ export function GocProvider({ children }) {
   // to remember.
   const goGoingList = useCallback(() => set({ screen: 'eventList', eventListMode: 'going' }), [set]);
   const goSavedList = useCallback(() => set({ screen: 'eventList', eventListMode: 'saved' }), [set]);
+  const goCompletedList = useCallback(() => set({ screen: 'eventList', eventListMode: 'completed' }), [set]);
   const backFromEventList = useCallback(() => set({ screen: 'profile' }), [set]);
 
   // ---- roles ----
@@ -1303,7 +1304,7 @@ export function GocProvider({ children }) {
     isSaved, isGoing, toggleFav, toggleFollow,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
-    goGoingList, goSavedList, backFromEventList,
+    goGoingList, goSavedList, goCompletedList, backFromEventList,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
@@ -1323,7 +1324,7 @@ export function GocProvider({ children }) {
     isSaved, isGoing, toggleFav, toggleFollow,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
-    goGoingList, goSavedList, backFromEventList,
+    goGoingList, goSavedList, goCompletedList, backFromEventList,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,

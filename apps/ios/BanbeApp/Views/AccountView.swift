@@ -52,7 +52,7 @@ struct AccountView: View {
                 VStack(spacing: 0) {
                     row(app.T("Tin nhắn", "Messages"), trailing: "›") { app.goInbox() }
                     Divider().overlay(app.palette.rule)
-                    row(app.T("Sự kiện đã lưu", "Saved events"), trailing: "\(app.favorites.count) ›") { app.goSavedList() }
+                    row(app.T("Sự kiện đã hoàn thành", "Completed events"), trailing: "\(app.completedEventsCount) ›") { app.goCompletedList() }
                     Divider().overlay(app.palette.rule)
                     row(app.T("Ngôn ngữ & hiển thị", "Language & appearance"),
                         identifier: "account.preferences",
