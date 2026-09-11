@@ -138,13 +138,25 @@ struct RootView: View {
             // screens, then reset instantly — the incoming screen is a
             // different view entirely, so there's nothing to visibly snap.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
-                app.goBack()
-                isCommittingBack = false
-                // The offset formula falls back to dragTranslation once
-                // isCommittingBack flips back off — leaving it at the
-                // drag's last value pushed the newly-arrived screen off to
-                // the right instead of resetting to 0.
-                dragTranslation = 0
+                // By the time this runs, the peeked-at screen is already
+                // sitting exactly where the real one is about to appear —
+                // so this swap must be completely unanimated. Without
+                // forcing that here, isCommittingBack flips to false in the
+                // same tick app.screen changes, which un-suppresses the
+                // .animation(value: app.screen) below and replays its
+                // slide-in transition on top of a screen that's already in
+                // place, reading as a jerk back into position.
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    app.goBack()
+                    isCommittingBack = false
+                    // The offset formula falls back to dragTranslation once
+                    // isCommittingBack flips back off — leaving it at the
+                    // drag's last value pushed the newly-arrived screen off
+                    // to the right instead of resetting to 0.
+                    dragTranslation = 0
+                }
             }
         }
         .preferredColorScheme(app.theme == "dark" ? .dark : .light)
