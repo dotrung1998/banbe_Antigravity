@@ -9,6 +9,13 @@ struct RootView: View {
         Group {
             if auth.isSignedIn {
                 HomeView()
+                    // Sits on top of an already-restored session — see
+                    // AuthViewModel.isLocked and FaceIDLockView.
+                    .overlay {
+                        if auth.isLocked {
+                            FaceIDLockView()
+                        }
+                    }
             } else {
                 LoginView()
             }

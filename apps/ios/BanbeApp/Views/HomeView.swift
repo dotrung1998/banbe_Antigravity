@@ -6,6 +6,7 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var auth: AuthViewModel
     @StateObject private var viewModel = HomeViewModel()
+    @State private var showingSettings = false
 
     var body: some View {
         NavigationStack {
@@ -20,8 +21,15 @@ struct HomeView: View {
             .navigationTitle("banbe")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Sign out") { Task { await auth.signOut() } }
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
                 }
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView()
             }
             .overlay {
                 if viewModel.isLoading && viewModel.events.isEmpty {

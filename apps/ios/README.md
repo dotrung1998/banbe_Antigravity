@@ -51,25 +51,45 @@ xcodebuild -project BanbeApp.xcodeproj -scheme BanbeApp \
   `supabase/migrations/` (001 core schema, 002 booking lifecycle, 003 social
   chat, 019 notifications).
 - **AuthViewModel** — session restore + listener (mirrors GocContext's
-  `onAuthStateChange` handling), magic-link sign-in, profile load.
+  `onAuthStateChange` handling), magic-link sign-in, profile load, and a
+  Face ID app-lock (below).
+- **BiometricAuthService** — thin `LocalAuthentication` wrapper used only
+  for that app-lock, nothing more.
 - **HomeViewModel** — fetches `events` where `status = 'live'`, same rows
   the web Home screen's "All" section reads via `events_select_public` RLS.
-- **Views** — `RootView` (auth gate), `LoginView`, `HomeView` + `EventRow`
-  as one working end-to-end example (auth → fetch → render).
+- **Views** — `RootView` (auth gate + Face ID lock overlay), `LoginView`,
+  `HomeView` + `EventRow` (auth → fetch → render), `SettingsView` (Face ID
+  toggle, sign out), `FaceIDLockView`.
+
+## Face ID (for a returning, already-signed-in user)
+
+Supabase's own client already persists a session across launches on its
+own (Keychain-backed) — that part needed no new code. What's added here is
+an **app-lock in front of that already-restored session**: turn it on from
+Settings (the gear icon on Home) and the next cold launch shows
+`FaceIDLockView` instead of the app content until Face ID succeeds
+(`AuthViewModel.isLocked`, cleared by `BiometricAuthService.authenticate`).
+It's off by default, persisted in `UserDefaults` (`banbe.faceIDEnabled`),
+and has nothing to do with which Supabase credential (code, password, or
+magic link) originally created the session — it gates access to a device
+that's already signed in, the same way it would for a banking or notes
+app. `NSFaceIDUsageDescription` is set in `project.yml`.
 
 ## Known gap: sign-in flow doesn't match the web app exactly
 
-The web app posts to a custom `/api/auth/send-email-link` Vercel function
-(see `api/auth/send-email-link.js`) so it can send a branded email and
-attach a nickname at sign-up. `AuthViewModel.sendMagicLink` instead uses
-Supabase's own built-in `signInWithOTP` magic-link flow directly against
-the Supabase Auth API. Both produce a real session against the same
-`auth.users` table, so an account works across both apps — but the iOS
-email will look different (Supabase's default template, not the app's),
-and there's no nickname field wired into iOS sign-up yet. If matching the
-web email exactly matters, point `sendMagicLink` at that same
-`/api/auth/send-email-link` endpoint instead (it needs a reachable HTTPS
-URL for the deployed API, not `localhost`).
+The web app has three sign-in methods (see the root README's auth
+migration): an emailed 6-digit code (`api/auth/send-email-code.js`),
+password login/signup with a "forgot password" recovery link
+(`api/auth/signup-password.js`, `send-password-reset.js`), and a nickname
+at sign-up. `AuthViewModel.sendMagicLink` instead uses Supabase's own
+built-in `signInWithOTP` **magic-link** flow directly against the Supabase
+Auth API — still a real session against the same `auth.users` table (an
+account works across both apps), but the emailed template is Supabase's
+default rather than the app's, there's no code/password choice, and no
+nickname field at sign-up yet. Matching the web flow exactly here is
+future work: point a rewritten sign-in view at those same three endpoints
+instead (they need a reachable HTTPS URL for the deployed API, not
+`localhost`), verifying with `supabase.auth.verifyOtp` for the code paths.
 
 ## Not yet ported (only Home/Login exist so far)
 

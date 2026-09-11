@@ -22,6 +22,8 @@
 	<string>1</string>
 	<key>NSCameraUsageDescription</key>
 	<string>banbe uses your camera to scan a guest's ticket QR code at check-in.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>banbe uses Face ID to unlock the app for a returning signed-in user.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>banbe uses your location to show how far events are and to filter the area picker.</string>
 	<key>UILaunchScreen</key>

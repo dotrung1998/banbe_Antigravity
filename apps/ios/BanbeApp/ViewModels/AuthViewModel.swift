@@ -12,6 +12,21 @@ final class AuthViewModel: ObservableObject {
     @Published var linkSent = false
     @Published var errorMessage: String?
 
+    /// True whenever there's a restored session but Face ID app-lock (see
+    /// BiometricAuthService) hasn't cleared it yet this launch. RootView
+    /// shows FaceIDLockView on top of the app while this is true. This is
+    /// purely a local UI gate — Supabase's own session persistence already
+    /// happened before this is ever set.
+    @Published var isLocked = false
+
+    /// Persisted opt-in for the Face ID app-lock, toggled from SettingsView.
+    /// Off by default — restoring a session works exactly as it does today
+    /// until someone turns this on.
+    @Published var faceIDEnabled: Bool = UserDefaults.standard.bool(forKey: AuthViewModel.faceIDDefaultsKey) {
+        didSet { UserDefaults.standard.set(faceIDEnabled, forKey: AuthViewModel.faceIDDefaultsKey) }
+    }
+    private static let faceIDDefaultsKey = "banbe.faceIDEnabled"
+
     var isSignedIn: Bool { session != nil }
 
     private var authListenerTask: Task<Void, Never>?
@@ -28,9 +43,16 @@ final class AuthViewModel: ObservableObject {
                     if let userId = session?.user.id {
                         await self.loadProfile(userId: userId)
                     }
+                    // Only gate the cold-launch restore, not a session that
+                    // was just freshly signed into in this same launch —
+                    // that person is clearly already present.
+                    if event == .initialSession, session != nil, self.faceIDEnabled {
+                        self.isLocked = true
+                    }
                 } else if event == .signedOut {
                     self.session = nil
                     self.profile = nil
+                    self.isLocked = false
                 }
             }
         }
@@ -58,8 +80,8 @@ final class AuthViewModel: ObservableObject {
     }
 
     /// Sends a magic-link email via Supabase's built-in OTP flow. See the
-    /// note in SupabaseService.swift about this vs. the web app's custom
-    /// /api/auth/send-email-link endpoint.
+    /// note in SupabaseService.swift about this vs. the web app's
+    /// /api/auth/send-email-code endpoint (a typed 6-digit code, not a link).
     func sendMagicLink(to email: String) async {
         isSendingLink = true
         errorMessage = nil
@@ -83,6 +105,14 @@ final class AuthViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Re-locks the app immediately — call this if biometry ever becomes
+    /// unavailable (e.g. removed in Settings) while the toggle is still on,
+    /// or from a manual "Lock now" affordance if one gets added later.
+    func lockIfEnabled() {
+        guard faceIDEnabled, session != nil else { return }
+        isLocked = true
     }
 
     func signOut() async {
