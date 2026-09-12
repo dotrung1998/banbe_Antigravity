@@ -14,6 +14,39 @@ test.describe('Login & Signup Notification Messages', () => {
     await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 3000 });
   }
 
+  // The submit button is the app's promise that the address can be sent
+  // to, so it stays away until the format actually holds up — and says why
+  // rather than just sitting there greyed out.
+  test('hides the submit button and explains why until the email looks like an email', async ({ page }) => {
+    await openLogin(page);
+    const loginScreen = page.locator('[data-screen-label="Login"]');
+    const email = loginScreen.getByTestId('login-email');
+    const submit = loginScreen.getByTestId('login-submit');
+    const error = loginScreen.getByTestId('login-email-error');
+
+    // Untouched: nothing to submit yet, but nothing to complain about either.
+    await expect(submit).toHaveCount(0);
+    await expect(error).toHaveCount(0);
+
+    // These all used to slip past the client check and get bounced by the
+    // server, which enforces exactly the pattern the client now does.
+    for (const bad of ['not-an-email', 'a@b', 'hello a@b.c world', 'a@@b.c']) {
+      await email.fill(bad);
+      await expect(error).toBeVisible();
+      await expect(submit).toHaveCount(0);
+    }
+
+    // A real address brings the button back and clears the complaint.
+    await email.fill('ban@email.com');
+    await expect(error).toHaveCount(0);
+    await expect(submit).toBeVisible();
+
+    // Clearing it again is "unfinished", not "wrong".
+    await email.fill('');
+    await expect(submit).toHaveCount(0);
+    await expect(error).toHaveCount(0);
+  });
+
   test('shows AUTH_ACCOUNT_NOT_FOUND for non-existent email on login', async ({ page }) => {
     await openLogin(page);
 

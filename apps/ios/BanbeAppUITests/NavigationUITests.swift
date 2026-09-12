@@ -157,6 +157,50 @@ final class NavigationUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["screen.preferences"].exists)
     }
 
+    /// The submit button is the app's promise that the address can be sent
+    /// to, so it stays away until the format actually holds up — and says
+    /// why rather than just sitting there greyed out.
+    func testLoginHidesSubmitUntilTheEmailLooksLikeAnEmail() throws {
+        let app = launchToHome()
+        app.buttons["header.account"].tap()
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5))
+
+        let signIn = app.buttons["account.signIn"]
+        try XCTSkipUnless(signIn.waitForExistence(timeout: 3), "Already signed in on this simulator")
+        signIn.tap()
+        XCTAssertTrue(app.otherElements["screen.login"].waitForExistence(timeout: 5))
+
+        let email = app.textFields["login.email"]
+        XCTAssertTrue(email.waitForExistence(timeout: 5))
+
+        // Untouched: nothing to submit yet, nothing to complain about either.
+        XCTAssertFalse(app.buttons["login.submit"].exists)
+        XCTAssertFalse(app.staticTexts["login.emailError"].exists)
+
+        // Rejected by the server's own pattern, so the button must not offer.
+        email.tap()
+        for bad in ["not-an-email", "a@b"] {
+            email.press(forDuration: 1.1)
+            if app.menuItems["Select All"].waitForExistence(timeout: 2) {
+                app.menuItems["Select All"].tap()
+            }
+            email.typeText(bad)
+            XCTAssertTrue(app.staticTexts["login.emailError"].waitForExistence(timeout: 3),
+                          "Expected a format complaint for \(bad)")
+            XCTAssertFalse(app.buttons["login.submit"].exists,
+                           "Submit should stay hidden for \(bad)")
+        }
+
+        // A real address brings the button back and clears the complaint.
+        email.press(forDuration: 1.1)
+        if app.menuItems["Select All"].waitForExistence(timeout: 2) {
+            app.menuItems["Select All"].tap()
+        }
+        email.typeText("ban@email.com")
+        XCTAssertTrue(app.buttons["login.submit"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["login.emailError"].exists)
+    }
+
     func testSignedOutAccountOffersSignIn() throws {
         let app = launchToHome()
         app.buttons["header.account"].tap()

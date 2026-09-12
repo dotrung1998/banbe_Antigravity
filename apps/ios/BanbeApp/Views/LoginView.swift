@@ -21,8 +21,27 @@ struct LoginView: View {
     @State private var resetRequested = false
     @State private var localError = ""
 
+    /// The same pattern every /api/auth/* endpoint enforces, checked
+    /// against the trimmed value those endpoints actually receive — so the
+    /// button never offers to send something the server will bounce.
+    private var emailFormatOk: Bool {
+        let trimmed = email.trimmingCharacters(in: .whitespaces)
+        return trimmed.range(of: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", options: .regularExpression) != nil
+    }
+
+    /// An empty field isn't an error yet — it's just unfinished — so it
+    /// hides the button without complaining. Something typed that isn't an
+    /// address does say so.
+    private var showEmailFormatError: Bool {
+        !auth.codeSent && !email.trimmingCharacters(in: .whitespaces).isEmpty && !emailFormatOk
+    }
+
+    /// Once a code has been sent the address is already settled and the
+    /// button verifies the code instead, so the email check doesn't apply.
+    private var showSubmit: Bool { auth.codeSent || emailFormatOk }
+
     private var canRequest: Bool {
-        guard !email.isEmpty else { return false }
+        guard emailFormatOk else { return false }
         if mode == .signup && displayName.isEmpty { return false }
         if method == .password {
             // Signing up needs a password worth keeping and a matching
@@ -89,6 +108,14 @@ struct LoginView: View {
                         }
                         BanbeField(label: nil, placeholder: "ban@email.com", text: $email, keyboard: .emailAddress)
                             .accessibilityIdentifier("login.email")
+                        if showEmailFormatError {
+                            Text(app.T("Email chưa đúng định dạng — ví dụ: ban@email.com",
+                                       "That doesn't look like an email address — e.g. ban@email.com"))
+                                .font(.system(size: 12))
+                                .foregroundStyle(BanbeTheme.alert)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .accessibilityIdentifier("login.emailError")
+                        }
                         if method == .password {
                             BanbeField(label: nil, placeholder: app.T("Mật khẩu", "Password"),
                                        text: $password, secure: true)
@@ -115,11 +142,13 @@ struct LoginView: View {
                     }
                 }
 
-                InkButton(title: submitLabel, enabled: !auth.isSendingCode && (auth.codeSent ? !code.isEmpty : canRequest)) {
-                    Task { await submit() }
+                if showSubmit {
+                    InkButton(title: submitLabel, enabled: !auth.isSendingCode && (auth.codeSent ? !code.isEmpty : canRequest)) {
+                        Task { await submit() }
+                    }
+                    .padding(.top, 14)
+                    .accessibilityIdentifier("login.submit")
                 }
-                .padding(.top, 14)
-                .accessibilityIdentifier("login.submit")
 
                 if resetRequested {
                     // Same message whether or not that address has an
@@ -221,7 +250,7 @@ struct LoginView: View {
 
     private func sendReset() async {
         localError = ""
-        guard !email.isEmpty else {
+        guard emailFormatOk else {
             localError = app.T("Nhập email của bạn trước.", "Enter your email first.")
             return
         }

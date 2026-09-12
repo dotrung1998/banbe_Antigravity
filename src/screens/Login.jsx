@@ -22,6 +22,17 @@ export default function Login() {
         : s.loginPassword.length > 0)
       : emailValid(s.loginEmail) && nicknameValid;
 
+  // The submit button only exists once the address could actually be sent
+  // to. An empty field isn't an error yet — it's just unfinished — so it
+  // hides the button without complaining; something typed that isn't an
+  // address does say so, right under the field it's about.
+  const emailEntered = s.loginEmail.trim().length > 0;
+  const emailFormatOk = emailValid(s.loginEmail);
+  const showEmailFormatError = !awaitingCode && emailEntered && !emailFormatOk;
+  // Once a code has been sent the address is already settled and this
+  // button verifies the code instead, so the email check doesn't apply.
+  const showSubmit = awaitingCode || emailFormatOk;
+
   const changeAuthMode = (authMode) => set({ authMode, reserveError: '', loginSent: false, loginSentVia: null, loginEmailCode: '', resetRequested: false });
 
   const submitLabel = awaitingCode
@@ -85,7 +96,12 @@ export default function Login() {
           <input value={s.loginNickname} onChange={loginNicknameType} placeholder={T('Tên hiển thị của bạn', 'Your display name')} style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
         )}
         {!awaitingCode && (
-          <input value={s.loginEmail} onChange={loginEmailType} onKeyDown={loginEmailKey} placeholder="ban@email.com" style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
+          <input value={s.loginEmail} onChange={loginEmailType} onKeyDown={loginEmailKey} placeholder="ban@email.com" data-testid="login-email" style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
+        )}
+        {showEmailFormatError && (
+          <p data-testid="login-email-error" style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '8px 2px 0' }}>
+            {T('Email chưa đúng định dạng — ví dụ: ban@email.com', "That doesn't look like an email address — e.g. ban@email.com")}
+          </p>
         )}
         {!awaitingCode && isPassword && (
           <input value={s.loginPassword} onChange={loginPasswordType} onKeyDown={loginEmailKey} type="password" placeholder={T('Mật khẩu', 'Password')} style={{ ...fieldGlass({ marginTop: 10, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
@@ -106,7 +122,7 @@ export default function Login() {
           <input value={s.loginEmailCode} onChange={loginEmailCodeType} onKeyDown={loginEmailKey} placeholder={T('Mã 6 số', '6-digit code')} inputMode="numeric" autoFocus style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 20, letterSpacing: '0.2em', textAlign: 'center', fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
         )}
 
-        <div onClick={submitCurrentForm} style={loginBtnStyle}>{submitLabel}</div>
+        {showSubmit && <div onClick={submitCurrentForm} data-testid="login-submit" style={loginBtnStyle}>{submitLabel}</div>}
 
         {awaitingCode && (
           <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0', textAlign: 'center' }}>

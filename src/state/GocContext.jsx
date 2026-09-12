@@ -970,7 +970,12 @@ export function GocProvider({ children }) {
   const loginEmailCodeType = useCallback((e) => set({ loginEmailCode: e.target.value }), [set]);
   const loginPasswordType = useCallback((e) => set({ loginPassword: e.target.value }), [set]);
   const loginPasswordConfirmType = useCallback((e) => set({ loginPasswordConfirm: e.target.value }), [set]);
-  const emailValid = (v) => /\S+@\S+\.\S+/.test(v);
+  // The same pattern every /api/auth/* endpoint enforces, checked against
+  // the trimmed value those endpoints actually receive. The old check
+  // (/\S+@\S+\.\S+/) had no anchors, so "hello a@b.c world", "a@@b.c" and
+  // " a@b.c " all passed here and were then rejected by the server — the
+  // button lit up and the request bounced with a generic failure.
+  const emailValid = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim());
   const passwordValid = (v) => v.length >= 8;
   // Switching between "code" and "password" (or Login/Signup) always clears
   // whatever partial attempt was in flight — a stale error or a code sent

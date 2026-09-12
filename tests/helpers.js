@@ -20,10 +20,14 @@ export async function resetStorage(page) {
 export async function setupToHome(page) {
   await resetStorage(page);
 
-  // Splash
+  // Splash. The click only skips the wait — the splash advances on its own
+  // anyway, so it can detach between the visibility check and the click
+  // landing. Playwright treats that as "element detached, retrying" and
+  // burns the whole timeout in beforeEach, failing tests that never got
+  // near their subject. Losing the click is the outcome it was after.
   const splash = page.locator('[data-screen-label="Splash"]');
   if (await splash.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await splash.click();
+    await splash.click({ timeout: 2000 }).catch(() => {});
   }
 
   // Language
