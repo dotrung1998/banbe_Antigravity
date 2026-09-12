@@ -70,6 +70,14 @@ struct ReasonPrompt: Equatable {
     let guestName: String
 }
 
+/// A gallery photo opened in the viewer, with the organizer it belongs to
+/// (shown as the faint credit over it).
+struct PhotoViewerItem: Identifiable, Equatable {
+    let path: String
+    let organizer: String
+    var id: String { path }
+}
+
 struct AttendanceGuest: Identifiable, Equatable {
     let id: UUID
     let name: String
@@ -171,6 +179,7 @@ final class AppState: ObservableObject {
     @Published var attendanceEventKey: String?
     @Published var attendanceGuests: [AttendanceGuest] = []
     @Published var attendanceLoading = false
+    @Published var photoViewer: PhotoViewerItem?
     @Published var scanningQr = false
     @Published var reasonPrompt: ReasonPrompt?
     @Published var reasonPromptBusy = false
@@ -444,6 +453,18 @@ final class AppState: ObservableObject {
     func goOrganizer() { screen = .organizer }
     func backToEvent() { screen = .event }
     func openHeld() { screen = .confirmed }
+    /// Tapping a photo in either gallery ("Hình ảnh" on an event, "Ảnh của
+    /// X" on an organizer page) opens it larger, over a dimmed backdrop —
+    /// with a light tap of haptic feedback, which is the part the web
+    /// version can't do (navigator.vibrate isn't implemented on iOS Safari).
+    func openPhoto(path: String, organizer: String) {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.prepare()
+        generator.impactOccurred()
+        photoViewer = PhotoViewerItem(path: path, organizer: organizer)
+    }
+    func closePhoto() { photoViewer = nil }
+
     func openPreferences() { screen = .preferences }
     func openSecurity() { screen = .security }
     func goLogin() { requireAuth(returnTo: .profile, backTo: .home) }

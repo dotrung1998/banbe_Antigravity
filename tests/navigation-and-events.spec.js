@@ -109,6 +109,27 @@ test.describe('Navigation & Event Exploration', () => {
     await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 3000 });
   });
 
+  test('a gallery photo opens in the viewer with its credit and tagline', async ({ page }) => {
+    await page.getByText('Bếp Nhỏ №12').first().click();
+    const eventScreen = page.locator('[data-screen-label="Event"]');
+    await expect(eventScreen).toBeVisible({ timeout: 3000 });
+
+    // The "Hình ảnh" strip's photos are tappable.
+    await expect(page.locator('[data-screen-label="Photo viewer"]')).toHaveCount(0);
+    await eventScreen.getByText('Hình ảnh').scrollIntoViewIfNeeded();
+    await eventScreen.locator('div[style*="width: 148px"]').first().click();
+
+    const viewer = page.locator('[data-screen-label="Photo viewer"]');
+    await expect(viewer).toBeVisible({ timeout: 3000 });
+    await expect(viewer.getByText(/^Ảnh của /)).toBeVisible();
+    await expect(viewer.getByText('banbe ▪︎ bạn mới mỗi tuần')).toBeVisible();
+
+    // Tapping anywhere closes it, leaving the event underneath.
+    await viewer.click({ position: { x: 5, y: 5 } });
+    await expect(viewer).toHaveCount(0);
+    await expect(eventScreen).toBeVisible();
+  });
+
   test('the event address opens Google Maps and offers to show distance', async ({ page, context }) => {
     await page.getByText('Bếp Nhỏ №12').first().click();
     const eventScreen = page.locator('[data-screen-label="Event"]');

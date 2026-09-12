@@ -3,7 +3,7 @@ import { bg, mapsUrl } from '../data/events.js';
 import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 
 export default function EventDetail() {
-  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, askLocation, openHeld } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld } = useGoc();
   const s = state;
 
   // Event Detail is reached from several different places (the home feed, an
@@ -123,7 +123,7 @@ export default function EventDetail() {
           <span style={{ fontSize: 11.5, color: ink }}>{T('Hình ảnh', 'Photos')}</span>
           <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 12, paddingBottom: 4 }}>
             {ev.gallery.map((u, i) => (
-              <div key={i} style={bg(u, { flex: 'none', width: 148, height: 186 })} />
+              <div key={i} onClick={() => openPhoto(u, ev.orgName)} style={bg(u, { flex: 'none', width: 148, height: 186, cursor: 'pointer' })} />
             ))}
           </div>
         </div>

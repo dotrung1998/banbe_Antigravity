@@ -117,6 +117,7 @@ struct RootView: View {
             if app.areaAsking { AreaSheetView() }
             if app.askingLocation { LocationSheetView() }
             if app.reasonPrompt != nil { ReasonSheetView() }
+            if let photo = app.photoViewer { PhotoViewerView(item: photo) }
             if app.loading { loadingOverlay }
 
             // Face ID app-lock sits above everything — see FaceIDLockView.
@@ -124,6 +125,7 @@ struct RootView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: app.areaAsking)
         .animation(.easeInOut(duration: 0.2), value: app.askingLocation)
+        .animation(.easeInOut(duration: 0.2), value: app.photoViewer)
         // The screen switch above is a plain ZStack, not a NavigationStack,
         // so it never got the system's edge-swipe-to-go-back for free —
         // this reproduces it, tracking the finger live rather than jumping

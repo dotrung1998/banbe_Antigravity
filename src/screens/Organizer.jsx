@@ -3,7 +3,7 @@ import { EVENTS, bg } from '../data/events.js';
 import { paper, ink, rule, display, inkButton } from '../theme.js';
 
 export default function Organizer() {
-  const { state, T, trStatus, stripKm, curEvent: ev, backToEvent, goEvent, goChat, toggleFollow } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent: ev, backToEvent, goEvent, goChat, toggleFollow, openPhoto } = useGoc();
   const s = state;
 
   const evOrgStats = T('Tổ chức từ ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' sự kiện', 'Hosting since ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' events');
@@ -53,7 +53,7 @@ export default function Organizer() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 14 }}>
           {ev.orgGallery.map((u, i) => (
-            <div key={i} style={bg(u, { width: '100%', height: 158 })} />
+            <div key={i} onClick={() => openPhoto(u, ev.orgName)} style={bg(u, { width: '100%', height: 158, cursor: 'pointer' })} />
           ))}
         </div>
       </div>
