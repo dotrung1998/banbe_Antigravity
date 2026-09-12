@@ -554,9 +554,15 @@ export function GocProvider({ children }) {
     };
     // Attach the actual photo, so it previews large in the share sheet
     // (Messages, etc.) instead of just a link card with the app's logo.
-    // The Web Share API doesn't accept `files` together with a separate
-    // `url`, so the link moves into `text` for this branch.
-    if (navigator.canShare) {
+    //
+    // Only on a touch device, though. Desktop browsers report
+    // canShare({ files }) === true and then hand the attachment to the
+    // system sheet as a path, which most targets paste as literal text
+    // ("/Users/…/WebShare/share-…/banbe-photo.jpg") — worse than not
+    // attaching anything. A pointer check is the honest proxy for "this
+    // share sheet renders photos as photos".
+    const touchDevice = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    if (touchDevice && navigator.canShare) {
       let file = null;
       try {
         const response = await fetch(gallery[index]);
@@ -564,9 +570,12 @@ export function GocProvider({ children }) {
         file = new File([blob], 'banbe-photo.jpg', { type: blob.type || 'image/jpeg' });
       } catch { /* couldn't fetch the photo — fall back to a link-only share */ }
       if (file && navigator.canShare({ files: [file] })) {
+        // No URL in the text here: the photo is already the payload, and a
+        // bare link alongside it makes targets like Messages render a
+        // second preview card underneath the photo.
         // Whatever happens next (sent, or the person cancelled the sheet)
         // is not a reason to also pop the link-only share below it.
-        try { await navigator.share({ title, text: `${text} ${url}`, files: [file] }); } catch { /* cancelled */ }
+        try { await navigator.share({ title, text, files: [file] }); } catch { /* cancelled */ }
         done();
         return;
       }

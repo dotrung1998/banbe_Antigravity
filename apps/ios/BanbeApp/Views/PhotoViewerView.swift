@@ -1,3 +1,4 @@
+import LinkPresentation
 import SwiftUI
 
 /// Port of src/screens/sheets/PhotoViewer.jsx — a tapped gallery photo shown
@@ -164,15 +165,17 @@ struct PhotoViewerView: View {
             "Xem ảnh và các buổi sắp tới của \(item.organizer) trên banbe:",
             "See \(item.organizer)'s photos and what they have coming up on banbe:"
         )
-        // Attach the actual photo so it previews large in Messages etc.
-        // instead of just a link card with the app's logo — the link moves
-        // into the text instead, since a plain URL item alongside an image
-        // would make some share targets prefer the (much smaller) link
-        // preview over the photo.
         Task {
             let fullText = url.map { "\(text) \($0.absoluteString)" } ?? text
             let image = await PhotoLoader.load(path: item.path, maxPixel: 1600)
-            let items: [Any] = ([fullText, image] as [Any?]).compactMap { $0 }
+            // The photo goes through PhotoShareSource rather than as a bare
+            // UIImage: handing UIActivityViewController [String, UIImage]
+            // leaves it to guess which is the subject, and it guesses the
+            // string — the sheet previewed a generic "A" text icon with the
+            // caption, no photo. The item source states outright that the
+            // photo is the content and supplies LPLinkMetadata, so the
+            // preview is the photo itself with the caption beside it.
+            let items: [Any] = [fullText, PhotoShareSource(image: image, title: text, url: url)]
             await MainActor.run {
                 let activity = UIActivityViewController(activityItems: items, applicationActivities: nil)
                 UIApplication.shared.connectedScenes
@@ -183,5 +186,45 @@ struct PhotoViewerView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { shared = false }
             }
         }
+    }
+}
+
+/// Carries the photo into the share sheet as the *content* being shared,
+/// with a caption and link attached as metadata. Without this, passing the
+/// image alongside a string leaves the sheet previewing the string (a
+/// generic text-document icon) and targets free to drop one or the other.
+private final class PhotoShareSource: NSObject, UIActivityItemSource {
+    private let image: UIImage?
+    private let title: String
+    private let url: URL?
+
+    init(image: UIImage?, title: String, url: URL?) {
+        self.image = image
+        self.title = title
+        self.url = url
+    }
+
+    // A placeholder only tells the sheet what *kind* of thing is coming, so
+    // an empty UIImage is right even when the photo failed to load.
+    func activityViewControllerPlaceholderItem(_ controller: UIActivityViewController) -> Any {
+        image ?? UIImage()
+    }
+
+    func activityViewController(_ controller: UIActivityViewController,
+                                itemForActivityType type: UIActivity.ActivityType?) -> Any? {
+        image
+    }
+
+    func activityViewController(_ controller: UIActivityViewController,
+                                subjectForActivityType type: UIActivity.ActivityType?) -> String {
+        title
+    }
+
+    func activityViewControllerLinkMetadata(_ controller: UIActivityViewController) -> LPLinkMetadata? {
+        let metadata = LPLinkMetadata()
+        metadata.title = title
+        metadata.originalURL = url
+        if let image { metadata.imageProvider = NSItemProvider(object: image) }
+        return metadata
     }
 }
