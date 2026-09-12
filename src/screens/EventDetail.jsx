@@ -3,7 +3,7 @@ import { bg, mapsUrl } from '../data/events.js';
 import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 
 export default function EventDetail() {
-  const { state, T, trStatus, stripKm, curEvent: ev, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, askLocation, openHeld } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, askLocation, openHeld } = useGoc();
   const s = state;
 
   // Event Detail is reached from several different places (the home feed, an
@@ -16,6 +16,9 @@ export default function EventDetail() {
     dashboard: T('Trang của bạn', 'Your dashboard'),
     organizer: T('Trang tổ chức', 'Organizer page'),
     create: T('Tạo sự kiện', 'Create event'),
+    // Named after whichever list it is ("Going"/"Saved"/"Completed
+    // events"), so the pill says where it actually goes.
+    eventList: eventListTitle,
   };
   const backLabel = BACK_LABELS[s.eventBackScreen] || 'banbe';
   const cameFromHome = (s.eventBackScreen || 'home') === 'home';

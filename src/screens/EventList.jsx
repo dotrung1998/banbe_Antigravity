@@ -2,11 +2,6 @@ import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass } from '../theme.js';
 
-const TITLES = {
-  going: ['Đang tham gia', 'Going'],
-  saved: ['Đã lưu', 'Saved'],
-  completed: ['Sự kiện đã hoàn thành', 'Completed events'],
-};
 const EMPTY_MESSAGES = {
   going: ["Bạn chưa tham gia sự kiện nào.", "You're not going to any events yet."],
   saved: ['Bạn chưa lưu sự kiện nào.', "You haven't saved any events yet."],
@@ -19,7 +14,7 @@ const SCREEN_LABELS = { going: 'Going', saved: 'Saved', completed: 'Completed' }
 // view rather than redirecting to Home, so "back" is a single step to
 // Account instead of losing the trip there.
 export default function EventList() {
-  const { state, T, trStatus, stripKm, goEvent, backFromEventList } = useGoc();
+  const { state, T, trStatus, stripKm, eventListTitle, goEvent, backFromEventList } = useGoc();
   const s = state;
   const mode = s.eventListMode;
 
@@ -35,14 +30,13 @@ export default function EventList() {
   if (mode === 'completed') list = list.filter(e => e.endedHoursAgo != null);
   if (mode === 'going') list = list.filter(e => e.endedHoursAgo == null);
 
-  const title = T(...TITLES[mode]);
   const emptyMsg = T(...EMPTY_MESSAGES[mode]);
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label={SCREEN_LABELS[mode]}>
       <div style={{ padding: '66px 20px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
         <span onClick={backFromEventList} data-testid="event-list-back" style={{ fontSize: 15, color: ink, cursor: 'pointer', lineHeight: 1 }}>‹</span>
-        <span style={{ ...display(24) }}>{title}</span>
+        <span style={{ ...display(24) }}>{eventListTitle}</span>
       </div>
 
       {list.length > 0 ? (

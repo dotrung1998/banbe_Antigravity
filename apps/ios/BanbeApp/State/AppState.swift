@@ -349,6 +349,18 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The heading of whichever list is showing. Shared so the back pill on
+    /// an event opened from one can name it too — before this existed that
+    /// pill fell through to its "banbe" default and claimed it went Home,
+    /// while actually (and correctly) returning to the list.
+    var eventListTitle: String {
+        switch eventListMode {
+        case .going: return T("Đang tham gia", "Going")
+        case .saved: return T("Đã lưu", "Saved")
+        case .completed: return T("Sự kiện đã hoàn thành", "Completed events")
+        }
+    }
+
     /// Backs the count on Account's "Going" card — attending minus anything
     /// that's already over (that belongs in Completed instead).
     var goingEventsCount: Int {

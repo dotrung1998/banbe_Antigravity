@@ -16,6 +16,9 @@ struct EventDetailView: View {
         case .dashboard: return app.T("Trang của bạn", "Your dashboard")
         case .organizer: return app.T("Trang tổ chức", "Organizer page")
         case .create: return app.T("Tạo sự kiện", "Create event")
+        // Named after whichever list it is ("Going"/"Saved"/"Completed
+        // events"), so the pill says where it actually goes.
+        case .eventList: return app.eventListTitle
         default: return "banbe"
         }
     }

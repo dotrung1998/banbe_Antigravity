@@ -78,6 +78,31 @@ test.describe('Account & Preferences Screen', () => {
     await expect(accountScreen).toBeVisible({ timeout: 3000 });
   });
 
+  // An event opened from one of those lists returns to it — but the back
+  // pill used to fall through to its "banbe" default and claim it went
+  // Home, while actually (and correctly) going back to the list.
+  test('an event opened from a list has a back pill naming that list', async ({ page }) => {
+    // Saved is the one a signed-out guest can actually put an event into.
+    await page.locator('[data-screen-label="Home"]').getByText('Lưu', { exact: true }).first().click();
+    await page.getByText('Tài khoản').first().click();
+    const accountScreen = page.locator('[data-screen-label="Account"]');
+    await expect(accountScreen).toBeVisible({ timeout: 3000 });
+
+    await accountScreen.getByTestId('account-saved-card').click();
+    const savedScreen = page.locator('[data-screen-label="Saved"]');
+    await expect(savedScreen).toBeVisible({ timeout: 3000 });
+
+    await savedScreen.locator('[style*="cursor: pointer"]').filter({ hasText: /./ }).nth(1).click();
+    const eventScreen = page.locator('[data-screen-label="Event"]');
+    await expect(eventScreen).toBeVisible({ timeout: 3000 });
+
+    // Names the list, not "banbe" — and following it goes there.
+    await expect(eventScreen.getByText('‹ banbe')).toHaveCount(0);
+    await expect(eventScreen.getByText('‹ Đã lưu')).toBeVisible();
+    await eventScreen.getByText('‹ Đã lưu').click();
+    await expect(savedScreen).toBeVisible({ timeout: 3000 });
+  });
+
   // "Going"/"Saved" used to be inert stat cards; they now open their own
   // list view and — the point of the fix — a single tap back lands on
   // Account again, not Home.

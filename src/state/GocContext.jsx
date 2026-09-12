@@ -605,6 +605,16 @@ export function GocProvider({ children }) {
   // The "Going"/"Saved" cards on Account — always opened from (and closed
   // back to) Account, so unlike Inbox/Dashboard there's no other entry point
   // to remember.
+  // The heading of whichever list is showing. Shared so the back pill on an
+  // event opened from one can name it too — before this existed that pill
+  // fell through to its "banbe" default and claimed it went Home, while
+  // actually (and correctly) returning to the list.
+  const eventListTitle = useMemo(() => ({
+    going: T('Đang tham gia', 'Going'),
+    saved: T('Đã lưu', 'Saved'),
+    completed: T('Sự kiện đã hoàn thành', 'Completed events'),
+  }[s.eventListMode] || T('Đang tham gia', 'Going')), [s.eventListMode, T]);
+
   const goGoingList = useCallback(() => set({ screen: 'eventList', eventListMode: 'going' }), [set]);
   const goSavedList = useCallback(() => set({ screen: 'eventList', eventListMode: 'saved' }), [set]);
   const goCompletedList = useCallback(() => set({ screen: 'eventList', eventListMode: 'completed' }), [set]);
@@ -1372,7 +1382,7 @@ export function GocProvider({ children }) {
     isSaved, isGoing, toggleFav, toggleFollow,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
-    goGoingList, goSavedList, goCompletedList, backFromEventList,
+    goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
@@ -1393,7 +1403,7 @@ export function GocProvider({ children }) {
     isSaved, isGoing, toggleFav, toggleFollow,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
-    goGoingList, goSavedList, goCompletedList, backFromEventList,
+    goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,

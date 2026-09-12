@@ -6,13 +6,6 @@ import SwiftUI
 struct EventListView: View {
     @EnvironmentObject var app: AppState
 
-    private var title: String {
-        switch app.eventListMode {
-        case .going: return app.T("Đang tham gia", "Going")
-        case .saved: return app.T("Đã lưu", "Saved")
-        case .completed: return app.T("Sự kiện đã hoàn thành", "Completed events")
-        }
-    }
     private var emptyMessage: String {
         switch app.eventListMode {
         case .going: return app.T("Bạn chưa tham gia sự kiện nào.", "You're not going to any events yet.")
@@ -29,7 +22,7 @@ struct EventListView: View {
                         Text("‹").font(.system(size: 15))
                     }
                     .buttonStyle(.plain)
-                    Text(title).font(BanbeTheme.display(24))
+                    Text(app.eventListTitle).font(BanbeTheme.display(24))
                 }
 
                 let events = app.eventListEvents
