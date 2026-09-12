@@ -15,8 +15,13 @@ struct FaceIDLockView: View {
                 Image(systemName: "faceid")
                     .font(.system(size: 44))
                     .foregroundStyle(.secondary)
-                Text("banbe is locked")
-                    .font(.headline)
+                HStack(spacing: 6) {
+                    // The wordmark — same asset the Home screen uses —
+                    // standing in for the word "banbe" itself.
+                    BanbeLogo(kind: .wordmark, height: 17)
+                    Text("is locked")
+                        .font(.headline)
+                }
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.footnote)
