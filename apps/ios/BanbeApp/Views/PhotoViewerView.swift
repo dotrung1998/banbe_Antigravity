@@ -58,7 +58,12 @@ struct PhotoViewerView: View {
                         .transition(.opacity)
                         .accessibilityIdentifier("photoViewer.photo")
 
-                    HStack(alignment: .bottom) {
+                    // Top-aligned, not bottom: the row is as tall as the
+                    // 34pt icon buttons, and bottom-aligning the tagline
+                    // inside that box pushed it well below the photo —
+                    // top-aligning puts it right after the 8pt spacing,
+                    // matching the credit's gap above.
+                    HStack(alignment: .top) {
                         caption(shared ? app.T("Đã sao chép link", "Link copied") : "banbe ▪︎ bạn mới mỗi tuần")
                             .accessibilityIdentifier("photoViewer.tagline")
                         Spacer(minLength: 12)

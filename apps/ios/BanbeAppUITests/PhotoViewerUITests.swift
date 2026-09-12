@@ -46,10 +46,10 @@ final class PhotoViewerUITests: XCTestCase {
         XCTAssertLessThan(credit.frame.maxY, opened.frame.minY, "Credit should sit above the photo")
         XCTAssertLessThan(opened.frame.minY - credit.frame.maxY, 20, "Credit should hug the photo's top edge")
         XCTAssertGreaterThan(tagline.frame.minY, opened.frame.maxY, "Tagline should sit below the photo")
-        // A little more slack than the credit's gap: the tagline shares its
-        // row with the 34pt-tall action buttons, bottom-aligned, so the
-        // text itself sits a bit higher than a plain 8pt spacer would put it.
-        XCTAssertLessThan(tagline.frame.minY - opened.frame.maxY, 36, "Tagline should hug the photo's bottom edge")
+        // Same gap as the credit's, now that the row is top- rather than
+        // bottom-aligned — the tagline sits right after the spacing instead
+        // of at the bottom of the row's 34pt-tall icon buttons.
+        XCTAssertLessThan(tagline.frame.minY - opened.frame.maxY, 20, "Tagline should hug the photo's bottom edge")
         XCTAssertGreaterThan(share.frame.midX, screen.midX, "Actions belong on the right")
         XCTAssertLessThan(tagline.frame.midX, screen.midX, "Tagline belongs on the left")
 

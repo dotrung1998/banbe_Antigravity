@@ -116,7 +116,11 @@ export default function PhotoViewer() {
             }),
           }}
         />
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', width: '100%', marginTop: 8 }}>
+        {/* Top-aligned, not bottom: the row is as tall as the 34px icon
+            buttons, and bottom-aligning the tagline text inside that box
+            pushed it well below the photo — top-aligning puts it right
+            after the marginTop gap, matching the credit's spacing above. */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', width: '100%', marginTop: 8 }}>
           <span style={caption}>
             {s.photoShared ? T('Đã sao chép link', 'Link copied') : 'banbe ▪︎ bạn mới mỗi tuần'}
           </span>
