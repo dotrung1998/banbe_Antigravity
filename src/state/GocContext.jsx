@@ -532,9 +532,9 @@ export function GocProvider({ children }) {
   // carries "?org=<eventKey>", which lands on that organizer's page (see
   // the capture at the top of this file); the native app registers a
   // banbe:// scheme for the same destination, offered from that page.
-  const sharePhotoOrganizer = useCallback(() => {
+  const sharePhotoOrganizer = useCallback(async () => {
     if (!s.photoViewer) return;
-    const { organizer, eventKey } = s.photoViewer;
+    const { organizer, eventKey, gallery, index } = s.photoViewer;
     const url = `https://banbe-two.vercel.app/?org=${eventKey}`;
     const title = T(`Ảnh của ${organizer} trên banbe`, `${organizer} on banbe`);
     const text = T(
@@ -545,11 +545,33 @@ export function GocProvider({ children }) {
       set({ photoShared: true });
       setTimeout(() => set({ photoShared: false }), 1800);
     };
-    if (navigator.share) {
-      navigator.share({ title, text, url }).catch(done);
-    } else if (navigator.clipboard) {
-      navigator.clipboard.writeText(url).then(done, done);
-    } else { done(); }
+    const shareLinkOnly = () => {
+      if (navigator.share) {
+        navigator.share({ title, text, url }).catch(done);
+      } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(done, done);
+      } else { done(); }
+    };
+    // Attach the actual photo, so it previews large in the share sheet
+    // (Messages, etc.) instead of just a link card with the app's logo.
+    // The Web Share API doesn't accept `files` together with a separate
+    // `url`, so the link moves into `text` for this branch.
+    if (navigator.canShare) {
+      let file = null;
+      try {
+        const response = await fetch(gallery[index]);
+        const blob = await response.blob();
+        file = new File([blob], 'banbe-photo.jpg', { type: blob.type || 'image/jpeg' });
+      } catch { /* couldn't fetch the photo — fall back to a link-only share */ }
+      if (file && navigator.canShare({ files: [file] })) {
+        // Whatever happens next (sent, or the person cancelled the sheet)
+        // is not a reason to also pop the link-only share below it.
+        try { await navigator.share({ title, text: `${text} ${url}`, files: [file] }); } catch { /* cancelled */ }
+        done();
+        return;
+      }
+    }
+    shareLinkOnly();
   }, [set, s.photoViewer, T]);
 
   const openPreferences = useCallback(() => set({ screen: 'preferences' }), [set]);

@@ -59,8 +59,11 @@ export default function PhotoViewer() {
     pointerEvents: 'none', maxWidth: 'calc(100% - 130px)',
     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   };
+  // Top-aligned, not centred: centring left as much empty space above the
+  // icon as below inside its 34px box, which is what made the row read as
+  // sitting further from the photo than the credit text above it.
   const iconButton = (active) => ({
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
     width: 34, height: 34, cursor: 'pointer',
     color: active ? '#FFFFFF' : 'rgba(255,255,255,0.72)',
     filter: 'drop-shadow(0 1px 3px rgba(27,25,22,0.55))',

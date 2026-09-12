@@ -123,7 +123,17 @@ struct PhotoViewerView: View {
                 .font(.system(size: 17, weight: .regular))
                 .foregroundStyle(.white.opacity(on ? 1 : 0.72))
                 .shadow(color: .black.opacity(0.55), radius: 3, y: 1)
-                .frame(width: 34, height: 34)
+                // "square.and.arrow.up"'s own artwork sits a couple of
+                // points lower in its em box than heart/bookmark — measured
+                // on an actual screenshot (its ink extended ~3-7px lower at
+                // 3x scale), not eyeballed. This nudges just that one back
+                // level with the other two.
+                .offset(y: symbol == "square.and.arrow.up" ? -1.5 : 0)
+                // Top-aligned, not centred: centring left as much empty
+                // space above the icon as below inside its 34pt box, which
+                // is what made the row read as sitting further from the
+                // photo than the credit text above it.
+                .frame(width: 34, height: 34, alignment: .top)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -154,13 +164,24 @@ struct PhotoViewerView: View {
             "Xem ảnh và các buổi sắp tới của \(item.organizer) trên banbe:",
             "See \(item.organizer)'s photos and what they have coming up on banbe:"
         )
-        let items: [Any] = [text, url].compactMap { $0 }
-        let activity = UIActivityViewController(activityItems: items, applicationActivities: nil)
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.keyWindow?.rootViewController?
-            .present(activity, animated: true)
-        shared = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { shared = false }
+        // Attach the actual photo so it previews large in Messages etc.
+        // instead of just a link card with the app's logo — the link moves
+        // into the text instead, since a plain URL item alongside an image
+        // would make some share targets prefer the (much smaller) link
+        // preview over the photo.
+        Task {
+            let fullText = url.map { "\(text) \($0.absoluteString)" } ?? text
+            let image = await PhotoLoader.load(path: item.path, maxPixel: 1600)
+            let items: [Any] = ([fullText, image] as [Any?]).compactMap { $0 }
+            await MainActor.run {
+                let activity = UIActivityViewController(activityItems: items, applicationActivities: nil)
+                UIApplication.shared.connectedScenes
+                    .compactMap { $0 as? UIWindowScene }
+                    .first?.keyWindow?.rootViewController?
+                    .present(activity, animated: true)
+                shared = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { shared = false }
+            }
+        }
     }
 }
