@@ -124,10 +124,38 @@ test.describe('Navigation & Event Exploration', () => {
     await expect(viewer.getByText(/^Ảnh của /)).toBeVisible();
     await expect(viewer.getByText('banbe ▪︎ bạn mới mỗi tuần')).toBeVisible();
 
-    // Tapping anywhere closes it, leaving the event underneath.
+    // Liking the photo and saving its event both stick, and neither closes
+    // the viewer out from under the tap.
+    await viewer.getByTestId('photo-like').click();
+    await expect(viewer).toBeVisible();
+    await viewer.getByTestId('photo-save-event').click();
+    await expect(viewer).toBeVisible();
+
+    // Tapping anywhere else closes it, leaving the event underneath.
     await viewer.click({ position: { x: 5, y: 5 } });
     await expect(viewer).toHaveCount(0);
     await expect(eventScreen).toBeVisible();
+
+    // The save landed on the real favourites list, not just the icon.
+    await page.getByText('‹ banbe').first().click();
+    await page.getByText('Tài khoản').first().click();
+    await expect(page.locator('[data-screen-label="Account"]').getByTestId('account-saved-card')).toContainText('1');
+  });
+
+  test('a shared "?org=" link opens that organizer and offers the app', async ({ page }) => {
+    await page.goto('/?org=bepnho');
+    const organizerScreen = page.locator('[data-screen-label="Organizer"]');
+    await expect(organizerScreen).toBeVisible({ timeout: 5000 });
+    await expect(organizerScreen.getByText('Bếp Nhỏ').first()).toBeVisible();
+
+    // The param is consumed, so re-sharing the address doesn't carry it on.
+    await expect(page).toHaveURL(/^[^?]*$/);
+
+    // Only a shared link gets the "open in the app" offer, pointing at the
+    // scheme the native app registers.
+    const openInApp = organizerScreen.getByRole('link', { name: 'Mở' });
+    await expect(openInApp).toBeVisible();
+    await expect(openInApp).toHaveAttribute('href', 'banbe://organizer/bepnho');
   });
 
   test('the event address opens Google Maps and offers to show distance', async ({ page, context }) => {

@@ -123,7 +123,7 @@ export default function EventDetail() {
           <span style={{ fontSize: 11.5, color: ink }}>{T('Hình ảnh', 'Photos')}</span>
           <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 12, paddingBottom: 4 }}>
             {ev.gallery.map((u, i) => (
-              <div key={i} onClick={() => openPhoto(u, ev.orgName)} style={bg(u, { flex: 'none', width: 148, height: 186, cursor: 'pointer' })} />
+              <div key={i} onClick={() => openPhoto(u, ev.orgName, ev.key)} style={bg(u, { flex: 'none', width: 148, height: 186, cursor: 'pointer' })} />
             ))}
           </div>
         </div>

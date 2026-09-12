@@ -10,6 +10,7 @@ struct BanbeApp: App {
             RootView()
                 .environmentObject(authViewModel)
                 .environmentObject(appState)
+                .onOpenURL { url in appState.handleDeepLink(url) }
         }
     }
 }

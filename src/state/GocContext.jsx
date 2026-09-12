@@ -25,6 +25,22 @@ if (typeof window !== 'undefined') {
   }
 }
 
+// A shared photo's "?org=<eventKey>" link, read once at module load the same
+// way "?ref=" is above. Unlike a referral this isn't stashed for later — it
+// routes straight to that organizer's page below, so the param is consumed
+// here and stripped from the visible URL.
+let sharedOrgEventKey = null;
+if (typeof window !== 'undefined') {
+  const params = new URLSearchParams(window.location.search);
+  const org = params.get('org');
+  if (org && EVENTS.some(e => e.key === org)) {
+    sharedOrgEventKey = org;
+    params.delete('org');
+    const rest = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''));
+  }
+}
+
 const initialState = {
   screen: 'splash',
   mode: 'goer',
@@ -135,8 +151,15 @@ const initialState = {
   attendanceEventKey: null,
   attendanceGuests: [],
   attendanceLoading: false,
-  // { url, organizer } while a gallery photo is open in the viewer.
+  // { url, organizer, eventKey } while a gallery photo is open in the viewer.
   photoViewer: null,
+  // Liked photo URLs. Local-only: there's no table to hang a photo like on,
+  // and inventing one would mean a migration that isn't live yet.
+  photoLikes: [],
+  photoShared: false,
+  // True when this visit arrived on a shared "?org=" link, which is the only
+  // time the organizer page offers to open the native app instead.
+  arrivedFromSharedLink: false,
   scanningQr: false,
   qrScanError: '',
   reasonPrompt: null,
@@ -193,7 +216,8 @@ export function GocProvider({ children }) {
         // onboarding before — replaying the splash/language/theme pickers on
         // every single revisit is what made the choice look like it "resets"
         // even though the value itself was never actually lost.
-        screen: raw !== null ? 'home' : 'splash',
+        screen: sharedOrgEventKey ? 'organizer' : (raw !== null ? 'home' : 'splash'),
+        ...(sharedOrgEventKey ? { eventKey: sharedOrgEventKey, arrivedFromSharedLink: true } : {}),
       };
     } catch {
       return initialState;
@@ -201,6 +225,14 @@ export function GocProvider({ children }) {
   });
   const s = state;
   const prefsRef = useRef({ lang: state.lang, theme: state.theme });
+
+  // Liked photos live on this device only — see the note on photoLikes.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('banbe.photoLikes') || '[]');
+      if (Array.isArray(saved) && saved.length) setStateRaw(prev => ({ ...prev, photoLikes: saved }));
+    } catch { /* private browsing, or nothing saved yet */ }
+  }, []);
   useEffect(() => {
     prefsRef.current = { lang: state.lang, theme: state.theme };
   }, [state.lang, state.theme]);
@@ -473,11 +505,45 @@ export function GocProvider({ children }) {
   // navigator.vibrate is the web's only haptic and iOS Safari doesn't
   // implement it, so this is a no-op there — the native app does it
   // properly (see AppState.openPhoto).
-  const openPhoto = useCallback((url, organizer) => {
+  const openPhoto = useCallback((url, organizer, eventKey) => {
     try { navigator.vibrate?.(8); } catch { /* unsupported — no haptic, no harm */ }
-    set({ photoViewer: { url, organizer } });
+    set({ photoViewer: { url, organizer, eventKey } });
   }, [set]);
   const closePhoto = useCallback(() => set({ photoViewer: null }), [set]);
+
+  const isPhotoLiked = useCallback((url) => s.photoLikes.includes(url), [s.photoLikes]);
+  const togglePhotoLike = useCallback((url) => set(prev => {
+    const photoLikes = prev.photoLikes.includes(url)
+      ? prev.photoLikes.filter(x => x !== url)
+      : [...prev.photoLikes, url];
+    try { localStorage.setItem('banbe.photoLikes', JSON.stringify(photoLikes)); } catch { /* private browsing */ }
+    return { photoLikes };
+  }), [set]);
+
+  // Shares the photo's organizer, not the photo file itself — a bare image
+  // URL says nothing about who took it or where to find more. The link
+  // carries "?org=<eventKey>", which lands on that organizer's page (see
+  // the capture at the top of this file); the native app registers a
+  // banbe:// scheme for the same destination, offered from that page.
+  const sharePhotoOrganizer = useCallback(() => {
+    if (!s.photoViewer) return;
+    const { organizer, eventKey } = s.photoViewer;
+    const url = `https://banbe-two.vercel.app/?org=${eventKey}`;
+    const title = T(`Ảnh của ${organizer} trên banbe`, `${organizer} on banbe`);
+    const text = T(
+      `Xem ảnh và các buổi sắp tới của ${organizer} trên banbe:`,
+      `See ${organizer}'s photos and what they have coming up on banbe:`
+    );
+    const done = () => {
+      set({ photoShared: true });
+      setTimeout(() => set({ photoShared: false }), 1800);
+    };
+    if (navigator.share) {
+      navigator.share({ title, text, url }).catch(done);
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(done, done);
+    } else { done(); }
+  }, [set, s.photoViewer, T]);
 
   const openPreferences = useCallback(() => set({ screen: 'preferences' }), [set]);
   const openSecurity = useCallback(() => set({
@@ -1400,7 +1466,7 @@ export function GocProvider({ children }) {
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
-    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto,
+    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
@@ -1421,7 +1487,7 @@ export function GocProvider({ children }) {
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
-    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto,
+    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,

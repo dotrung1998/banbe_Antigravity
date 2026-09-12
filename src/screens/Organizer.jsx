@@ -1,6 +1,6 @@
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg } from '../data/events.js';
-import { paper, ink, rule, display, inkButton } from '../theme.js';
+import { paper, ink, rule, display, cardGlass, inkButton } from '../theme.js';
 
 export default function Organizer() {
   const { state, T, trStatus, stripKm, curEvent: ev, backToEvent, goEvent, goChat, toggleFollow, openPhoto } = useGoc();
@@ -14,6 +14,23 @@ export default function Organizer() {
     <div style={{ animation: 'gocFade 0.3s ease both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Organizer">
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div onClick={backToEvent} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {ev.name}</div>
+      {s.arrivedFromSharedLink && (
+        // Only shown to someone who followed a shared "?org=" link. The
+        // banbe:// scheme opens the installed app straight to this page;
+        // there's no App Store listing to fall back to yet, so the second
+        // line points at the web app someone is already looking at rather
+        // than at a link that would 404.
+        <div style={{ ...cardGlass({ margin: '14px 22px 0', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }) }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+            <span style={{ fontSize: 13, color: ink }}>{T('Xem trong ứng dụng banbe', 'Open in the banbe app')}</span>
+            <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink, opacity: 0.7 }}>{T('Chưa có ứng dụng? Bạn vẫn xem được mọi thứ ngay tại đây.', "Don't have it? Everything here works in the browser too.")}</span>
+          </div>
+          <a
+            href={`banbe://organizer/${ev.key}`}
+            style={{ flex: 'none', fontSize: 12, fontWeight: 600, color: paper, background: ink, borderRadius: 999, padding: '9px 16px', textDecoration: 'none' }}
+          >{T('Mở', 'Open')}</a>
+        </div>
+      )}
       <div style={{ padding: '16px 22px 30px' }}>
         <span style={{ fontSize: 11.5, color: ink }}>{T('Người tổ chức', 'Organizer')}</span>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 8 }}>
@@ -53,7 +70,7 @@ export default function Organizer() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 14 }}>
           {ev.orgGallery.map((u, i) => (
-            <div key={i} onClick={() => openPhoto(u, ev.orgName)} style={bg(u, { width: '100%', height: 158, cursor: 'pointer' })} />
+            <div key={i} onClick={() => openPhoto(u, ev.orgName, ev.key)} style={bg(u, { width: '100%', height: 158, cursor: 'pointer' })} />
           ))}
         </div>
       </div>

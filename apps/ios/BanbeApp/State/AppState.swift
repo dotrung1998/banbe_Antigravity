@@ -75,6 +75,9 @@ struct ReasonPrompt: Equatable {
 struct PhotoViewerItem: Identifiable, Equatable {
     let path: String
     let organizer: String
+    /// The event the photo belongs to — what the save button saves, and
+    /// what the shared link points at.
+    let eventKey: String
     var id: String { path }
 }
 
@@ -180,6 +183,11 @@ final class AppState: ObservableObject {
     @Published var attendanceGuests: [AttendanceGuest] = []
     @Published var attendanceLoading = false
     @Published var photoViewer: PhotoViewerItem?
+    /// Liked photo paths. Local-only: there's no table to hang a photo like
+    /// on, and inventing one would mean a migration that isn't live yet.
+    @Published var photoLikes: [String] = UserDefaults.standard.stringArray(forKey: "banbe.photoLikes") ?? [] {
+        didSet { UserDefaults.standard.set(photoLikes, forKey: "banbe.photoLikes") }
+    }
     @Published var scanningQr = false
     @Published var reasonPrompt: ReasonPrompt?
     @Published var reasonPromptBusy = false
@@ -457,13 +465,34 @@ final class AppState: ObservableObject {
     /// X" on an organizer page) opens it larger, over a dimmed backdrop —
     /// with a light tap of haptic feedback, which is the part the web
     /// version can't do (navigator.vibrate isn't implemented on iOS Safari).
-    func openPhoto(path: String, organizer: String) {
+    func openPhoto(path: String, organizer: String, eventKey: String) {
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.prepare()
         generator.impactOccurred()
-        photoViewer = PhotoViewerItem(path: path, organizer: organizer)
+        photoViewer = PhotoViewerItem(path: path, organizer: organizer, eventKey: eventKey)
     }
     func closePhoto() { photoViewer = nil }
+
+    func isPhotoLiked(_ path: String) -> Bool { photoLikes.contains(path) }
+    func togglePhotoLike(_ path: String) {
+        if let index = photoLikes.firstIndex(of: path) { photoLikes.remove(at: index) } else { photoLikes.append(path) }
+    }
+
+    /// Opens a shared organizer link — banbe://organizer/<eventKey>. The
+    /// scheme is registered in project.yml; a plain https:// link can't
+    /// reach the app without Universal Links, which need an entitlement and
+    /// an Apple Team ID this project doesn't have yet, so the web page
+    /// shared alongside offers this as an explicit "Open" button.
+    func handleDeepLink(_ url: URL) {
+        guard url.scheme == "banbe" else { return }
+        let parts = ([url.host] + url.pathComponents.filter { $0 != "/" }).compactMap { $0 }
+        guard parts.first == "organizer", let key = parts.dropFirst().first,
+              EventCatalog.find(key) != nil
+        else { return }
+        photoViewer = nil
+        eventKey = key
+        screen = .organizer
+    }
 
     func openPreferences() { screen = .preferences }
     func openSecurity() { screen = .security }

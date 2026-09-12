@@ -59,6 +59,14 @@ targets:
         NSLocationWhenInUseUsageDescription: "banbe uses your location to show how far events are and to filter the area picker."
         NSCameraUsageDescription: "banbe uses your camera to scan a guest's ticket QR code at check-in."
         NSFaceIDUsageDescription: "banbe uses Face ID to unlock the app for a returning signed-in user."
+        # Opens a shared photo's organizer link straight in the app —
+        # banbe://organizer/<eventKey>. A plain https:// link can only do
+        # this through Universal Links, which need an Associated Domains
+        # entitlement and a real Apple Team ID; until those exist the web
+        # page shared alongside it offers this scheme as an "Open" button.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.banbe.ios
+            CFBundleURLSchemes: [banbe]
 
   BanbeAppUITests:
     type: bundle.ui-testing

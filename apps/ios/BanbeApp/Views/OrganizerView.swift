@@ -102,7 +102,7 @@ struct OrganizerView: View {
 
                         LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
                             ForEach(Array(event.orgGallery.enumerated()), id: \.offset) { _, path in
-                                Button { app.openPhoto(path: path, organizer: event.orgName) } label: {
+                                Button { app.openPhoto(path: path, organizer: event.orgName, eventKey: event.key) } label: {
                                     CatalogPhoto(path: path, height: 158)
                                 }
                                 .buttonStyle(.plain)
