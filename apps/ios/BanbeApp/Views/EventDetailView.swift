@@ -178,11 +178,12 @@ struct EventDetailView: View {
                 .padding(.top, 28)
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 8) {
-                    ForEach(Array(event.gallery.enumerated()), id: \.offset) { _, path in
+                    ForEach(Array(event.gallery.enumerated()), id: \.offset) { index, path in
                         Button { app.openPhoto(path: path, organizer: event.orgName, eventKey: event.key) } label: {
                             CatalogPhoto(path: path, height: 186, width: 148)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("event.photo.\(index)")
                     }
                 }
             }

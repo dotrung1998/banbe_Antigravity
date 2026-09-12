@@ -18,13 +18,19 @@ struct PhotoViewerView: View {
         GeometryReader { proxy in
             ZStack {
                 // The photo itself, blown up and blurred into a backdrop.
-                // Scaled past the edges so the blur has no soft, transparent
-                // border to show at the screen edge.
-                CatalogPhoto(path: item.path, height: proxy.size.height * 1.24, cornerRadius: 0)
-                    .frame(width: proxy.size.width * 1.24)
+                // Pushed past the edges so the blur has no soft, transparent
+                // border to show at the screen edge — but via scaleEffect,
+                // which is layout-neutral (the web does the same with
+                // transform: scale). Giving it an oversized *frame* instead
+                // made the ZStack size itself to that larger child, and
+                // GeometryReader pins its content topLeading rather than
+                // centring it, which shunted the photo and captions down and
+                // right by the overflow.
+                CatalogPhoto(path: item.path, height: proxy.size.height, cornerRadius: 0)
+                    .frame(width: proxy.size.width)
+                    .scaleEffect(1.24)
                     .blur(radius: 34)
                     .overlay(Color.black.opacity(0.38))
-                    .ignoresSafeArea()
                     .allowsHitTesting(false)
 
                 CatalogPhoto(path: item.path,
@@ -33,12 +39,15 @@ struct PhotoViewerView: View {
                              cornerRadius: 14)
                     .shadow(color: .black.opacity(0.4), radius: 22, y: 10)
                     .allowsHitTesting(false)
+                    .accessibilityIdentifier("photoViewer.photo")
 
                 VStack(alignment: .leading, spacing: 0) {
                     caption(app.T("Ảnh của", "Photo by") + " \(item.organizer)")
+                        .accessibilityIdentifier("photoViewer.credit")
                     Spacer(minLength: 0)
                     HStack(alignment: .bottom) {
                         caption(shared ? app.T("Đã sao chép link", "Link copied") : "banbe ▪︎ bạn mới mỗi tuần")
+                            .accessibilityIdentifier("photoViewer.tagline")
                         Spacer(minLength: 12)
                         actions
                     }
@@ -47,31 +56,38 @@ struct PhotoViewerView: View {
                 .padding(.top, 18)
                 .padding(.bottom, 14)
             }
+            // Pinned to the space GeometryReader actually measured, so its
+            // topLeading placement has nothing left to shift.
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
             .contentShape(Rectangle())
             .onTapGesture { app.closePhoto() }
         }
+        .ignoresSafeArea()
         .transition(.opacity)
-        .accessibilityIdentifier("photoViewer")
     }
 
     private var actions: some View {
         HStack(spacing: 2) {
             action("heart", filled: liked, on: liked,
+                   id: "photoViewer.like",
                    label: app.T("Thích ảnh này", "Like this photo")) {
                 app.togglePhotoLike(item.path)
             }
             action("bookmark", filled: saved, on: saved,
+                   id: "photoViewer.save",
                    label: app.T("Lưu sự kiện", "Save this event")) {
                 app.toggleFavorite(item.eventKey)
             }
             action("square.and.arrow.up", filled: false, on: false,
+                   id: "photoViewer.share",
                    label: app.T("Chia sẻ", "Share")) {
                 share()
             }
         }
     }
 
-    private func action(_ symbol: String, filled: Bool, on: Bool,
+    private func action(_ symbol: String, filled: Bool, on: Bool, id: String,
                         label: String, perform: @escaping () -> Void) -> some View {
         Button(action: perform) {
             Image(systemName: filled ? "\(symbol).fill" : symbol)
@@ -83,6 +99,7 @@ struct PhotoViewerView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
     }
 
     /// Faint, but never illegible: the blur underneath can land on any
