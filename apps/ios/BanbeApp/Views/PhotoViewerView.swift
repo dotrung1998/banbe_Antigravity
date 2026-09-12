@@ -3,29 +3,37 @@ import SwiftUI
 /// Port of src/screens/sheets/PhotoViewer.jsx — a tapped gallery photo shown
 /// over a fully blurred copy of itself. Deliberately not full-screen: the
 /// photo sits in the middle third of the display with the same 14pt corner
-/// every other photo in the app has, and the credit, tagline and actions sit
-/// on the blur *outside* it, so nothing covers the picture.
+/// every other photo in the app has, and the credit/tagline/actions sit
+/// right against the photo's own top and bottom edges rather than the
+/// screen's. A left/right swipe moves through the rest of the gallery it
+/// was opened from without closing the viewer; a plain tap (no movement)
+/// closes it.
 struct PhotoViewerView: View {
     @EnvironmentObject var app: AppState
     let item: PhotoViewerItem
 
     @State private var shared = false
+    @State private var dragTranslation: CGFloat = 0
 
     private var liked: Bool { app.isPhotoLiked(item.path) }
     private var saved: Bool { app.isSaved(item.eventKey) }
+
+    /// A swipe past this many points changes the photo; anything short of
+    /// that (including a plain tap, which never moves at all) closes the
+    /// viewer instead.
+    private let swipeThreshold: CGFloat = 44
 
     var body: some View {
         GeometryReader { proxy in
             ZStack {
                 // The photo itself, blown up and blurred into a backdrop.
                 // Pushed past the edges so the blur has no soft, transparent
-                // border to show at the screen edge — but via scaleEffect,
-                // which is layout-neutral (the web does the same with
-                // transform: scale). Giving it an oversized *frame* instead
-                // made the ZStack size itself to that larger child, and
-                // GeometryReader pins its content topLeading rather than
-                // centring it, which shunted the photo and captions down and
-                // right by the overflow.
+                // border to show at the screen edge — via scaleEffect, which
+                // is layout-neutral (the web does the same with
+                // transform: scale) rather than an oversized frame, which
+                // would make the ZStack size itself to that larger child and
+                // shift everything off-centre (GeometryReader places its
+                // content topLeading, not centred).
                 CatalogPhoto(path: item.path, height: proxy.size.height, cornerRadius: 0)
                     .frame(width: proxy.size.width)
                     .scaleEffect(1.24)
@@ -33,18 +41,23 @@ struct PhotoViewerView: View {
                     .overlay(Color.black.opacity(0.38))
                     .allowsHitTesting(false)
 
-                CatalogPhoto(path: item.path,
-                             height: proxy.size.height / 3,
-                             width: proxy.size.width - 40,
-                             cornerRadius: 14)
-                    .shadow(color: .black.opacity(0.4), radius: 22, y: 10)
-                    .allowsHitTesting(false)
-                    .accessibilityIdentifier("photoViewer.photo")
-
-                VStack(alignment: .leading, spacing: 0) {
+                // The "stage": credit, photo and the tagline/actions row
+                // stacked tight against one another as one column, so the
+                // text sits close to the photo's own edges instead of the
+                // screen's.
+                VStack(alignment: .leading, spacing: 8) {
                     caption(app.T("Ảnh của", "Photo by") + " \(item.organizer)")
                         .accessibilityIdentifier("photoViewer.credit")
-                    Spacer(minLength: 0)
+
+                    CatalogPhoto(path: item.path,
+                                 height: proxy.size.height / 3,
+                                 width: proxy.size.width - 40,
+                                 cornerRadius: 14)
+                        .shadow(color: .black.opacity(0.4), radius: 22, y: 10)
+                        .id(item.index)
+                        .transition(.opacity)
+                        .accessibilityIdentifier("photoViewer.photo")
+
                     HStack(alignment: .bottom) {
                         caption(shared ? app.T("Đã sao chép link", "Link copied") : "banbe ▪︎ bạn mới mỗi tuần")
                             .accessibilityIdentifier("photoViewer.tagline")
@@ -52,16 +65,27 @@ struct PhotoViewerView: View {
                         actions
                     }
                 }
-                .padding(.horizontal, 22)
-                .padding(.top, 18)
-                .padding(.bottom, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
             }
-            // Pinned to the space GeometryReader actually measured, so its
-            // topLeading placement has nothing left to shift.
+            .animation(.easeOut(duration: 0.18), value: item.index)
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipped()
             .contentShape(Rectangle())
-            .onTapGesture { app.closePhoto() }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in dragTranslation = value.translation.width }
+                    .onEnded { value in
+                        let dx = value.translation.width
+                        dragTranslation = 0
+                        if abs(dx) > swipeThreshold {
+                            if dx < 0 { app.showPhoto(at: item.index + 1) }
+                            else { app.showPhoto(at: item.index - 1) }
+                        } else {
+                            app.closePhoto()
+                        }
+                    }
+            )
         }
         .ignoresSafeArea()
         .transition(.opacity)

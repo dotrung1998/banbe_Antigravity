@@ -131,7 +131,27 @@ test.describe('Navigation & Event Exploration', () => {
     await viewer.getByTestId('photo-save-event').click();
     await expect(viewer).toBeVisible();
 
-    // Tapping anywhere else closes it, leaving the event underneath.
+    // A left swipe moves to the next photo in the gallery instead of
+    // closing the viewer.
+    const image = viewer.getByTestId('photo-viewer-image');
+    await expect(image).toHaveAttribute('data-index', '0');
+    const box = await image.boundingBox();
+    await page.mouse.move(box.x + box.width - 10, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 10, box.y + box.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await expect(viewer).toBeVisible();
+    await expect(image).toHaveAttribute('data-index', '1');
+
+    // ...and a right swipe moves back.
+    await page.mouse.move(box.x + 10, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width - 10, box.y + box.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await expect(image).toHaveAttribute('data-index', '0');
+
+    // Tapping anywhere else (no movement) closes it, leaving the event
+    // underneath.
     await viewer.click({ position: { x: 5, y: 5 } });
     await expect(viewer).toHaveCount(0);
     await expect(eventScreen).toBeVisible();

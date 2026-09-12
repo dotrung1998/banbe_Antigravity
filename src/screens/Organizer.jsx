@@ -70,7 +70,7 @@ export default function Organizer() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 14 }}>
           {ev.orgGallery.map((u, i) => (
-            <div key={i} onClick={() => openPhoto(u, ev.orgName, ev.key)} style={bg(u, { width: '100%', height: 158, cursor: 'pointer' })} />
+            <div key={i} onClick={() => openPhoto(ev.orgGallery, i, ev.orgName, ev.key)} style={bg(u, { width: '100%', height: 158, cursor: 'pointer' })} />
           ))}
         </div>
       </div>

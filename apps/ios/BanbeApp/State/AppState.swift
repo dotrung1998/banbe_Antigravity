@@ -70,15 +70,17 @@ struct ReasonPrompt: Equatable {
     let guestName: String
 }
 
-/// A gallery photo opened in the viewer, with the organizer it belongs to
-/// (shown as the faint credit over it).
-struct PhotoViewerItem: Identifiable, Equatable {
-    let path: String
+/// A gallery opened in the viewer — the whole set of photos it was tapped
+/// from, so a left/right swipe can move through the rest, plus which one is
+/// showing and the organizer it belongs to (shown as the faint credit).
+struct PhotoViewerItem: Equatable {
+    let gallery: [String]
+    var index: Int
     let organizer: String
     /// The event the photo belongs to — what the save button saves, and
     /// what the shared link points at.
     let eventKey: String
-    var id: String { path }
+    var path: String { gallery[index] }
 }
 
 struct AttendanceGuest: Identifiable, Equatable {
@@ -465,13 +467,18 @@ final class AppState: ObservableObject {
     /// X" on an organizer page) opens it larger, over a dimmed backdrop —
     /// with a light tap of haptic feedback, which is the part the web
     /// version can't do (navigator.vibrate isn't implemented on iOS Safari).
-    func openPhoto(path: String, organizer: String, eventKey: String) {
+    func openPhoto(gallery: [String], index: Int, organizer: String, eventKey: String) {
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.prepare()
         generator.impactOccurred()
-        photoViewer = PhotoViewerItem(path: path, organizer: organizer, eventKey: eventKey)
+        photoViewer = PhotoViewerItem(gallery: gallery, index: index, organizer: organizer, eventKey: eventKey)
     }
     func closePhoto() { photoViewer = nil }
+    func showPhoto(at index: Int) {
+        guard var item = photoViewer else { return }
+        item.index = max(0, min(index, item.gallery.count - 1))
+        photoViewer = item
+    }
 
     func isPhotoLiked(_ path: String) -> Bool { photoLikes.contains(path) }
     func togglePhotoLike(_ path: String) {

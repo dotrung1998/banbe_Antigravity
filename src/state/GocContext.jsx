@@ -501,15 +501,22 @@ export function GocProvider({ children }) {
   }, [set, s.theme, persistAccountPreference]);
   const pickTheme = useCallback((theme) => { set({ theme }); persistAccountPreference({ theme }); }, [set, persistAccountPreference]);
   // Tapping a photo in either gallery ("Hình ảnh" on an event, "Ảnh của X"
-  // on an organizer page) opens it larger, over a dimmed backdrop.
+  // on an organizer page) opens it larger, over a dimmed backdrop, with the
+  // whole gallery loaded in behind it so left/right swipes can move through
+  // the rest without closing and reopening the viewer.
   // navigator.vibrate is the web's only haptic and iOS Safari doesn't
   // implement it, so this is a no-op there — the native app does it
   // properly (see AppState.openPhoto).
-  const openPhoto = useCallback((url, organizer, eventKey) => {
+  const openPhoto = useCallback((gallery, index, organizer, eventKey) => {
     try { navigator.vibrate?.(8); } catch { /* unsupported — no haptic, no harm */ }
-    set({ photoViewer: { url, organizer, eventKey } });
+    set({ photoViewer: { gallery, index, organizer, eventKey } });
   }, [set]);
   const closePhoto = useCallback(() => set({ photoViewer: null }), [set]);
+  const showPhotoAt = useCallback((index) => set(prev => {
+    if (!prev.photoViewer) return {};
+    const clamped = Math.max(0, Math.min(index, prev.photoViewer.gallery.length - 1));
+    return { photoViewer: { ...prev.photoViewer, index: clamped } };
+  }), [set]);
 
   const isPhotoLiked = useCallback((url) => s.photoLikes.includes(url), [s.photoLikes]);
   const togglePhotoLike = useCallback((url) => set(prev => {
@@ -1466,7 +1473,7 @@ export function GocProvider({ children }) {
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
-    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
+    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
@@ -1487,7 +1494,7 @@ export function GocProvider({ children }) {
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
-    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
+    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
