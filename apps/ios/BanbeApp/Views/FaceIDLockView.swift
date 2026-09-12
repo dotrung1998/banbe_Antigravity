@@ -15,10 +15,10 @@ struct FaceIDLockView: View {
                 Image(systemName: "faceid")
                     .font(.system(size: 44))
                     .foregroundStyle(.secondary)
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     // The wordmark — same asset the Home screen uses —
                     // standing in for the word "banbe" itself.
-                    BanbeLogo(kind: .wordmark, height: 17)
+                    BanbeLogo(kind: .wordmark, height: 50)
                     Text("is locked")
                         .font(.headline)
                 }
