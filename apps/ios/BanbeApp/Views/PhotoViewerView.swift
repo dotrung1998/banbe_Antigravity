@@ -160,22 +160,31 @@ struct PhotoViewerView: View {
     /// link carries "?org=<eventKey>", which lands on that organizer's page
     /// on the web and offers to reopen it here via banbe://.
     private func share() {
-        let url = URL(string: "https://banbe-two.vercel.app/?org=\(item.eventKey)")
+        // /api/photo-share carries Open Graph tags naming this photo as the
+        // preview image and then forwards into the app, so the picture
+        // survives as the link's own preview. Sharing the photo as a file
+        // attachment instead put the picture in the message but cost the
+        // caption — share targets take the attachment and drop the text.
+        let photoFile = (item.path as NSString).lastPathComponent
+        var components = URLComponents(string: "https://banbe-two.vercel.app/api/photo-share")
+        components?.queryItems = [
+            URLQueryItem(name: "org", value: item.eventKey),
+            URLQueryItem(name: "photo", value: photoFile),
+            URLQueryItem(name: "by", value: item.organizer),
+        ]
+        let url = components?.url
         let text = app.T(
             "Xem ảnh và các buổi sắp tới của \(item.organizer) trên banbe:",
             "See \(item.organizer)'s photos and what they have coming up on banbe:"
         )
         Task {
-            let fullText = url.map { "\(text) \($0.absoluteString)" } ?? text
             let image = await PhotoLoader.load(path: item.path, maxPixel: 1600)
-            // The photo goes through PhotoShareSource rather than as a bare
-            // UIImage: handing UIActivityViewController [String, UIImage]
-            // leaves it to guess which is the subject, and it guesses the
-            // string — the sheet previewed a generic "A" text icon with the
-            // caption, no photo. The item source states outright that the
-            // photo is the content and supplies LPLinkMetadata, so the
-            // preview is the photo itself with the caption beside it.
-            let items: [Any] = [fullText, PhotoShareSource(image: image, title: text, url: url)]
+            // The link goes through PhotoShareSource so the share sheet's
+            // own preview shows this photo straight from the cache rather
+            // than waiting to scrape the URL — what the target sends is the
+            // text plus the link, which previews the same photo via the
+            // tags that endpoint serves.
+            let items: [Any] = [text, PhotoShareSource(image: image, title: text, url: url)]
             await MainActor.run {
                 let activity = UIActivityViewController(activityItems: items, applicationActivities: nil)
                 UIApplication.shared.connectedScenes
@@ -189,10 +198,11 @@ struct PhotoViewerView: View {
     }
 }
 
-/// Carries the photo into the share sheet as the *content* being shared,
-/// with a caption and link attached as metadata. Without this, passing the
-/// image alongside a string leaves the sheet previewing the string (a
-/// generic text-document icon) and targets free to drop one or the other.
+/// Hands the share sheet the link, while supplying the photo as its preview
+/// image so the sheet shows the picture immediately instead of the generic
+/// text-document icon it picked when the items were just a string and a
+/// URL. What gets sent is text + link; the link previews the same photo
+/// wherever it lands, via the tags /api/photo-share serves.
 private final class PhotoShareSource: NSObject, UIActivityItemSource {
     private let image: UIImage?
     private let title: String
@@ -207,12 +217,12 @@ private final class PhotoShareSource: NSObject, UIActivityItemSource {
     // A placeholder only tells the sheet what *kind* of thing is coming, so
     // an empty UIImage is right even when the photo failed to load.
     func activityViewControllerPlaceholderItem(_ controller: UIActivityViewController) -> Any {
-        image ?? UIImage()
+        url ?? ""
     }
 
     func activityViewController(_ controller: UIActivityViewController,
                                 itemForActivityType type: UIActivity.ActivityType?) -> Any? {
-        image
+        url
     }
 
     func activityViewController(_ controller: UIActivityViewController,

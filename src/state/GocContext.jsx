@@ -535,7 +535,14 @@ export function GocProvider({ children }) {
   const sharePhotoOrganizer = useCallback(async () => {
     if (!s.photoViewer) return;
     const { organizer, eventKey, gallery, index } = s.photoViewer;
-    const url = `https://banbe-two.vercel.app/?org=${eventKey}`;
+    // /api/photo-share carries Open Graph tags naming this photo as the
+    // preview image and then forwards into the app. Sharing the plain
+    // "/?org=" link instead left WhatsApp and friends scraping index.html,
+    // which has no OG tags, so every shared photo previewed as the site
+    // favicon — a black square with the banbe mark.
+    const photoFile = (gallery[index] || '').split('/').pop();
+    const url = `https://banbe-two.vercel.app/api/photo-share?org=${encodeURIComponent(eventKey)}`
+      + `&photo=${encodeURIComponent(photoFile)}&by=${encodeURIComponent(organizer)}`;
     const title = T(`Ảnh của ${organizer} trên banbe`, `${organizer} on banbe`);
     const text = T(
       `Xem ảnh và các buổi sắp tới của ${organizer} trên banbe:`,
@@ -545,42 +552,18 @@ export function GocProvider({ children }) {
       set({ photoShared: true });
       setTimeout(() => set({ photoShared: false }), 1800);
     };
-    const shareLinkOnly = () => {
-      if (navigator.share) {
-        navigator.share({ title, text, url }).catch(done);
-      } else if (navigator.clipboard) {
-        navigator.clipboard.writeText(url).then(done, done);
-      } else { done(); }
-    };
-    // Attach the actual photo, so it previews large in the share sheet
-    // (Messages, etc.) instead of just a link card with the app's logo.
-    //
-    // Only on a touch device, though. Desktop browsers report
-    // canShare({ files }) === true and then hand the attachment to the
-    // system sheet as a path, which most targets paste as literal text
-    // ("/Users/…/WebShare/share-…/banbe-photo.jpg") — worse than not
-    // attaching anything. A pointer check is the honest proxy for "this
-    // share sheet renders photos as photos".
-    const touchDevice = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-    if (touchDevice && navigator.canShare) {
-      let file = null;
-      try {
-        const response = await fetch(gallery[index]);
-        const blob = await response.blob();
-        file = new File([blob], 'banbe-photo.jpg', { type: blob.type || 'image/jpeg' });
-      } catch { /* couldn't fetch the photo — fall back to a link-only share */ }
-      if (file && navigator.canShare({ files: [file] })) {
-        // No URL in the text here: the photo is already the payload, and a
-        // bare link alongside it makes targets like Messages render a
-        // second preview card underneath the photo.
-        // Whatever happens next (sent, or the person cancelled the sheet)
-        // is not a reason to also pop the link-only share below it.
-        try { await navigator.share({ title, text, files: [file] }); } catch { /* cancelled */ }
-        done();
-        return;
-      }
-    }
-    shareLinkOnly();
+    // Deliberately a link share rather than a file attachment. Attaching
+    // the photo put the picture in the message but cost the caption (share
+    // targets take the attachment and drop the text), and on desktop the
+    // browser handed the file over as a path that targets pasted as
+    // literal text. The link carries the photo as its own preview image
+    // instead, so both the picture and the caption survive.
+    if (navigator.share) {
+      try { await navigator.share({ title, text, url }); } catch { /* cancelled */ }
+      done();
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(done, done);
+    } else { done(); }
   }, [set, s.photoViewer, T]);
 
   const openPreferences = useCallback(() => set({ screen: 'preferences' }), [set]);
