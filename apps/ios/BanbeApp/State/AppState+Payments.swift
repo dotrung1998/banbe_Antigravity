@@ -433,13 +433,14 @@ extension AppState {
         paymentProofUploading = true
         paymentProofError = ""
         do {
+            _ = try? await SupabaseService.client.auth.refreshSession()
+
             let path = "\(bookingID.uuidString)/proof-\(Int(Date().timeIntervalSince1970)).\(fileExtension)"
             _ = try await SupabaseService.client.storage
                 .from("pay-proof")
                 .upload(path, data: imageData,
                         options: FileOptions(contentType: fileExtension == "pdf" ? "application/pdf" : "image/jpeg",
                                              upsert: true))
-            _ = try? await SupabaseService.client.auth.refreshSession()
 
             let result: SubmitProofResult = try await SupabaseService.client
                 .rpc("submit_payment_proof", params: SubmitProofParams(
@@ -476,7 +477,10 @@ extension AppState {
         } catch {
             print("submitPaymentProof failed:", error)
             paymentProofUploading = false
-            paymentProofError = T("Chưa gửi được. Thử lại nhé.", "Couldn't submit. Please try again.")
+            let raw = "\(error)"
+            paymentProofError = raw.isEmpty
+                ? T("Chưa gửi được. Thử lại nhé.", "Couldn't submit. Please try again.")
+                : T("Đã có lỗi: \(raw)", "Something went wrong: \(raw)")
         }
     }
 

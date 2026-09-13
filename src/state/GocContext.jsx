@@ -708,13 +708,13 @@ export function GocProvider({ children }) {
     }
     set({ paymentSubmitting: true, paymentSubmitError: '' });
     try {
+      const { error: authErr } = await supabase.auth.getSession();
+      if (authErr) throw authErr;
+
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
       const path = `${bookingId}/proof-${Date.now()}.${ext || 'jpg'}`;
       const { error: upErr } = await supabase.storage.from('pay-proof').upload(path, file, { upsert: true });
       if (upErr) throw upErr;
-
-      const { error: authErr } = await supabase.auth.getSession();
-      if (authErr) throw authErr;
 
       const { data, error } = await supabase.rpc('submit_payment_proof', {
         p_booking: bookingId, p_transaction_id: txn, p_proof_path: path,
