@@ -297,7 +297,12 @@ export function GocProvider({ children }) {
   useEffect(() => {
     const id = setInterval(() => {
       setStateRaw(prev => (
-        (prev.holdDeadline || prev.booking?.payment_state === 'holding')
+        // Gated on ANY holding booking, not just the single one the
+        // currently-open screen happens to be looking at — a hold made on
+        // event A must still tick (and get forfeited) while sitting on
+        // event B's EventDetail, where prev.booking is B's, not A's.
+        (prev.holdDeadline || prev.booking?.payment_state === 'holding'
+          || (prev.paymentBookings || []).some(b => b.payment_state === 'holding'))
           ? { ...prev, now: Date.now() } : prev
       ));
     }, 1000);
@@ -1926,11 +1931,18 @@ export function GocProvider({ children }) {
   // them route through this same forfeitExpiredHold, which itself only acts
   // once per lapse since payment_state flips to 'expired' immediately).
   useEffect(() => {
-    const justLapsed = (state.paymentBookings || []).find(
-      b => b.payment_state === 'holding' && b.hold_expires_at && msUntil(b.hold_expires_at, state.now) === 0
-    );
+    const isLapsed = (b) => b && b.payment_state === 'holding' && b.hold_expires_at
+      && msUntil(b.hold_expires_at, state.now) === 0;
+    // state.booking covers the event currently open in EventDetail/Confirmed
+    // even before paymentBookings has ever loaded (e.g. landing straight on
+    // EventDetail on a fresh launch, never having passed through Home) —
+    // it's populated as soon as eventKey resolves, independent of
+    // loadPaymentBookings(). paymentBookings covers every OTHER hold this
+    // account has open elsewhere, which state.booking alone can't see.
+    const justLapsed = (isLapsed(state.booking) && state.booking)
+      || (state.paymentBookings || []).find(isLapsed);
     if (justLapsed) forfeitExpiredHold(justLapsed);
-  }, [state.paymentBookings, state.now, forfeitExpiredHold]);
+  }, [state.paymentBookings, state.booking, state.now, forfeitExpiredHold]);
 
   // Tapping a notification marks it read and, for the kinds that point at
   // somewhere real, takes you there — a 'new_message' notification opens the
