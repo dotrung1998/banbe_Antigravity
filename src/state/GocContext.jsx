@@ -5,6 +5,7 @@ import { requestAuthEmail, requestPasswordSignup, requestPasswordReset } from '.
 import { renderPaymentDocument } from '../lib/paymentDocument.js';
 import { buildVietQrPayload } from '../lib/vietqr.js';
 import { msUntil, liveEventOverrides } from '../lib/countdown.js';
+import { normalizeProofFile } from '../lib/proofUpload.js';
 
 const GocCtx = createContext(null);
 
@@ -704,12 +705,16 @@ export function GocProvider({ children }) {
     if (!bookingId || !file) return;
     set({ paymentProofUploading: true, paymentProofError: '' });
     try {
+      // Re-encodes anything outside the bucket's allowed image/jpeg,
+      // image/png, image/webp, application/pdf (HEIC, GIF, BMP, a renamed
+      // file with no MIME type at all, …) to a JPEG it will actually accept
+      // — see proofUpload.js for why this beats rejecting those up front.
+      const { blob, ext, contentType } = await normalizeProofFile(file);
       // The path's first segment is the booking id — that is exactly what
       // the bucket's RLS policies split on, so a file can only ever land
       // under a booking the uploader owns.
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const path = `${bookingId}/proof-${Date.now()}.${ext || 'jpg'}`;
-      const { error: upErr } = await supabase.storage.from('pay-proof').upload(path, file, { upsert: true });
+      const path = `${bookingId}/proof-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('pay-proof').upload(path, blob, { upsert: true, contentType });
       if (upErr) throw upErr;
       const { data, error } = await supabase.rpc('mark_payment_proof', { p_booking: bookingId, p_path: path, p_note: '' });
       if (error) throw error;
@@ -720,7 +725,9 @@ export function GocProvider({ children }) {
       console.warn('uploadPaymentProof failed:', e);
       set({
         paymentProofUploading: false,
-        paymentProofError: T('Không gửi được ảnh xác nhận. Thử lại nhé.', "Couldn't send that confirmation. Please try again."),
+        paymentProofError: e.message === 'CONVERT_FAILED'
+          ? T('Không đọc được ảnh này. Thử một ảnh hoặc file khác.', "Couldn't read that file. Try a different photo or file.")
+          : T('Không gửi được ảnh xác nhận. Thử lại nhé.', "Couldn't send that confirmation. Please try again."),
       });
     }
   }, [set, T, loadPaymentBookings]);
@@ -739,9 +746,16 @@ export function GocProvider({ children }) {
     }
     set({ paymentSubmitting: true, paymentSubmitError: '' });
     try {
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const path = `${bookingId}/proof-${Date.now()}.${ext || 'jpg'}`;
-      const { error: upErr } = await supabase.storage.from('pay-proof').upload(path, file, { upsert: true });
+      // Re-encodes anything outside the bucket's allowed image/jpeg,
+      // image/png, image/webp, application/pdf (HEIC, GIF, BMP, a renamed
+      // file with no MIME type at all, …) to a JPEG it will actually accept
+      // — see proofUpload.js for why this beats rejecting those up front.
+      // This is exactly what made an arbitrary test image fail to upload:
+      // the bucket's storage RLS/allowlist silently rejected it, which
+      // surfaced here only as the generic "Couldn't submit" fallback below.
+      const { blob, ext, contentType } = await normalizeProofFile(file);
+      const path = `${bookingId}/proof-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('pay-proof').upload(path, blob, { upsert: true, contentType });
       if (upErr) throw upErr;
 
       const { data, error } = await supabase.rpc('submit_payment_proof', {
@@ -772,8 +786,10 @@ export function GocProvider({ children }) {
       return data;
     } catch (e) {
       console.warn('submitPaymentProof failed:', e);
-      set({ paymentSubmitting: false, paymentSubmitError: e.message
-        || T('Chưa gửi được. Thử lại nhé.', "Couldn't submit. Please try again.") });
+      const message = e.message === 'CONVERT_FAILED'
+        ? T('Không đọc được ảnh này. Thử một ảnh hoặc file khác.', "Couldn't read that file. Try a different photo or file.")
+        : e.message || T('Chưa gửi được. Thử lại nhé.', "Couldn't submit. Please try again.");
+      set({ paymentSubmitting: false, paymentSubmitError: message });
     }
   }, [set, T, loadPaymentBookings]);
 

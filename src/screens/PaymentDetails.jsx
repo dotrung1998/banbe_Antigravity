@@ -25,7 +25,25 @@ export default function PaymentDetails() {
   const s = state;
   const fileRef = useRef(null);
   const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [tick, setTick] = useState(Date.now());
+
+  // A thumbnail of whatever was just picked — the picker row used to only
+  // ever show the filename as text, so there was no way to notice a wrong
+  // photo (or a screenshot of the wrong thing) before submitting it. Only
+  // images get a preview; a PDF has nothing to usefully paint into an
+  // <img>, so it keeps the filename label instead. The object URL is
+  // revoked on every change/unmount — it's not needed past the next render
+  // and holding onto it would leak the decoded image.
+  useEffect(() => {
+    if (!file || !file.type.startsWith('image/')) {
+      setPreviewUrl(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   useEffect(() => { loadPaymentBookings(); }, [loadPaymentBookings]);
 
@@ -227,6 +245,14 @@ export default function PaymentDetails() {
 
                 <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
                        onChange={(e) => { setFile(e.target.files?.[0] || null); }} />
+                {previewUrl && (
+                  <img
+                    src={previewUrl}
+                    alt={T('Ảnh biên lai đã chọn', 'Selected receipt image')}
+                    data-testid="payment-proof-preview"
+                    style={{ width: '100%', maxHeight: 220, objectFit: 'contain', borderRadius: 10, background: 'rgba(27,25,22,0.04)' }}
+                  />
+                )}
                 <div onClick={() => fileRef.current?.click()}
                      style={{ ...fieldGlass({ padding: '13px 14px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }) }}
                      data-testid="payment-proof-pick">

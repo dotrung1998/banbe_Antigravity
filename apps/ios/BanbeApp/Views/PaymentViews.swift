@@ -16,7 +16,9 @@ struct PaymentDetailsView: View {
     @EnvironmentObject private var app: AppState
     @State private var photoItem: PhotosPickerItem?
     @State private var pickedImage: Data?
+    @State private var pickedPreview: UIImage?
     @State private var pickedName = ""
+    @State private var pickError = ""
     @State private var tick = Date()
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -64,9 +66,25 @@ struct PaymentDetailsView: View {
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             Task {
-                if let data = try? await item.loadTransferable(type: Data.self) {
-                    pickedImage = data
+                pickError = ""
+                if let data = try? await item.loadTransferable(type: Data.self), let uiImage = UIImage(data: data) {
+                    // Re-encode to JPEG regardless of the source format —
+                    // PhotosPicker commonly hands back HEIC straight off the
+                    // camera roll, which the 'pay-proof' bucket's allowlist
+                    // (image/jpeg, image/png, image/webp, application/pdf;
+                    // supabase/migrations/20260913000024_…) does not accept.
+                    // Decoding through UIImage also gives the preview below
+                    // for free, and guarantees the bytes actually match
+                    // whatever content-type submitPaymentProof declares
+                    // (previously hardcoded to "image/jpeg" over whatever
+                    // the raw picked bytes really were).
+                    pickedImage = uiImage.jpegData(compressionQuality: 0.9)
+                    pickedPreview = uiImage
                     pickedName = app.T("Đã chọn ảnh biên lai", "Receipt image selected")
+                } else {
+                    pickedImage = nil
+                    pickedPreview = nil
+                    pickError = app.T("Không đọc được ảnh này. Thử một ảnh khác.", "Couldn't read that photo. Try a different one.")
                 }
                 photoItem = nil
             }
@@ -324,6 +342,21 @@ struct PaymentDetailsView: View {
                     .accessibilityIdentifier("payment.txnId")
                 Text(app.T("Tìm trong biên lai của app ngân hàng.", "Find it on the receipt in your banking app."))
                     .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.65))
+
+                // A thumbnail of whatever was just picked — this row used
+                // to only ever show a static "Receipt image selected"
+                // label, so there was no way to notice a wrong photo before
+                // submitting it.
+                if let pickedPreview {
+                    Image(uiImage: pickedPreview)
+                        .resizable().scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: 220)
+                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .accessibilityIdentifier("payment.proofPreview")
+                }
+                if !pickError.isEmpty {
+                    Text(pickError).font(.system(size: 12)).foregroundStyle(Color(red: 0.60, green: 0.24, blue: 0.18))
+                }
 
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     HStack {
