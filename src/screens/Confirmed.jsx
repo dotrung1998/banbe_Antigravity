@@ -6,7 +6,7 @@ import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 
 export default function Confirmed() {
-  const { state, T, set, curEvent: ev, goHome, addToCalendar, giveTicket, openPaymentDetails, forfeitExpiredHold } = useGoc();
+  const { state, T, set, curEvent: ev, goHome, addToCalendar, giveTicket, openPaymentDetails, forfeitExpiredHold, goReserve } = useGoc();
   const s = state;
 
   // payment_state is the source of truth for every phase distinction below;
@@ -19,7 +19,8 @@ export default function Confirmed() {
   const isHolding = phase === 'holding';
   const isPendingVerification = phase === 'pending_verification';
   const isDisputed = phase === 'disputed';
-  const awaitingPayment = !!s.booking && !isPaid;
+  const isExpired = phase === 'expired';
+  const awaitingPayment = !!s.booking && !isPaid && !isExpired;
 
   // The countdown only ticks while there is something to actually count
   // down — PHASE 2 shows an SLA reassurance number that ticks too, so both
@@ -53,17 +54,29 @@ export default function Confirmed() {
   // back via a notification to see it update. Generalised to sync the whole
   // row (not just paid_marked_at) so PHASE 1 -> PHASE 2 shows up live too.
   useEffect(() => {
-    if (!s.booking?.id || phase === 'confirmed') return undefined;
+    if (!s.booking?.id || phase === 'confirmed' || phase === 'expired') return undefined;
     const bookingId = s.booking.id;
     let active = true;
     const id = setInterval(async () => {
       const { data } = await supabase.from('bookings').select('*').eq('id', bookingId).maybeSingle();
-      if (active && data && data.payment_state !== phase) {
+      if (!active || !data) return;
+      // The server row can still read 'holding' past its own deadline for a
+      // moment — the sweep hasn't reached it yet, or this same client's own
+      // forfeit RPC (fired the instant the local countdown hit 0) hasn't
+      // landed. Blindly copying that stale row over would revive a ticket
+      // this tab already forfeited every 6 seconds until the server catches
+      // up. Treat it as expired here too instead, and let forfeitExpiredHold
+      // retry the RPC rather than regressing local state backwards.
+      if (data.payment_state === 'holding' && msUntil(data.hold_expires_at) === 0) {
+        forfeitExpiredHold(data);
+        return;
+      }
+      if (data.payment_state !== phase) {
         set(prev => (prev.booking?.id === bookingId ? { booking: data } : {}));
       }
     }, 6000);
     return () => { active = false; clearInterval(id); };
-  }, [s.booking?.id, phase, set]);
+  }, [s.booking?.id, phase, set, forfeitExpiredHold]);
 
   const name = s.formName.trim() || T('Bạn', 'You');
   const confirmEyebrow = isPaid
@@ -71,6 +84,7 @@ export default function Confirmed() {
     : isHolding ? T('Đang giữ chỗ cho bạn', 'Holding your spot')
     : isPendingVerification ? T('Đang chờ xác nhận', 'Awaiting confirmation')
     : isDisputed ? T('Đang được xem xét', 'Under review')
+    : isExpired ? T('Đã hết hạn giữ chỗ', 'Hold expired')
     : T('Đang chờ thanh toán', 'Awaiting payment');
   const confirmHeading = isPaid
     ? name + T(', vé của bạn đã sẵn sàng.', ', your ticket is ready.')
@@ -78,8 +92,12 @@ export default function Confirmed() {
       ? name + T(', chỗ của bạn đang được giữ.', ', your spot is being held.')
       : isPendingVerification
         ? name + T(', chỗ của bạn đã được khoá.', ', your seat is locked.')
-        : name + T(', hoàn tất thanh toán để nhận vé.', ', complete payment to get your ticket.');
-  const confirmNote = T('banbe không thu tiền. Hãy chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn; nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.', 'banbe does not collect money. Pay the organizer directly using the instructions in chat; if they cancel, they are responsible for your refund.');
+        : isExpired
+          ? name + T(', chỗ giữ đã hết hạn và đã được mở lại.', ", your hold expired and the seat's been released.")
+          : name + T(', hoàn tất thanh toán để nhận vé.', ', complete payment to get your ticket.');
+  const confirmNote = isExpired
+    ? T('Bạn chưa chuyển khoản trước khi hết giờ giữ chỗ, nên chỗ đã được mở lại cho người khác. Bạn có thể giữ chỗ lại nếu vẫn còn chỗ trống.', "You didn't complete payment before the hold ran out, so the seat was released back. You can reserve again if there's still room.")
+    : T('banbe không thu tiền. Hãy chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn; nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.', 'banbe does not collect money. Pay the organizer directly using the instructions in chat; if they cancel, they are responsible for your refund.');
 
   const showQr = isPaid;
   const giveLabel = s.gaveTicket ? T('Đã gửi vé ▪︎ link qua Zalo', 'Ticket sent ▪︎ link via Zalo') : T('Tặng vé cho bạn bè', 'Give a ticket to a friend');
@@ -138,6 +156,20 @@ export default function Confirmed() {
           </div>
         )}
 
+        {isExpired && (
+          <div
+            onClick={goReserve}
+            style={{ ...cardGlass({ marginTop: 22, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, cursor: 'pointer' }) }}
+            data-testid="confirmed-expired-reserve"
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+              <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{T('Giữ chỗ lại', 'Reserve again')}</span>
+              <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink, opacity: 0.7 }}>{T('Nếu vẫn còn chỗ trống.', 'If there’s still room.')}</span>
+            </div>
+            <span style={{ fontSize: 17, color: ink, flex: 'none', lineHeight: 1 }}>›</span>
+          </div>
+        )}
+
         {awaitingPayment && s.booking?.id && (
           <div
             onClick={() => openPaymentDetails(s.booking.id, 'confirmed')}
@@ -156,7 +188,13 @@ export default function Confirmed() {
             <span style={{ ...display(17) }}>{ev.name}</span>
             <span style={{ fontSize: 12, color: ink }}>{ev.where}</span>
             {showQr && s.booking?.code && <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.12em', color: ink }}>{T('Mã vào cửa: ', 'Entry code: ')}{s.booking.code}</span>}
-            {!showQr && <span style={{ fontSize: 11.5, color: ink }}>{T('Vé sẽ hiện ở đây sau khi thanh toán được xác nhận.', 'Your ticket appears here once payment is confirmed.')}</span>}
+            {!showQr && (
+              <span style={{ fontSize: 11.5, color: ink }}>
+                {isExpired
+                  ? T('Chỗ này đã được mở lại.', 'This seat has been released.')
+                  : T('Vé sẽ hiện ở đây sau khi thanh toán được xác nhận.', 'Your ticket appears here once payment is confirmed.')}
+              </span>
+            )}
             {showQr && <span style={{ fontSize: 10.5, color: ink }}>{T('Đưa mã này ở cửa', 'Show this code at the door')}</span>}
           </div>
           {showQr && <QrCode value={s.booking.id} />}
