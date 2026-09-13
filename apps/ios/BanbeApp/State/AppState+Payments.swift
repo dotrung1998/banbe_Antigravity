@@ -439,7 +439,7 @@ extension AppState {
                 .upload(path, data: imageData,
                         options: FileOptions(contentType: fileExtension == "pdf" ? "application/pdf" : "image/jpeg",
                                              upsert: true))
-            _ = try await SupabaseService.client.auth.getSession()
+            _ = try? await SupabaseService.client.auth.refreshSession()
 
             let result: SubmitProofResult = try await SupabaseService.client
                 .rpc("submit_payment_proof", params: SubmitProofParams(
