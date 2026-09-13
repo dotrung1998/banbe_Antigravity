@@ -433,7 +433,7 @@ extension AppState {
         paymentProofUploading = true
         paymentProofError = ""
         do {
-            _ = try? await SupabaseService.client.auth.refreshSession()
+            try await SupabaseService.client.auth.refreshSession()
 
             let path = "\(bookingID.uuidString)/proof-\(Int(Date().timeIntervalSince1970)).\(fileExtension)"
             _ = try await SupabaseService.client.storage
@@ -478,9 +478,13 @@ extension AppState {
             print("submitPaymentProof failed:", error)
             paymentProofUploading = false
             let raw = "\(error)"
-            paymentProofError = raw.isEmpty
-                ? T("Chưa gửi được. Thử lại nhé.", "Couldn't submit. Please try again.")
-                : T("Đã có lỗi: \(raw)", "Something went wrong: \(raw)")
+            if raw.contains("session") || raw.contains("Session") || raw.contains("Unauthorized") || raw.contains("unauthorized") {
+                paymentProofError = T("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.", "Your session has expired. Please sign in again.")
+            } else if raw.isEmpty {
+                paymentProofError = T("Chưa gửi được. Thử lại nhé.", "Couldn't submit. Please try again.")
+            } else {
+                paymentProofError = T("Đã có lỗi: \(raw)", "Something went wrong: \(raw)")
+            }
         }
     }
 
