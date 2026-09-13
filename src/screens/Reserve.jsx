@@ -15,7 +15,10 @@ export default function Reserve() {
   const totalStr = isFree ? 'Miễn phí' : (priceNum * s.qty).toLocaleString('vi-VN') + '₫';
   const qtyTotalLabel = s.qty > 1 ? (T('Tổng ', 'Total ') + trStatus(totalStr)) : trStatus(ev.price);
 
-  const reserveBtnLabel = T('Giữ chỗ ▪︎ 30 phút', 'Hold ▪︎ 30 minutes');
+  // Matches events.hold_minutes, whose default became 60 with the two-phase
+  // state machine (migration 026). The old copy said 30 and the server held
+  // for 60 — the kind of mismatch a buyer only discovers under pressure.
+  const reserveBtnLabel = T('Giữ chỗ ▪︎ 60 phút', 'Hold ▪︎ 60 minutes');
   const reserveBtnStyle = {
     margin: '18px 22px 0', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 16, borderRadius: 999,
     background: formOk ? ink : 'rgba(27,25,22,0.16)',
@@ -61,7 +64,7 @@ export default function Reserve() {
         </div>
       </div>
       <div style={{ margin: '22px 22px 0', fontSize: 12, lineHeight: 1.55, color: ink }}>
-        {T('banbe không thu tiền. Bạn giữ chỗ 30 phút, sau đó chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn. Nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.', 'banbe does not collect money. Your spot is held for 30 minutes, then you pay the organizer directly using the instructions in chat. If they cancel, they are responsible for your refund.')}
+        {T('banbe không thu tiền. Bạn giữ chỗ 60 phút để chuyển khoản trực tiếp cho người tổ chức. Bấm "Tôi đã chuyển khoản" là đồng hồ dừng và chỗ được khoá cho tới khi người tổ chức xác nhận.', 'banbe does not collect money. Your seat is held for 60 minutes while you transfer to the organizer directly. Tapping "I have transferred" stops the clock and locks your seat until they confirm.')}
       </div>
       <div onClick={() => submitReserve(formOk)} style={reserveBtnStyle}>{reserveBtnLabel}</div>
       {s.reserveError && <div style={{ margin: '12px 22px 0', fontSize: 12, lineHeight: 1.5, color: '#9A3E2D' }}>{s.reserveError}</div>}

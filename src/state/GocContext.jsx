@@ -3,6 +3,7 @@ import { EVENTS, findEvent, haversineKm } from '../data/events.js';
 import { supabase } from '../lib/supabase.js';
 import { requestAuthEmail, requestPasswordSignup, requestPasswordReset } from '../lib/authEmail.js';
 import { renderPaymentDocument } from '../lib/paymentDocument.js';
+import { buildVietQrPayload } from '../lib/vietqr.js';
 
 const GocCtx = createContext(null);
 
@@ -98,6 +99,23 @@ const initialState = {
   documentsKind: 'invoice',
   documentsRole: 'guest',
   documentId: null,
+
+  // ---- two-phase payment state machine (migrations 026/027) ----
+  // PHASE 1 'holding' runs a countdown; PHASE 2 'pending_verification' has
+  // no countdown at all — the seat is frozen until someone verifies it.
+  paymentTxnId: '',
+  paymentProofFile: null,
+  paymentSubmitting: false,
+  paymentSubmitError: '',
+  // The organizer's verification queue, and the admin dispute desk.
+  verifications: [],
+  verificationsLoading: false,
+  verificationBusy: '',
+  disputes: [],
+  disputesLoading: false,
+  disputeBusy: '',
+  auditTrail: [],
+  auditBookingId: null,
   located: null,
   askingLocation: false,
   userCoords: null,
@@ -666,6 +684,164 @@ export function GocProvider({ children }) {
       });
     }
   }, [set, T, loadPaymentBookings]);
+
+  /**
+   * PHASE 1 -> PHASE 2. Uploads the proof, then calls submit_payment_proof,
+   * which is what actually freezes the countdown server-side. The client
+   * never decides this: a frozen timer that only exists in React state would
+   * unfreeze on reload and the seat would be swept.
+   */
+  const submitPaymentProof = useCallback(async (bookingId, file, transactionId) => {
+    const txn = String(transactionId || '').trim();
+    if (!bookingId || !file || !txn) {
+      return set({ paymentSubmitError: T('Cần cả mã giao dịch và ảnh biên lai.',
+                                         'Both a transaction ID and a receipt image are required.') });
+    }
+    set({ paymentSubmitting: true, paymentSubmitError: '' });
+    try {
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const path = `${bookingId}/proof-${Date.now()}.${ext || 'jpg'}`;
+      const { error: upErr } = await supabase.storage.from('pay-proof').upload(path, file, { upsert: true });
+      if (upErr) throw upErr;
+
+      const { data, error } = await supabase.rpc('submit_payment_proof', {
+        p_booking: bookingId, p_transaction_id: txn, p_proof_path: path,
+        p_ip: null, p_user_agent: navigator.userAgent, p_sla_minutes: 15,
+      });
+      if (error) throw error;
+      if (data?.success === false) {
+        const message = {
+          HOLD_EXPIRED_AND_SOLD_OUT: T('Rất tiếc, chỗ đã hết trong lúc chờ thanh toán. Hãy liên hệ người tổ chức để được hoàn tiền.',
+                                       'Sorry — the seat sold out while this was pending. Contact the organizer for a refund.'),
+          TRANSACTION_ID_REQUIRED: T('Cần mã giao dịch.', 'A transaction ID is required.'),
+          PROOF_REQUIRED: T('Cần ảnh biên lai.', 'A receipt image is required.'),
+        }[data.error] || T('Chưa gửi được. Thử lại nhé.', "Couldn't submit. Please try again.");
+        throw new Error(message);
+      }
+      set({ paymentSubmitting: false, paymentTxnId: '' });
+      await loadPaymentBookings();
+      return data;
+    } catch (e) {
+      console.warn('submitPaymentProof failed:', e);
+      set({ paymentSubmitting: false, paymentSubmitError: e.message
+        || T('Chưa gửi được. Thử lại nhé.', "Couldn't submit. Please try again.") });
+    }
+  }, [set, T, loadPaymentBookings]);
+
+  const paymentTxnType = useCallback((e) => set({ paymentTxnId: e.target.value, paymentSubmitError: '' }), [set]);
+
+  /**
+   * The dynamic VietQR payload for a booking, or null when the organizer
+   * hasn't given us a bank account we can build one from. Returns the raw
+   * EMVCo string; the screen renders it with the same qrcode lib the ticket
+   * QR already uses.
+   */
+  const vietQrFor = useCallback((booking) => {
+    const org = booking?.events?.organizers;
+    if (!org?.bank_account_no || !org?.bank_name) return null;
+    try {
+      return buildVietQrPayload({
+        bank: org.bank_name,
+        accountNumber: org.bank_account_no,
+        amountVnd: booking.total_vnd,
+        memo: booking.payment_ref || booking.code || '',
+      });
+    } catch (e) {
+      // An unrecognised bank name is an organizer data problem, not a crash:
+      // the screen falls back to showing the account details as text.
+      console.warn('VietQR unavailable:', e.message);
+      return null;
+    }
+  }, []);
+
+  // ---- organizer verification queue ----
+  const openVerifications = useCallback(() => {
+    set({ screen: 'verifications', verifications: [], verificationsLoading: true });
+  }, [set]);
+
+  const loadVerifications = useCallback(async () => {
+    if (!s.user?.id) return set({ verifications: [], verificationsLoading: false });
+    set({ verificationsLoading: true });
+    const { data, error } = await supabase
+      .from('v_pending_verifications')
+      .select('*')
+      .order('proof_submitted_at', { ascending: true });
+    if (error) {
+      console.warn('loadVerifications failed:', error);
+      return set({ verifications: [], verificationsLoading: false });
+    }
+    set({ verifications: data || [], verificationsLoading: false });
+  }, [set, s.user?.id]);
+
+  const approvePayment = useCallback(async (bookingId) => {
+    set({ verificationBusy: bookingId });
+    try {
+      const { data, error } = await supabase.rpc('verify_payment', {
+        p_booking: bookingId, p_via: 'organizer', p_actor_kind: 'organizer', p_meta: {},
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error);
+    } catch (e) {
+      console.warn('approvePayment failed:', e);
+    }
+    set({ verificationBusy: '' });
+    await loadVerifications();
+  }, [set, loadVerifications]);
+
+  const rejectPayment = useCallback(async (bookingId, reason) => {
+    set({ verificationBusy: bookingId });
+    try {
+      const { data, error } = await supabase.rpc('reject_payment', {
+        p_booking: bookingId, p_reason: reason || '',
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error);
+    } catch (e) {
+      console.warn('rejectPayment failed:', e);
+    }
+    set({ verificationBusy: '' });
+    await loadVerifications();
+  }, [set, loadVerifications]);
+
+  // ---- admin dispute desk ----
+  const openDisputes = useCallback(() => {
+    set({ screen: 'disputes', disputes: [], disputesLoading: true });
+  }, [set]);
+
+  const loadDisputes = useCallback(async () => {
+    set({ disputesLoading: true });
+    const { data, error } = await supabase
+      .from('v_disputes').select('*').order('disputed_at', { ascending: false });
+    if (error) {
+      console.warn('loadDisputes failed:', error);
+      return set({ disputes: [], disputesLoading: false });
+    }
+    set({ disputes: data || [], disputesLoading: false });
+  }, [set]);
+
+  const resolveDispute = useCallback(async (bookingId, uphold, note) => {
+    set({ disputeBusy: bookingId });
+    try {
+      const { data, error } = await supabase.rpc('resolve_dispute', {
+        p_booking: bookingId, p_uphold: !!uphold, p_resolution: note || '',
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error);
+    } catch (e) {
+      console.warn('resolveDispute failed:', e);
+    }
+    set({ disputeBusy: '' });
+    await loadDisputes();
+  }, [set, loadDisputes]);
+
+  /** The T1/T2/T3 trail for one booking — what a dispute is actually argued on. */
+  const loadAuditTrail = useCallback(async (bookingId) => {
+    set({ auditBookingId: bookingId, auditTrail: [] });
+    const { data } = await supabase
+      .from('payment_audit_log').select('*')
+      .eq('booking_id', bookingId).order('at', { ascending: true });
+    set({ auditTrail: data || [] });
+  }, [set]);
 
   // ---- billing identity (the buyer block on every document) ----
   const openBilling = useCallback(async () => {
@@ -1792,6 +1968,9 @@ export function GocProvider({ children }) {
     openPayout, payoutField, savePayoutDetails,
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid,
+    submitPaymentProof, paymentTxnType, vietQrFor,
+    openVerifications, loadVerifications, approvePayment, rejectPayment,
+    openDisputes, loadDisputes, resolveDispute, loadAuditTrail,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
@@ -1818,6 +1997,9 @@ export function GocProvider({ children }) {
     openPayout, payoutField, savePayoutDetails,
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid,
+    submitPaymentProof, paymentTxnType, vietQrFor,
+    openVerifications, loadVerifications, approvePayment, rejectPayment,
+    openDisputes, loadDisputes, resolveDispute, loadAuditTrail,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,

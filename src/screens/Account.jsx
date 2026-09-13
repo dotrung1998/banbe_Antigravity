@@ -3,7 +3,7 @@ import { EVENTS } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
 
 export default function Account() {
-  const { state, T, goHome, goInbox, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, openSecurity, openDocuments, openPayout, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral } = useGoc();
+  const { state, T, goHome, goInbox, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, openSecurity, openDocuments, openPayout, openVerifications, openDisputes, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral } = useGoc();
   const s = state;
   const completedCount = [...new Set([...(s.favorites || []), ...s.attending])]
     .map(k => EVENTS.find(e => e.key === k))
@@ -103,6 +103,10 @@ export default function Account() {
         {s.organizerModeError && <p style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '10px 0 0' }}>{s.organizerModeError}</p>}
         {isOrganizer && (
           <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
+            <div onClick={openVerifications} data-testid="host-verifications" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+              <span style={{ fontSize: 14, color: ink }}>{T('Chờ xác nhận thanh toán', 'Awaiting verification')}</span>
+              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+            </div>
             <div onClick={openPayout} data-testid="host-payout" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
               <span style={{ fontSize: 14, color: ink }}>{T('Nhận thanh toán', 'Getting paid')}</span>
               <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
@@ -137,6 +141,16 @@ export default function Account() {
           </div>
         )}
       </div>
+
+      {s.accountType === 'admin' && (
+        <div style={{ padding: '22px 20px 0' }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản trị', 'Admin')}</span>
+          <div onClick={openDisputes} data-testid="admin-disputes" style={{ ...fieldGlass({ marginTop: 10, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
+            <span style={{ fontSize: 14, color: ink }}>{T('Tranh chấp thanh toán', 'Payment disputes')}</span>
+            <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+          </div>
+        </div>
+      )}
 
       {s.user ? (
         <div onClick={logout} style={{ padding: '24px 20px 40px', fontSize: 13, color: ink, cursor: 'pointer' }}>{T('Đăng xuất', 'Sign out')}</div>

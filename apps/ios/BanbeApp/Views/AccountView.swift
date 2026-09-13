@@ -119,6 +119,9 @@ struct AccountView: View {
 
                 if app.canHost {
                     VStack(spacing: 0) {
+                        row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"),
+                            identifier: "host.verifications", trailing: "›") { app.openVerifications() }
+                        Divider().overlay(app.palette.rule)
                         row(app.T("Nhận thanh toán", "Getting paid"),
                             identifier: "host.payout", trailing: "›") { app.openPayout() }
                         Divider().overlay(app.palette.rule)

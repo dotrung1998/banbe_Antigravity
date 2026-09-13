@@ -21,6 +21,7 @@ extension AppState {
                 .from("bookings")
                 .select("""
                     id, qty, total_vnd, code, status, paid_marked_at, proof_uploaded_at, created_at,
+                    payment_state, payment_ref, hold_expires_at, transaction_id,
                     events(name, organizers(name, pay_methods, bank_name, bank_account_name,
                                             bank_account_no, momo_phone, pay_note))
                     """)
@@ -342,6 +343,10 @@ private struct PayableBookingRow: Decodable {
     let status: String
     let paidMarkedAt: Date?
     let proofUploadedAt: Date?
+    let paymentState: String?
+    let paymentRef: String?
+    let holdExpiresAt: Date?
+    let transactionId: String?
     let events: EventRow?
 
     struct EventRow: Decodable {
@@ -373,12 +378,20 @@ private struct PayableBookingRow: Decodable {
         case totalVnd = "total_vnd"
         case paidMarkedAt = "paid_marked_at"
         case proofUploadedAt = "proof_uploaded_at"
+        case paymentState = "payment_state"
+        case paymentRef = "payment_ref"
+        case holdExpiresAt = "hold_expires_at"
+        case transactionId = "transaction_id"
     }
 
     var asPayable: PayableBooking {
         let org = events?.organizers
         return PayableBooking(
             id: id, qty: qty, totalVnd: totalVnd, code: code ?? "", status: status,
+            paymentState: PaymentPhase(rawValue: paymentState ?? "holding") ?? .holding,
+            paymentRef: paymentRef ?? "",
+            holdExpiresAt: holdExpiresAt,
+            transactionId: transactionId ?? "",
             paidMarkedAt: paidMarkedAt, proofUploadedAt: proofUploadedAt,
             eventName: events?.name ?? "",
             organizerName: org?.name ?? "",
@@ -389,5 +402,172 @@ private struct PayableBookingRow: Decodable {
             momoPhone: org?.momoPhone ?? "",
             payNote: org?.payNote ?? ""
         )
+    }
+}
+
+// MARK: - Two-phase payment state machine (migrations 026/027)
+
+extension AppState {
+
+    /// PHASE 1 -> PHASE 2. The freeze is performed by submit_payment_proof on
+    /// the server, never here: a countdown stopped only in client state would
+    /// restart on relaunch and the seat would be swept out from under a buyer
+    /// who had already paid.
+    func submitPaymentProof(bookingID: UUID, imageData: Data,
+                            transactionID: String, fileExtension: String = "jpg") async {
+        let txn = transactionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !txn.isEmpty else {
+            paymentProofError = T("Cần mã giao dịch.", "A transaction ID is required.")
+            return
+        }
+        paymentProofUploading = true
+        paymentProofError = ""
+        do {
+            let path = "\(bookingID.uuidString)/proof-\(Int(Date().timeIntervalSince1970)).\(fileExtension)"
+            _ = try await SupabaseService.client.storage
+                .from("pay-proof")
+                .upload(path, data: imageData,
+                        options: FileOptions(contentType: fileExtension == "pdf" ? "application/pdf" : "image/jpeg",
+                                             upsert: true))
+            let result: SubmitProofResult = try await SupabaseService.client
+                .rpc("submit_payment_proof", params: SubmitProofParams(
+                    booking: bookingID.uuidString, transactionID: txn, proofPath: path,
+                    ip: nil, userAgent: "banbe-ios", slaMinutes: 15))
+                .execute().value
+
+            if result.success == false {
+                paymentProofError = {
+                    switch result.error ?? "" {
+                    case "HOLD_EXPIRED_AND_SOLD_OUT":
+                        return T("Rất tiếc, chỗ đã hết trong lúc chờ thanh toán. Hãy liên hệ người tổ chức để được hoàn tiền.",
+                                 "Sorry — the seat sold out while this was pending. Contact the organizer for a refund.")
+                    default:
+                        return T("Chưa gửi được. Thử lại nhé.", "Couldn't submit. Please try again.")
+                    }
+                }()
+                paymentProofUploading = false
+                return
+            }
+
+            paymentTxnId = ""
+            paymentProofUploading = false
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            await loadPaymentBookings()
+        } catch {
+            print("submitPaymentProof failed:", error)
+            paymentProofUploading = false
+            paymentProofError = T("Chưa gửi được. Thử lại nhé.", "Couldn't submit. Please try again.")
+        }
+    }
+
+    // MARK: Organizer verification queue
+
+    func openVerifications() {
+        screen = .verifications
+        verifications = []
+        Task { await loadVerifications() }
+    }
+
+    func loadVerifications() async {
+        guard userID != nil else { verifications = []; return }
+        verificationsLoading = true
+        do {
+            verifications = try await SupabaseService.client
+                .from("v_pending_verifications").select()
+                .order("proof_submitted_at", ascending: true)
+                .execute().value
+        } catch {
+            print("loadVerifications failed:", error)
+            verifications = []
+        }
+        verificationsLoading = false
+    }
+
+    func approvePayment(_ bookingID: UUID) async {
+        verificationBusy = bookingID
+        defer { verificationBusy = nil }
+        do {
+            _ = try await SupabaseService.client
+                .rpc("verify_payment", params: VerifyPaymentParams(
+                    booking: bookingID.uuidString, via: "organizer", actorKind: "organizer"))
+                .execute()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } catch {
+            print("approvePayment failed:", error)
+        }
+        await loadVerifications()
+    }
+
+    func rejectPayment(_ bookingID: UUID, reason: String) async {
+        verificationBusy = bookingID
+        defer { verificationBusy = nil }
+        do {
+            _ = try await SupabaseService.client
+                .rpc("reject_payment", params: ["p_booking": bookingID.uuidString, "p_reason": reason])
+                .execute()
+        } catch {
+            print("rejectPayment failed:", error)
+        }
+        await loadVerifications()
+    }
+}
+
+struct PendingVerification: Codable, Identifiable, Hashable {
+    let bookingId: UUID
+    var eventName: String?
+    var guestName: String?
+    var qty: Int
+    var totalVnd: Int
+    var paymentRef: String?
+    var transactionId: String?
+    var proofSubmittedAt: Date?
+    var overdue: Bool?
+    var escalated: Bool?
+    var id: UUID { bookingId }
+
+    enum CodingKeys: String, CodingKey {
+        case bookingId = "booking_id"
+        case eventName = "event_name"
+        case guestName = "guest_name"
+        case qty
+        case totalVnd = "total_vnd"
+        case paymentRef = "payment_ref"
+        case transactionId = "transaction_id"
+        case proofSubmittedAt = "proof_submitted_at"
+        case overdue, escalated
+    }
+}
+
+private struct SubmitProofResult: Decodable {
+    let success: Bool?
+    let error: String?
+    let state: String?
+}
+
+private struct SubmitProofParams: Encodable {
+    let booking: String
+    let transactionID: String
+    let proofPath: String
+    let ip: String?
+    let userAgent: String
+    let slaMinutes: Int
+    enum CodingKeys: String, CodingKey {
+        case booking = "p_booking"
+        case transactionID = "p_transaction_id"
+        case proofPath = "p_proof_path"
+        case ip = "p_ip"
+        case userAgent = "p_user_agent"
+        case slaMinutes = "p_sla_minutes"
+    }
+}
+
+private struct VerifyPaymentParams: Encodable {
+    let booking: String
+    let via: String
+    let actorKind: String
+    enum CodingKeys: String, CodingKey {
+        case booking = "p_booking"
+        case via = "p_via"
+        case actorKind = "p_actor_kind"
     }
 }

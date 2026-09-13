@@ -35,6 +35,8 @@ import Billing from './screens/Billing.jsx';
 import Payout from './screens/Payout.jsx';
 import Documents from './screens/Documents.jsx';
 import DocumentView from './screens/DocumentView.jsx';
+import Verifications from './screens/Verifications.jsx';
+import Disputes from './screens/Disputes.jsx';
 
 const SCREENS = {
   splash: Splash,
@@ -65,6 +67,8 @@ const SCREENS = {
   payout: Payout,
   documents: Documents,
   documentView: DocumentView,
+  verifications: Verifications,
+  disputes: Disputes,
 };
 
 function Shell() {

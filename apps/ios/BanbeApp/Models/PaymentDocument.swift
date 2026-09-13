@@ -88,12 +88,32 @@ struct DocumentLine: Codable, Hashable {
 
 /// A booking of the signed-in account's, with enough of the organizer's
 /// payment details attached to actually pay it.
+/// The two-phase payment machine's states (migration 026). `holding` runs a
+/// countdown; `pendingVerification` deliberately has none — the seat is
+/// frozen until someone verifies it.
+enum PaymentPhase: String, Codable {
+    case holding
+    case pendingVerification = "pending_verification"
+    case confirmed
+    case expired
+    case disputed
+    case cancelled
+
+    /// Whether a countdown should be shown at all. Showing one in PHASE 2
+    /// tells a buyer who has just paid that they are about to lose the seat.
+    var isCountingDown: Bool { self == .holding }
+}
+
 struct PayableBooking: Identifiable, Hashable {
     let id: UUID
     var qty: Int
     var totalVnd: Int
     var code: String
     var status: String
+    var paymentState: PaymentPhase
+    var paymentRef: String
+    var holdExpiresAt: Date?
+    var transactionId: String
     var paidMarkedAt: Date?
     var proofUploadedAt: Date?
     var eventName: String
@@ -105,7 +125,8 @@ struct PayableBooking: Identifiable, Hashable {
     var momoPhone: String
     var payNote: String
 
-    var isPaid: Bool { paidMarkedAt != nil }
+    var isPaid: Bool { paymentState == .confirmed || paidMarkedAt != nil }
+    var isFrozen: Bool { paymentState == .pendingVerification }
     var hasBank: Bool { payMethods.contains("bank") && !bankAccountNo.isEmpty }
     var hasMomo: Bool { payMethods.contains("momo") && !momoPhone.isEmpty }
     var hasAnyPayRail: Bool { hasBank || hasMomo }

@@ -11,6 +11,7 @@ enum Screen: String {
     case create, attendance, preferences, editName, notifications, eventList
     case security
     case paymentDetails, billing, payout, documents, documentView
+    case verifications, disputes
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -237,6 +238,11 @@ final class AppState: ObservableObject {
     @Published var documentsKind = "invoice"
     @Published var documentsRole = "guest"
     @Published var documentID: UUID?
+    // Two-phase payment machine (migrations 026/027).
+    @Published var paymentTxnId = ""
+    @Published var verifications: [PendingVerification] = []
+    @Published var verificationsLoading = false
+    @Published var verificationBusy: UUID?
 
     // MARK: Create event
     @Published var orgRegName = ""
@@ -640,6 +646,7 @@ final class AppState: ObservableObject {
         case .payout: screen = .profile
         case .documents: screen = .profile
         case .documentView: screen = .documents
+        case .verifications, .disputes: screen = .profile
         default: break
         }
     }
@@ -669,6 +676,7 @@ final class AppState: ObservableObject {
         case .payout: return .profile
         case .documents: return .profile
         case .documentView: return .documents
+        case .verifications, .disputes: return .profile
         default: return .home
         }
     }
