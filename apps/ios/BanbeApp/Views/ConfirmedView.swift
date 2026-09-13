@@ -3,12 +3,21 @@ import SwiftUI
 /// Port of src/screens/Confirmed.jsx — the ticket: hold countdown while the
 /// booking is still pending, the entry code, and a real scannable QR of the
 /// booking id (the same value the organizer's scanner reads).
+///
+/// The QR/entry-code ticket only ever shows once `booking.paidMarkedAt` is
+/// set — never off `booking.status` alone. Every seeded demo event uses
+/// 'instant' approval, which marks a booking 'confirmed' the moment it's
+/// created; gating on status was exactly what let this screen show a ticket
+/// before anyone had paid anything.
 struct ConfirmedView: View {
     @EnvironmentObject var app: AppState
+    @State private var pollTask: Task<Void, Never>?
 
     private var event: CatalogEvent { app.currentEvent }
+    private var isPaid: Bool { app.booking?.paidMarkedAt != nil }
+    private var awaitingPayment: Bool { app.booking != nil && !isPaid }
     private var holdActive: Bool {
-        app.booking?.status == "pending" && (app.holdDeadline ?? .distantPast) > app.now
+        !isPaid && app.booking?.status == "pending" && (app.holdDeadline ?? .distantPast) > app.now
     }
     private var countdown: String {
         let remaining = max(0, Int((app.holdDeadline ?? app.now).timeIntervalSince(app.now)))
@@ -25,13 +34,16 @@ struct ConfirmedView: View {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(holdActive ? app.T("Đang giữ chỗ cho bạn", "Holding your spot")
-                                        : app.T("Đã xác nhận", "Confirmed"))
+                        Text(isPaid ? app.T("Đã xác nhận", "Confirmed")
+                             : holdActive ? app.T("Đang giữ chỗ cho bạn", "Holding your spot")
+                             : app.T("Đang chờ thanh toán", "Awaiting payment"))
                             .font(.system(size: 11.5))
 
-                        Text(guestName + (holdActive
-                            ? app.T(", chỗ của bạn đang được giữ.", ", your spot is being held.")
-                            : app.T(", vé của bạn đã sẵn sàng.", ", your ticket is ready.")))
+                        Text(guestName + (isPaid
+                            ? app.T(", vé của bạn đã sẵn sàng.", ", your ticket is ready.")
+                            : holdActive
+                                ? app.T(", chỗ của bạn đang được giữ.", ", your spot is being held.")
+                                : app.T(", hoàn tất thanh toán để nhận vé.", ", complete payment to get your ticket.")))
                             .font(BanbeTheme.display(27))
                             .padding(.top, 12)
 
@@ -59,27 +71,54 @@ struct ConfirmedView: View {
                             .padding(.top, 22)
                         }
 
+                        if awaitingPayment, let bookingID = app.booking?.id {
+                            Button {
+                                app.openPaymentDetails(bookingID, back: .confirmed)
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(app.T("Xem thông tin chuyển khoản", "See payment details"))
+                                            .font(.system(size: 13.5, weight: .semibold))
+                                        Text(app.T("Số tài khoản, số tiền và nội dung cần ghi.",
+                                                   "Account number, amount and the reference to use."))
+                                            .font(.system(size: 11.5))
+                                            .foregroundStyle(app.palette.ink.opacity(0.7))
+                                            .multilineTextAlignment(.leading)
+                                    }
+                                    Spacer()
+                                    Text("›").font(.system(size: 17))
+                                }
+                                .foregroundStyle(app.palette.ink)
+                                .padding(.horizontal, 16).padding(.vertical, 14)
+                                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, holdActive ? 12 : 22)
+                            .accessibilityIdentifier("confirmed.pay")
+                        }
+
                         Divider().overlay(app.palette.rule).padding(.top, 28)
 
                         HStack(alignment: .top, spacing: 14) {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(event.name).font(BanbeTheme.display(17))
                                 Text(app.trStatus(app.stripKm(event.where, event: event))).font(.system(size: 12))
-                                if let code = app.booking?.code {
+                                if isPaid, let code = app.booking?.code {
                                     Text(app.T("Mã vào cửa: ", "Entry code: ") + code)
                                         .font(.system(size: 12, weight: .semibold))
                                         .kerning(1.5)
+                                } else if !isPaid {
+                                    Text(app.T("Vé sẽ hiện ở đây sau khi thanh toán được xác nhận.",
+                                               "Your ticket appears here once payment is confirmed."))
+                                        .font(.system(size: 11.5))
                                 }
-                                if let status = app.booking?.status {
-                                    Text(app.T("Trạng thái: ", "Status: ") + status).font(.system(size: 11.5))
-                                }
-                                if app.booking != nil {
+                                if isPaid {
                                     Text(app.T("Đưa mã này ở cửa", "Show this code at the door"))
                                         .font(.system(size: 10.5))
                                 }
                             }
                             Spacer(minLength: 0)
-                            if let booking = app.booking {
+                            if isPaid, let booking = app.booking {
                                 QRCodeImage(value: booking.id.uuidString)
                             }
                         }
@@ -92,7 +131,7 @@ struct ConfirmedView: View {
                 }
 
                 VStack(spacing: 0) {
-                    if app.booking != nil {
+                    if isPaid {
                         footerButton(app.T("Tặng vé cho bạn bè", "Give a ticket to a friend")) { giveTicket() }
                     }
                     footerButton(app.calAdded ? app.T("Đã thêm vào lịch", "Added to calendar")
@@ -100,6 +139,33 @@ struct ConfirmedView: View {
                         app.addToCalendar()
                     }
                     footerButton(app.T("Về trang chính", "Back to home")) { app.goHome() }
+                }
+            }
+        }
+        .onAppear { startPollingIfNeeded() }
+        .onChange(of: app.booking?.id) { _, _ in startPollingIfNeeded() }
+        .onChange(of: isPaid) { _, paid in if paid { pollTask?.cancel() } }
+        .onDisappear { pollTask?.cancel() }
+    }
+
+    /// While the booking is sitting unpaid, poll for the organizer having
+    /// confirmed it — the guest may already be looking at this screen when
+    /// that happens, and shouldn't have to leave and come back via the
+    /// notification to see the ticket unlock.
+    private func startPollingIfNeeded() {
+        pollTask?.cancel()
+        guard let bookingID = app.booking?.id, !isPaid else { return }
+        pollTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                if Task.isCancelled { break }
+                guard app.booking?.id == bookingID, app.booking?.paidMarkedAt == nil else { return }
+                if let fresh: Booking = try? await SupabaseService.client
+                    .from("bookings").select().eq("id", value: bookingID.uuidString)
+                    .single().execute().value,
+                   fresh.paidMarkedAt != nil, app.booking?.id == bookingID {
+                    app.booking = fresh
+                    return
                 }
             }
         }

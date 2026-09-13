@@ -369,11 +369,46 @@ extension AppState {
     /// somewhere real, takes you there.
     func openNotification(_ notification: AppNotification) {
         Task { await markNotificationRead(notification) }
-        if notification.kind == "new_message",
-           let threadID = notification.data["thread_id"]?.stringValue,
-           let uuid = UUID(uuidString: threadID) {
-            let eventKey = notification.data["event_id"]?.stringValue ?? self.eventKey
-            openThread(id: uuid, eventKey: eventKey, back: .inbox)
+        switch notification.kind {
+        case "new_message":
+            if let threadID = notification.data["thread_id"]?.stringValue,
+               let uuid = UUID(uuidString: threadID) {
+                let key = notification.data["event_id"]?.stringValue ?? self.eventKey
+                openThread(id: uuid, eventKey: key, back: .inbox)
+            }
+        case "booking_requested":
+            // The organizer's side: straight to the check-in list for that
+            // event, where "mark as paid" already lives (AttendanceView).
+            if let key = notification.data["event_id"]?.stringValue {
+                openAttendance(key)
+            }
+        case "payment_confirmed":
+            if let bookingIDString = notification.data["booking_id"]?.stringValue,
+               let bookingID = UUID(uuidString: bookingIDString) {
+                let key = notification.data["event_id"]?.stringValue
+                Task { await openBookingConfirmed(bookingID: bookingID, eventKey: key) }
+            }
+        default:
+            break
+        }
+    }
+
+    /// Reopens the Confirmed/ticket screen for a specific booking — used
+    /// when a 'payment_confirmed' notification is tapped after the guest has
+    /// moved on elsewhere in the app, since the booking that just unlocked
+    /// its QR code isn't necessarily the one still held in `booking`.
+    func openBookingConfirmed(bookingID: UUID, eventKey: String?) async {
+        do {
+            let fresh: Booking = try await SupabaseService.client
+                .from("bookings").select().eq("id", value: bookingID.uuidString)
+                .single().execute().value
+            booking = fresh
+            self.eventKey = eventKey ?? fresh.eventId
+            holdDeadline = fresh.expiresAt
+            now = Date()
+            screen = .confirmed
+        } catch {
+            print("openBookingConfirmed failed:", error)
         }
     }
 

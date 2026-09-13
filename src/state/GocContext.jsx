@@ -1513,15 +1513,8 @@ export function GocProvider({ children }) {
     set({ screen: 'chat', eventKey, chatBack: back || 'inbox', chatThreadId: threadId, chatMessages: [] });
     loadChatMessages(threadId);
   }, [set, loadChatMessages]);
-  // Tapping a notification marks it read and, for the kinds that point at
-  // somewhere real, takes you there — a 'new_message' notification opens the
-  // actual thread it's about instead of just sitting there read.
-  const openNotification = useCallback((n) => {
-    markNotificationRead(n.id);
-    if (n.kind === 'new_message' && n.data?.thread_id) {
-      openThread(n.data.thread_id, n.data.event_id, 'inbox');
-    }
-  }, [markNotificationRead, openThread]);
+  // openNotification is defined further down (after openAttendance exists to
+  // route 'booking_requested' taps to it) — see the notifications section.
   const chatSend = useCallback(async () => {
     const text = s.chatDraft.trim();
     if (!text || !s.chatThreadId || !s.user) return;
@@ -1653,6 +1646,37 @@ export function GocProvider({ children }) {
     set({ screen: 'attendance', attendanceEventKey: key, attendanceGuests: [] });
     loadAttendanceGuests(key);
   }, [set, loadAttendanceGuests]);
+
+  // Reopens the Confirmed/ticket screen for a specific booking — used when
+  // a 'payment_confirmed' notification arrives (or is tapped) after the
+  // guest has moved on elsewhere in the app, since the booking that just
+  // unlocked its QR code isn't necessarily the one in state.booking any more.
+  const openBookingConfirmed = useCallback(async (bookingId, eventKey) => {
+    const { data } = await supabase.from('bookings').select('*').eq('id', bookingId).maybeSingle();
+    if (!data) return;
+    set({
+      screen: 'confirmed',
+      eventKey: eventKey || data.event_id,
+      booking: data,
+      holdDeadline: data.expires_at ? new Date(data.expires_at).getTime() : null,
+      now: Date.now(),
+    });
+  }, [set]);
+  // Tapping a notification marks it read and, for the kinds that point at
+  // somewhere real, takes you there — a 'new_message' notification opens the
+  // actual thread it's about instead of just sitting there read.
+  const openNotification = useCallback((n) => {
+    markNotificationRead(n.id);
+    if (n.kind === 'new_message' && n.data?.thread_id) {
+      openThread(n.data.thread_id, n.data.event_id, 'inbox');
+    } else if (n.kind === 'booking_requested' && n.data?.event_id) {
+      // The organizer's side: straight to the check-in list for that event,
+      // where "mark as paid" already lives (see Attendance.jsx).
+      openAttendance(n.data.event_id);
+    } else if (n.kind === 'payment_confirmed' && n.data?.booking_id) {
+      openBookingConfirmed(n.data.booking_id, n.data.event_id);
+    }
+  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed]);
   /**
    * The organizer's "mark as paid". confirm_payment issues the receipt in
    * the same transaction (migration 024) and notifies the guest, which is
