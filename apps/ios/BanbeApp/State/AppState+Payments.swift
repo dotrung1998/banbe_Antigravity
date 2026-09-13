@@ -439,6 +439,8 @@ extension AppState {
                 .upload(path, data: imageData,
                         options: FileOptions(contentType: fileExtension == "pdf" ? "application/pdf" : "image/jpeg",
                                              upsert: true))
+            _ = try await SupabaseService.client.auth.getSession()
+
             let result: SubmitProofResult = try await SupabaseService.client
                 .rpc("submit_payment_proof", params: SubmitProofParams(
                     booking: bookingID.uuidString, transactionID: txn, proofPath: path,
@@ -451,6 +453,14 @@ extension AppState {
                     case "HOLD_EXPIRED_AND_SOLD_OUT":
                         return T("Rất tiếc, chỗ đã hết trong lúc chờ thanh toán. Hãy liên hệ người tổ chức để được hoàn tiền.",
                                  "Sorry — the seat sold out while this was pending. Contact the organizer for a refund.")
+                    case "AUTH_REQUIRED":
+                        return T("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.", "Your session has expired. Please sign in again.")
+                    case "BOOKING_NOT_FOUND":
+                        return T("Không tìm thấy đặt chỗ này.", "This booking could not be found.")
+                    case "NOT_AUTHORIZED":
+                        return T("Bạn không được phép thực hiện thao tác này.", "You are not authorized to perform this action.")
+                    case "INVALID_STATE":
+                        return T("Trạng thái đặt chỗ không cho phép thao tác này.", "This booking can't be processed in its current state.")
                     default:
                         return T("Chưa gửi được. Thử lại nhé.", "Couldn't submit. Please try again.")
                     }
