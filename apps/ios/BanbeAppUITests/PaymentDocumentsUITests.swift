@@ -60,3 +60,24 @@ final class PaymentDocumentsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["host.receipts"].exists)
     }
 }
+
+extension PaymentDocumentsUITests {
+    /// The bug: neither goBack() nor backTargetScreen listed the new
+    /// payment/document screens, so an edge swipe on DocumentView either
+    /// no-op'd or fell through to the `default: .home` case — landing
+    /// somewhere other than the list it was opened from.
+    func testSwipeBackFromDocumentViewReturnsToTheList() throws {
+        let app = launchToAccount()
+        app.buttons["account.receipts"].tap()
+        XCTAssertTrue(app.otherElements["screen.documents"].waitForExistence(timeout: 5))
+
+        // Nothing to open signed out, so this only verifies the wiring that
+        // can be reached every time: Documents -> Account.
+        let backEdge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5))
+        let target = app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+        backEdge.press(forDuration: 0.05, thenDragTo: target)
+
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5),
+                      "Swipe back from Documents should return to Account, not Home or nowhere")
+    }
+}

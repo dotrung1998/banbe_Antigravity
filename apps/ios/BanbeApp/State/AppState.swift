@@ -635,6 +635,11 @@ final class AppState: ObservableObject {
         case .preferences, .editName, .security: screen = .profile
         case .login: screen = authBackScreen
         case .confirmed, .refunded, .notifications: goHome()
+        case .paymentDetails: screen = paymentBack
+        case .billing: screen = .paymentDetails
+        case .payout: screen = .profile
+        case .documents: screen = .profile
+        case .documentView: screen = .documents
         default: break
         }
     }
@@ -659,6 +664,11 @@ final class AppState: ObservableObject {
         case .preferences, .editName, .security: return .profile
         case .login: return authBackScreen
         case .confirmed, .refunded, .notifications: return .home
+        case .paymentDetails: return paymentBack
+        case .billing: return .paymentDetails
+        case .payout: return .profile
+        case .documents: return .profile
+        case .documentView: return .documents
         default: return .home
         }
     }
