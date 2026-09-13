@@ -283,30 +283,8 @@ final class AppState: ObservableObject {
             if allowed { locationService.request() }
         }
         tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.now = Date()
-                self?.forfeitLapsedHoldIfNeeded()
-            }
+            Task { @MainActor in self?.now = Date() }
         }
-    }
-
-    /// A watchdog for every screen that ISN'T one of the three watching its
-    /// own local countdown (ConfirmedView, PaymentDetailsView, HomeView).
-    /// EventDetailView and EventListView, in particular, only ever read
-    /// booking.status/attending — they never notice a lapse themselves — so
-    /// staying on one of those past the deadline used to leave "Going" and
-    /// the ticket code showing forever, since nothing else was on screen to
-    /// call forfeitExpiredHold. This runs unconditionally off the same
-    /// once-a-second timer that already drives `now`, regardless of which
-    /// screen is on top, and is naturally idempotent with the per-screen
-    /// checks (all of them route through the same forfeitExpiredHold, which
-    /// itself only acts once per lapse since paymentState flips to .expired
-    /// immediately).
-    private func forfeitLapsedHoldIfNeeded() {
-        guard let current = booking, current.paymentState == .holding,
-              let deadline = current.holdExpiresAt, Countdown.secondsUntil(deadline, now: now) == 0
-        else { return }
-        forfeitExpiredHold(current)
     }
 
     deinit {
