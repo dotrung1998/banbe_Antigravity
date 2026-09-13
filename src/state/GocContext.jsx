@@ -708,9 +708,6 @@ export function GocProvider({ children }) {
     }
     set({ paymentSubmitting: true, paymentSubmitError: '' });
     try {
-      const { error: authErr } = await supabase.auth.getSession();
-      if (authErr) throw authErr;
-
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
       const path = `${bookingId}/proof-${Date.now()}.${ext || 'jpg'}`;
       const { error: upErr } = await supabase.storage.from('pay-proof').upload(path, file, { upsert: true });
@@ -724,13 +721,9 @@ export function GocProvider({ children }) {
       if (data?.success === false) {
         const message = {
           HOLD_EXPIRED_AND_SOLD_OUT: T('Rất tiếc, chỗ đã hết trong lúc chờ thanh toán. Hãy liên hệ người tổ chức để được hoàn tiền.',
-                                         'Sorry — the seat sold out while this was pending. Contact the organizer for a refund.'),
+                                       'Sorry — the seat sold out while this was pending. Contact the organizer for a refund.'),
           TRANSACTION_ID_REQUIRED: T('Cần mã giao dịch.', 'A transaction ID is required.'),
           PROOF_REQUIRED: T('Cần ảnh biên lai.', 'A receipt image is required.'),
-          AUTH_REQUIRED: T('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'Your session has expired. Please sign in again.'),
-          BOOKING_NOT_FOUND: T('Không tìm thấy đặt chỗ này.', 'This booking could not be found.'),
-          NOT_AUTHORIZED: T('Bạn không được phép thực hiện thao tác này.', 'You are not authorized to perform this action.'),
-          INVALID_STATE: T('Trạng thái đặt chỗ không cho phép thao tác này.', 'This booking can\'t be processed in its current state.'),
         }[data.error] || T('Chưa gửi được. Thử lại nhé.', "Couldn't submit. Please try again.");
         throw new Error(message);
       }

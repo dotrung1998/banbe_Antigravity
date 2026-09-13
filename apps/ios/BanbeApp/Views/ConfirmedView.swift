@@ -22,7 +22,8 @@ struct ConfirmedView: View {
     private var isHolding: Bool { app.booking != nil && phase == .holding }
     private var isPendingVerification: Bool { phase == .pendingVerification }
     private var isDisputed: Bool { phase == .disputed }
-    private var awaitingPayment: Bool { app.booking != nil && !isPaid }
+    private var isExpired: Bool { phase == .expired }
+    private var awaitingPayment: Bool { app.booking != nil && !isPaid && !isExpired }
     private var holdDeadline: Date? { app.booking?.holdExpiresAt ?? app.holdDeadline }
     private var countdown: String {
         Countdown.format(Countdown.secondsUntil(holdDeadline, now: app.now))
@@ -46,6 +47,7 @@ struct ConfirmedView: View {
                              : isHolding ? app.T("Đang giữ chỗ cho bạn", "Holding your spot")
                              : isPendingVerification ? app.T("Đang chờ xác nhận", "Awaiting confirmation")
                              : isDisputed ? app.T("Đang được xem xét", "Under review")
+                             : isExpired ? app.T("Đã hết hạn giữ chỗ", "Hold expired")
                              : app.T("Đang chờ thanh toán", "Awaiting payment"))
                             .font(.system(size: 11.5))
 
@@ -55,14 +57,20 @@ struct ConfirmedView: View {
                                 ? app.T(", chỗ của bạn đang được giữ.", ", your spot is being held.")
                                 : isPendingVerification
                                     ? app.T(", chỗ của bạn đã được khoá.", ", your seat is locked.")
-                                    : app.T(", hoàn tất thanh toán để nhận vé.", ", complete payment to get your ticket.")))
+                                    : isExpired
+                                        ? app.T(", chỗ giữ đã hết hạn và đã được mở lại.",
+                                                ", your hold expired and the seat's been released.")
+                                        : app.T(", hoàn tất thanh toán để nhận vé.", ", complete payment to get your ticket.")))
                             .font(BanbeTheme.display(27))
                             .padding(.top, 12)
 
-                        Text(app.T(
-                            "banbe không thu tiền. Hãy chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn; nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.",
-                            "banbe does not collect money. Pay the organizer directly using the instructions in chat; if they cancel, they are responsible for your refund."
-                        ))
+                        Text(isExpired
+                            ? app.T("Bạn chưa chuyển khoản trước khi hết giờ giữ chỗ, nên chỗ đã được mở lại cho người khác. Bạn có thể giữ chỗ lại nếu vẫn còn chỗ trống.",
+                                    "You didn't complete payment before the hold ran out, so the seat was released back. You can reserve again if there's still room.")
+                            : app.T(
+                                "banbe không thu tiền. Hãy chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn; nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.",
+                                "banbe does not collect money. Pay the organizer directly using the instructions in chat; if they cancel, they are responsible for your refund."
+                            ))
                         .font(.system(size: 13.5))
                         .lineSpacing(3)
                         .padding(.top, 18)
@@ -130,6 +138,27 @@ struct ConfirmedView: View {
                             .accessibilityIdentifier("confirmed.disputed")
                         }
 
+                        if isExpired {
+                            Button { app.goReserve() } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(app.T("Giữ chỗ lại", "Reserve again"))
+                                            .font(.system(size: 13.5, weight: .semibold))
+                                        Text(app.T("Nếu vẫn còn chỗ trống.", "If there's still room."))
+                                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                                    }
+                                    Spacer()
+                                    Text("›").font(.system(size: 17))
+                                }
+                                .foregroundStyle(app.palette.ink)
+                                .padding(.horizontal, 16).padding(.vertical, 14)
+                                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 22)
+                            .accessibilityIdentifier("confirmed.expiredReserve")
+                        }
+
                         if awaitingPayment, let bookingID = app.booking?.id {
                             Button {
                                 app.openPaymentDetails(bookingID, back: .confirmed)
@@ -167,8 +196,10 @@ struct ConfirmedView: View {
                                         .font(.system(size: 12, weight: .semibold))
                                         .kerning(1.5)
                                 } else if !isPaid {
-                                    Text(app.T("Vé sẽ hiện ở đây sau khi thanh toán được xác nhận.",
-                                               "Your ticket appears here once payment is confirmed."))
+                                    Text(isExpired
+                                        ? app.T("Chỗ này đã được mở lại.", "This seat has been released.")
+                                        : app.T("Vé sẽ hiện ở đây sau khi thanh toán được xác nhận.",
+                                                "Your ticket appears here once payment is confirmed."))
                                         .font(.system(size: 11.5))
                                 }
                                 if isPaid {
@@ -231,17 +262,33 @@ struct ConfirmedView: View {
     /// PHASE 1 -> PHASE 2 shows up live here too.
     private func startPollingIfNeeded() {
         pollTask?.cancel()
-        guard let bookingID = app.booking?.id, phase != .confirmed else { return }
+        guard let bookingID = app.booking?.id, phase != .confirmed, phase != .expired else { return }
         let phaseAtStart = phase
         pollTask = Task { @MainActor in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 6_000_000_000)
                 if Task.isCancelled { break }
                 guard app.booking?.id == bookingID, app.booking?.paymentState == phaseAtStart else { return }
-                if let fresh: Booking = try? await SupabaseService.client
+                guard let fresh: Booking = try? await SupabaseService.client
                     .from("bookings").select().eq("id", value: bookingID.uuidString)
-                    .single().execute().value,
-                   fresh.paymentState != phaseAtStart, app.booking?.id == bookingID {
+                    .single().execute().value
+                else { continue }
+                guard app.booking?.id == bookingID else { return }
+                // The server row can still read .holding past its own
+                // deadline for a moment — the sweep hasn't reached it yet,
+                // or this same client's own forfeit RPC (fired the instant
+                // the local countdown hit 0) hasn't landed. Blindly copying
+                // that stale row over would revive a ticket this screen
+                // already forfeited every 6 seconds until the server
+                // catches up. Treat it as expired here too instead, and let
+                // forfeitExpiredHold retry the RPC rather than regressing
+                // local state backwards.
+                if fresh.paymentState == .holding, let deadline = fresh.holdExpiresAt,
+                   Countdown.secondsUntil(deadline, now: Date()) == 0 {
+                    app.forfeitExpiredHold(fresh)
+                    return
+                }
+                if fresh.paymentState != phaseAtStart {
                     app.booking = fresh
                     return
                 }
