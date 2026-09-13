@@ -441,8 +441,7 @@ extension AppState {
                 .upload(path, data: imageData,
                         options: FileOptions(contentType: fileExtension == "pdf" ? "application/pdf" : "image/jpeg",
                                              upsert: true))
-<<<<<<< HEAD
-=======
+<<<<<<< HEAD =======
             _ = try await SupabaseService.client.auth.getSession()
 >>>>>>> parent of 3fd2822 (refactor(ios): use session refresh instead of session retrieval during proof upload)
 
