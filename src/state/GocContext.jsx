@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js';
 import { requestAuthEmail, requestPasswordSignup, requestPasswordReset } from '../lib/authEmail.js';
 import { renderPaymentDocument } from '../lib/paymentDocument.js';
 import { buildVietQrPayload } from '../lib/vietqr.js';
+import { msUntil } from '../lib/countdown.js';
 
 const GocCtx = createContext(null);
 
@@ -295,7 +296,10 @@ export function GocProvider({ children }) {
 
   useEffect(() => {
     const id = setInterval(() => {
-      setStateRaw(prev => (prev.holdDeadline ? { ...prev, now: Date.now() } : prev));
+      setStateRaw(prev => (
+        (prev.holdDeadline || prev.booking?.payment_state === 'holding')
+          ? { ...prev, now: Date.now() } : prev
+      ));
     }, 1000);
     return () => clearInterval(id);
   }, []);
@@ -1910,6 +1914,23 @@ export function GocProvider({ children }) {
         }
       });
   }, [set]);
+
+  // A watchdog for every screen that ISN'T one of the three above watching
+  // its own local countdown (Confirmed, PaymentDetails, Home). EventDetail
+  // and EventList, in particular, only ever read booking.status/attending —
+  // they never notice a lapse themselves — so staying on one of those past
+  // the deadline used to leave "Going" and the ticket code showing forever,
+  // since nothing else was mounted to call forfeitExpiredHold. This runs
+  // centrally off the same ticking `now` regardless of which screen is on
+  // top, and is naturally idempotent with the per-screen effects (all of
+  // them route through this same forfeitExpiredHold, which itself only acts
+  // once per lapse since payment_state flips to 'expired' immediately).
+  useEffect(() => {
+    const b = state.booking;
+    if (b?.payment_state === 'holding' && b.hold_expires_at && msUntil(b.hold_expires_at, state.now) === 0) {
+      forfeitExpiredHold(b);
+    }
+  }, [state.booking, state.now, forfeitExpiredHold]);
 
   // Tapping a notification marks it read and, for the kinds that point at
   // somewhere real, takes you there — a 'new_message' notification opens the
