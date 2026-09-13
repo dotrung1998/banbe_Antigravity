@@ -171,6 +171,10 @@ final class AppState: ObservableObject {
     @Published var formEmail = ""
     @Published var booking: Booking?
     @Published var holdDeadline: Date?
+    // The real `events` row's own status for whichever event is currently
+    // open — see `applyingLiveStatus`/`loadLiveEventStatus`. Unlike
+    // `booking`, this is fetched regardless of sign-in.
+    @Published var liveEventStatus: LiveEventStatus?
     @Published var now = Date()
     @Published var reserveError = ""
     @Published var loading = false
@@ -392,7 +396,9 @@ final class AppState: ObservableObject {
 
     // MARK: - Derived
 
-    var currentEvent: CatalogEvent { EventCatalog.find(eventKey) ?? EventCatalog.all[0] }
+    var currentEvent: CatalogEvent {
+        (EventCatalog.find(eventKey) ?? EventCatalog.all[0]).applyingLiveStatus(liveEventStatus)
+    }
     var currentArea: AreaOption { AreaOption.all.first { $0.key == area } ?? AreaOption.all[0] }
     var isSignedIn: Bool { userID != nil }
     var canHost: Bool { organizerMode || accountType == "admin" || hasHosted }
@@ -574,6 +580,7 @@ final class AppState: ObservableObject {
         eventKey = key
         screen = .event
         Task { await loadBookingForCurrentEvent() }
+        Task { await loadLiveEventStatus() }
     }
     func backFromEvent() { screen = eventBackScreen }
     func goOrganizer() { screen = .organizer }

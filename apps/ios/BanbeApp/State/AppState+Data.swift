@@ -247,6 +247,27 @@ extension AppState {
         }
     }
 
+    /// The real events row's own status/starts_at for whichever event is
+    /// currently open — runs for every visitor, signed in or not, since
+    /// "has this event ended/been cancelled" is public information. Every
+    /// one of the 20 demo events also has a real row (seeded to match the
+    /// catalogue's bundled cancelled/ended flags), so this resolves for
+    /// those too; only a client-side-only preview has no row, and
+    /// `applyingLiveStatus` leaves the bundled catalogue untouched then.
+    func loadLiveEventStatus() async {
+        do {
+            let rows: [LiveEventStatus] = try await SupabaseService.client
+                .from("events")
+                .select("status, starts_at, cancelled_at, cancel_reason")
+                .eq("id", value: eventKey)
+                .limit(1)
+                .execute().value
+            liveEventStatus = rows.first
+        } catch {
+            liveEventStatus = nil
+        }
+    }
+
     // MARK: - Organizer mode
 
     func toggleOrganizerMode() {
@@ -407,6 +428,7 @@ extension AppState {
             holdDeadline = fresh.expiresAt
             now = Date()
             screen = .confirmed
+            await loadLiveEventStatus()
         } catch {
             print("openBookingConfirmed failed:", error)
         }

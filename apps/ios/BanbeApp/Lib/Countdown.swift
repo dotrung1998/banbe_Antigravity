@@ -29,4 +29,32 @@ enum Countdown {
             .sorted { (deadline($0) ?? .distantFuture) < (deadline($1) ?? .distantFuture) }
             .first
     }
+
+    private static func hoursSince(_ date: Date?, now: Date) -> Int? {
+        guard let date else { return nil }
+        return max(0, Int(now.timeIntervalSince(date) / 3600))
+    }
+
+    /// Reconciles a real `events` row's own status against the current
+    /// clock, overriding the static catalogue's hardcoded cancelled/ended
+    /// flags with a live read — the Swift counterpart of
+    /// `liveEventOverrides` in src/lib/countdown.js. See that function's
+    /// comment for the full rationale; `staticEvent` is only a cosmetic
+    /// fallback for the "N hours ago" text, never for the booleans, which
+    /// always come from the live `status` column.
+    static func liveEventOverrides(
+        _ live: LiveEventStatus?, staticEvent: CatalogEvent, now: Date = Date()
+    ) -> (cancelled: Bool, cancelledHoursAgo: Int?, endedHoursAgo: Int?)? {
+        guard let live else { return nil }
+        switch live.status {
+        case "cancelled":
+            return (true, hoursSince(live.cancelledAt, now: now) ?? staticEvent.cancelledHoursAgo ?? 0, nil)
+        case "ended":
+            return (false, nil, hoursSince(live.startsAt, now: now) ?? staticEvent.endedHoursAgo ?? 0)
+        default:
+            // 'live' (or 'draft'/'review', not publicly reachable) — not
+            // cancelled and no sweep has marked it ended.
+            return (false, nil, nil)
+        }
+    }
 }

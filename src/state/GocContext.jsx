@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase.js';
 import { requestAuthEmail, requestPasswordSignup, requestPasswordReset } from '../lib/authEmail.js';
 import { renderPaymentDocument } from '../lib/paymentDocument.js';
 import { buildVietQrPayload } from '../lib/vietqr.js';
-import { msUntil } from '../lib/countdown.js';
+import { msUntil, liveEventOverrides } from '../lib/countdown.js';
 
 const GocCtx = createContext(null);
 
@@ -220,6 +220,13 @@ const initialState = {
   calAdded: false,
   booking: null,
   reserveError: '',
+  // The real events row's own status/starts_at for whichever event is
+  // currently open — null until fetched, or once no matching row exists
+  // (a purely local/preview event). Kept separate from the static demo
+  // catalogue (data/events.js) rather than merged into it, so curEvent can
+  // layer a live ended/cancelled read on top without ever inventing cosmetic
+  // fields (photos, description, …) the row doesn't have.
+  liveEvent: null,
 };
 
 export const AREAS = [
@@ -404,6 +411,25 @@ export function GocProvider({ children }) {
     })();
     return () => { active = false; };
   }, [set, s.user?.id, s.eventKey]);
+
+  // The real events row's own status/starts_at for whichever event is
+  // currently open — unlike the booking fetch above, this runs for every
+  // visitor (signed in or not), since "has this event ended/been cancelled"
+  // is public information, not something tied to an account. Every one of
+  // the 20 demo events also has a real row (seeded to match the frontend's
+  // static STATUS overrides), so this resolves for those too — it's only a
+  // pure client-side preview (e.g. the create-event flow) that has no row
+  // and falls back to the static catalogue untouched.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const { data } = await supabase.from('events')
+        .select('status, starts_at, cancelled_at, cancel_reason')
+        .eq('slug', s.eventKey).maybeSingle();
+      if (active) set({ liveEvent: data || null });
+    })();
+    return () => { active = false; };
+  }, [set, s.eventKey]);
 
   // Unread count for the notification bell — refreshed on login so the badge
   // is right without having to open the notifications screen first.
@@ -1079,7 +1105,11 @@ export function GocProvider({ children }) {
     return str.replace(/\d+[.,]\d+(?= km)/, km.toFixed(1).replace('.', ','));
   }, [located, s.userCoords]);
 
-  const curEvent = useMemo(() => findEvent(s.eventKey), [s.eventKey]);
+  const curEvent = useMemo(() => {
+    const base = findEvent(s.eventKey);
+    const overrides = liveEventOverrides(s.liveEvent, base);
+    return overrides ? { ...base, ...overrides } : base;
+  }, [s.eventKey, s.liveEvent]);
   const palette = curEvent.palette;
 
   const isSaved = useCallback((k) => s.favorites.includes(k), [s.favorites]);

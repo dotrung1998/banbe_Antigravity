@@ -53,3 +53,51 @@ export function pickSoonest(bookings, phase, dateField) {
     .filter(b => b.payment_state === phase && msUntil(b[dateField], now) > 0)
     .sort((a, b) => new Date(a[dateField]) - new Date(b[dateField]))[0] || null;
 }
+
+function hoursSince(iso, now) {
+  if (!iso) return null;
+  return Math.max(0, (now - new Date(iso).getTime()) / 3600000);
+}
+
+/**
+ * Reconciles a real `events` row's own status against the current clock,
+ * overriding the static demo catalogue's hardcoded cancelled/ended flags
+ * with a live read — so an organizer cancelling an event, or the daily
+ * `goc_mark_past_events` sweep marking one 'ended' 12h after its start, is
+ * reflected the moment this client re-fetches the row instead of never
+ * (the static catalogue is fixed at build time and can't otherwise learn
+ * about either).
+ *
+ * `staticEv` (the same event's row from the static catalogue) is only used
+ * as a cosmetic fallback for the "N hours ago" text when the real row has
+ * no timestamp of its own to compute one from (starts_at/cancelled_at are
+ * both optional columns, unset for events created before either was wired
+ * up) — never for the cancelled/ended booleans themselves, which always
+ * come from the live `status` column so a change to it is never missed.
+ *
+ * Returns null when there is no real row to read at all (e.g. a
+ * client-side-only event preview mid-creation) — the caller should leave
+ * the static catalogue untouched in that case rather than treat "no data"
+ * as "not ended".
+ */
+export function liveEventOverrides(liveEvent, staticEv, now = Date.now()) {
+  if (!liveEvent) return null;
+  if (liveEvent.status === 'cancelled') {
+    return {
+      cancelled: true,
+      cancelledHoursAgo: hoursSince(liveEvent.cancelled_at, now) ?? staticEv?.cancelledHoursAgo ?? 0,
+      endedHoursAgo: null,
+    };
+  }
+  if (liveEvent.status === 'ended') {
+    return {
+      cancelled: false,
+      cancelledHoursAgo: null,
+      endedHoursAgo: hoursSince(liveEvent.starts_at, now) ?? staticEv?.endedHoursAgo ?? 0,
+    };
+  }
+  // 'live' (or 'draft'/'review', which shouldn't be publicly reachable at
+  // all) — the organizer hasn't cancelled it and no sweep has marked it
+  // ended, so as far as this row is concerned, neither has happened.
+  return { cancelled: false, cancelledHoursAgo: null, endedHoursAgo: null };
+}

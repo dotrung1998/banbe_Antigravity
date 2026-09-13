@@ -40,9 +40,12 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
     let orgSince: Int
     let orgCount: Int
     let orgTrusted: Bool
-    let cancelled: Bool
-    let cancelledHoursAgo: Int?
-    let endedHoursAgo: Int?
+    // Mutable (unlike the rest of this struct) so `applyingLiveStatus` can
+    // overlay a live read from the real `events` row on top of the static,
+    // bundled-at-build-time catalogue — see that method below.
+    var cancelled: Bool
+    var cancelledHoursAgo: Int?
+    var endedHoursAgo: Int?
     let soldOut: Bool
     let inviteOnly: Bool
     let until: Int?
@@ -82,6 +85,19 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
     }
 
     var isFree: Bool { price.contains("Miễn phí") }
+
+    /// Overlays a live read of the real `events` row's status on top of this
+    /// (static, bundled) event — see `Countdown.liveEventOverrides` for the
+    /// full rationale. Returns `self` unchanged when there is no live row to
+    /// read yet (or ever, for a client-side-only preview).
+    func applyingLiveStatus(_ live: LiveEventStatus?, now: Date = Date()) -> CatalogEvent {
+        guard let overrides = Countdown.liveEventOverrides(live, staticEvent: self, now: now) else { return self }
+        var copy = self
+        copy.cancelled = overrides.cancelled
+        copy.cancelledHoursAgo = overrides.cancelledHoursAgo
+        copy.endedHoursAgo = overrides.endedHoursAgo
+        return copy
+    }
 }
 
 /// The catalogue itself, decoded once from the bundled resource.

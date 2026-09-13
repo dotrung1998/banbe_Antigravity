@@ -1,7 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { setupToHome } from './helpers.js';
-import { formatCountdown, msUntil, pickSoonest } from '../src/lib/countdown.js';
+import { formatCountdown, msUntil, pickSoonest, liveEventOverrides } from '../src/lib/countdown.js';
 
 test.describe('countdown formatting', () => {
   test('mm:ss under an hour, h:mm:ss past it, never negative', () => {
@@ -55,6 +55,36 @@ test.describe('pickSoonest', () => {
     expect(pickSoonest(bookings, 'holding', 'hold_expires_at')).toBeNull();
     expect(pickSoonest([], 'holding', 'hold_expires_at')).toBeNull();
     expect(pickSoonest(undefined, 'holding', 'hold_expires_at')).toBeNull();
+  });
+});
+
+test.describe('liveEventOverrides', () => {
+  const now = Date.now();
+  const staticEv = { cancelledHoursAgo: 5, endedHoursAgo: 74 };
+
+  test('returns null with no real row — the static catalogue stands as-is', () => {
+    expect(liveEventOverrides(null, staticEv, now)).toBeNull();
+  });
+
+  test('a live event is neither cancelled nor ended', () => {
+    expect(liveEventOverrides({ status: 'live' }, staticEv, now))
+      .toEqual({ cancelled: false, cancelledHoursAgo: null, endedHoursAgo: null });
+  });
+
+  test('cancelled uses cancelled_at when present, else the static fallback', () => {
+    const cancelledAt = new Date(now - 3 * 3600_000).toISOString();
+    expect(liveEventOverrides({ status: 'cancelled', cancelled_at: cancelledAt }, staticEv, now))
+      .toEqual({ cancelled: true, cancelledHoursAgo: 3, endedHoursAgo: null });
+    expect(liveEventOverrides({ status: 'cancelled', cancelled_at: null }, staticEv, now))
+      .toEqual({ cancelled: true, cancelledHoursAgo: 5, endedHoursAgo: null });
+  });
+
+  test('ended uses starts_at when present, else the static fallback', () => {
+    const startsAt = new Date(now - 20 * 3600_000).toISOString();
+    expect(liveEventOverrides({ status: 'ended', starts_at: startsAt }, staticEv, now))
+      .toEqual({ cancelled: false, cancelledHoursAgo: null, endedHoursAgo: 20 });
+    expect(liveEventOverrides({ status: 'ended', starts_at: null }, staticEv, now))
+      .toEqual({ cancelled: false, cancelledHoursAgo: null, endedHoursAgo: 74 });
   });
 });
 
