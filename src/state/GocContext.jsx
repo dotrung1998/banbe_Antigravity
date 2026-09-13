@@ -1403,13 +1403,20 @@ export function GocProvider({ children }) {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session?.user) throw new Error('AUTH_REQUIRED');
-      const { data: booking, error } = await supabase.rpc('claim_seats', {
+      // hold_seats() (migration 026), not the legacy claim_seats() — the
+      // latter never touches payment_state/hold_expires_at at all, so every
+      // booking it created sat at the column default (payment_state =
+      // 'holding', hold_expires_at = NULL) forever, regardless of whether
+      // the event was free, instantly approved, or later marked paid. That
+      // is exactly what left the ticket screen showing "Holding your
+      // spot"/00:00 permanently instead of ever reaching Confirmed/Ended.
+      const { data: booking, error } = await supabase.rpc('hold_seats', {
         p_event: s.eventKey,
         p_qty: s.qty,
         p_note: null,
       });
       if (error) throw error;
-      const holdDeadline = booking.expires_at ? new Date(booking.expires_at).getTime() : null;
+      const holdDeadline = booking.hold_expires_at ? new Date(booking.hold_expires_at).getTime() : null;
       set(prev => ({
         loading: false,
         booking,
@@ -1885,7 +1892,7 @@ export function GocProvider({ children }) {
         qty: b.qty,
         checkedIn: b.status === 'attended',
         // Paid means the organizer confirmed the money arrived — which is
-        // also what issued the receipt. claim_seats marks instant-approval
+        // also what issued the receipt. hold_seats marks instant-approval
         // bookings 'confirmed' up front, so status alone isn't the answer.
         paid: !!b.paid_marked_at,
         payMethod: b.paid_method || '',

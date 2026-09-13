@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Port of src/screens/Reserve.jsx — name/email, a ticket stepper (1–6),
 /// the "banbe doesn't collect money" note, and the hold button that calls
-/// the claim_seats RPC.
+/// the hold_seats RPC.
 struct ReserveView: View {
     @EnvironmentObject var app: AppState
 

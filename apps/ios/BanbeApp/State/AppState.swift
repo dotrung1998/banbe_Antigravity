@@ -91,7 +91,7 @@ struct AttendanceGuest: Identifiable, Equatable {
     let qty: Int
     var checkedIn: Bool
     /// Paid means the organizer confirmed the money arrived — which is also
-    /// what issued the receipt. Status alone isn't the answer: claim_seats
+    /// what issued the receipt. Status alone isn't the answer: hold_seats
     /// marks instant-approval bookings 'confirmed' before anyone has paid.
     var paid: Bool = false
     var totalVnd: Int = 0

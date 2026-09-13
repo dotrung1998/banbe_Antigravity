@@ -110,7 +110,7 @@ private struct MessageBrief: Decodable {
     }
 }
 /// What the SECURITY DEFINER RPCs return — every one of them answers with
-/// `{ success: bool, error?: string }` (or the booking row, for claim_seats).
+/// `{ success: bool, error?: string }` (or the booking row, for hold_seats).
 private struct RPCResult: Decodable {
     let success: Bool?
     let error: String?
@@ -513,11 +513,17 @@ extension AppState {
         loading = true
         reserveError = ""
         do {
+            // hold_seats() (migration 026), not the legacy claim_seats() —
+            // the latter never touches payment_state/hold_expires_at, so
+            // every booking it created sat at the column default
+            // (payment_state = 'holding', hold_expires_at = NULL) forever,
+            // which is what left the ticket screen showing "Holding your
+            // spot"/00:00 permanently regardless of the event's real state.
             let created: Booking = try await SupabaseService.client
-                .rpc("claim_seats", params: ClaimSeatsParams(event: eventKey, qty: qty))
+                .rpc("hold_seats", params: HoldSeatsParams(event: eventKey, qty: qty))
                 .execute().value
             booking = created
-            holdDeadline = created.expiresAt
+            holdDeadline = created.holdExpiresAt
             now = Date()
             tickets[eventKey] = qty
             if !attending.contains(eventKey) { attending.append(eventKey) }
@@ -911,7 +917,7 @@ extension AppState {
 
 /// RPC parameter payloads (PostgREST needs one Encodable value per call;
 /// mixed-type dictionaries aren't expressible in Swift).
-struct ClaimSeatsParams: Encodable {
+struct HoldSeatsParams: Encodable {
     let event: String
     let qty: Int
     enum CodingKeys: String, CodingKey {
