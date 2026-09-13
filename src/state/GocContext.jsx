@@ -1926,11 +1926,11 @@ export function GocProvider({ children }) {
   // them route through this same forfeitExpiredHold, which itself only acts
   // once per lapse since payment_state flips to 'expired' immediately).
   useEffect(() => {
-    const b = state.booking;
-    if (b?.payment_state === 'holding' && b.hold_expires_at && msUntil(b.hold_expires_at, state.now) === 0) {
-      forfeitExpiredHold(b);
-    }
-  }, [state.booking, state.now, forfeitExpiredHold]);
+    const justLapsed = (state.paymentBookings || []).find(
+      b => b.payment_state === 'holding' && b.hold_expires_at && msUntil(b.hold_expires_at, state.now) === 0
+    );
+    if (justLapsed) forfeitExpiredHold(justLapsed);
+  }, [state.paymentBookings, state.now, forfeitExpiredHold]);
 
   // Tapping a notification marks it read and, for the kinds that point at
   // somewhere real, takes you there — a 'new_message' notification opens the

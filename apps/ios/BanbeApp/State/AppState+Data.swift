@@ -462,9 +462,11 @@ extension AppState {
     /// exactly this case.
     private func forfeitExpiredHoldCore(bookingID: UUID, eventKey: String) {
         attending.removeAll { $0 == eventKey }
-        if booking?.id == bookingID {
-            booking?.paymentState = .expired
-            booking?.status = "expired"
+        if let current = booking, current.id == bookingID {
+            var updated = current
+            updated.paymentState = .expired
+            updated.status = "expired"
+            self.booking = updated
         }
         Task {
             do {

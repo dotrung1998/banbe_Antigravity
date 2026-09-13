@@ -303,10 +303,11 @@ final class AppState: ObservableObject {
     /// itself only acts once per lapse since paymentState flips to .expired
     /// immediately).
     private func forfeitLapsedHoldIfNeeded() {
-        guard let current = booking, current.paymentState == .holding,
-              let deadline = current.holdExpiresAt, Countdown.secondsUntil(deadline, now: now) == 0
-        else { return }
-        forfeitExpiredHold(current)
+        guard let justLapsed = paymentBookings.first(where: {
+            $0.paymentState == .holding && $0.holdExpiresAt != nil
+                && Countdown.secondsUntil($0.holdExpiresAt, now: now) == 0
+        }) else { return }
+        forfeitExpiredHold(justLapsed)
     }
 
     deinit {
