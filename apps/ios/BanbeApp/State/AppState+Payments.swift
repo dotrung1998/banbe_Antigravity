@@ -66,8 +66,16 @@ extension AppState {
         do {
             // The first path segment is the booking id, which is exactly what
             // the bucket's RLS policies split on — a file can only land under
-            // a booking the uploader owns.
-            let path = "\(bookingID.uuidString)/proof-\(Int(Date().timeIntervalSince1970)).\(fileExtension)"
+            // a booking the uploader owns. Lowercased: the policy compares
+            // this raw text against `bookings.id::text`, and Postgres's own
+            // uuid-to-text cast is always lowercase — Foundation's
+            // `UUID.uuidString`, unlike Postgres, is UPPERCASE, so an
+            // un-lowercased path here reads as a completely different
+            // string to `split_part(name, '/', 1) = b.id::text` and the
+            // INSERT is rejected as not matching any booking at all (a
+            // storage 403 "new row violates row-level security policy",
+            // not an actual ownership problem).
+            let path = "\(bookingID.uuidString.lowercased())/proof-\(Int(Date().timeIntervalSince1970)).\(fileExtension)"
             _ = try await SupabaseService.client.storage
                 .from("pay-proof")
                 .upload(path, data: imageData,
@@ -442,7 +450,16 @@ extension AppState {
             // instead, and normally just re-validates an already-good token.
             _ = try await SupabaseService.client.auth.session
 
-            let path = "\(bookingID.uuidString)/proof-\(Int(Date().timeIntervalSince1970)).\(fileExtension)"
+            // Lowercased: the RLS policy compares this raw path text against
+            // `bookings.id::text`, and Postgres's own uuid-to-text cast is
+            // always lowercase — Foundation's `UUID.uuidString`, unlike
+            // Postgres, is UPPERCASE, so an un-lowercased path here reads as
+            // a completely different string to `split_part(name, '/', 1) =
+            // b.id::text` and the INSERT is rejected outright: exactly the
+            // `StorageError(statusCode: "403", message: "new row violates
+            // row-level security policy")` this was still failing with —
+            // not an actual ownership or auth problem.
+            let path = "\(bookingID.uuidString.lowercased())/proof-\(Int(Date().timeIntervalSince1970)).\(fileExtension)"
             _ = try await SupabaseService.client.storage
                 .from("pay-proof")
                 .upload(path, data: imageData,
