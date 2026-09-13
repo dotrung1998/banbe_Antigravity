@@ -114,6 +114,7 @@ struct PayableBooking: Identifiable, Hashable {
     var paymentRef: String
     var holdExpiresAt: Date?
     var transactionId: String
+    var verifyDueAt: Date?
     var paidMarkedAt: Date?
     var proofUploadedAt: Date?
     var eventName: String

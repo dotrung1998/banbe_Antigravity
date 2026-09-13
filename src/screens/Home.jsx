@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg } from '../data/events.js';
+import { formatCountdown, msUntil, pickSoonest, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip } from '../theme.js';
 
 const FILTER_DEFS = [
@@ -15,13 +16,44 @@ export default function Home() {
   const {
     state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, toggleFav,
     goProfile, goInbox, goEvent, goNotifications, openArea, toggleLang, pickFilter, clearFilters,
-    openHeld, becomeHost, switchToHost,
+    becomeHost, switchToHost,
+    canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary,
+    openPaymentDetails, openVerifications, goDashboard,
   } = useGoc();
 
   const s = state;
   const hasHosted = s.hasHosted;
   const openSaved = (sv) => (sv.toEvent === 'event' ? goEvent(sv.key) : set({ screen: sv.toEvent, eventKey: sv.key }));
   const heldEv = s.holdDeadline && s.holdDeadline > s.now ? EVENTS.find(e => e.key === s.eventKey) : null;
+
+  // Both phases, both roles: what this account is waiting on right now, as
+  // a participant (their own bookings) and — separately — as the organizer
+  // of events other people are booking. Loaded once signed in, refreshed
+  // each time Home mounts (a hold or a verification can settle anywhere:
+  // another tab, the organizer's Telegram bot, the bank webhook).
+  useEffect(() => {
+    if (!s.user?.id) return;
+    loadPaymentBookings();
+    if (canHost) {
+      loadVerifications();
+      loadOrganizerHoldingSummary();
+    }
+  }, [s.user?.id, canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary]);
+
+  const myHolding = pickSoonest(s.paymentBookings, 'holding', 'hold_expires_at');
+  const myPendingVerification = (s.paymentBookings || [])
+    .filter(b => b.payment_state === 'pending_verification')
+    .sort((a, b) => new Date(a.proof_uploaded_at || 0) - new Date(b.proof_uploaded_at || 0))[0] || null;
+
+  const orgPendingCount = (s.verifications || []).length;
+  const orgSoonestVerifyDue = (s.verifications || [])
+    .map(v => v.verify_due_at).filter(Boolean).sort()[0] || null;
+  const orgHolding = s.organizerHoldingSummary;
+
+  // Any of these five countdown-relevant items ticking is reason enough to
+  // re-render every second; none of them showing means no clock runs at all.
+  const anyCountdownVisible = !!(heldEv || myHolding || myPendingVerification || orgPendingCount || orgHolding);
+  const tickNow = useTicking(anyCountdownVisible);
 
   const filters = FILTER_DEFS.map(f => ({
     key: f.key,
@@ -113,16 +145,44 @@ export default function Home() {
         </div>
       </div>
 
-      {!!heldEv && (
-        <div onClick={openHeld} style={{ ...fieldGlass({ margin: '14px 20px 0', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>Đang giữ chỗ</span>
-            <span style={{ fontSize: 12.5, lineHeight: 1.4, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {heldEv.name}{s.qty > 1 ? ' ▪︎ ' + s.qty + T(' vé', ' tix') : ''}{T(' ▪︎ trả để xác nhận', ' ▪︎ pay to confirm')}
-            </span>
-          </div>
-          <Countdown deadline={s.holdDeadline} now={s.now} />
-        </div>
+      {/* Both phases of the payment state machine, both roles this account
+          can hold: what I (as a buyer) am waiting on, and — separately —
+          what my own events' buyers are waiting on me for. Each row only
+          renders while there is something real to show. */}
+      {!!myHolding && (
+        <PhaseBanner
+          label={T('Đang giữ chỗ', 'Holding a seat')}
+          detail={(myHolding.events?.name || '') + (myHolding.qty > 1 ? ' ▪︎ ' + myHolding.qty + T(' vé', ' tix') : '') + T(' ▪︎ trả để xác nhận', ' ▪︎ pay to confirm')}
+          countdown={formatCountdown(msUntil(myHolding.hold_expires_at, tickNow))}
+          onClick={() => openPaymentDetails(myHolding.id, 'home')}
+        />
+      )}
+      {!!myPendingVerification && (
+        <PhaseBanner
+          label={T('Đang chờ xác nhận', 'Awaiting confirmation')}
+          detail={(myPendingVerification.events?.name || '') + T(' ▪︎ đồng hồ đã dừng, chỗ được khoá', ' ▪︎ clock stopped, seat locked')}
+          countdown={null}
+          onClick={() => openPaymentDetails(myPendingVerification.id, 'home')}
+        />
+      )}
+      {!!orgPendingCount && (
+        <PhaseBanner
+          label={T('Chờ bạn xác nhận thanh toán', 'Payments awaiting your OK')}
+          detail={orgPendingCount + T(' khoản', orgPendingCount === 1 ? ' payment' : ' payments') + (orgSoonestVerifyDue ? T(' ▪︎ sớm nhất còn', ' ▪︎ soonest in') : '')}
+          countdown={orgSoonestVerifyDue ? formatCountdown(msUntil(orgSoonestVerifyDue, tickNow)) : null}
+          urgent={orgSoonestVerifyDue ? msUntil(orgSoonestVerifyDue, tickNow) === 0 : false}
+          onClick={openVerifications}
+          testId="home-org-verifications-banner"
+        />
+      )}
+      {!!orgHolding && (
+        <PhaseBanner
+          label={T('Khách đang giữ chỗ', 'Guests holding seats')}
+          detail={orgHolding.count + T(' chỗ', orgHolding.count === 1 ? ' seat' : ' seats') + T(' ▪︎ sớm nhất hết hạn trong', ' ▪︎ soonest expires in')}
+          countdown={orgHolding.soonestHoldExpiresAt ? formatCountdown(msUntil(orgHolding.soonestHoldExpiresAt, tickNow)) : null}
+          onClick={goDashboard}
+          testId="home-org-holding-banner"
+        />
       )}
 
       {savedList.length > 0 && (
@@ -202,11 +262,28 @@ export default function Home() {
   );
 }
 
-function Countdown({ deadline, now }) {
-  const ms = Math.max(0, (deadline || 0) - now);
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  const sec = Math.floor((ms % 60000) / 1000);
-  const label = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
-  return <span style={{ ...display(19, { fontVariantNumeric: 'tabular-nums', flex: 'none', marginLeft: 12 }) }}>{label}</span>;
+// One row shape for every payment-phase banner Home shows, on either side
+// of the transaction. `countdown` is optional — PHASE 2 for a buyer has
+// nothing productive to count down (their clock already stopped), so that
+// row renders with no timer rather than a fake or misleading one.
+function PhaseBanner({ label, detail, countdown, onClick, urgent, testId }) {
+  return (
+    <div
+      onClick={onClick}
+      data-testid={testId}
+      style={{ ...fieldGlass({ margin: '10px 20px 0', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, cursor: 'pointer' }) }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{label}</span>
+        <span style={{ fontSize: 12.5, lineHeight: 1.4, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {detail}
+        </span>
+      </div>
+      {countdown && (
+        <span style={{ ...display(19, { fontVariantNumeric: 'tabular-nums', flex: 'none', marginLeft: 12, color: urgent ? '#9A3E2D' : ink }) }}>
+          {countdown}
+        </span>
+      )}
+    </div>
+  );
 }

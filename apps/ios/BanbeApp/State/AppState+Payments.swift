@@ -21,7 +21,7 @@ extension AppState {
                 .from("bookings")
                 .select("""
                     id, qty, total_vnd, code, status, paid_marked_at, proof_uploaded_at, created_at,
-                    payment_state, payment_ref, hold_expires_at, transaction_id,
+                    payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at,
                     events(name, organizers(name, pay_methods, bank_name, bank_account_name,
                                             bank_account_no, momo_phone, pay_note))
                     """)
@@ -297,6 +297,11 @@ extension AppState {
 
 private struct BookingIDRow: Decodable { let id: UUID }
 
+private struct HoldingRow: Decodable {
+    let holdExpiresAt: Date?
+    enum CodingKeys: String, CodingKey { case holdExpiresAt = "hold_expires_at" }
+}
+
 private struct BillingRow: Decodable {
     let displayName: String
     let phone: String
@@ -347,6 +352,7 @@ private struct PayableBookingRow: Decodable {
     let paymentRef: String?
     let holdExpiresAt: Date?
     let transactionId: String?
+    let verifyDueAt: Date?
     let events: EventRow?
 
     struct EventRow: Decodable {
@@ -382,6 +388,7 @@ private struct PayableBookingRow: Decodable {
         case paymentRef = "payment_ref"
         case holdExpiresAt = "hold_expires_at"
         case transactionId = "transaction_id"
+        case verifyDueAt = "verify_due_at"
     }
 
     var asPayable: PayableBooking {
@@ -392,6 +399,7 @@ private struct PayableBookingRow: Decodable {
             paymentRef: paymentRef ?? "",
             holdExpiresAt: holdExpiresAt,
             transactionId: transactionId ?? "",
+            verifyDueAt: verifyDueAt,
             paidMarkedAt: paidMarkedAt, proofUploadedAt: proofUploadedAt,
             eventName: events?.name ?? "",
             organizerName: org?.name ?? "",
@@ -510,6 +518,35 @@ extension AppState {
         }
         await loadVerifications()
     }
+
+    /// The PHASE 1 counterpart of loadVerifications — how many buyers are
+    /// currently holding a seat on this account's own events. There is no
+    /// view for this (v_pending_verifications only ever covers PHASE 2), so
+    /// it reads bookings directly; the existing bookings_select_host RLS
+    /// policy already scopes an organizer to their own events' rows, the
+    /// same way it does everywhere else this account reads its own bookings.
+    func loadOrganizerHoldingSummary() async {
+        guard !myOrganizerIDs.isEmpty else { organizerHoldingSummary = nil; return }
+        do {
+            let response: PostgrestResponse<[HoldingRow]> = try await SupabaseService.client
+                .from("bookings")
+                .select("hold_expires_at, events!inner(organizer_id)", count: .exact)
+                .eq("payment_state", value: "holding")
+                .in("events.organizer_id", values: myOrganizerIDs)
+                .order("hold_expires_at", ascending: true)
+                .limit(1)
+                .execute()
+            guard let count = response.count, count > 0 else {
+                organizerHoldingSummary = nil
+                return
+            }
+            organizerHoldingSummary = OrganizerHoldingSummary(
+                count: count, soonestHoldExpiresAt: response.value.first?.holdExpiresAt)
+        } catch {
+            print("loadOrganizerHoldingSummary failed:", error)
+            organizerHoldingSummary = nil
+        }
+    }
 }
 
 struct PendingVerification: Codable, Identifiable, Hashable {
@@ -521,6 +558,7 @@ struct PendingVerification: Codable, Identifiable, Hashable {
     var paymentRef: String?
     var transactionId: String?
     var proofSubmittedAt: Date?
+    var verifyDueAt: Date?
     var overdue: Bool?
     var escalated: Bool?
     var id: UUID { bookingId }
@@ -534,8 +572,16 @@ struct PendingVerification: Codable, Identifiable, Hashable {
         case paymentRef = "payment_ref"
         case transactionId = "transaction_id"
         case proofSubmittedAt = "proof_submitted_at"
+        case verifyDueAt = "verify_due_at"
         case overdue, escalated
     }
+}
+
+/// PHASE 1 buyer-hold summary for this account's own events — the
+/// organizer counterpart of `verifications` (which only ever covers PHASE 2).
+struct OrganizerHoldingSummary: Equatable {
+    let count: Int
+    let soonestHoldExpiresAt: Date?
 }
 
 private struct SubmitProofResult: Decodable {

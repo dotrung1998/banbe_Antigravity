@@ -2,53 +2,69 @@ import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { useGoc } from '../state/GocContext.jsx';
 import { supabase } from '../lib/supabase.js';
+import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 
 export default function Confirmed() {
   const { state, T, set, curEvent: ev, goHome, addToCalendar, giveTicket, openPaymentDetails } = useGoc();
   const s = state;
 
-  // The QR/entry-code ticket is the thing an organizer's door scanner
-  // trusts, so it has to gate on money actually having changed hands
-  // (paid_marked_at, set only by confirm_payment) — never on booking.status.
-  // Every seeded demo event is 'instant' approval, which marks a booking
-  // 'confirmed' the moment it's created; gating on status alone is exactly
-  // what let a guest reach the ticket screen before paying anything.
-  const isPaid = !!s.booking?.paid_marked_at;
+  // payment_state is the source of truth for every phase distinction below;
+  // paid_marked_at/status only exist as a fallback for a booking fetched
+  // somewhere that hasn't picked up the new column yet (there shouldn't be
+  // one, but a booking is the one object here worth a defensive read).
+  const phase = s.booking?.payment_state
+    || (s.booking?.paid_marked_at ? 'confirmed' : s.booking ? 'holding' : null);
+  const isPaid = phase === 'confirmed';
+  const isHolding = phase === 'holding';
+  const isPendingVerification = phase === 'pending_verification';
+  const isDisputed = phase === 'disputed';
   const awaitingPayment = !!s.booking && !isPaid;
-  const holdActive = !isPaid && s.booking?.status === 'pending' && s.holdDeadline && s.holdDeadline > s.now;
-  const ms = Math.max(0, (s.holdDeadline || 0) - s.now);
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  const sec = Math.floor((ms % 60000) / 1000);
-  const countdown = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
 
-  // While a booking is sitting unpaid, poll for the organizer having
-  // confirmed it — the guest may already be on this screen when that
-  // happens, and shouldn't have to leave and come back via the
-  // notification to see their ticket unlock.
+  // The countdown only ticks while there is something to actually count
+  // down — PHASE 2 shows an SLA reassurance number that ticks too, so both
+  // phases need the clock, but PAID/DISPUTED/nothing don't.
+  const holdDeadlineIso = s.booking?.hold_expires_at
+    || (s.holdDeadline ? new Date(s.holdDeadline).toISOString() : null);
+  const now = useTicking(isHolding || isPendingVerification);
+  const holdCountdown = formatCountdown(msUntil(holdDeadlineIso, now));
+  const verifyMsLeft = msUntil(s.booking?.verify_due_at, now);
+  const verifyCountdown = formatCountdown(verifyMsLeft);
+  const verifyOverdue = !!s.booking?.verify_due_at && verifyMsLeft === 0;
+
+  // While a booking is sitting unpaid, poll for a phase change — the
+  // organizer confirming, the bank webhook matching, or the guest freezing
+  // it from another tab. The guest may already be looking at this exact
+  // screen when any of those happen, and shouldn't have to leave and come
+  // back via a notification to see it update. Generalised to sync the whole
+  // row (not just paid_marked_at) so PHASE 1 -> PHASE 2 shows up live too.
   useEffect(() => {
-    if (!s.booking?.id || s.booking.paid_marked_at) return undefined;
+    if (!s.booking?.id || phase === 'confirmed') return undefined;
     const bookingId = s.booking.id;
     let active = true;
     const id = setInterval(async () => {
       const { data } = await supabase.from('bookings').select('*').eq('id', bookingId).maybeSingle();
-      if (active && data?.paid_marked_at) {
+      if (active && data && data.payment_state !== phase) {
         set(prev => (prev.booking?.id === bookingId ? { booking: data } : {}));
       }
     }, 6000);
     return () => { active = false; clearInterval(id); };
-  }, [s.booking?.id, s.booking?.paid_marked_at, set]);
+  }, [s.booking?.id, phase, set]);
 
   const name = s.formName.trim() || T('Bạn', 'You');
   const confirmEyebrow = isPaid
     ? T('Đã xác nhận', 'Confirmed')
-    : holdActive ? T('Đang giữ chỗ cho bạn', 'Holding your spot') : T('Đang chờ thanh toán', 'Awaiting payment');
+    : isHolding ? T('Đang giữ chỗ cho bạn', 'Holding your spot')
+    : isPendingVerification ? T('Đang chờ xác nhận', 'Awaiting confirmation')
+    : isDisputed ? T('Đang được xem xét', 'Under review')
+    : T('Đang chờ thanh toán', 'Awaiting payment');
   const confirmHeading = isPaid
     ? name + T(', vé của bạn đã sẵn sàng.', ', your ticket is ready.')
-    : holdActive
+    : isHolding
       ? name + T(', chỗ của bạn đang được giữ.', ', your spot is being held.')
-      : name + T(', hoàn tất thanh toán để nhận vé.', ', complete payment to get your ticket.');
+      : isPendingVerification
+        ? name + T(', chỗ của bạn đã được khoá.', ', your seat is locked.')
+        : name + T(', hoàn tất thanh toán để nhận vé.', ', complete payment to get your ticket.');
   const confirmNote = T('banbe không thu tiền. Hãy chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn; nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.', 'banbe does not collect money. Pay the organizer directly using the instructions in chat; if they cancel, they are responsible for your refund.');
 
   const showQr = isPaid;
@@ -61,22 +77,57 @@ export default function Confirmed() {
         <span style={{ fontSize: 11.5, color: ink }}>{confirmEyebrow}</span>
         <h2 style={{ ...display(27, { lineHeight: 1.35, margin: '12px 0 0' }) }}>{confirmHeading}</h2>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '18px 0 0' }}>{confirmNote}</p>
-        {holdActive && (
+
+        {/* PHASE 1: the buyer's own clock is running. */}
+        {isHolding && (
           <>
-            <div style={{ ...cardGlass({ marginTop: 22, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }}>
+            <div style={{ ...cardGlass({ marginTop: 22, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid="confirmed-hold-countdown">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Giữ chỗ còn', 'Hold expires in')}</span>
                 <span style={{ fontSize: 11.5, color: ink }}>{T('Trả trước khi hết giờ để xác nhận', 'Pay before it runs out to confirm')}</span>
               </div>
-              <span style={{ ...display(30, { fontVariantNumeric: 'tabular-nums' }) }}>{countdown}</span>
+              <span style={{ ...display(30, { fontVariantNumeric: 'tabular-nums' }) }}>{holdCountdown}</span>
             </div>
             <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.5, color: ink }}>{T('Chuyển khoản trực tiếp cho người tổ chức trước khi hết giờ để xác nhận.', 'Pay the organizer directly before the timer ends to confirm.')}</div>
           </>
         )}
+
+        {/* PHASE 2: the buyer's clock is GONE — replaced by a reassurance
+            countdown for the organizer's own response window, framed so it
+            never reads as a threat to the seat itself. */}
+        {isPendingVerification && (
+          <div style={{ ...cardGlass({ marginTop: 22, padding: '16px 18px' }) }} data-testid="confirmed-verify-countdown">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>
+                  {T('Chỗ đã khoá ▪︎ không còn đếm ngược cho bạn', 'Seat locked ▪︎ no countdown against you')}
+                </span>
+                <span style={{ fontSize: 11.5, color: ink, opacity: 0.75 }}>
+                  {verifyOverdue
+                    ? T('Người tổ chức đang xử lý — có thể mất thêm chút thời gian', "The organizer is on it — may take a little longer")
+                    : T('Người tổ chức thường phản hồi trong', "The organizer typically responds within")}
+                </span>
+              </div>
+              {!verifyOverdue && s.booking?.verify_due_at && (
+                <span style={{ ...display(24, { fontVariantNumeric: 'tabular-nums', flex: 'none' }) }}>{verifyCountdown}</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {isDisputed && (
+          <div style={{ ...cardGlass({ marginTop: 22, padding: '16px 18px' }) }} data-testid="confirmed-disputed">
+            <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{T('banbe đang xem xét', 'banbe is reviewing this')}</span>
+            <p style={{ fontSize: 12, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
+              {T('Chỗ của bạn vẫn được giữ trong lúc chờ xem xét.', 'Your seat stays held while this is reviewed.')}
+            </p>
+          </div>
+        )}
+
         {awaitingPayment && s.booking?.id && (
           <div
             onClick={() => openPaymentDetails(s.booking.id, 'confirmed')}
-            style={{ ...cardGlass({ marginTop: holdActive ? 12 : 22, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, cursor: 'pointer' }) }}
+            style={{ ...cardGlass({ marginTop: (isHolding || isPendingVerification || isDisputed) ? 12 : 22, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, cursor: 'pointer' }) }}
             data-testid="confirmed-pay"
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>

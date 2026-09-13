@@ -5,6 +5,8 @@ import SwiftUI
 /// banner, the "Your events" strip, category filters, and the photo cards.
 struct HomeView: View {
     @EnvironmentObject var app: AppState
+    @State private var tickTask: Task<Void, Never>?
+    @State private var tick = Date()
 
     private let filters: [(key: String, vi: String, en: String)] = [
         ("all", "Tất cả", "All"),
@@ -14,6 +16,13 @@ struct HomeView: View {
         ("music", "Nhạc", "Music"),
     ]
 
+    /// Any of these showing is reason enough to tick every second; none of
+    /// them showing means no clock runs at all.
+    private var anyCountdownVisible: Bool {
+        app.heldEvent != nil || app.myHolding != nil || app.myPendingVerification != nil
+            || app.organizerPendingCount > 0 || app.organizerHoldingSummary != nil
+    }
+
     var body: some View {
         ScreenScaffold {
             // Lazy, so only the cards actually on screen fetch their photo —
@@ -21,7 +30,12 @@ struct HomeView: View {
             // and they all fought for the same bandwidth.
             LazyVStack(alignment: .leading, spacing: 0) {
                 header
-                if let held = app.heldEvent { heldBanner(held) }
+                // Supersedes the old single-booking heldBanner below: this
+                // covers both payment phases, both roles, and every booking
+                // this account has — not just the one most recently reserved
+                // in the current session. heldEvent itself stays in use for
+                // tagging the "Your events" strip further down.
+                paymentBanners
                 if !app.savedStrip.isEmpty { savedStrip }
                 filterTabs
                 if app.feed.isEmpty {
@@ -35,6 +49,68 @@ struct HomeView: View {
                 hostLink
             }
             .padding(.bottom, 40)
+        }
+        .task {
+            guard app.userID != nil else { return }
+            await app.loadPaymentBookings()
+            if app.canHost {
+                await app.loadVerifications()
+                await app.loadOrganizerHoldingSummary()
+            }
+        }
+        .onAppear { startTickingIfNeeded() }
+        .onDisappear { tickTask?.cancel() }
+    }
+
+    private func startTickingIfNeeded() {
+        tickTask?.cancel()
+        guard anyCountdownVisible else { return }
+        tickTask = Task { @MainActor in
+            while !Task.isCancelled {
+                tick = Date()
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var paymentBanners: some View {
+        // Both phases of the payment state machine, both roles this account
+        // can hold: what I (as a buyer) am waiting on, and — separately —
+        // what my own events' buyers are waiting on me for.
+        if let holding = app.myHolding {
+            PhaseBanner(
+                label: app.T("Đang giữ chỗ", "Holding a seat"),
+                detail: holding.eventName + (holding.qty > 1 ? " ▪︎ \(holding.qty)" + app.T(" vé", " tix") : "")
+                    + app.T(" ▪︎ trả để xác nhận", " ▪︎ pay to confirm"),
+                countdown: Countdown.format(Countdown.secondsUntil(holding.holdExpiresAt, now: tick))
+            ) { app.openPaymentDetails(holding.id, back: .home) }
+        }
+        if let pending = app.myPendingVerification {
+            PhaseBanner(
+                label: app.T("Đang chờ xác nhận", "Awaiting confirmation"),
+                detail: pending.eventName + app.T(" ▪︎ đồng hồ đã dừng, chỗ được khoá", " ▪︎ clock stopped, seat locked"),
+                countdown: nil
+            ) { app.openPaymentDetails(pending.id, back: .home) }
+        }
+        if app.organizerPendingCount > 0 {
+            let soonest = app.organizerSoonestVerifyDue
+            let secondsLeft = Countdown.secondsUntil(soonest, now: tick)
+            PhaseBanner(
+                label: app.T("Chờ bạn xác nhận thanh toán", "Payments awaiting your OK"),
+                detail: "\(app.organizerPendingCount)" + app.T(" khoản", app.organizerPendingCount == 1 ? " payment" : " payments")
+                    + (soonest != nil ? app.T(" ▪︎ sớm nhất còn", " ▪︎ soonest in") : ""),
+                countdown: soonest != nil ? Countdown.format(secondsLeft) : nil,
+                urgent: soonest != nil && secondsLeft == 0
+            ) { app.openVerifications() }
+        }
+        if let orgHolding = app.organizerHoldingSummary {
+            PhaseBanner(
+                label: app.T("Khách đang giữ chỗ", "Guests holding seats"),
+                detail: "\(orgHolding.count)" + app.T(" chỗ", orgHolding.count == 1 ? " seat" : " seats")
+                    + app.T(" ▪︎ sớm nhất hết hạn trong", " ▪︎ soonest expires in"),
+                countdown: orgHolding.soonestHoldExpiresAt.map { Countdown.format(Countdown.secondsUntil($0, now: tick)) }
+            ) { app.goDashboard() }
         }
     }
 
@@ -89,40 +165,6 @@ struct HomeView: View {
         .minimumScaleFactor(0.75)
         .padding(.horizontal, 20)
         .padding(.top, 16)
-    }
-
-    // MARK: Held spot
-
-    private func heldBanner(_ event: CatalogEvent) -> some View {
-        Button { app.openHeld() } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(app.T("Đang giữ chỗ", "Holding your spot"))
-                        .font(.system(size: 11.5, weight: .semibold))
-                    Text(event.name + (app.qty > 1 ? " ▪︎ \(app.qty)" + app.T(" vé", " tix") : "")
-                         + app.T(" ▪︎ trả để xác nhận", " ▪︎ pay to confirm"))
-                        .font(.system(size: 12.5))
-                        .lineLimit(1)
-                }
-                Spacer()
-                Text(countdown)
-                    .font(BanbeTheme.display(18))
-                    .monospacedDigit()
-            }
-            .foregroundStyle(app.palette.ink)
-            .padding(14)
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .contentShape(Rectangle())
-            .padding(.horizontal, 20)
-            .padding(.top, 14)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var countdown: String {
-        guard let deadline = app.holdDeadline else { return "00:00:00" }
-        let remaining = max(0, Int(deadline.timeIntervalSince(app.now)))
-        return String(format: "%02d:%02d:%02d", remaining / 3600, (remaining % 3600) / 60, remaining % 60)
     }
 
     // MARK: Your events
@@ -323,5 +365,43 @@ struct EventCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("card.\(event.key)")
+    }
+}
+
+/// One row shape for every payment-phase banner Home shows, on either side
+/// of the transaction. `countdown` is optional — PHASE 2 for a buyer has
+/// nothing productive to count down (their clock already stopped), so that
+/// row renders with no timer rather than a fake or misleading one.
+private struct PhaseBanner: View {
+    @EnvironmentObject private var app: AppState
+    let label: String
+    let detail: String
+    let countdown: String?
+    var urgent: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(label).font(.system(size: 11.5, weight: .semibold))
+                    Text(detail).font(.system(size: 12.5)).lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if let countdown {
+                    Text(countdown)
+                        .font(BanbeTheme.display(18))
+                        .monospacedDigit()
+                        .foregroundStyle(urgent ? BanbeTheme.alert : app.palette.ink)
+                }
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(14)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(Rectangle())
+            .padding(.horizontal, 20)
+            .padding(.top, 10)
+        }
+        .buttonStyle(.plain)
     }
 }

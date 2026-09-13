@@ -7,6 +7,8 @@ struct VerificationsView: View {
     @EnvironmentObject private var app: AppState
     @State private var rejecting: UUID?
     @State private var reason = ""
+    @State private var tickTask: Task<Void, Never>?
+    @State private var tick = Date()
 
     private var overdueCount: Int { app.verifications.filter { $0.overdue == true }.count }
 
@@ -54,6 +56,18 @@ struct VerificationsView: View {
         }
         .accessibilityIdentifier("screen.verifications")
         .task { await app.loadVerifications() }
+        .onAppear { startTicking() }
+        .onDisappear { tickTask?.cancel() }
+    }
+
+    private func startTicking() {
+        tickTask?.cancel()
+        tickTask = Task { @MainActor in
+            while !Task.isCancelled {
+                tick = Date()
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
     }
 
     @ViewBuilder
@@ -73,6 +87,16 @@ struct VerificationsView: View {
                 line(app.T("Nội dung CK", "Reference"), row.paymentRef ?? "—")
                 line(app.T("Mã giao dịch", "Transaction ID"), row.transactionId ?? "—")
                 line(app.T("Đã chờ", "Waiting"), waited(row.proofSubmittedAt))
+                if let dueAt = row.verifyDueAt {
+                    let secondsLeft = Countdown.secondsUntil(dueAt, now: tick)
+                    let overdue = secondsLeft == 0
+                    line(
+                        overdue ? app.T("Đã quá hạn", "Past due") : app.T("Thời hạn phản hồi", "Response window"),
+                        overdue ? app.T("Cần xử lý ngay", "Needs action now") : Countdown.format(secondsLeft),
+                        urgent: overdue
+                    )
+                    .accessibilityIdentifier("verification.slaCountdown")
+                }
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -116,11 +140,15 @@ struct VerificationsView: View {
         return "\(mins / 60)" + app.T(" giờ ", "h ") + "\(mins % 60)" + app.T(" phút", "m")
     }
 
-    private func line(_ label: String, _ value: String) -> some View {
+    private func line(_ label: String, _ value: String, urgent: Bool = false) -> some View {
         HStack {
             Text(label).font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.65))
             Spacer(minLength: 8)
-            Text(value).font(.system(size: 12, weight: .semibold)).multilineTextAlignment(.trailing)
+            Text(value)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(urgent ? BanbeTheme.alert : app.palette.ink)
+                .monospacedDigit()
+                .multilineTextAlignment(.trailing)
         }
     }
 

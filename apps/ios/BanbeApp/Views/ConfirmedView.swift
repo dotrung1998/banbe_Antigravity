@@ -14,15 +14,23 @@ struct ConfirmedView: View {
     @State private var pollTask: Task<Void, Never>?
 
     private var event: CatalogEvent { app.currentEvent }
-    private var isPaid: Bool { app.booking?.paidMarkedAt != nil }
+    // payment_state is the source of truth for every phase distinction
+    // below — never booking.status/paidMarkedAt alone, which is the
+    // pre-state-machine model this screen used to read exclusively.
+    private var phase: PaymentPhase { app.booking?.paymentState ?? .holding }
+    private var isPaid: Bool { phase == .confirmed || app.booking?.paidMarkedAt != nil }
+    private var isHolding: Bool { app.booking != nil && phase == .holding }
+    private var isPendingVerification: Bool { phase == .pendingVerification }
+    private var isDisputed: Bool { phase == .disputed }
     private var awaitingPayment: Bool { app.booking != nil && !isPaid }
-    private var holdActive: Bool {
-        !isPaid && app.booking?.status == "pending" && (app.holdDeadline ?? .distantPast) > app.now
-    }
+    private var holdDeadline: Date? { app.booking?.holdExpiresAt ?? app.holdDeadline }
     private var countdown: String {
-        let remaining = max(0, Int((app.holdDeadline ?? app.now).timeIntervalSince(app.now)))
-        return String(format: "%02d:%02d:%02d", remaining / 3600, (remaining % 3600) / 60, remaining % 60)
+        Countdown.format(Countdown.secondsUntil(holdDeadline, now: app.now))
     }
+    private var verifySecondsLeft: TimeInterval {
+        Countdown.secondsUntil(app.booking?.verifyDueAt, now: app.now)
+    }
+    private var verifyOverdue: Bool { app.booking?.verifyDueAt != nil && verifySecondsLeft == 0 }
     private var guestName: String {
         let typed = app.formName.trimmingCharacters(in: .whitespaces)
         return typed.isEmpty ? app.T("Bạn", "You") : typed
@@ -35,15 +43,19 @@ struct ConfirmedView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         Text(isPaid ? app.T("Đã xác nhận", "Confirmed")
-                             : holdActive ? app.T("Đang giữ chỗ cho bạn", "Holding your spot")
+                             : isHolding ? app.T("Đang giữ chỗ cho bạn", "Holding your spot")
+                             : isPendingVerification ? app.T("Đang chờ xác nhận", "Awaiting confirmation")
+                             : isDisputed ? app.T("Đang được xem xét", "Under review")
                              : app.T("Đang chờ thanh toán", "Awaiting payment"))
                             .font(.system(size: 11.5))
 
                         Text(guestName + (isPaid
                             ? app.T(", vé của bạn đã sẵn sàng.", ", your ticket is ready.")
-                            : holdActive
+                            : isHolding
                                 ? app.T(", chỗ của bạn đang được giữ.", ", your spot is being held.")
-                                : app.T(", hoàn tất thanh toán để nhận vé.", ", complete payment to get your ticket.")))
+                                : isPendingVerification
+                                    ? app.T(", chỗ của bạn đã được khoá.", ", your seat is locked.")
+                                    : app.T(", hoàn tất thanh toán để nhận vé.", ", complete payment to get your ticket.")))
                             .font(BanbeTheme.display(27))
                             .padding(.top, 12)
 
@@ -55,7 +67,7 @@ struct ConfirmedView: View {
                         .lineSpacing(3)
                         .padding(.top, 18)
 
-                        if holdActive {
+                        if isHolding {
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(app.T("Giữ chỗ còn", "Hold expires in"))
@@ -69,6 +81,53 @@ struct ConfirmedView: View {
                             .padding(.horizontal, 18).padding(.vertical, 16)
                             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .padding(.top, 22)
+                            .accessibilityIdentifier("confirmed.holdCountdown")
+                        }
+
+                        // PHASE 2: the buyer's own clock is gone — replaced
+                        // by a reassurance countdown for the organizer's own
+                        // response window, framed so it never reads as a
+                        // threat to the seat itself.
+                        if isPendingVerification {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(alignment: .top) {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(app.T("Chỗ đã khoá ▪︎ không còn đếm ngược cho bạn",
+                                                   "Seat locked ▪︎ no countdown against you"))
+                                            .font(.system(size: 11.5, weight: .semibold))
+                                        Text(verifyOverdue
+                                             ? app.T("Người tổ chức đang xử lý — có thể mất thêm chút thời gian",
+                                                     "The organizer is on it — may take a little longer")
+                                             : app.T("Người tổ chức thường phản hồi trong",
+                                                     "The organizer typically responds within"))
+                                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                                    }
+                                    Spacer(minLength: 8)
+                                    if !verifyOverdue, app.booking?.verifyDueAt != nil {
+                                        Text(Countdown.format(verifySecondsLeft))
+                                            .font(BanbeTheme.display(24)).monospacedDigit()
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 18).padding(.vertical, 16)
+                            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .padding(.top, 22)
+                            .accessibilityIdentifier("confirmed.verifyCountdown")
+                        }
+
+                        if isDisputed {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(app.T("banbe đang xem xét", "banbe is reviewing this"))
+                                    .font(.system(size: 13.5, weight: .semibold))
+                                Text(app.T("Chỗ của bạn vẫn được giữ trong lúc chờ xem xét.",
+                                           "Your seat stays held while this is reviewed."))
+                                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 18).padding(.vertical, 16)
+                            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .padding(.top, 22)
+                            .accessibilityIdentifier("confirmed.disputed")
                         }
 
                         if awaitingPayment, let bookingID = app.booking?.id {
@@ -93,7 +152,7 @@ struct ConfirmedView: View {
                                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             }
                             .buttonStyle(.plain)
-                            .padding(.top, holdActive ? 12 : 22)
+                            .padding(.top, (isHolding || isPendingVerification || isDisputed) ? 12 : 22)
                             .accessibilityIdentifier("confirmed.pay")
                         }
 
@@ -144,26 +203,32 @@ struct ConfirmedView: View {
         }
         .onAppear { startPollingIfNeeded() }
         .onChange(of: app.booking?.id) { _, _ in startPollingIfNeeded() }
-        .onChange(of: isPaid) { _, paid in if paid { pollTask?.cancel() } }
+        .onChange(of: phase) { _, newPhase in
+            if newPhase == .confirmed { pollTask?.cancel() } else { startPollingIfNeeded() }
+        }
         .onDisappear { pollTask?.cancel() }
     }
 
-    /// While the booking is sitting unpaid, poll for the organizer having
-    /// confirmed it — the guest may already be looking at this screen when
-    /// that happens, and shouldn't have to leave and come back via the
-    /// notification to see the ticket unlock.
+    /// While the booking is sitting unpaid, poll for a phase change — the
+    /// organizer confirming, the bank webhook matching, or the guest
+    /// freezing it from PaymentDetailsView on another screen. The guest may
+    /// already be looking at this exact screen when any of those happen, and
+    /// shouldn't have to leave and come back via a notification to see it
+    /// update. Generalised to sync the whole row (not just paidMarkedAt) so
+    /// PHASE 1 -> PHASE 2 shows up live here too.
     private func startPollingIfNeeded() {
         pollTask?.cancel()
-        guard let bookingID = app.booking?.id, !isPaid else { return }
+        guard let bookingID = app.booking?.id, phase != .confirmed else { return }
+        let phaseAtStart = phase
         pollTask = Task { @MainActor in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 6_000_000_000)
                 if Task.isCancelled { break }
-                guard app.booking?.id == bookingID, app.booking?.paidMarkedAt == nil else { return }
+                guard app.booking?.id == bookingID, app.booking?.paymentState == phaseAtStart else { return }
                 if let fresh: Booking = try? await SupabaseService.client
                     .from("bookings").select().eq("id", value: bookingID.uuidString)
                     .single().execute().value,
-                   fresh.paidMarkedAt != nil, app.booking?.id == bookingID {
+                   fresh.paymentState != phaseAtStart, app.booking?.id == bookingID {
                     app.booking = fresh
                     return
                 }

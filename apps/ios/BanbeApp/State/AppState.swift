@@ -243,6 +243,11 @@ final class AppState: ObservableObject {
     @Published var verifications: [PendingVerification] = []
     @Published var verificationsLoading = false
     @Published var verificationBusy: UUID?
+    /// How many buyers are currently holding a seat on this account's own
+    /// events, and how soon the nearest one lapses — the organizer half of
+    /// the Home countdown banners (verifications above is the other half:
+    /// PHASE 2, not PHASE 1). nil until loadOrganizerHoldingSummary() runs.
+    @Published var organizerHoldingSummary: OrganizerHoldingSummary?
 
     // MARK: Create event
     @Published var orgRegName = ""
@@ -393,6 +398,33 @@ final class AppState: ObservableObject {
     var heldEvent: CatalogEvent? {
         guard let deadline = holdDeadline, deadline > now else { return nil }
         return EventCatalog.all.first { $0.key == eventKey }
+    }
+
+    // MARK: Payment countdown banners (both phases, both roles — Home)
+
+    /// PHASE 1, as a buyer: the soonest seat this account is still holding,
+    /// across every booking it has (not just the one most recently reserved
+    /// in this session — heldEvent above only ever knows about that one).
+    var myHolding: PayableBooking? {
+        Countdown.pickSoonest(paymentBookings, phase: .holding) { $0.holdExpiresAt }
+    }
+
+    /// PHASE 2, as a buyer: whichever booking has waited longest for the
+    /// organizer to confirm it. There is no buyer-facing deadline to sort by
+    /// — the clock stopped — so this is ordered by how long ago proof went
+    /// in, not by time remaining.
+    var myPendingVerification: PayableBooking? {
+        paymentBookings
+            .filter { $0.paymentState == .pendingVerification }
+            .sorted { ($0.proofUploadedAt ?? .distantPast) < ($1.proofUploadedAt ?? .distantPast) }
+            .first
+    }
+
+    /// PHASE 2, as an organizer: how many of my events' bookings are waiting
+    /// on me, and the soonest SLA deadline among them.
+    var organizerPendingCount: Int { verifications.count }
+    var organizerSoonestVerifyDue: Date? {
+        verifications.compactMap(\.verifyDueAt).min()
     }
 
     /// What EventListView shows for the current `eventListMode` — the

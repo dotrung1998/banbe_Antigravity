@@ -99,6 +99,10 @@ const initialState = {
   documentsKind: 'invoice',
   documentsRole: 'guest',
   documentId: null,
+  // How many buyers are currently holding a seat on this account's own
+  // events, and how soon the nearest one lapses — the organizer half of the
+  // Home countdown banners. null until loadOrganizerHoldingSummary() runs.
+  organizerHoldingSummary: null,
 
   // ---- two-phase payment state machine (migrations 026/027) ----
   // PHASE 1 'holding' runs a countdown; PHASE 2 'pending_verification' has
@@ -627,6 +631,7 @@ export function GocProvider({ children }) {
       .from('bookings')
       .select(`id, qty, total_vnd, code, status, expires_at, paid_marked_at, paid_method,
                proof_path, proof_uploaded_at, created_at, event_id,
+               payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at,
                events(id, key, name, event_date, event_time, area, organizer_id,
                       organizers(id, name, pay_methods, bank_name, bank_account_name,
                                  bank_account_no, momo_phone, pay_note, pay_qr_path))`)
@@ -720,6 +725,15 @@ export function GocProvider({ children }) {
       }
       set({ paymentSubmitting: false, paymentTxnId: '' });
       await loadPaymentBookings();
+      // The ticket screen (Confirmed) keeps its own copy of this booking in
+      // top-level state, set whenever it was reserved or last reopened — not
+      // refreshed by loadPaymentBookings() above. Without this, submitting
+      // proof here left that screen showing a PHASE 1 countdown for a
+      // booking that had just been frozen into PHASE 2 until something else
+      // happened to reload it.
+      set(prev => (prev.booking?.id === bookingId
+        ? { booking: { ...prev.booking, payment_state: 'pending_verification', transaction_id: txn, verify_due_at: data?.verify_due_at || null } }
+        : {}));
       return data;
     } catch (e) {
       console.warn('submitPaymentProof failed:', e);
@@ -772,6 +786,30 @@ export function GocProvider({ children }) {
     }
     set({ verifications: data || [], verificationsLoading: false });
   }, [set, s.user?.id]);
+
+  /**
+   * The PHASE 1 counterpart of loadVerifications — how many buyers are
+   * currently holding a seat on the organizer's own events, and how soon the
+   * nearest one lapses. v_pending_verifications only ever covers PHASE 2, so
+   * this reads bookings directly; bookings_select_host already scopes an
+   * organizer to their own events' rows, same as it does everywhere else.
+   */
+  const loadOrganizerHoldingSummary = useCallback(async () => {
+    if (!s.myOrganizerIds.length) return set({ organizerHoldingSummary: null });
+    const { data, error, count } = await supabase
+      .from('bookings')
+      .select('hold_expires_at, events!inner(organizer_id)', { count: 'exact' })
+      .eq('payment_state', 'holding')
+      .in('events.organizer_id', s.myOrganizerIds)
+      .order('hold_expires_at', { ascending: true })
+      .limit(1);
+    if (error) {
+      console.warn('loadOrganizerHoldingSummary failed:', error);
+      return set({ organizerHoldingSummary: null });
+    }
+    if (!count) return set({ organizerHoldingSummary: null });
+    set({ organizerHoldingSummary: { count, soonestHoldExpiresAt: data?.[0]?.hold_expires_at || null } });
+  }, [set, s.myOrganizerIds]);
 
   const approvePayment = useCallback(async (bookingId) => {
     set({ verificationBusy: bookingId });
@@ -1969,7 +2007,7 @@ export function GocProvider({ children }) {
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid,
     submitPaymentProof, paymentTxnType, vietQrFor,
-    openVerifications, loadVerifications, approvePayment, rejectPayment,
+    openVerifications, loadVerifications, approvePayment, rejectPayment, loadOrganizerHoldingSummary,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
@@ -1998,7 +2036,7 @@ export function GocProvider({ children }) {
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid,
     submitPaymentProof, paymentTxnType, vietQrFor,
-    openVerifications, loadVerifications, approvePayment, rejectPayment,
+    openVerifications, loadVerifications, approvePayment, rejectPayment, loadOrganizerHoldingSummary,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { formatVnd } from '../lib/paymentDocument.js';
+import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass } from '../theme.js';
 
 // The organizer's manual-verification queue — the fallback for every payment
@@ -21,6 +22,9 @@ export default function Verifications() {
   useEffect(() => { loadVerifications(); }, [loadVerifications]);
 
   const overdue = s.verifications.filter(v => v.overdue).length;
+  // Ticks only while the queue actually has SLA countdowns to show — an
+  // empty queue has no business waking this screen every second.
+  const tickNow = useTicking(s.verifications.length > 0);
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Verifications">
@@ -43,7 +47,10 @@ export default function Verifications() {
       </div>
 
       <div style={{ margin: '18px 22px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {s.verifications.map(v => (
+        {s.verifications.map(v => {
+          const slaMsLeft = msUntil(v.verify_due_at, tickNow);
+          const slaOverdue = !!v.verify_due_at && slaMsLeft === 0;
+          return (
           <div key={v.booking_id} style={{ ...cardGlass({ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }) }} data-testid="verification-row">
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
@@ -57,6 +64,14 @@ export default function Verifications() {
               <Line label={T('Nội dung CK', 'Reference')} value={v.payment_ref} mono />
               <Line label={T('Mã giao dịch', 'Transaction ID')} value={v.transaction_id || '—'} mono />
               <Line label={T('Đã chờ', 'Waiting')} value={waitLabel(v.proof_submitted_at, T)} />
+              {v.verify_due_at && (
+                <Line
+                  label={slaOverdue ? T('Đã quá hạn', 'Past due') : T('Thời hạn phản hồi', 'Response window')}
+                  value={slaOverdue ? T('Cần xử lý ngay', 'Needs action now') : formatCountdown(slaMsLeft)}
+                  urgent={slaOverdue}
+                  testid="verification-sla-countdown"
+                />
+              )}
             </div>
 
             {v.escalated && (
@@ -92,7 +107,8 @@ export default function Verifications() {
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
 
         {s.verifications.length === 0 && (
           <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: 0 }} data-testid="verifications-empty">
@@ -113,11 +129,11 @@ function waitLabel(since, T) {
   return `${Math.floor(mins / 60)}${T(' giờ ', 'h ')}${mins % 60}${T(' phút', 'm')}`;
 }
 
-function Line({ label, value, mono }) {
+function Line({ label, value, mono, urgent, testid }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }} data-testid={testid}>
       <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{label}</span>
-      <span style={{ fontSize: 12, fontWeight: 600, color: ink, letterSpacing: mono ? '0.06em' : 0, wordBreak: 'break-all' }}>{value}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: urgent ? '#9A3E2D' : ink, letterSpacing: mono ? '0.06em' : 0, wordBreak: 'break-all', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
     </div>
   );
 }
