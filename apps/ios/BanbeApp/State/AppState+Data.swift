@@ -62,10 +62,19 @@ private struct AttendanceBooking: Decodable {
     let userId: UUID?
     let qty: Int
     let status: String
+    let totalVnd: Int?
+    let code: String?
+    let expiresAt: Date?
+    let paidMarkedAt: Date?
+    let proofPath: String?
     enum CodingKeys: String, CodingKey {
         case id
         case userId = "user_id"
-        case qty, status
+        case qty, status, code
+        case totalVnd = "total_vnd"
+        case expiresAt = "expires_at"
+        case paidMarkedAt = "paid_marked_at"
+        case proofPath = "proof_path"
     }
 }
 private struct ProfileName: Decodable {
@@ -195,6 +204,7 @@ extension AppState {
                 .select("id, name")
                 .or("owner_id.eq.\(uid.uuidString),user_id.eq.\(uid.uuidString)")
                 .execute().value
+            myOrganizerIDs = organizers.map(\.id)
             if !organizers.isEmpty {
                 // The account's actual host page name — Account used to
                 // always fall back to the generic "Bếp Nhỏ" placeholder
@@ -574,9 +584,10 @@ extension AppState {
         attendanceLoading = true
         do {
             let bookings: [AttendanceBooking] = try await SupabaseService.client
-                .from("bookings").select("id, user_id, qty, status")
+                .from("bookings")
+                .select("id, user_id, qty, status, total_vnd, code, expires_at, paid_marked_at, proof_path")
                 .eq("event_id", value: key)
-                .in("status", values: ["confirmed", "attended"])
+                .in("status", values: ["pending", "confirmed", "attended"])
                 .execute().value
             let userIDs = Array(Set(bookings.compactMap(\.userId)))
             var names: [UUID: String] = [:]
@@ -587,15 +598,24 @@ extension AppState {
                     .execute().value
                 for profile in profiles { names[profile.id] = profile.displayName }
             }
-            attendanceGuests = bookings.map { booking in
-                let raw = (names[booking.userId ?? UUID()] ?? "").trimmingCharacters(in: .whitespaces)
-                return AttendanceGuest(
-                    id: booking.id,
-                    name: raw.isEmpty ? "Khách" : raw,
-                    qty: booking.qty,
-                    checkedIn: booking.status == "attended"
-                )
-            }
+            let rightNow = Date()
+            attendanceGuests = bookings
+                // Expired holds are seats nobody actually has — listing them
+                // would just fill the check-in screen with ghosts.
+                .filter { $0.status != "pending" || ($0.expiresAt ?? .distantFuture) > rightNow }
+                .map { booking in
+                    let raw = (names[booking.userId ?? UUID()] ?? "").trimmingCharacters(in: .whitespaces)
+                    return AttendanceGuest(
+                        id: booking.id,
+                        name: raw.isEmpty ? "Khách" : raw,
+                        qty: booking.qty,
+                        checkedIn: booking.status == "attended",
+                        paid: booking.paidMarkedAt != nil,
+                        totalVnd: booking.totalVnd ?? 0,
+                        code: booking.code ?? "",
+                        hasProof: !(booking.proofPath ?? "").isEmpty
+                    )
+                }
             attendanceLoading = false
         } catch {
             print("Failed to load attendance list:", error)

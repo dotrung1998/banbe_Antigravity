@@ -201,6 +201,11 @@ struct RootView: View {
         case .notifications: NotificationsView()
         case .eventList: EventListView()
         case .security: SecurityView()
+        case .paymentDetails: PaymentDetailsView()
+        case .billing: BillingView()
+        case .payout: PayoutView()
+        case .documents: DocumentsView()
+        case .documentView: DocumentViewerView()
         }
     }
 

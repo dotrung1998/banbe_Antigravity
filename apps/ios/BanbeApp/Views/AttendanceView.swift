@@ -50,6 +50,12 @@ struct AttendanceView: View {
                                "Tap a guest's name, or scan their ticket QR, when they arrive."))
                         .font(.system(size: 11.5))
                         .lineSpacing(2)
+
+                    Text(app.T("Đánh dấu \"Đã thanh toán\" khi bạn thấy tiền vào tài khoản — biên nhận sẽ tự phát hành cho khách.",
+                               "Mark a guest paid once you see the money arrive — their receipt is issued automatically."))
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(app.palette.ink.opacity(0.7))
+                        .lineSpacing(2)
                         .padding(.top, 10)
 
                     VStack(spacing: 0) {
@@ -84,8 +90,37 @@ struct AttendanceView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(guest.name).font(BanbeTheme.display(15))
-                    Text(guest.qty > 1 ? "\(guest.qty)" + app.T(" vé", " tickets") : app.T("1 vé", "1 ticket"))
+                    Text((guest.qty > 1 ? "\(guest.qty)" + app.T(" vé", " tickets") : app.T("1 vé", "1 ticket"))
+                         + " ▪︎ " + formatVnd(guest.totalVnd))
                         .font(.system(size: 11.5))
+
+                    if guest.paid {
+                        Text(app.T("Đã thanh toán ✓", "Paid ✓"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(app.palette.ink.opacity(0.7))
+                            .accessibilityIdentifier("guest.paid")
+                    } else {
+                        // The screenshot the guest already sent is the
+                        // strongest signal there is that this is the right
+                        // row to tap, so it changes the label rather than
+                        // hiding behind a separate indicator.
+                        Button(guest.hasProof
+                               ? app.T("Khách đã gửi biên lai ▪︎ Đánh dấu đã thanh toán",
+                                       "Guest sent proof ▪︎ Mark paid")
+                               : app.T("Đánh dấu đã thanh toán", "Mark as paid")) {
+                            Task { await app.markGuestPaid(guest.id) }
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(app.palette.ink)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(app.palette.rule, lineWidth: 1)
+                        )
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("guest.markPaid")
+                    }
+
                     Button(app.T("Huỷ vé", "Cancel booking")) { app.openCancelBooking(guest) }
                         .font(.system(size: 11))
                         .foregroundStyle(BanbeTheme.alert.opacity(0.8))

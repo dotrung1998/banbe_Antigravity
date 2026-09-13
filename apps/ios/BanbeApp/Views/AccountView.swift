@@ -61,6 +61,16 @@ struct AccountView: View {
                         app.openPreferences()
                     }
                     Divider().overlay(app.palette.rule)
+                    row(app.T("Hoá đơn", "Invoices"),
+                        identifier: "account.invoices", trailing: "›") {
+                        app.openDocuments(kind: "invoice", role: "guest")
+                    }
+                    Divider().overlay(app.palette.rule)
+                    row(app.T("Biên nhận", "Receipts"),
+                        identifier: "account.receipts", trailing: "›") {
+                        app.openDocuments(kind: "receipt", role: "guest")
+                    }
+                    Divider().overlay(app.palette.rule)
                     row(app.T("Bảo mật", "Security"),
                         identifier: "account.security",
                         trailing: "›") {
@@ -105,6 +115,25 @@ struct AccountView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(BanbeTheme.alert)
                         .padding(.top, 10)
+                }
+
+                if app.canHost {
+                    VStack(spacing: 0) {
+                        row(app.T("Nhận thanh toán", "Getting paid"),
+                            identifier: "host.payout", trailing: "›") { app.openPayout() }
+                        Divider().overlay(app.palette.rule)
+                        row(app.T("Hoá đơn đã phát hành", "Invoices issued"),
+                            identifier: "host.invoices", trailing: "›") {
+                            app.openDocuments(kind: "invoice", role: "host")
+                        }
+                        Divider().overlay(app.palette.rule)
+                        row(app.T("Biên nhận đã phát hành", "Receipts issued"),
+                            identifier: "host.receipts", trailing: "›") {
+                            app.openDocuments(kind: "receipt", role: "host")
+                        }
+                    }
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.top, 10)
                 }
 
                 if app.canHost {

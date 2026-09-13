@@ -10,6 +10,7 @@ enum Screen: String {
     case reserve, confirmed, refunded, login, chat, dashboard, hostIntro
     case create, attendance, preferences, editName, notifications, eventList
     case security
+    case paymentDetails, billing, payout, documents, documentView
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -88,6 +89,15 @@ struct AttendanceGuest: Identifiable, Equatable {
     let name: String
     let qty: Int
     var checkedIn: Bool
+    /// Paid means the organizer confirmed the money arrived — which is also
+    /// what issued the receipt. Status alone isn't the answer: claim_seats
+    /// marks instant-approval bookings 'confirmed' before anyone has paid.
+    var paid: Bool = false
+    var totalVnd: Int = 0
+    var code: String = ""
+    /// Whether the guest already sent a transfer screenshot — the strongest
+    /// signal there is that this is the right row to mark paid.
+    var hasProof: Bool = false
 }
 
 struct InboxThread: Identifiable, Equatable {
@@ -146,6 +156,7 @@ final class AppState: ObservableObject {
     @Published var attending: [String] = []
     @Published var tickets: [String: Int] = [:]
     @Published var myOrgEventKeys: [String] = []
+    @Published var myOrganizerIDs: [String] = []
 
     // MARK: Location
     @Published var located: Bool?
@@ -194,6 +205,38 @@ final class AppState: ObservableObject {
     @Published var reasonPrompt: ReasonPrompt?
     @Published var reasonPromptBusy = false
     @Published var reasonPromptError = ""
+
+    // MARK: Payments & documents (supabase migration 024)
+    @Published var paymentBookings: [PayableBooking] = []
+    @Published var paymentsLoading = false
+    @Published var paymentBookingID: UUID?
+    @Published var paymentCopied = ""
+    @Published var paymentProofUploading = false
+    @Published var paymentProofError = ""
+    @Published var paymentBack: Screen = .profile
+    @Published var billingName = ""
+    @Published var billingAddress = ""
+    @Published var billingPhone = ""
+    @Published var billingTaxCode = ""
+    @Published var billingSaving = false
+    @Published var billingSaved = false
+    @Published var billingError = ""
+    @Published var payoutBankName = ""
+    @Published var payoutAccountName = ""
+    @Published var payoutAccountNo = ""
+    @Published var payoutMomo = ""
+    @Published var payoutNote = ""
+    @Published var payoutAddress = ""
+    @Published var payoutTaxCode = ""
+    @Published var payoutSaving = false
+    @Published var payoutSaved = false
+    @Published var payoutError = ""
+    @Published var documents: [PaymentDocument] = []
+    @Published var documentsLoading = false
+    /// Which of the two Account rows opened the list, and from which side.
+    @Published var documentsKind = "invoice"
+    @Published var documentsRole = "guest"
+    @Published var documentID: UUID?
 
     // MARK: Create event
     @Published var orgRegName = ""

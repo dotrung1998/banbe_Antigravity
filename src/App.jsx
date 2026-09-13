@@ -30,6 +30,11 @@ import EditName from './screens/EditName.jsx';
 import Notifications from './screens/Notifications.jsx';
 import EventList from './screens/EventList.jsx';
 import Security from './screens/Security.jsx';
+import PaymentDetails from './screens/PaymentDetails.jsx';
+import Billing from './screens/Billing.jsx';
+import Payout from './screens/Payout.jsx';
+import Documents from './screens/Documents.jsx';
+import DocumentView from './screens/DocumentView.jsx';
 
 const SCREENS = {
   splash: Splash,
@@ -55,6 +60,11 @@ const SCREENS = {
   notifications: Notifications,
   eventList: EventList,
   security: Security,
+  paymentDetails: PaymentDetails,
+  billing: Billing,
+  payout: Payout,
+  documents: Documents,
+  documentView: DocumentView,
 };
 
 function Shell() {

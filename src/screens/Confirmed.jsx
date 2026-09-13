@@ -4,7 +4,7 @@ import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 
 export default function Confirmed() {
-  const { state, T, curEvent: ev, goHome, addToCalendar, giveTicket } = useGoc();
+  const { state, T, curEvent: ev, goHome, addToCalendar, giveTicket, openPaymentDetails } = useGoc();
   const s = state;
 
   const holdActive = s.booking?.status === 'pending' && s.holdDeadline && s.holdDeadline > s.now;
@@ -41,6 +41,19 @@ export default function Confirmed() {
               <span style={{ ...display(30, { fontVariantNumeric: 'tabular-nums' }) }}>{countdown}</span>
             </div>
             <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.5, color: ink }}>{T('Chuyển khoản trực tiếp cho người tổ chức trước khi hết giờ để xác nhận.', 'Pay the organizer directly before the timer ends to confirm.')}</div>
+            {s.booking?.id && (
+              <div
+                onClick={() => openPaymentDetails(s.booking.id, 'confirmed')}
+                style={{ ...cardGlass({ marginTop: 12, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, cursor: 'pointer' }) }}
+                data-testid="confirmed-pay"
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{T('Xem thông tin chuyển khoản', 'See payment details')}</span>
+                  <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink, opacity: 0.7 }}>{T('Số tài khoản, số tiền và nội dung cần ghi.', 'Account number, amount and the reference to use.')}</span>
+                </div>
+                <span style={{ fontSize: 17, color: ink, flex: 'none', lineHeight: 1 }}>›</span>
+              </div>
+            )}
           </>
         )}
         <div style={{ marginTop: 28, borderTop: `1px solid ${rule}`, paddingTop: 14, display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'center' }}>

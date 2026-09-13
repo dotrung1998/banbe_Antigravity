@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, useCallback, u
 import { EVENTS, findEvent, haversineKm } from '../data/events.js';
 import { supabase } from '../lib/supabase.js';
 import { requestAuthEmail, requestPasswordSignup, requestPasswordReset } from '../lib/authEmail.js';
+import { renderPaymentDocument } from '../lib/paymentDocument.js';
 
 const GocCtx = createContext(null);
 
@@ -72,6 +73,31 @@ const initialState = {
   attending: [],
   tickets: {},
   myOrgEventKeys: [],
+  myOrganizerIds: [],
+
+  // ---- payments & documents (supabase migration 024) ----
+  // banbe still never touches the money. These carry the details a guest
+  // needs to transfer directly to the organizer, and the paperwork both
+  // sides keep afterwards.
+  paymentBookings: [],
+  paymentsLoading: false,
+  paymentBookingId: null,
+  paymentCopied: '',
+  paymentProofUploading: false,
+  paymentProofError: '',
+  paymentBack: 'profile',
+  billingName: '', billingAddress: '', billingPhone: '', billingTaxCode: '',
+  billingSaving: false, billingSaved: false, billingError: '',
+  payoutBankName: '', payoutAccountName: '', payoutAccountNo: '', payoutMomo: '',
+  payoutNote: '', payoutAddress: '', payoutTaxCode: '',
+  payoutSaving: false, payoutSaved: false, payoutError: '',
+  documents: [],
+  documentsLoading: false,
+  documentsError: '',
+  // Which of the two Account rows opened the list, and from which side.
+  documentsKind: 'invoice',
+  documentsRole: 'guest',
+  documentId: null,
   located: null,
   askingLocation: false,
   userCoords: null,
@@ -397,6 +423,7 @@ export function GocProvider({ children }) {
       }
 
       const organizerIds = (organizers || []).map(o => o.id);
+      set({ myOrganizerIds: organizerIds });
       if (organizerIds.length) {
         const { data: events } = await supabase.from('events').select('id').in('organizer_id', organizerIds);
         if (active && events?.length) set({ myOrgEventKeys: events.map(e => e.id) });
@@ -565,6 +592,228 @@ export function GocProvider({ children }) {
       navigator.clipboard.writeText(url).then(done, done);
     } else { done(); }
   }, [set, s.photoViewer, T]);
+
+  // ---- payments & documents ----
+  // The one rule the whole feature is built around: banbe is not a payment
+  // processor and never becomes one here. Money moves directly between the
+  // two people. What the app owns is telling the guest where to send it,
+  // letting them show they did, letting the organizer confirm it, and
+  // giving both sides a document afterwards.
+
+  /** Every booking this account holds, with the organizer's payment details attached. */
+  const loadPaymentBookings = useCallback(async () => {
+    const uid = s.user?.id;
+    if (!uid) return set({ paymentBookings: [], paymentsLoading: false });
+    set({ paymentsLoading: true });
+    const { data, error } = await supabase
+      .from('bookings')
+      .select(`id, qty, total_vnd, code, status, expires_at, paid_marked_at, paid_method,
+               proof_path, proof_uploaded_at, created_at, event_id,
+               events(id, key, name, event_date, event_time, area, organizer_id,
+                      organizers(id, name, pay_methods, bank_name, bank_account_name,
+                                 bank_account_no, momo_phone, pay_note, pay_qr_path))`)
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.warn('loadPaymentBookings failed:', error);
+      return set({ paymentsLoading: false, paymentBookings: [] });
+    }
+    set({ paymentsLoading: false, paymentBookings: data || [] });
+  }, [set, s.user?.id]);
+
+  const openPaymentDetails = useCallback((bookingId, back = 'profile') => {
+    set({ screen: 'paymentDetails', paymentBookingId: bookingId, paymentBack: back, paymentProofError: '' });
+  }, [set]);
+  const backFromPaymentDetails = useCallback(() => set(prev => ({ screen: prev.paymentBack || 'profile' })), [set]);
+  const backFromBilling = useCallback(() => set({ screen: 'paymentDetails' }), [set]);
+
+  /** Copy-to-clipboard with a short "copied" flash, keyed by field. */
+  const copyPayField = useCallback((field, value) => {
+    const flash = () => {
+      set({ paymentCopied: field });
+      setTimeout(() => set(prev => (prev.paymentCopied === field ? { paymentCopied: '' } : {})), 1600);
+    };
+    if (navigator.clipboard) navigator.clipboard.writeText(String(value)).then(flash, flash);
+    else flash();
+  }, [set]);
+
+  /**
+   * The guest's "I've transferred" evidence. Note what this deliberately
+   * does NOT do: mark the booking paid. Only the organizer, who can see
+   * their own account, gets to say money arrived.
+   */
+  const uploadPaymentProof = useCallback(async (bookingId, file) => {
+    if (!bookingId || !file) return;
+    set({ paymentProofUploading: true, paymentProofError: '' });
+    try {
+      // The path's first segment is the booking id — that is exactly what
+      // the bucket's RLS policies split on, so a file can only ever land
+      // under a booking the uploader owns.
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const path = `${bookingId}/proof-${Date.now()}.${ext || 'jpg'}`;
+      const { error: upErr } = await supabase.storage.from('pay-proof').upload(path, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data, error } = await supabase.rpc('mark_payment_proof', { p_booking: bookingId, p_path: path, p_note: '' });
+      if (error) throw error;
+      if (data && data.success === false) throw new Error(data.error || 'PROOF_FAILED');
+      set({ paymentProofUploading: false });
+      await loadPaymentBookings();
+    } catch (e) {
+      console.warn('uploadPaymentProof failed:', e);
+      set({
+        paymentProofUploading: false,
+        paymentProofError: T('Không gửi được ảnh xác nhận. Thử lại nhé.', "Couldn't send that confirmation. Please try again."),
+      });
+    }
+  }, [set, T, loadPaymentBookings]);
+
+  // ---- billing identity (the buyer block on every document) ----
+  const openBilling = useCallback(async () => {
+    set({ screen: 'billing', billingError: '', billingSaved: false });
+    const uid = s.user?.id;
+    if (!uid) return;
+    const { data } = await supabase
+      .from('profiles')
+      .select('display_name, phone, billing_name, billing_address, billing_phone, billing_tax_code')
+      .eq('id', uid).maybeSingle();
+    if (!data) return;
+    set({
+      billingName: data.billing_name || data.display_name || '',
+      billingAddress: data.billing_address || '',
+      billingPhone: data.billing_phone || data.phone || '',
+      billingTaxCode: data.billing_tax_code || '',
+    });
+  }, [set, s.user?.id]);
+
+  const billingNameType = useCallback((e) => set({ billingName: e.target.value, billingSaved: false }), [set]);
+  const billingAddressType = useCallback((e) => set({ billingAddress: e.target.value, billingSaved: false }), [set]);
+  const billingPhoneType = useCallback((e) => set({ billingPhone: e.target.value, billingSaved: false }), [set]);
+  const billingTaxCodeType = useCallback((e) => set({ billingTaxCode: e.target.value, billingSaved: false }), [set]);
+
+  const saveBillingDetails = useCallback(async () => {
+    set({ billingSaving: true, billingError: '', billingSaved: false });
+    try {
+      const { data, error } = await supabase.rpc('save_billing_details', {
+        p_name: s.billingName, p_address: s.billingAddress,
+        p_phone: s.billingPhone, p_tax_code: s.billingTaxCode,
+      });
+      if (error) throw error;
+      if (data && data.success === false) throw new Error(data.error || 'SAVE_FAILED');
+      set({ billingSaving: false, billingSaved: true });
+    } catch (e) {
+      console.warn('saveBillingDetails failed:', e);
+      set({ billingSaving: false, billingError: T('Chưa lưu được. Thử lại nhé.', "Couldn't save. Please try again.") });
+    }
+  }, [set, T, s.billingName, s.billingAddress, s.billingPhone, s.billingTaxCode]);
+
+  // ---- payout details (where the organizer wants to be paid) ----
+  const openPayout = useCallback(async () => {
+    set({ screen: 'payout', payoutError: '', payoutSaved: false });
+    const orgId = s.myOrganizerIds[0];
+    if (!orgId) return;
+    const { data } = await supabase
+      .from('organizers')
+      .select('bank_name, bank_account_name, bank_account_no, momo_phone, pay_note, billing_address, tax_code')
+      .eq('id', orgId).maybeSingle();
+    if (!data) return;
+    set({
+      payoutBankName: data.bank_name || '', payoutAccountName: data.bank_account_name || '',
+      payoutAccountNo: data.bank_account_no || '', payoutMomo: data.momo_phone || '',
+      payoutNote: data.pay_note || '', payoutAddress: data.billing_address || '',
+      payoutTaxCode: data.tax_code || '',
+    });
+  }, [set, s.myOrganizerIds]);
+
+  const payoutField = useCallback((key) => (e) => set({ [key]: e.target.value, payoutSaved: false }), [set]);
+
+  const savePayoutDetails = useCallback(async () => {
+    const orgId = s.myOrganizerIds[0];
+    if (!orgId) return set({ payoutError: T('Chưa có trang tổ chức.', 'No host page yet.') });
+    set({ payoutSaving: true, payoutError: '', payoutSaved: false });
+    try {
+      const { data, error } = await supabase.rpc('save_organizer_payment', {
+        p_organizer: orgId,
+        p_bank_name: s.payoutBankName, p_bank_account_name: s.payoutAccountName,
+        p_bank_account_no: s.payoutAccountNo, p_momo_phone: s.payoutMomo,
+        p_pay_note: s.payoutNote, p_billing_address: s.payoutAddress, p_tax_code: s.payoutTaxCode,
+      });
+      if (error) throw error;
+      if (data && data.success === false) throw new Error(data.error || 'SAVE_FAILED');
+      set({ payoutSaving: false, payoutSaved: true });
+    } catch (e) {
+      console.warn('savePayoutDetails failed:', e);
+      set({ payoutSaving: false, payoutError: T('Chưa lưu được. Thử lại nhé.', "Couldn't save. Please try again.") });
+    }
+  }, [set, T, s.myOrganizerIds, s.payoutBankName, s.payoutAccountName, s.payoutAccountNo,
+      s.payoutMomo, s.payoutNote, s.payoutAddress, s.payoutTaxCode]);
+
+  // ---- the documents themselves ----
+  const openDocuments = useCallback((kind, role = 'guest') => {
+    set({ screen: 'documents', documentsKind: kind, documentsRole: role, documents: [], documentsError: '' });
+  }, [set]);
+
+  const loadDocuments = useCallback(async () => {
+    const uid = s.user?.id;
+    if (!uid) return set({ documents: [], documentsLoading: false });
+    set({ documentsLoading: true, documentsError: '' });
+
+    // As a guest, make sure an invoice actually exists for anything bookable
+    // before listing — ensure_payment_document is idempotent, so this mints
+    // the missing ones once and is a no-op afterwards. Receipts are never
+    // minted here; only the organizer marking payment can do that.
+    if (s.documentsRole === 'guest' && s.documentsKind === 'invoice') {
+      const { data: mine } = await supabase
+        .from('bookings').select('id, status')
+        .eq('user_id', uid).in('status', ['pending', 'confirmed', 'attended']);
+      for (const b of mine || []) {
+        await supabase.rpc('ensure_payment_document', { p_booking: b.id, p_kind: 'invoice' })
+          .then(({ error }) => { if (error) console.warn('ensure invoice failed:', b.id, error.message); });
+      }
+    }
+
+    let query = supabase.from('payment_documents').select('*').eq('kind', s.documentsKind);
+    if (s.documentsRole === 'host') {
+      // An organizer is usually also a goer, so filtering by RLS alone would
+      // mix their own tickets into the list of documents they issued.
+      if (!s.myOrganizerIds.length) return set({ documentsLoading: false, documents: [] });
+      query = query.in('organizer_id', s.myOrganizerIds);
+    } else {
+      query = query.eq('user_id', uid);
+    }
+    const { data, error } = await query.order('issued_at', { ascending: false });
+    if (error) {
+      console.warn('loadDocuments failed:', error);
+      return set({ documentsLoading: false, documents: [], documentsError: T('Chưa tải được danh sách.', "Couldn't load the list.") });
+    }
+    set({ documentsLoading: false, documents: data || [] });
+  }, [set, T, s.user?.id, s.documentsKind, s.documentsRole, s.myOrganizerIds]);
+
+  const openDocument = useCallback((id) => set({ screen: 'documentView', documentId: id }), [set]);
+  const backFromDocument = useCallback(() => set({ screen: 'documents' }), [set]);
+  const backFromDocuments = useCallback(() => set({ screen: 'profile' }), [set]);
+
+  const currentDocument = useMemo(
+    () => s.documents.find(d => d.id === s.documentId) || null,
+    [s.documents, s.documentId],
+  );
+
+  /**
+   * Hands the rendered document to the browser's own print dialog, which is
+   * also its "Save as PDF". Generating a PDF in-page would mean shipping a
+   * PDF library and hand-laying the Vietnamese diacritics into it; the print
+   * pipeline already renders the exact same HTML the viewer just looked at.
+   */
+  const downloadDocument = useCallback((doc) => {
+    if (!doc) return;
+    const html = renderPaymentDocument(doc, { lang: s.lang, origin: window.location.origin });
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    // Let the wordmark land before the dialog freezes the page, or the
+    // saved PDF has a broken-image box where the logo should be.
+    w.addEventListener('load', () => setTimeout(() => w.print(), 120));
+  }, [s.lang]);
 
   const openPreferences = useCallback(() => set({ screen: 'preferences' }), [set]);
   const openSecurity = useCallback(() => set({
@@ -1362,11 +1611,14 @@ export function GocProvider({ children }) {
   // alongside check_in_guest()'s notification).
   const loadAttendanceGuests = useCallback(async (key) => {
     set({ attendanceLoading: true });
+    // 'pending' belongs here too: an unpaid guest is exactly the one the
+    // organizer needs to find in order to mark them paid. Expired holds are
+    // dropped below so the list doesn't fill up with seats nobody holds.
     const { data: bookings, error } = await supabase
       .from('bookings')
-      .select('id, user_id, qty, status')
+      .select('id, user_id, qty, status, total_vnd, code, expires_at, paid_marked_at, paid_method, proof_path')
       .eq('event_id', key)
-      .in('status', ['confirmed', 'attended']);
+      .in('status', ['pending', 'confirmed', 'attended']);
     if (error) {
       console.warn('Failed to load attendance list:', error);
       set({ attendanceGuests: [], attendanceLoading: false });
@@ -1378,18 +1630,41 @@ export function GocProvider({ children }) {
       const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', userIds);
       names = Object.fromEntries((profiles || []).map(p => [p.id, p.display_name]));
     }
-    const guests = (bookings || []).map(b => ({
-      id: b.id,
-      name: (names[b.user_id] || '').trim() || 'Khách',
-      qty: b.qty,
-      checkedIn: b.status === 'attended',
-    }));
+    const now = Date.now();
+    const guests = (bookings || [])
+      .filter(b => b.status !== 'pending' || !b.expires_at || new Date(b.expires_at).getTime() > now)
+      .map(b => ({
+        id: b.id,
+        name: (names[b.user_id] || '').trim() || 'Khách',
+        qty: b.qty,
+        checkedIn: b.status === 'attended',
+        // Paid means the organizer confirmed the money arrived — which is
+        // also what issued the receipt. claim_seats marks instant-approval
+        // bookings 'confirmed' up front, so status alone isn't the answer.
+        paid: !!b.paid_marked_at,
+        payMethod: b.paid_method || '',
+        totalVnd: b.total_vnd || 0,
+        code: b.code || '',
+        hasProof: !!b.proof_path,
+      }));
     set({ attendanceGuests: guests, attendanceLoading: false });
   }, [set]);
   const openAttendance = useCallback((key) => {
     set({ screen: 'attendance', attendanceEventKey: key, attendanceGuests: [] });
     loadAttendanceGuests(key);
   }, [set, loadAttendanceGuests]);
+  /**
+   * The organizer's "mark as paid". confirm_payment issues the receipt in
+   * the same transaction (migration 024) and notifies the guest, which is
+   * why this is one action rather than a separate "now issue a receipt"
+   * step the organizer could forget.
+   */
+  const markGuestPaid = useCallback(async (bookingId, payMethod = 'bank') => {
+    const result = await confirmPayment(bookingId, payMethod);
+    if (s.attendanceEventKey) await loadAttendanceGuests(s.attendanceEventKey);
+    return result;
+  }, [confirmPayment, loadAttendanceGuests, s.attendanceEventKey]);
+
   const notifyCheckIn = useCallback(async (bookingId) => {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -1488,6 +1763,11 @@ export function GocProvider({ children }) {
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
+    loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof,
+    openBilling, billingNameType, billingAddressType, billingPhoneType, billingTaxCodeType, saveBillingDetails,
+    openPayout, payoutField, savePayoutDetails,
+    openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
+    currentDocument, downloadDocument, markGuestPaid,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
@@ -1509,6 +1789,11 @@ export function GocProvider({ children }) {
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
+    loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof,
+    openBilling, billingNameType, billingAddressType, billingPhoneType, billingTaxCodeType, saveBillingDetails,
+    openPayout, payoutField, savePayoutDetails,
+    openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
+    currentDocument, downloadDocument, markGuestPaid,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
