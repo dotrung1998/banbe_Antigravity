@@ -78,7 +78,14 @@ struct PaymentDetailsView: View {
                     // whatever content-type submitPaymentProof declares
                     // (previously hardcoded to "image/jpeg" over whatever
                     // the raw picked bytes really were).
-                    pickedImage = uiImage.jpegData(compressionQuality: 0.9)
+                    //
+                    // ProofImage downscales/re-compresses as needed to land
+                    // under the bucket's 5 MB cap — a plain
+                    // `jpegData(compressionQuality: 0.9)` on a full-resolution
+                    // camera photo (commonly 6-12 MB) blew straight past that
+                    // limit and was silently rejected by Storage, independent
+                    // of format, which is exactly what was still failing here.
+                    pickedImage = ProofImage.jpegDataUnderLimit(from: uiImage)
                     pickedPreview = uiImage
                     pickedName = app.T("Đã chọn ảnh biên lai", "Receipt image selected")
                 } else {

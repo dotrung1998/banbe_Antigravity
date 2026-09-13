@@ -433,6 +433,15 @@ extension AppState {
         paymentProofUploading = true
         paymentProofError = ""
         do {
+            // `.session` (not `.currentSession`) refreshes the token first if
+            // it's stale — the 'pay-proof' bucket's INSERT policy checks
+            // `auth.uid()` against the booking's owner, so an expired token
+            // at upload time reads there as "not this user's booking" (a
+            // confusing 403) rather than the auth problem it actually is.
+            // Awaiting this first turns that into a precise AuthError
+            // instead, and normally just re-validates an already-good token.
+            _ = try await SupabaseService.client.auth.session
+
             let path = "\(bookingID.uuidString)/proof-\(Int(Date().timeIntervalSince1970)).\(fileExtension)"
             _ = try await SupabaseService.client.storage
                 .from("pay-proof")
@@ -452,7 +461,11 @@ extension AppState {
                         return T("Rất tiếc, chỗ đã hết trong lúc chờ thanh toán. Hãy liên hệ người tổ chức để được hoàn tiền.",
                                  "Sorry — the seat sold out while this was pending. Contact the organizer for a refund.")
                     default:
-                        return T("Chưa gửi được. Thử lại nhé.", "Couldn't submit. Please try again.")
+                        // Not one of the friendly-copy cases above — still
+                        // surface the RPC's own error code (BOOKING_NOT_FOUND,
+                        // NOT_AUTHORIZED, INVALID_STATE, …) rather than a bare
+                        // generic message with no way to tell which failed.
+                        return T("Chưa gửi được. ", "Couldn't submit. ") + (result.error ?? "UNKNOWN_ERROR")
                     }
                 }()
                 paymentProofUploading = false
@@ -466,8 +479,27 @@ extension AppState {
         } catch {
             print("submitPaymentProof failed:", error)
             paymentProofUploading = false
-            paymentProofError = T("Chưa gửi được. Thử lại nhé.", "Couldn't submit. Please try again.")
+            paymentProofError = Self.describeProofUploadError(error, T: T)
         }
+    }
+
+    /// Surfaces the *actual* failure instead of a generic "Couldn't submit"
+    /// — a StorageError/PostgrestError's own status code and message name
+    /// the real cause (an oversized file past the bucket's cap, an expired
+    /// session so `auth.uid()` is null against storage's RLS check, a
+    /// rejected MIME type, …) precisely, in contrast to `error.localizedDescription`
+    /// on an arbitrary Swift `Error`, which is frequently just "The operation
+    /// couldn't be completed." with no actionable detail at all.
+    static func describeProofUploadError(_ error: Error, T: (String, String) -> String) -> String {
+        let detail: String
+        if let storageError = error as? StorageError {
+            detail = "Storage" + (storageError.statusCode.map { " \($0)" } ?? "") + ": " + storageError.message
+        } else if let postgrestError = error as? PostgrestError {
+            detail = "DB" + (postgrestError.code.map { " \($0)" } ?? "") + ": " + postgrestError.message
+        } else {
+            detail = error.localizedDescription
+        }
+        return T("Chưa gửi được. ", "Couldn't submit. ") + detail
     }
 
     // MARK: Organizer verification queue
