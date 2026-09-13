@@ -412,6 +412,74 @@ extension AppState {
         }
     }
 
+    /// The client-side half of forfeiting a lapsed PHASE 1 hold. Called the
+    /// instant a ticking countdown (ConfirmedView, PaymentDetailsView,
+    /// HomeView's banner) notices its own deadline has passed while still
+    /// 'holding'.
+    ///
+    /// Every screen that shows "Going"/a ticket/the Reserve-vs-ticket toggle
+    /// reads this same booking's paymentState/status out of shared state —
+    /// never off a live countdown — so patching them here is what makes all
+    /// three update immediately, together, regardless of which screen
+    /// actually noticed the expiry. The RPC call alongside it is what makes
+    /// that true durably instead of just visually: without it, this booking
+    /// would sit at status "confirmed" (instant-approval events set that
+    /// immediately, before payment) until the next minutely sweep — or
+    /// forever, had the sweep ever failed on it the way it once did for
+    /// exactly this case.
+    /// Called from PaymentDetailsView / HomeView, which hold this account's
+    /// bookings as `PayableBooking` (the `bookings` + joined `events`/
+    /// `organizers` shape `loadPaymentBookings()` fetches).
+    func forfeitExpiredHold(_ payable: PayableBooking) {
+        forfeitExpiredHoldCore(bookingID: payable.id, eventKey: payable.eventKey)
+        if let index = paymentBookings.firstIndex(where: { $0.id == payable.id }) {
+            paymentBookings[index].paymentState = .expired
+            paymentBookings[index].status = "expired"
+        }
+    }
+
+    /// Called from ConfirmedView, which holds the ticket's own booking as a
+    /// plain `Booking` (whatever `submitReserve`/`openBookingConfirmed`/the
+    /// polling refresh last fetched it as) rather than a `PayableBooking`.
+    func forfeitExpiredHold(_ current: Booking) {
+        forfeitExpiredHoldCore(bookingID: current.id, eventKey: current.eventId)
+    }
+
+    /// The client-side half of forfeiting a lapsed PHASE 1 hold, shared by
+    /// both overloads above. Called the instant a ticking countdown
+    /// (ConfirmedView, PaymentDetailsView, HomeView's banner) notices its own
+    /// deadline has passed while still 'holding'.
+    ///
+    /// Every screen that shows "Going"/a ticket/the Reserve-vs-ticket toggle
+    /// reads this same booking's paymentState/status out of shared state —
+    /// never off a live countdown — so patching them here is what makes all
+    /// three update immediately, together, regardless of which screen
+    /// actually noticed the expiry. The RPC call alongside it is what makes
+    /// that true durably instead of just visually: without it, this booking
+    /// would sit at status "confirmed" (instant-approval events set that
+    /// immediately, before payment) until the next minutely sweep — or
+    /// forever, had the sweep ever failed on it the way it once did for
+    /// exactly this case.
+    private func forfeitExpiredHoldCore(bookingID: UUID, eventKey: String) {
+        attending.removeAll { $0 == eventKey }
+        if booking?.id == bookingID {
+            booking?.paymentState = .expired
+            booking?.status = "expired"
+        }
+        Task {
+            do {
+                let result: ForfeitResult = try await SupabaseService.client
+                    .rpc("forfeit_my_expired_hold", params: ["p_booking": bookingID.uuidString])
+                    .execute().value
+                if result.success == false {
+                    print("forfeitExpiredHold RPC declined:", result.error ?? "unknown")
+                }
+            } catch {
+                print("forfeitExpiredHold RPC failed:", error)
+            }
+        }
+    }
+
     // MARK: - Reserve / booking
 
     func qtyMinus() { qty = max(1, qty - 1) }

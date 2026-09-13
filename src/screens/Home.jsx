@@ -18,7 +18,7 @@ export default function Home() {
     goProfile, goInbox, goEvent, goNotifications, openArea, toggleLang, pickFilter, clearFilters,
     becomeHost, switchToHost,
     canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary,
-    openPaymentDetails, openVerifications, goDashboard,
+    openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
   } = useGoc();
 
   const s = state;
@@ -54,6 +54,20 @@ export default function Home() {
   // re-render every second; none of them showing means no clock runs at all.
   const anyCountdownVisible = !!(heldEv || myHolding || myPendingVerification || orgPendingCount || orgHolding);
   const tickNow = useTicking(anyCountdownVisible);
+
+  // Home is often the screen a buyer is sitting on when a hold's countdown
+  // reaches zero — not just the ticket screen. myHolding above already
+  // excludes a lapsed row (that's what makes the banner disappear on time),
+  // which means it can't be used to notice the transition; this checks the
+  // raw list directly so Home can forfeit it the same instant the banner
+  // for it vanishes, rather than leaving that to whichever other screen the
+  // buyer happens to open next.
+  useEffect(() => {
+    const justLapsed = (s.paymentBookings || []).find(
+      b => b.payment_state === 'holding' && b.hold_expires_at && msUntil(b.hold_expires_at, tickNow) === 0
+    );
+    if (justLapsed) forfeitExpiredHold(justLapsed);
+  }, [s.paymentBookings, tickNow, forfeitExpiredHold]);
 
   const filters = FILTER_DEFS.map(f => ({
     key: f.key,

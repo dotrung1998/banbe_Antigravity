@@ -20,7 +20,7 @@ export default function PaymentDetails() {
   const {
     state, T, loadPaymentBookings, backFromPaymentDetails,
     copyPayField, submitPaymentProof, paymentTxnType, vietQrFor,
-    openBilling, openDocuments,
+    openBilling, openDocuments, forfeitExpiredHold,
   } = useGoc();
   const s = state;
   const fileRef = useRef(null);
@@ -49,6 +49,16 @@ export default function PaymentDetails() {
     ? Math.max(0, new Date(booking.hold_expires_at).getTime() - tick) : 0;
   const mm = String(Math.floor(msLeft / 60000)).padStart(2, '0');
   const ss = String(Math.floor((msLeft % 60000) / 1000)).padStart(2, '0');
+
+  // The moment this screen's own ticking clock notices the hold has lapsed,
+  // forfeit it immediately — self-guards against firing twice, since the
+  // local patch flips booking.payment_state to 'expired' on the very next
+  // render, and isHolding follows straight from that.
+  useEffect(() => {
+    if (isHolding && !!booking?.hold_expires_at && msLeft === 0) {
+      forfeitExpiredHold(booking);
+    }
+  }, [isHolding, booking, msLeft, forfeitExpiredHold]);
 
   if (!booking) {
     return (

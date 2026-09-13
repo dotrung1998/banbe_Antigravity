@@ -57,6 +57,12 @@ struct HomeView: View {
                 await app.loadVerifications()
                 await app.loadOrganizerHoldingSummary()
             }
+            // The data this decides on arrives asynchronously, after
+            // .onAppear's own call below has almost certainly already run
+            // and found nothing to show yet — without this, a countdown
+            // could sit there never ticking at all, having missed its one
+            // chance to start.
+            startTickingIfNeeded()
         }
         .onAppear { startTickingIfNeeded() }
         .onDisappear { tickTask?.cancel() }
@@ -68,9 +74,30 @@ struct HomeView: View {
         tickTask = Task { @MainActor in
             while !Task.isCancelled {
                 tick = Date()
+                forfeitAnyJustLapsedHold()
+                // Stop ticking once nothing is left to show — matches
+                // useTicking()'s behaviour on the web side, and means a
+                // countdown that just got forfeited above doesn't leave a
+                // pointless per-second timer running forever afterward.
+                if !anyCountdownVisible { break }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
+    }
+
+    /// Home is often the screen a buyer is sitting on when a hold's
+    /// countdown reaches zero — not just the ticket screen. `app.myHolding`
+    /// already excludes a lapsed row (that's what makes its banner
+    /// disappear on time), which means it can't be used to notice the
+    /// transition; this checks the raw list directly so Home can forfeit it
+    /// the same instant the banner for it vanishes, rather than leaving
+    /// that to whichever other screen the buyer happens to open next.
+    private func forfeitAnyJustLapsedHold() {
+        guard let justLapsed = app.paymentBookings.first(where: {
+            $0.paymentState == .holding && $0.holdExpiresAt != nil
+                && Countdown.secondsUntil($0.holdExpiresAt, now: tick) == 0
+        }) else { return }
+        app.forfeitExpiredHold(justLapsed)
     }
 
     @ViewBuilder

@@ -20,7 +20,7 @@ extension AppState {
             let rows: [PayableBookingRow] = try await SupabaseService.client
                 .from("bookings")
                 .select("""
-                    id, qty, total_vnd, code, status, paid_marked_at, proof_uploaded_at, created_at,
+                    id, qty, total_vnd, code, status, paid_marked_at, proof_uploaded_at, created_at, event_id,
                     payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at,
                     events(name, organizers(name, pay_methods, bank_name, bank_account_name,
                                             bank_account_no, momo_phone, pay_note))
@@ -348,6 +348,7 @@ private struct PayableBookingRow: Decodable {
     let status: String
     let paidMarkedAt: Date?
     let proofUploadedAt: Date?
+    let eventId: String
     let paymentState: String?
     let paymentRef: String?
     let holdExpiresAt: Date?
@@ -384,6 +385,7 @@ private struct PayableBookingRow: Decodable {
         case totalVnd = "total_vnd"
         case paidMarkedAt = "paid_marked_at"
         case proofUploadedAt = "proof_uploaded_at"
+        case eventId = "event_id"
         case paymentState = "payment_state"
         case paymentRef = "payment_ref"
         case holdExpiresAt = "hold_expires_at"
@@ -394,7 +396,7 @@ private struct PayableBookingRow: Decodable {
     var asPayable: PayableBooking {
         let org = events?.organizers
         return PayableBooking(
-            id: id, qty: qty, totalVnd: totalVnd, code: code ?? "", status: status,
+            id: id, eventKey: eventId, qty: qty, totalVnd: totalVnd, code: code ?? "", status: status,
             paymentState: PaymentPhase(rawValue: paymentState ?? "holding") ?? .holding,
             paymentRef: paymentRef ?? "",
             holdExpiresAt: holdExpiresAt,
@@ -585,6 +587,14 @@ struct OrganizerHoldingSummary: Equatable {
 }
 
 private struct SubmitProofResult: Decodable {
+    let success: Bool?
+    let error: String?
+    let state: String?
+}
+
+/// Shared by forfeitExpiredHold (AppState+Data.swift) — not private, since
+/// that function lives in a different file within the same module.
+struct ForfeitResult: Decodable {
     let success: Bool?
     let error: String?
     let state: String?

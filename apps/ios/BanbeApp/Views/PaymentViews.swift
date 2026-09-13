@@ -50,7 +50,16 @@ struct PaymentDetailsView: View {
         // Only PHASE 1 needs a ticking clock; anywhere else this is both
         // pointless and actively misleading.
         .onReceive(ticker) { now in
-            if booking?.paymentState.isCountingDown == true { tick = now }
+            guard let booking, booking.paymentState.isCountingDown else { return }
+            tick = now
+            // The moment this screen's own clock notices the hold has
+            // lapsed, forfeit it immediately — self-guards against firing
+            // twice, since the local patch flips paymentState to .expired
+            // on the very next tick, and isCountingDown follows straight
+            // from that.
+            if let deadline = booking.holdExpiresAt, Countdown.secondsUntil(deadline, now: now) == 0 {
+                app.forfeitExpiredHold(booking)
+            }
         }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }

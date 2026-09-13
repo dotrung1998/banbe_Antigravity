@@ -207,6 +207,19 @@ struct ConfirmedView: View {
             if newPhase == .confirmed { pollTask?.cancel() } else { startPollingIfNeeded() }
         }
         .onDisappear { pollTask?.cancel() }
+        // app.now ticks every second app-wide, which is what drives
+        // `countdown` above — the moment it notices this screen's own
+        // deadline has passed while still 'holding', forfeit immediately
+        // rather than leave the ticket sitting stale until the next poll or
+        // the minutely server sweep gets to it. Self-guards against firing
+        // twice: forfeitExpiredHold flips booking.paymentState to .expired,
+        // so `isHolding` (derived from `phase`) is false on the very next tick.
+        .onChange(of: app.now) { _, _ in
+            if isHolding, let deadline = holdDeadline, Countdown.secondsUntil(deadline, now: app.now) == 0,
+               let current = app.booking {
+                app.forfeitExpiredHold(current)
+            }
+        }
     }
 
     /// While the booking is sitting unpaid, poll for a phase change — the

@@ -106,6 +106,9 @@ enum PaymentPhase: String, Codable {
 
 struct PayableBooking: Identifiable, Hashable {
     let id: UUID
+    /// The event's own key/id — bookings.event_id — used to remove this
+    /// event from `attending` the instant its hold is forfeited.
+    var eventKey: String
     var qty: Int
     var totalVnd: Int
     var code: String

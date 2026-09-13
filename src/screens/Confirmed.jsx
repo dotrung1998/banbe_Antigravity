@@ -6,7 +6,7 @@ import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 
 export default function Confirmed() {
-  const { state, T, set, curEvent: ev, goHome, addToCalendar, giveTicket, openPaymentDetails } = useGoc();
+  const { state, T, set, curEvent: ev, goHome, addToCalendar, giveTicket, openPaymentDetails, forfeitExpiredHold } = useGoc();
   const s = state;
 
   // payment_state is the source of truth for every phase distinction below;
@@ -31,6 +31,20 @@ export default function Confirmed() {
   const verifyMsLeft = msUntil(s.booking?.verify_due_at, now);
   const verifyCountdown = formatCountdown(verifyMsLeft);
   const verifyOverdue = !!s.booking?.verify_due_at && verifyMsLeft === 0;
+
+  // The moment this screen's own ticking clock notices the hold has lapsed,
+  // forfeit it immediately rather than leave the ticket sitting in a stale
+  // "still holding" state until the next poll or the minutely server sweep
+  // gets to it — this is what makes "Going" and the ticket both drop the
+  // instant the countdown reaches 00:00, not up to a minute later.
+  useEffect(() => {
+    // isHolding flips to false the instant forfeitExpiredHold's own local
+    // state patch lands (phase is derived straight from booking.payment_state),
+    // so this self-guards against firing more than once per lapse.
+    if (isHolding && msUntil(holdDeadlineIso, now) === 0) {
+      forfeitExpiredHold(s.booking);
+    }
+  }, [isHolding, holdDeadlineIso, now, s.booking, forfeitExpiredHold]);
 
   // While a booking is sitting unpaid, poll for a phase change — the
   // organizer confirming, the bank webhook matching, or the guest freezing

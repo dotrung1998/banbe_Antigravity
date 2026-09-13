@@ -1876,6 +1876,41 @@ export function GocProvider({ children }) {
       now: Date.now(),
     });
   }, [set]);
+
+  /**
+   * The client-side half of forfeiting a lapsed PHASE 1 hold. Called the
+   * instant a ticking countdown (Confirmed, PaymentDetails, Home's banner)
+   * notices its own deadline has passed while still 'holding'.
+   *
+   * Every screen that shows "Going"/a ticket/the Reserve-vs-ticket toggle
+   * reads this same booking's payment_state/status out of shared state —
+   * never off a live countdown — so patching them here is what makes all
+   * three update immediately, together, regardless of which screen actually
+   * noticed the expiry. The server call alongside it is what makes that
+   * true durably instead of just visually: without it, this booking would
+   * sit at status='confirmed' (instant-approval events set that immediately,
+   * before payment) until the next minutely sweep, or forever if the sweep
+   * ever failed on it.
+   */
+  const forfeitExpiredHold = useCallback((booking) => {
+    if (!booking?.id) return;
+    const eventKey = booking.event_id;
+    set(prev => ({
+      attending: eventKey ? prev.attending.filter(k => k !== eventKey) : prev.attending,
+      booking: prev.booking?.id === booking.id
+        ? { ...prev.booking, payment_state: 'expired', status: 'expired' } : prev.booking,
+      paymentBookings: prev.paymentBookings.map(b => (
+        b.id === booking.id ? { ...b, payment_state: 'expired', status: 'expired' } : b
+      )),
+    }));
+    supabase.rpc('forfeit_my_expired_hold', { p_booking: booking.id })
+      .then(({ data, error }) => {
+        if (error || data?.success === false) {
+          console.warn('forfeitExpiredHold RPC failed:', error || data?.error);
+        }
+      });
+  }, [set]);
+
   // Tapping a notification marks it read and, for the kinds that point at
   // somewhere real, takes you there — a 'new_message' notification opens the
   // actual thread it's about instead of just sitting there read.
@@ -2007,7 +2042,7 @@ export function GocProvider({ children }) {
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid,
     submitPaymentProof, paymentTxnType, vietQrFor,
-    openVerifications, loadVerifications, approvePayment, rejectPayment, loadOrganizerHoldingSummary,
+    openVerifications, loadVerifications, approvePayment, rejectPayment, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
@@ -2036,7 +2071,7 @@ export function GocProvider({ children }) {
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid,
     submitPaymentProof, paymentTxnType, vietQrFor,
-    openVerifications, loadVerifications, approvePayment, rejectPayment, loadOrganizerHoldingSummary,
+    openVerifications, loadVerifications, approvePayment, rejectPayment, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
