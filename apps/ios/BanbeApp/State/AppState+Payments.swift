@@ -977,7 +977,7 @@ enum DisputeReasonCategory: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    func label(_ app: AppState) -> String {
+    @MainActor func label(_ app: AppState) -> String {
         switch self {
         case .proofNotFound: return app.T("Không tìm thấy khoản thanh toán", "Payment not found")
         case .wrongAmount: return app.T("Sai số tiền", "Wrong amount")
