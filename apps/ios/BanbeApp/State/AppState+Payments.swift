@@ -710,6 +710,7 @@ extension AppState {
     func resolveDispute(_ bookingID: UUID, uphold: Bool, note: String) async {
         disputeBusy = bookingID
         disputeEmailError = ""
+        var resolved = false
         do {
             let result: ForfeitResult = try await SupabaseService.client
                 .rpc("resolve_dispute", params: ResolveDisputeParams(
@@ -717,29 +718,55 @@ extension AppState {
                 .execute().value
             if result.success == false {
                 print("resolveDispute failed:", result.error ?? "unknown")
-            } else if let token = try? await SupabaseService.client.auth.session.accessToken,
-                      let url = URL(string: AppConfig.apiBaseURL + "/api/dispute-resolved-email") {
-                var request = URLRequest(url: url)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "content-type")
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                request.httpBody = try? JSONSerialization.data(withJSONObject: ["bookingId": bookingID.uuidString])
-                if let (data, response) = try? await URLSession.shared.data(for: request),
-                   let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                    let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-                    disputeEmailError = (body?["error"] as? String) ?? "HTTP_\(http.statusCode)"
-                }
+            } else {
+                resolved = true
             }
         } catch {
             print("resolveDispute failed:", error)
         }
+        // The DB resolution above is the part the admin is actually waiting
+        // on — it must update the screen (disputeBusy cleared, the row
+        // moved to "Resolved") regardless of what happens next. The
+        // confirmation email (api/dispute-resolved-email.js: puppeteer-core
+        // + @sparticuz/chromium, never load-tested end-to-end — see
+        // 05-notify-retention.md) used to be awaited INSIDE this same do
+        // block, ahead of these two lines: a slow cold start or a hung
+        // request there silently blocked every visible sign the resolution
+        // had already succeeded, reading as "the button does nothing" even
+        // though the dispute really was resolved.
         disputeBusy = nil
         await loadAdminDisputes()
+
+        if resolved {
+            Task { await sendDisputeResolvedEmail(bookingID) }
+        }
+    }
+
+    /// Fire-and-forget half of resolveDispute — see the comment there.
+    private func sendDisputeResolvedEmail(_ bookingID: UUID) async {
+        guard let token = try? await SupabaseService.client.auth.session.accessToken,
+              let url = URL(string: AppConfig.apiBaseURL + "/api/dispute-resolved-email")
+        else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["bookingId": bookingID.uuidString])
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                disputeEmailError = (body?["error"] as? String) ?? "HTTP_\(http.statusCode)"
+            }
+        } catch {
+            print("sendDisputeResolvedEmail failed:", error)
+            disputeEmailError = "NETWORK_ERROR"
+        }
     }
 
     // MARK: Temporary dispute chat
 
-    func loadDisputeChat(_ bookingID: UUID) async {
+    func loadDisputeChat(_ bookingID: UUID, retried: Bool = false) async {
         disputeChatBookingId = bookingID
         disputeChatMessages = []
         disputeChatLoading = true
@@ -759,11 +786,24 @@ extension AppState {
                 .execute().value
         } catch {
             // A dispute_threads row RLS is quietly hiding from this account
-            // (a stale/mislinked organizer_id — see migration 042) throws
-            // here exactly the same as a genuinely missing row: both need
-            // to say something distinguishable from "no messages yet",
-            // which is what an untouched disputeChatMessages = [] reads as.
+            // (a stale/mislinked organizer_id — the ART10025 symptom)
+            // throws here exactly the same as a genuinely missing row.
+            // resolve_dispute()'s own repair only fires once a dispute is
+            // closed, and reject_payment()/escalate_payment_dispute() won't
+            // run again once payment_state = 'disputed' — resync_dispute_
+            // thread() has no state restriction, so try it once and retry
+            // the load before giving up and surfacing an error.
             print("loadDisputeChat failed:", error)
+            if !retried {
+                struct ResyncResult: Decodable { let success: Bool? }
+                let resync: ResyncResult? = try? await SupabaseService.client
+                    .rpc("resync_dispute_thread", params: ["p_booking": bookingID.uuidString])
+                    .execute().value
+                if resync?.success == true {
+                    await loadDisputeChat(bookingID, retried: true)
+                    return
+                }
+            }
             disputeChatError = T("Không tải được đoạn chat. Thử lại nhé.", "Couldn't load this chat. Please try again.")
         }
     }

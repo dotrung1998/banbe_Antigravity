@@ -115,3 +115,58 @@ both green; 75/75 Playwright tests pass. Not verified against the live
 ART10025 row itself (no production DB read access in this session) — needs
 a real click-through by the organizer to confirm the self-heal actually
 fires for that specific booking.
+
+**⚠️ Last fix (042) caused a chat-load regression — see diagnosis #3 below
+before reapplying anything similar.** The self-heal in 042 could never
+actually fire for a booking already in `payment_state = 'disputed'`
+(ART10025's exact state on the admin's Disputes.jsx screen), since the only
+two functions it patched (`reject_payment`/`escalate_payment_dispute`) both
+refuse to run once a booking is disputed. The error banner it added was
+correct and working as designed — but with no way for the UI to actually
+repair the row, "silent freeze" became "error banner that never clears."
+
+## 2026-09-14 diagnosis #3 — regression: chat now errors instead of freezing silently; admin's resolve buttons still do nothing
+
+`git diff HEAD~1` (commit `40a4361`, the 042 fix) confirmed the resolve
+buttons' code (`resolveDispute`, `GocContext.jsx`) was **not touched** by
+that commit — its "still does nothing" is a separate, pre-existing bug, not
+caused by 042. Two distinct root causes, not one shared one:
+
+**(1) Chat error banner, unfixable by 042 (CONFIRMED):** 042's `ON CONFLICT
+... DO UPDATE` self-heal lives in `reject_payment()`/`escalate_payment_
+dispute()`, both gated `IF v_from NOT IN ('pending_verification', 'holding')
+THEN RETURN INVALID_STATE`. A booking on the admin's Disputes.jsx screen is
+by definition `payment_state = 'disputed'` — neither function is reachable,
+so the self-heal was structurally dead code for exactly this case. Fixed:
+`supabase/migrations/20260914000043_...sql` adds `resync_dispute_thread(p_
+booking)` — a new RPC with NO `payment_state` restriction at all (guest,
+event organizer, or admin), purely re-linking `dispute_threads.guest_id`/
+`organizer_id`. Wired into `loadDisputeChat` on both platforms
+(`GocContext.jsx:1068-1095`, `AppState+Payments.swift:769-`) to call it
+once and retry the load automatically the moment a thread lookup comes back
+empty — no manual admin action needed. `resolve_dispute()` itself
+(`20260914000043_...sql`) also now re-links `guest_id`/`organizer_id` as
+part of closing out a dispute, as a secondary safety net (moot for the
+still-open case, but stops a resolved dispute from ever locking in a stale
+link before the transcript email reads it).
+
+**(2) Resolve buttons doing nothing, PRE-EXISTING, unrelated to (1)
+(CONFIRMED):** `resolveDispute` (`GocContext.jsx`, and `AppState+Payments.
+swift`'s counterpart) `await`ed the `api/dispute-resolved-email.js` fetch
+call **inside the same try block as, and before,** `disputeBusy` being
+cleared and `loadDisputes()`/`loadAdminDisputes()` refreshing the list. That
+endpoint runs `puppeteer-core` + `@sparticuz/chromium` inside a Vercel
+function and has never been load-tested end-to-end (see
+`05-notify-retention.md`) — a slow cold start or a hang there silently
+blocked every visible sign that `resolve_dispute()` (the DB RPC) had
+already succeeded, which reads exactly like "the button does nothing" even
+though the dispute really was resolved server-side. Fixed: the email send
+is now fire-and-forget, called only *after* `disputeBusy`/`loadDisputes()`
+update the screen — `GocContext.jsx`'s `resolveDispute`/new
+`sendDisputeResolvedEmail`, `AppState+Payments.swift`'s `resolveDispute`/new
+`sendDisputeResolvedEmail`.
+
+Applied to production via `supabase db push`. Web build + iOS `xcodebuild`
+both green; 75/75 Playwright tests pass. Neither fix verified against the
+live ART10025 row or a real resolve click (no production DB read access in
+this session) — needs a real click-through to confirm.

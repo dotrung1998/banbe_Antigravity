@@ -1010,26 +1010,44 @@ export function GocProvider({ children }) {
       });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error);
-
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
-      if (token) {
-        const res = await fetch('/api/dispute-resolved-email', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ bookingId }),
-        });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          set({ disputeEmailError: body.error || `HTTP_${res.status}` });
-        }
-      }
     } catch (e) {
       console.warn('resolveDispute failed:', e);
     }
+    // The DB resolution above is the part the admin is actually waiting on
+    // — it must update the screen (disputeBusy cleared, the row moved to
+    // "Resolved") regardless of what happens next. The confirmation email
+    // (api/dispute-resolved-email.js: puppeteer-core + @sparticuz/chromium,
+    // never load-tested end-to-end — see 05-notify-retention.md) used to be
+    // awaited INSIDE this same try block, ahead of these two lines: a slow
+    // cold start or a hung request there silently blocked every visible
+    // sign that the resolution had already succeeded, reading as "the
+    // button does nothing" even though the dispute really was resolved.
     set({ disputeBusy: '' });
     await loadDisputes();
+
+    sendDisputeResolvedEmail(bookingId);
   }, [set, loadDisputes]);
+
+  /** Fire-and-forget half of resolveDispute — see the comment there. */
+  const sendDisputeResolvedEmail = useCallback(async (bookingId) => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) return;
+      const res = await fetch('/api/dispute-resolved-email', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ bookingId }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        set({ disputeEmailError: body.error || `HTTP_${res.status}` });
+      }
+    } catch (e) {
+      console.warn('sendDisputeResolvedEmail failed:', e);
+      set({ disputeEmailError: e.message || 'NETWORK_ERROR' });
+    }
+  }, [set]);
 
   /** The T1/T2/T3 trail for one booking — what a dispute is actually argued on. */
   const loadAuditTrail = useCallback(async (bookingId) => {
@@ -1047,17 +1065,26 @@ export function GocProvider({ children }) {
    * this to the guest, the event's organizer, or an admin — the same three
    * parties who could ever see a dispute at all.
    */
-  const loadDisputeChat = useCallback(async (bookingId) => {
+  const loadDisputeChat = useCallback(async (bookingId, _retried = false) => {
     set({ disputeChatBookingId: bookingId, disputeChatMessages: [], disputeChatLoading: true, disputeChatError: '' });
     const { data: thread, error: threadError } = await supabase
       .from('dispute_threads').select('id, resolved_at').eq('booking_id', bookingId).maybeSingle();
     if (threadError || !thread) {
       console.warn('loadDisputeChat failed:', threadError);
-      // A denied-by-RLS row and a genuinely empty conversation both read as
-      // "no data" here — but a real error is distinguishable, and worth
-      // surfacing instead of silently looking exactly like "no messages
-      // yet" (this was the ART10025 symptom: RLS quietly hiding a
-      // dispute_threads row a stale organizer_id no longer matched).
+      // A denied-by-RLS row (a stale organizer_id/guest_id on this
+      // dispute_threads row no longer matches this account — the ART10025
+      // symptom) and a genuinely missing thread both read as "no data"
+      // here. resolve_dispute()'s own repair only fires once a dispute is
+      // closed, and reject_payment()/escalate_payment_dispute() refuse to
+      // run again once payment_state = 'disputed' — so this is the one
+      // place left that can reach a currently-open, mislinked thread.
+      // resync_dispute_thread() has no state restriction and is safe to
+      // call speculatively; if it fixes nothing, the retry just fails the
+      // same way and disputeChatError still gets set below.
+      if (!_retried) {
+        const { data: resync } = await supabase.rpc('resync_dispute_thread', { p_booking: bookingId });
+        if (resync?.success) return loadDisputeChat(bookingId, true);
+      }
       return set({
         disputeChatLoading: false,
         disputeChatError: threadError ? T('Không tải được đoạn chat. Thử lại nhé.', "Couldn't load this chat. Please try again.") : '',

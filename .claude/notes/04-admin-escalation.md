@@ -23,3 +23,18 @@ Both platforms: list disputes, view receipt image (signed URL, admin bypass adde
 ## TODO / open questions
 - No UI test coverage added for iOS `AdminDashboardView` (web has `payment-state-machine.spec.js:79` for the account-menu gate only, not full resolve flow on either platform).
 - Only one designated admin email; no admin-management UI to promote/demote other accounts.
+
+## 2026-09-14 — "Khách đúng ▪︎ cấp vé" / "Mở lại chỗ" appeared to do nothing (see 03-dispute-chat.md diagnosis #3 for full detail)
+
+Not caused by the dispute-thread linkage bug (separate root cause). `resolveDispute`
+(`src/state/GocContext.jsx`, `apps/ios/BanbeApp/State/AppState+Payments.swift`)
+used to `await` the `api/dispute-resolved-email.js` fetch *before* clearing
+`disputeBusy`/refreshing the list — a slow/untested Vercel function call
+(puppeteer-core + chromium, see `05-notify-retention.md`) silently blocked
+every visible sign that `resolve_dispute()` had already succeeded. Fixed in
+`supabase/migrations/20260914000043_043_resolve_dispute_self_heal_and_email_decouple.sql`
++ client changes: the email send is now fire-and-forget, after the UI
+refresh, on both platforms. **Last fix (042, dispute chat) caused a related
+regression on this same screen — double-check `03-dispute-chat.md` before
+touching `resolve_dispute()`/`escalate_payment_dispute()`/`reject_payment()`
+again.**
