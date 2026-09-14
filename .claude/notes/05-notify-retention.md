@@ -21,5 +21,61 @@ Code is written, builds, and DB side (soft-delete + 72h purge cron) is applied a
 
 ## TODO / open questions
 - Confirm `puppeteer-core`+`@sparticuz/chromium` actually launches within Vercel's function size/memory limits — first real dispute resolution should be watched closely.
-- `resolveDispute()` posts the "Dispute resolved" note into the ORDINARY thread synchronously (DB RPC), before the email is confirmed sent (separate HTTP call) — note can appear before/without email actually landing if the fetch fails.
-- No retry/alerting if `dispute-resolved-email` fails; `disputeEmailError` only surfaces in the admin's own UI at the moment of resolution, nowhere persisted for later follow-up.
+- ~~`resolveDispute()` posts the "Dispute resolved" note into the ORDINARY thread synchronously (DB RPC), before the email is confirmed sent~~ — FIXED, see 2026-09-14 entry below.
+- No retry/alerting if `dispute-resolved-email` fails; `disputeEmailError` only surfaces in the admin's own UI at the moment of resolution, nowhere persisted for later follow-up. Still true after today's fix.
+- Cannot verify from this session whether `GMAIL_USER`/`GMAIL_APP_PASSWORD`/`SUPABASE_SERVICE_ROLE_KEY` are actually set in the LIVE Vercel deployment's env — `.env.example`/`.env.local` in this repo only affect local dev, Vercel env vars are configured separately in their dashboard and out of this session's reach.
+
+## 2026-09-14 diagnosis — reported bug: "Confirmation email sent" message appears, but no email ever arrives (real inboxes tested)
+
+Confirmed **(c) hardcoded success message, never tied to a real send** —
+plus two additional silent-failure paths in the email endpoint itself that
+would have hidden the problem even after fixing (c) alone.
+
+**(c) CONFIRMED**: the exact string was inserted unconditionally by
+`resolve_dispute()` (`supabase/migrations/20260914000043_...sql:110-114`,
+the version active before today) — a synchronous Postgres RPC, run as part
+of the SAME transaction that resolves the dispute, **entirely before** the
+actual email HTTP call (a separate, client-triggered `fetch` to
+`api/dispute-resolved-email.js`, deliberately decoupled since migration 043)
+even begins. The DB function has no mechanism to await or know the outcome
+of that later call — the message was a promise made at resolution time,
+not a report made after delivery.
+
+**Two silent-failure paths found in `api/dispute-resolved-email.js`
+(pre-fix)**:
+1. `admin.auth.admin.getUserById(...)` (guest at the old line ~97,
+   organizer at ~99-100) only ever destructured `data`, discarding `error`
+   — a failed lookup (deleted account, bad service-role key, transient
+   auth-admin API error) silently resolved to an undefined email with
+   nothing logged.
+2. The send loop (old lines ~151-176) returned `res.status(200).json({
+   sent })` **even when `sent === 0`** — if both recipient emails ended up
+   unresolvable (via gap 1, or an organizer row with both `owner_id` and
+   `user_id` null), the endpoint reported HTTP 200, which the client's
+   `if (!res.ok)` check (`GocContext.jsx`'s `sendDisputeResolvedEmail`,
+   `AppState+Payments.swift`'s counterpart) reads as success — zero emails
+   sent, zero errors surfaced anywhere.
+3. (Related, not separately fatal) all sends shared one try/catch — a
+   throw on the guest's send aborted the organizer's attempt entirely,
+   silently costing both parties their email over one recipient's failure.
+
+**Fixed**:
+- `supabase/migrations/20260914000045_045_dispute_email_message_not_hardcoded.sql`
+  — `resolve_dispute()`'s system message no longer claims the email was
+  sent (now just "Dispute resolved.").
+- `api/dispute-resolved-email.js` — `getUserById` errors are now logged;
+  each recipient's send has its own try/catch (one failure no longer costs
+  the other); `sent === 0` now returns `502 {error: 'NO_EMAIL_DELIVERED',
+  failures}` instead of `200 {sent: 0}`; the **real** "email sent" (or
+  partial-failure, naming which recipient) confirmation is now posted into
+  the guest's ordinary thread by this endpoint itself, only after send(s)
+  actually succeed — moved here from `resolve_dispute()`.
+
+Applied to production via `supabase db push`. Web build clean; 75/75
+Playwright tests pass (iOS untouched by this fix, no client changes were
+needed — the message move is entirely server-side). **Still not verified
+against a live send** — this session cannot confirm whether Vercel's
+deployed environment actually has working `GMAIL_USER`/`GMAIL_APP_PASSWORD`
+values, or whether ART10025's guest/organizer accounts' emails resolve
+correctly now that lookup failures are logged — the next real resolution
+attempt's Vercel function logs are the way to find out.

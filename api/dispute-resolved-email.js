@@ -94,10 +94,22 @@ export default async function handler(req, res) {
       .from('organizers').select('name, owner_id, user_id').eq('id', thread.organizer_id).maybeSingle();
     const { data: guestProfile } = await admin
       .from('profiles').select('display_name, locale').eq('id', booking.user_id).maybeSingle();
-    const { data: guestAuth } = await admin.auth.admin.getUserById(booking.user_id);
+    // Previously only `data` was destructured from both getUserById calls —
+    // a failed lookup (a deleted account, a bad service-role key, a
+    // transient auth-admin API error) silently resolved to an undefined
+    // email address with no log at all, rather than surfacing as the
+    // resolvable problem it is.
+    const { data: guestAuth, error: guestAuthError } = await admin.auth.admin.getUserById(booking.user_id);
+    if (guestAuthError) console.error('dispute-resolved-email: guest auth lookup failed:', guestAuthError);
     const organizerUserId = organizer?.owner_id || organizer?.user_id;
-    const { data: organizerAuth } = organizerUserId
-      ? await admin.auth.admin.getUserById(organizerUserId) : { data: null };
+    let organizerAuth = null;
+    if (organizerUserId) {
+      const result = await admin.auth.admin.getUserById(organizerUserId);
+      if (result.error) console.error('dispute-resolved-email: organizer auth lookup failed:', result.error);
+      organizerAuth = result.data;
+    } else {
+      console.warn('dispute-resolved-email: organizer has no owner_id/user_id, cannot resolve an email', thread.organizer_id);
+    }
 
     const { data: messages } = await admin
       .from('dispute_messages')
@@ -136,12 +148,23 @@ export default async function handler(req, res) {
       ? 'A ticket has been issued to the guest.' : 'The booking has been cancelled and the seat released.';
     const eventName = escapeHtml(event?.name || '');
 
+    // Two independently-tracked outcomes, not one shared try/catch around
+    // both sends: previously, if the guest's send threw, the organizer's
+    // was never even attempted (the whole handler's outer catch aborted
+    // everything) — a transient failure on one address silently cost the
+    // other party their email too, with nothing distinguishing that from
+    // total success in what the client saw.
+    const recipients = [
+      { role: 'guest', email: guestAuth?.user?.email, locale: guestProfile?.locale === 'en' ? 'en' : 'vi' },
+      { role: 'organizer', email: organizerAuth?.user?.email, locale: 'vi' },
+    ];
     let sent = 0;
-    for (const recipient of [
-      { email: guestAuth?.user?.email, locale: guestProfile?.locale === 'en' ? 'en' : 'vi' },
-      { email: organizerAuth?.user?.email, locale: 'vi' },
-    ]) {
-      if (!recipient.email) continue;
+    const failures = [];
+    for (const recipient of recipients) {
+      if (!recipient.email) {
+        failures.push(`${recipient.role}:NO_EMAIL`);
+        continue;
+      }
       const subject = t(recipient.locale, `Kết quả tranh chấp thanh toán ▪︎ ${event?.name || ''}`, `Payment dispute resolved ▪︎ ${event?.name || ''}`);
       const heading = t(recipient.locale, 'Tranh chấp đã được giải quyết', 'Dispute resolved');
       const paragraphs = [
@@ -153,19 +176,55 @@ export default async function handler(req, res) {
       if (thread.resolution_note) {
         paragraphs.push(`<em>${escapeHtml(thread.resolution_note)}</em>`);
       }
-      await sendWithGmail({
-        to: recipient.email,
-        subject,
-        text: renderEmailText({ heading, paragraphs }),
-        html: renderEmail({ preheader: subject, eyebrow: t(recipient.locale, 'banbe ▪︎ Tranh chấp', 'banbe ▪︎ Dispute'), heading, paragraphs }),
-        attachments,
-      });
-      sent += 1;
+      try {
+        await sendWithGmail({
+          to: recipient.email,
+          subject,
+          text: renderEmailText({ heading, paragraphs }),
+          html: renderEmail({ preheader: subject, eyebrow: t(recipient.locale, 'banbe ▪︎ Tranh chấp', 'banbe ▪︎ Dispute'), heading, paragraphs }),
+          attachments,
+        });
+        sent += 1;
+      } catch (sendError) {
+        console.error(`dispute-resolved-email: send to ${recipient.role} failed:`, sendError);
+        failures.push(`${recipient.role}:${sendError.message || 'SEND_FAILED'}`);
+      }
     }
 
-    await admin.from('dispute_threads').update({ email_sent_at: new Date().toISOString() }).eq('id', thread.id);
+    if (sent > 0) {
+      await admin.from('dispute_threads').update({ email_sent_at: new Date().toISOString() }).eq('id', thread.id);
+    }
 
-    return res.status(200).json({ sent });
+    // The one place that gets to claim an email actually went out — moved
+    // here from resolve_dispute() (migration 045), which posted this
+    // unconditionally and synchronously, before this send was even
+    // attempted. This message now reflects what really happened: full
+    // success, partial (named), or — if this branch is never reached
+    // because `sent === 0` below returns first — no message at all rather
+    // than a false claim.
+    if (sent > 0) {
+      const { data: eventThread } = await admin
+        .from('threads').select('id')
+        .eq('event_id', booking.event_id).eq('guest_id', booking.user_id).maybeSingle();
+      if (eventThread) {
+        const body = failures.length === 0
+          ? 'Email xác nhận đã được gửi cho cả hai bên. / Confirmation email sent to both parties.'
+          : `Email xác nhận đã được gửi cho ${sent === 1 ? 'một bên' : 'cả hai bên'} (${failures.join(', ')} không nhận được).`
+            + ` / Confirmation email sent to ${sent === 1 ? 'one party' : 'both parties'} (${failures.join(', ')} did not receive it).`;
+        await admin.from('messages').insert({ thread_id: eventThread.id, sender_id: null, body, kind: 'system' });
+      }
+    }
+
+    // Zero successful sends is not success — previously returned 200 here
+    // regardless, which the client's `!res.ok` check reads as "nothing to
+    // report," so a fully-silent failure (e.g. both recipients' emails
+    // failing to resolve at all) surfaced no error anywhere at all.
+    if (sent === 0) {
+      console.error('dispute-resolved-email: no recipient received an email', { bookingId, failures });
+      return res.status(502).json({ error: 'NO_EMAIL_DELIVERED', failures });
+    }
+
+    return res.status(200).json({ sent, failures });
   } catch (error) {
     console.error('dispute-resolved-email failed:', error);
     return res.status(502).json({ error: 'SEND_FAILED' });
