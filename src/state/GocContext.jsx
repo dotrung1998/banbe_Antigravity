@@ -758,9 +758,14 @@ export function GocProvider({ children }) {
       const { error: upErr } = await supabase.storage.from('pay-proof').upload(path, blob, { upsert: true, contentType });
       if (upErr) throw upErr;
 
+      // The organizer's PHASE 2 response window — 60 minutes, not the
+      // buyer's own PHASE 1 hold (30 minutes, hold_seats()'s hold_minutes).
+      // These are two independent clocks on two different people; picking
+      // the wrong one here silently gave the organizer a 15-minute window
+      // instead of the intended 60.
       const { data, error } = await supabase.rpc('submit_payment_proof', {
         p_booking: bookingId, p_transaction_id: txn, p_proof_path: path,
-        p_ip: null, p_user_agent: navigator.userAgent, p_sla_minutes: 15,
+        p_ip: null, p_user_agent: navigator.userAgent, p_sla_minutes: 60,
       });
       if (error) throw error;
       if (data?.success === false) {
@@ -820,9 +825,20 @@ export function GocProvider({ children }) {
   }, []);
 
   // ---- organizer verification queue ----
+  // Guarded here, not just by the organizer-mode-gated UI that links here
+  // (Home's banner, Account's "Awaiting verification" row) — this is the
+  // one place that actually decides whether the screen opens at all, so a
+  // participant navigating here by any other means (a stale link, a replayed
+  // notification, …) still can't land on what is meant to be an
+  // organizer-only management screen. RLS already limits what data such a
+  // request could ever read (a participant only ever owns their own booking
+  // row), but this keeps them from seeing the screen's organizer-framed
+  // copy and action buttons ("Money received"/"Can't find it") over their
+  // own payment at all, not just from acting on it.
   const openVerifications = useCallback(() => {
+    if (!(s.organizerMode || s.accountType === 'admin' || s.hasHosted)) return;
     set({ screen: 'verifications', verifications: [], verificationsLoading: true });
-  }, [set]);
+  }, [set, s.organizerMode, s.accountType, s.hasHosted]);
 
   const loadVerifications = useCallback(async () => {
     if (!s.user?.id) return set({ verifications: [], verificationsLoading: false });

@@ -465,10 +465,15 @@ extension AppState {
                 .upload(path, data: imageData,
                         options: FileOptions(contentType: fileExtension == "pdf" ? "application/pdf" : "image/jpeg",
                                              upsert: true))
+            // The organizer's PHASE 2 response window — 60 minutes, not the
+            // buyer's own PHASE 1 hold (30 minutes, hold_seats()'s
+            // hold_minutes). Two independent clocks on two different
+            // people; picking the wrong one here silently gave the
+            // organizer a 15-minute window instead of the intended 60.
             let result: SubmitProofResult = try await SupabaseService.client
                 .rpc("submit_payment_proof", params: SubmitProofParams(
                     booking: bookingID.uuidString, transactionID: txn, proofPath: path,
-                    ip: nil, userAgent: "banbe-ios", slaMinutes: 15))
+                    ip: nil, userAgent: "banbe-ios", slaMinutes: 60))
                 .execute().value
 
             if result.success == false {
@@ -521,7 +526,18 @@ extension AppState {
 
     // MARK: Organizer verification queue
 
+    /// Guarded here, not just by the organizer-mode-gated UI that links here
+    /// (HomeView's banner, AccountView's "Awaiting verification" row) — this
+    /// is the one place that actually decides whether the screen opens at
+    /// all, so a participant navigating here by any other means (a replayed
+    /// notification, …) still can't land on what is meant to be an
+    /// organizer-only management screen. RLS already limits what data such
+    /// a request could ever read (a participant only ever owns their own
+    /// booking row), but this keeps them from seeing the screen's
+    /// organizer-framed copy and action buttons ("Money received"/"Can't
+    /// find it") over their own payment at all, not just from acting on it.
     func openVerifications() {
+        guard canHost else { return }
         screen = .verifications
         verifications = []
         Task { await loadVerifications() }

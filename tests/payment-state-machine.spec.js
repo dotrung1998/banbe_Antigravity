@@ -1,4 +1,6 @@
 // @ts-check
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { test, expect } from '@playwright/test';
 import { setupToHome } from './helpers.js';
 import {
@@ -85,12 +87,20 @@ test.describe('Payment screens wiring', () => {
     await expect(page.getByTestId('admin-disputes')).toHaveCount(0);
   });
 
-  test('the reserve button promises the hold window the server actually gives', async ({ page }) => {
-    await setupToHome(page);
-    await page.getByText('Bếp Nhỏ №12').first().click();
-    await expect(page.locator('[data-screen-label="Event"]')).toBeVisible();
-    // The server holds for events.hold_minutes, which defaults to 60. Copy
-    // that says 30 is a promise the state machine does not keep.
-    await expect(page.locator('[data-screen-label="Event"]').getByText(/Giữ chỗ/)).toBeVisible();
+  // Reserve.jsx only renders past a sign-in wall this suite doesn't drive
+  // through (no test here signs in — see e.g. account-and-preferences.spec.js,
+  // which checks the same signed-out boundary rather than logging in), so
+  // this checks the copy at the source instead of by rendering the screen.
+  test('the reserve button promises the hold window the server actually gives', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('../src/screens/Reserve.jsx', import.meta.url)), 'utf8');
+    // The server holds for events.hold_minutes, which migration 031 set back
+    // to 30 (a stopgap 60 briefly shipped in migration 026, alongside copy
+    // that was updated to match it — leaving the actual mismatch this
+    // guards against unfixed until 031). Copy promising a different number
+    // than hold_seats() actually honors is exactly the kind of mismatch a
+    // buyer only discovers under pressure, mid-transfer.
+    expect(src).toContain('Giữ chỗ ▪︎ 30 phút');
+    expect(src).toContain('Hold ▪︎ 30 minutes');
+    expect(src).not.toMatch(/60 phút|60 minutes/);
   });
 });

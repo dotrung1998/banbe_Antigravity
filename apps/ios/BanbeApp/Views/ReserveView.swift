@@ -71,8 +71,8 @@ struct ReserveView: View {
                 .padding(.top, 12)
 
                 Text(app.T(
-                    "banbe không thu tiền. Bạn giữ chỗ 60 phút để chuyển khoản trực tiếp cho người tổ chức. Bấm \"Tôi đã chuyển khoản\" là đồng hồ dừng và chỗ được khoá cho tới khi người tổ chức xác nhận.",
-                    "banbe does not collect money. Your seat is held for 60 minutes while you transfer to the organizer directly. Tapping \"I have transferred\" stops the clock and locks your seat until they confirm."
+                    "banbe không thu tiền. Bạn giữ chỗ 30 phút để chuyển khoản trực tiếp cho người tổ chức. Bấm \"Tôi đã chuyển khoản\" là đồng hồ dừng và chỗ được khoá cho tới khi người tổ chức xác nhận.",
+                    "banbe does not collect money. Your seat is held for 30 minutes while you transfer to the organizer directly. Tapping \"I have transferred\" stops the clock and locks your seat until they confirm."
                 ))
                 .font(.system(size: 12))
                 .lineSpacing(3)
@@ -80,7 +80,7 @@ struct ReserveView: View {
 
                 InkButton(title: app.loading
                           ? app.T("Đang giữ chỗ…", "Holding…")
-                          : app.T("Giữ chỗ ▪︎ 60 phút", "Hold ▪︎ 60 minutes"),
+                          : app.T("Giữ chỗ ▪︎ 30 phút", "Hold ▪︎ 30 minutes"),
                           enabled: formOK && !app.loading,
                           cornerRadius: 999) {
                     Task { await app.submitReserve() }
