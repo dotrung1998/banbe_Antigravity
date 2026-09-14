@@ -76,3 +76,50 @@ disputed booking is a real policy decision, not a one-line fix).
 Applied to production via `supabase db push`. Web build + iOS `xcodebuild`
 both green; 75/75 Playwright tests pass. Not verified against the live
 ART10025 row itself (no production DB read/write access in this session).
+
+## 2026-09-14 — "Đã xử lý" (resolved) list rows were not clickable; admin could not reopen a closed case
+
+**Root cause**: `src/screens/Disputes.jsx:134-144` (pre-fix) rendered each
+`closed` row as a plain static `<div>` — no `onClick`, no expansion state,
+no reuse of the `loadAuditTrail`/`openChat`+`DisputeChatPanel` machinery the
+`open` rows already had (`Disputes.jsx:75-89`). Purely a UI-wiring gap:
+`closed` and `open` both come from the same `s.disputes` array/`v_disputes`
+view shape, so no new data-fetching was needed.
+
+**Fix**: `Disputes.jsx` — closed rows now toggle an `expandedClosed` state
+per booking; expanded, they show the (permanent, never-purged)
+`dispute_reason`/`dispute_resolution` plus the same audit-trail and
+`DisputeChatPanel` toggles the open rows use.
+
+**Two access-control gaps found and fixed while verifying "admin only,
+blocked after 72h purge" (migration
+`20260914000046_046_dispute_reopen_admin_only_and_purge_guard.sql`)**:
+
+1. `dispute_threads_select`/`dispute_messages_select` RLS (migration 033)
+   let the guest/organizer read a dispute thread regardless of
+   `resolved_at` — within the 72h grace window (before the purge cron
+   deletes the row), a guest/organizer could already read their own
+   resolved dispute's chat transcript directly, same as an open one.
+   Tightened: once `resolved_at` is set, only `public.is_platform_admin()`
+   may read the thread/messages; guest/organizer keep read access only
+   while it's still open.
+2. `resync_dispute_thread()` (migration 043,
+   `supabase/migrations/20260914000043_...sql:162-167`) did
+   `INSERT ... ON CONFLICT (booking_id) DO UPDATE ... WHERE resolved_at IS
+   NULL` — that `WHERE` only guards the `UPDATE` branch of the upsert. Once
+   a booking's `dispute_threads` row is hard-deleted by
+   `purge_resolved_dispute_threads()` past the 72h window, there's no
+   conflicting row, so the bare `INSERT` fired unconditionally and
+   silently resurrected a fresh, empty, unresolved-looking thread —
+   defeating the purge. Reachable from the client: `loadDisputeChat()`
+   (`src/state/GocContext.jsx:1084-1086`) calls `resync_dispute_thread()`
+   automatically whenever a thread read comes back empty, which looks
+   identical to "purged" from the client's point of view. Fixed by
+   refusing to resync once `bookings.dispute_resolved_at` (permanent,
+   never purged) is set — the self-heal this RPC exists for only applies
+   to a currently-open dispute.
+
+Applied to production via `supabase db push`. `vite build` clean; 75/75
+Playwright tests pass (none of the existing suite exercised the resolved
+list's detail view, so nothing needed updating there — worth adding
+coverage later, see TODO above).

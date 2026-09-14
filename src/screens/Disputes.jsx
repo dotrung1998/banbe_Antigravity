@@ -17,6 +17,14 @@ export default function Disputes() {
   const s = state;
   const [note, setNote] = useState('');
   const [openChat, setOpenChat] = useState(null);
+  // Which "Đã xử lý" (resolved) row is expanded to show its full detail —
+  // separate from `openChat` (which just toggles the chat sub-panel within
+  // whichever row, open or closed, is currently showing one). A resolved
+  // row reuses the exact same loadAuditTrail/DisputeChatPanel machinery the
+  // open rows use above; RLS + resync_dispute_thread() (migration 046) is
+  // what actually enforces "admin only, and only until the 72h purge" —
+  // this is just wiring the same admin-only screen up to it.
+  const [expandedClosed, setExpandedClosed] = useState(null);
 
   useEffect(() => { loadDisputes(); }, [loadDisputes]);
 
@@ -134,12 +142,65 @@ export default function Disputes() {
         {closed.length > 0 && (
           <>
             <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, marginTop: 8 }}>{T('Đã xử lý', 'Resolved')}</span>
-            {closed.map(d => (
-              <div key={d.booking_id} style={{ ...fieldGlass({ padding: '12px 14px', display: 'flex', justifyContent: 'space-between', gap: 10 }) }}>
-                <span style={{ fontSize: 12.5, color: ink, opacity: 0.75 }}>{d.payment_ref} ▪︎ {d.guest_name}</span>
-                <span style={{ fontSize: 12, color: ink, opacity: 0.6 }}>{d.dispute_resolution || T('đã xử lý', 'resolved')}</span>
-              </div>
-            ))}
+            {closed.map(d => {
+              const isExpanded = expandedClosed === d.booking_id;
+              return (
+                <div key={d.booking_id} style={{ ...fieldGlass({ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }) }} data-testid="dispute-row-closed">
+                  <div onClick={() => setExpandedClosed(isExpanded ? null : d.booking_id)}
+                       style={{ display: 'flex', justifyContent: 'space-between', gap: 10, cursor: 'pointer' }}
+                       data-testid="dispute-closed-toggle">
+                    <span style={{ fontSize: 12.5, color: ink, opacity: 0.75 }}>{d.payment_ref} ▪︎ {d.guest_name}</span>
+                    <span style={{ fontSize: 12, color: ink, opacity: 0.6 }}>{d.dispute_resolution || T('đã xử lý', 'resolved')}</span>
+                  </div>
+
+                  {/* Decision/reason are permanent booking columns, never
+                      purged — always safe to show. The chat transcript
+                      below is the ephemeral part: it's only actually there
+                      to load until the 72h purge deletes it (migration
+                      033), and RLS + resync_dispute_thread() (migration
+                      046) restrict it to admin only, whether or not it's
+                      still within that window. */}
+                  {isExpanded && (
+                    <>
+                      <div style={{ ...cardGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }}>
+                        <Line label={T('Lý do từ chối', 'Rejection reason')} value={d.dispute_reason || '—'} />
+                        <Line label={T('Quyết định', 'Decision')} value={d.dispute_resolution || '—'} />
+                      </div>
+
+                      <div onClick={() => loadAuditTrail(d.booking_id)}
+                           style={{ fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}
+                           data-testid="dispute-audit-open-closed">
+                        {T('Xem nhật ký T1/T2/T3 ›', 'View T1/T2/T3 trail ›')}
+                      </div>
+
+                      {openChat === d.booking_id ? (
+                        <DisputeChatPanel bookingId={d.booking_id} />
+                      ) : (
+                        <div onClick={() => setOpenChat(d.booking_id)}
+                             style={{ fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}
+                             data-testid="dispute-open-chat-closed">
+                          {T('Xem đoạn chat giữa khách và người tổ chức ›', 'View the guest/organizer chat ›')}
+                        </div>
+                      )}
+
+                      {s.auditBookingId === d.booking_id && s.auditTrail.length > 0 && (
+                        <div style={{ ...cardGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }) }} data-testid="dispute-audit-trail-closed">
+                          {s.auditTrail.map(a => (
+                            <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{a.action}</span>
+                              <span style={{ fontSize: 10.5, color: ink, opacity: 0.65 }}>
+                                {new Date(a.at).toISOString().replace('T', ' ').replace('Z', '')}
+                                {a.actor_kind ? ` ▪︎ ${a.actor_kind}` : ''}{a.ip ? ` ▪︎ ${a.ip}` : ''}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </>
         )}
       </div>

@@ -140,3 +140,65 @@ Not verified against a live send (same limitation as above) — Gmail
 transporter/credentials were deliberately NOT touched, since nothing in
 this session's log access points there; the next real Vercel invocation's
 logs are what would confirm or rule out (1)/(2) conclusively.
+
+## 2026-09-14 — reopening a resolved case within the 72h window; anonymized quality-review view (feasibility only)
+
+Investigated whether the 72h purge is actually leak-proof once the admin
+"Đã xử lý" list becomes clickable (see 04-admin-escalation.md for the fix).
+Found and fixed a real gap: `resync_dispute_thread()`'s upsert could
+resurrect a purged `dispute_threads` row (see 04's entry) — fixed in
+migration `20260914000046_...sql` by gating it on
+`bookings.dispute_resolved_at IS NULL`, and tightened
+`dispute_threads_select`/`dispute_messages_select` RLS so a resolved
+thread is admin-only even before purge.
+
+**Requirement-2 check (anonymized quality-review view) — does NOT exist.**
+No aggregate/summary table or view is defined anywhere in
+`supabase/migrations/`: grepped for `dispute_resolution_stats` and any
+`CREATE VIEW`/table with "stat"/"summary"/"aggregate" in the dispute
+context — nothing. The only resolution-outcome data that exists today:
+- `dispute_threads.resolution_kind` (`'ticket_issued'` | `'cancelled'`,
+  set in `resolve_dispute()`, e.g.
+  `supabase/migrations/20260914000045_045_dispute_email_message_not_hardcoded.sql:63`)
+  — lives on the **ephemeral, purged** table. Not safe to build an
+  aggregate view on top of this after 72h, exactly the risk flagged in the
+  ticket: this column is gone once `purge_resolved_dispute_threads()` runs.
+- `bookings.dispute_resolution` (free-text admin note) and
+  `bookings.dispute_reason` (free-text organizer "not found" reason,
+  `supabase/migrations/20260913000026_026_payment_state_machine.sql:92`)
+  — both permanent (never purged), but **free text, not a category enum**
+  — "count by dispute reason category" isn't directly derivable from
+  either without new structured classification.
+- `bookings.disputed_at`/`dispute_resolved_at` — both permanent; the pair
+  gives time-to-resolution for free already, no new column needed for
+  that one metric.
+
+**Proposed minimal approach (not implemented — feasibility only, per
+request)**: a `dispute_resolution_stats` table, one row written by
+`resolve_dispute()` itself at the same point it sets `dispute_resolved_at`
+(so it survives the 72h purge — it's a new permanent table, not derived
+from `dispute_threads`):
+```
+booking_id uuid (FK, for idempotency/audit only — never joined back to in
+                  the aggregate view; not guest/organizer/PII)
+resolved_at timestamptz
+resolution_kind text            -- 'ticket_issued' | 'cancelled'
+reason_category text            -- NEW: requires resolve_dispute() (or the
+                                    admin UI) to also capture a fixed-enum
+                                    category alongside the free-text
+                                    dispute_reason/dispute_resolution —
+                                    e.g. 'proof_not_found' | 'wrong_amount' |
+                                    'duplicate_claim' | 'other' — since
+                                    today's free text can't be grouped
+time_to_resolution_seconds int  -- resolved_at - disputed_at, computed once
+```
+No guest name, ticket/booking id exposed in any SELECT surface, no chat
+text, no transaction reference — an admin-facing "quality insights" screen
+would query only aggregates (`count(*) group by reason_category`,
+`avg(time_to_resolution_seconds)`, `count(*) filter (where resolution_kind
+= 'ticket_issued') / count(*)`) over this table, never the raw row, so it
+stays safe to use past any individual case's 72h purge. Biggest open
+design question before building this: `reason_category` needs a real
+fixed-enum input somewhere in the admin resolve flow (a dropdown next to
+today's free-text resolution note) — there's currently no such categorized
+input anywhere in `Disputes.jsx`/`resolve_dispute()` to source it from.
