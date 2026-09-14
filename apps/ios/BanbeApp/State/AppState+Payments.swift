@@ -707,14 +707,16 @@ extension AppState {
     /// stands and disputeEmailError surfaces so an admin can retry rather
     /// than the whole action rolling back or silently never emailing
     /// anyone.
-    func resolveDispute(_ bookingID: UUID, uphold: Bool, note: String) async {
+    func resolveDispute(_ bookingID: UUID, uphold: Bool, note: String,
+                        reasonCategory: DisputeReasonCategory = .other) async {
         disputeBusy = bookingID
         disputeEmailError = ""
         var resolved = false
         do {
             let result: ForfeitResult = try await SupabaseService.client
                 .rpc("resolve_dispute", params: ResolveDisputeParams(
-                    booking: bookingID.uuidString, uphold: uphold, resolution: note))
+                    booking: bookingID.uuidString, uphold: uphold, resolution: note,
+                    reasonCategory: reasonCategory.rawValue))
                 .execute().value
             if result.success == false {
                 print("resolveDispute failed:", result.error ?? "unknown")
@@ -951,9 +953,37 @@ private struct ResolveDisputeParams: Encodable {
     let booking: String
     let uphold: Bool
     let resolution: String
+    let reasonCategory: String
     enum CodingKeys: String, CodingKey {
         case booking = "p_booking"
         case uphold = "p_uphold"
         case resolution = "p_resolution"
+        case reasonCategory = "p_reason_category"
+    }
+}
+
+/// Mirrors public.dispute_reason_category (migration 047) exactly — the
+/// anonymized classification that feeds dispute_resolution_stats, kept
+/// separate from the free-text resolution note (never aggregated). Not
+/// enforced as required at the DB layer (resolve_dispute defaults to
+/// 'other'), but AdminDashboardView has the admin pick one every time so
+/// the quality-review view isn't just a pile of 'other'.
+enum DisputeReasonCategory: String, CaseIterable, Identifiable {
+    case proofNotFound = "proof_not_found"
+    case wrongAmount = "wrong_amount"
+    case duplicateClaim = "duplicate_claim"
+    case expiredOrLate = "expired_or_late"
+    case other
+
+    var id: String { rawValue }
+
+    func label(_ app: AppState) -> String {
+        switch self {
+        case .proofNotFound: return app.T("Không tìm thấy khoản thanh toán", "Payment not found")
+        case .wrongAmount: return app.T("Sai số tiền", "Wrong amount")
+        case .duplicateClaim: return app.T("Trùng biên lai/mã giao dịch", "Duplicate proof/reference")
+        case .expiredOrLate: return app.T("Nộp biên lai trễ hạn", "Submitted after the window")
+        case .other: return app.T("Khác", "Other")
+        }
     }
 }

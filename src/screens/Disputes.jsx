@@ -4,6 +4,20 @@ import { formatVnd } from '../lib/paymentDocument.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, alert } from '../theme.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
 
+// Mirrors public.dispute_reason_category (migration 047) exactly — this is
+// the anonymized classification that feeds dispute_resolution_stats, kept
+// separate from the free-text resolution note below (which stays
+// unstructured and is never aggregated). Not "required" at the DB layer
+// (resolve_dispute defaults to 'other'), but the admin picks one every time
+// here so the quality-review view isn't just a pile of 'other'.
+const REASON_CATEGORIES = [
+  { value: 'proof_not_found', vi: 'Không tìm thấy khoản thanh toán', en: "Payment not found" },
+  { value: 'wrong_amount', vi: 'Sai số tiền', en: 'Wrong amount' },
+  { value: 'duplicate_claim', vi: 'Trùng biên lai/mã giao dịch', en: 'Duplicate proof/reference' },
+  { value: 'expired_or_late', vi: 'Nộp biên lai trễ hạn', en: 'Submitted after the window' },
+  { value: 'other', vi: 'Khác', en: 'Other' },
+];
+
 // Platform admin dispute desk: where a rejected payment goes to be decided by
 // someone who is not one of the two parties.
 //
@@ -16,6 +30,7 @@ export default function Disputes() {
   } = useGoc();
   const s = state;
   const [note, setNote] = useState('');
+  const [reasonCategory, setReasonCategory] = useState('other');
   const [openChat, setOpenChat] = useState(null);
   // Which "Đã xử lý" (resolved) row is expanded to show its full detail —
   // separate from `openChat` (which just toggles the chat sub-panel within
@@ -110,15 +125,24 @@ export default function Disputes() {
               </div>
             )}
 
+            {/* Feeds the anonymized dispute_resolution_stats row only — never
+                shown to the guest/organizer, never part of the note above. */}
+            <select value={reasonCategory} onChange={(e) => setReasonCategory(e.target.value)}
+                    data-testid="dispute-reason-category"
+                    style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}>
+              {REASON_CATEGORIES.map(c => (
+                <option key={c.value} value={c.value}>{T(c.vi, c.en)}</option>
+              ))}
+            </select>
             <input value={note} onChange={(e) => setNote(e.target.value)}
                    placeholder={T('Ghi chú quyết định', 'Resolution note')}
                    data-testid="dispute-note"
                    style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }} />
             <div style={{ display: 'flex', gap: 8 }}>
               <Action label={s.disputeBusy === d.booking_id ? T('Đang lưu…', 'Saving…') : T('Khách đúng ▪︎ cấp vé', 'Buyer is right ▪︎ issue ticket')}
-                      testid="dispute-uphold" onClick={() => { resolveDispute(d.booking_id, true, note); setNote(''); }} />
+                      testid="dispute-uphold" onClick={() => { resolveDispute(d.booking_id, true, note, reasonCategory); setNote(''); setReasonCategory('other'); }} />
               <Action label={T('Mở lại chỗ', 'Release seat')} ghost testid="dispute-reject"
-                      onClick={() => { resolveDispute(d.booking_id, false, note); setNote(''); }} />
+                      onClick={() => { resolveDispute(d.booking_id, false, note, reasonCategory); setNote(''); setReasonCategory('other'); }} />
             </div>
             {/* The confirmation email is best-effort, sent after the DB
                 resolution already stands (see resolveDispute) — if it

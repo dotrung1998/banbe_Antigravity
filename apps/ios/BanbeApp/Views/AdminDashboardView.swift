@@ -12,6 +12,7 @@ import SwiftUI
 struct AdminDashboardView: View {
     @EnvironmentObject private var app: AppState
     @State private var note = ""
+    @State private var reasonCategory: DisputeReasonCategory = .other
     @State private var openChatBookingID: UUID?
 
     private var open: [DisputeRow] { app.adminDisputes.filter { $0.disputeResolvedAt == nil } }
@@ -147,6 +148,16 @@ struct AdminDashboardView: View {
                 .accessibilityIdentifier("admin.openChat")
             }
 
+            // Feeds the anonymized dispute_resolution_stats row only — never
+            // shown to the guest/organizer, never part of the note below.
+            Picker(app.T("Phân loại lý do", "Reason category"), selection: $reasonCategory) {
+                ForEach(DisputeReasonCategory.allCases) { category in
+                    Text(category.label(app)).tag(category)
+                }
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("admin.reasonCategory")
+
             TextField(app.T("Ghi chú quyết định", "Resolution note"), text: $note)
                 .font(.system(size: 13)).padding(11)
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -157,10 +168,10 @@ struct AdminDashboardView: View {
                              ? app.T("Đang lưu…", "Saving…")
                              : app.T("Khách đúng ▪︎ cấp vé", "Buyer is right ▪︎ issue ticket"),
                              id: "admin.uphold") {
-                    Task { await app.resolveDispute(row.bookingId, uphold: true, note: note); note = "" }
+                    Task { await app.resolveDispute(row.bookingId, uphold: true, note: note, reasonCategory: reasonCategory); note = ""; reasonCategory = .other }
                 }
                 actionButton(app.T("Mở lại chỗ", "Release seat"), ghost: true, id: "admin.release") {
-                    Task { await app.resolveDispute(row.bookingId, uphold: false, note: note); note = "" }
+                    Task { await app.resolveDispute(row.bookingId, uphold: false, note: note, reasonCategory: reasonCategory); note = ""; reasonCategory = .other }
                 }
             }
 

@@ -1002,11 +1002,16 @@ export function GocProvider({ children }) {
    * see disputeEmailError and retry rather than the whole action rolling
    * back or silently never emailing anyone.
    */
-  const resolveDispute = useCallback(async (bookingId, uphold, note) => {
+  const resolveDispute = useCallback(async (bookingId, uphold, note, reasonCategory) => {
     set({ disputeBusy: bookingId, disputeEmailError: '' });
     try {
       const { data, error } = await supabase.rpc('resolve_dispute', {
         p_booking: bookingId, p_uphold: !!uphold, p_resolution: note || '',
+        // Anonymized quality-review input (see dispute_resolution_stats,
+        // migration 047) — never shown to guest/organizer, only feeds the
+        // admin-only aggregate insights view. Falls back to 'other' rather
+        // than block a resolution the admin actually wants to make now.
+        p_reason_category: reasonCategory || 'other',
       });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error);
