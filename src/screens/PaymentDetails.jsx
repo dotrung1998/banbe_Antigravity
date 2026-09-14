@@ -147,6 +147,24 @@ export default function PaymentDetails() {
         </div>
       )}
 
+      {/* reject_payment ("Can't find it") flags this without disputing it —
+          payment_state stays 'pending_verification', so this is a sibling
+          of the frozen-clock card above, not the isDisputed branch below.
+          The organizer's reason + a reply channel belong here. */}
+      {isPending && booking.dispute_reason && (
+        <div style={{ margin: '16px 22px 0' }}>
+          <div style={{ ...cardGlass({ padding: '16px 18px' }) }} data-testid="payment-needs-info">
+            <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>
+              {T('Người tổ chức cần thêm thông tin', 'The organizer needs more information')}
+            </span>
+            <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
+              {booking.dispute_reason}
+            </p>
+          </div>
+          <DisputeChatPanel bookingId={booking.id} />
+        </div>
+      )}
+
       {isDisputed && (
         <div style={{ margin: '16px 22px 0' }}>
           <div style={{ ...cardGlass({ padding: '16px 18px' }) }} data-testid="payment-disputed">

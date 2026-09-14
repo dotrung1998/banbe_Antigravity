@@ -8,9 +8,26 @@ import SwiftUI
 struct DisputeChatPanel: View {
     @EnvironmentObject private var app: AppState
     let bookingID: UUID
+    @State private var pollTask: Task<Void, Never>?
 
     private var messages: [DisputeMessage] {
         app.disputeChatBookingId == bookingID ? app.disputeChatMessages : []
+    }
+
+    // No realtime subscription exists anywhere in this app (no Supabase
+    // Realtime channel usage, and dispute_messages was never added to the
+    // supabase_realtime publication) — without this poll, the party who
+    // didn't just send a message never sees a new one until they leave and
+    // reopen this view. 4s, matching the web counterpart.
+    private func startPolling() {
+        pollTask?.cancel()
+        pollTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                if Task.isCancelled { return }
+                await app.loadDisputeChat(bookingID)
+            }
+        }
     }
 
     var body: some View {
@@ -71,6 +88,8 @@ struct DisputeChatPanel: View {
         .padding(14)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .task { await app.loadDisputeChat(bookingID) }
+        .onAppear { startPolling() }
+        .onDisappear { pollTask?.cancel() }
         .accessibilityIdentifier("disputeChat.panel")
     }
 

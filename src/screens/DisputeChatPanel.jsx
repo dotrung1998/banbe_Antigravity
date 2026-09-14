@@ -13,7 +13,17 @@ export default function DisputeChatPanel({ bookingId }) {
   const { state, T, loadDisputeChat, disputeChatDraftType, sendDisputeMessage } = useGoc();
   const s = state;
 
-  useEffect(() => { loadDisputeChat(bookingId); }, [bookingId, loadDisputeChat]);
+  // No realtime subscription exists anywhere in this app (no
+  // supabase.channel()/postgres_changes usage, and dispute_messages was
+  // never added to the supabase_realtime publication) — without this poll,
+  // the party who didn't just send a message never sees a new one until
+  // they leave and reopen this panel. 4s, matching PaymentDetails.jsx's own
+  // 6s poll for the same "nothing pushes to this client" reason.
+  useEffect(() => {
+    loadDisputeChat(bookingId);
+    const id = setInterval(() => loadDisputeChat(bookingId), 4000);
+    return () => clearInterval(id);
+  }, [bookingId, loadDisputeChat]);
 
   const messages = s.disputeChatBookingId === bookingId ? s.disputeChatMessages : [];
 

@@ -121,6 +121,12 @@ struct PaymentDetailsView: View {
                 countdownCard(deadline)
             }
             if phase == .pendingVerification { frozenCard(booking) }
+            // reject_payment ("Can't find it") flags this without disputing
+            // it — paymentState stays .pendingVerification, so this is a
+            // sibling of frozenCard above, not the .disputed branch below.
+            if phase == .pendingVerification, let reason = booking.disputeReason, !reason.isEmpty {
+                needsInfoCard(booking, reason: reason)
+            }
             if phase == .disputed { disputedCard(booking) }
 
             amountCard(booking)
@@ -225,6 +231,25 @@ struct PaymentDetailsView: View {
             .padding(18)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .accessibilityIdentifier("payment.disputed")
+
+            DisputeChatPanel(bookingID: booking.id)
+        }
+        .padding(.top, 16)
+    }
+
+    private func needsInfoCard(_ booking: PayableBooking, reason: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(app.T("Người tổ chức cần thêm thông tin", "The organizer needs more information"))
+                    .font(.system(size: 13.5, weight: .semibold))
+                Text(reason)
+                    .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+            }
+            .foregroundStyle(app.palette.ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityIdentifier("payment.needsInfo")
 
             DisputeChatPanel(bookingID: booking.id)
         }

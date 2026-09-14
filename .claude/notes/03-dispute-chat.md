@@ -20,5 +20,43 @@
 "Not found" (reject) and "temporary chat" are NOT the same stage in code: reject_payment (stage 5) only messages the guest in the PERMANENT ordinary thread; the temporary `dispute_threads`/`dispute_messages` chat this ticket calls stage 5-6 is only created by `escalate_payment_dispute` (this ticket's stage 7). There is no temp chat available during a plain "not found" rejection before escalation.
 
 ## TODO / open questions
-- Confirm intended stage boundary: should `reject_payment` also open a `dispute_threads` row immediately (so guest/host can chat before formal escalation), or is escalation-gated chat correct as-is?
 - No test coverage for `send_dispute_message` RLS/state-guard (DISPUTE_RESOLVED / NOT_DISPUTED error paths) on either platform.
+
+## 2026-09-14 diagnosis — reported bug: chat not opening / not delivering live
+
+Root cause A (session/linkage, CONFIRMED): `reject_payment()` (032:36) never
+inserted into `dispute_threads` — only `escalate_payment_dispute()` (033:129)
+did. `loadDisputeChat` (`src/state/GocContext.jsx:1049`) looks a thread up by
+`booking_id`, finds none for a plain "not found," and silently resolves to an
+empty chat — reads exactly like "not delivering" when there was no session to
+link to. Compounded by UI gating: `PaymentDetails.jsx:150` only rendered
+`<DisputeChatPanel>` when `isDisputed` (payment_state='disputed'), never for
+plain `pending_verification` + a reason — same gap in `Verifications.jsx`'s
+`myOpenDisputes` (sourced from `v_disputes`, `WHERE payment_state='disputed'`).
+**Fixed**: `supabase/migrations/20260914000041_041_dispute_chat_on_reject.sql`
+— `reject_payment()` now also opens the `dispute_threads` row (`ON CONFLICT
+(booking_id) DO NOTHING`), without touching `payment_state`/`disputed_at`;
+`v_pending_verifications` now exposes `dispute_reason`. Client: `dispute_reason`
+added to the `loadPaymentBookings` select (`GocContext.jsx:679-681`) and to
+`PayableBookingRow`/`PayableBooking` (`AppState+Payments.swift:351-403`,
+`PaymentDocument.swift:107-136`); new gated blocks render `<DisputeChatPanel>`
+for `pending_verification` + `dispute_reason` in `PaymentDetails.jsx:150-165`
+and `PaymentViews.swift` (`needsInfoCard`, ~L240); `Verifications.jsx:114-123`
+and `VerificationsView.swift` (`row.disputeReason` block) add an inline
+"Open chat" entry per queue row (not just the escalated list).
+
+Root cause B (no realtime delivery, CONFIRMED): zero `supabase.channel(`/
+`postgres_changes` usage anywhere in this repo (`src/`, `apps/ios/BanbeApp/`,
+`supabase/migrations/` — grepped, no hits), and `dispute_messages` was never
+added to the `supabase_realtime` publication. `DisputeChatPanel.jsx`/`.swift`
+only fetched once on mount + after the local sender's own message — the other
+party never saw new messages without leaving/reopening. **Fixed**: added a 4s
+poll (`setInterval`/`Task` loop) in both `src/screens/DisputeChatPanel.jsx`
+(useEffect) and `apps/ios/BanbeApp/Views/DisputeChatPanel.swift`
+(`startPolling()`/`onAppear`/`onDisappear`) — matches this codebase's existing
+6s poll pattern in `PaymentDetails.jsx` rather than introducing Realtime
+channels nothing else here uses.
+
+Applied to production via `supabase db push`. Web build + iOS
+`xcodebuild` both green; 75/75 existing Playwright tests still pass (no new
+automated test added for the chat linkage/poll fix itself).

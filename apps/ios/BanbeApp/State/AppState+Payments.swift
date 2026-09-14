@@ -21,7 +21,7 @@ extension AppState {
                 .from("bookings")
                 .select("""
                     id, qty, total_vnd, code, status, paid_marked_at, proof_uploaded_at, created_at, event_id,
-                    payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at,
+                    payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at, dispute_reason,
                     events(name, organizers(name, pay_methods, bank_name, bank_account_name,
                                             bank_account_no, momo_phone, pay_note))
                     """)
@@ -362,6 +362,7 @@ private struct PayableBookingRow: Decodable {
     let holdExpiresAt: Date?
     let transactionId: String?
     let verifyDueAt: Date?
+    let disputeReason: String?
     let events: EventRow?
 
     struct EventRow: Decodable {
@@ -399,6 +400,7 @@ private struct PayableBookingRow: Decodable {
         case holdExpiresAt = "hold_expires_at"
         case transactionId = "transaction_id"
         case verifyDueAt = "verify_due_at"
+        case disputeReason = "dispute_reason"
     }
 
     var asPayable: PayableBooking {
@@ -418,7 +420,8 @@ private struct PayableBookingRow: Decodable {
             bankAccountName: org?.bankAccountName ?? "",
             bankAccountNo: org?.bankAccountNo ?? "",
             momoPhone: org?.momoPhone ?? "",
-            payNote: org?.payNote ?? ""
+            payNote: org?.payNote ?? "",
+            disputeReason: disputeReason
         )
     }
 }
@@ -820,6 +823,11 @@ struct PendingVerification: Codable, Identifiable, Hashable {
     var overdue: Bool?
     var escalated: Bool?
     var proofPath: String?
+    /// Set by reject_payment() ("Can't find it") — non-nil/non-empty means
+    /// a dispute_threads row already exists even though this row is still
+    /// in the ordinary queue (not yet escalated). See VerificationsView's
+    /// per-row chat entry.
+    var disputeReason: String?
     var id: UUID { bookingId }
 
     enum CodingKeys: String, CodingKey {
@@ -834,6 +842,7 @@ struct PendingVerification: Codable, Identifiable, Hashable {
         case verifyDueAt = "verify_due_at"
         case overdue, escalated
         case proofPath = "proof_path"
+        case disputeReason = "dispute_reason"
     }
 }
 

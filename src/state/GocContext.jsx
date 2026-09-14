@@ -678,7 +678,7 @@ export function GocProvider({ children }) {
       .from('bookings')
       .select(`id, qty, total_vnd, code, status, expires_at, paid_marked_at, paid_method,
                proof_path, proof_uploaded_at, created_at, event_id,
-               payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at,
+               payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at, dispute_reason,
                events(id, key, name, event_date, event_time, area, organizer_id,
                       organizers(id, name, pay_methods, bank_name, bank_account_name,
                                  bank_account_no, momo_phone, pay_note, pay_qr_path))`)

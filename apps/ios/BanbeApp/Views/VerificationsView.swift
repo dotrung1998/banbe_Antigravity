@@ -168,6 +168,24 @@ struct VerificationsView: View {
                 }
             }
 
+            // row.disputeReason means "Can't find it" already fired here —
+            // reject_payment (migration 041) now opens a dispute_threads
+            // row the moment that happens, not only once
+            // escalate_payment_dispute runs, so there's already a chat to
+            // reach even though this row is still in the ordinary queue.
+            if let reason = row.disputeReason, !reason.isEmpty {
+                if openChatBookingID == row.bookingId {
+                    DisputeChatPanel(bookingID: row.bookingId)
+                } else {
+                    Button { openChatBookingID = row.bookingId } label: {
+                        Text(app.T("Mở đoạn chat với khách ›", "Open chat with guest ›"))
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("verification.openNotFoundChat")
+                }
+            }
+
             if let current = reasonFor, current.bookingId == row.bookingId {
                 TextField(current.kind == .escalate
                           ? app.T("Mô tả ngắn gọn vướng mắc cho banbe", "Briefly describe the issue for banbe")

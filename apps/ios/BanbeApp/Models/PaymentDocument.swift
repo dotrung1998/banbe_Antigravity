@@ -128,6 +128,11 @@ struct PayableBooking: Identifiable, Hashable {
     var bankAccountNo: String
     var momoPhone: String
     var payNote: String
+    /// Set by reject_payment() ("Can't find it") — non-nil/non-empty means
+    /// a dispute_threads row already exists for this booking even though
+    /// paymentState is still .pendingVerification (escalate_payment_dispute
+    /// hasn't run). See PaymentViews.swift's needsInfoCard.
+    var disputeReason: String?
 
     var isPaid: Bool { paymentState == .confirmed || paidMarkedAt != nil }
     var isFrozen: Bool { paymentState == .pendingVerification }

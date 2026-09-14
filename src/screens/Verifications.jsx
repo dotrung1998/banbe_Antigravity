@@ -113,6 +113,24 @@ export default function Verifications() {
               </span>
             )}
 
+            {/* v.dispute_reason means "Can't find it" already fired for this
+                row — reject_payment (migration 034) now opens a
+                dispute_threads row the moment that happens, not only once
+                escalate_payment_dispute runs, so there's already a chat to
+                reach here even though payment_state is still
+                'pending_verification'. */}
+            {v.dispute_reason && (
+              openDisputeChat === v.booking_id ? (
+                <DisputeChatPanel bookingId={v.booking_id} />
+              ) : (
+                <div onClick={() => setOpenDisputeChat(v.booking_id)}
+                     data-testid="verification-open-not-found-chat"
+                     style={{ fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>
+                  {T('Mở đoạn chat với khách ›', 'Open chat with guest ›')}
+                </div>
+              )
+            )}
+
             {reasonFor?.bookingId === v.booking_id ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <input
