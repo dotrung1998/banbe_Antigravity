@@ -7,7 +7,7 @@ import Supabase
 /// `authenticated`, exactly like the web app's bundled copy.
 ///
 /// Requesting the sign-in code itself goes through the same
-/// /api/auth/send-email-code Vercel function the web app uses (see
+/// /api/auth (type: send_email_code) Vercel function the web app uses (see
 /// AuthAPIService) rather than Supabase's own `signInWithOTP` — that
 /// function delivers via Gmail with no meaningful limit, where Supabase's
 /// own built-in mailer is capped at a handful of emails per hour and

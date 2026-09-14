@@ -82,7 +82,7 @@ struct PreferencesView: View {
 
 /// Port of src/screens/EditName.jsx — renaming notifies every organizer
 /// this guest has booked with, in-app and by email (the RPC does the first,
-/// /api/notify-name-change the second).
+/// /api/notify (type: name_change) the second).
 struct EditNameView: View {
     @EnvironmentObject var app: AppState
 

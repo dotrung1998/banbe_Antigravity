@@ -50,7 +50,7 @@ test.describe('Login & Signup Notification Messages', () => {
   test('shows AUTH_ACCOUNT_NOT_FOUND for non-existent email on login', async ({ page }) => {
     await openLogin(page);
 
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       route.fulfill({
         status: 404,
         contentType: 'application/json',
@@ -67,7 +67,7 @@ test.describe('Login & Signup Notification Messages', () => {
   test('shows AUTH_ACCOUNT_NOT_FOUND for non-existent email on signup (falls through to generic)', async ({ page }) => {
     await openLogin(page);
 
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       route.fulfill({
         status: 404,
         contentType: 'application/json',
@@ -86,7 +86,7 @@ test.describe('Login & Signup Notification Messages', () => {
   test('shows AUTH_ACCOUNT_LOOKUP_FAILED when Supabase lookup errors', async ({ page }) => {
     await openLogin(page);
 
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       route.fulfill({
         status: 502,
         contentType: 'application/json',
@@ -103,7 +103,7 @@ test.describe('Login & Signup Notification Messages', () => {
   test('shows AUTH_EMAIL_DELIVERY_FAILED when Gmail fails', async ({ page }) => {
     await openLogin(page);
 
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       route.fulfill({
         status: 502,
         contentType: 'application/json',
@@ -120,7 +120,7 @@ test.describe('Login & Signup Notification Messages', () => {
   test('shows AUTH_EMAIL_REQUEST_FAILED on generic email failure', async ({ page }) => {
     await openLogin(page);
 
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       route.fulfill({
         status: 502,
         contentType: 'application/json',
@@ -137,7 +137,7 @@ test.describe('Login & Signup Notification Messages', () => {
   test('shows AUTH_LINK_GENERATION_FAILED when code creation fails', async ({ page }) => {
     await openLogin(page);
 
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       route.fulfill({
         status: 502,
         contentType: 'application/json',
@@ -154,7 +154,7 @@ test.describe('Login & Signup Notification Messages', () => {
   test('shows AUTH_EMAIL_SERVICE_NOT_CONFIGURED when env vars are missing', async ({ page }) => {
     await openLogin(page);
 
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       route.fulfill({
         status: 503,
         contentType: 'application/json',
@@ -171,7 +171,7 @@ test.describe('Login & Signup Notification Messages', () => {
   test('shows generic login error for unknown error code on login', async ({ page }) => {
     await openLogin(page);
 
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       route.fulfill({
         status: 500,
         contentType: 'application/json',
@@ -188,7 +188,7 @@ test.describe('Login & Signup Notification Messages', () => {
   test('shows generic signup error for unknown error code on signup', async ({ page }) => {
     await openLogin(page);
 
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       route.fulfill({
         status: 500,
         contentType: 'application/json',
@@ -207,7 +207,7 @@ test.describe('Login & Signup Notification Messages', () => {
   test('shows the code-entry step when the email is sent successfully', async ({ page }) => {
     await openLogin(page);
 
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -225,7 +225,7 @@ test.describe('Login & Signup Notification Messages', () => {
   test('points an existing email at the log-in tab instead of signing up again', async ({ page }) => {
     await openLogin(page);
 
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       route.fulfill({
         status: 409,
         contentType: 'application/json',
@@ -246,7 +246,7 @@ test.describe('Login & Signup Notification Messages', () => {
 
     /** @type {any} */
     let sentBody = null;
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       sentBody = route.request().postDataJSON();
       route.fulfill({
         status: 200,
@@ -259,7 +259,7 @@ test.describe('Login & Signup Notification Messages', () => {
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng nhập/).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Đã gửi mã tới email của bạn/);
-    expect(sentBody).toEqual({ email: 'returning@example.com', mode: 'login', locale: 'vi' });
+    expect(sentBody).toEqual({ type: 'send_email_code', email: 'returning@example.com', mode: 'login', locale: 'vi' });
   });
 
   test('requires a display name to sign up, and sends it with the request', async ({ page }) => {
@@ -272,7 +272,7 @@ test.describe('Login & Signup Notification Messages', () => {
 
     /** @type {any} */
     let sentBody = null;
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       sentBody = route.request().postDataJSON();
       route.fulfill({
         status: 200,
@@ -290,13 +290,13 @@ test.describe('Login & Signup Notification Messages', () => {
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng ký/).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Đã gửi mã tới email của bạn/);
-    expect(sentBody).toEqual({ email: 'newperson@example.com', mode: 'signup', locale: 'vi', displayName: 'Nguyễn An' });
+    expect(sentBody).toEqual({ type: 'send_email_code', email: 'newperson@example.com', mode: 'signup', locale: 'vi', displayName: 'Nguyễn An' });
   });
 
   test('does not claim the account is missing when the lookup itself failed', async ({ page }) => {
     await openLogin(page);
 
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       route.fulfill({
         status: 502,
         contentType: 'application/json',
@@ -315,7 +315,7 @@ test.describe('Login & Signup Notification Messages', () => {
   test('rejects an empty or wrong code on the verify step', async ({ page }) => {
     await openLogin(page);
 
-    await page.route('/api/auth/send-email-code', route => {
+    await page.route('/api/auth', route => {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sent: true }) });
     });
     await page.route('**/auth/v1/verify*', route => {
@@ -367,7 +367,7 @@ test.describe('Login & Signup Notification Messages', () => {
 
       /** @type {any} */
       let sentBody = null;
-      await page.route('/api/auth/signup-password', route => {
+      await page.route('/api/auth', route => {
         sentBody = route.request().postDataJSON();
         route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sent: true }) });
       });
@@ -389,7 +389,7 @@ test.describe('Login & Signup Notification Messages', () => {
 
       /** @type {any} */
       let sentBody = null;
-      await page.route('/api/auth/signup-password', route => {
+      await page.route('/api/auth', route => {
         sentBody = route.request().postDataJSON();
         route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sent: true }) });
       });
@@ -400,7 +400,7 @@ test.describe('Login & Signup Notification Messages', () => {
       await page.locator('input[placeholder="Confirm password"], input[placeholder="Nhập lại mật khẩu"]').fill('correcthorse1');
       await page.locator('[data-screen-label="Login"]').getByText('Tạo tài khoản', { exact: true }).click();
 
-      expect(sentBody).toEqual({ email: 'newperson@example.com', password: 'correcthorse1', displayName: 'Nguyễn An', locale: 'vi' });
+      expect(sentBody).toEqual({ type: 'signup_password', email: 'newperson@example.com', password: 'correcthorse1', displayName: 'Nguyễn An', locale: 'vi' });
       await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Đã gửi mã tới email của bạn/);
     });
 
@@ -410,7 +410,7 @@ test.describe('Login & Signup Notification Messages', () => {
 
       /** @type {any} */
       let sentBody = null;
-      await page.route('/api/auth/send-password-reset', route => {
+      await page.route('/api/auth', route => {
         sentBody = route.request().postDataJSON();
         route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sent: true }) });
       });
@@ -418,7 +418,7 @@ test.describe('Login & Signup Notification Messages', () => {
       await page.locator('input[placeholder="ban@email.com"]').fill('whoever@example.com');
       await page.locator('[data-screen-label="Login"]').getByText(/Quên mật khẩu/).click();
 
-      expect(sentBody).toEqual({ email: 'whoever@example.com' });
+      expect(sentBody).toEqual({ type: 'send_password_reset', email: 'whoever@example.com' });
       await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/một email đặt lại mật khẩu vừa được gửi|a password reset email was just sent/);
     });
   });

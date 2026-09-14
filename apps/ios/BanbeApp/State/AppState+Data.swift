@@ -334,8 +334,8 @@ extension AppState {
             // only dispatches the email side, which re-derives its own
             // recipients server-side.
             await AuthAPIService.notify(
-                path: "/api/notify-name-change",
-                body: ["oldName": oldName, "newName": newName]
+                path: "/api/notify",
+                body: ["type": "name_change", "oldName": oldName, "newName": newName]
             )
         } catch {
             editNameSaving = false
@@ -785,7 +785,7 @@ extension AppState {
                 .rpc("check_in_guest", params: ["p_reservation_id": bookingID.uuidString])
                 .execute().value
             guard result.success == true else { return false }
-            await AuthAPIService.notify(path: "/api/notify-check-in", body: ["bookingId": bookingID.uuidString])
+            await AuthAPIService.notify(path: "/api/notify", body: ["type": "check_in", "bookingId": bookingID.uuidString])
             return true
         } catch {
             print("Check-in failed:", error)
@@ -839,8 +839,11 @@ extension AppState {
             reasonPromptBusy = false
             if let key = attendanceEventKey { await loadAttendanceGuests(key) }
             await AuthAPIService.notify(
-                path: prompt.kind == .undoCheckin ? "/api/notify-checkin-undo" : "/api/notify-booking-cancelled",
-                body: ["bookingId": prompt.bookingID.uuidString, "reason": label]
+                path: "/api/notify",
+                body: [
+                    "type": prompt.kind == .undoCheckin ? "checkin_undo" : "booking_cancelled",
+                    "bookingId": prompt.bookingID.uuidString, "reason": label,
+                ]
             )
         } catch {
             reasonPromptBusy = false

@@ -20,9 +20,10 @@ async function postJson(path, body) {
 // this only triggers the email, it never returns a session. `locale` only
 // actually matters for a brand-new signup (an existing login's email
 // follows that account's own saved profiles.locale instead) — see
-// api/auth/send-email-code.js.
+// api/auth/index.js (dispatched by `type` — consolidated from three
+// standalone functions to fit the Vercel Hobby-plan serverless function cap).
 export async function requestAuthEmail({ email, mode, displayName, locale }) {
-  return postJson('/api/auth/send-email-code', { email, mode, locale, ...(displayName ? { displayName } : {}) });
+  return postJson('/api/auth', { type: 'send_email_code', email, mode, locale, ...(displayName ? { displayName } : {}) });
 }
 
 // Password-based sign-up. Also finishes with
@@ -30,7 +31,7 @@ export async function requestAuthEmail({ email, mode, displayName, locale }) {
 // confirmation code comes back — this only creates the (unconfirmed) account
 // and sends that code.
 export async function requestPasswordSignup({ email, password, displayName, locale }) {
-  return postJson('/api/auth/signup-password', { email, password, displayName, locale });
+  return postJson('/api/auth', { type: 'signup_password', email, password, displayName, locale });
 }
 
 // "Forgot password" — always resolves the same way whether or not the
@@ -38,5 +39,5 @@ export async function requestPasswordSignup({ email, password, displayName, loca
 // should show a generic "if that email has an account, check it" message
 // rather than branching on the response.
 export async function requestPasswordReset({ email }) {
-  return postJson('/api/auth/send-password-reset', { email });
+  return postJson('/api/auth', { type: 'send_password_reset', email });
 }

@@ -1477,10 +1477,10 @@ export function GocProvider({ children }) {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
       if (token) {
-        fetch('/api/notify-name-change', {
+        fetch('/api/notify', {
           method: 'POST',
           headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ oldName, newName: data?.new_name || newName }),
+          body: JSON.stringify({ type: 'name_change', oldName, newName: data?.new_name || newName }),
         }).catch(() => {});
       }
     } catch { /* best-effort email dispatch; the in-app notification already landed */ }
@@ -1807,14 +1807,16 @@ export function GocProvider({ children }) {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
       if (!token) return;
-      fetch('/api/notify-welcome', {
+      fetch('/api/notify', {
         method: 'POST',
         headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type: 'welcome' }),
       }).catch(() => {});
       if (referredSomeone) {
-        fetch('/api/notify-referral-joined', {
+        fetch('/api/notify', {
           method: 'POST',
           headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ type: 'referral_joined' }),
         }).catch(() => {});
       }
     } catch { /* best-effort; the account and any redemption already landed */ }
@@ -2221,10 +2223,10 @@ export function GocProvider({ children }) {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
       if (token) {
-        fetch('/api/notify-check-in', {
+        fetch('/api/notify', {
           method: 'POST',
           headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ bookingId }),
+          body: JSON.stringify({ type: 'check_in', bookingId }),
         }).catch(() => {});
       }
     } catch { /* best-effort email; the in-app notification already landed */ }
@@ -2268,12 +2270,12 @@ export function GocProvider({ children }) {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
-      const endpoint = prompt.kind === 'undoCheckin' ? '/api/notify-checkin-undo' : '/api/notify-booking-cancelled';
+      const notifyType = prompt.kind === 'undoCheckin' ? 'checkin_undo' : 'booking_cancelled';
       if (token) {
-        fetch(endpoint, {
+        fetch('/api/notify', {
           method: 'POST',
           headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ bookingId: prompt.bookingId, reason: reasonLabel }),
+          body: JSON.stringify({ type: notifyType, bookingId: prompt.bookingId, reason: reasonLabel }),
         }).catch(() => {});
       }
     } catch { /* best-effort email; the in-app notification already landed */ }

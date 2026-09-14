@@ -7,7 +7,7 @@ enum AuthMode: String {
     case signup
 }
 
-/// One of the JSON `{ "error": "SOME_CODE" }` bodies api/auth/send-email-code.js
+/// One of the JSON `{ "error": "SOME_CODE" }` bodies api/auth/index.js (type: send_email_code)
 /// (see api/_lib/authLookup.js) can return — mirrors the codes
 /// src/state/GocContext.jsx's authEmailErrorMessage() maps to Vietnamese/
 /// English copy; this maps the same set to English only, since the iOS
@@ -41,7 +41,7 @@ struct AuthAPIError: LocalizedError {
     }
 }
 
-/// Talks to the same /api/auth/* Vercel functions the web app uses (see
+/// Talks to the same /api/auth Vercel function the web app uses (see
 /// src/lib/authEmail.js) instead of Supabase's own outgoing mail — see the
 /// note in SupabaseService.swift on why: Supabase's built-in mailer is
 /// rate-limited to only a handful of emails per hour and fails immediately
@@ -50,11 +50,11 @@ enum AuthAPIService {
     /// Requests a 6-digit sign-in/sign-up code by email. Verifying it is
     /// still done directly against Supabase — see AuthViewModel.verifyEmailCode.
     static func requestEmailCode(email: String, mode: AuthMode, displayName: String? = nil) async throws {
-        var body: [String: String] = ["email": email, "mode": mode.rawValue]
+        var body: [String: String] = ["type": "send_email_code", "email": email, "mode": mode.rawValue]
         if let displayName, !displayName.isEmpty {
             body["displayName"] = displayName
         }
-        try await post(path: "/api/auth/send-email-code", body: body)
+        try await post(path: "/api/auth", body: body)
     }
 
     /// Creates an account with a password of the person's own choosing.
@@ -64,7 +64,8 @@ enum AuthAPIService {
     /// requestPasswordSignup.
     static func requestPasswordSignup(email: String, password: String,
                                       displayName: String, locale: String) async throws {
-        try await post(path: "/api/auth/signup-password", body: [
+        try await post(path: "/api/auth", body: [
+            "type": "signup_password",
             "email": email, "password": password,
             "displayName": displayName, "locale": locale,
         ])
@@ -74,16 +75,17 @@ enum AuthAPIService {
     /// same branded template the web app uses. Unlike sign-in, this stays a
     /// link rather than a code: it opens the web app with a Supabase
     /// recovery session already established, which is where the new
-    /// password actually gets set (see api/auth/send-password-reset.js).
+    /// password actually gets set (see api/auth/index.js, type: send_password_reset).
     ///
     /// The server answers 200 whether or not an account exists, so callers
     /// must show the same "check your email" message either way rather than
     /// branching on the result.
     static func requestPasswordReset(email: String) async throws {
-        try await post(path: "/api/auth/send-password-reset", body: ["email": email])
+        try await post(path: "/api/auth", body: ["type": "send_password_reset", "email": email])
     }
 
-    /// Fire-and-forget call to one of the /api/notify-* endpoints, with the
+    /// Fire-and-forget call to the /api/notify endpoint (dispatched by a
+    /// `type` field in `body`), with the
     /// caller's session token attached. Those endpoints re-derive their own
     /// recipient and authorization from the database using that token, so
     /// nothing here is trusted; the in-app notification has already been
