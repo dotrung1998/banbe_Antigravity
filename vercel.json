@@ -11,7 +11,7 @@
   "crons": [
     {
       "path": "/api/cron/escalate-verifications",
-      "schedule": "* * * * *"
+      "schedule": "0 9 * * *"
     }
   ]
 }
