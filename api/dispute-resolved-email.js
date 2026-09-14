@@ -127,13 +127,28 @@ export default async function handler(req, res) {
       resolvedAt: thread.resolved_at,
     }, messages || []);
 
-    const transcriptPdf = await htmlToPdf(transcriptHtml);
-    const attachments = [
-      { filename: 'dispute-transcript.pdf', content: transcriptPdf, contentType: 'application/pdf' },
-    ];
+    // Previously unguarded and sitting directly in the same try block as
+    // everything else in this handler — a puppeteer-core/@sparticuz/chromium
+    // failure here (a genuinely common serverless failure mode: binary size,
+    // missing/incompatible memory allocation, a cold-start timeout — this
+    // path has never been exercised against a live Vercel deployment, per
+    // this file's own header) threw straight past the send loop entirely,
+    // into the outer catch (bottom of this handler), aborting BOTH
+    // recipients' emails before either was ever attempted and reporting
+    // only the generic SEND_FAILED — indistinguishable, from the client, from
+    // an actual Gmail-send failure. Isolated here so a PDF failure costs the
+    // transcript attachment, not the whole email to both parties.
+    const attachments = [];
+    try {
+      const transcriptPdf = await htmlToPdf(transcriptHtml);
+      attachments.push({ filename: 'dispute-transcript.pdf', content: transcriptPdf, contentType: 'application/pdf' });
+    } catch (pdfError) {
+      console.error('dispute-resolved-email: PDF generation failed, sending without the transcript attachment:', pdfError);
+    }
 
     if (booking.proof_path) {
-      const { data: proofBlob } = await admin.storage.from('pay-proof').download(booking.proof_path);
+      const { data: proofBlob, error: proofError } = await admin.storage.from('pay-proof').download(booking.proof_path);
+      if (proofError) console.error('dispute-resolved-email: receipt image download failed:', proofError);
       if (proofBlob) {
         attachments.push({
           filename: 'receipt' + (booking.proof_path.includes('.') ? booking.proof_path.slice(booking.proof_path.lastIndexOf('.')) : '.jpg'),

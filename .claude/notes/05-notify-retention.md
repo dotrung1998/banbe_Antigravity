@@ -79,3 +79,64 @@ deployed environment actually has working `GMAIL_USER`/`GMAIL_APP_PASSWORD`
 values, or whether ART10025's guest/organizer accounts' emails resolve
 correctly now that lookup failures are logged — the next real resolution
 attempt's Vercel function logs are the way to find out.
+
+## 2026-09-14 diagnosis, continued — recipient-ID trace + PDF-generation isolation (task: pin down (1) vs (2) vs (3))
+
+**Could not execute the live-test task**: no `vercel` CLI, no deployment
+token, and no browser session to trigger a real admin resolution in this
+sandbox — `which vercel` fails, `~/.vercel` doesn't exist. **This needs the
+user (or a session with Vercel access) to trigger one real resolution on
+ART10025 (or a fresh test dispute) and pull that invocation's function logs
+for `api/dispute-resolved-email.js`** — the fix below adds enough logging
+to make that trace conclusive once it's run.
+
+**(1) Recipient ID resolution — traced, CODE IS CORRECT, cannot rule out
+bad underlying data:**
+- Guest: `booking.user_id` (`api/dispute-resolved-email.js:80-81` select,
+  `:102` `getUserById(booking.user_id)`) — `bookings.user_id` is the
+  booking's own guest column; this is the right id for whoever actually
+  reserved and disputed the seat.
+- Organizer: `organizer.owner_id || organizer.user_id` (`:93-94` select via
+  `thread.organizer_id`, `:104-109` `getUserById(organizerUserId)`) —
+  `dispute_threads.organizer_id` is populated/self-healed from
+  `events.organizer_id` by `resolve_dispute()`/`reject_payment()`/
+  `escalate_payment_dispute()` (migrations 033/041/042/043/044); `organizers.
+  owner_id`/`.user_id` are the account(s) that actually operate that
+  organizer page.
+- No ID-swap or wrong-column bug found by inspection. Whether ART10025's
+  actual `bookings.user_id` is `dotrung1998@gmail.com`'s auth uid and its
+  event's `organizer_id` row's `owner_id`/`user_id` is `banbetestadmin@gmail.com`'s
+  (or whichever two accounts are the real guest/organizer here) is a data
+  question this session cannot check — no production DB read access. The
+  new logging (`guest auth lookup failed`/`organizer auth lookup failed`/
+  `organizer has no owner_id/user_id`, all already added in the previous
+  fix) will show definitively in the Vercel logs if either id fails to
+  resolve to a real account.
+
+**(2) PDF generation — CONFIRMED a real, previously unisolated failure
+mode, most likely candidate given "neither party received anything":**
+`htmlToPdf(transcriptHtml)` (old `:130`) sat directly in the handler's one
+shared `try` block, with no isolation from the per-recipient send logic. A
+throw there (any `puppeteer-core`/`@sparticuz/chromium` launch/render
+failure — a genuinely common serverless failure mode: chromium binary size,
+memory allocation, cold-start timeout; this path has never run against a
+live Vercel deployment) jumps straight to the handler's outer `catch`,
+returning generic `502 SEND_FAILED` **before the send loop runs at all** —
+zero attempts for either recipient, indistinguishable from a Gmail-side
+failure. This explains "no email to either party" more parsimoniously than
+(1), since it fails uniformly for both recipients from one shared cause,
+where two independent `getUserById` failures would be a coincidence.
+
+**Fixed**: `api/dispute-resolved-email.js` — `htmlToPdf()` now has its own
+try/catch; a failure there is logged distinctly
+(`PDF generation failed, sending without the transcript attachment`) and no
+longer blocks the email — it sends without the transcript PDF (the receipt
+image, if any, and the summary text still go out) instead of silently
+sending nothing to anyone. The receipt-image download's `error` is now also
+checked and logged (previously discarded like the `getUserById` gaps from
+the prior fix).
+
+Not verified against a live send (same limitation as above) — Gmail
+transporter/credentials were deliberately NOT touched, since nothing in
+this session's log access points there; the next real Vercel invocation's
+logs are what would confirm or rule out (1)/(2) conclusively.
