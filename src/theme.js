@@ -7,6 +7,13 @@ export const ink = 'var(--bb-fg)';
 export const inkDeep = 'var(--bb-ink-deep)';
 export const rule = 'var(--bb-rule)';
 export const fieldSolid = 'var(--bb-field)';
+// Warning/destructive accent — the one non-palette color the app uses
+// (error copy, "Cancel booking", overdue/urgent states). Matches
+// apps/ios/BanbeApp/Views/BanbeTheme.swift's `BanbeTheme.alert` (#9A3E2D)
+// exactly; was previously hardcoded as that same literal hex in ~20 call
+// sites across src/screens instead of a shared token — see
+// .claude/notes/06-design-tokens.md.
+export const alert = 'var(--bb-alert)';
 
 // Be Vietnam Pro — same geometric, rounded-sans vibe as Poppins (the
 // prototype's stand-in face) but designed for full, clean Vietnamese

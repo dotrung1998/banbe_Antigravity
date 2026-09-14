@@ -1,6 +1,6 @@
 import { useGoc } from '../state/GocContext.jsx';
 import { bg } from '../data/events.js';
-import { paper, ink, FACE, display, fieldGlass } from '../theme.js';
+import { paper, ink, FACE, display, fieldGlass, alert } from '../theme.js';
 
 export default function Reserve() {
   const {
@@ -70,7 +70,7 @@ export default function Reserve() {
         {T('banbe không thu tiền. Bạn giữ chỗ 30 phút để chuyển khoản trực tiếp cho người tổ chức. Bấm "Tôi đã chuyển khoản" là đồng hồ dừng và chỗ được khoá cho tới khi người tổ chức xác nhận.', 'banbe does not collect money. Your seat is held for 30 minutes while you transfer to the organizer directly. Tapping "I have transferred" stops the clock and locks your seat until they confirm.')}
       </div>
       <div onClick={() => submitReserve(formOk)} style={reserveBtnStyle}>{reserveBtnLabel}</div>
-      {s.reserveError && <div style={{ margin: '12px 22px 0', fontSize: 12, lineHeight: 1.5, color: '#9A3E2D' }}>{s.reserveError}</div>}
+      {s.reserveError && <div style={{ margin: '12px 22px 0', fontSize: 12, lineHeight: 1.5, color: alert }}>{s.reserveError}</div>}
       <div style={{ height: 40 }} />
     </div>
   );

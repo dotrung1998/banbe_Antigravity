@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { formatVnd } from '../lib/paymentDocument.js';
-import { paper, ink, rule, display, fieldGlass, cardGlass } from '../theme.js';
+import { paper, ink, rule, display, fieldGlass, cardGlass, alert } from '../theme.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
 
 // Platform admin dispute desk: where a rejected payment goes to be decided by
@@ -118,7 +118,7 @@ export default function Disputes() {
                 pending purge in 72h) so this is the one chance to notice
                 and re-send before the transcript is gone for good. */}
             {s.disputeEmailError && (
-              <p style={{ fontSize: 11.5, color: '#9A3E2D', margin: 0 }} data-testid="dispute-email-error">
+              <p style={{ fontSize: 11.5, color: alert, margin: 0 }} data-testid="dispute-email-error">
                 {T('Email xác nhận chưa gửi được: ', "Confirmation email didn't send: ") + s.disputeEmailError}
               </p>
             )}

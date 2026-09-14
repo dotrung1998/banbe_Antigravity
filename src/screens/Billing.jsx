@@ -1,5 +1,5 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { paper, ink, FACE, display, fieldGlass, inkButton } from '../theme.js';
+import { paper, ink, FACE, display, fieldGlass, inkButton, alert } from '../theme.js';
 
 // The buyer block on every invoice and receipt this account is ever issued.
 // Kept apart from "Rename" on purpose: what you are called in the app and
@@ -54,7 +54,7 @@ export default function Billing() {
         </p>
       )}
       {s.billingError && (
-        <p style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '12px 22px 0' }}>{s.billingError}</p>
+        <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '12px 22px 0' }}>{s.billingError}</p>
       )}
 
       <p style={{ fontSize: 11.5, lineHeight: 1.6, color: ink, opacity: 0.65, margin: '20px 22px 40px' }}>

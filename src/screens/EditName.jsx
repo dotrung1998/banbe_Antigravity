@@ -1,5 +1,5 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { paper, ink, display, fieldGlass, inkButton } from '../theme.js';
+import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
 
 export default function EditName() {
   const { state, T, set, editNameType, saveDisplayName } = useGoc();
@@ -21,7 +21,7 @@ export default function EditName() {
           maxLength={60}
           style={{ ...fieldGlass({ marginTop: 22, padding: 14, border: 'none' }), fontSize: 15, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }}
         />
-        {s.editNameError && <p style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '10px 0 0' }}>{s.editNameError}</p>}
+        {s.editNameError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0' }}>{s.editNameError}</p>}
         <div
           onClick={s.editNameSaving ? undefined : saveDisplayName}
           style={{ ...inkButton({ marginTop: 18, borderRadius: 18, padding: 15 }), opacity: s.editNameSaving ? 0.6 : 1, cursor: s.editNameSaving ? 'default' : 'pointer' }}

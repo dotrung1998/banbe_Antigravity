@@ -1,5 +1,5 @@
 import { useGoc, UNDO_CHECKIN_REASONS, CANCEL_BOOKING_REASONS } from '../../state/GocContext.jsx';
-import { paper, ink, rule } from '../../theme.js';
+import { paper, ink, rule, alert } from '../../theme.js';
 
 // Shown whenever an organizer reverses a check-in or cancels an already-paid
 // booking — both require picking one of a fixed list of reasons (no free
@@ -39,7 +39,7 @@ export default function ReasonSheet() {
             </div>
           ))}
         </div>
-        {s.reasonPromptError && <p style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '12px 0 0' }}>{s.reasonPromptError}</p>}
+        {s.reasonPromptError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '12px 0 0' }}>{s.reasonPromptError}</p>}
         <div onClick={s.reasonPromptBusy ? undefined : closeReasonPrompt} style={{ marginTop: 14, color: ink, fontSize: 13.5, textAlign: 'center', padding: 8, cursor: 'pointer' }}>
           {s.reasonPromptBusy ? T('Đang xử lý…', 'Working…') : T('Để sau', 'Not now')}
         </div>

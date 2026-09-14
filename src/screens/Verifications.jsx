@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
-import { paper, ink, rule, display, fieldGlass, cardGlass } from '../theme.js';
+import { paper, ink, rule, display, fieldGlass, cardGlass, alert } from '../theme.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
 
 // The organizer's manual-verification queue — the fallback for every payment
@@ -54,7 +54,7 @@ export default function Verifications() {
              "These guests reported a transfer. Check your statement, then confirm — their seat is held and their clock has stopped.")}
         </p>
         {overdue > 0 && (
-          <p style={{ fontSize: 12.5, fontWeight: 600, color: '#9A3E2D', margin: '10px 0 0' }} data-testid="verifications-overdue">
+          <p style={{ fontSize: 12.5, fontWeight: 600, color: alert, margin: '10px 0 0' }} data-testid="verifications-overdue">
             {overdue} {T('khoản đã quá hạn xác nhận.', overdue === 1 ? 'is past its response window.' : 'are past their response window.')}
           </p>
         )}
@@ -108,7 +108,7 @@ export default function Verifications() {
             )}
 
             {v.escalated && (
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#9A3E2D' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: alert }}>
                 {T('Đã chuyển cảnh báo khẩn', 'Escalated as urgent')}
               </span>
             )}
@@ -234,7 +234,7 @@ function Line({ label, value, mono, urgent, testid }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }} data-testid={testid}>
       <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{label}</span>
-      <span style={{ fontSize: 12, fontWeight: 600, color: urgent ? '#9A3E2D' : ink, letterSpacing: mono ? '0.06em' : 0, wordBreak: 'break-all', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: urgent ? alert : ink, letterSpacing: mono ? '0.06em' : 0, wordBreak: 'break-all', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
     </div>
   );
 }

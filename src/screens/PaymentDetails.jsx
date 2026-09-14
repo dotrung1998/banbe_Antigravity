@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { useGoc } from '../state/GocContext.jsx';
 import { formatVnd } from '../lib/paymentDocument.js';
-import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
+import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
 
 // The buyer's side of the two-phase machine.
@@ -298,7 +298,7 @@ export default function PaymentDetails() {
                      'Tapping this stops the clock and locks your seat until the organizer confirms.')}
                 </span>
                 {s.paymentSubmitError && (
-                  <p style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: 0 }} data-testid="payment-submit-error">
+                  <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: 0 }} data-testid="payment-submit-error">
                     {s.paymentSubmitError}
                   </p>
                 )}

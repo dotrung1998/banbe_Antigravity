@@ -1,5 +1,5 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { paper, ink, FACE, display, fieldGlass, inkButton } from '../theme.js';
+import { paper, ink, FACE, display, fieldGlass, inkButton, alert } from '../theme.js';
 
 // Where the organizer says how they want to be paid. Without this filled in,
 // a guest's payment screen has nothing to show them — so this is the one
@@ -68,7 +68,7 @@ export default function Payout() {
         </p>
       )}
       {s.payoutError && (
-        <p style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '12px 22px 0' }}>{s.payoutError}</p>
+        <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '12px 22px 0' }}>{s.payoutError}</p>
       )}
 
       <div style={{ height: 40 }} />

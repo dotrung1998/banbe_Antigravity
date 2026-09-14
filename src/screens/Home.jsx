@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking } from '../lib/countdown.js';
-import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip } from '../theme.js';
+import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert } from '../theme.js';
 
 const FILTER_DEFS = [
   { key: 'all', vi: 'Tất cả', en: 'All' },
@@ -294,7 +294,7 @@ function PhaseBanner({ label, detail, countdown, onClick, urgent, testId }) {
         </span>
       </div>
       {countdown && (
-        <span style={{ ...display(19, { fontVariantNumeric: 'tabular-nums', flex: 'none', marginLeft: 12, color: urgent ? '#9A3E2D' : ink }) }}>
+        <span style={{ ...display(19, { fontVariantNumeric: 'tabular-nums', flex: 'none', marginLeft: 12, color: urgent ? alert : ink }) }}>
           {countdown}
         </span>
       )}

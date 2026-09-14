@@ -1,5 +1,5 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { paper, ink, display, fieldGlass, inkButton } from '../theme.js';
+import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
 
 // Account > Security — this account's password. The iOS app's version of
 // this screen (apps/ios/BanbeApp/Views/SecurityView.swift) also carries the
@@ -56,7 +56,7 @@ export default function Security() {
             />
 
             {s.securityError ? (
-              <p style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '10px 0 0' }}>{s.securityError}</p>
+              <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0' }}>{s.securityError}</p>
             ) : s.securitySaved ? (
               <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '10px 0 0' }}>{T('Đã lưu mật khẩu mới.', 'New password saved.')}</p>
             ) : tooShort ? (

@@ -14,6 +14,12 @@
   --bb-button-text: #FFFFFF;
   --bb-white: rgba(255,255,255,0.62);
   --bb-shadow: rgba(27,25,22,0.08);
+  /* Warning/destructive accent — the one non-palette color, same in both
+     themes (matches apps/ios/BanbeApp/Views/BanbeTheme.swift's
+     `BanbeTheme.alert`, which is likewise defined once, outside its
+     light/dark Palette). Not redeclared in the [data-bb-theme="dark"]
+     block below — it inherits this same value from :root either way. */
+  --bb-alert: #9A3E2D;
 }
 
 [data-bb-theme="dark"] {

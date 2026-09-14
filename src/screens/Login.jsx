@@ -1,5 +1,5 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { paper, ink, display, fieldGlass } from '../theme.js';
+import { paper, ink, display, fieldGlass, alert } from '../theme.js';
 
 export default function Login() {
   const {
@@ -99,7 +99,7 @@ export default function Login() {
           <input value={s.loginEmail} onChange={loginEmailType} onKeyDown={loginEmailKey} placeholder="ban@email.com" data-testid="login-email" style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
         )}
         {showEmailFormatError && (
-          <p data-testid="login-email-error" style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '8px 2px 0' }}>
+          <p data-testid="login-email-error" style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '8px 2px 0' }}>
             {T('Email chưa đúng định dạng — ví dụ: ban@email.com', "That doesn't look like an email address — e.g. ban@email.com")}
           </p>
         )}
@@ -135,7 +135,7 @@ export default function Login() {
             {T('Nếu email này có tài khoản, một email đặt lại mật khẩu vừa được gửi.', 'If that email has an account, a password reset email was just sent.')}
           </p>
         )}
-        {s.reserveError && <p style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '12px 0 0', textAlign: 'center' }}>{s.reserveError}</p>}
+        {s.reserveError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '12px 0 0', textAlign: 'center' }}>{s.reserveError}</p>}
         <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: '16px 0 0', textAlign: 'center' }}>{T('Đã giữ chỗ sự kiện nào thì bạn đã đăng nhập sẵn.', "If you've already reserved a spot, you're already logged in.")}</p>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { useGoc } from '../../state/GocContext.jsx';
-import { paper, ink } from '../../theme.js';
+import { paper, ink, alert } from '../../theme.js';
 
 // Full-screen camera scanner for the organizer check-in flow. Reads whatever
 // a guest's ticket QR (Confirmed.jsx) encodes — the booking's own id — and
@@ -95,7 +95,7 @@ export default function QrScanSheet() {
       )}
 
       {status && (
-        <div style={{ position: 'absolute', left: 20, right: 20, bottom: 30, padding: '14px 18px', borderRadius: 14, textAlign: 'center', fontSize: 14, fontWeight: 600, background: status.ok ? ink : '#9A3E2D', color: paper }}>
+        <div style={{ position: 'absolute', left: 20, right: 20, bottom: 30, padding: '14px 18px', borderRadius: 14, textAlign: 'center', fontSize: 14, fontWeight: 600, background: status.ok ? ink : alert, color: paper }}>
           {status.message}
         </div>
       )}

@@ -1,6 +1,6 @@
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, CREATE_PALETTES, CREATE_PHOTO_SLOT_IDS, bg, img as imgUrl } from '../data/events.js';
-import { paper, ink, rule, FACE, display, fieldGlass, cardGlass } from '../theme.js';
+import { paper, ink, rule, FACE, display, fieldGlass, cardGlass, alert } from '../theme.js';
 
 const CAT_DEFS = [
   { key: 'supper', vi: 'Supper club', en: 'Supper club' },
@@ -183,7 +183,7 @@ export default function CreateEvent() {
         </div>
 
         <div onClick={createSubmit} style={createBtnStyle}>{s.createSent ? T('Đã gửi ▪︎ banbe duyệt trong 48 giờ', 'Sent ▪︎ banbe reviews within 48h') : T('Gửi để duyệt', 'Submit for review')}</div>
-        {s.createError && <p style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '10px 0 0', textAlign: 'center' }}>{s.createError}</p>}
+        {s.createError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createError}</p>}
         <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: '12px auto 0', textAlign: 'center', maxWidth: '23ch' }}>{T('Hoàn toàn miễn phí: không phí đăng, không phí giao dịch, không phí ẩn.', 'Completely free: no listing fee, no transaction fee, no hidden fees.')}</p>
       </div>
     </div>

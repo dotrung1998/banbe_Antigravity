@@ -1,6 +1,6 @@
 import { useGoc } from '../state/GocContext.jsx';
 import { bg } from '../data/events.js';
-import { paper, ink, display } from '../theme.js';
+import { paper, ink, rule, display } from '../theme.js';
 
 export default function Inbox() {
   const { state, T, backFromInbox, openThread } = useGoc();
@@ -15,7 +15,7 @@ export default function Inbox() {
       {s.inboxThreads.length > 0 ? (
         <div style={{ padding: '14px 24px 40px' }}>
           {s.inboxThreads.map(c => (
-            <div key={c.threadId} onClick={() => openThread(c.threadId, c.eventKey, 'inbox')} style={{ display: 'flex', gap: 16, alignItems: 'center', padding: '16px 0', borderBottom: '1px solid #191919', cursor: 'pointer' }}>
+            <div key={c.threadId} onClick={() => openThread(c.threadId, c.eventKey, 'inbox')} style={{ display: 'flex', gap: 16, alignItems: 'center', padding: '16px 0', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
               <div style={bg(c.img, { flex: 'none', width: 56, height: 56, borderRadius: '50%' })} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
                 <span style={{ ...display(18, { lineHeight: 1.15 }) }}>{c.name}</span>

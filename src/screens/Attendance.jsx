@@ -1,7 +1,7 @@
 import { useGoc } from '../state/GocContext.jsx';
 import { findEvent } from '../data/events.js';
 import { formatVnd } from '../lib/paymentDocument.js';
-import { paper, ink, rule, display, fieldGlass } from '../theme.js';
+import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 
 export default function Attendance() {
   const { state, T, trStatus, goDashboard, toggleCheckin, openQrScan, openCancelBooking, markGuestPaid } = useGoc();
@@ -67,7 +67,7 @@ export default function Attendance() {
                 )}
                 <span
                   onClick={(e) => { e.stopPropagation(); openCancelBooking(g.id); }}
-                  style={{ fontSize: 11, color: '#9A3E2D', opacity: 0.8, width: 'fit-content', cursor: 'pointer', marginTop: 2 }}
+                  style={{ fontSize: 11, color: alert, opacity: 0.8, width: 'fit-content', cursor: 'pointer', marginTop: 2 }}
                 >
                   {T('Huỷ vé', 'Cancel booking')}
                 </span>

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
-import { ink, rule, fieldGlass, cardGlass } from '../theme.js';
+import { ink, rule, fieldGlass, cardGlass, alert } from '../theme.js';
 
 // The temporary chat for an escalated dispute — shared between the guest's
 // side (PaymentDetails.jsx, while payment_state = 'disputed') and the
@@ -81,7 +81,7 @@ export default function DisputeChatPanel({ bookingId }) {
         </div>
       </div>
       {s.disputeChatError && (
-        <p style={{ fontSize: 11.5, color: '#9A3E2D', margin: 0 }} data-testid="dispute-chat-error">
+        <p style={{ fontSize: 11.5, color: alert, margin: 0 }} data-testid="dispute-chat-error">
           {s.disputeChatError}
         </p>
       )}

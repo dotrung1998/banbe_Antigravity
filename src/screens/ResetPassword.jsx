@@ -1,5 +1,5 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { paper, ink, display, fieldGlass } from '../theme.js';
+import { paper, ink, display, fieldGlass, alert } from '../theme.js';
 
 // Landed on only via a real Supabase "recovery" session (the emailed
 // password-reset link) — see the PASSWORD_RECOVERY branch of
@@ -38,7 +38,7 @@ export default function ResetPassword() {
         <div onClick={valid && !s.resetPasswordBusy ? submitNewPassword : undefined} style={btnStyle}>
           {s.resetPasswordBusy ? T('Đang lưu…', 'Saving…') : T('Lưu mật khẩu mới', 'Save new password')}
         </div>
-        {s.resetPasswordError && <p style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '12px 0 0', textAlign: 'center' }}>{s.resetPasswordError}</p>}
+        {s.resetPasswordError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '12px 0 0', textAlign: 'center' }}>{s.resetPasswordError}</p>}
       </div>
     </div>
   );

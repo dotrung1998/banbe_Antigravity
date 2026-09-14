@@ -1,6 +1,6 @@
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS } from '../data/events.js';
-import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
+import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
 
 export default function Account() {
   const { state, T, goHome, goInbox, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, openSecurity, openDocuments, openPayout, openVerifications, openDisputes, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral } = useGoc();
@@ -100,7 +100,7 @@ export default function Account() {
             <span style={{ display: 'block', width: 20, height: 20, borderRadius: '50%', background: paper, transform: isOrganizer ? 'translateX(18px)' : 'translateX(0)', transition: 'transform .15s' }} />
           </span>
         </div>
-        {s.organizerModeError && <p style={{ fontSize: 12, lineHeight: 1.5, color: '#9A3E2D', margin: '10px 0 0' }}>{s.organizerModeError}</p>}
+        {s.organizerModeError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0' }}>{s.organizerModeError}</p>}
         {isOrganizer && (
           <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
             <div onClick={openVerifications} data-testid="host-verifications" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
