@@ -170,3 +170,27 @@ Applied to production via `supabase db push`. Web build + iOS `xcodebuild`
 both green; 75/75 Playwright tests pass. Neither fix verified against the
 live ART10025 row or a real resolve click (no production DB read access in
 this session) — needs a real click-through to confirm.
+
+## 2026-09-14 diagnosis #4 — ERROR 3: admin gets NOT_AUTHORIZED sending a dispute message (guest can send fine)
+
+Root cause (CONFIRMED by code inspection): `send_dispute_message()`
+(`20260914000033_033_...sql:107-113`) only ever checked `v_t.guest_id =
+auth.uid()` or an organizer-ownership `EXISTS` — **no `public.is_platform_
+admin()` branch at all**, unlike every sibling dispute RPC/policy
+(`reject_payment`, `escalate_payment_dispute`, `resolve_dispute`,
+`dispute_threads_select`, `dispute_messages_select`, all in 033/041/042/043)
+which already have one. RLS lets an admin `SELECT` the same thread's
+messages fine — this was the RPC's own internal check, not RLS, and it was
+simply missing the admin case.
+
+**Fixed**: `supabase/migrations/20260914000044_...sql` adds `ELSIF public.
+is_platform_admin() THEN v_role := 'admin';` before the final `NOT_
+AUTHORIZED` else-branch. `dispute_messages.sender_role` has no CHECK
+constraint (comment-only: `'guest' | 'organizer' | 'system'`), so `'admin'`
+needed no schema change. Client: `DisputeChatPanel.jsx`/`.swift`'s sender
+label switch (previously organizer/guest/else-"System") now also renders
+`'admin'` as "banbe" instead of falling through to "System".
+
+Applied to production. See `04-admin-escalation.md` for ERRORS 1/2 (the
+same live repro, on the resolve buttons) — all three fixed in the same
+migration, `20260914000044_...sql`.

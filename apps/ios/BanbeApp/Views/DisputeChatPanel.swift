@@ -103,6 +103,7 @@ struct DisputeChatPanel: View {
         switch role {
         case "organizer": return app.T("Người tổ chức", "Organizer")
         case "guest": return app.T("Khách", "Guest")
+        case "admin": return "banbe"
         default: return app.T("Hệ thống", "System")
         }
     }

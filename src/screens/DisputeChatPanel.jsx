@@ -50,7 +50,8 @@ export default function DisputeChatPanel({ bookingId }) {
           <div key={m.id} style={{ ...cardGlass({ padding: '8px 10px' }) }} data-testid="dispute-chat-message">
             <div style={{ fontSize: 10, color: ink, opacity: 0.55 }}>
               {m.sender_role === 'organizer' ? T('Người tổ chức', 'Organizer')
-                : m.sender_role === 'guest' ? T('Khách', 'Guest') : T('Hệ thống', 'System')}
+                : m.sender_role === 'guest' ? T('Khách', 'Guest')
+                : m.sender_role === 'admin' ? T('banbe', 'banbe') : T('Hệ thống', 'System')}
               {' ▪︎ '}{new Date(m.created_at).toLocaleString()}
             </div>
             <div style={{ fontSize: 13, color: ink, marginTop: 2 }}>{m.body}</div>
