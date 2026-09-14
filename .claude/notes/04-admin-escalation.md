@@ -123,3 +123,96 @@ Applied to production via `supabase db push`. `vite build` clean; 75/75
 Playwright tests pass (none of the existing suite exercised the resolved
 list's detail view, so nothing needed updating there — worth adding
 coverage later, see TODO above).
+
+## 2026-09-15 — "Mở lại chỗ" (return to pool) correctly re-opens the slot, but the guest still sees the event under "Going"
+
+**Task 1 — status set + transaction, CONFIRMED not the bug**:
+`resolve_dispute()` (currently `supabase/migrations/20260914000047_047_dispute_resolution_stats.sql:80-83`,
+superseding the 033/043/045 versions this note already cites) sets, for
+the release/"Mở lại chỗ" outcome, `bookings.payment_state = 'expired'`
+AND `bookings.status = 'expired'` in the SAME `UPDATE` statement, inside
+one PL/pgSQL function body — Postgres runs that as a single implicit
+transaction, so there is no separate "slot count" write to get out of
+sync with it at all. There is no stored seat-count column this function
+touches (`events.seats_remaining` is never written here, or anywhere in
+the RPC layer, and isn't queried by any client — see
+`05-notify-retention.md`'s architecture note on the static demo catalogue);
+"available slots" is a value computed at read time from
+`booking_holds_seat(payment_state, hold_expires_at, status)`
+(`supabase/migrations/20260913000026_026_payment_state_machine.sql:112-128`)
+over live `bookings` rows. Once `status='expired'`, that predicate itself
+returns false for this booking — the slot "frees up" as an automatic
+consequence of the exact same row update, not a second write. Nothing to
+fix here.
+
+**Task 2 — the "Going" list's query, CONFIRMED not the bug either**:
+`src/state/GocContext.jsx:472-506` (`loadMyEvents`, formerly an inline
+effect) selects `bookings` `.in('status', ['pending', 'confirmed',
+'attended'])` — `'expired'` was never in that list. The SQL-level filter
+already excludes a released booking correctly, on every single fetch.
+
+**Task 3 (cross-reference) — moot**, since task 2's filter already
+excludes task 1's status.
+
+**Task 4 — ACTUAL ROOT CAUSE, a client-side staleness bug**:
+the effect that populated `s.attending`/`s.tickets`
+(`src/state/GocContext.jsx`, previously inline at the old lines 472-503)
+merged every fetch's result into whatever was already there —
+`set(prev => ({ attending: [...new Set([...prev.attending, ...attending])],
+... }))` — a pure union, never a removal. Once an event_id entered
+`attending` it could never leave for the rest of that session: a booking
+that stopped qualifying (dispute resolved against the guest, or any other
+status change out of the three qualifying values) stayed visible under
+"Going" indefinitely, no matter how many times a fresh, *correctly
+filtered* query ran afterward — because the code never let a fresh result
+replace stale membership, only add to it. `apps/ios/BanbeApp/State/
+AppState+Data.swift:184-200`'s `loadMyEvents()` never had this bug — it
+does a plain `attending = going` replacement (`:199`), which is what the
+web side now matches.
+
+Compounding it: nothing ever re-ran that fetch after the first one. The
+effect is keyed only on `s.user?.id` (fires once per sign-in), and
+`goGoingList()` (`GocContext.jsx`, formerly line 1433) just changed
+`screen`/`eventListMode` — no refetch, no realtime subscription (this repo
+has none anywhere, see `03-dispute-chat.md`), no polling. So even
+opening the Going tab specifically, at any later point in the same
+session, never gave the stale union a chance to be corrected. (A full
+browser reload happened to self-correct it, since `attending` isn't
+persisted to `localStorage` and the merge starts from `[]` again on a
+fresh mount — but the bug reproduces for as long as the tab/app stays
+open, which is exactly what the report described.)
+
+**Fix**: `src/state/GocContext.jsx` — the fetch is now a named
+`loadMyEvents(uid)` `useCallback` that does a plain replace
+(`set({ attending, tickets })`, mirroring iOS), and `goGoingList()` now
+calls `loadMyEvents(s.user.id)` every time the Going tab is opened, not
+just relying on the once-per-session mount effect. Same fix applied to
+`apps/ios/BanbeApp/State/AppState.swift`'s `goGoingList()` (iOS's merge
+was already correct, but it had the identical "only fetched once, at
+sign-in" gap — added the same refetch-on-open call there for parity).
+
+**Test added** (`tests/dispute-flow-e2e.spec.js`, extending Run B —
+"return to pool" — since Home/EventList only ever render the static demo
+catalogue and a synthetic test event can never appear there regardless of
+this bug, see that file's header): logs the participant in and lets the
+mount-effect populate `attending` with the still-valid booking *before*
+the dispute is resolved (reproducing "the guest already has the app open
+when this stops being true" — a fresh post-resolution login would pass
+even against the old buggy code, since a first-ever fetch has no stale
+state to wrongly keep). After the admin resolves as "Mở lại chỗ" in a
+separate browser context, the SAME already-open participant page opens
+the Going tab again and two things are checked: the raw network response
+(SQL-level exclusion, task 2) and — the part that actually catches this
+bug — a new `data-attending-raw-count` attribute on Account.jsx's
+`account-going-card` (`src/screens/Account.jsx`), added purely for this
+kind of test observability since the rendered count/list are both
+filtered through the static catalogue and can never reflect a synthetic
+test event either way. Verified this specific assertion fails (received
+`"1"`, expected `"0"`) against the pre-fix union-merge code, and passes
+against the fix — confirms the test actually exercises the bug rather
+than passing vacuously.
+
+Migration: none needed (no schema/RPC change, client-only). `vite build`
+clean; 269/270 pre-existing Playwright tests pass (the one failure is the
+pre-existing flaky webkit onboarding-splash timeout, unrelated); both
+dispute-flow-e2e runs pass on real Supabase, all 3 browsers.

@@ -38,7 +38,13 @@ export default function Account() {
       </div>
 
       <div style={{ display: 'flex', gap: 10, padding: '22px 20px 0' }}>
-        <div onClick={goGoingList} data-testid="account-going-card" style={{ ...cardGlass({ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }) }}>
+        {/* data-attending-raw-count is the unfiltered s.attending.length — not
+            shown to users (goingCount below is what actually renders, and is
+            deliberately narrowed to the static demo catalogue + not-yet-ended
+            events). Exists purely so a test can observe the real client-side
+            "going" state for a booking outside that catalogue, which no
+            visible UI element can ever reflect otherwise. */}
+        <div onClick={goGoingList} data-testid="account-going-card" data-attending-raw-count={s.attending.length} style={{ ...cardGlass({ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }) }}>
           <span style={{ ...display(24) }}>{goingCount}</span>
           <span style={{ fontSize: 11, color: ink }}>{T('Đang tham gia', 'Going')}</span>
         </div>

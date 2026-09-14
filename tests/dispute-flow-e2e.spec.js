@@ -130,6 +130,47 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
     const { data: afterSubmit } = await admin.from('bookings').select('payment_state').eq('id', bookingId).single();
     expect(afterSubmit.payment_state).toBe('pending_verification');
 
+    // --- Participant's own real browser session, opened now (while the
+    // booking still qualifies for "Going") and kept open, not re-created
+    // later — this is what actually reproduces the "Going" list bug: it
+    // requires `attending` to have already been populated with this event
+    // BEFORE the dispute resolves, in the same session, exactly like a
+    // guest who has the app open when an admin resolves against them. A
+    // fresh login after the fact would pass even with the old, buggy
+    // union-merge code, since a first-ever fetch has no stale state to
+    // wrongly keep. ---
+    let participantContext, participantPage;
+    if (outcome === 'release') {
+      participantContext = await browser.newContext();
+      participantPage = await participantContext.newPage();
+      // Signing in fires GocContext.jsx's user-id-keyed effect as a side
+      // effect (not a click this test controls), which fetches and
+      // populates `attending` — attach the listener before login so it
+      // catches that fetch, and confirm the booking was actually there
+      // (Account's own "Going" count can't be used for this: it's filtered
+      // through the static demo catalogue, which this synthetic test event
+      // was never in — see the file header — so it would always read 0
+      // regardless of `attending`'s real content).
+      const initialBookingsResponse = participantPage.waitForResponse(
+        res => res.url().includes('/rest/v1/bookings') && res.request().method() === 'GET',
+        { timeout: 10000 }
+      );
+      await loginWithPassword(participantPage, participant.email, participant.password);
+      const initialRows = await (await initialBookingsResponse).json();
+      const initiallyListed = (initialRows || []).some(r => r.event_id === eventId || r.id === bookingId);
+      expect(initiallyListed, `booking ${bookingId} should have been in the pre-resolution fetch: ${JSON.stringify(initialRows)}`).toBe(true);
+      await participantPage.getByText('Tài khoản').first().click();
+      await expect(participantPage.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 5000 });
+      // Confirms the actual CLIENT-SIDE state (s.attending), not just the
+      // network response above — a plain response check can't tell a
+      // correct fresh fetch apart from a buggy union-merge, since both
+      // start from an empty `attending` on first login either way. The
+      // real regression only shows up later, when this same already-
+      // populated state has to correctly DROP the booking after resolution.
+      await expect(participantPage.locator('[data-testid="account-going-card"]'))
+        .toHaveAttribute('data-attending-raw-count', '1', { timeout: 5000 });
+    }
+
     // --- Organizer: real UI. "Chưa thấy" (not found) + reason ---
     const organizerContext = await browser.newContext();
     const organizerPage = await organizerContext.newPage();
@@ -214,6 +255,50 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
     expect(results.statusTransition, `unexpected post-resolution state: ${JSON.stringify(resolvedBooking)}`).toBe(true);
     expect(resolvedBooking.dispute_resolved_at).toBeTruthy();
 
+    // --- "Going" list regression check (only meaningful for 'release': a
+    // guest who lost the ticket must stop seeing the event under "Going") ---
+    // Two things are checked, deliberately not just one:
+    //   1. the raw network response goGoingList()'s refetch gets back — the
+    //      SQL-level filter (bookings.status IN ('pending','confirmed',
+    //      'attended')) already excludes 'expired' correctly on its own, so
+    //      this alone would pass even against the OLD buggy client code
+    //      (a bare response check can't see what the client then does with
+    //      the result).
+    //   2. the actual client-side state afterward, via the
+    //      data-attending-raw-count test attribute (Account.jsx) — this is
+    //      what would have failed before the fix: the old code unioned this
+    //      fresh (now-empty) result into whatever `attending` already held,
+    //      so the resolved booking's event_id never actually left.
+    // Home/EventList render only the static demo catalogue (see file
+    // header), so this synthetic test event is never visible there
+    // regardless of whether the bug is fixed — check 2 reads a hidden
+    // count attribute for exactly this reason, not the rendered list.
+    if (outcome === 'release') {
+      // Same page/session opened earlier, already showing this event as
+      // "Going" from before the resolution — not a fresh login, which
+      // would trivially pass even with the old buggy code (a first-ever
+      // fetch has no stale state to wrongly retain).
+      const bookingsResponse = participantPage.waitForResponse(
+        res => res.url().includes('/rest/v1/bookings') && res.request().method() === 'GET',
+        { timeout: 8000 }
+      );
+      await participantPage.locator('[data-testid="account-going-card"]').click();
+      const res = await bookingsResponse;
+      const rows = await res.json();
+      const stillListedInQuery = (rows || []).some(r => r.event_id === eventId || r.id === bookingId);
+      expect(stillListedInQuery, `resolved booking ${bookingId} still present in goGoingList()'s refetch: ${JSON.stringify(rows)}`).toBe(false);
+
+      // The click above navigated to EventList, unmounting the element the
+      // count attribute lives on — go back to Account to read it post-refetch.
+      await participantPage.locator('[data-testid="event-list-back"]').click();
+      await expect(participantPage.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 5000 });
+      const goingCard = participantPage.locator('[data-testid="account-going-card"]');
+      await expect(goingCard).toHaveAttribute('data-attending-raw-count', '0', { timeout: 8000 });
+
+      results.goingListExcludesResolved = true;
+      await participantContext.close();
+    }
+
     const { data: thread } = await admin.from('dispute_threads')
       .select('resolved_at, resolution_kind, purge_after, organizer_id').eq('booking_id', bookingId).single();
     expect(thread.resolved_at).toBeTruthy();
@@ -282,5 +367,6 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
     const results = await runDisputeFlow({ browser, label: 'run-b', outcome: 'release' });
     expect(results.chatBothDirections).toBe(true);
     expect(results.statusTransition).toBe(true);
+    expect(results.goingListExcludesResolved).toBe(true);
   });
 });

@@ -469,38 +469,53 @@ export function GocProvider({ children }) {
   // detail — photos, galleries, descriptions — that the database rows don't
   // duplicate; this only resolves *which* catalogue keys are genuinely
   // "mine", by real id, instead of from placeholder demo state.
+  //
+  // `attending`/`tickets` REPLACE on every call, they do not merge with
+  // whatever was there before — mirrors AppState+Data.swift's loadMyEvents()
+  // (`attending = going`, a plain assignment). This used to union new
+  // results into the previous array instead, which meant a booking that
+  // stopped qualifying (e.g. an admin resolving a dispute as "Mở lại chỗ" /
+  // "return to pool", `resolve_dispute()` setting `status='expired'` —
+  // outside this filter, supabase/migrations/20260914000047_...sql:80-83)
+  // could never leave `attending` for the rest of that session: the guest
+  // kept seeing the event under "Going" even after losing the ticket, no
+  // matter how many times this ran, because every re-run only ever added to
+  // the set, never removed a stale key the fresh query no longer returned.
+  const loadMyEvents = useCallback(async (uid) => {
+    if (!uid) return;
+    const [{ data: bookings }, { data: organizers }] = await Promise.all([
+      supabase
+        .from('bookings')
+        .select('event_id, qty, status')
+        .eq('user_id', uid)
+        .in('status', ['pending', 'confirmed', 'attended']),
+      supabase
+        .from('organizers')
+        .select('id')
+        .or(`owner_id.eq.${uid},user_id.eq.${uid}`),
+    ]);
+
+    const attending = [...new Set((bookings || []).map(b => b.event_id))];
+    const tickets = Object.fromEntries((bookings || []).map(b => [b.event_id, b.qty]));
+    set({ attending, tickets });
+
+    const organizerIds = (organizers || []).map(o => o.id);
+    set({ myOrganizerIds: organizerIds });
+    if (organizerIds.length) {
+      const { data: events } = await supabase.from('events').select('id').in('organizer_id', organizerIds);
+      set({ myOrgEventKeys: (events || []).map(e => e.id) });
+    } else {
+      set({ myOrgEventKeys: [] });
+    }
+  }, [set]);
+
   useEffect(() => {
     if (!s.user?.id) return;
     let active = true;
-    (async () => {
-      const [{ data: bookings }, { data: organizers }] = await Promise.all([
-        supabase
-          .from('bookings')
-          .select('event_id, qty, status')
-          .eq('user_id', s.user.id)
-          .in('status', ['pending', 'confirmed', 'attended']),
-        supabase
-          .from('organizers')
-          .select('id')
-          .or(`owner_id.eq.${s.user.id},user_id.eq.${s.user.id}`),
-      ]);
-      if (!active) return;
-
-      if (bookings?.length) {
-        const attending = [...new Set(bookings.map(b => b.event_id))];
-        const tickets = Object.fromEntries(bookings.map(b => [b.event_id, b.qty]));
-        set(prev => ({ attending: [...new Set([...prev.attending, ...attending])], tickets: { ...tickets, ...prev.tickets } }));
-      }
-
-      const organizerIds = (organizers || []).map(o => o.id);
-      set({ myOrganizerIds: organizerIds });
-      if (organizerIds.length) {
-        const { data: events } = await supabase.from('events').select('id').in('organizer_id', organizerIds);
-        if (active && events?.length) set({ myOrgEventKeys: events.map(e => e.id) });
-      }
-    })();
+    (async () => { if (active) await loadMyEvents(s.user.id); })();
     return () => { active = false; };
-  }, [set, s.user?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.user?.id]);
 
   // Real conversations for the signed-in account, on either side: as the
   // guest (threads.guest_id = me) and as the organizer (threads.organizer_id
@@ -1430,7 +1445,18 @@ export function GocProvider({ children }) {
     completed: T('Sự kiện đã hoàn thành', 'Completed events'),
   }[s.eventListMode] || T('Đang tham gia', 'Going')), [s.eventListMode, T]);
 
-  const goGoingList = useCallback(() => set({ screen: 'eventList', eventListMode: 'going' }), [set]);
+  // Re-fetches on every open, not just once at sign-in: this is the one
+  // place a guest actually looks to check what they're still holding a
+  // ticket for, and nothing else invalidates `attending` in between (no
+  // realtime subscription, no polling — same "nothing pushes to this
+  // client" situation as the dispute chat's own 4s poll, see
+  // DisputeChatPanel.jsx). Without this, a dispute resolved against the
+  // guest by an admin in a different session/tab never clears their
+  // already-open app's "Going" list until they reload the whole page.
+  const goGoingList = useCallback(() => {
+    set({ screen: 'eventList', eventListMode: 'going' });
+    if (s.user?.id) loadMyEvents(s.user.id);
+  }, [set, s.user?.id, loadMyEvents]);
   const goSavedList = useCallback(() => set({ screen: 'eventList', eventListMode: 'saved' }), [set]);
   const goCompletedList = useCallback(() => set({ screen: 'eventList', eventListMode: 'completed' }), [set]);
   const backFromEventList = useCallback(() => set({ screen: 'profile' }), [set]);

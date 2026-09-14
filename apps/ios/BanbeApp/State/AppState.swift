@@ -656,7 +656,13 @@ final class AppState: ObservableObject {
     }
     func backFromInbox() { screen = inboxBack }
 
-    func goGoingList() { eventListMode = .going; screen = .eventList }
+    // Re-fetches on every open, not just once at sign-in — mirrors the same
+    // fix on the web side (GocContext.jsx's goGoingList). Nothing else
+    // invalidates `attending` in between (no realtime subscription, no
+    // polling), so without this a dispute resolved against the guest by an
+    // admin in a different session never clears this list until the app
+    // relaunches.
+    func goGoingList() { eventListMode = .going; screen = .eventList; Task { await loadMyEvents() } }
     func goSavedList() { eventListMode = .saved; screen = .eventList }
     func goCompletedList() { eventListMode = .completed; screen = .eventList }
     func backFromEventList() { screen = .profile }
