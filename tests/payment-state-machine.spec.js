@@ -103,4 +103,18 @@ test.describe('Payment screens wiring', () => {
     expect(src).toContain('Hold ▪︎ 30 minutes');
     expect(src).not.toMatch(/60 phút|60 minutes/);
   });
+
+  // Migration 032: rejecting a payment ("Can't find it") must never put
+  // banbe in the picture by itself — only a separate, explicit escalation
+  // does. Guarded at the source rather than by rendering the (sign-in-gated)
+  // Verifications screen, same reasoning as the test above.
+  test('a plain rejection never frames itself as banbe stepping in — only escalation does', () => {
+    const src = fs.readFileSync(fileURLToPath(new URL('../src/screens/Verifications.jsx', import.meta.url)), 'utf8');
+    expect(src).toContain('escalateDispute');
+    expect(src).toContain('verification-escalate');
+    // The reject-reason disclaimer must not claim banbe reviews it — only
+    // the escalate-reason disclaimer may say that.
+    expect(src).toContain('banbe không tham gia ở bước này');
+    expect(src).toContain('banbe is not involved at this step');
+  });
 });

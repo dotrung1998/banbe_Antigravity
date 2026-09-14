@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass } from '../theme.js';
+import DisputeChatPanel from './DisputeChatPanel.jsx';
 
 // Platform admin dispute desk: where a rejected payment goes to be decided by
 // someone who is not one of the two parties.
@@ -15,6 +16,7 @@ export default function Disputes() {
   } = useGoc();
   const s = state;
   const [note, setNote] = useState('');
+  const [openChat, setOpenChat] = useState(null);
 
   useEffect(() => { loadDisputes(); }, [loadDisputes]);
 
@@ -52,11 +54,39 @@ export default function Disputes() {
               <Line label={T('Lý do từ chối', 'Rejection reason')} value={d.dispute_reason || '—'} />
             </div>
 
+            {/* The actual evidence, not just "on file" — an admin ruling on
+                a dispute between two people who disagree needs to see the
+                receipt itself, not take either side's word for its existence. */}
+            {d.proof_path && (
+              s.proofUrls[d.proof_path] ? (
+                <img
+                  src={s.proofUrls[d.proof_path]}
+                  alt={T('Ảnh biên lai', 'Receipt image')}
+                  data-testid="dispute-proof-image"
+                  style={{ width: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 10, background: 'rgba(27,25,22,0.04)' }}
+                />
+              ) : (
+                <div style={{ ...fieldGlass({ padding: '20px 12px', textAlign: 'center' }) }} data-testid="dispute-proof-loading">
+                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.6 }}>{T('Đang tải ảnh biên lai…', 'Loading receipt image…')}</span>
+                </div>
+              )
+            )}
+
             <div onClick={() => loadAuditTrail(d.booking_id)}
                  style={{ fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}
                  data-testid="dispute-audit-open">
               {T('Xem nhật ký T1/T2/T3 ›', 'View T1/T2/T3 trail ›')}
             </div>
+
+            {openChat === d.booking_id ? (
+              <DisputeChatPanel bookingId={d.booking_id} />
+            ) : (
+              <div onClick={() => setOpenChat(d.booking_id)}
+                   style={{ fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}
+                   data-testid="dispute-open-chat">
+                {T('Xem đoạn chat giữa khách và người tổ chức ›', 'View the guest/organizer chat ›')}
+              </div>
+            )}
 
             {s.auditBookingId === d.booking_id && s.auditTrail.length > 0 && (
               <div style={{ ...fieldGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }) }} data-testid="dispute-audit-trail">
@@ -82,6 +112,16 @@ export default function Disputes() {
               <Action label={T('Mở lại chỗ', 'Release seat')} ghost testid="dispute-reject"
                       onClick={() => { resolveDispute(d.booking_id, false, note); setNote(''); }} />
             </div>
+            {/* The confirmation email is best-effort, sent after the DB
+                resolution already stands (see resolveDispute) — if it
+                failed, the dispute thread is still soft-deleted (hidden,
+                pending purge in 72h) so this is the one chance to notice
+                and re-send before the transcript is gone for good. */}
+            {s.disputeEmailError && (
+              <p style={{ fontSize: 11.5, color: '#9A3E2D', margin: 0 }} data-testid="dispute-email-error">
+                {T('Email xác nhận chưa gửi được: ', "Confirmation email didn't send: ") + s.disputeEmailError}
+              </p>
+            )}
           </div>
         ))}
 

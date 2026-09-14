@@ -556,6 +556,29 @@ extension AppState {
             verifications = []
         }
         verificationsLoading = false
+        await signProofUrls(verifications.compactMap(\.proofPath))
+    }
+
+    /// Signs every given 'pay-proof' path in one batched call and merges the
+    /// result into `proofUrls` (path -> viewable URL, 10 minutes — long
+    /// enough for one review pass). VerificationsView renders these — this
+    /// is what an organizer actually needs to inspect the receipt before
+    /// approving or rejecting, which nothing rendered before this.
+    func signProofUrls(_ paths: [String]) async {
+        let wanted = Array(Set(paths))
+        guard !wanted.isEmpty else { return }
+        do {
+            let results = try await SupabaseService.client.storage
+                .from("pay-proof")
+                .createSignedURLs(paths: wanted, expiresIn: 600)
+            for result in results {
+                if case let .success(path, signedURL) = result {
+                    proofUrls[path] = signedURL
+                }
+            }
+        } catch {
+            print("signProofUrls failed:", error)
+        }
     }
 
     func approvePayment(_ bookingID: UUID) async {
@@ -573,6 +596,11 @@ extension AppState {
         await loadVerifications()
     }
 
+    /// "Can't find it" — informational, not a verdict. reject_payment() (as
+    /// of migration 032) never touches payment_state; it only records the
+    /// reason and messages the guest, so this alone never puts banbe in the
+    /// picture. See escalateDispute below for the separate, explicit action
+    /// that actually does that.
     func rejectPayment(_ bookingID: UUID, reason: String) async {
         verificationBusy = bookingID
         defer { verificationBusy = nil }
@@ -584,6 +612,86 @@ extension AppState {
             print("rejectPayment failed:", error)
         }
         await loadVerifications()
+    }
+
+    /// The one deliberate action that actually brings banbe in — an
+    /// organizer reaches for this only once they and the guest genuinely
+    /// can't resolve a payment between themselves. Unlike rejectPayment,
+    /// this does move the booking to payment_state = 'disputed'.
+    func escalateDispute(_ bookingID: UUID, reason: String) async {
+        verificationBusy = bookingID
+        defer { verificationBusy = nil }
+        do {
+            _ = try await SupabaseService.client
+                .rpc("escalate_payment_dispute", params: ["p_booking": bookingID.uuidString, "p_reason": reason])
+                .execute()
+        } catch {
+            print("escalateDispute failed:", error)
+        }
+        await loadVerifications()
+        await loadOpenDisputes()
+    }
+
+    /// v_disputes, RLS-scoped the same way bookings always are — an
+    /// organizer querying it only ever sees their own events' disputes.
+    /// Reused here (not just the web-only admin desk) so an organizer can
+    /// keep talking with a guest after escalating: the booking leaves
+    /// v_pending_verifications the moment it's escalated, so without this
+    /// there's nowhere left on VerificationsView to reach it again.
+    func loadOpenDisputes() async {
+        guard userID != nil else { openDisputes = []; return }
+        do {
+            let rows: [OrganizerDispute] = try await SupabaseService.client
+                .from("v_disputes").select()
+                .execute().value
+            openDisputes = rows.filter { $0.disputeResolvedAt == nil }
+        } catch {
+            print("loadOpenDisputes failed:", error)
+            openDisputes = []
+        }
+    }
+
+    // MARK: Temporary dispute chat
+
+    func loadDisputeChat(_ bookingID: UUID) async {
+        disputeChatBookingId = bookingID
+        disputeChatMessages = []
+        disputeChatLoading = true
+        defer { disputeChatLoading = false }
+        struct ThreadRow: Decodable { let id: UUID; let resolvedAt: Date?
+            enum CodingKeys: String, CodingKey { case id; case resolvedAt = "resolved_at" } }
+        do {
+            let thread: ThreadRow = try await SupabaseService.client
+                .from("dispute_threads").select("id, resolved_at")
+                .eq("booking_id", value: bookingID.uuidString)
+                .single().execute().value
+            disputeChatMessages = try await SupabaseService.client
+                .from("dispute_messages").select()
+                .eq("dispute_thread_id", value: thread.id.uuidString)
+                .order("created_at", ascending: true)
+                .execute().value
+        } catch {
+            print("loadDisputeChat failed:", error)
+        }
+    }
+
+    func sendDisputeMessage(_ bookingID: UUID) async {
+        let body = disputeChatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+        disputeChatDraft = ""
+        do {
+            let result: ForfeitResult = try await SupabaseService.client
+                .rpc("send_dispute_message", params: ["p_booking": bookingID.uuidString, "p_body": body])
+                .execute().value
+            if result.success == false {
+                print("sendDisputeMessage failed:", result.error ?? "unknown")
+                return
+            }
+        } catch {
+            print("sendDisputeMessage failed:", error)
+            return
+        }
+        await loadDisputeChat(bookingID)
     }
 
     /// The PHASE 1 counterpart of loadVerifications — how many buyers are
@@ -628,6 +736,7 @@ struct PendingVerification: Codable, Identifiable, Hashable {
     var verifyDueAt: Date?
     var overdue: Bool?
     var escalated: Bool?
+    var proofPath: String?
     var id: UUID { bookingId }
 
     enum CodingKeys: String, CodingKey {
@@ -641,6 +750,7 @@ struct PendingVerification: Codable, Identifiable, Hashable {
         case proofSubmittedAt = "proof_submitted_at"
         case verifyDueAt = "verify_due_at"
         case overdue, escalated
+        case proofPath = "proof_path"
     }
 }
 

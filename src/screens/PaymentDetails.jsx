@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { useGoc } from '../state/GocContext.jsx';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
+import DisputeChatPanel from './DisputeChatPanel.jsx';
 
 // The buyer's side of the two-phase machine.
 //
@@ -147,14 +148,17 @@ export default function PaymentDetails() {
       )}
 
       {isDisputed && (
-        <div style={{ ...cardGlass({ margin: '16px 22px 0', padding: '16px 18px' }) }} data-testid="payment-disputed">
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>
-            {T('banbe đang xem xét', 'banbe is reviewing this')}
-          </span>
-          <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
-            {T('Người tổ chức chưa đối chiếu được khoản này. Chỗ của bạn vẫn được giữ trong lúc banbe xem xét — bằng chứng bạn đã gửi được lưu lại.',
-               "The organizer couldn't match this against their statement. Your seat stays held while banbe reviews it — the evidence you submitted is on file.")}
-          </p>
+        <div style={{ margin: '16px 22px 0' }}>
+          <div style={{ ...cardGlass({ padding: '16px 18px' }) }} data-testid="payment-disputed">
+            <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>
+              {T('banbe đang xem xét', 'banbe is reviewing this')}
+            </span>
+            <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
+              {T('Người tổ chức chưa đối chiếu được khoản này. Chỗ của bạn vẫn được giữ trong lúc banbe xem xét — bằng chứng bạn đã gửi được lưu lại.',
+                 "The organizer couldn't match this against their statement. Your seat stays held while banbe reviews it — the evidence you submitted is on file.")}
+            </p>
+          </div>
+          <DisputeChatPanel bookingId={booking.id} />
         </div>
       )}
 

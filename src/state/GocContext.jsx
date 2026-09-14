@@ -120,8 +120,19 @@ const initialState = {
   disputes: [],
   disputesLoading: false,
   disputeBusy: '',
+  disputeEmailError: '',
+  // The temporary dispute chat — one per escalated booking, purged after
+  // resolve_dispute() closes it out. Keyed separately from the ordinary
+  // chat (state.chatMessages) since it's a different table entirely.
+  disputeChatBookingId: null,
+  disputeChatMessages: [],
+  disputeChatLoading: false,
+  disputeChatDraft: '',
   auditTrail: [],
   auditBookingId: null,
+  // pay-proof storage path -> signed viewable URL, for whichever rows
+  // Verifications/Disputes last loaded — see signProofUrls.
+  proofUrls: {},
   located: null,
   askingLocation: false,
   userCoords: null,
@@ -840,6 +851,31 @@ export function GocProvider({ children }) {
     set({ screen: 'verifications', verifications: [], verificationsLoading: true });
   }, [set, s.organizerMode, s.accountType, s.hasHosted]);
 
+  /**
+   * Signs every given 'pay-proof' path in one batched call and merges the
+   * result into state.proofUrls (path -> viewable URL, 10 minutes — long
+   * enough for one review pass, short enough not to matter if it leaks into
+   * a log somewhere). Verifications.jsx and Disputes.jsx both call this
+   * with whatever proof_path values their list just loaded — this is what
+   * an organizer/admin actually needs to inspect the receipt before ruling
+   * on it, which nothing rendered before this.
+   */
+  const signProofUrls = useCallback(async (paths) => {
+    const wanted = [...new Set((paths || []).filter(Boolean))];
+    if (!wanted.length) return;
+    const { data, error } = await supabase.storage.from('pay-proof').createSignedUrls(wanted, 600);
+    if (error) {
+      console.warn('signProofUrls failed:', error);
+      return;
+    }
+    set(prev => ({
+      proofUrls: (data || []).reduce((acc, row) => {
+        if (row.path && row.signedUrl && !row.error) acc[row.path] = row.signedUrl;
+        return acc;
+      }, { ...prev.proofUrls }),
+    }));
+  }, [set]);
+
   const loadVerifications = useCallback(async () => {
     if (!s.user?.id) return set({ verifications: [], verificationsLoading: false });
     set({ verificationsLoading: true });
@@ -852,7 +888,8 @@ export function GocProvider({ children }) {
       return set({ verifications: [], verificationsLoading: false });
     }
     set({ verifications: data || [], verificationsLoading: false });
-  }, [set, s.user?.id]);
+    await signProofUrls((data || []).map(v => v.proof_path));
+  }, [set, s.user?.id, signProofUrls]);
 
   /**
    * The PHASE 1 counterpart of loadVerifications — how many buyers are
@@ -893,6 +930,13 @@ export function GocProvider({ children }) {
     await loadVerifications();
   }, [set, loadVerifications]);
 
+  /**
+   * "Can't find it" — informational, not a verdict. reject_payment() (as of
+   * migration 032) never touches payment_state; it only records the reason
+   * and messages the guest, so this alone never puts banbe in the picture
+   * or moves the booking into the admin dispute queue. See escalateDispute
+   * below for the separate, explicit action that actually does that.
+   */
   const rejectPayment = useCallback(async (bookingId, reason) => {
     set({ verificationBusy: bookingId });
     try {
@@ -903,6 +947,28 @@ export function GocProvider({ children }) {
       if (data?.success === false) throw new Error(data.error);
     } catch (e) {
       console.warn('rejectPayment failed:', e);
+    }
+    set({ verificationBusy: '' });
+    await loadVerifications();
+  }, [set, loadVerifications]);
+
+  /**
+   * The one deliberate action that actually brings banbe in — an organizer
+   * reaches for this only once they and the guest genuinely can't resolve a
+   * payment between themselves. Unlike rejectPayment, this does move the
+   * booking to payment_state = 'disputed' and into the admin-only
+   * v_disputes queue.
+   */
+  const escalateDispute = useCallback(async (bookingId, reason) => {
+    set({ verificationBusy: bookingId });
+    try {
+      const { data, error } = await supabase.rpc('escalate_payment_dispute', {
+        p_booking: bookingId, p_reason: reason || '',
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error);
+    } catch (e) {
+      console.warn('escalateDispute failed:', e);
     }
     set({ verificationBusy: '' });
     await loadVerifications();
@@ -922,16 +988,41 @@ export function GocProvider({ children }) {
       return set({ disputes: [], disputesLoading: false });
     }
     set({ disputes: data || [], disputesLoading: false });
-  }, [set]);
+    await signProofUrls((data || []).map(d => d.proof_path));
+  }, [set, signProofUrls]);
 
+  /**
+   * resolve_dispute (the RPC) only flips database state — payment
+   * confirmed/expired, the dispute thread marked resolved and scheduled for
+   * purge, one note left in the guest's ordinary chat. The confirmation
+   * email itself (with the transcript PDF and the receipt image attached)
+   * is a separate step, api/dispute-resolved-email.js — best-effort here:
+   * if it fails, the database resolution already stands and an admin can
+   * see disputeEmailError and retry rather than the whole action rolling
+   * back or silently never emailing anyone.
+   */
   const resolveDispute = useCallback(async (bookingId, uphold, note) => {
-    set({ disputeBusy: bookingId });
+    set({ disputeBusy: bookingId, disputeEmailError: '' });
     try {
       const { data, error } = await supabase.rpc('resolve_dispute', {
         p_booking: bookingId, p_uphold: !!uphold, p_resolution: note || '',
       });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (token) {
+        const res = await fetch('/api/dispute-resolved-email', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ bookingId }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          set({ disputeEmailError: body.error || `HTTP_${res.status}` });
+        }
+      }
     } catch (e) {
       console.warn('resolveDispute failed:', e);
     }
@@ -947,6 +1038,42 @@ export function GocProvider({ children }) {
       .eq('booking_id', bookingId).order('at', { ascending: true });
     set({ auditTrail: data || [] });
   }, [set]);
+
+  // ---- the temporary dispute chat (guest <-> organizer, while escalated) ----
+  /**
+   * escalate_payment_dispute() opens this thread server-side; this just
+   * reads it back. RLS on dispute_threads/dispute_messages already limits
+   * this to the guest, the event's organizer, or an admin — the same three
+   * parties who could ever see a dispute at all.
+   */
+  const loadDisputeChat = useCallback(async (bookingId) => {
+    set({ disputeChatBookingId: bookingId, disputeChatMessages: [], disputeChatLoading: true });
+    const { data: thread, error: threadError } = await supabase
+      .from('dispute_threads').select('id, resolved_at').eq('booking_id', bookingId).maybeSingle();
+    if (threadError || !thread) {
+      console.warn('loadDisputeChat failed:', threadError);
+      return set({ disputeChatLoading: false });
+    }
+    const { data: messages, error } = await supabase
+      .from('dispute_messages').select('*')
+      .eq('dispute_thread_id', thread.id).order('created_at', { ascending: true });
+    if (error) console.warn('loadDisputeChat messages failed:', error);
+    set({ disputeChatMessages: messages || [], disputeChatLoading: false });
+  }, [set]);
+
+  const disputeChatDraftType = useCallback((e) => set({ disputeChatDraft: e.target.value }), [set]);
+
+  const sendDisputeMessage = useCallback(async (bookingId) => {
+    const body = s.disputeChatDraft.trim();
+    if (!body) return;
+    set({ disputeChatDraft: '' });
+    const { data, error } = await supabase.rpc('send_dispute_message', { p_booking: bookingId, p_body: body });
+    if (error || data?.success === false) {
+      console.warn('sendDisputeMessage failed:', error || data?.error);
+      return;
+    }
+    await loadDisputeChat(bookingId);
+  }, [set, s.disputeChatDraft, loadDisputeChat]);
 
   // ---- billing identity (the buyer block on every document) ----
   const openBilling = useCallback(async () => {
@@ -2144,8 +2271,8 @@ export function GocProvider({ children }) {
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid,
     submitPaymentProof, paymentTxnType, vietQrFor,
-    openVerifications, loadVerifications, approvePayment, rejectPayment, loadOrganizerHoldingSummary, forfeitExpiredHold,
-    openDisputes, loadDisputes, resolveDispute, loadAuditTrail,
+    openVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
+    openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,
@@ -2173,8 +2300,8 @@ export function GocProvider({ children }) {
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid,
     submitPaymentProof, paymentTxnType, vietQrFor,
-    openVerifications, loadVerifications, approvePayment, rejectPayment, loadOrganizerHoldingSummary, forfeitExpiredHold,
-    openDisputes, loadDisputes, resolveDispute, loadAuditTrail,
+    openVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
+    openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
     canHost, toggleOrganizerMode, enableOrganizerMode,

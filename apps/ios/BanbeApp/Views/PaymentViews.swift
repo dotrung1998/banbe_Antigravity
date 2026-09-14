@@ -121,7 +121,7 @@ struct PaymentDetailsView: View {
                 countdownCard(deadline)
             }
             if phase == .pendingVerification { frozenCard(booking) }
-            if phase == .disputed { disputedCard() }
+            if phase == .disputed { disputedCard(booking) }
 
             amountCard(booking)
 
@@ -211,20 +211,24 @@ struct PaymentDetailsView: View {
         .accessibilityIdentifier("payment.frozen")
     }
 
-    private func disputedCard() -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("banbe đang xem xét", "banbe is reviewing this"))
-                .font(.system(size: 13.5, weight: .semibold))
-            Text(app.T("Người tổ chức chưa đối chiếu được khoản này. Chỗ của bạn vẫn được giữ trong lúc banbe xem xét.",
-                       "The organizer couldn't match this against their statement. Your seat stays held while banbe reviews it."))
-                .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+    private func disputedCard(_ booking: PayableBooking) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(app.T("banbe đang xem xét", "banbe is reviewing this"))
+                    .font(.system(size: 13.5, weight: .semibold))
+                Text(app.T("Người tổ chức chưa đối chiếu được khoản này. Chỗ của bạn vẫn được giữ trong lúc banbe xem xét.",
+                           "The organizer couldn't match this against their statement. Your seat stays held while banbe reviews it."))
+                    .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+            }
+            .foregroundStyle(app.palette.ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityIdentifier("payment.disputed")
+
+            DisputeChatPanel(bookingID: booking.id)
         }
-        .foregroundStyle(app.palette.ink)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(.top, 16)
-        .accessibilityIdentifier("payment.disputed")
     }
 
     private func amountCard(_ booking: PayableBooking) -> some View {

@@ -3,6 +3,7 @@ import { useGoc } from '../state/GocContext.jsx';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass } from '../theme.js';
+import DisputeChatPanel from './DisputeChatPanel.jsx';
 
 // The organizer's manual-verification queue — the fallback for every payment
 // the bank webhook didn't reconcile on its own (a buyer who mistyped the
@@ -13,13 +14,26 @@ import { paper, ink, rule, display, fieldGlass, cardGlass } from '../theme.js';
 // and the person who has waited longest is the one closest to giving up.
 export default function Verifications() {
   const {
-    state, T, loadVerifications, approvePayment, rejectPayment, backFromDocuments,
+    state, T, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadDisputes, backFromDocuments,
   } = useGoc();
   const s = state;
-  const [rejecting, setRejecting] = useState(null);
+  // { bookingId, kind: 'reject' | 'escalate' } while the reason form for
+  // that row is open — one field, two possible destinations, so opening
+  // one always closes the other.
+  const [reasonFor, setReasonFor] = useState(null);
   const [reason, setReason] = useState('');
+  const closeReasonForm = () => { setReasonFor(null); setReason(''); };
+  const [openDisputeChat, setOpenDisputeChat] = useState(null);
 
   useEffect(() => { loadVerifications(); }, [loadVerifications]);
+  // v_disputes is RLS-scoped the same way bookings always are — an
+  // organizer querying it only ever sees their own events' disputes, admin
+  // sees everyone's. Reused here (not just on the admin desk) so an
+  // organizer can keep talking with the guest after escalating; once
+  // escalated a booking leaves v_pending_verifications entirely, so without
+  // this there would be nowhere on this screen to see it again at all.
+  useEffect(() => { loadDisputes(); }, [loadDisputes]);
+  const myOpenDisputes = s.disputes.filter(d => !d.dispute_resolved_at);
 
   const overdue = s.verifications.filter(v => v.overdue).length;
   // Ticks only while the queue actually has SLA countdowns to show — an
@@ -74,36 +88,77 @@ export default function Verifications() {
               )}
             </div>
 
+            {/* The actual receipt/transfer screenshot the guest submitted —
+                this used to be invisible here entirely, leaving "Money
+                received"/"Can't find it" a decision made on the reference
+                and transaction ID text alone, never the evidence itself. */}
+            {v.proof_path && (
+              s.proofUrls[v.proof_path] ? (
+                <img
+                  src={s.proofUrls[v.proof_path]}
+                  alt={T('Ảnh biên lai', 'Receipt image')}
+                  data-testid="verification-proof-image"
+                  style={{ width: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 10, background: 'rgba(27,25,22,0.04)' }}
+                />
+              ) : (
+                <div style={{ ...fieldGlass({ padding: '20px 12px', textAlign: 'center' }) }} data-testid="verification-proof-loading">
+                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.6 }}>{T('Đang tải ảnh biên lai…', 'Loading receipt image…')}</span>
+                </div>
+              )
+            )}
+
             {v.escalated && (
               <span style={{ fontSize: 11, fontWeight: 600, color: '#9A3E2D' }}>
                 {T('Đã chuyển cảnh báo khẩn', 'Escalated as urgent')}
               </span>
             )}
 
-            {rejecting === v.booking_id ? (
+            {reasonFor?.bookingId === v.booking_id ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <input
                   value={reason} onChange={(e) => setReason(e.target.value)}
-                  placeholder={T('Vì sao chưa xác nhận được?', "Why can't you confirm it?")}
+                  placeholder={reasonFor.kind === 'escalate'
+                    ? T('Mô tả ngắn gọn vướng mắc cho banbe', 'Briefly describe the issue for banbe')
+                    : T('Vì sao chưa xác nhận được?', "Why can't you confirm it?")}
                   data-testid="verification-reason"
                   style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
                 />
                 <p style={{ fontSize: 11, lineHeight: 1.45, color: ink, opacity: 0.7, margin: 0 }}>
-                  {T('Chỗ của khách vẫn được giữ và banbe sẽ xem xét — từ chối không huỷ vé ngay.',
-                     "The guest's seat stays held and banbe will review it — rejecting does not cancel them outright.")}
+                  {reasonFor.kind === 'escalate'
+                    ? T('banbe sẽ xem xét và đưa ra quyết định — chỗ của khách vẫn được giữ trong lúc chờ.',
+                        "banbe will review and decide — the guest's seat stays held while you wait.")
+                    : T('Lý do này được gửi thẳng cho khách qua tin nhắn để họ bổ sung — chỗ vẫn được giữ, banbe không tham gia ở bước này.',
+                        "This reason goes straight to the guest by chat so they can follow up — the seat stays held, and banbe is not involved at this step.")}
                 </p>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <Action label={T('Gửi', 'Submit')} testid="verification-reject-confirm"
-                          onClick={() => { rejectPayment(v.booking_id, reason); setRejecting(null); setReason(''); }} />
-                  <Action label={T('Huỷ', 'Cancel')} ghost onClick={() => { setRejecting(null); setReason(''); }} />
+                          onClick={() => {
+                            if (reasonFor.kind === 'escalate') escalateDispute(v.booking_id, reason);
+                            else rejectPayment(v.booking_id, reason);
+                            closeReasonForm();
+                          }} />
+                  <Action label={T('Huỷ', 'Cancel')} ghost onClick={closeReasonForm} />
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Action label={s.verificationBusy === v.booking_id ? T('Đang lưu…', 'Saving…') : T('Đã nhận tiền', 'Money received')}
-                        testid="verification-approve" onClick={() => approvePayment(v.booking_id)} />
-                <Action label={T('Chưa thấy', "Can't find it")} ghost testid="verification-reject"
-                        onClick={() => setRejecting(v.booking_id)} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Action label={s.verificationBusy === v.booking_id ? T('Đang lưu…', 'Saving…') : T('Đã nhận tiền', 'Money received')}
+                          testid="verification-approve" onClick={() => approvePayment(v.booking_id)} />
+                  <Action label={T('Chưa thấy', "Can't find it")} ghost testid="verification-reject"
+                          onClick={() => setReasonFor({ bookingId: v.booking_id, kind: 'reject' })} />
+                </div>
+                {/* Deliberately separate from "Can't find it" — that's just
+                    feedback to the guest. This is the one action that
+                    actually brings banbe in, for when the two of you
+                    genuinely can't resolve it directly. */}
+                <div
+                  onClick={() => setReasonFor({ bookingId: v.booking_id, kind: 'escalate' })}
+                  data-testid="verification-escalate"
+                  style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.6, textAlign: 'center', cursor: 'pointer', padding: '2px 0' }}
+                >
+                  {T('Không tự giải quyết được ▪︎ chuyển cho banbe', "Can't resolve it directly ▪︎ escalate to banbe")}
+                </div>
               </div>
             )}
           </div>
@@ -118,6 +173,34 @@ export default function Verifications() {
           </p>
         )}
       </div>
+
+      {/* Escalated bookings leave the queue above entirely (they're no
+          longer 'pending_verification') — this is the only place left on
+          this screen to keep talking with the guest while banbe decides. */}
+      {myOpenDisputes.length > 0 && (
+        <div style={{ margin: '0 22px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }} data-testid="verifications-disputes-title">
+            {T('Đang chờ banbe quyết định', "Awaiting banbe's decision")}
+          </span>
+          {myOpenDisputes.map(d => (
+            <div key={d.booking_id} style={{ ...cardGlass({ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid="verification-dispute-row">
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ fontSize: 14, color: ink }}>{d.guest_name || T('Khách', 'Guest')} ▪︎ {d.event_name}</span>
+                <span style={{ ...display(16, { whiteSpace: 'nowrap' }) }}>{formatVnd(d.total_vnd)}</span>
+              </div>
+              {openDisputeChat === d.booking_id ? (
+                <DisputeChatPanel bookingId={d.booking_id} />
+              ) : (
+                <div onClick={() => setOpenDisputeChat(d.booking_id)}
+                     data-testid="verification-open-dispute-chat"
+                     style={{ fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>
+                  {T('Mở đoạn chat tranh chấp ›', 'Open dispute chat ›')}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

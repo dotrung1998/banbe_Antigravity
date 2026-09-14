@@ -5,10 +5,15 @@ import SwiftUI
 /// people are waiting in, and the longest wait is the closest to giving up.
 struct VerificationsView: View {
     @EnvironmentObject private var app: AppState
-    @State private var rejecting: UUID?
+    /// Which row's reason form is open, and for which action — one field,
+    /// two possible destinations, so opening one always closes the other.
+    @State private var reasonFor: (bookingId: UUID, kind: ReasonKind)?
     @State private var reason = ""
     @State private var tickTask: Task<Void, Never>?
     @State private var tick = Date()
+    @State private var openChatBookingID: UUID?
+
+    private enum ReasonKind { case reject, escalate }
 
     private var overdueCount: Int { app.verifications.filter { $0.overdue == true }.count }
 
@@ -50,12 +55,49 @@ struct VerificationsView: View {
                     }
                 }
                 .padding(.top, 18)
+
+                // Escalated bookings leave the queue above entirely (no
+                // longer 'pending_verification') — this is the only place
+                // left on this screen to keep talking with the guest while
+                // banbe decides.
+                if !app.openDisputes.isEmpty {
+                    Text(app.T("Đang chờ banbe quyết định", "Awaiting banbe's decision"))
+                        .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        .padding(.top, 24)
+                    VStack(spacing: 12) {
+                        ForEach(app.openDisputes) { d in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("\(d.guestName ?? app.T("Khách", "Guest")) ▪︎ \(d.eventName ?? "")")
+                                        .font(.system(size: 14)).foregroundStyle(app.palette.ink)
+                                    Spacer(minLength: 8)
+                                    Text(formatVnd(d.totalVnd)).font(BanbeTheme.display(16))
+                                }
+                                if openChatBookingID == d.bookingId {
+                                    DisputeChatPanel(bookingID: d.bookingId)
+                                } else {
+                                    Button { openChatBookingID = d.bookingId } label: {
+                                        Text(app.T("Mở đoạn chat tranh chấp ›", "Open dispute chat ›"))
+                                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityIdentifier("verification.openDisputeChat")
+                                }
+                            }
+                            .padding(14)
+                            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .accessibilityIdentifier("verification.disputeRow")
+                        }
+                    }
+                    .padding(.top, 12)
+                }
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 22).padding(.bottom, 40)
         }
         .accessibilityIdentifier("screen.verifications")
         .task { await app.loadVerifications() }
+        .task { await app.loadOpenDisputes() }
         .onAppear { startTicking() }
         .onDisappear { tickTask?.cancel() }
     }
@@ -101,19 +143,53 @@ struct VerificationsView: View {
             .padding(.horizontal, 12).padding(.vertical, 10)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-            if rejecting == row.bookingId {
-                TextField(app.T("Vì sao chưa xác nhận được?", "Why can't you confirm it?"), text: $reason)
+            // The actual receipt/transfer screenshot the guest submitted —
+            // this used to be invisible here entirely, leaving "Money
+            // received"/"Can't find it" a decision made on the reference and
+            // transaction ID text alone, never the evidence itself.
+            if let proofPath = row.proofPath {
+                if let url = app.proofUrls[proofPath] {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFit()
+                        } else {
+                            Color.clear
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: 260)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .accessibilityIdentifier("verification.proofImage")
+                } else {
+                    Text(app.T("Đang tải ảnh biên lai…", "Loading receipt image…"))
+                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        .frame(maxWidth: .infinity, minHeight: 60)
+                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .accessibilityIdentifier("verification.proofLoading")
+                }
+            }
+
+            if let current = reasonFor, current.bookingId == row.bookingId {
+                TextField(current.kind == .escalate
+                          ? app.T("Mô tả ngắn gọn vướng mắc cho banbe", "Briefly describe the issue for banbe")
+                          : app.T("Vì sao chưa xác nhận được?", "Why can't you confirm it?"), text: $reason)
                     .font(.system(size: 13)).padding(11)
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Text(app.T("Chỗ của khách vẫn được giữ và banbe sẽ xem xét — từ chối không huỷ vé ngay.",
-                           "The guest's seat stays held and banbe will review it — rejecting does not cancel them outright."))
+                Text(current.kind == .escalate
+                     ? app.T("banbe sẽ xem xét và đưa ra quyết định — chỗ của khách vẫn được giữ trong lúc chờ.",
+                             "banbe will review and decide — the guest's seat stays held while you wait.")
+                     : app.T("Lý do này được gửi thẳng cho khách qua tin nhắn để họ bổ sung — chỗ vẫn được giữ, banbe không tham gia ở bước này.",
+                             "This reason goes straight to the guest by chat so they can follow up — the seat stays held, and banbe is not involved at this step."))
                     .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
                 HStack(spacing: 8) {
                     action(app.T("Gửi", "Submit"), id: "verification.rejectConfirm") {
-                        Task { await app.rejectPayment(row.bookingId, reason: reason) }
-                        rejecting = nil; reason = ""
+                        let kind = current.kind
+                        Task {
+                            if kind == .escalate { await app.escalateDispute(row.bookingId, reason: reason) }
+                            else { await app.rejectPayment(row.bookingId, reason: reason) }
+                        }
+                        reasonFor = nil; reason = ""
                     }
-                    action(app.T("Huỷ", "Cancel"), ghost: true) { rejecting = nil; reason = "" }
+                    action(app.T("Huỷ", "Cancel"), ghost: true) { reasonFor = nil; reason = "" }
                 }
             } else {
                 HStack(spacing: 8) {
@@ -123,9 +199,23 @@ struct VerificationsView: View {
                         Task { await app.approvePayment(row.bookingId) }
                     }
                     action(app.T("Chưa thấy", "Can't find it"), ghost: true, id: "verification.reject") {
-                        rejecting = row.bookingId
+                        reasonFor = (row.bookingId, .reject)
                     }
                 }
+                // Deliberately separate from "Can't find it" — that's just
+                // feedback to the guest. This is the one action that
+                // actually brings banbe in, for when the two of you
+                // genuinely can't resolve it directly.
+                Button {
+                    reasonFor = (row.bookingId, .escalate)
+                } label: {
+                    Text(app.T("Không tự giải quyết được ▪︎ chuyển cho banbe", "Can't resolve it directly ▪︎ escalate to banbe"))
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(app.palette.ink.opacity(0.6))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("verification.escalate")
             }
         }
         .padding(18)

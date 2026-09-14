@@ -247,6 +247,15 @@ final class AppState: ObservableObject {
     @Published var verifications: [PendingVerification] = []
     @Published var verificationsLoading = false
     @Published var verificationBusy: UUID?
+    // 'pay-proof' storage path -> signed viewable URL, for whichever rows
+    // loadVerifications last loaded — see signProofUrls.
+    @Published var proofUrls: [String: URL] = [:]
+    // The temporary dispute chat — one per escalated booking.
+    @Published var disputeChatBookingId: UUID?
+    @Published var disputeChatMessages: [DisputeMessage] = []
+    @Published var disputeChatLoading = false
+    @Published var disputeChatDraft = ""
+    @Published var openDisputes: [OrganizerDispute] = []
     /// How many buyers are currently holding a seat on this account's own
     /// events, and how soon the nearest one lapses — the organizer half of
     /// the Home countdown banners (verifications above is the other half:
