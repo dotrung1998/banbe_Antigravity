@@ -41,7 +41,7 @@ export default function DisputeChatPanel({ bookingId }) {
         {s.disputeChatLoading && messages.length === 0 && (
           <span style={{ fontSize: 11.5, color: ink, opacity: 0.6 }}>{T('Đang tải…', 'Loading…')}</span>
         )}
-        {!s.disputeChatLoading && messages.length === 0 && (
+        {!s.disputeChatLoading && messages.length === 0 && !s.disputeChatError && (
           <span style={{ fontSize: 11.5, color: ink, opacity: 0.6 }} data-testid="dispute-chat-empty">
             {T('Chưa có tin nhắn nào.', 'No messages yet.')}
           </span>
@@ -79,6 +79,11 @@ export default function DisputeChatPanel({ bookingId }) {
           {T('Gửi', 'Send')}
         </div>
       </div>
+      {s.disputeChatError && (
+        <p style={{ fontSize: 11.5, color: '#9A3E2D', margin: 0 }} data-testid="dispute-chat-error">
+          {s.disputeChatError}
+        </p>
+      )}
     </div>
   );
 }

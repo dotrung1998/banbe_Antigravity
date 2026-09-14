@@ -128,6 +128,7 @@ const initialState = {
   disputeChatMessages: [],
   disputeChatLoading: false,
   disputeChatDraft: '',
+  disputeChatError: '',
   auditTrail: [],
   auditBookingId: null,
   // pay-proof storage path -> signed viewable URL, for whichever rows
@@ -1047,33 +1048,54 @@ export function GocProvider({ children }) {
    * parties who could ever see a dispute at all.
    */
   const loadDisputeChat = useCallback(async (bookingId) => {
-    set({ disputeChatBookingId: bookingId, disputeChatMessages: [], disputeChatLoading: true });
+    set({ disputeChatBookingId: bookingId, disputeChatMessages: [], disputeChatLoading: true, disputeChatError: '' });
     const { data: thread, error: threadError } = await supabase
       .from('dispute_threads').select('id, resolved_at').eq('booking_id', bookingId).maybeSingle();
     if (threadError || !thread) {
       console.warn('loadDisputeChat failed:', threadError);
-      return set({ disputeChatLoading: false });
+      // A denied-by-RLS row and a genuinely empty conversation both read as
+      // "no data" here — but a real error is distinguishable, and worth
+      // surfacing instead of silently looking exactly like "no messages
+      // yet" (this was the ART10025 symptom: RLS quietly hiding a
+      // dispute_threads row a stale organizer_id no longer matched).
+      return set({
+        disputeChatLoading: false,
+        disputeChatError: threadError ? T('Không tải được đoạn chat. Thử lại nhé.', "Couldn't load this chat. Please try again.") : '',
+      });
     }
     const { data: messages, error } = await supabase
       .from('dispute_messages').select('*')
       .eq('dispute_thread_id', thread.id).order('created_at', { ascending: true });
-    if (error) console.warn('loadDisputeChat messages failed:', error);
+    if (error) {
+      console.warn('loadDisputeChat messages failed:', error);
+      return set({
+        disputeChatLoading: false,
+        disputeChatError: T('Không tải được tin nhắn. Thử lại nhé.', "Couldn't load messages. Please try again."),
+      });
+    }
     set({ disputeChatMessages: messages || [], disputeChatLoading: false });
-  }, [set]);
+  }, [set, T]);
 
   const disputeChatDraftType = useCallback((e) => set({ disputeChatDraft: e.target.value }), [set]);
 
   const sendDisputeMessage = useCallback(async (bookingId) => {
     const body = s.disputeChatDraft.trim();
     if (!body) return;
-    set({ disputeChatDraft: '' });
+    set({ disputeChatDraft: '', disputeChatError: '' });
     const { data, error } = await supabase.rpc('send_dispute_message', { p_booking: bookingId, p_body: body });
     if (error || data?.success === false) {
       console.warn('sendDisputeMessage failed:', error || data?.error);
+      // Previously silent — a NOT_AUTHORIZED/NOT_DISPUTED from a
+      // stale/mislinked dispute_threads row looked identical to a
+      // successful send that just hadn't shown up yet.
+      set({
+        disputeChatDraft: body,
+        disputeChatError: T('Chưa gửi được. Thử lại nhé.', "Couldn't send. Please try again."),
+      });
       return;
     }
     await loadDisputeChat(bookingId);
-  }, [set, s.disputeChatDraft, loadDisputeChat]);
+  }, [set, s.disputeChatDraft, loadDisputeChat, T]);
 
   // ---- billing identity (the buyer block on every document) ----
   const openBilling = useCallback(async () => {

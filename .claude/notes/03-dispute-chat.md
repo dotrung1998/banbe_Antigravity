@@ -60,3 +60,58 @@ channels nothing else here uses.
 Applied to production via `supabase db push`. Web build + iOS
 `xcodebuild` both green; 75/75 existing Playwright tests still pass (no new
 automated test added for the chat linkage/poll fix itself).
+
+## 2026-09-14 diagnosis #2 — reported bug: ART10025 ("Vườn Sau") chat frozen, Send does nothing
+
+Repro: `dotrung1998@gmail.com` (organizer) on Verifications.jsx
+(`data-testid="verification-open-not-found-chat"` row), "No messages yet."
+never resolves, Send button never visually enables, screen otherwise
+unresponsive.
+
+Root cause (CONFIRMED by code inspection, not a live DB query — production
+reads are blocked in this session): `INSERT INTO dispute_threads (...) ON
+CONFLICT (booking_id) DO NOTHING` in both `reject_payment()` (`041:70-72`, now
+`042`) and `escalate_payment_dispute()` (`033:184-186`, now `042`) means a
+booking whose `dispute_threads` row was ever created with the wrong
+`organizer_id`/`guest_id` (a stale row from before 041 existed, or any
+`events.organizer_id` that was ever NULL/different at INSERT time — that
+column is nullable) can never be repaired by a later call. `dispute_threads_
+select`/`dispute_messages_select` RLS (`033:57-73`) then silently returns
+ZERO rows to the real organizer — not an error, just nothing — which
+`loadDisputeChat` (`GocContext.jsx:1049`, `.maybeSingle()` on web,
+`.single()`-throws on iOS) can't distinguish from a genuinely empty
+conversation. `send_dispute_message()` (`033:84`) independently re-checks
+`v_t.guest_id`/`organizer_id` against the same row and returns
+`NOT_AUTHORIZED` for the same reason — previously swallowed by
+`console.warn`/`print` only, no UI feedback, which is what made Send look
+like it did nothing at all (network request DOES fire; the RPC responds
+`{success:false, error:'NOT_AUTHORIZED'}`; nothing showed it).
+
+The Send-button-disabled-looking-frozen report itself is not a separate
+bug: `disputeChatDraft`/`onChange` (`DisputeChatPanel.jsx:63,` `disputeChat
+DraftType` at `GocContext.jsx:1064`) were verified correct in isolation —
+typing does update state and the button's enabled style does key off
+`s.disputeChatDraft.trim()`. The perceived "stays disabled" is this same
+silent-failure symptom described imprecisely: every send attempt fails
+`NOT_AUTHORIZED` with no visible change, reading as "nothing happens."
+
+**Fixed**: `supabase/migrations/20260914000042_042_dispute_thread_self_heal_and_errors.sql`
+— `ON CONFLICT (booking_id) DO UPDATE SET guest_id/organizer_id = EXCLUDED.*
+WHERE resolved_at IS NULL` in both functions, so a stale row self-heals the
+next time either runs on that booking. For ART10025 specifically: the
+organizer re-tapping "Can't find it" now re-links the existing row — no
+manual data fix was made (no DB write access to target that one row
+directly in this session). Client: added `disputeChatError` (state +
+initial value `GocContext.jsx:130`; set in `loadDisputeChat`/
+`sendDisputeMessage`, `GocContext.jsx:1049-1093`; rendered
+`DisputeChatPanel.jsx:44,74-78`; same on iOS — `AppState.swift:258`,
+`AppState+Payments.swift:742-793`, `DisputeChatPanel.swift`) so a real
+RLS/RPC denial now shows an actual error message instead of an
+indistinguishable "No messages yet."; a failed send also restores the
+typed draft instead of silently discarding it.
+
+Applied to production via `supabase db push`. Web build + iOS `xcodebuild`
+both green; 75/75 Playwright tests pass. Not verified against the live
+ART10025 row itself (no production DB read access in this session) — needs
+a real click-through by the organizer to confirm the self-heal actually
+fires for that specific booking.

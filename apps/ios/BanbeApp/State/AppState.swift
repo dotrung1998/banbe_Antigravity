@@ -255,6 +255,7 @@ final class AppState: ObservableObject {
     @Published var disputeChatMessages: [DisputeMessage] = []
     @Published var disputeChatLoading = false
     @Published var disputeChatDraft = ""
+    @Published var disputeChatError = ""
     @Published var openDisputes: [DisputeRow] = []
     // The admin dashboard (AdminDashboardView) — every dispute this account
     // can see; RLS makes that "every dispute, period" only when

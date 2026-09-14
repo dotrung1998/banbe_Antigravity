@@ -43,7 +43,7 @@ struct DisputeChatPanel: View {
                     if app.disputeChatLoading && messages.isEmpty {
                         Text(app.T("Đang tải…", "Loading…"))
                             .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
-                    } else if messages.isEmpty {
+                    } else if messages.isEmpty && app.disputeChatError.isEmpty {
                         Text(app.T("Chưa có tin nhắn nào.", "No messages yet."))
                             .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                             .accessibilityIdentifier("disputeChat.empty")
@@ -83,6 +83,12 @@ struct DisputeChatPanel: View {
                 .buttonStyle(.plain)
                 .disabled(app.disputeChatDraft.trimmingCharacters(in: .whitespaces).isEmpty)
                 .accessibilityIdentifier("disputeChat.send")
+            }
+
+            if !app.disputeChatError.isEmpty {
+                Text(app.disputeChatError)
+                    .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                    .accessibilityIdentifier("disputeChat.error")
             }
         }
         .padding(14)

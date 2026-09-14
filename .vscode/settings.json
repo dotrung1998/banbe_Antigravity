@@ -8,7 +8,7 @@
     "sweetpad.build.configuration": "Debug",
     "sweetpad.build.derivedDataPath": "apps/ios/.build/DerivedData",
     "sweetpad.build.destination": {
-        "id": "iossimulator-EDC78AEE-0643-474E-85CB-DAC5051F561F",
+        "id": "iossimulator-D1E295BB-2BE3-43EB-A7C0-41943602B0AA",
         "type": "iOSSimulator"
     }
 }

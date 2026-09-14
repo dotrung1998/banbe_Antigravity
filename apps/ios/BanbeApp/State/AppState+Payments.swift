@@ -743,6 +743,7 @@ extension AppState {
         disputeChatBookingId = bookingID
         disputeChatMessages = []
         disputeChatLoading = true
+        disputeChatError = ""
         defer { disputeChatLoading = false }
         struct ThreadRow: Decodable { let id: UUID; let resolvedAt: Date?
             enum CodingKeys: String, CodingKey { case id; case resolvedAt = "resolved_at" } }
@@ -757,7 +758,13 @@ extension AppState {
                 .order("created_at", ascending: true)
                 .execute().value
         } catch {
+            // A dispute_threads row RLS is quietly hiding from this account
+            // (a stale/mislinked organizer_id — see migration 042) throws
+            // here exactly the same as a genuinely missing row: both need
+            // to say something distinguishable from "no messages yet",
+            // which is what an untouched disputeChatMessages = [] reads as.
             print("loadDisputeChat failed:", error)
+            disputeChatError = T("Không tải được đoạn chat. Thử lại nhé.", "Couldn't load this chat. Please try again.")
         }
     }
 
@@ -765,16 +772,21 @@ extension AppState {
         let body = disputeChatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
         disputeChatDraft = ""
+        disputeChatError = ""
         do {
             let result: ForfeitResult = try await SupabaseService.client
                 .rpc("send_dispute_message", params: ["p_booking": bookingID.uuidString, "p_body": body])
                 .execute().value
             if result.success == false {
                 print("sendDisputeMessage failed:", result.error ?? "unknown")
+                disputeChatDraft = body
+                disputeChatError = T("Chưa gửi được. Thử lại nhé.", "Couldn't send. Please try again.")
                 return
             }
         } catch {
             print("sendDisputeMessage failed:", error)
+            disputeChatDraft = body
+            disputeChatError = T("Chưa gửi được. Thử lại nhé.", "Couldn't send. Please try again.")
             return
         }
         await loadDisputeChat(bookingID)
