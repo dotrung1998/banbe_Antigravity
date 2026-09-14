@@ -16,11 +16,88 @@
 - `public.dispute_threads`/`dispute_messages` — hard-deleted by cron once `purge_after < now()` (72h grace, not immediate)
 - `public.threads`/`public.messages` — final one-line system note posted here by `resolve_dispute` ("Dispute resolved. Confirmation email sent to both parties.")
 
-## Status: PARTIALLY WORKING — UNVERIFIED IN PRODUCTION
-Code is written, builds, and DB side (soft-delete + 72h purge cron) is applied and mechanically correct. Email+PDF send path (`puppeteer-core`/`@sparticuz/chromium` inside a Vercel function) has **never been executed against a live Vercel deployment** in this session — no serverless runtime available to test. Requires `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `SUPABASE_SERVICE_ROLE_KEY` env vars set on Vercel.
+## 2026-09-14 — real end-to-end run: email delivery CONFIRMED working; root cause of earlier "no email arrives" report was already fixed
+
+Built a real-backend Playwright E2E test, `tests/dispute-flow-e2e.spec.js`
+(+ fixtures in `tests/e2e/setup.mjs`/`loadEnv.mjs`) — creates real Supabase
+Auth users via the admin API, runs the actual flow through real RPCs and
+(for the organizer/admin roles) the real browser UI, and invokes the real
+`api/dispute-resolved-email.js` handler directly in Node (not through
+Vercel — see the test file's own header for why: the local `vite` dev
+server used by `playwright.config.js` doesn't serve `/api/*`, so the
+browser's own fire-and-forget call 404s locally regardless of backend
+correctness; importing and calling the handler function directly runs the
+identical code path, real Gmail send included).
+
+**Result, both outcomes ("ticket approved" and "return to pool"), all 3
+browsers: PASS.** `dispute-resolved-email` returned `200 {"sent":2,
+"failures":[]}` both times — a real Gmail send to both the guest and
+organizer test accounts, `dispute_threads.email_sent_at` stamped
+afterward. `getUserById` resolved both test accounts to their real,
+correct emails (the specific failure mode this ticket named as a
+suspect) — not reproduced. **Conclusion: the email pipeline itself is not
+currently broken** — the hardcoded-message and silent-failure bugs fixed
+earlier this same day (see the two entries above) were the actual root
+cause of the original "no email arrives" report, and this run is the
+first time that fix has been verified against a real send rather than by
+code inspection alone. If a user reports missing email again, look
+elsewhere first: Gmail account state (dotrung1998@gmail.com — the sender
+in `.env.local`'s `GMAIL_USER`), spam-folder placement, or a difference
+between this sandbox's local run and the live Vercel deployment's actual
+environment/runtime (see next paragraph) — not this delivery path itself,
+which is now demonstrated working end-to-end.
+
+**One real gap this run surfaced, not previously visible from code
+reading alone**: `htmlToPdf()` (`api/dispute-resolved-email.js:35-50`)
+failed locally every time — `spawn ENOEXEC`, because `@sparticuz/chromium`
+ships a Linux binary and this sandbox is macOS. Already isolated in its
+own try/catch (see the PDF-generation-isolation fix above), so it did NOT
+block the email — both sends still succeeded, just without the transcript
+PDF attached. **This means the transcript-PDF attachment itself is still
+unverified against a real send** — Vercel's runtime is Linux, so it
+should work there, but this local run cannot confirm it; the receipt
+image attachment path (a real download from `pay-proof`, not a
+Chromium-rendered file) WAS exercised for real in this run, since the test
+uploads a real file to that bucket first.
+
+**Architecture fact found while building this test, appended here since
+it constrains what any future E2E test can click through**: `Home.jsx`/
+`EventDetail.jsx` only ever render the static demo catalogue in
+`src/data/events.js` — there is no live query against the `events` table
+and no `?event=` URL param (confirmed by grep: zero references to
+`v_event_availability`/`seats_remaining` anywhere in `src/`). A freshly
+created test event is therefore never click-reachable via Reserve/
+PaymentDetails/Confirmed. `tests/dispute-flow-e2e.spec.js` works around
+this by driving the participant's three actions (hold, mark paid, send a
+chat message) through an authenticated `supabase-js` client signed in via
+`auth.signInWithPassword()` — the same call the real password-login tab
+makes — rather than through clicks; the organizer and admin queues
+(`Verifications.jsx`, `Disputes.jsx`) have no such dependency (they query
+live views by real ownership/RLS) and so those two roles ARE driven
+through the real browser UI in that test. Worth fixing properly (a
+`?event=` deep link, or a dev-seeded live-queryable demo event) if this
+suite's coverage needs to grow to include the participant-side screens.
+
+**Also found and fixed in passing**: `.env.example` (committed to git) had
+real production secrets (`SUPABASE_SERVICE_ROLE_KEY`, `GMAIL_USER`,
+`GMAIL_APP_PASSWORD`) checked in across several past commits instead of
+placeholders — scrubbed back to placeholders this same pass, with the real
+values moved to `.env.local` (gitignored, already had `GMAIL_*`). **The
+user still needs to rotate the Supabase service_role key and Gmail app
+password** — scrubbing the file doesn't invalidate a key that was already
+exposed in git history; this session did not rewrite git history (a
+separate, bigger decision).
+
+Test is not part of the default fast suite (writes real rows, sends real
+mail) — run explicitly: `npx playwright test tests/dispute-flow-e2e.spec.js`.
+Requires `SUPABASE_SERVICE_ROLE_KEY` resolvable (via `.env.local` or
+`.env`); skips itself with a clear reason otherwise.
+
+## Status: MOSTLY WORKING — email delivery verified locally (real send), PDF attachment still unverified on Vercel
+DB side (soft-delete + 72h purge cron) applied and mechanically correct. The email send itself is now confirmed working end-to-end by `tests/dispute-flow-e2e.spec.js` (2026-09-14 entry below) — real Gmail delivery, `sent:2` both outcomes — run directly in Node against the real handler, not through an actual Vercel invocation. **Still unverified specifically on Vercel's own runtime**: whether `puppeteer-core`/`@sparticuz/chromium` actually launches there (this session's local run couldn't test it — Linux-only binary, macOS sandbox), and whether Vercel's deployed env actually has `GMAIL_USER`/`GMAIL_APP_PASSWORD`/`SUPABASE_SERVICE_ROLE_KEY` set to the same values this session used locally.
 
 ## TODO / open questions
-- Confirm `puppeteer-core`+`@sparticuz/chromium` actually launches within Vercel's function size/memory limits — first real dispute resolution should be watched closely.
+- Confirm `puppeteer-core`+`@sparticuz/chromium` actually launches within Vercel's function size/memory limits on a live deployment — this session's local Node run hit `spawn ENOEXEC` (Linux binary on macOS), isolated correctly (email still sent, just without the PDF) but not evidence either way for the real Vercel runtime. Watch the next real dispute resolution's Vercel function logs.
 - ~~`resolveDispute()` posts the "Dispute resolved" note into the ORDINARY thread synchronously (DB RPC), before the email is confirmed sent~~ — FIXED, see 2026-09-14 entry below.
 - No retry/alerting if `dispute-resolved-email` fails; `disputeEmailError` only surfaces in the admin's own UI at the moment of resolution, nowhere persisted for later follow-up. Still true after today's fix.
 - Cannot verify from this session whether `GMAIL_USER`/`GMAIL_APP_PASSWORD`/`SUPABASE_SERVICE_ROLE_KEY` are actually set in the LIVE Vercel deployment's env — `.env.example`/`.env.local` in this repo only affect local dev, Vercel env vars are configured separately in their dashboard and out of this session's reach.
