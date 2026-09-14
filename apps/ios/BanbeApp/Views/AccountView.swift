@@ -139,6 +139,23 @@ struct AccountView: View {
                     .padding(.top, 10)
                 }
 
+                // Admin Panel — visible only to accountType == "admin"
+                // (banbetestadmin@gmail.com, migration 040), never to a
+                // plain organizer. RLS (v_disputes, resolve_dispute,
+                // payment_audit_log, the 'pay-proof' bucket) is the real
+                // backstop; openAdminDashboard() guards again regardless.
+                if app.isAdmin {
+                    Text(app.T("Quản trị", "Admin"))
+                        .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                        .padding(.top, 22)
+                    VStack(spacing: 0) {
+                        row(app.T("Bảng quản trị", "Admin Panel"),
+                            identifier: "admin.panel", trailing: "›") { app.openAdminDashboard() }
+                    }
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.top, 10)
+                }
+
                 if app.canHost {
                     Button { app.switchToHost(back: .profile) } label: {
                         HStack {

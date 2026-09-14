@@ -207,7 +207,7 @@ struct RootView: View {
         case .documents: DocumentsView()
         case .documentView: DocumentViewerView()
         case .verifications: VerificationsView()
-        case .disputes: VerificationsView()
+        case .disputes: AdminDashboardView()
         }
     }
 

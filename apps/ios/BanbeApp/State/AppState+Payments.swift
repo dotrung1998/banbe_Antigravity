@@ -641,7 +641,7 @@ extension AppState {
     func loadOpenDisputes() async {
         guard userID != nil else { openDisputes = []; return }
         do {
-            let rows: [OrganizerDispute] = try await SupabaseService.client
+            let rows: [DisputeRow] = try await SupabaseService.client
                 .from("v_disputes").select()
                 .execute().value
             openDisputes = rows.filter { $0.disputeResolvedAt == nil }
@@ -649,6 +649,89 @@ extension AppState {
             print("loadOpenDisputes failed:", error)
             openDisputes = []
         }
+    }
+
+    // MARK: Admin dashboard
+
+    func openAdminDashboard() {
+        guard isAdmin else { return }
+        screen = .disputes
+        Task { await loadAdminDisputes() }
+    }
+
+    /// Same v_disputes query as loadOpenDisputes, but for an admin RLS
+    /// returns every dispute rather than just this account's own events —
+    /// and unlike the organizer's list, this doesn't filter out resolved
+    /// ones (AdminDashboardView shows both, same as web's Disputes.jsx).
+    func loadAdminDisputes() async {
+        guard isAdmin else { adminDisputes = []; return }
+        adminDisputesLoading = true
+        do {
+            adminDisputes = try await SupabaseService.client
+                .from("v_disputes").select()
+                .order("disputed_at", ascending: false)
+                .execute().value
+        } catch {
+            print("loadAdminDisputes failed:", error)
+            adminDisputes = []
+        }
+        adminDisputesLoading = false
+        await signProofUrls(adminDisputes.compactMap(\.proofPath))
+    }
+
+    /// The T1/T2/T3 trail for one booking — what a dispute is actually
+    /// argued on.
+    func loadAuditTrail(_ bookingID: UUID) async {
+        auditBookingId = bookingID
+        auditTrail = []
+        do {
+            auditTrail = try await SupabaseService.client
+                .from("payment_audit_log").select()
+                .eq("booking_id", value: bookingID.uuidString)
+                .order("at", ascending: true)
+                .execute().value
+        } catch {
+            print("loadAuditTrail failed:", error)
+        }
+    }
+
+    /// resolve_dispute (the RPC) only flips database state — payment
+    /// confirmed/expired, the dispute thread marked resolved and scheduled
+    /// for purge, one note left in the guest's ordinary chat. The
+    /// confirmation email itself (with the transcript PDF and the receipt
+    /// image attached) is a separate step, api/dispute-resolved-email.js —
+    /// best-effort here: if it fails, the database resolution already
+    /// stands and disputeEmailError surfaces so an admin can retry rather
+    /// than the whole action rolling back or silently never emailing
+    /// anyone.
+    func resolveDispute(_ bookingID: UUID, uphold: Bool, note: String) async {
+        disputeBusy = bookingID
+        disputeEmailError = ""
+        do {
+            let result: ForfeitResult = try await SupabaseService.client
+                .rpc("resolve_dispute", params: ResolveDisputeParams(
+                    booking: bookingID.uuidString, uphold: uphold, resolution: note))
+                .execute().value
+            if result.success == false {
+                print("resolveDispute failed:", result.error ?? "unknown")
+            } else if let token = try? await SupabaseService.client.auth.session.accessToken,
+                      let url = URL(string: AppConfig.apiBaseURL + "/api/dispute-resolved-email") {
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "content-type")
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                request.httpBody = try? JSONSerialization.data(withJSONObject: ["bookingId": bookingID.uuidString])
+                if let (data, response) = try? await URLSession.shared.data(for: request),
+                   let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                    let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                    disputeEmailError = (body?["error"] as? String) ?? "HTTP_\(http.statusCode)"
+                }
+            }
+        } catch {
+            print("resolveDispute failed:", error)
+        }
+        disputeBusy = nil
+        await loadAdminDisputes()
     }
 
     // MARK: Temporary dispute chat
@@ -800,5 +883,16 @@ private struct VerifyPaymentParams: Encodable {
         case booking = "p_booking"
         case via = "p_via"
         case actorKind = "p_actor_kind"
+    }
+}
+
+private struct ResolveDisputeParams: Encodable {
+    let booking: String
+    let uphold: Bool
+    let resolution: String
+    enum CodingKeys: String, CodingKey {
+        case booking = "p_booking"
+        case uphold = "p_uphold"
+        case resolution = "p_resolution"
     }
 }

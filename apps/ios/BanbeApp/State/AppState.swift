@@ -255,7 +255,16 @@ final class AppState: ObservableObject {
     @Published var disputeChatMessages: [DisputeMessage] = []
     @Published var disputeChatLoading = false
     @Published var disputeChatDraft = ""
-    @Published var openDisputes: [OrganizerDispute] = []
+    @Published var openDisputes: [DisputeRow] = []
+    // The admin dashboard (AdminDashboardView) — every dispute this account
+    // can see; RLS makes that "every dispute, period" only when
+    // accountType == "admin", same v_disputes query as openDisputes above.
+    @Published var adminDisputes: [DisputeRow] = []
+    @Published var adminDisputesLoading = false
+    @Published var disputeBusy: UUID?
+    @Published var disputeEmailError = ""
+    @Published var auditTrail: [PaymentAuditEntry] = []
+    @Published var auditBookingId: UUID?
     /// How many buyers are currently holding a seat on this account's own
     /// events, and how soon the nearest one lapses — the organizer half of
     /// the Home countdown banners (verifications above is the other half:
@@ -411,6 +420,7 @@ final class AppState: ObservableObject {
     var currentArea: AreaOption { AreaOption.all.first { $0.key == area } ?? AreaOption.all[0] }
     var isSignedIn: Bool { userID != nil }
     var canHost: Bool { organizerMode || accountType == "admin" || hasHosted }
+    var isAdmin: Bool { accountType == "admin" }
 
     var displayName: String {
         if let name = user?.displayName, !name.trimmingCharacters(in: .whitespaces).isEmpty { return name }
