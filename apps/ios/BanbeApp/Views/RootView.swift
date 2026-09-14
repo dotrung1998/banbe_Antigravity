@@ -120,6 +120,11 @@ struct RootView: View {
             if let photo = app.photoViewer { PhotoViewerView(item: photo) }
             if app.loading { loadingOverlay }
 
+            if !app.toasts.isEmpty {
+                ToastOverlay()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
+
             // Face ID app-lock sits above everything — see FaceIDLockView.
             if auth.isLocked { FaceIDLockView() }
         }

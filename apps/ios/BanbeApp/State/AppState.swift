@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 import Supabase
 
 /// Which screen is showing. The web app (src/App.jsx) keys one screen at a
@@ -190,6 +191,26 @@ final class AppState: ObservableObject {
     // MARK: Notifications
     @Published var notifications: [AppNotification] = []
     var unreadNotifications: Int { notifications.filter { $0.readAt == nil }.count }
+
+    // Ephemeral in-app toasts — mirrors src/screens/ToastStack.jsx on web.
+    // Separate from `notifications` (the permanent, pull-based inbox): this
+    // is what proactively surfaces an event while the app is open. See
+    // .claude/notes/07-notifications.md.
+    @Published var toasts: [ToastItem] = []
+    var notificationPollTask: Task<Void, Never>?
+
+    /// Shows a small toast and fires a light (not the heavier .success/
+    /// .warning system) haptic alongside it, so it feels gentle — see
+    /// pollNotifications() in AppState+Data.swift for what triggers this.
+    func pushToast(title: String, body: String) {
+        let item = ToastItem(id: UUID(), title: title, body: body)
+        toasts.append(item)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Task {
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            toasts.removeAll { $0.id == item.id }
+        }
+    }
 
     // MARK: Display name
     @Published var editNameValue = ""

@@ -51,6 +51,15 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         DEVELOPMENT_TEAM: ""
         CODE_SIGN_STYLE: Automatic
+        # Declares the Push Notifications capability (aps-environment) —
+        # this file alone is NOT sufficient to actually receive a push. It
+        # still needs a real DEVELOPMENT_TEAM above (an Apple Developer
+        # account) so Xcode can provision the capability with Apple; until
+        # then this only lets local builds compile and call
+        # registerForRemoteNotifications() without erroring, and
+        # didFailToRegisterForRemoteNotificationsWithError will keep firing
+        # (expected — see AppDelegate.swift). See .claude/notes/07-notifications.md.
+        CODE_SIGN_ENTITLEMENTS: BanbeApp/BanbeApp.entitlements
     info:
       path: BanbeApp/Info.plist
       properties:

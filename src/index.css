@@ -95,3 +95,16 @@ input::placeholder {
 @keyframes gocOrbit {
   to { transform: rotate(360deg); }
 }
+
+/* Small in-app toast (ToastStack.jsx) — soft fade + slide, not the sheet's
+   bigger 28px travel (gocSheetIn) since this is a minimal, easy-to-ignore
+   notice, not something asking for attention the way a sheet does. */
+@keyframes gocToastIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes gocToastOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-6px); }
+}

@@ -137,6 +137,8 @@ extension AppState {
             myOrgEventKeys = []
             orgRegName = ""
             notifications = []
+            toasts = []
+            stopNotificationPolling()
             booking = nil
             holdDeadline = nil
             return
@@ -168,6 +170,8 @@ extension AppState {
 
         await loadMyEvents()
         await loadNotifications()
+        startNotificationPolling()
+        requestPushAuthorizationIfNeeded()
         await loadBookingForCurrentEvent()
     }
 
@@ -365,6 +369,49 @@ extension AppState {
         } catch {
             print("Failed to load notifications:", error)
         }
+    }
+
+    /// Refetches on a 5s poll (mirrors GocContext.jsx's own poll — no
+    /// realtime subscription anywhere in this app, see
+    /// .claude/notes/03-dispute-chat.md) and pushes a toast for any row
+    /// created after this task started that hasn't been toasted yet.
+    /// `sessionStart` is captured before the first request goes out, not
+    /// derived from what that first request happens to return — a row
+    /// inserted while it's still in flight has to toast, since the person
+    /// genuinely hasn't seen it; diffing against "whatever came back last
+    /// time" instead would silently swallow exactly that row (present on
+    /// the very first poll, so treated as already-seen, never toasted).
+    /// Started from applySession() on sign-in, stopped on sign-out.
+    func startNotificationPolling() {
+        notificationPollTask?.cancel()
+        let sessionStart = Date()
+        var toastedIDs = Set<UUID>()
+        notificationPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, let uid = self.userID else { return }
+                do {
+                    let rows: [AppNotification] = try await SupabaseService.client
+                        .from("notifications").select()
+                        .eq("recipient_id", value: uid)
+                        .order("created_at", ascending: false)
+                        .limit(50)
+                        .execute().value
+                    for row in rows where !toastedIDs.contains(row.id) && row.createdAt > sessionStart {
+                        toastedIDs.insert(row.id)
+                        self.pushToast(title: row.title, body: row.body)
+                    }
+                    self.notifications = rows
+                } catch {
+                    print("Notification poll failed:", error)
+                }
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+            }
+        }
+    }
+
+    func stopNotificationPolling() {
+        notificationPollTask?.cancel()
+        notificationPollTask = nil
     }
 
     /// Marks one notification read — never all at once, and never merely

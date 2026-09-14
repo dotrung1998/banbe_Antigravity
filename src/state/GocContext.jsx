@@ -146,6 +146,12 @@ const initialState = {
   editNameSaving: false,
   notifications: [],
   unreadNotifications: 0,
+  // Ephemeral in-app toasts, surfaced proactively (see the polling effect
+  // near loadNotifications) — separate from `notifications` itself, which
+  // stays the permanent, pull-based inbox (Notifications.jsx). Each entry:
+  // { id, title, body, leaving }. `leaving` drives the exit animation
+  // before pushToast's own timeout actually removes it from this array.
+  toasts: [],
   // This account's own shareable code — null until signed in and loaded.
   referralCode: null,
   referralShared: false,
@@ -444,12 +450,46 @@ export function GocProvider({ children }) {
     return () => { active = false; };
   }, [set, s.eventKey]);
 
-  // Unread count for the notification bell — refreshed on login so the badge
-  // is right without having to open the notifications screen first.
+  // A toast auto-dismisses in two steps: `leaving: true` swaps it to the
+  // exit animation (gocToastOut, index.css), then a second timeout actually
+  // drops it from the array once that animation has had time to finish.
+  const pushToast = useCallback((title, body) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    set(prev => ({ toasts: [...prev.toasts, { id, title, body, leaving: false }] }));
+    setTimeout(() => {
+      set(prev => ({ toasts: prev.toasts.map(t => (t.id === id ? { ...t, leaving: true } : t)) }));
+    }, 2200);
+    setTimeout(() => {
+      set(prev => ({ toasts: prev.toasts.filter(t => t.id !== id) }));
+    }, 2500);
+  }, [set]);
+
+  // Unread count for the notification bell, refreshed on login AND on a
+  // 5s poll thereafter (matching this app's existing poll conventions —
+  // DisputeChatPanel's 4s, PaymentDetails' 6s — since there is no realtime
+  // subscription anywhere in this codebase; see 03-dispute-chat.md). The
+  // poll is also what makes every event type that already writes a
+  // `notifications` row (booking confirmed, dispute resolved, a dispute
+  // chat message, etc. — see 07-notifications.md) actually surface as a
+  // toast while the app is open, instead of sitting invisible until
+  // someone happens to open the bell screen.
   useEffect(() => {
-    if (!s.user?.id) { set({ notifications: [], unreadNotifications: 0 }); return; }
+    if (!s.user?.id) { set({ notifications: [], unreadNotifications: 0, toasts: [] }); return; }
     let active = true;
-    (async () => {
+    // Captured synchronously, before the first fetch even goes out — a
+    // notification created while that first request is still in flight
+    // still has to toast, since the person genuinely hasn't seen it yet.
+    // Diffing against "whatever the previous poll happened to return"
+    // instead (this used to) has exactly that race: a row landing in the
+    // gap between mount and the first response arriving would already be
+    // present on that very first poll and so get silently marked "already
+    // seen," never toasting at all. Comparing each row's own `created_at`
+    // against a fixed point captured before any request starts has no such
+    // gap. `toastedIds` then guards against toasting the same row twice
+    // across polls once it has been shown.
+    const sessionStart = new Date();
+    const toastedIds = new Set();
+    const poll = async () => {
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
@@ -457,10 +497,19 @@ export function GocProvider({ children }) {
         .order('created_at', { ascending: false })
         .limit(50);
       if (!active || error) return;
-      set({ notifications: data || [], unreadNotifications: (data || []).filter(n => !n.read_at).length });
-    })();
-    return () => { active = false; };
-  }, [set, s.user?.id]);
+      const rows = data || [];
+      for (const n of rows) {
+        if (!toastedIds.has(n.id) && new Date(n.created_at) > sessionStart) {
+          toastedIds.add(n.id);
+          pushToast(n.title, n.body);
+        }
+      }
+      set({ notifications: rows, unreadNotifications: rows.filter(n => !n.read_at).length });
+    };
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => { active = false; clearInterval(interval); };
+  }, [set, s.user?.id, pushToast]);
 
   // Real event assignment for the signed-in account: which of the catalogue
   // events they're attending (from actual bookings) and which they organize

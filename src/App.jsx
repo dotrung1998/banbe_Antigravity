@@ -37,6 +37,7 @@ import Documents from './screens/Documents.jsx';
 import DocumentView from './screens/DocumentView.jsx';
 import Verifications from './screens/Verifications.jsx';
 import Disputes from './screens/Disputes.jsx';
+import ToastStack from './screens/ToastStack.jsx';
 
 const SCREENS = {
   splash: Splash,
@@ -101,6 +102,7 @@ function Shell() {
         {state.reasonPrompt && <ReasonSheet />}
         {state.loading && <Loading label={T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
+      <ToastStack />
     </div>
   );
 }
