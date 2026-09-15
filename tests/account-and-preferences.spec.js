@@ -36,19 +36,12 @@ test.describe('Account & Preferences Screen', () => {
     await expect(accountScreen).toBeVisible({ timeout: 3000 });
   });
 
-  test('shows an organizer mode toggle instead of an organizer sign-up', async ({ page }) => {
-    await page.getByText('Tài khoản').first().click();
-    const accountScreen = page.locator('[data-screen-label="Account"]');
-    await expect(accountScreen).toBeVisible({ timeout: 3000 });
-
-    const toggle = accountScreen.getByTestId('organizer-mode-toggle');
-    await expect(toggle).toBeVisible();
-    await expect(toggle).toContainText('Chế độ tổ chức');
-
-    // A guest has nothing to toggle yet, so the switch sends them to Login.
-    await toggle.click();
-    await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 3000 });
-  });
+  // A guest-mode "organizer toggle sends you to Login" test used to live
+  // here, but Task 1 (mandatory login, 2026-09-18) means Account itself is
+  // no longer reachable while signed out at all — 'account' isn't in
+  // GocContext.jsx's GUEST_ALLOWED_SCREENS, so the blanket guard routes a
+  // guest to Login before Account ever renders. The scenario this tested
+  // (a guest seeing the toggle at all) can no longer happen.
 
   test('can return from Account to Home', async ({ page }) => {
     await page.getByText('Tài khoản').first().click();
@@ -68,10 +61,12 @@ test.describe('Account & Preferences Screen', () => {
     const securityScreen = page.locator('[data-screen-label="Security"]');
     await expect(securityScreen).toBeVisible({ timeout: 3000 });
 
-    // Signed out there's nothing to set a password on yet, so the form
-    // must not render an empty/broken version of itself.
-    await expect(securityScreen.getByText('Đăng nhập để đặt mật khẩu cho tài khoản.')).toBeVisible();
-    await expect(securityScreen.locator('input[type="password"]')).toHaveCount(0);
+    // The shared test account (tests/global-setup.js) is signed in, so this
+    // now exercises the signed-in form — the signed-out "sign in to set a
+    // password" message this test used to check is no longer reachable at
+    // all under Task 1 (mandatory login): Account itself requires a
+    // session, so there's no guest state left to render here.
+    await expect(securityScreen.locator('input[type="password"]').first()).toBeVisible();
 
     // One tap back returns to Account, not Home.
     await securityScreen.getByText('‹ Tài khoản').click();

@@ -30,13 +30,16 @@ test.describe('Referral link capture', () => {
     expect(stored).toBeNull();
   });
 
-  test('a signed-out guest has no invite-friends card on Account', async ({ page }) => {
+  // Task 1 (mandatory login, 2026-09-18) means Account is no longer
+  // reachable while signed out at all, so the "guest sees no invite card"
+  // case this used to check can no longer happen — a signed-in user (the
+  // only kind Account ever renders for now) always has a referral code,
+  // so the card renders instead.
+  test('a signed-in account has an invite-friends card with its own referral code', async ({ page }) => {
     await setupToHome(page);
     await page.getByText('Tài khoản').first().click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 3000 });
 
-    // No referralCode until signed in, so the card that shares one has
-    // nothing to show yet — it must not render an empty/broken version.
-    await expect(page.getByText('Mời bạn bè')).toHaveCount(0);
+    await expect(page.getByText('Mời bạn bè')).toBeVisible();
   });
 });

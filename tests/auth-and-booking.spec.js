@@ -1,23 +1,38 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { setupToHome } from './helpers.js';
 
+// Task 1 (mandatory login, 2026-09-18) means neither test in this file can
+// start from an authenticated Home the way most of the suite now does: both
+// are specifically about the unauthenticated experience, which the shared,
+// already-signed-in storageState (tests/global-setup.js) would short-circuit
+// entirely — so this file opts out of it. Home/Event/Reserve are no longer
+// reachable while signed out at all (the blanket guard in GocContext.jsx
+// routes any non-guest-allowed screen straight to Login), so "browse
+// anonymously, then get redirected only once you try to reserve" is no
+// longer a real flow to test; a signed-out visitor lands on Login as soon
+// as onboarding finishes, before ever seeing Home or an event card.
 test.describe('Authentication & Booking Flows', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   test.beforeEach(async ({ page }) => {
-    await setupToHome(page);
+    await page.goto('/');
+    await page.evaluate(() => localStorage.removeItem('banbe.preferences'));
+    await page.reload();
+
+    const splash = page.locator('[data-screen-label="Splash"]');
+    await expect(splash).toBeVisible({ timeout: 3000 });
+    await splash.click();
+    await page.getByText('Tiếng Việt', { exact: true }).click();
+    await page.locator('[data-screen-label="Appearance"]').getByText('Sáng', { exact: true }).click();
+    await page.getByText('Tiếp tục', { exact: true }).click();
+
+    // A signed-out visitor lands on Login directly — there is no Home to
+    // browse first.
+    await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 5000 });
   });
 
-  test('navigates to Login screen and switches between log in and sign up', async ({ page }) => {
-    // Tap "Tài khoản" to open Account screen
-    await page.getByText('Tài khoản').first().click();
-    await expect(page.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 3000 });
-
-    // Tap "Đăng nhập để lưu sự kiện và nhắn tin"
-    await page.getByText('Đăng nhập để lưu sự kiện và nhắn tin').click();
-
-    // Verify Login screen
+  test('lands on Login screen and switches between log in and sign up', async ({ page }) => {
     const loginScreen = page.locator('[data-screen-label="Login"]');
-    await expect(loginScreen).toBeVisible({ timeout: 3000 });
 
     // Log in is the default tab, and there is no account type to pick:
     // organizer mode is a toggle on the account, not a kind of account.
@@ -35,19 +50,5 @@ test.describe('Authentication & Booking Flows', () => {
     const emailInput = page.locator('input[type="email"], input[placeholder="ban@email.com"]');
     await expect(emailInput.first()).toBeVisible();
     await emailInput.first().fill('testuser@example.com');
-  });
-
-  test('prompts login when reserving tickets while unauthenticated', async ({ page }) => {
-    // Click on "Bếp Nhỏ №12" event card
-    await page.getByText('Bếp Nhỏ №12').first().click();
-
-    // EventDetail screen uses data-screen-label="Event"
-    await expect(page.locator('[data-screen-label="Event"]')).toBeVisible({ timeout: 3000 });
-
-    // Click the reserve/waitlist bar at the bottom (contains "Giữ chỗ")
-    await page.locator('[data-screen-label="Event"]').getByText(/Giữ chỗ/).click();
-
-    // Unauthenticated users are redirected to Login
-    await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 3000 });
   });
 });

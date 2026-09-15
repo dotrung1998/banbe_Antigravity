@@ -1,17 +1,35 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { setupToHome } from './helpers.js';
 
+// Every test here exercises the Login screen's own signed-out behavior —
+// Task 1 (mandatory login, 2026-09-18) means Home/Account are no longer
+// reachable while signed out at all (the blanket guard in GocContext.jsx
+// routes any non-guest-allowed screen straight to Login), so this file
+// opts out of the shared, already-signed-in storageState
+// (tests/global-setup.js) and reaches Login the only way a real
+// signed-out visitor can: straight after onboarding, not via an Account
+// link that no longer exists for them.
 test.describe('Login & Signup Notification Messages', () => {
-  test.beforeEach(async ({ page }) => {
-    await setupToHome(page);
-  });
+  test.use({ storageState: { cookies: [], origins: [] } });
 
   async function openLogin(page) {
-    await page.getByText('Tài khoản').first().click();
-    await expect(page.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 3000 });
-    await page.getByText('Đăng nhập để lưu sự kiện và nhắn tin').click();
-    await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 3000 });
+    await page.goto('/');
+    await page.evaluate(() => localStorage.removeItem('banbe.preferences'));
+    await page.reload();
+
+    const splash = page.locator('[data-screen-label="Splash"]');
+    await expect(splash).toBeVisible({ timeout: 3000 });
+    await splash.click();
+    await page.getByText('Tiếng Việt', { exact: true }).click();
+    await page.locator('[data-screen-label="Appearance"]').getByText('Sáng', { exact: true }).click();
+    await page.getByText('Tiếp tục', { exact: true }).click();
+
+    await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 5000 });
+
+    // Task 1's consent checkbox gates every submit action on this screen
+    // (unticked by default) — every test here goes on to submit a form, so
+    // tick it once up front rather than repeat this in each test.
+    await page.getByTestId('login-policy-consent').check();
   }
 
   // The submit button is the app's promise that the address can be sent

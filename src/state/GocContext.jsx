@@ -321,7 +321,15 @@ export const CANCEL_BOOKING_REASONS = [
 // legitimate to go back to from a forced gate like this one.
 function postAuthDestination(prev) {
   const target = prev.arrivedFromSharedLink ? 'organizer' : 'home';
-  if (prev.user) return { screen: target };
+  // !prev.sessionChecked means the async getSession()/profile fetch hasn't
+  // resolved yet — prev.user being null here doesn't mean signed-out, just
+  // "not confirmed yet" (e.g. a fast click through langPick/themePick can
+  // race ahead of that network round trip even for an already-authenticated
+  // account). Only the blanket guard effect gets to call someone
+  // signed-out, and only once sessionChecked is actually true — this just
+  // goes to `target` optimistically in the meantime and lets that guard
+  // correct course (bounce to Login) the moment it knows for sure.
+  if (prev.user || !prev.sessionChecked) return { screen: target };
   return {
     screen: 'login', authMode: 'login', authMandatory: true,
     authReturnScreen: target, authBackScreen: target,
@@ -349,7 +357,14 @@ export function GocProvider({ children }) {
         // reads to decide whether to route into 'langPick' or straight to
         // 'home'/'login'.
         hasOnboarded: raw !== null,
-        ...(sharedOrgEventKey ? { eventKey: sharedOrgEventKey, arrivedFromSharedLink: true } : {}),
+        // A shared "?org=" link is an explicit deep link someone tapped to
+        // see one specific organizer right away — sitting it through the
+        // splash/onboarding sequence first would defeat the point of a
+        // fast-opening share preview, so this bypasses both entirely and
+        // opens straight on Organizer (same as before Task 2's splash
+        // change). The blanket guard still applies from here if it turns
+        // out there's no session once that resolves.
+        ...(sharedOrgEventKey ? { eventKey: sharedOrgEventKey, arrivedFromSharedLink: true, screen: 'organizer' } : {}),
       };
     } catch {
       return initialState;

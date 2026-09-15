@@ -83,8 +83,12 @@ export default async function globalSetup() {
   // between that async check and the test's own clicks, which is exactly
   // what made setupToHome() flaky against this shared, already-signed-in
   // account. Setting it once here, up front, removes the race entirely.
+  // role: 'participant' is reset here too — the account's role can drift to
+  // 'organizer' from unrelated exploration (it did, once, outside any test
+  // run) and every "signed-in goer" test in the fast suite silently assumes
+  // this shared account is never a host or admin.
   const registryRow = await admin.from('email_registrations').select('auth_user_id').eq('email', PERSISTENT_TEST_EMAIL).single();
-  await admin.from('profiles').update({ locale: 'vi', theme: 'light', prefs_saved: true }).eq('id', registryRow.data.auth_user_id);
+  await admin.from('profiles').update({ locale: 'vi', theme: 'light', prefs_saved: true, role: 'participant' }).eq('id', registryRow.data.auth_user_id);
 
   const { session } = await signIn(PERSISTENT_TEST_EMAIL, PERSISTENT_TEST_PASSWORD);
   const projectRef = new URL(process.env.VITE_SUPABASE_URL).hostname.split('.')[0];
