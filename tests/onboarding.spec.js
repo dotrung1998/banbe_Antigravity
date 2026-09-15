@@ -1,6 +1,17 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 
+// This suite exercises the pre-auth onboarding flow itself (splash, language,
+// theme), so it deliberately runs signed OUT — playwright.config.js's shared
+// storageState (tests/global-setup.js) would put an already-authenticated,
+// already-onboarded (prefs_saved=true) account in the page, which both skips
+// past these screens and races syncUser's own server-driven redirect against
+// them. Task 1 (mandatory login, 2026-09-18) also means the flow no longer
+// ends at Home for a signed-out visitor — langPick/themePick are the only
+// guest-allowed screens after Splash, so completing them now lands on the
+// mandatory Login screen instead.
+test.use({ storageState: { cookies: [], origins: [] } });
+
 // Clear localStorage before each test so onboarding always runs fresh
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -38,8 +49,8 @@ test.describe('Application Launch & Onboarding Flow', () => {
     // Click Continue
     await page.getByText('Continue', { exact: true }).click();
 
-    // 4. Arrive at Home Screen
-    await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 5000 });
+    // 4. Task 1 (mandatory login): a signed-out visitor lands on Login, not Home.
+    await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 5000 });
   });
 
   test('completes onboarding with Vietnamese and light theme', async ({ page }) => {
@@ -64,7 +75,7 @@ test.describe('Application Launch & Onboarding Flow', () => {
     // Continue
     await page.getByText('Tiếp tục', { exact: true }).click();
 
-    await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 5000 });
   });
 
   test('a returning visitor skips onboarding and keeps their language and theme', async ({ page }) => {
@@ -73,12 +84,13 @@ test.describe('Application Launch & Onboarding Flow', () => {
     await page.getByText('English', { exact: true }).click();
     await page.locator('[data-screen-label="Appearance"]').getByText('Dark', { exact: true }).click();
     await page.getByText('Continue', { exact: true }).click();
-    await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 5000 });
 
-    // Revisiting the app should land straight on Home with the same
-    // preferences, never back through the splash/language/theme pickers.
+    // Revisiting the app should land straight back on Login (still
+    // signed out) with the same preferences, never back through the
+    // splash/language/theme pickers — hasOnboarded is now true.
     await page.reload();
-    await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('[data-screen-label="Splash"]')).toHaveCount(0);
     await expect(page.locator('[data-bb-theme]')).toHaveAttribute('data-bb-theme', 'dark');
   });

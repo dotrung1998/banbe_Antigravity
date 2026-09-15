@@ -6,6 +6,7 @@ import { renderPaymentDocument } from '../lib/paymentDocument.js';
 import { buildVietQrPayload } from '../lib/vietqr.js';
 import { msUntil, liveEventOverrides } from '../lib/countdown.js';
 import { normalizeProofFile } from '../lib/proofUpload.js';
+import { POLICY_VERSION } from '../lib/policy.js';
 
 const GocCtx = createContext(null);
 
@@ -45,8 +46,33 @@ if (typeof window !== 'undefined') {
   }
 }
 
+// Every screen a signed-out visitor may ever legitimately be on. Anything
+// else while `!user` gets redirected to 'login' by the guard effect below
+// — the enforcement point for "no guest browsing of any screen" (Task 1).
+const GUEST_ALLOWED_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy']);
+
 const initialState = {
   screen: 'splash',
+  // Whether the checkbox on Login.jsx has been ticked this session — reset
+  // whenever Login mounts fresh; gates submitCurrentForm alongside the
+  // existing email/password validity checks.
+  policyConsent: false,
+  // True only when Login was reached by force (the mandatory post-splash/
+  // post-onboarding gate, or the guard effect catching an unauthenticated
+  // screen change) rather than a deliberate "sign in to do X" prompt that
+  // already has a real screen to fall back to — hides the Back link, since
+  // there's nowhere legitimate for it to go.
+  authMandatory: false,
+  // Set once by the auth bootstrap effect's first resolution (real session
+  // present or genuinely absent) — the guard effect waits for this so a
+  // slow session check can't get misread as "signed out" and bounce a
+  // returning user to Login before their restored session even arrives.
+  sessionChecked: false,
+  // Whether this browser has already been through language/theme
+  // onboarding once (i.e. localStorage had a saved preferences record) —
+  // read by the splash timer to decide whether to route into 'langPick'
+  // or straight to 'home'/'login'. Overridden at init from that check.
+  hasOnboarded: false,
   mode: 'goer',
   hasHosted: false,
   eventKey: 'bepnho',
@@ -286,6 +312,22 @@ export const CANCEL_BOOKING_REASONS = [
   { key: 'other', vi: 'Khác', en: 'Other' },
 ];
 
+// Shared by the splash timer and finishOnboarding() (Task 1 — no guest
+// browsing of any screen): decides where to land once onboarding/splash is
+// done — 'home' (or the shared-org-link target) if actually signed in,
+// otherwise the mandatory Login gate. authReturnScreen preserves the
+// intended destination so signing in lands there instead of always Home;
+// authMandatory hides Login's own Back link, since there's nowhere
+// legitimate to go back to from a forced gate like this one.
+function postAuthDestination(prev) {
+  const target = prev.arrivedFromSharedLink ? 'organizer' : 'home';
+  if (prev.user) return { screen: target };
+  return {
+    screen: 'login', authMode: 'login', authMandatory: true,
+    authReturnScreen: target, authBackScreen: target,
+  };
+}
+
 export function GocProvider({ children }) {
   const [state, setStateRaw] = useState(() => {
     try {
@@ -300,10 +342,13 @@ export function GocProvider({ children }) {
         // stored"). A fresh position is requested again each session below.
         located: saved.located === true ? true : saved.located === false ? false : null,
         // A saved preferences record means this browser has been through
-        // onboarding before — replaying the splash/language/theme pickers on
-        // every single revisit is what made the choice look like it "resets"
-        // even though the value itself was never actually lost.
-        screen: sharedOrgEventKey ? 'organizer' : (raw !== null ? 'home' : 'splash'),
+        // onboarding (language/theme) before — that part is skipped on a
+        // revisit, but the splash itself always shows now (Task 2) and
+        // `screen` always starts 'splash' regardless (initialState's
+        // default) — `hasOnboarded` is just what the splash timer below
+        // reads to decide whether to route into 'langPick' or straight to
+        // 'home'/'login'.
+        hasOnboarded: raw !== null,
         ...(sharedOrgEventKey ? { eventKey: sharedOrgEventKey, arrivedFromSharedLink: true } : {}),
       };
     } catch {
@@ -352,12 +397,12 @@ export function GocProvider({ children }) {
     const syncUser = async (user) => {
       if (!active) return;
       if (!user) {
-        set({ user: null, referralCode: null });
+        set({ user: null, referralCode: null, sessionChecked: true });
         return;
       }
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, locale, theme, prefs_saved, display_name, referral_code')
+        .select('role, locale, theme, prefs_saved, display_name, referral_code, policy_accepted_at, policy_version')
         .eq('id', user.id)
         .maybeSingle();
       const role =
@@ -369,8 +414,24 @@ export function GocProvider({ children }) {
       const displayName = (profile?.display_name || '').trim() || user.user_metadata?.display_name || '';
       set({
         user: { ...user, name: displayName }, accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer',
-        referralCode: profile?.referral_code || null,
+        referralCode: profile?.referral_code || null, sessionChecked: true,
       });
+
+      // Proof-of-consent bookkeeping (Task 1, migration 055,
+      // banbe_User_Policy.md B1/B3): the ONLY way to ever reach a session
+      // at all now is through Login.jsx's mandatory, unticked-by-default
+      // consent checkbox (submitCurrentForm is disabled until it's
+      // checked) — so any session belonging to a profile with no recorded
+      // consent yet just passed through that gate, and can be recorded
+      // here unconditionally rather than needing to thread the checkbox's
+      // transient UI state through the async sign-in/verify flow.
+      if (profile && !profile.policy_accepted_at) {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ policy_accepted_at: new Date().toISOString(), policy_version: POLICY_VERSION })
+          .eq('id', user.id);
+        if (error) console.warn('Failed to record policy consent:', error);
+      }
 
       // The account's actual host page name — Account's "Hosting" card used
       // to always fall back to the generic "Bếp Nhỏ" placeholder here,
@@ -420,13 +481,33 @@ export function GocProvider({ children }) {
         }));
         syncUser(session.user);
       }
-      if (active && !session) set({ user: null });
+      if (active && !session) set({ user: null, sessionChecked: true });
     });
     return () => {
       active = false;
       listener.subscription.unsubscribe();
     };
   }, [set]);
+
+  // Task 1 — no guest browsing of any screen: the single, centralized
+  // enforcement point, rather than auditing every one of this file's many
+  // `set({ screen: ... })` call sites individually. Catches cases the
+  // targeted fixes (finishOnboarding, the splash timer, logout) don't —
+  // e.g. goHome()'s plain `set({ screen: 'home' })`, callable from
+  // anywhere, previously had no auth check at all. Waits for
+  // `sessionChecked` so a slow-resolving session restore can't get
+  // misread as "signed out" and bounce a returning user before their
+  // session even arrives — the splash screen's own ~2.6s already covers
+  // this in the common case, but this effect can fire independently of
+  // splash (e.g. a stray screen change right as sessionChecked settles).
+  useEffect(() => {
+    if (s.sessionChecked && !s.user && !GUEST_ALLOWED_SCREENS.has(s.screen)) {
+      set({
+        screen: 'login', authMode: 'login', authMandatory: true,
+        authReturnScreen: s.screen, authBackScreen: s.screen,
+      });
+    }
+  }, [s.sessionChecked, s.user, s.screen, set]);
 
   useEffect(() => {
     if (!s.user?.id) return;
@@ -649,13 +730,24 @@ export function GocProvider({ children }) {
   const splashTimer = useRef(null);
   useEffect(() => {
     splashTimer.current = setTimeout(() => {
-      setStateRaw(prev => (prev.screen === 'splash' ? { ...prev, screen: 'langPick' } : prev));
+      setStateRaw(prev => {
+        if (prev.screen !== 'splash') return prev;
+        // First-ever visit still goes through language/theme regardless of
+        // auth — the mandatory-login gate applies once that's done
+        // (finishOnboarding), not before.
+        if (!prev.hasOnboarded) return { ...prev, screen: 'langPick' };
+        return { ...prev, ...postAuthDestination(prev) };
+      });
     }, 2600);
     return () => clearTimeout(splashTimer.current);
   }, []);
   const dismissSplash = useCallback(() => {
     clearTimeout(splashTimer.current);
-    set(prev => (prev.screen === 'splash' ? { screen: 'langPick' } : {}));
+    set(prev => {
+      if (prev.screen !== 'splash') return {};
+      if (!prev.hasOnboarded) return { screen: 'langPick' };
+      return postAuthDestination(prev);
+    });
   }, [set]);
 
   // Once signed in, language & theme are account preferences, not just this
@@ -675,7 +767,10 @@ export function GocProvider({ children }) {
   const pickEn = useCallback(() => { set({ lang: 'en', screen: 'themePick' }); persistAccountPreference({ locale: 'en' }); }, [set, persistAccountPreference]);
   const pickLight = useCallback(() => { set({ theme: 'light' }); persistAccountPreference({ theme: 'light' }); }, [set, persistAccountPreference]);
   const pickDark = useCallback(() => { set({ theme: 'dark' }); persistAccountPreference({ theme: 'dark' }); }, [set, persistAccountPreference]);
-  const finishOnboarding = useCallback(() => set({ screen: 'home' }), [set]);
+  // Task 1: no guest browsing of any screen — lands on the mandatory Login
+  // gate instead of Home when not actually signed in, preserving where the
+  // shared-org-link case wanted to go (postAuthDestination).
+  const finishOnboarding = useCallback(() => set(prev => postAuthDestination(prev)), [set]);
 
   const EN = s.lang === 'en';
   const T = useCallback((vi, en) => (EN ? en : vi), [EN]);
@@ -685,6 +780,14 @@ export function GocProvider({ children }) {
     persistAccountPreference({ theme: next });
   }, [set, s.theme, persistAccountPreference]);
   const pickTheme = useCallback((theme) => { set({ theme }); persistAccountPreference({ theme }); }, [set, persistAccountPreference]);
+
+  // Task 1's consent checkbox (Login.jsx) — unticked by default, gates
+  // submitCurrentForm alongside the existing email/password validity
+  // checks. Recorded server-side in syncUser() once a session exists,
+  // never here (this is only ever the transient, pre-session UI state).
+  const togglePolicyConsent = useCallback(() => set(prev => ({ policyConsent: !prev.policyConsent })), [set]);
+  const openPolicy = useCallback(() => set(prev => ({ screen: 'policy', policyBackScreen: prev.screen })), [set]);
+  const backFromPolicy = useCallback(() => set(prev => ({ screen: prev.policyBackScreen || 'login' })), [set]);
   // Tapping a photo in either gallery ("Hình ảnh" on an event, "Ảnh của X"
   // on an organizer page) opens it larger, over a dimmed backdrop, with the
   // whole gallery loaded in behind it so left/right swipes can move through
@@ -1556,8 +1659,13 @@ export function GocProvider({ children }) {
   const logout = useCallback(async () => {
     await supabase.auth.signOut();
     // Roles belong to the account that just left; leaving them behind would
-    // leak the previous user's hosting state into the next sign-in.
-    set({ user: null, accountType: 'participant', organizerMode: false, hasHosted: false, mode: 'goer', screen: 'home', referralCode: null, orgRegName: '' });
+    // leak the previous user's hosting state into the next sign-in. Lands
+    // on Login, not Home — Task 1: no guest browsing after signing out.
+    set({
+      user: null, accountType: 'participant', organizerMode: false, hasHosted: false, mode: 'goer',
+      screen: 'login', authMode: 'login', authMandatory: true, authReturnScreen: 'home', authBackScreen: 'home',
+      referralCode: null, orgRegName: '',
+    });
   }, [set]);
 
   // ---- display name ----
@@ -1870,6 +1978,7 @@ export function GocProvider({ children }) {
   // "Code" method: request a 6-digit code by email, for either Login or
   // Signup. Verifying it (below) is what actually establishes the session.
   const codeRequestSubmit = useCallback(async () => {
+    if (!s.policyConsent) return; // login-submit's own disabled styling already reflects this; a defensive no-op here, same as the email-validity check right below
     if (!emailValid(s.loginEmail)) return;
     const email = s.loginEmail.trim();
     const displayName = s.loginNickname.trim();
@@ -1882,11 +1991,12 @@ export function GocProvider({ children }) {
     } catch (e) {
       set({ loginSent: false, loginSentVia: null, reserveError: authEmailErrorMessage(e, s.authMode) });
     }
-  }, [set, s.loginEmail, s.loginNickname, s.authMode, authEmailErrorMessage]);
+  }, [set, s.loginEmail, s.loginNickname, s.authMode, s.policyConsent, authEmailErrorMessage]);
   // "Password" method, Signup: creates the account with the password
   // actually chosen, then — same as the code method — still requires
   // entering the emailed confirmation code once to finish.
   const passwordSignupSubmit = useCallback(async () => {
+    if (!s.policyConsent) return;
     if (!emailValid(s.loginEmail)) return;
     const email = s.loginEmail.trim();
     const displayName = s.loginNickname.trim();
@@ -1901,11 +2011,12 @@ export function GocProvider({ children }) {
     } catch (e) {
       set({ loginSent: false, loginSentVia: null, reserveError: authEmailErrorMessage(e, 'signup') });
     }
-  }, [set, s.loginEmail, s.loginNickname, s.loginPassword, s.loginPasswordConfirm, authEmailErrorMessage, T]);
+  }, [set, s.loginEmail, s.loginNickname, s.loginPassword, s.loginPasswordConfirm, s.policyConsent, authEmailErrorMessage, T]);
   // "Password" method, Login: straight to Supabase, no code step — the
   // account already has a password. (The onAuthStateChange listener handles
   // moving off the Login screen once the session lands.)
   const passwordLoginSubmit = useCallback(async () => {
+    if (!s.policyConsent) return;
     if (!emailValid(s.loginEmail)) return;
     if (!s.loginPassword) return set({ reserveError: T('Nhập mật khẩu của bạn.', 'Enter your password.') });
     const { error } = await supabase.auth.signInWithPassword({ email: s.loginEmail.trim(), password: s.loginPassword });
@@ -1914,7 +2025,7 @@ export function GocProvider({ children }) {
       return;
     }
     set({ reserveError: '' });
-  }, [set, s.loginEmail, s.loginPassword, T]);
+  }, [set, s.loginEmail, s.loginPassword, s.policyConsent, T]);
   // Runs exactly once, right after a brand-new account's first sign-in
   // (never on an ordinary login — see the isSignup guard at the call site).
   // Redeems whatever referral code was stashed from the "?ref=" link they
@@ -2482,7 +2593,7 @@ export function GocProvider({ children }) {
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, deleteNotification, openNotification, clearChatHighlight, dismissToast,
     canHost, toggleOrganizerMode, enableOrganizerMode,
-    pickVi, pickEn, pickLight, pickDark, finishOnboarding,
+    pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, shareEvent, referralLink, shareReferral,
@@ -2511,7 +2622,7 @@ export function GocProvider({ children }) {
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, deleteNotification, openNotification, clearChatHighlight, dismissToast,
     canHost, toggleOrganizerMode, enableOrganizerMode,
-    pickVi, pickEn, pickLight, pickDark, finishOnboarding,
+    pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, shareEvent, referralLink, shareReferral,

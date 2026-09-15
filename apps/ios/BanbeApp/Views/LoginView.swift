@@ -41,6 +41,7 @@ struct LoginView: View {
     private var showSubmit: Bool { auth.codeSent || emailFormatOk }
 
     private var canRequest: Bool {
+        guard app.policyConsent else { return false } // Task 1's consent checkbox — banbe_User_Policy.md B1/B3
         guard emailFormatOk else { return false }
         if mode == .signup && displayName.isEmpty { return false }
         if method == .password {
@@ -55,7 +56,14 @@ struct LoginView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Quay lại", "Back")) { app.screen = app.authBackScreen }
+                // Hidden when this login was reached by force (Task 1's
+                // mandatory gate — post-splash, post-onboarding, sign-out,
+                // or a stray screen change while signed out) rather than a
+                // deliberate "sign in to do X" prompt: there's nowhere
+                // legitimate for Back to go.
+                if !app.authMandatory {
+                    BackLink(label: app.T("Quay lại", "Back")) { app.screen = app.authBackScreen }
+                }
 
                 HStack(spacing: 16) {
                     ForEach([AuthMode.login, AuthMode.signup], id: \.self) { option in
@@ -140,6 +148,32 @@ struct LoginView: View {
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("login.forgotPassword")
                     }
+                }
+
+                // Task 1 — unticked by default, gates `canRequest` above.
+                // Exactly banbe_User_Policy.md's summary-screen wording.
+                if !auth.codeSent {
+                    HStack(alignment: .top, spacing: 8) {
+                        Button {
+                            app.policyConsent.toggle()
+                        } label: {
+                            Image(systemName: app.policyConsent ? "checkmark.square.fill" : "square")
+                                .foregroundStyle(app.palette.ink)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("login.policyConsent")
+
+                        (
+                            Text(app.T("Tôi đồng ý với ", "I agree to the "))
+                            + Text(app.T("Điều khoản sử dụng và Thông báo quyền riêng tư", "Terms of Service and Privacy Notice"))
+                                .fontWeight(.semibold)
+                                .underline()
+                        )
+                        .font(.system(size: 12))
+                        .onTapGesture { app.openPolicy() }
+                    }
+                    .padding(.top, 14)
+                    .accessibilityIdentifier("login.policyLink")
                 }
 
                 if showSubmit {

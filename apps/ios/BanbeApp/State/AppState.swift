@@ -13,6 +13,7 @@ enum Screen: String {
     case security
     case paymentDetails, billing, payout, documents, documentView
     case verifications, disputes
+    case policy
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -123,6 +124,21 @@ final class AppState: ObservableObject {
     @Published var eventBackScreen: Screen = .home
     @Published var authReturnScreen: Screen = .home
     @Published var authBackScreen: Screen = .home
+    /// True only when Login was reached by force (the mandatory post-
+    /// splash/post-onboarding gate, or the guard in RootView catching an
+    /// unauthenticated screen change) rather than a deliberate "sign in to
+    /// do X" prompt that already has a real screen to fall back to —
+    /// LoginView hides its Back link when this is true.
+    @Published var authMandatory = false
+    /// Task 1's consent checkbox (LoginView) — unticked by default, gates
+    /// the submit button alongside the existing field-validity checks.
+    @Published var policyConsent = false
+    @Published var policyBackScreen: Screen = .login
+    func openPolicy() { policyBackScreen = screen; screen = .policy }
+    /// Every screen a signed-out visitor may ever legitimately be on —
+    /// RootView's guard redirects anything else to .login. The
+    /// enforcement point for "no guest browsing of any screen" (Task 1).
+    static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .login, .policy]
     @Published var chatBack: Screen = .organizer
     @Published var mode: String = "goer"
     // Inbox and Dashboard are each reachable from more than one place (Home's
@@ -337,11 +353,13 @@ final class AppState: ObservableObject {
         locationService.onUpdate = { [weak self] coords in
             self?.userCoords = coords
         }
-        // A saved preference means this device has already been through
-        // onboarding — replaying the splash/language/theme pickers on every
-        // launch is what made the choice look like it "resets" on the web.
-        let seen = UserDefaults.standard.bool(forKey: "banbe.onboarded")
-        screen = seen ? .home : .splash
+        // The splash always shows now (Task 2) — `screen` always starts
+        // .splash regardless of whether this device has been through
+        // onboarding before. `hasOnboarded` (read fresh, not cached, since
+        // finishOnboarding() can flip it mid-session) is just what
+        // dismissSplash() reads to decide whether to route into .langPick
+        // or straight to .home/.login.
+        screen = .splash
         if UserDefaults.standard.object(forKey: "banbe.located") != nil {
             let allowed = UserDefaults.standard.bool(forKey: "banbe.located")
             located = allowed
@@ -581,7 +599,32 @@ final class AppState: ObservableObject {
 
     // MARK: - Onboarding
 
-    func dismissSplash() { screen = .langPick }
+    private var hasOnboarded: Bool { UserDefaults.standard.bool(forKey: "banbe.onboarded") }
+
+    /// Task 1 — no guest browsing of any screen: lands on the mandatory
+    /// Login gate instead of Home when not actually signed in.
+    /// authReturnScreen/authBackScreen point at where onboarding was
+    /// actually headed, so signing in lands there instead of always Home.
+    private func postAuthDestination(isSignedIn: Bool) {
+        let target: Screen = .home
+        if isSignedIn {
+            screen = target
+        } else {
+            screen = .login
+            authMandatory = true
+            authReturnScreen = target
+            authBackScreen = target
+        }
+    }
+
+    func dismissSplash(isSignedIn: Bool) {
+        guard screen == .splash else { return }
+        // First-ever launch still goes through language/theme regardless
+        // of auth — the mandatory-login gate applies once that's done
+        // (finishOnboarding), not before.
+        if !hasOnboarded { screen = .langPick; return }
+        postAuthDestination(isSignedIn: isSignedIn)
+    }
     func pickLang(_ value: String) {
         lang = value
         screen = .themePick
@@ -591,9 +634,9 @@ final class AppState: ObservableObject {
         theme = value
         persistPreference(["theme": value])
     }
-    func finishOnboarding() {
+    func finishOnboarding(isSignedIn: Bool) {
         UserDefaults.standard.set(true, forKey: "banbe.onboarded")
-        screen = .home
+        postAuthDestination(isSignedIn: isSignedIn)
     }
     func toggleLang() {
         let next = isEN ? "vi" : "en"

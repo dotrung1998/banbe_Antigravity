@@ -126,7 +126,9 @@ struct RootView: View {
             }
 
             // Face ID app-lock sits above everything — see FaceIDLockView.
-            if auth.isLocked { FaceIDLockView() }
+            // Task 2: splash must show BEFORE the Face ID prompt, not
+            // simultaneously over it — held off while app.screen == .splash.
+            if auth.isLocked && app.screen != .splash { FaceIDLockView() }
         }
         .animation(.easeInOut(duration: 0.2), value: app.areaAsking)
         .animation(.easeInOut(duration: 0.2), value: app.askingLocation)
@@ -176,6 +178,20 @@ struct RootView: View {
             // Signing in from a gated screen returns to whatever asked for it.
             if auth.session != nil && app.screen == .login { app.screen = app.authReturnScreen }
         }
+        // Task 1 — no guest browsing of any screen: the single, centralized
+        // enforcement point, rather than auditing every `screen = .x`
+        // call site in this large app individually. Catches cases the
+        // targeted fixes (finishOnboarding, dismissSplash, signOut) don't
+        // — e.g. goHome()'s plain `screen = .home`, callable from
+        // anywhere, has no auth check of its own.
+        .onChange(of: app.screen) { _, newScreen in
+            if !app.isSignedIn && !AppState.guestAllowedScreens.contains(newScreen) {
+                app.authMandatory = true
+                app.authReturnScreen = newScreen
+                app.authBackScreen = newScreen
+                app.screen = .login
+            }
+        }
     }
 
     /// The SCREENS map, factored out so both the current screen and the
@@ -187,6 +203,7 @@ struct RootView: View {
         case .splash: SplashView()
         case .langPick: LangPickView()
         case .themePick: ThemePickView()
+        case .policy: PolicyView()
         case .home: HomeView()
         case .profile: AccountView()
         case .inbox: InboxView()

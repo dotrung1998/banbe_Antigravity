@@ -180,7 +180,13 @@ extension AppState {
         // Roles belong to the account that just left — leaving them behind
         // would leak the previous user's hosting state into the next sign-in.
         await applySession(nil)
-        screen = .home
+        // Lands on Login, not Home — Task 1: no guest browsing after
+        // signing out. authMandatory since there's nothing legitimate left
+        // to go "back" to.
+        screen = .login
+        authMandatory = true
+        authReturnScreen = .home
+        authBackScreen = .home
     }
 
     /// Which catalogue events this account is actually attending (from real

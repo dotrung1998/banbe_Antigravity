@@ -4,6 +4,7 @@ import SwiftUI
 /// spinner; tapping (or waiting) moves on to the language picker.
 struct SplashView: View {
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var auth: AuthViewModel
     @State private var spin = false
 
     var body: some View {
@@ -25,11 +26,11 @@ struct SplashView: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { app.dismissSplash() }
+        .onTapGesture { app.dismissSplash(isSignedIn: auth.isSignedIn) }
         .task {
             spin = true
             try? await Task.sleep(nanoseconds: 2_600_000_000)
-            if app.screen == .splash { app.dismissSplash() }
+            if app.screen == .splash { app.dismissSplash(isSignedIn: auth.isSignedIn) }
         }
     }
 }
@@ -94,6 +95,7 @@ struct LangPickView: View {
 /// live, then "Continue" into the feed.
 struct ThemePickView: View {
     @EnvironmentObject var app: AppState
+    @EnvironmentObject var auth: AuthViewModel
 
     var body: some View {
         ScreenScaffold {
@@ -117,7 +119,7 @@ struct ThemePickView: View {
                 }
                 .padding(.top, 28)
 
-                InkButton(title: app.T("Tiếp tục", "Continue")) { app.finishOnboarding() }
+                InkButton(title: app.T("Tiếp tục", "Continue")) { app.finishOnboarding(isSignedIn: auth.isSignedIn) }
                     .accessibilityIdentifier("onboarding.continue")
                     .padding(.top, 26)
             }

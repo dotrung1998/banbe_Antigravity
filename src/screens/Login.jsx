@@ -7,6 +7,7 @@ export default function Login() {
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType,
     loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram,
     emailValid, passwordValid, setAuthMethod, requestPasswordResetSubmit, submitCurrentForm,
+    togglePolicyConsent, openPolicy,
   } = useGoc();
   const s = state;
   const isSignup = s.authMode === 'signup';
@@ -14,13 +15,16 @@ export default function Login() {
   const awaitingCode = s.loginSentVia === 'email';
   const nicknameValid = !isSignup || s.loginNickname.trim().length > 0;
 
+  // Gated on the consent checkbox below — banbe_User_Policy.md B1/B3 (PDPL
+  // consent). Only for the initial request/submit, not the code-verify
+  // step: reaching `awaitingCode` at all already required checking it once.
   const valid = awaitingCode
     ? s.loginEmailCode.trim().length > 0
     : isPassword
-      ? emailValid(s.loginEmail) && nicknameValid && (isSignup
+      ? s.policyConsent && emailValid(s.loginEmail) && nicknameValid && (isSignup
         ? passwordValid(s.loginPassword) && s.loginPassword === s.loginPasswordConfirm
         : s.loginPassword.length > 0)
-      : emailValid(s.loginEmail) && nicknameValid;
+      : s.policyConsent && emailValid(s.loginEmail) && nicknameValid;
 
   // The submit button only exists once the address could actually be sent
   // to. An empty field isn't an error yet — it's just unfinished — so it
@@ -66,7 +70,14 @@ export default function Login() {
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Login">
-      <div onClick={() => set({ screen: s.authBackScreen })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</div>
+      {/* The Back link itself is hidden when this login was reached by
+          force (Task 1's mandatory gate — post-splash, post-onboarding, or
+          a stray screen change while signed out) rather than a deliberate
+          "sign in to do X" prompt: there's nowhere legitimate for it to go.
+          The row (and its top spacing) stays either way. */}
+      <div style={{ padding: '66px 22px 0', fontSize: 12, color: ink }}>
+        {!s.authMandatory && <span onClick={() => set({ screen: s.authBackScreen })} style={{ cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</span>}
+      </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 26px' }}>
         <div style={{ display: 'flex', gap: 16, borderBottom: '1px solid rgba(27,25,22,0.16)', paddingBottom: 8 }}>
           {['login', 'signup'].map(mode => <span key={mode} onClick={() => changeAuthMode(mode)} style={{ fontSize: 11.5, color: ink, fontWeight: s.authMode === mode ? 600 : 400, borderBottom: s.authMode === mode ? `2px solid ${ink}` : '2px solid transparent', paddingBottom: 6, cursor: 'pointer' }}>{mode === 'login' ? T('Đăng nhập', 'Log in') : T('Đăng ký', 'Sign up')}</span>)}
@@ -120,6 +131,24 @@ export default function Login() {
 
         {awaitingCode && (
           <input value={s.loginEmailCode} onChange={loginEmailCodeType} onKeyDown={loginEmailKey} placeholder={T('Mã 6 số', '6-digit code')} inputMode="numeric" autoFocus style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 20, letterSpacing: '0.2em', textAlign: 'center', fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
+        )}
+
+        {/* Task 1 — unticked by default, gates `valid`/submit above. Exactly
+            banbe_User_Policy.md's summary-screen wording. */}
+        {!awaitingCode && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14 }}>
+            <input
+              type="checkbox" checked={s.policyConsent} onChange={togglePolicyConsent}
+              data-testid="login-policy-consent"
+              style={{ marginTop: 2, flex: 'none', width: 16, height: 16, cursor: 'pointer' }}
+            />
+            <span onClick={togglePolicyConsent} style={{ fontSize: 12, lineHeight: 1.5, color: ink, cursor: 'pointer' }}>
+              {T('Tôi đồng ý với ', 'I agree to the ')}
+              <span onClick={(e) => { e.stopPropagation(); openPolicy(); }} style={{ textDecoration: 'underline', fontWeight: 600 }} data-testid="login-policy-link">
+                {T('Điều khoản sử dụng và Thông báo quyền riêng tư', 'Terms of Service and Privacy Notice')}
+              </span>
+            </span>
+          </div>
         )}
 
         {showSubmit && <div onClick={submitCurrentForm} data-testid="login-submit" style={loginBtnStyle}>{submitLabel}</div>}

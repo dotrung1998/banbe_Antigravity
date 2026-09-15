@@ -38,6 +38,7 @@ import DocumentView from './screens/DocumentView.jsx';
 import Verifications from './screens/Verifications.jsx';
 import Disputes from './screens/Disputes.jsx';
 import ToastStack from './screens/ToastStack.jsx';
+import Policy from './screens/Policy.jsx';
 
 const SCREENS = {
   splash: Splash,
@@ -70,6 +71,7 @@ const SCREENS = {
   documentView: DocumentView,
   verifications: Verifications,
   disputes: Disputes,
+  policy: Policy,
 };
 
 function Shell() {
