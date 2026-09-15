@@ -9,6 +9,7 @@ struct DisputeChatPanel: View {
     @EnvironmentObject private var app: AppState
     let bookingID: UUID
     @State private var pollTask: Task<Void, Never>?
+    @State private var highlightedID: UUID?
 
     private var messages: [DisputeMessage] {
         app.disputeChatBookingId == bookingID ? app.disputeChatMessages : []
@@ -38,30 +39,47 @@ struct DisputeChatPanel: View {
                        "This conversation is temporary — it is deleted once banbe rules on the dispute, and a copy is emailed to both of you."))
                 .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
-                    if app.disputeChatLoading && messages.isEmpty {
-                        Text(app.T("Đang tải…", "Loading…"))
-                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
-                    } else if messages.isEmpty && app.disputeChatError.isEmpty {
-                        Text(app.T("Chưa có tin nhắn nào.", "No messages yet."))
-                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
-                            .accessibilityIdentifier("disputeChat.empty")
-                    }
-                    ForEach(messages) { m in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(senderLabel(m.senderRole) + " ▪︎ " + m.createdAt.formatted())
-                                .font(.system(size: 10)).foregroundStyle(app.palette.ink.opacity(0.55))
-                            Text(m.body).font(.system(size: 13)).foregroundStyle(app.palette.ink)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if app.disputeChatLoading && messages.isEmpty {
+                            Text(app.T("Đang tải…", "Loading…"))
+                                .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        } else if messages.isEmpty && app.disputeChatError.isEmpty {
+                            Text(app.T("Chưa có tin nhắn nào.", "No messages yet."))
+                                .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                                .accessibilityIdentifier("disputeChat.empty")
                         }
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .accessibilityIdentifier("disputeChat.message")
+                        ForEach(messages) { m in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(senderLabel(m.senderRole) + " ▪︎ " + m.createdAt.formatted())
+                                    .font(.system(size: 10)).foregroundStyle(app.palette.ink.opacity(0.55))
+                                Text(m.body).font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                            }
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(BanbeTheme.alert, lineWidth: highlightedID == m.id ? 1.5 : 0)
+                            )
+                            .id(m.id)
+                            .accessibilityIdentifier("disputeChat.message")
+                        }
                     }
                 }
+                .frame(maxHeight: 220)
+                // Reached by tapping a 'dispute_message' toast/notification
+                // (openNotification, AppState+Data.swift) — scrolls to and
+                // briefly highlights the specific message named by
+                // chatHighlight.messageID, or just the bottom of the thread
+                // if that's nil (an older notification row from before
+                // migration 050 added message_id). Only runs once per
+                // highlight — clearChatHighlight() consumes it so the 4s
+                // poll's re-renders don't keep re-triggering it.
+                .onChange(of: messages) { _, newMessages in applyChatHighlight(newMessages, proxy: proxy) }
+                .onAppear { applyChatHighlight(messages, proxy: proxy) }
             }
-            .frame(maxHeight: 220)
 
             HStack(spacing: 8) {
                 TextField(app.T("Nhắn gì đó…", "Say something…"), text: $app.disputeChatDraft)
@@ -97,6 +115,24 @@ struct DisputeChatPanel: View {
         .onAppear { startPolling() }
         .onDisappear { pollTask?.cancel() }
         .accessibilityIdentifier("disputeChat.panel")
+    }
+
+    private func applyChatHighlight(_ messages: [DisputeMessage], proxy: ScrollViewProxy) {
+        guard let highlight = app.chatHighlight, highlight.bookingID == bookingID else { return }
+        if let messageID = highlight.messageID {
+            guard messages.contains(where: { $0.id == messageID }) else { return } // not loaded yet — wait for the next change
+            withAnimation { proxy.scrollTo(messageID, anchor: .center) }
+            highlightedID = messageID
+            Task {
+                try? await Task.sleep(nanoseconds: 1_600_000_000)
+                if highlightedID == messageID { highlightedID = nil }
+            }
+        } else if let last = messages.last {
+            withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+        } else {
+            return // nothing to scroll to yet — wait for the next change
+        }
+        app.clearChatHighlight()
     }
 
     private func senderLabel(_ role: String) -> String {

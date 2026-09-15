@@ -3,7 +3,7 @@ import { agoLabel } from '../data/events.js';
 import { paper, ink, display } from '../theme.js';
 
 export default function Notifications() {
-  const { state, T, trStatus, goHome, openNotification } = useGoc();
+  const { state, T, trStatus, goHome, openNotification, deleteNotification } = useGoc();
   const s = state;
 
   const withAgo = (n) => ({
@@ -24,13 +24,13 @@ export default function Notifications() {
           {unread.length > 0 && (
             <Section title={T('Chưa đọc', 'Unread')}>
               {unread.map(n => (
-                <Row key={n.id} n={n} unread onClick={() => openNotification(n)} />
+                <Row key={n.id} n={n} unread onClick={() => openNotification(n)} onDelete={() => deleteNotification(n.id)} />
               ))}
             </Section>
           )}
           {read.length > 0 && (
             <Section title={T('Đã đọc', 'Read')}>
-              {read.map(n => <Row key={n.id} n={n} onClick={() => openNotification(n)} />)}
+              {read.map(n => <Row key={n.id} n={n} onClick={() => openNotification(n)} onDelete={() => deleteNotification(n.id)} />)}
             </Section>
           )}
         </div>
@@ -52,25 +52,33 @@ function Section({ title, children }) {
   );
 }
 
-function Row({ n, unread, onClick }) {
+function Row({ n, unread, onClick, onDelete }) {
   return (
     <div
-      onClick={onClick}
       style={{
         display: 'flex', gap: 10, padding: '14px 0',
         borderBottom: '1px solid rgba(27,25,22,0.16)',
-        cursor: onClick ? 'pointer' : 'default',
         opacity: unread ? 1 : 0.6,
       }}
     >
       <span aria-hidden style={{ flex: 'none', width: 7, height: 7, borderRadius: '50%', marginTop: 6, background: unread ? ink : 'transparent' }} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1 }}>
+      <div onClick={onClick} style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1, cursor: onClick ? 'pointer' : 'default' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           <span style={{ ...display(16, { lineHeight: 1.3 }), fontWeight: unread ? 700 : 400 }}>{n.title}</span>
           <span style={{ fontSize: 11, color: ink, flex: 'none', whiteSpace: 'nowrap' }}>{n.ago}</span>
         </div>
         <span style={{ fontSize: 13, lineHeight: 1.5, color: ink, fontWeight: unread ? 600 : 400 }}>{n.body}</span>
       </div>
+      {/* A real, permanent delete (notifications_delete_own RLS, migration
+          050) — not audit-sensitive the way dispute_messages is, so no
+          confirm dialog/soft-delete either. */}
+      <span
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        data-testid="notification-delete"
+        style={{ flex: 'none', fontSize: 15, color: ink, opacity: 0.4, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}
+      >
+        ×
+      </span>
     </div>
   );
 }

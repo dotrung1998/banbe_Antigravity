@@ -149,9 +149,16 @@ const initialState = {
   // Ephemeral in-app toasts, surfaced proactively (see the polling effect
   // near loadNotifications) — separate from `notifications` itself, which
   // stays the permanent, pull-based inbox (Notifications.jsx). Each entry:
-  // { id, title, body, leaving }. `leaving` drives the exit animation
+  // { id, notification, leaving }. `leaving` drives the exit animation
   // before pushToast's own timeout actually removes it from this array.
   toasts: [],
+  // Set by openNotification() for a 'dispute_message' notification —
+  // DisputeChatPanel.jsx reads this itself (rather than every parent
+  // screen threading a prop through) to scroll to and briefly highlight
+  // `messageId`, or just scroll to the bottom if it's null (an older
+  // notification row from before migration 050 added message_id). Cleared
+  // once DisputeChatPanel has actually applied it.
+  chatHighlight: null,
   // This account's own shareable code — null until signed in and loaded.
   referralCode: null,
   referralShared: false,
@@ -453,15 +460,27 @@ export function GocProvider({ children }) {
   // A toast auto-dismisses in two steps: `leaving: true` swaps it to the
   // exit animation (gocToastOut, index.css), then a second timeout actually
   // drops it from the array once that animation has had time to finish.
-  const pushToast = useCallback((title, body) => {
+  // Carries the source `notification` row (not just its title/body) so
+  // ToastStack.jsx can tap it open — see openNotification/dismissToast.
+  const pushToast = useCallback((notification) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    set(prev => ({ toasts: [...prev.toasts, { id, title, body, leaving: false }] }));
+    set(prev => ({ toasts: [...prev.toasts, { id, notification, leaving: false }] }));
     setTimeout(() => {
       set(prev => ({ toasts: prev.toasts.map(t => (t.id === id ? { ...t, leaving: true } : t)) }));
     }, 2200);
     setTimeout(() => {
       set(prev => ({ toasts: prev.toasts.filter(t => t.id !== id) }));
     }, 2500);
+  }, [set]);
+
+  // Tapping a toast shouldn't sit around for its own auto-dismiss timer —
+  // it's already been acted on. Fires the same 'leaving' exit animation
+  // immediately rather than yanking it out with no transition at all.
+  const dismissToast = useCallback((id) => {
+    set(prev => ({ toasts: prev.toasts.map(t => (t.id === id ? { ...t, leaving: true } : t)) }));
+    setTimeout(() => {
+      set(prev => ({ toasts: prev.toasts.filter(t => t.id !== id) }));
+    }, 280);
   }, [set]);
 
   // Unread count for the notification bell, refreshed on login AND on a
@@ -501,7 +520,7 @@ export function GocProvider({ children }) {
       for (const n of rows) {
         if (!toastedIds.has(n.id) && new Date(n.created_at) > sessionStart) {
           toastedIds.add(n.id);
-          pushToast(n.title, n.body);
+          pushToast(n);
         }
       }
       set({ notifications: rows, unreadNotifications: rows.filter(n => !n.read_at).length });
@@ -1598,6 +1617,30 @@ export function GocProvider({ children }) {
     if (error) console.warn('Failed to mark notification read:', error);
   }, [set, s.notifications]);
 
+  // A real, permanent delete — not audit-sensitive the way dispute_messages
+  // is (05-notify-retention.md's 72h retention is a different table
+  // entirely), so no soft-delete. RLS (notifications_delete_own, migration
+  // 050) already scopes this to the caller's own rows; removed from local
+  // state optimistically first, restored if the delete actually fails.
+  const deleteNotification = useCallback(async (id) => {
+    const prevNotifications = s.notifications;
+    const target = prevNotifications.find(n => n.id === id);
+    set(prev => ({
+      notifications: prev.notifications.filter(n => n.id !== id),
+      unreadNotifications: target && !target.read_at ? Math.max(0, prev.unreadNotifications - 1) : prev.unreadNotifications,
+    }));
+    const { error } = await supabase.from('notifications').delete().eq('id', id);
+    if (error) {
+      console.warn('Failed to delete notification:', error);
+      set({ notifications: prevNotifications }); // put it back — the delete didn't actually happen
+    }
+  }, [set, s.notifications]);
+
+  // Consumed once by DisputeChatPanel.jsx after it actually scrolls to/
+  // highlights the target message (or the bottom, if there's no
+  // message_id) — otherwise every 4s poll re-render would re-trigger it.
+  const clearChatHighlight = useCallback(() => set({ chatHighlight: null }), [set]);
+
   // ---- lang / area / location ----
   const toggleLang = useCallback(() => {
     const next = EN ? 'vi' : 'en';
@@ -2284,8 +2327,17 @@ export function GocProvider({ children }) {
       openAttendance(n.data.event_id);
     } else if (n.kind === 'payment_confirmed' && n.data?.booking_id) {
       openBookingConfirmed(n.data.booking_id, n.data.event_id);
+    } else if (n.kind === 'dispute_message' && n.data?.booking_id) {
+      // Only the guest and organizer ever receive this kind (migration
+      // 048/050 — admin is deliberately excluded), so accountType alone
+      // decides which screen has this booking's chat panel.
+      // message_id may be absent on a row created before migration 050 —
+      // DisputeChatPanel.jsx falls back to scrolling to the bottom instead.
+      set({ chatHighlight: { bookingId: n.data.booking_id, messageId: n.data.message_id || null } });
+      if (s.accountType === 'organizer') openVerifications();
+      else openPaymentDetails(n.data.booking_id);
     }
-  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed]);
+  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, openVerifications, openPaymentDetails]);
   /**
    * The organizer's "mark as paid". confirm_payment issues the receipt in
    * the same transaction (migration 024) and notifies the guest, which is
@@ -2405,7 +2457,7 @@ export function GocProvider({ children }) {
     openVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
+    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, deleteNotification, openNotification, clearChatHighlight, dismissToast,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
@@ -2434,7 +2486,7 @@ export function GocProvider({ children }) {
     openVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, openNotification,
+    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, deleteNotification, openNotification, clearChatHighlight, dismissToast,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,

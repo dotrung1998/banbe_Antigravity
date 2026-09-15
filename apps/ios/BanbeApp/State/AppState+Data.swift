@@ -398,7 +398,7 @@ extension AppState {
                         .execute().value
                     for row in rows where !toastedIDs.contains(row.id) && row.createdAt > sessionStart {
                         toastedIDs.insert(row.id)
-                        self.pushToast(title: row.title, body: row.body)
+                        self.pushToast(row)
                     }
                     self.notifications = rows
                 } catch {
@@ -456,8 +456,38 @@ extension AppState {
                 let key = notification.data["event_id"]?.stringValue
                 Task { await openBookingConfirmed(bookingID: bookingID, eventKey: key) }
             }
+        case "dispute_message":
+            // Only the guest and organizer ever receive this kind
+            // (migrations 048/050 — admin is deliberately excluded), so
+            // accountType alone decides which screen has this booking's
+            // chat panel. message_id may be absent on a row from before
+            // migration 050 — DisputeChatPanel.swift falls back to
+            // scrolling to the bottom instead.
+            if let bookingIDString = notification.data["booking_id"]?.stringValue,
+               let bookingID = UUID(uuidString: bookingIDString) {
+                let messageID = notification.data["message_id"]?.stringValue.flatMap(UUID.init(uuidString:))
+                chatHighlight = (bookingID: bookingID, messageID: messageID)
+                if accountType == "organizer" { openVerifications() } else { openPaymentDetails(bookingID) }
+            }
         default:
             break
+        }
+    }
+
+    /// A real, permanent delete — not audit-sensitive the way
+    /// dispute_messages is (05-notify-retention.md's 72h retention is a
+    /// different table entirely), so no soft-delete. RLS
+    /// (notifications_delete_own, migration 050) already scopes this to
+    /// the caller's own rows.
+    func deleteNotification(_ notification: AppNotification) async {
+        let previous = notifications
+        notifications.removeAll { $0.id == notification.id }
+        do {
+            try await SupabaseService.client.from("notifications")
+                .delete().eq("id", value: notification.id).execute()
+        } catch {
+            print("Failed to delete notification:", error)
+            notifications = previous // put it back — the delete didn't actually happen
         }
     }
 

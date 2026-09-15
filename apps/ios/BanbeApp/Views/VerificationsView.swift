@@ -98,8 +98,19 @@ struct VerificationsView: View {
         .accessibilityIdentifier("screen.verifications")
         .task { await app.loadVerifications() }
         .task { await app.loadOpenDisputes() }
-        .onAppear { startTicking() }
+        .onAppear {
+            startTicking()
+            // Tapping a 'dispute_message' toast/notification lands an
+            // organizer here with app.chatHighlight set — unlike
+            // PaymentDetailsView, this screen only mounts DisputeChatPanel
+            // once its own local toggle is opened, so that has to happen
+            // here before DisputeChatPanel can scroll to/highlight anything.
+            if let bookingID = app.chatHighlight?.bookingID { openChatBookingID = bookingID }
+        }
         .onDisappear { tickTask?.cancel() }
+        .onChange(of: app.chatHighlight?.bookingID) { _, newValue in
+            if let newValue { openChatBookingID = newValue }
+        }
     }
 
     private func startTicking() {

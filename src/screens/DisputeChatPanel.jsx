@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { ink, rule, fieldGlass, cardGlass, alert } from '../theme.js';
 
@@ -10,8 +10,11 @@ import { ink, rule, fieldGlass, cardGlass, alert } from '../theme.js';
 // it out (see purge_resolved_dispute_threads, 72h grace window), where the
 // ordinary thread is permanent.
 export default function DisputeChatPanel({ bookingId }) {
-  const { state, T, loadDisputeChat, disputeChatDraftType, sendDisputeMessage } = useGoc();
+  const { state, T, loadDisputeChat, disputeChatDraftType, sendDisputeMessage, clearChatHighlight } = useGoc();
   const s = state;
+  const listRef = useRef(null);
+  const messageRefs = useRef({}); // message id -> DOM node, for scrollIntoView
+  const [highlightedId, setHighlightedId] = useState(null);
 
   // No realtime subscription exists anywhere in this app (no
   // supabase.channel()/postgres_changes usage, and dispute_messages was
@@ -27,6 +30,30 @@ export default function DisputeChatPanel({ bookingId }) {
 
   const messages = s.disputeChatBookingId === bookingId ? s.disputeChatMessages : [];
 
+  // Reached by tapping a 'dispute_message' toast/notification
+  // (openNotification, GocContext.jsx) — scrolls to and briefly highlights
+  // the specific message named by `chatHighlight.messageId`, or just the
+  // bottom of the thread if that's null (an older notification row from
+  // before migration 050 added message_id). Only runs once per highlight —
+  // clearChatHighlight() consumes it so the 4s poll's re-renders don't
+  // keep re-triggering the scroll/flash.
+  useEffect(() => {
+    if (s.chatHighlight?.bookingId !== bookingId) return;
+    const { messageId } = s.chatHighlight;
+    if (messageId) {
+      const node = messageRefs.current[messageId];
+      if (!node) return; // messages haven't loaded yet — wait for the next render
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedId(messageId);
+      setTimeout(() => setHighlightedId(id => (id === messageId ? null : id)), 1600);
+    } else if (messages.length > 0 && listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    } else if (messages.length === 0) {
+      return; // nothing to scroll to yet — wait for the next render
+    }
+    clearChatHighlight();
+  }, [s.chatHighlight, bookingId, messages, clearChatHighlight]);
+
   return (
     <div style={{ ...fieldGlass({ marginTop: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }) }} data-testid="dispute-chat-panel">
       <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>
@@ -37,7 +64,7 @@ export default function DisputeChatPanel({ bookingId }) {
            'This conversation is temporary — it is deleted once banbe rules on the dispute, and a copy is emailed to both of you.')}
       </p>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
+      <div ref={listRef} style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
         {s.disputeChatLoading && messages.length === 0 && (
           <span style={{ fontSize: 11.5, color: ink, opacity: 0.6 }}>{T('Đang tải…', 'Loading…')}</span>
         )}
@@ -47,7 +74,17 @@ export default function DisputeChatPanel({ bookingId }) {
           </span>
         )}
         {messages.map(m => (
-          <div key={m.id} style={{ ...cardGlass({ padding: '8px 10px' }) }} data-testid="dispute-chat-message">
+          <div
+            key={m.id}
+            ref={(node) => { if (node) messageRefs.current[m.id] = node; else delete messageRefs.current[m.id]; }}
+            style={{
+              ...cardGlass({ padding: '8px 10px' }),
+              transition: 'background-color 0.3s ease, box-shadow 0.3s ease',
+              boxShadow: highlightedId === m.id ? `0 0 0 1.5px ${alert}` : undefined,
+            }}
+            data-testid="dispute-chat-message"
+            data-highlighted={highlightedId === m.id || undefined}
+          >
             <div style={{ fontSize: 10, color: ink, opacity: 0.55 }}>
               {m.sender_role === 'organizer' ? T('Người tổ chức', 'Organizer')
                 : m.sender_role === 'guest' ? T('Khách', 'Guest')

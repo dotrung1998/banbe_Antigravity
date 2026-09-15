@@ -199,17 +199,33 @@ final class AppState: ObservableObject {
     @Published var toasts: [ToastItem] = []
     var notificationPollTask: Task<Void, Never>?
 
+    // Set by openNotification() for a 'dispute_message' notification —
+    // DisputeChatPanel.swift reads this itself (rather than every parent
+    // view threading it through) to scroll to and briefly highlight
+    // `messageID`, or just scroll to the bottom if it's nil (an older
+    // notification row from before migration 050 added message_id).
+    // Cleared once DisputeChatPanel has actually applied it.
+    @Published var chatHighlight: (bookingID: UUID, messageID: UUID?)?
+    func clearChatHighlight() { chatHighlight = nil }
+
     /// Shows a small toast and fires a light (not the heavier .success/
     /// .warning system) haptic alongside it, so it feels gentle — see
-    /// pollNotifications() in AppState+Data.swift for what triggers this.
-    func pushToast(title: String, body: String) {
-        let item = ToastItem(id: UUID(), title: title, body: body)
+    /// startNotificationPolling() in AppState+Data.swift for what triggers
+    /// this. Carries the whole notification (not just title/body) so
+    /// tapping it can route the same way NotificationsView's rows do.
+    func pushToast(_ notification: AppNotification) {
+        let item = ToastItem(id: UUID(), notification: notification)
         toasts.append(item)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         Task {
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             toasts.removeAll { $0.id == item.id }
         }
+    }
+
+    /// Tapping a toast shouldn't sit around for its own auto-dismiss timer.
+    func dismissToast(_ id: UUID) {
+        toasts.removeAll { $0.id == id }
     }
 
     // MARK: Display name

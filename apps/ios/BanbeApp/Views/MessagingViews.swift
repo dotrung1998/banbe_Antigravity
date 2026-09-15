@@ -227,29 +227,45 @@ struct NotificationsView: View {
                 .kerning(0.5)
                 .foregroundStyle(app.palette.ink.opacity(0.6))
             ForEach(items) { item in
-                Button { app.openNotification(item) } label: {
-                    HStack(alignment: .top, spacing: 10) {
-                        Circle()
-                            .fill(unread ? app.palette.ink : .clear)
-                            .frame(width: 7, height: 7)
-                            .padding(.top, 6)
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(item.title)
-                                    .font(BanbeTheme.display(16))
-                                    .fontWeight(unread ? .bold : .regular)
-                                Spacer(minLength: 12)
-                                Text(app.trStatus(EventLabels.ago(hoursAgo(item.createdAt))))
-                                    .font(.system(size: 11))
+                HStack(alignment: .top, spacing: 10) {
+                    Button { app.openNotification(item) } label: {
+                        HStack(alignment: .top, spacing: 10) {
+                            Circle()
+                                .fill(unread ? app.palette.ink : .clear)
+                                .frame(width: 7, height: 7)
+                                .padding(.top, 6)
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(item.title)
+                                        .font(BanbeTheme.display(16))
+                                        .fontWeight(unread ? .bold : .regular)
+                                    Spacer(minLength: 12)
+                                    Text(app.trStatus(EventLabels.ago(hoursAgo(item.createdAt))))
+                                        .font(.system(size: 11))
+                                }
+                                Text(item.body).font(.system(size: 13)).multilineTextAlignment(.leading)
                             }
-                            Text(item.body).font(.system(size: 13)).multilineTextAlignment(.leading)
                         }
+                        .contentShape(Rectangle())
                     }
-                    .opacity(unread ? 1 : 0.6)
-                    .padding(.vertical, 14)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+
+                    // A real, permanent delete (notifications_delete_own
+                    // RLS, migration 050) — not audit-sensitive the way
+                    // dispute_messages is, so no confirm dialog either.
+                    Button {
+                        Task { await app.deleteNotification(item) }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(app.palette.ink.opacity(0.4))
+                            .padding(6)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("notification-delete")
                 }
-                .buttonStyle(.plain)
+                .opacity(unread ? 1 : 0.6)
+                .padding(.vertical, 14)
                 Divider().overlay(app.palette.rule)
             }
         }

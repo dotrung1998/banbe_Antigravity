@@ -11,11 +11,11 @@ struct ToastOverlay: View {
         VStack(spacing: 8) {
             ForEach(app.toasts) { toast in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(toast.title)
+                    Text(toast.notification.title)
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(app.palette.ink)
-                    if !toast.body.isEmpty {
-                        Text(toast.body)
+                    if !toast.notification.body.isEmpty {
+                        Text(toast.notification.body)
                             .font(.system(size: 12))
                             .foregroundStyle(app.palette.ink.opacity(0.75))
                             .lineLimit(2)
@@ -24,6 +24,16 @@ struct ToastOverlay: View {
                 .padding(.horizontal, 14).padding(.vertical, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(app.palette.rule, lineWidth: 1)
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    app.openNotification(toast.notification)
+                    app.dismissToast(toast.id) // don't wait for the auto-dismiss timer — it's been acted on
+                }
+                .allowsHitTesting(true)
                 .transition(.asymmetric(
                     insertion: .opacity.combined(with: .move(edge: .top)),
                     removal: .opacity.combined(with: .move(edge: .top))

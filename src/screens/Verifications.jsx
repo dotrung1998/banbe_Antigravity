@@ -35,6 +35,15 @@ export default function Verifications() {
   useEffect(() => { loadDisputes(); }, [loadDisputes]);
   const myOpenDisputes = s.disputes.filter(d => !d.dispute_resolved_at);
 
+  // Tapping a 'dispute_message' toast/notification (openNotification,
+  // GocContext.jsx) lands an organizer here with s.chatHighlight set —
+  // unlike PaymentDetails.jsx, this screen only mounts DisputeChatPanel
+  // once its own local toggle is opened, so that has to happen here before
+  // DisputeChatPanel can scroll to/highlight anything itself.
+  useEffect(() => {
+    if (s.chatHighlight?.bookingId) setOpenDisputeChat(s.chatHighlight.bookingId);
+  }, [s.chatHighlight?.bookingId]);
+
   const overdue = s.verifications.filter(v => v.overdue).length;
   // Ticks only while the queue actually has SLA countdowns to show — an
   // empty queue has no business waking this screen every second.
