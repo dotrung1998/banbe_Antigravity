@@ -1,0 +1,10 @@
+// Production builds under a real, paid Apple Developer team — see
+// .claude/notes/07-notifications.md. Flip DEVELOPMENT_TEAM in project.yml
+// to a real Team ID first, then this config's ENABLE_PUSH=YES takes effect:
+// the entitlements file that actually declares aps-environment
+// (BanbeAppPush.entitlements) and the ENABLE_PUSH Swift compilation
+// condition (gates the permission-request/token-registration code in
+// AppState+Push.swift) both switch on together, from this one file.
+ENABLE_PUSH = YES
+CODE_SIGN_ENTITLEMENTS = BanbeApp/BanbeAppPush.entitlements
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) ENABLE_PUSH

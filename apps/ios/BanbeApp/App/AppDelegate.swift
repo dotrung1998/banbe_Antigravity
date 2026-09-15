@@ -16,6 +16,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// for it to hand the token off to app state.
     static var appState: AppState?
 
+    // Unreachable in an ENABLE_PUSH=NO build (Config/Debug.xcconfig, the
+    // default free/personal-team config): AppState+Push.swift's
+    // requestPushAuthorizationIfNeeded() never calls
+    // registerForRemoteNotifications() in that build, so UIKit has nothing
+    // to invoke this with. registerPushToken() itself is guarded too (see
+    // that file) rather than relying on this callback simply not firing.
     func application(
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data

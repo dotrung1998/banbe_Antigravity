@@ -2,10 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- "development" here; Xcode/App Store Connect rewrites this to
-	     "production" automatically for a real distribution build — this
-	     value only matters for local debug builds. -->
-	<key>aps-environment</key>
-	<string>development</string>
+	<!-- Deliberately empty: no aps-environment key here. A free/personal
+	     Apple ID cannot provision the Push Notifications capability at
+	     all, and Xcode tries to provision whatever capability a key names
+	     regardless of that key's VALUE — "development" vs "production"
+	     doesn't matter, only whether the key exists. This is the
+	     ENABLE_PUSH=NO entitlements file (Config/Debug.xcconfig); the
+	     ENABLE_PUSH=YES one, BanbeAppPush.entitlements, is what actually
+	     declares aps-environment. See .claude/notes/07-notifications.md
+	     for the one-line switch to flip once a paid Apple Developer
+	     account exists. -->
 </dict>
 </plist>

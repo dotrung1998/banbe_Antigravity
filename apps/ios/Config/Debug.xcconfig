@@ -1,0 +1,9 @@
+// Local/free-team development builds — see .claude/notes/07-notifications.md
+// for the paid-team switch. Push Notifications requires a paid Apple
+// Developer Program membership to provision; with a free/personal team,
+// Xcode fails to sign a real-device build if the entitlements file
+// declares aps-environment at all, regardless of its value — so this
+// config points at the entitlements file that omits the key entirely,
+// not just at a "development" value.
+ENABLE_PUSH = NO
+CODE_SIGN_ENTITLEMENTS = BanbeApp/BanbeApp.entitlements

@@ -5,6 +5,17 @@ options:
     iOS: "17.0"
   createIntermediateGroups: true
 
+# Debug (default, free/personal team): ENABLE_PUSH=NO, entitlements omit
+# aps-environment entirely (BanbeApp.entitlements) — real-device builds
+# sign fine with automatic/personal-team provisioning.
+# Release (paid team only): ENABLE_PUSH=YES, entitlements declare
+# aps-environment (BanbeAppPush.entitlements). See
+# .claude/notes/07-notifications.md for exactly what to flip once a paid
+# Apple Developer account exists — it's these two files, not this one.
+configFiles:
+  Debug: Config/Debug.xcconfig
+  Release: Config/Release.xcconfig
+
 packages:
   Supabase:
     url: https://github.com/supabase/supabase-swift
@@ -49,17 +60,14 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # A real Apple Developer Team ID goes here once you have a PAID
+        # account — a free/personal team works fine for everything else
+        # (automatic signing installs to a real device), it just can't
+        # provision Push Notifications (see Config/*.xcconfig, which is
+        # where CODE_SIGN_ENTITLEMENTS/ENABLE_PUSH actually get set, per
+        # config — not here, so they can differ between Debug and Release).
         DEVELOPMENT_TEAM: ""
         CODE_SIGN_STYLE: Automatic
-        # Declares the Push Notifications capability (aps-environment) —
-        # this file alone is NOT sufficient to actually receive a push. It
-        # still needs a real DEVELOPMENT_TEAM above (an Apple Developer
-        # account) so Xcode can provision the capability with Apple; until
-        # then this only lets local builds compile and call
-        # registerForRemoteNotifications() without erroring, and
-        # didFailToRegisterForRemoteNotificationsWithError will keep firing
-        # (expected — see AppDelegate.swift). See .claude/notes/07-notifications.md.
-        CODE_SIGN_ENTITLEMENTS: BanbeApp/BanbeApp.entitlements
     info:
       path: BanbeApp/Info.plist
       properties:
