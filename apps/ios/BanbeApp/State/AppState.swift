@@ -799,9 +799,15 @@ final class AppState: ObservableObject {
 
     /// Whether an edge swipe should do anything on the current screen — the
     /// entry/onboarding screens and Home (nothing to go back to) opt out.
+    /// `.login` opts out too (both its Login and Signup tabs — they're the
+    /// same `Screen` case, distinguished only by LoginView's own local
+    /// state): Task 1's mandatory-login gate hides the Back link there for
+    /// exactly this reason (nowhere legitimate for it to go when
+    /// `authMandatory` is set), and swiping back used to reach
+    /// `authBackScreen` regardless, bypassing that gate entirely.
     var canSwipeBack: Bool {
         switch screen {
-        case .splash, .langPick, .themePick, .home: return false
+        case .splash, .langPick, .themePick, .home, .login: return false
         default: return true
         }
     }

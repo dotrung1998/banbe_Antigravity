@@ -18,6 +18,22 @@ struct RootView: View {
     @State private var isCommittingBack = false
     @State private var isDragTracking = false
 
+    // How far in from the leading edge a swipe can originate — matches the
+    // HIG's own edge-swipe affordance width. `edgeSwipe` below is attached
+    // only to a strip this wide (see the `Color.clear` in `body` carrying
+    // `.highPriorityGesture(edgeSwipe)`), not the whole screen — attaching
+    // it everywhere (`.simultaneousGesture` on the full ZStack, the
+    // previous approach) put it in constant arbitration with every screen's
+    // own ScrollView for every touch on screen, which is exactly what made
+    // a normal-speed partial swipe sometimes get swallowed by the scroll
+    // view's pan recognizer instead — only a slow drag, or one dragged
+    // nearly the full width, gave this gesture enough of a window to still
+    // win that arbitration. Bounding its hit-testing region to a thin edge
+    // strip means a touch that starts outside it is never routed to this
+    // recognizer at all, so there's nothing left to arbitrate against the
+    // ScrollView beneath it.
+    private let edgeSwipeZoneWidth: CGFloat = 20
+
     private var dragProgress: CGFloat {
         guard !isCommittingBack else { return 1 }
         let width = UIScreen.main.bounds.width
@@ -27,12 +43,8 @@ struct RootView: View {
     private var edgeSwipe: some Gesture {
         DragGesture(minimumDistance: 4, coordinateSpace: .local)
             .onChanged { value in
-                // Only the very first touch of the gesture decides whether
-                // this is an edge swipe — checking on every update (as the
-                // finger drifts inward past x:32) is what made it sometimes
-                // need a second attempt to register at all.
                 if !isDragTracking {
-                    guard app.canSwipeBack, value.startLocation.x < 32 else { return }
+                    guard app.canSwipeBack else { return }
                     isDragTracking = true
                 }
                 guard isDragTracking else { return }
@@ -100,13 +112,27 @@ struct RootView: View {
             .offset(x: isCommittingBack ? UIScreen.main.bounds.width : dragTranslation)
             // Depth cue on the dragged edge, same as UIKit's pop shadow.
             .shadow(color: .black.opacity(dragProgress * 0.16), radius: 16, x: -6, y: 0)
-            // Without this, a screen's own ScrollView keeps recognizing its
-            // vertical pan at the same time as the edge swipe (that's the
-            // whole point of `simultaneousGesture`), so the content visibly
-            // jiggles/scrolls up and down while it's being dragged sideways.
-            // `scrollDisabled` is environment-based, so setting it here
-            // reaches every ScrollView inside whichever screen is showing.
+            // Belt-and-suspenders once a drag is already tracking: keeps a
+            // screen's own ScrollView from also visibly jiggling/scrolling
+            // while it's being dragged sideways. `edgeSwipeZone` below is
+            // what actually keeps the two gestures from arbitrating over the
+            // same touch in the first place.
             .scrollDisabled(isDragTracking || isCommittingBack)
+
+            // The swipe-back gesture itself, confined to a thin strip along
+            // the leading edge rather than attached to the whole screen —
+            // see `edgeSwipeZoneWidth`'s comment for why. `highPriorityGesture`
+            // (not `simultaneousGesture`) so that, within this strip, it wins
+            // outright over whatever's underneath the instant it recognizes;
+            // a touch that never moves past `minimumDistance` (an ordinary
+            // tap — e.g. a back-button link whose hit area happens to graze
+            // this strip) never recognizes at all, so it still reaches
+            // whatever's underneath normally.
+            Color.clear
+                .contentShape(Rectangle())
+                .frame(width: edgeSwipeZoneWidth)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .highPriorityGesture(edgeSwipe)
 
             // Names the current screen for UI tests, the same way the web
             // screens carry a data-screen-label attribute for Playwright.
@@ -134,13 +160,9 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.2), value: app.askingLocation)
         .animation(.easeInOut(duration: 0.2), value: app.photoViewer)
         // The screen switch above is a plain ZStack, not a NavigationStack,
-        // so it never got the system's edge-swipe-to-go-back for free —
-        // this reproduces it, tracking the finger live rather than jumping
-        // only once the gesture ends. `simultaneous` so it always gets to
-        // recognize alongside a screen's own ScrollView/buttons instead of
-        // sometimes losing that arbitration outright — which is what made
-        // the swipe occasionally need a second attempt to register at all.
-        .simultaneousGesture(edgeSwipe)
+        // so it never got the system's edge-swipe-to-go-back for free — the
+        // `edgeSwipeZone` strip above reproduces it, tracking the finger
+        // live rather than jumping only once the gesture ends.
         .onChange(of: isCommittingBack) { _, committing in
             guard committing else { return }
             // Let the slide-off animation actually play before switching
