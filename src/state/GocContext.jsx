@@ -1993,7 +1993,12 @@ export function GocProvider({ children }) {
   // "Code" method: request a 6-digit code by email, for either Login or
   // Signup. Verifying it (below) is what actually establishes the session.
   const codeRequestSubmit = useCallback(async () => {
-    if (!s.policyConsent) return; // login-submit's own disabled styling already reflects this; a defensive no-op here, same as the email-validity check right below
+    // Only Signup creates a brand-new profile (policy_accepted_at still
+    // NULL) — a returning account on the Login tab already consented once,
+    // so this defensive no-op (login-submit's own disabled styling already
+    // reflects it) only applies to Signup, same as the email-validity check
+    // right below.
+    if (s.authMode === 'signup' && !s.policyConsent) return;
     if (!emailValid(s.loginEmail)) return;
     const email = s.loginEmail.trim();
     const displayName = s.loginNickname.trim();
@@ -2031,7 +2036,9 @@ export function GocProvider({ children }) {
   // account already has a password. (The onAuthStateChange listener handles
   // moving off the Login screen once the session lands.)
   const passwordLoginSubmit = useCallback(async () => {
-    if (!s.policyConsent) return;
+    // No consent gate here — signing in is never how a profile's
+    // policy_accepted_at first gets set (see codeRequestSubmit above); an
+    // account that can sign in already consented at signup.
     if (!emailValid(s.loginEmail)) return;
     if (!s.loginPassword) return set({ reserveError: T('Nhập mật khẩu của bạn.', 'Enter your password.') });
     const { error } = await supabase.auth.signInWithPassword({ email: s.loginEmail.trim(), password: s.loginPassword });
@@ -2040,7 +2047,7 @@ export function GocProvider({ children }) {
       return;
     }
     set({ reserveError: '' });
-  }, [set, s.loginEmail, s.loginPassword, s.policyConsent, T]);
+  }, [set, s.loginEmail, s.loginPassword, T]);
   // Runs exactly once, right after a brand-new account's first sign-in
   // (never on an ordinary login — see the isSignup guard at the call site).
   // Redeems whatever referral code was stashed from the "?ref=" link they

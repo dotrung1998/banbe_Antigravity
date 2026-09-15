@@ -35,3 +35,24 @@ Whether replacing placeholder wording with the real policy text should count as 
 ## TODO / open questions
 - Real legal text still has unresolved brackets ([effective date] etc.) — company will need to fill these in before this is truly final, independent of the version-bump question above.
 - No re-consent flow exists for a policy version bump. If the version-bump question above is answered "yes," building that flow is separate follow-up work.
+
+## Fixed: consent checkbox was gating Login too, not just Signup (2026-09-16)
+Bug: the checkbox/gate applied to BOTH `authMode`s. Only Signup creates a
+brand-new profile with `policy_accepted_at` still NULL; a returning account
+signing back in already has that column set from its own signup, so
+requiring the tick again on Login was wrong (and blocked login entirely
+until it was checked, mirroring a box that no longer even needs to be
+there).
+
+- `src/screens/Login.jsx:21-28` — new `consentOk = !isSignup || s.policyConsent`, used in place of the bare `s.policyConsent` in `valid`'s two branches.
+- `src/screens/Login.jsx:138` — checkbox block now `{!awaitingCode && isSignup && (...)}` (was `{!awaitingCode && (...)}`).
+- `src/state/GocContext.jsx:1995-2001` `codeRequestSubmit` — guard changed to `if (s.authMode === 'signup' && !s.policyConsent) return;` (handles both Login and Signup's email-code request).
+- `src/state/GocContext.jsx:2018-2019` `passwordSignupSubmit` — unchanged, still always gated (signup-only function).
+- `src/state/GocContext.jsx:2038-2039` `passwordLoginSubmit` — `if (!s.policyConsent) return;` removed entirely (login-only function, never gated).
+- `apps/ios/BanbeApp/Views/LoginView.swift:43-49` `canRequest` — guard changed to `if mode == .signup && !app.policyConsent { return false }`.
+- `apps/ios/BanbeApp/Views/LoginView.swift:159` checkbox block now `if !auth.codeSent && mode == .signup { ... }` (was `if !auth.codeSent`).
+- `apps/ios/BanbeApp/State/AppState.swift:135` — `policyConsent` property itself unchanged; all gating logic lives in `LoginView.canRequest`, not in AppState.
+
+No change to `syncUser()`'s existing auto-stamp (`GocContext.jsx` ~line 428: writes `policy_accepted_at`/`policy_version` for any profile missing it on sign-in) — that's separate bookkeeping for legacy accounts predating this column and is unaffected by where the checkbox itself renders.
+
+Tests updated in `tests/auth-notifications.spec.js`: `openLogin()` no longer ticks the checkbox unconditionally (it doesn't exist on the default Login tab anymore); a new `consentToSignup(page)` helper is called instead, right after each test's `Đăng ký` tab switch, before any actual signup submit. `tests/auth-and-booking.spec.js`'s tab-switch test needed no change (never submits). Full fast suite re-run: 88 passed, 0 failed.

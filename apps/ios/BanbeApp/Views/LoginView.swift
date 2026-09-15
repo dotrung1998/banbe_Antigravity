@@ -41,7 +41,11 @@ struct LoginView: View {
     private var showSubmit: Bool { auth.codeSent || emailFormatOk }
 
     private var canRequest: Bool {
-        guard app.policyConsent else { return false } // Task 1's consent checkbox — banbe_User_Policy.md B1/B3
+        // Task 1's consent checkbox — banbe_User_Policy.md B1/B3 — only
+        // gates Signup: that's the only path creating a brand-new profile
+        // with policy_accepted_at still nil. An account signing back in
+        // already consented once, so this is trivially true on Login.
+        if mode == .signup && !app.policyConsent { return false }
         guard emailFormatOk else { return false }
         if mode == .signup && displayName.isEmpty { return false }
         if method == .password {
@@ -152,7 +156,9 @@ struct LoginView: View {
 
                 // Task 1 — unticked by default, gates `canRequest` above.
                 // Exactly banbe_User_Policy.md's summary-screen wording.
-                if !auth.codeSent {
+                // Signup only — a returning account signing in already
+                // consented once.
+                if !auth.codeSent && mode == .signup {
                     HStack(alignment: .top, spacing: 8) {
                         Button {
                             app.policyConsent.toggle()

@@ -16,15 +16,21 @@ export default function Login() {
   const nicknameValid = !isSignup || s.loginNickname.trim().length > 0;
 
   // Gated on the consent checkbox below — banbe_User_Policy.md B1/B3 (PDPL
-  // consent). Only for the initial request/submit, not the code-verify
-  // step: reaching `awaitingCode` at all already required checking it once.
+  // consent) — but only for Signup: that's the only path that creates a
+  // brand-new profile with policy_accepted_at still NULL. An existing
+  // account signing back in already has that column set from when it
+  // signed up, so `consentOk` is trivially true on the Login tab rather
+  // than asking a returning user to tick the box again. Only for the
+  // initial request/submit, not the code-verify step: reaching
+  // `awaitingCode` at all already required checking it once (on Signup).
+  const consentOk = !isSignup || s.policyConsent;
   const valid = awaitingCode
     ? s.loginEmailCode.trim().length > 0
     : isPassword
-      ? s.policyConsent && emailValid(s.loginEmail) && nicknameValid && (isSignup
+      ? consentOk && emailValid(s.loginEmail) && nicknameValid && (isSignup
         ? passwordValid(s.loginPassword) && s.loginPassword === s.loginPasswordConfirm
         : s.loginPassword.length > 0)
-      : s.policyConsent && emailValid(s.loginEmail) && nicknameValid;
+      : consentOk && emailValid(s.loginEmail) && nicknameValid;
 
   // The submit button only exists once the address could actually be sent
   // to. An empty field isn't an error yet — it's just unfinished — so it
@@ -134,8 +140,9 @@ export default function Login() {
         )}
 
         {/* Task 1 — unticked by default, gates `valid`/submit above. Exactly
-            banbe_User_Policy.md's summary-screen wording. */}
-        {!awaitingCode && (
+            banbe_User_Policy.md's summary-screen wording. Signup only — a
+            returning account signing in already consented once. */}
+        {!awaitingCode && isSignup && (
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14 }}>
             <input
               type="checkbox" checked={s.policyConsent} onChange={togglePolicyConsent}

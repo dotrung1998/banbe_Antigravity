@@ -25,10 +25,13 @@ test.describe('Login & Signup Notification Messages', () => {
     await page.getByText('Tiếp tục', { exact: true }).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 5000 });
+  }
 
-    // Task 1's consent checkbox gates every submit action on this screen
-    // (unticked by default) — every test here goes on to submit a form, so
-    // tick it once up front rather than repeat this in each test.
+  // Task 1's consent checkbox only renders/gates on the Signup tab (an
+  // existing account signing back in already consented once) — call this
+  // after switching to "Đăng ký" in any test that goes on to submit a
+  // signup request.
+  async function consentToSignup(page) {
     await page.getByTestId('login-policy-consent').check();
   }
 
@@ -94,6 +97,7 @@ test.describe('Login & Signup Notification Messages', () => {
     });
 
     await page.getByText('Đăng ký', { exact: true }).click();
+    await consentToSignup(page);
     await page.locator('input[placeholder="Tên hiển thị của bạn"]').fill('Nguyễn An');
     await page.locator('input[placeholder="ban@email.com"]').fill('nonexistent@example.com');
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng ký/).click();
@@ -215,6 +219,7 @@ test.describe('Login & Signup Notification Messages', () => {
     });
 
     await page.getByText('Đăng ký', { exact: true }).click();
+    await consentToSignup(page);
     await page.locator('input[placeholder="Tên hiển thị của bạn"]').fill('Nguyễn An');
     await page.locator('input[placeholder="ban@email.com"]').fill('test@example.com');
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng ký/).click();
@@ -252,6 +257,7 @@ test.describe('Login & Signup Notification Messages', () => {
     });
 
     await page.getByText('Đăng ký', { exact: true }).click();
+    await consentToSignup(page);
     await page.locator('input[placeholder="Tên hiển thị của bạn"]').fill('Nguyễn An');
     await page.locator('input[placeholder="ban@email.com"]').fill('existing@example.com');
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng ký/).click();
@@ -287,6 +293,7 @@ test.describe('Login & Signup Notification Messages', () => {
     await expect(page.locator('input[placeholder="Tên hiển thị của bạn"]')).toHaveCount(0);
     await page.getByText('Đăng ký', { exact: true }).click();
     await expect(page.locator('input[placeholder="Tên hiển thị của bạn"]')).toBeVisible();
+    await consentToSignup(page);
 
     /** @type {any} */
     let sentBody = null;
@@ -381,6 +388,7 @@ test.describe('Login & Signup Notification Messages', () => {
     test('requires matching passwords to sign up', async ({ page }) => {
       await openLogin(page);
       await page.getByText('Đăng ký', { exact: true }).click();
+      await consentToSignup(page);
       await page.locator('[data-screen-label="Login"]').getByText('Mật khẩu', { exact: true }).click();
 
       /** @type {any} */
@@ -403,6 +411,7 @@ test.describe('Login & Signup Notification Messages', () => {
     test('sends a password sign-up request and shows the confirmation code step', async ({ page }) => {
       await openLogin(page);
       await page.getByText('Đăng ký', { exact: true }).click();
+      await consentToSignup(page);
       await page.locator('[data-screen-label="Login"]').getByText('Mật khẩu', { exact: true }).click();
 
       /** @type {any} */
