@@ -12,6 +12,10 @@
     {
       "path": "/api/cron/escalate-verifications",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/purge-payment-documents",
+      "schedule": "0 10 * * *"
     }
   ]
 }

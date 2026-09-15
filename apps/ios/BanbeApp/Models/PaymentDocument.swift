@@ -24,8 +24,17 @@ struct PaymentDocument: Codable, Identifiable, Hashable {
     var payMethod: String
     var paidAt: Date?
     var note: String
+    // Migration 056 — organizer-uploaded file replacing auto-generation.
+    // All nil/absent on a legacy, pre-upload document (falls back to the
+    // rendered-HTML viewer — see DocumentViewerView).
+    var filePath: String?
+    var uploadedBy: UUID?
+    var uploadReason: String?
+    var supersededAt: Date?
+    var purgeAfter: Date?
 
     var isReceipt: Bool { kind == "receipt" }
+    var isUploaded: Bool { filePath?.isEmpty == false }
 
     enum CodingKeys: String, CodingKey {
         case id, kind, number, seller, buyer, event, lines, note
@@ -37,6 +46,11 @@ struct PaymentDocument: Codable, Identifiable, Hashable {
         case totalVnd = "total_vnd"
         case payMethod = "pay_method"
         case paidAt = "paid_at"
+        case filePath = "file_path"
+        case uploadedBy = "uploaded_by"
+        case uploadReason = "upload_reason"
+        case supersededAt = "superseded_at"
+        case purgeAfter = "purge_after"
     }
 }
 

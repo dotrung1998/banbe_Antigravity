@@ -18,6 +18,10 @@ struct Profile: Codable, Identifiable, Hashable {
     var attendedCount: Int
     var noShowCount: Int
     var createdAt: Date
+    /// Task 4 (migration 056) — the one-time opt-in for auto-emailed
+    /// payment document copies. Absent on any row created before that
+    /// migration's default backfill, hence Optional.
+    var autoEmailDocuments: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -32,5 +36,6 @@ struct Profile: Codable, Identifiable, Hashable {
         case attendedCount = "attended_count"
         case noShowCount = "no_show_count"
         case createdAt = "created_at"
+        case autoEmailDocuments = "auto_email_documents"
     }
 }

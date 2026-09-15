@@ -1,11 +1,31 @@
+import { useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { findEvent } from '../data/events.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 
 export default function Attendance() {
-  const { state, T, trStatus, goDashboard, toggleCheckin, openQrScan, openCancelBooking, markGuestPaid } = useGoc();
+  const { state, T, trStatus, goDashboard, toggleCheckin, openQrScan, openCancelBooking, markGuestPaid, uploadPaymentDocument } = useGoc();
   const s = state;
+  const fileInputRef = useRef(null);
+  const [uploadingFor, setUploadingFor] = useState(null);
+  const [uploadErrorFor, setUploadErrorFor] = useState(null);
+
+  const pickReceiptFile = (bookingId) => {
+    setUploadErrorFor(null);
+    fileInputRef.current.dataset.bookingId = bookingId;
+    fileInputRef.current.click();
+  };
+  const onReceiptFileChosen = async (e) => {
+    const file = e.target.files?.[0];
+    const bookingId = fileInputRef.current.dataset.bookingId;
+    e.target.value = '';
+    if (!file || !bookingId) return;
+    setUploadingFor(bookingId);
+    const result = await uploadPaymentDocument(bookingId, 'receipt', file);
+    setUploadingFor(null);
+    if (!result.success) setUploadErrorFor(bookingId);
+  };
 
   const attKey = s.attendanceEventKey;
   const attEv = attKey ? findEvent(attKey) : null;
@@ -39,7 +59,8 @@ export default function Attendance() {
         <span style={{ fontFamily: "'Be Vietnam Pro', sans-serif", fontWeight: 600, letterSpacing: '-0.02em', fontSize: 24, color: paper }}>{checkedCount} / {guests.length}</span>
       </div>
       <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, margin: '10px 22px 0' }}>{T('Chạm vào tên khách hoặc quét mã QR vé khi họ tới nơi.', "Tap a guest's name, or scan their ticket QR, when they arrive.")}</p>
-      <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '6px 22px 0' }}>{T('Đánh dấu "Đã thanh toán" khi bạn thấy tiền vào tài khoản — biên nhận sẽ tự phát hành cho khách.', 'Mark a guest paid once you see the money arrive — their receipt is issued automatically.')}</p>
+      <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '6px 22px 0' }}>{T('Đánh dấu "Đã thanh toán" khi bạn thấy tiền vào tài khoản, rồi tải lên hoá đơn/biên nhận thật của bạn cho khách.', 'Mark a guest paid once you see the money arrive, then upload your own real invoice/receipt for them.')}</p>
+      <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: 'none' }} onChange={onReceiptFileChosen} data-testid="attendance-receipt-input" />
       <div style={{ ...fieldGlass({ margin: '14px 22px 40px', display: 'flex', flexDirection: 'column' }) }}>
         {guests.map(g => {
           const meta = g.qty > 1 ? (g.qty + T(' vé', ' tickets')) : T('1 vé', '1 ticket');
@@ -49,9 +70,21 @@ export default function Attendance() {
                 <span style={{ ...display(15) }}>{g.name}</span>
                 <span style={{ fontSize: 11.5, color: ink }}>{meta} ▪︎ {formatVnd(g.totalVnd)}</span>
                 {g.paid ? (
-                  <span style={{ fontSize: 11, color: ink, opacity: 0.7 }} data-testid="guest-paid">
-                    {T('Đã thanh toán ✓', 'Paid ✓')}
-                  </span>
+                  <>
+                    <span style={{ fontSize: 11, color: ink, opacity: 0.7 }} data-testid="guest-paid">
+                      {T('Đã thanh toán ✓', 'Paid ✓')}
+                    </span>
+                    <span
+                      onClick={(e) => { e.stopPropagation(); pickReceiptFile(g.id); }}
+                      style={{ fontSize: 11, fontWeight: 600, color: ink, width: 'fit-content', cursor: uploadingFor === g.id ? 'default' : 'pointer', border: '1px solid rgba(27,25,22,0.16)', borderRadius: 10, padding: '4px 8px', marginTop: 2, opacity: uploadingFor === g.id ? 0.6 : 1 }}
+                      data-testid="guest-upload-receipt"
+                    >
+                      {uploadingFor === g.id ? T('Đang tải lên…', 'Uploading…') : T('Tải lên biên nhận', 'Upload receipt')}
+                    </span>
+                    {uploadErrorFor === g.id && (
+                      <span style={{ fontSize: 10.5, color: alert }}>{T('Không tải lên được. Thử lại nhé.', "Couldn't upload. Please try again.")}</span>
+                    )}
+                  </>
                 ) : (
                   <span
                     onClick={(e) => { e.stopPropagation(); markGuestPaid(g.id); }}

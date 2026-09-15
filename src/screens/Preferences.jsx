@@ -2,7 +2,7 @@ import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 
 export default function Preferences() {
-  const { state, T, set, pickTheme } = useGoc();
+  const { state, T, set, pickTheme, toggleAutoEmailDocuments } = useGoc();
   const options = [
     { key: 'vi', title: 'Tiếng Việt', subtitle: T('Mặc định', 'Vietnamese') },
     { key: 'en', title: 'English', subtitle: T('Bạn có thể đổi lại bất cứ lúc nào', 'Switch anytime') },
@@ -30,6 +30,16 @@ export default function Preferences() {
             <Choice key={option.key} active={state.theme === option.key} title={option.title} subtitle={option.subtitle} onClick={() => pickTheme(option.key)} />
           ))}
         </Section>
+
+        <Section title={T('Chứng từ thanh toán', 'Payment documents')}>
+          <Choice
+            active={state.autoEmailDocuments}
+            title={T('Tự động gửi email hoá đơn/biên nhận', 'Automatically email me a copy of invoices/receipts')}
+            subtitle={T('Dùng làm bằng chứng thanh toán. Áp dụng cho mọi lượt đặt chỗ, không hỏi lại mỗi lần.', 'As proof of payment. Applies to every booking — you will not be asked again per booking.')}
+            onClick={toggleAutoEmailDocuments}
+            testId="preferences-auto-email-documents"
+          />
+        </Section>
       </div>
     </div>
   );
@@ -44,9 +54,9 @@ function Section({ title, children }) {
   );
 }
 
-function Choice({ active, title, subtitle, onClick }) {
+function Choice({ active, title, subtitle, onClick, testId }) {
   return (
-    <div onClick={onClick} style={{ ...cardGlass({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '17px 18px', cursor: 'pointer' }), border: active ? `1.5px solid ${ink}` : `1px solid ${rule}` }}>
+    <div onClick={onClick} data-testid={testId} style={{ ...cardGlass({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '17px 18px', cursor: 'pointer' }), border: active ? `1.5px solid ${ink}` : `1px solid ${rule}` }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <span style={{ ...display(17, { color: ink }) }}>{title}</span>
         <span style={{ fontSize: 11.5, color: ink }}>{subtitle}</span>

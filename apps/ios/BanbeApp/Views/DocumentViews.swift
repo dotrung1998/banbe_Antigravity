@@ -107,6 +107,12 @@ struct DocumentViewerView: View {
     @EnvironmentObject private var app: AppState
     @State private var loadFailed = false
     @State private var printing = false
+    @State private var replacing = false
+    @State private var pendingFileURL: URL?
+    @State private var reason = ""
+    @State private var showReplacePicker = false
+
+    private var isHost: Bool { app.documentsRole == "host" }
 
     var body: some View {
         ZStack {
@@ -117,9 +123,28 @@ struct DocumentViewerView: View {
                     .padding(.horizontal, 22).padding(.top, 8).padding(.bottom, 14)
                     .accessibilityIdentifier("documentView.back")
 
-                if let doc = app.currentDocument, let url = app.documentURL(doc.id) {
-                    DocumentWebView(url: url, failed: $loadFailed, printRequested: $printing)
-                        .accessibilityIdentifier("document.frame")
+                if let doc = app.currentDocument {
+                    if doc.isUploaded {
+                        // The organizer's own file, shown directly via a
+                        // signed URL (private bucket, migration 056) — no
+                        // Authorization header needed, the token is in the
+                        // URL's query string. WKWebView renders a PDF or an
+                        // image URL identically well, so one code path
+                        // covers both.
+                        if let url = app.documentFileURL {
+                            DocumentWebView(url: url, authenticated: false, failed: $loadFailed, printRequested: $printing)
+                                .accessibilityIdentifier("document.frame")
+                        } else {
+                            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    } else {
+                        // Legacy: issued before the switch to uploads —
+                        // falls back to the old server-rendered HTML.
+                        if let url = app.documentURL(doc.id) {
+                            DocumentWebView(url: url, authenticated: true, failed: $loadFailed, printRequested: $printing)
+                                .accessibilityIdentifier("document.frame")
+                        }
+                    }
 
                     if loadFailed {
                         Text(app.T("Chưa tải được chứng từ. Kiểm tra kết nối rồi thử lại.",
@@ -137,6 +162,10 @@ struct DocumentViewerView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("documentView.download")
+
+                    if isHost {
+                        replaceControls(for: doc)
+                    }
                 } else {
                     Text(app.T("Không tìm thấy chứng từ.", "Couldn't find that document."))
                         .font(.system(size: 13)).foregroundStyle(app.palette.ink)
@@ -146,14 +175,86 @@ struct DocumentViewerView: View {
             }
         }
         .accessibilityIdentifier("screen.documentView")
+        .fileImporter(isPresented: $showReplacePicker, allowedContentTypes: [.pdf, .jpeg, .png, .image]) { result in
+            if case .success(let url) = result { pendingFileURL = url; replacing = true }
+        }
+    }
+
+    @ViewBuilder
+    private func replaceControls(for doc: PaymentDocument) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !replacing {
+                Button(app.T("Thay bằng bản khác", "Replace with a different file")) { showReplacePicker = true }
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("document.replaceButton")
+            } else {
+                Text(pendingFileURL?.lastPathComponent ?? "")
+                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                TextField(app.T("Lý do thay thế (bắt buộc) — khách sẽ thấy lý do này", "Reason for replacing (required) — the guest will see this"), text: $reason, axis: .vertical)
+                    .font(.system(size: 12.5))
+                    .padding(10)
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+                    .accessibilityIdentifier("document.replaceReason")
+                if !app.documentUploadError.isEmpty {
+                    Text(app.documentUploadError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                        .accessibilityIdentifier("document.replaceError")
+                }
+                HStack(spacing: 8) {
+                    Button(app.T("Huỷ", "Cancel")) { replacing = false; pendingFileURL = nil }
+                        .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                        .buttonStyle(.plain)
+                    Button(app.documentUploading ? app.T("Đang tải lên…", "Uploading…") : app.T("Xác nhận thay thế", "Confirm replacement")) {
+                        Task { await submitReplacement(doc) }
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(app.palette.paper)
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .background(app.documentUploading ? app.palette.ink.opacity(0.5) : app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .buttonStyle(.plain)
+                    .disabled(app.documentUploading)
+                    .accessibilityIdentifier("document.replaceSubmit")
+                }
+            }
+        }
+        .padding(.horizontal, 22).padding(.bottom, 24)
+    }
+
+    private func submitReplacement(_ doc: PaymentDocument) async {
+        guard let fileURL = pendingFileURL else { return }
+        if reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            app.documentUploadError = app.T("Cần nêu lý do khi thay thế chứng từ đã có.", "A reason is required when replacing an existing document.")
+            return
+        }
+        guard fileURL.startAccessingSecurityScopedResource() else { return }
+        defer { fileURL.stopAccessingSecurityScopedResource() }
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        let ext = fileURL.pathExtension.lowercased()
+        let ok = await app.uploadPaymentDocument(bookingID: doc.bookingId, kind: doc.kind, fileData: data, fileExtension: ext.isEmpty ? "jpg" : ext, reason: reason)
+        if ok {
+            replacing = false
+            pendingFileURL = nil
+            reason = ""
+            app.screen = .documents
+        }
     }
 }
 
-/// A web view that carries the caller's Supabase access token on its own
-/// initial request, so api/payment-document.js can let RLS decide whether
-/// this account may see this document.
+/// A web view that, for the legacy (`authenticated: true`) case, carries the
+/// caller's Supabase access token on its own initial request, so
+/// api/payment-document.js can let RLS decide whether this account may see
+/// this document. An uploaded file's URL (`authenticated: false`) is a
+/// Storage signed URL — the token is already in its query string, and
+/// adding an Authorization header on top would be meaningless (and, for a
+/// plain image/PDF being fetched directly rather than through PostgREST,
+/// harmless either way, but there is no reason to send it).
 private struct DocumentWebView: UIViewRepresentable {
     let url: URL
+    var authenticated: Bool = true
     @Binding var failed: Bool
     @Binding var printRequested: Bool
 
@@ -183,6 +284,10 @@ private struct DocumentWebView: UIViewRepresentable {
         init(_ parent: DocumentWebView) { self.parent = parent }
 
         func load(into webView: WKWebView, url: URL) {
+            guard parent.authenticated else {
+                webView.load(URLRequest(url: url))
+                return
+            }
             Task { @MainActor in
                 var request = URLRequest(url: url)
                 if let token = try? await SupabaseService.client.auth.session.accessToken {

@@ -42,6 +42,14 @@ struct PreferencesView: View {
                            active: app.theme == "dark") { app.pickTheme("dark") }
                         .accessibilityIdentifier("pref.theme.dark")
                 }
+
+                section(app.T("Chứng từ thanh toán", "Payment documents")) {
+                    choice(title: app.T("Tự động gửi email hoá đơn/biên nhận", "Automatically email me a copy of invoices/receipts"),
+                           subtitle: app.T("Dùng làm bằng chứng thanh toán. Áp dụng cho mọi lượt đặt chỗ, không hỏi lại mỗi lần.",
+                                           "As proof of payment. Applies to every booking — you will not be asked again per booking."),
+                           active: app.autoEmailDocuments) { app.toggleAutoEmailDocuments() }
+                        .accessibilityIdentifier("pref.autoEmailDocuments")
+                }
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 30)

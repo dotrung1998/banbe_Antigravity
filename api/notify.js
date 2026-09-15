@@ -396,6 +396,142 @@ async function handleReferralJoined(req, res, admin, userData) {
   }
 }
 
+// ---- payment document upload/replacement (Tasks 3/4/6, migration 056) ----
+// The caller here is the organizer who just called upload_payment_document()
+// — this looks up the document THEY uploaded and emails a copy to the
+// participant it belongs to, not to the caller. Re-verifies organizer
+// ownership itself rather than trusting that the RPC already checked it,
+// same defensive posture as every other handler in this file.
+async function loadDocumentForNotify(admin, documentId, actorId) {
+  const { data: doc, error: docError } = await admin
+    .from('payment_documents')
+    .select('id, booking_id, kind, file_path, upload_reason, user_id, organizer_id, superseded_at')
+    .eq('id', documentId)
+    .maybeSingle();
+  if (docError) throw docError;
+  if (!doc || !doc.user_id) return null;
+
+  const { data: organizer, error: organizerError } = await admin
+    .from('organizers')
+    .select('owner_id, user_id, name')
+    .eq('id', doc.organizer_id)
+    .maybeSingle();
+  if (organizerError) throw organizerError;
+  const isOwner = organizer && (organizer.owner_id === actorId || organizer.user_id === actorId);
+  if (!isOwner) return null;
+
+  const { data: guest, error: guestError } = await admin.auth.admin.getUserById(doc.user_id);
+  if (guestError || !guest?.user?.email) return null;
+
+  const { data: guestProfile } = await admin
+    .from('profiles')
+    .select('locale, auto_email_documents')
+    .eq('id', doc.user_id)
+    .maybeSingle();
+
+  return {
+    doc,
+    organizerName: organizer?.name || '',
+    email: guest.user.email,
+    locale: guestProfile?.locale === 'en' ? 'en' : 'vi',
+    autoEmail: guestProfile?.auto_email_documents === true,
+  };
+}
+
+async function attachmentForDocument(admin, doc) {
+  if (!doc.file_path) return null;
+  const { data: blob, error } = await admin.storage.from('payment-documents').download(doc.file_path);
+  if (error || !blob) {
+    console.error('payment-document notify: file download failed:', doc.file_path, error);
+    return null;
+  }
+  const ext = doc.file_path.includes('.') ? doc.file_path.slice(doc.file_path.lastIndexOf('.')) : '';
+  return {
+    filename: (doc.kind === 'invoice' ? 'invoice' : 'receipt') + ext,
+    content: Buffer.from(await blob.arrayBuffer()),
+  };
+}
+
+// ---- new: first upload — only emails if the participant opted in (Task 4) ----
+async function handleDocumentUploaded(req, res, admin, userData, body) {
+  const documentId = getText(body.documentId);
+  if (!documentId) return res.status(400).json({ error: 'VALID_DOCUMENT_REQUIRED' });
+
+  try {
+    const ctx = await loadDocumentForNotify(admin, documentId, userData.user.id);
+    if (!ctx) return res.status(200).json({ sent: 0 });
+    if (!ctx.autoEmail) return res.status(200).json({ sent: 0, reason: 'NOT_OPTED_IN' });
+
+    const { doc, locale, email } = ctx;
+    const kindLabel = t(locale, doc.kind === 'invoice' ? 'hoá đơn' : 'biên nhận', doc.kind === 'invoice' ? 'invoice' : 'receipt');
+    const subject = t(locale, `Bạn có một ${kindLabel} mới từ banbe`, `You have a new ${kindLabel} from banbe`);
+    const heading = t(locale, `${kindLabel[0].toUpperCase()}${kindLabel.slice(1)} của bạn đã sẵn sàng`, `Your ${kindLabel} is ready`);
+    const paragraphs = [
+      t(locale,
+        `Người tổ chức vừa tải lên ${kindLabel} cho lượt đặt chỗ của bạn — đính kèm bản sao trong email này để lưu trữ.`,
+        `The organizer just uploaded your ${kindLabel} — a copy is attached to this email for your records.`),
+      t(locale,
+        'Bạn đang nhận email này vì đã bật "Tự động gửi email hoá đơn/biên nhận" trong Tuỳ chọn. Có thể tắt bất cứ lúc nào.',
+        'You are getting this because "Automatically email me a copy of invoices/receipts" is on in your Preferences. You can turn it off any time.'),
+    ];
+
+    const attachment = await attachmentForDocument(admin, doc);
+    await sendWithGmail({
+      to: email,
+      subject,
+      text: renderEmailText({ heading, paragraphs }),
+      html: renderEmail({ preheader: subject, eyebrow: t(locale, 'Chứng từ thanh toán', 'Payment document'), heading, paragraphs }),
+      attachments: attachment ? [attachment] : [],
+    });
+    return res.status(200).json({ sent: 1 });
+  } catch (error) {
+    console.error('Document-uploaded notification failed:', error);
+    return res.status(502).json({ error: 'NOTIFY_FAILED' });
+  }
+}
+
+// ---- new: replacement — always sent (Task 6), attaches the new file only if opted in (Task 4) ----
+async function handleDocumentReplaced(req, res, admin, userData, body) {
+  const documentId = getText(body.documentId);
+  if (!documentId) return res.status(400).json({ error: 'VALID_DOCUMENT_REQUIRED' });
+
+  try {
+    const ctx = await loadDocumentForNotify(admin, documentId, userData.user.id);
+    if (!ctx) return res.status(200).json({ sent: 0 });
+
+    const { doc, locale, email, organizerName } = ctx;
+    const reason = escapeHtml(doc.upload_reason || '');
+    const kindLabel = t(locale, doc.kind === 'invoice' ? 'hoá đơn' : 'biên nhận', doc.kind === 'invoice' ? 'invoice' : 'receipt');
+    const subject = t(locale, `${kindLabel[0].toUpperCase()}${kindLabel.slice(1)} của bạn đã được cập nhật`, `Your ${kindLabel} was updated`);
+    const heading = t(locale, `${kindLabel[0].toUpperCase()}${kindLabel.slice(1)} đã được thay thế`, `Your ${kindLabel} was replaced`);
+    const paragraphs = [
+      t(locale,
+        `${escapeHtml(organizerName) || 'Người tổ chức'} vừa tải lên bản ${kindLabel} mới, thay cho bản trước đó.`,
+        `${escapeHtml(organizerName) || 'The organizer'} just uploaded a new ${kindLabel}, replacing the previous one.`),
+      t(locale, `Lý do: ${reason}`, `Reason: ${reason}`),
+      t(locale,
+        'Bản cũ sẽ bị xoá trong vòng 24 giờ tới. Nếu bạn cần bản cũ trước khi bị xoá, hãy liên hệ trực tiếp email của người tổ chức.',
+        "The previous version will be deleted within the next 24 hours. If you need it before then, contact the organizer's email directly."),
+    ];
+    if (ctx.autoEmail) {
+      paragraphs.push(t(locale, 'Bản mới được đính kèm trong email này.', 'The new version is attached to this email.'));
+    }
+
+    const attachment = ctx.autoEmail ? await attachmentForDocument(admin, doc) : null;
+    await sendWithGmail({
+      to: email,
+      subject,
+      text: renderEmailText({ heading, paragraphs }),
+      html: renderEmail({ preheader: subject, eyebrow: t(locale, 'Chứng từ thanh toán', 'Payment document'), heading, paragraphs }),
+      attachments: attachment ? [attachment] : [],
+    });
+    return res.status(200).json({ sent: 1 });
+  } catch (error) {
+    console.error('Document-replaced notification failed:', error);
+    return res.status(502).json({ error: 'NOTIFY_FAILED' });
+  }
+}
+
 // ---- was api/notify-welcome.js ----
 async function handleWelcome(req, res, admin, userData) {
   if (!userData.user.email) return res.status(200).json({ sent: 0 });
@@ -484,6 +620,8 @@ export default async function handler(req, res) {
     case 'name_change': return handleNameChange(req, res, admin, userData, body);
     case 'referral_joined': return handleReferralJoined(req, res, admin, userData, body);
     case 'welcome': return handleWelcome(req, res, admin, userData, body);
+    case 'document_uploaded': return handleDocumentUploaded(req, res, admin, userData, body);
+    case 'document_replaced': return handleDocumentReplaced(req, res, admin, userData, body);
     default: return res.status(400).json({ error: 'VALID_NOTIFY_TYPE_REQUIRED' });
   }
 }

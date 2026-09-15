@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Port of src/screens/Attendance.jsx — the real guest list for an event
 /// (actual bookings, not a placeholder), tap to check someone in, scan
@@ -6,6 +7,10 @@ import SwiftUI
 /// for a reason first (ReasonSheet).
 struct AttendanceView: View {
     @EnvironmentObject var app: AppState
+    // Which guest's "Upload receipt" is currently driving the file picker —
+    // .fileImporter needs one shared presentation per view, not one per row.
+    @State private var uploadTarget: UUID?
+    @State private var uploadErrorFor: UUID?
 
     private var event: CatalogEvent? { EventCatalog.find(app.attendanceEventKey) }
     private var checkedCount: Int { app.attendanceGuests.filter(\.checkedIn).count }
@@ -51,8 +56,8 @@ struct AttendanceView: View {
                         .font(.system(size: 11.5))
                         .lineSpacing(2)
 
-                    Text(app.T("Đánh dấu \"Đã thanh toán\" khi bạn thấy tiền vào tài khoản — biên nhận sẽ tự phát hành cho khách.",
-                               "Mark a guest paid once you see the money arrive — their receipt is issued automatically."))
+                    Text(app.T("Đánh dấu \"Đã thanh toán\" khi bạn thấy tiền vào tài khoản, rồi tải lên hoá đơn/biên nhận thật của bạn cho khách.",
+                               "Mark a guest paid once you see the money arrive, then upload your own real invoice/receipt for them."))
                         .font(.system(size: 11.5))
                         .foregroundStyle(app.palette.ink.opacity(0.7))
                         .lineSpacing(2)
@@ -83,6 +88,28 @@ struct AttendanceView: View {
             .padding(.top, 16)
             .padding(.bottom, 40)
         }
+        .fileImporter(
+            isPresented: Binding(get: { uploadTarget != nil }, set: { if !$0 { uploadTarget = nil } }),
+            allowedContentTypes: [.pdf, .jpeg, .png, .image]
+        ) { result in
+            guard let bookingID = uploadTarget else { return }
+            uploadTarget = nil
+            switch result {
+            case .success(let url):
+                Task { await uploadReceipt(bookingID: bookingID, url: url) }
+            case .failure(let error):
+                print("Attendance receipt picker failed:", error)
+            }
+        }
+    }
+
+    private func uploadReceipt(bookingID: UUID, url: URL) async {
+        guard url.startAccessingSecurityScopedResource() else { return }
+        defer { url.stopAccessingSecurityScopedResource() }
+        guard let data = try? Data(contentsOf: url) else { return }
+        let ext = url.pathExtension.lowercased()
+        let ok = await app.uploadPaymentDocument(bookingID: bookingID, kind: "receipt", fileData: data, fileExtension: ext.isEmpty ? "jpg" : ext)
+        uploadErrorFor = ok ? nil : bookingID
     }
 
     private func guestRow(_ guest: AttendanceGuest) -> some View {
@@ -99,6 +126,25 @@ struct AttendanceView: View {
                             .font(.system(size: 11))
                             .foregroundStyle(app.palette.ink.opacity(0.7))
                             .accessibilityIdentifier("guest.paid")
+
+                        Button(app.documentUploading && uploadTarget == guest.id
+                               ? app.T("Đang tải lên…", "Uploading…")
+                               : app.T("Tải lên biên nhận", "Upload receipt")) {
+                            uploadTarget = guest.id
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(app.palette.ink)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+                        .buttonStyle(.plain)
+                        .disabled(app.documentUploading)
+                        .accessibilityIdentifier("guest.uploadReceipt")
+
+                        if uploadErrorFor == guest.id {
+                            Text(app.T("Không tải lên được. Thử lại nhé.", "Couldn't upload. Please try again."))
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(BanbeTheme.alert)
+                        }
                     } else {
                         // The screenshot the guest already sent is the
                         // strongest signal there is that this is the right

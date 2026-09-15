@@ -221,28 +221,14 @@ extension AppState {
         }
         documentsLoading = true
         do {
-            // As a guest, mint any missing invoice first. ensure_payment_document
-            // is idempotent, so this fills the gaps once and is a no-op after.
-            // Receipts are never minted here — only an organizer confirming
-            // payment can create one.
-            if documentsRole == "guest" && documentsKind == "invoice" {
-                let mine: [BookingIDRow] = try await SupabaseService.client
-                    .from("bookings").select("id")
-                    .eq("user_id", value: uid.uuidString)
-                    .in("status", values: ["pending", "confirmed", "attended"])
-                    .execute().value
-                for row in mine {
-                    _ = try? await SupabaseService.client
-                        .rpc("ensure_payment_document", params: [
-                            "p_booking": row.id.uuidString, "p_kind": "invoice",
-                        ])
-                        .execute()
-                }
-            }
-
+            // Documents are organizer-uploaded now (migration 056) — nothing
+            // to mint here anymore. `superseded_at IS NULL` hides a replaced
+            // version immediately (Task 5's soft-delete: the row itself
+            // still exists, queryable for 24h, but never in this list).
             var query = SupabaseService.client
                 .from("payment_documents").select("*")
                 .eq("kind", value: documentsKind)
+                .is("superseded_at", value: nil)
 
             if documentsRole == "host" {
                 // An organizer is usually also a goer, so leaning on RLS alone
@@ -269,18 +255,100 @@ extension AppState {
     func openDocument(_ id: UUID) {
         documentID = id
         screen = .documentView
+        documentFileURL = nil
+        if let path = documents.first(where: { $0.id == id })?.filePath, !path.isEmpty {
+            Task { documentFileURL = await signedDocumentFileURL(path) }
+        }
     }
 
     var currentDocument: PaymentDocument? {
         documents.first { $0.id == documentID }
     }
 
-    /// The URL the document viewer loads. Rendering happens server-side with
-    /// the very same module the web app prints from (api/payment-document.js),
-    /// so a receipt can't look one way on iOS and another on the web. The
-    /// access token goes in a header, set on the web view's own request.
+    /// The URL the LEGACY document viewer loads — only for a document with
+    /// no file_path (issued before migration 056's switch to organizer
+    /// uploads). Rendering happens server-side with the very same module
+    /// the web app prints from (api/payment-document.js), so a receipt
+    /// can't look one way on iOS and another on the web. The access token
+    /// goes in a header, set on the web view's own request.
     func documentURL(_ id: UUID) -> URL? {
         URL(string: "\(AppConfig.apiBaseURL)/api/payment-document?id=\(id.uuidString.lowercased())&lang=\(lang)")
+    }
+
+    /// A signed URL for an uploaded document's own file — the bucket is
+    /// private (RLS-scoped to the booking's guest/organizer), so a plain
+    /// public URL won't load it.
+    func signedDocumentFileURL(_ path: String) async -> URL? {
+        do {
+            let results = try await SupabaseService.client.storage
+                .from("payment-documents")
+                .createSignedURLs(paths: [path], expiresIn: 600)
+            for result in results {
+                if case let .success(resultPath, signedURL) = result, resultPath == path {
+                    return signedURL
+                }
+            }
+            return nil
+        } catch {
+            print("signedDocumentFileURL failed:", error)
+            return nil
+        }
+    }
+
+    /// The organizer's replacement for the old auto-generation (Task 2):
+    /// uploads a real file to the private 'payment-documents' bucket, then
+    /// upload_payment_document() (migration 056) records it — supersedes
+    /// whatever live document of this kind existed for the booking only
+    /// when `reason` is non-empty (the RPC itself requires one exactly when
+    /// there's something to replace), and writes the in-app notification.
+    /// The email (Task 4/6) is a separate, best-effort call to /api/notify,
+    /// same "client calls it right after its own action succeeds" pattern
+    /// as the rest of this file's notify calls.
+    @discardableResult
+    func uploadPaymentDocument(bookingID: UUID, kind: String, fileData: Data, fileExtension: String, reason: String = "") async -> Bool {
+        documentUploading = true
+        documentUploadError = ""
+        do {
+            let contentType = fileExtension == "pdf" ? "application/pdf" : "image/jpeg"
+            let path = "\(bookingID.uuidString.lowercased())/\(kind)-\(Int(Date().timeIntervalSince1970)).\(fileExtension)"
+            _ = try await SupabaseService.client.storage
+                .from("payment-documents")
+                .upload(path, data: fileData, options: FileOptions(contentType: contentType, upsert: true))
+
+            let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+            // The SQL function treats an empty string the same as SQL NULL
+            // (NULLIF(btrim(...), '')) — matching mark_payment_proof's own
+            // "p_note": "" convention above rather than needing an Optional
+            // value type in this params dictionary.
+            let doc: PaymentDocument = try await SupabaseService.client
+                .rpc("upload_payment_document", params: [
+                    "p_booking": bookingID.uuidString, "p_kind": kind, "p_file_path": path,
+                    "p_upload_reason": trimmedReason,
+                ])
+                .execute().value
+
+            if let token = try? await SupabaseService.client.auth.session.accessToken {
+                var request = URLRequest(url: URL(string: "\(AppConfig.apiBaseURL)/api/notify")!)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "content-type")
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                request.httpBody = try? JSONSerialization.data(withJSONObject: [
+                    "type": trimmedReason.isEmpty ? "document_uploaded" : "document_replaced",
+                    "documentId": doc.id.uuidString,
+                ])
+                _ = try? await URLSession.shared.data(for: request)
+            }
+
+            documentUploading = false
+            return true
+        } catch {
+            print("uploadPaymentDocument failed:", error)
+            documentUploading = false
+            documentUploadError = "\(error)".contains("REASON_REQUIRED")
+                ? T("Cần nêu lý do khi thay thế chứng từ đã có.", "A reason is required when replacing an existing document.")
+                : T("Không tải lên được. Thử lại nhé.", "Couldn't upload. Please try again.")
+            return false
+        }
     }
 
     // MARK: - The organizer's "mark as paid"

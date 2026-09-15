@@ -295,6 +295,15 @@ final class AppState: ObservableObject {
     @Published var documentsKind = "invoice"
     @Published var documentsRole = "guest"
     @Published var documentID: UUID?
+    // Signed URL for the current document's uploaded file (migration 056)
+    // — nil while loading/absent (a legacy document has no file_path and
+    // falls back to the old rendered-HTML viewer instead).
+    @Published var documentFileURL: URL?
+    @Published var documentUploading = false
+    @Published var documentUploadError = ""
+    // Task 4 (migration 056): one-time, account-level opt-in — mirrors
+    // profiles.auto_email_documents, loaded alongside locale/theme.
+    @Published var autoEmailDocuments = false
     // Two-phase payment machine (migrations 026/027).
     @Published var paymentTxnId = ""
     @Published var verifications: [PendingVerification] = []
@@ -633,6 +642,18 @@ final class AppState: ObservableObject {
     func pickTheme(_ value: String) {
         theme = value
         persistPreference(["theme": value])
+    }
+    func toggleAutoEmailDocuments() {
+        autoEmailDocuments.toggle()
+        guard let uid = userID else { return }
+        let update = AutoEmailDocumentsUpdate(autoEmailDocuments: autoEmailDocuments)
+        Task {
+            do {
+                try await SupabaseService.client.from("profiles").update(update).eq("id", value: uid).execute()
+            } catch {
+                print("Failed to save auto_email_documents:", error)
+            }
+        }
     }
     func finishOnboarding(isSignedIn: Bool) {
         UserDefaults.standard.set(true, forKey: "banbe.onboarded")

@@ -14,6 +14,14 @@ struct ProfilePreferenceUpdate: Encodable {
     }
 }
 
+/// Task 4 (migration 056) — same profiles.update() pattern as
+/// ProfilePreferenceUpdate above, its own small struct since it's an
+/// unrelated column.
+struct AutoEmailDocumentsUpdate: Encodable {
+    let autoEmailDocuments: Bool
+    enum CodingKeys: String, CodingKey { case autoEmailDocuments = "auto_email_documents" }
+}
+
 struct NewThread: Encodable {
     let eventId: String
     let guestId: UUID
@@ -155,6 +163,7 @@ extension AppState {
             let canHostNow = profile.role == "organizer" || profile.role == "admin"
             organizerMode = canHostNow
             mode = canHostNow ? "host" : "goer"
+            autoEmailDocuments = profile.autoEmailDocuments == true
 
             // Language & theme follow the account once it has saved
             // preferences, so signing in on any device restores them.
@@ -475,8 +484,36 @@ extension AppState {
                 chatHighlight = (bookingID: bookingID, messageID: messageID)
                 if accountType == "organizer" { openVerifications() } else { openPaymentDetails(bookingID) }
             }
+        case "payment_document_uploaded", "payment_document_replaced":
+            if let documentIDString = notification.data["document_id"]?.stringValue,
+               let documentID = UUID(uuidString: documentIDString) {
+                Task { await openDocumentFromNotification(documentID) }
+            }
         default:
             break
+        }
+    }
+
+    /// Deep-links a bell notification straight to the document it's about,
+    /// without needing the full Documents list loaded first — fetches the
+    /// one row RLS allows this account to see and opens the viewer on it.
+    func openDocumentFromNotification(_ targetID: UUID) async {
+        do {
+            let doc: PaymentDocument = try await SupabaseService.client
+                .from("payment_documents").select("*")
+                .eq("id", value: targetID.uuidString)
+                .single().execute().value
+            documents = [doc]
+            documentID = doc.id
+            documentsKind = doc.kind
+            documentsRole = "guest"
+            screen = .documentView
+            documentFileURL = nil
+            if let path = doc.filePath, !path.isEmpty {
+                documentFileURL = await signedDocumentFileURL(path)
+            }
+        } catch {
+            print("openDocumentFromNotification failed:", error)
         }
     }
 

@@ -57,6 +57,9 @@ const initialState = {
   // whenever Login mounts fresh; gates submitCurrentForm alongside the
   // existing email/password validity checks.
   policyConsent: false,
+  // Task 4 (migration 056): one-time, account-level opt-in — mirrors
+  // profiles.auto_email_documents, loaded in syncUser() like locale/theme.
+  autoEmailDocuments: false,
   // True only when Login was reached by force (the mandatory post-splash/
   // post-onboarding gate, or the guard effect catching an unauthenticated
   // screen change) rather than a deliberate "sign in to do X" prompt that
@@ -127,6 +130,12 @@ const initialState = {
   documentsKind: 'invoice',
   documentsRole: 'guest',
   documentId: null,
+  // Signed URL for the current document's uploaded file (migration 056) —
+  // '' while loading/absent (a legacy, pre-upload document has no
+  // file_path at all and falls back to the old rendered-HTML viewer).
+  documentFileUrl: '',
+  documentUploadError: '',
+  documentUploading: false,
   // How many buyers are currently holding a seat on this account's own
   // events, and how soon the nearest one lapses — the organizer half of the
   // Home countdown banners. null until loadOrganizerHoldingSummary() runs.
@@ -417,7 +426,7 @@ export function GocProvider({ children }) {
       }
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, locale, theme, prefs_saved, display_name, referral_code, policy_accepted_at, policy_version')
+        .select('role, locale, theme, prefs_saved, display_name, referral_code, policy_accepted_at, policy_version, auto_email_documents')
         .eq('id', user.id)
         .maybeSingle();
       const role =
@@ -430,6 +439,7 @@ export function GocProvider({ children }) {
       set({
         user: { ...user, name: displayName }, accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer',
         referralCode: profile?.referral_code || null, sessionChecked: true,
+        autoEmailDocuments: profile?.auto_email_documents === true,
       });
 
       // Proof-of-consent bookkeeping (Task 1, migration 055,
@@ -1428,21 +1438,11 @@ export function GocProvider({ children }) {
     if (!uid) return set({ documents: [], documentsLoading: false });
     set({ documentsLoading: true, documentsError: '' });
 
-    // As a guest, make sure an invoice actually exists for anything bookable
-    // before listing — ensure_payment_document is idempotent, so this mints
-    // the missing ones once and is a no-op afterwards. Receipts are never
-    // minted here; only the organizer marking payment can do that.
-    if (s.documentsRole === 'guest' && s.documentsKind === 'invoice') {
-      const { data: mine } = await supabase
-        .from('bookings').select('id, status')
-        .eq('user_id', uid).in('status', ['pending', 'confirmed', 'attended']);
-      for (const b of mine || []) {
-        await supabase.rpc('ensure_payment_document', { p_booking: b.id, p_kind: 'invoice' })
-          .then(({ error }) => { if (error) console.warn('ensure invoice failed:', b.id, error.message); });
-      }
-    }
-
-    let query = supabase.from('payment_documents').select('*').eq('kind', s.documentsKind);
+    // Documents are organizer-uploaded now (migration 056) — nothing to
+    // mint here anymore. `superseded_at IS NULL` hides a replaced version
+    // immediately (Task 5's soft-delete: the row itself still exists,
+    // queryable for 24h, but never in this list).
+    let query = supabase.from('payment_documents').select('*').eq('kind', s.documentsKind).is('superseded_at', null);
     if (s.documentsRole === 'host') {
       // An organizer is usually also a goer, so filtering by RLS alone would
       // mix their own tickets into the list of documents they issued.
@@ -1467,6 +1467,82 @@ export function GocProvider({ children }) {
     () => s.documents.find(d => d.id === s.documentId) || null,
     [s.documents, s.documentId],
   );
+
+  /**
+   * The organizer's replacement for the old auto-generation: uploads a real
+   * file (PDF/image) to the private 'payment-documents' bucket, then
+   * upload_payment_document() (migration 056) records it, supersedes
+   * whatever live document of that kind existed for this booking (only
+   * when `reason` is given — the RPC itself enforces that a reason is
+   * required exactly when there's something to replace), and inserts the
+   * in-app notification. The email (Task 4's opt-in, Task 6's always-sent
+   * replacement notice) is a separate, best-effort call to /api/notify —
+   * same "client calls it right after its own action succeeds" pattern
+   * claimPendingReferralAndWelcome() already uses, not part of this
+   * transaction.
+   */
+  const uploadPaymentDocument = useCallback(async (bookingId, kind, file, reason = '') => {
+    if (!bookingId || !file) return { success: false, error: 'FILE_REQUIRED' };
+    try {
+      const { blob, ext, contentType } = await normalizeProofFile(file);
+      const path = `${bookingId}/${kind}-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('payment-documents').upload(path, blob, { upsert: true, contentType });
+      if (upErr) throw upErr;
+
+      const trimmedReason = reason.trim();
+      const { data: doc, error } = await supabase.rpc('upload_payment_document', {
+        p_booking: bookingId, p_kind: kind, p_file_path: path, p_upload_reason: trimmedReason || null,
+      });
+      if (error) throw error;
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (token) {
+        fetch('/api/notify', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ type: trimmedReason ? 'document_replaced' : 'document_uploaded', documentId: doc.id }),
+        }).catch(() => {});
+      }
+      return { success: true, doc };
+    } catch (e) {
+      console.warn('uploadPaymentDocument failed:', e);
+      return { success: false, error: e.message === 'REASON_REQUIRED' ? 'REASON_REQUIRED' : 'UPLOAD_FAILED' };
+    }
+  }, []);
+
+  // Deep-links a bell notification ('payment_document_uploaded'/'_replaced')
+  // straight to the document it's about, without needing the full
+  // Documents list loaded first — fetches the one row RLS allows this
+  // account to see (the guest it belongs to) and opens the viewer on it.
+  const openDocumentFromNotification = useCallback(async (documentId) => {
+    const { data, error } = await supabase.from('payment_documents').select('*').eq('id', documentId).maybeSingle();
+    if (error || !data) return;
+    set({ documents: [data], documentId: data.id, documentsKind: data.kind, documentsRole: 'guest', screen: 'documentView' });
+  }, [set]);
+
+  // Keeps documentFileUrl pointed at whichever document is open — a signed
+  // URL, not a public one, since the bucket is private (RLS-scoped to the
+  // booking's guest/organizer, migration 056). Re-signs whenever the open
+  // document changes; a legacy document with no file_path just clears it,
+  // which is what tells DocumentView.jsx to fall back to the old rendered-
+  // HTML viewer instead.
+  useEffect(() => {
+    const path = currentDocument?.file_path;
+    if (!path) { set({ documentFileUrl: '' }); return; }
+    let active = true;
+    supabase.storage.from('payment-documents').createSignedUrl(path, 600).then(({ data, error }) => {
+      if (!active) return;
+      if (error) { console.warn('document signed URL failed:', error); set({ documentFileUrl: '' }); return; }
+      set({ documentFileUrl: data?.signedUrl || '' });
+    });
+    return () => { active = false; };
+  }, [currentDocument?.file_path, set]);
+
+  const toggleAutoEmailDocuments = useCallback(() => {
+    set(prev => ({ autoEmailDocuments: !prev.autoEmailDocuments }));
+    persistAccountPreference({ auto_email_documents: !s.autoEmailDocuments });
+  }, [set, s.autoEmailDocuments, persistAccountPreference]);
 
   /**
    * Hands the rendered document to the browser's own print dialog, which is
@@ -2492,8 +2568,10 @@ export function GocProvider({ children }) {
       set({ chatHighlight: { bookingId: n.data.booking_id, messageId: n.data.message_id || null } });
       if (s.accountType === 'organizer') openVerifications();
       else openPaymentDetails(n.data.booking_id);
+    } else if ((n.kind === 'payment_document_uploaded' || n.kind === 'payment_document_replaced') && n.data?.document_id) {
+      openDocumentFromNotification(n.data.document_id);
     }
-  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, openVerifications, openPaymentDetails]);
+  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, openVerifications, openPaymentDetails, openDocumentFromNotification]);
   /**
    * The organizer's "mark as paid". confirm_payment issues the receipt in
    * the same transaction (migration 024) and notifies the guest, which is
@@ -2608,7 +2686,7 @@ export function GocProvider({ children }) {
     openBilling, billingNameType, billingAddressType, billingPhoneType, billingTaxCodeType, saveBillingDetails,
     openPayout, payoutField, savePayoutDetails,
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
-    currentDocument, downloadDocument, markGuestPaid,
+    currentDocument, downloadDocument, markGuestPaid, uploadPaymentDocument, openDocumentFromNotification, toggleAutoEmailDocuments,
     submitPaymentProof, paymentTxnType, vietQrFor,
     openVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
@@ -2637,7 +2715,7 @@ export function GocProvider({ children }) {
     openBilling, billingNameType, billingAddressType, billingPhoneType, billingTaxCodeType, saveBillingDetails,
     openPayout, payoutField, savePayoutDetails,
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
-    currentDocument, downloadDocument, markGuestPaid,
+    currentDocument, downloadDocument, markGuestPaid, uploadPaymentDocument, openDocumentFromNotification, toggleAutoEmailDocuments,
     submitPaymentProof, paymentTxnType, vietQrFor,
     openVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
