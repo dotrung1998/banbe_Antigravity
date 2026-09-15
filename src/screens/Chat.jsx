@@ -2,11 +2,11 @@ import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, display, fieldGlass, inkButton } from '../theme.js';
 
 export default function Chat() {
-  const { state, T, curEvent: ev, chatBackFn, chatOnType, chatOnKey, chatSend } = useGoc();
+  const { state, T, curEvent: ev, chatBackFn, chatOnType, chatOnKey, chatSend, deleteMessage } = useGoc();
   const s = state;
 
   const thread = s.chatMessages.length
-    ? s.chatMessages.map(m => ({ who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body }))
+    ? s.chatMessages.map(m => ({ id: m.id, who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body }))
     : [{ who: 'host', text: ev.greeting }];
   const chatBackLabel = s.chatBack === 'inbox' ? T('Tin nhắn', 'Messages') : ev.orgName;
   const signedInAs = s.user ? ({ zalo: T('qua Zalo', 'via Zalo'), phone: T('qua số điện thoại', 'via phone'), facebook: T('qua Facebook', 'via Facebook'), instagram: T('qua Instagram', 'via Instagram') }[s.user.via] || s.user.email || '') : '';
@@ -25,7 +25,20 @@ export default function Chat() {
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {thread.map((m, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: m.who === 'me' ? 'flex-end' : 'flex-start' }}>
+          <div key={m.id ?? i} style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: m.who === 'me' ? 'flex-end' : 'flex-start' }}>
+            {/* A real, permanent delete (messages_delete_own RLS, migration
+                054) — own messages only; m.id is absent for the static
+                greeting placeholder and for a system note (sender_id NULL,
+                so it's never "me"), so neither ever gets this affordance. */}
+            {m.who === 'me' && m.id && (
+              <span
+                onClick={() => deleteMessage(m.id)}
+                data-testid="chat-message-delete"
+                style={{ fontSize: 13, color: ink, opacity: 0.35, cursor: 'pointer', flex: 'none' }}
+              >
+                ×
+              </span>
+            )}
             <div style={{
               maxWidth: '78%', padding: '11px 14px', fontSize: 13.5, lineHeight: 1.5,
               borderRadius: m.who === 'me' ? '16px 16px 5px 16px' : '16px 16px 16px 5px',

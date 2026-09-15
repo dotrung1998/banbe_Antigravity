@@ -708,6 +708,23 @@ extension AppState {
 
     func chatBackAction() { screen = chatBack == .inbox ? .inbox : .organizer }
 
+    /// A real, permanent delete, own messages only — RLS
+    /// (messages_delete_own, migration 054) scopes this to
+    /// `sender_id = auth.uid()`, which a system message (sender_id nil)
+    /// can never match. No documented retention requirement for this
+    /// table (unlike dispute_messages, see 05-notify-retention.md), so no
+    /// soft-delete here either.
+    func deleteMessage(_ id: UUID) async {
+        let previous = chatMessages
+        chatMessages.removeAll { $0.id == id }
+        do {
+            try await SupabaseService.client.from("messages").delete().eq("id", value: id).execute()
+        } catch {
+            print("Failed to delete message:", error)
+            chatMessages = previous // put it back — the delete didn't actually happen
+        }
+    }
+
     /// Conversations on both sides: as the guest, and as the organizer of
     /// threads belonging to an organizer this account owns.
     func loadInboxThreads() async {

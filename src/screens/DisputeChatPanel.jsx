@@ -2,6 +2,27 @@ import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { ink, rule, fieldGlass, cardGlass, alert } from '../theme.js';
 
+// A static (non-ticking, computed at render time), read-only countdown —
+// never a delete button, unlike the ordinary chat (Chat.jsx) or the
+// notification inbox (Notifications.jsx): dispute_messages must survive
+// until purge_resolved_dispute_threads() actually removes it, per
+// 05-notify-retention.md's 72h retention requirement. Returns null for an
+// open thread (resolvedAt/purgeAfter both null) or one whose purge_after
+// has already passed (about to be swept, or the cron just hasn't run yet
+// — either way, nothing useful to say).
+function retentionLabel(thread, T) {
+  if (!thread?.resolvedAt || !thread.purgeAfter) return null;
+  const msLeft = new Date(thread.purgeAfter).getTime() - Date.now();
+  if (msLeft <= 0) return null;
+  const hoursLeft = msLeft / 3600000;
+  if (hoursLeft >= 1) {
+    const n = Math.round(hoursLeft);
+    return T(`Sẽ tự xoá trong ~${n} giờ`, `Auto-deletes in ~${n}h`);
+  }
+  const n = Math.max(1, Math.round(msLeft / 60000));
+  return T(`Sẽ tự xoá trong ~${n} phút`, `Auto-deletes in ~${n}m`);
+}
+
 // The temporary chat for an escalated dispute — shared between the guest's
 // side (PaymentDetails.jsx, while payment_state = 'disputed') and the
 // organizer's side (Verifications.jsx, in the "escalated to banbe" list).
@@ -29,6 +50,8 @@ export default function DisputeChatPanel({ bookingId }) {
   }, [bookingId, loadDisputeChat]);
 
   const messages = s.disputeChatBookingId === bookingId ? s.disputeChatMessages : [];
+  const thread = s.disputeChatBookingId === bookingId ? s.disputeChatThread : null;
+  const retention = retentionLabel(thread, T);
 
   // Reached by tapping a 'dispute_message' toast/notification
   // (openNotification, GocContext.jsx) — scrolls to and briefly highlights
@@ -63,6 +86,11 @@ export default function DisputeChatPanel({ bookingId }) {
         {T('Cuộc trò chuyện này là tạm thời — sẽ bị xoá sau khi banbe đưa ra quyết định, và bản ghi được gửi qua email cho cả hai bên.',
            'This conversation is temporary — it is deleted once banbe rules on the dispute, and a copy is emailed to both of you.')}
       </p>
+      {retention && (
+        <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.55 }} data-testid="dispute-chat-retention">
+          {retention}
+        </span>
+      )}
 
       <div ref={listRef} style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
         {s.disputeChatLoading && messages.length === 0 && (

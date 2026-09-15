@@ -15,6 +15,27 @@ struct DisputeChatPanel: View {
         app.disputeChatBookingId == bookingID ? app.disputeChatMessages : []
     }
 
+    /// A static (non-ticking, computed at render time), read-only
+    /// countdown — never a delete button, unlike ChatView or
+    /// NotificationsView: dispute_messages must survive until
+    /// purge_resolved_dispute_threads() actually removes it, per
+    /// 05-notify-retention.md's 72h retention requirement. nil for an open
+    /// thread or one whose purge_after has already passed.
+    private var retentionLabel: String? {
+        guard app.disputeChatBookingId == bookingID,
+              let thread = app.disputeChatThread,
+              thread.resolvedAt != nil, let purgeAfter = thread.purgeAfter else { return nil }
+        let secondsLeft = purgeAfter.timeIntervalSinceNow
+        guard secondsLeft > 0 else { return nil }
+        let hoursLeft = secondsLeft / 3600
+        if hoursLeft >= 1 {
+            let n = Int(hoursLeft.rounded())
+            return app.T("Sẽ tự xoá trong ~\(n) giờ", "Auto-deletes in ~\(n)h")
+        }
+        let n = max(1, Int((secondsLeft / 60).rounded()))
+        return app.T("Sẽ tự xoá trong ~\(n) phút", "Auto-deletes in ~\(n)m")
+    }
+
     // No realtime subscription exists anywhere in this app (no Supabase
     // Realtime channel usage, and dispute_messages was never added to the
     // supabase_realtime publication) — without this poll, the party who
@@ -38,6 +59,12 @@ struct DisputeChatPanel: View {
             Text(app.T("Cuộc trò chuyện này là tạm thời — sẽ bị xoá sau khi banbe đưa ra quyết định, và bản ghi được gửi qua email cho cả hai bên.",
                        "This conversation is temporary — it is deleted once banbe rules on the dispute, and a copy is emailed to both of you."))
                 .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+            if let retentionLabel {
+                Text(retentionLabel)
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(app.palette.ink.opacity(0.55))
+                    .accessibilityIdentifier("disputeChat.retention")
+            }
 
             ScrollViewReader { proxy in
                 ScrollView {

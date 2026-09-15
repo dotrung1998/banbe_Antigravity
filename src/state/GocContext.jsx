@@ -129,6 +129,11 @@ const initialState = {
   disputeChatLoading: false,
   disputeChatDraft: '',
   disputeChatError: '',
+  // resolved_at/purge_after off the dispute_threads row itself — read-only,
+  // drives the retention countdown label (DisputeChatPanel.jsx) instead of
+  // a delete button, since dispute_messages must survive until the 72h
+  // purge (05-notify-retention.md). null for an open/unresolved thread.
+  disputeChatThread: null,
   auditTrail: [],
   auditBookingId: null,
   // pay-proof storage path -> signed viewable URL, for whichever rows
@@ -1154,9 +1159,9 @@ export function GocProvider({ children }) {
    * parties who could ever see a dispute at all.
    */
   const loadDisputeChat = useCallback(async (bookingId, _retried = false) => {
-    set({ disputeChatBookingId: bookingId, disputeChatMessages: [], disputeChatLoading: true, disputeChatError: '' });
+    set({ disputeChatBookingId: bookingId, disputeChatMessages: [], disputeChatLoading: true, disputeChatError: '', disputeChatThread: null });
     const { data: thread, error: threadError } = await supabase
-      .from('dispute_threads').select('id, resolved_at').eq('booking_id', bookingId).maybeSingle();
+      .from('dispute_threads').select('id, resolved_at, purge_after').eq('booking_id', bookingId).maybeSingle();
     if (threadError || !thread) {
       console.warn('loadDisputeChat failed:', threadError);
       // A denied-by-RLS row (a stale organizer_id/guest_id on this
@@ -1188,7 +1193,10 @@ export function GocProvider({ children }) {
         disputeChatError: T('Không tải được tin nhắn. Thử lại nhé.', "Couldn't load messages. Please try again."),
       });
     }
-    set({ disputeChatMessages: messages || [], disputeChatLoading: false });
+    set({
+      disputeChatMessages: messages || [], disputeChatLoading: false,
+      disputeChatThread: { resolvedAt: thread.resolved_at, purgeAfter: thread.purge_after },
+    });
   }, [set, T]);
 
   const disputeChatDraftType = useCallback((e) => set({ disputeChatDraft: e.target.value }), [set]);
@@ -2130,6 +2138,21 @@ export function GocProvider({ children }) {
   const chatOnKey = useCallback((e) => { if (e.key === 'Enter') chatSend(); }, [chatSend]);
   const chatBackFn = useCallback(() => set(prev => ({ screen: prev.chatBack === 'inbox' ? 'inbox' : 'organizer' })), [set]);
 
+  // A real, permanent delete, own messages only — RLS (messages_delete_own,
+  // migration 054) scopes this to `sender_id = auth.uid()`, which a system
+  // message (sender_id NULL) can never match. Unlike dispute_messages
+  // (05-notify-retention.md's 72h retention requirement), this table has no
+  // documented retention requirement, so no soft-delete here either.
+  const deleteMessage = useCallback(async (id) => {
+    const prevMessages = s.chatMessages;
+    set(prev => ({ chatMessages: prev.chatMessages.filter(m => m.id !== id) }));
+    const { error } = await supabase.from('messages').delete().eq('id', id);
+    if (error) {
+      console.warn('Failed to delete message:', error);
+      set({ chatMessages: prevMessages }); // put it back — the delete didn't actually happen
+    }
+  }, [set, s.chatMessages]);
+
   // While the chat screen is open, poll for messages the other side sent —
   // there's no realtime subscription here, just a simple refresh.
   useEffect(() => {
@@ -2466,7 +2489,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, openChatFor, openThread,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
@@ -2495,7 +2518,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, openChatFor, openThread,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,

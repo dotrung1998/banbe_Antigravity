@@ -771,14 +771,15 @@ extension AppState {
     func loadDisputeChat(_ bookingID: UUID, retried: Bool = false) async {
         disputeChatBookingId = bookingID
         disputeChatMessages = []
+        disputeChatThread = nil
         disputeChatLoading = true
         disputeChatError = ""
         defer { disputeChatLoading = false }
-        struct ThreadRow: Decodable { let id: UUID; let resolvedAt: Date?
-            enum CodingKeys: String, CodingKey { case id; case resolvedAt = "resolved_at" } }
+        struct ThreadRow: Decodable { let id: UUID; let resolvedAt: Date?; let purgeAfter: Date?
+            enum CodingKeys: String, CodingKey { case id; case resolvedAt = "resolved_at"; case purgeAfter = "purge_after" } }
         do {
             let thread: ThreadRow = try await SupabaseService.client
-                .from("dispute_threads").select("id, resolved_at")
+                .from("dispute_threads").select("id, resolved_at, purge_after")
                 .eq("booking_id", value: bookingID.uuidString)
                 .single().execute().value
             disputeChatMessages = try await SupabaseService.client
@@ -786,6 +787,11 @@ extension AppState {
                 .eq("dispute_thread_id", value: thread.id.uuidString)
                 .order("created_at", ascending: true)
                 .execute().value
+            // Read-only — drives the retention countdown label
+            // (DisputeChatPanel.swift) instead of a delete button, since
+            // dispute_messages must survive until the 72h purge
+            // (05-notify-retention.md).
+            disputeChatThread = (resolvedAt: thread.resolvedAt, purgeAfter: thread.purgeAfter)
         } catch {
             // A dispute_threads row RLS is quietly hiding from this account
             // (a stale/mislinked organizer_id — the ART10025 symptom)

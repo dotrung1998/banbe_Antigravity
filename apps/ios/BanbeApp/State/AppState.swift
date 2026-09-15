@@ -293,6 +293,11 @@ final class AppState: ObservableObject {
     @Published var disputeChatLoading = false
     @Published var disputeChatDraft = ""
     @Published var disputeChatError = ""
+    // resolved_at/purge_after off the dispute_threads row — read-only,
+    // drives the retention countdown label (DisputeChatPanel.swift)
+    // instead of a delete button, since dispute_messages must survive
+    // until the 72h purge (05-notify-retention.md). nil for an open thread.
+    @Published var disputeChatThread: (resolvedAt: Date?, purgeAfter: Date?)?
     @Published var openDisputes: [DisputeRow] = []
     // The admin dashboard (AdminDashboardView) — every dispute this account
     // can see; RLS makes that "every dispute, period" only when

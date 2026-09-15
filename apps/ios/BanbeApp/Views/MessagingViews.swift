@@ -111,10 +111,10 @@ struct ChatView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
                     if app.chatMessages.isEmpty {
-                        bubble(text: event.greeting, mine: false)
+                        bubble(text: event.greeting, mine: false, messageID: nil)
                     }
                     ForEach(app.chatMessages) { message in
-                        bubble(text: message.body, mine: message.senderId == app.userID)
+                        bubble(text: message.body, mine: message.senderId == app.userID, messageID: message.id)
                             .id(message.id)
                     }
                 }
@@ -129,9 +129,23 @@ struct ChatView: View {
         }
     }
 
-    private func bubble(text: String, mine: Bool) -> some View {
+    private func bubble(text: String, mine: Bool, messageID: UUID?) -> some View {
         HStack {
             if mine { Spacer(minLength: 40) }
+            // Own messages only — messageID is nil for the static greeting
+            // placeholder, and a system note is never `mine` (senderId nil
+            // can't equal app.userID), so neither ever gets this.
+            if mine, let messageID {
+                Button {
+                    Task { await app.deleteMessage(messageID) }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(app.palette.ink.opacity(0.35))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("chat.message.delete")
+            }
             Text(text)
                 .font(.system(size: 13.5))
                 .lineSpacing(3)
