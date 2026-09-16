@@ -7,30 +7,6 @@ import CoreLocation
 /// gives drag-to-resize/snap for free on iOS 17+, this project's deployment
 /// target) — no custom gesture code needed here, unlike the web build of the
 /// same screen.
-/// The close/compass row's (and, when shown, "Tìm ở đây"'s) actual rendered
-/// bottom edge, in the `"mapExploreTop"` named coordinate space — read by
-/// `MapExploreView` to place the selected-event card's "upper" anchor a
-/// fixed gap below the REAL controls instead of a guessed constant.
-/// `reduce: max` — both views that write this sit at the same top offset,
-/// so whichever is taller (normally the compass, but not necessarily on
-/// every font-size/locale) wins.
-private struct MapTopControlsBottomYKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
-
-/// The selected-event preview card's own actual rendered height — read by
-/// `MapExploreView` for the same reason as `MapTopControlsBottomYKey`
-/// above. Only one card exists at a time, so `reduce` is a plain overwrite.
-private struct MapCardHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 struct MapExploreView: View {
     @EnvironmentObject var app: AppState
     @State private var cameraPosition: MapCameraPosition
@@ -55,9 +31,6 @@ struct MapExploreView: View {
     // Non-nil only for the brief overshoot phase of the selection "pop" —
     // see `selectEvent(_:)`.
     @State private var poppingId: String?
-    // Bug 3: drag-to-resize is scoped to this custom handle only (not the
-    // sheet or the List) — see `dragHandle`.
-    @State private var handleDragStartFraction: Double?
     // Bug 2 follow-up: true only when this instance was constructed with a
     // saved snapshot AND that snapshot had a selection — drives a single
     // scroll-to-row once the list has rows to scroll to (see `init` below).
@@ -83,30 +56,60 @@ struct MapExploreView: View {
     // later poll/filter change can't replay it. A fresh (non-restored) open
     // starts straight at 1: only a genuine restore gets the bubble.
     @State private var restoreBubbleProgress: CGFloat
-    // Measured, not guessed: the actual bottom edge (in this view's own
-    // coordinate space, which already accounts for the safe area the same
-    // way the card's own placement does — see `cardBottomPadding`) of the
-    // close/compass row and, when shown, "Tìm ở đây" — both anchor at the
-    // same `.padding(.top, 8)`, so whichever is taller sets this. Read via
-    // `MapTopControlsBottomYKey` below. The default (90) is only what's
-    // used for the very first layout pass before the real measurement
-    // lands — safe-area-top (~47–59pt on notched devices) + the row's own
-    // ~38pt height + the top padding roughly matches it, so there's no
-    // visible "starts overlapping, then jumps" moment even on that first
-    // frame.
-    @State private var topControlsBottomY: CGFloat = 90
-    // Measured, not guessed: the preview card's own actual rendered height
-    // — read via `MapCardHeightKey` from a `.background(GeometryReader{...})`
-    // on `selectedCard(_:)` itself. The default (150) is only the fallback
-    // for the one frame before a card has ever been measured.
-    @State private var cardMeasuredHeight: CGFloat = 150
-    // Fixed breathing room between the top controls' measured bottom edge
-    // and the card's own top edge — the only literal constant left in this
-    // calculation, deliberately (a "no gap at all" value would look wrong
-    // regardless of device, so this isn't the kind of "magic hardcoded
-    // y-offset" the ticket is about — the OVERLAP-avoiding part is fully
-    // measured; this only controls cosmetic spacing beyond that).
-    private let cardTopGap: CGFloat = 12
+    // Follow-up (over-correction): the prior pass replaced the card's
+    // "upper" anchor with a fully measured (PreferenceKey-based) position,
+    // which over-corrected — the card ended up far too low, covering the
+    // list/filter area instead of just clearing the top controls. Reverted
+    // to the simpler two-state fraction anchor from the pass before that
+    // (`0.72` for tall/mid, `0.12` for peek), with exactly ONE small, named,
+    // fixed nudge applied only to the "upper" case — see `cardTopNudge`.
+    private static let upperAnchorFraction: Double = 0.72
+    private static let peekAnchorFraction: Double = 0.12
+    /// The one named constant for "just enough to clear the top controls" —
+    /// deliberately a small, fixed pixel amount, not a re-measured system:
+    /// the prior measured approach is what over-corrected in the first
+    /// place. Not guaranteed to clear every possible device/dynamic-type
+    /// combination (a fixed value can't be, by definition) — an explicit,
+    /// accepted trade-off per this ticket's own request for "one named
+    /// layout constant... not scattered hardcoded offsets," not a silently
+    /// reintroduced regression.
+    private let cardTopNudge: CGFloat = 24
+    // Bug 2 follow-up (deliberate restore-reveal delay): whether the sheet
+    // (and, by extension, the preview card — see `body`) is actually
+    // presented. A FRESH open shows it immediately; a RESTORED instance
+    // starts with this `false` and only flips `true` once
+    // `postDismissRevealTask` (below) fires, after Event Detail's own
+    // dismissal animation has fully finished PLUS the ticket's explicit
+    // additional 1.0s pause — never early, never behind the outgoing
+    // Event Detail screen.
+    @State private var sheetPresented: Bool
+    // Bug 2 follow-up: holds the cancellable delayed-reveal task so a
+    // second navigation (or a fast repeated back gesture) can't reveal
+    // stale UI after the user has already left this instance — cancelled
+    // in `.onDisappear`.
+    @State private var postDismissRevealTask: Task<Void, Never>?
+    /// How long Event Detail's own outgoing animation takes — matches
+    /// `RootView.swift`'s screen-transition duration (`.animation(.easeInOut
+    /// (duration: 0.28), value: app.screen)` for the explicit back button;
+    /// the edge-swipe commit's own `asyncAfter(deadline: .now() + 0.22)` is
+    /// close enough that waiting for the slightly longer of the two is the
+    /// safe choice — waiting too little would reveal the sheet while Event
+    /// Detail is still visibly sliding away, exactly the bug being fixed).
+    private let eventDetailDismissDuration: TimeInterval = 0.28
+    /// The ticket's own explicit, additional pause AFTER that animation —
+    /// deliberate, not incidental.
+    private let postDismissRevealDelay: TimeInterval = 1.0
+    // Bug 3 follow-up: `onMapCameraChange`'s callback, before this fix, only
+    // ever wrote `lastQueriedRegion` ONCE (its first call — see the `body`
+    // comment above `.onMapCameraChange`), then froze it forever afterward.
+    // `openEventDetail(_:)` read THAT frozen value for the saved snapshot's
+    // camera, so it always saved wherever the map was at construction time
+    // — NOT wherever `selectEvent(_:)` had since flown the camera to. This
+    // tracks the ACTUAL current camera on every callback, independently of
+    // `lastQueriedRegion`'s own (intentionally-frozen-after-first-call)
+    // "Search here" bookkeeping, so `openEventDetail(_:)` can read the real,
+    // live position instead.
+    @State private var currentCameraRegion: MKCoordinateRegion?
 
     /// Seeds every local `@State` directly from a saved snapshot (or plain
     /// defaults) INSIDE `init`, rather than restoring them a moment later
@@ -125,6 +128,11 @@ struct MapExploreView: View {
         hadRestoredState = restored != nil
         self.isPreview = isPreview
         restoreBubbleProgress = restored != nil ? 0 : 1
+        // Bug 2 follow-up: a fresh open has nothing to wait for — reveal
+        // immediately, as before. A restored instance starts hidden; `.task`
+        // reveals it only after `eventDetailDismissDuration +
+        // postDismissRevealDelay` has elapsed.
+        _sheetPresented = State(initialValue: restored == nil)
         if let restored {
             _cameraPosition = State(initialValue: .region(MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: restored.cameraCenterLat, longitude: restored.cameraCenterLng),
@@ -168,6 +176,14 @@ struct MapExploreView: View {
             }
             .mapControls { }
             .onMapCameraChange { context in
+                // Bug 3 follow-up: tracked on EVERY callback (unlike
+                // `lastQueriedRegion` below, which intentionally freezes
+                // after its first call for "Search here" bookkeeping) so
+                // `openEventDetail(_:)` can save wherever the camera
+                // actually is right now — including after `selectEvent(_:)`
+                // has flown it toward a selected pin — instead of a stale
+                // snapshot from whenever this view was first constructed.
+                currentCameraRegion = context.region
                 if lastQueriedRegion == nil { lastQueriedRegion = context.region; return }
                 boundsChanged = true
             }
@@ -203,18 +219,6 @@ struct MapExploreView: View {
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 16)
             .padding(.top, 8)
-            // Follow-up bug 3: measures this row's ACTUAL rendered bottom
-            // edge — in the same coordinate space the card is placed in,
-            // which (since neither this row nor the card ever calls
-            // `.ignoresSafeArea()`) already sits below the safe area the
-            // same way the row itself already does, with no separate
-            // manual safe-area-inset math needed. Feeds `topControlsBottomY`
-            // via `MapTopControlsBottomYKey` below.
-            .background(
-                GeometryReader { geo in
-                    Color.clear.preference(key: MapTopControlsBottomYKey.self, value: geo.frame(in: .named("mapExploreTop")).maxY)
-                }
-            )
 
             // Deliberately NOT a third child of the HStack above. It used to
             // sit between two Spacers there ([Close] Spacer [SearchHere]
@@ -239,39 +243,21 @@ struct MapExploreView: View {
                 .accessibilityIdentifier("map.searchHere")
                 .foregroundStyle(app.palette.ink)
                 .padding(.top, 8)
-                // Same reasoning as the close/compass row above — "Tìm ở
-                // đây" sits at the identical top offset, so on the (rare)
-                // devices/font sizes where it's the taller of the two, the
-                // `reduce: max` in `MapTopControlsBottomYKey` picks it up.
-                .background(
-                    GeometryReader { geo in
-                        Color.clear.preference(key: MapTopControlsBottomYKey.self, value: geo.frame(in: .named("mapExploreTop")).maxY)
-                    }
-                )
             }
 
-            // Compact in-map preview — never a full-screen modal. Stays ONE
-            // view (bottom-anchored, same shape as the prior pass) so the
-            // required smooth animation between the upper and peek anchors
-            // keeps working via a single `.animation(value: cardBottomPadding)`
-            // — only the VALUE fed into that padding changed (see below),
-            // not the structure.
+            // Compact in-map preview — never a full-screen modal. Bug 2
+            // follow-up: only shown once `sheetPresented` is true — a
+            // restored instance keeps this (and the sheet) hidden until the
+            // deliberate post-dismiss delay in `.task` reveals both
+            // together, so the card never pops in ahead of/behind the
+            // outgoing Event Detail screen.
             //
-            // Follow-up (top-controls overlap): "upper" used to be a fixed
-            // fraction of the screen height (the old `cardAnchorFraction`,
-            // tied only to the sheet's tall/mid/peek split) — on some sizes
-            // that put the card's own top edge ABOVE the close/compass/"Tìm
-            // ở đây" row entirely, exactly the overlap the screenshot
-            // showed. `cardBottomPadding` (below) now derives the "upper"
-            // value from `topControlsBottomY` (the row's actual measured
-            // bottom edge, via the `.background(GeometryReader{...})` calls
-            // above) and `cardMeasuredHeight` (the card's own actual
-            // measured height, via the `.background(GeometryReader{...})`
-            // in `selectedCard(_:)`) so the card's top edge lands exactly
-            // `cardTopGap` below the real controls on every screen size —
-            // never a guessed constant. "Peek" is unaffected: unchanged
-            // bottom-anchored math, nowhere near the top controls.
-            if let ev = selectedEvent {
+            // Follow-up (over-correction revert): "upper" is back to the
+            // simple two-state fraction anchor (`cardBottomPadding` below),
+            // with one small fixed `cardTopNudge` — the prior pass's fully
+            // measured position over-corrected (the card ended up too low,
+            // covering the list/filter area). "Peek" is unaffected.
+            if let ev = selectedEvent, sheetPresented {
                 VStack {
                     Spacer()
                     selectedCard(ev)
@@ -282,8 +268,6 @@ struct MapExploreView: View {
                 .animation(.easeOut(duration: 0.28), value: cardBottomPadding)
             }
         }
-        .coordinateSpace(name: "mapExploreTop")
-        .onPreferenceChange(MapTopControlsBottomYKey.self) { topControlsBottomY = $0 }
         .onChange(of: visibleEvents.map(\.id)) { _, ids in
             // The selected event must honor every active filter this
             // screen has, exactly like the pins/list it was picked from —
@@ -310,7 +294,7 @@ struct MapExploreView: View {
             // peek afterward.
             if let ev = selectedEvent { reapplyCameraOffset(for: ev) }
         }
-        .sheet(isPresented: .constant(true)) {
+        .sheet(isPresented: $sheetPresented) {
             sheetContent
                 // ANIMATION REQUIREMENT (11-realtime-map.md follow-up): a
                 // soft "bubble" settle layered ON TOP of the system's own
@@ -320,37 +304,44 @@ struct MapExploreView: View {
                 // overshoot-then-settle via a genuine `.interpolatingSpring`
                 // driven by `restoreBubbleProgress`. That value starts at 0
                 // ONLY when this instance was constructed from a restored
-                // snapshot (`init`) and animates to 1 exactly once, from
-                // `.task` below — never touched by polling or filter
-                // changes, so it can only ever play on an actual
-                // restore/return, never while just staying on the screen.
-                // A fresh (non-restored) open starts at 1 already, so this
-                // has no effect there at all (both expressions evaluate to
-                // their identity values).
+                // snapshot (`init`) and animates to 1 exactly once, in
+                // `postDismissRevealTask` below (fired at the same moment
+                // `sheetPresented` itself flips true) — never touched by
+                // polling or filter changes, so it can only ever play on an
+                // actual restore/return, never while just staying on the
+                // screen. A fresh (non-restored) open starts at 1 already,
+                // so this has no effect there at all.
                 .scaleEffect(0.965 + 0.035 * restoreBubbleProgress, anchor: .top)
                 .offset(y: (1 - restoreBubbleProgress) * 18)
                 .presentationDetents([.fraction(0.12), .fraction(0.45), .fraction(0.72)], selection: $sheetDetent)
-                // Bug 3 (11-realtime-map.md, prior pass): the system's own
-                // drag indicator is hidden in favor of `dragHandle` inside
-                // `sheetContent`.
-                .presentationDragIndicator(.hidden)
-                // Follow-up bug 1: hiding the indicator above only hides the
-                // drawn affordance — the system's own resize-vs-scroll
-                // gesture recognizer is still attached to the sheet's whole
-                // content view regardless (that recognizer isn't something
-                // SwiftUI code can remove, only re-bias). Its *default*
-                // ambiguous-arbitration behavior is what let a drag started
-                // anywhere in the List/filter area resize the sheet instead
-                // of scrolling it at mid — and, competing over the very same
-                // touches, is also what could make the custom `dragHandle`
-                // gesture below intermittently lose arbitration to the
-                // system one on the identical hit area. `.scrolls` tells the
-                // system explicitly "content in here always scrolls; only
-                // resize the sheet from a genuine non-scrollable drag" —
-                // the standard, documented fix for a `.sheet` + `List`
-                // combination that needs both a resizable sheet AND a
-                // normally-scrolling list (this is the same pattern behind
-                // Apple's own Maps app bottom sheet).
+                // Follow-up bug 4 (11-realtime-map.md): reverted back to the
+                // SYSTEM's own visible drag indicator. The prior pass's
+                // custom `dragHandle` (a `DragGesture` on a small capsule,
+                // with the system indicator hidden) still failed on a real
+                // device: dragging over the filter row resized the sheet,
+                // and dragging the custom handle itself did nothing.
+                // `.presentationDragIndicator(.hidden)` only hides the
+                // drawn affordance — the system's own resize gesture
+                // recognizer is a UIKit-level recognizer attached to the
+                // sheet's presenting view controller, entirely OUTSIDE
+                // SwiftUI's own gesture graph; a SwiftUI `.highPriorityGesture`
+                // has no authority over it, and once hidden, that
+                // recognizer's resize-eligible area is no longer scoped to
+                // a small reserved strip — it can activate from anywhere
+                // `.presentationContentInteraction(.scrolls)` doesn't
+                // consider "scrollable" (a horizontal-only filter row
+                // included), which is exactly the reported symptom. Using
+                // the system's OWN visible grabber sidesteps this entirely:
+                // there is no second, hidden recognizer to compete with —
+                // dragging it is guaranteed to resize the sheet, and
+                // dragging content elsewhere is guaranteed not to, because
+                // it's the same one, singular, Apple-implemented mechanism
+                // this trick has always relied on. `dragHandle` (the custom
+                // capsule + its gesture) is removed entirely — see below.
+                .presentationDragIndicator(.visible)
+                // Kept — still needed so the List scrolls normally at MID
+                // instead of being claimed by the (now visible, but still
+                // reserved-to-its-own-strip) system resize recognizer.
                 .presentationContentInteraction(.scrolls)
                 .presentationBackgroundInteraction(.enabled)
                 .interactiveDismissDisabled()
@@ -373,15 +364,37 @@ struct MapExploreView: View {
             await app.loadMapEvents()
             if hadRestoredState {
                 app.mapExploreState = nil
-                // ANIMATION REQUIREMENT: the one and only place
-                // `restoreBubbleProgress` is ever written after `init` —
-                // runs exactly once, only for a genuine restore.
-                withAnimation(.interpolatingSpring(stiffness: 180, damping: 14)) {
-                    restoreBubbleProgress = 1
+                // Bug 2 follow-up: the sheet/card must not reveal until
+                // Event Detail's own dismissal animation has fully finished
+                // AND the ticket's explicit additional 1.0s has elapsed —
+                // never early, never behind the outgoing screen. Held in
+                // `postDismissRevealTask` so `.onDisappear` can cancel it:
+                // if the user leaves this instance again before the delay
+                // completes (a second navigation, or a fast repeated
+                // gesture), it must never reveal stale UI onto whatever
+                // screen is now showing instead.
+                postDismissRevealTask = Task {
+                    let delayNanoseconds = UInt64((eventDetailDismissDuration + postDismissRevealDelay) * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: delayNanoseconds)
+                    guard !Task.isCancelled else { return }
+                    sheetPresented = true
+                    // ANIMATION REQUIREMENT: the one and only place
+                    // `restoreBubbleProgress` is ever written after `init` —
+                    // fires at the exact same moment the sheet/card reveal.
+                    withAnimation(.interpolatingSpring(stiffness: 180, damping: 14)) {
+                        restoreBubbleProgress = 1
+                    }
                 }
             } else {
                 centerOnDensityHotspot()
             }
+        }
+        .onDisappear {
+            // Bug 2 follow-up: guards the delayed reveal above — cancelling
+            // here means a torn-down instance (the user left again before
+            // the 1.28s elapsed) can never fire `sheetPresented = true`
+            // onto whatever's on screen now.
+            postDismissRevealTask?.cancel()
         }
         .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in
             guard !isPreview else { return }
@@ -401,23 +414,15 @@ struct MapExploreView: View {
     // MARK: - Bug 1: card's two-state vertical anchor
 
     /// Deliberately NOT the continuously-varying `sheetFraction` — only two
-    /// resting positions exist for the card: "upper" (tall AND mid — see
-    /// the `body` comment above) and "peek" (bottom-anchored, unchanged
-    /// from the prior pass). Replaces the old fixed-fraction
-    /// `cardAnchorFraction` — the "upper" case is now derived from actually
-    /// measured geometry (`topControlsBottomY`/`cardMeasuredHeight`) rather
-    /// than a screen-height fraction that could put the card above the top
-    /// controls on some sizes (11-realtime-map.md, "preview card overlaps
-    /// top controls").
+    /// resting positions exist for the card: "upper" (tall AND mid) and
+    /// "peek" (bottom-anchored). Reverted from the prior pass's fully
+    /// measured position (which over-corrected — see `cardTopNudge`'s own
+    /// comment) back to this simple two-fraction anchor, nudged down by
+    /// exactly one small, named, fixed amount.
     private var cardBottomPadding: CGFloat {
         let screenHeight = UIScreen.main.bounds.height
-        if sheetDetent == .fraction(0.12) { return screenHeight * 0.12 } // peek: unchanged
-        let desiredTopY = topControlsBottomY + cardTopGap
-        // The card's OWN bottom-padding (`.padding(.bottom, 8)` inside
-        // `selectedCard`'s wrapper, above) is folded in here so
-        // `cardMeasuredHeight` (measured on `selectedCard(_:)` itself, not
-        // its wrapper) lines up with this padding's own reference point.
-        return max(8, screenHeight - desiredTopY - cardMeasuredHeight - 8)
+        if sheetDetent == .fraction(0.12) { return screenHeight * Self.peekAnchorFraction } // peek: unchanged
+        return screenHeight * Self.upperAnchorFraction - cardTopNudge
     }
 
     private func reapplyCameraOffset(for ev: MapEventRow) {
@@ -451,7 +456,17 @@ struct MapExploreView: View {
     /// here) because RootView recreates this whole view the instant
     /// `screen` changes away from `.mapExplore`.
     private func openEventDetail(_ id: String) {
-        let region = lastQueriedRegion
+        // Bug 3 follow-up: `currentCameraRegion` (updated on EVERY camera
+        // callback), not `lastQueriedRegion` (frozen after its first call —
+        // see `onMapCameraChange`'s own comment). Reading the frozen value
+        // here was the confirmed root cause of the saved snapshot's camera
+        // reflecting wherever the map was when this instance was first
+        // constructed, rather than wherever `selectEvent(_:)` had since
+        // flown it to — on restore, that stale region could easily read as
+        // "centered on the wrong place" (e.g. a hotspot/user-adjacent
+        // region from earlier in this same session), not the selected
+        // event.
+        let region = currentCameraRegion ?? lastQueriedRegion
         app.mapExploreState = MapExploreState(
             cameraCenterLat: region?.center.latitude ?? 10.7769,
             cameraCenterLng: region?.center.longitude ?? 106.7009,
@@ -593,16 +608,6 @@ struct MapExploreView: View {
         .padding(.horizontal, 16)
         .foregroundStyle(app.palette.ink)
         .accessibilityIdentifier("map.selectedCard")
-        // Feeds `cardMeasuredHeight` (via `MapCardHeightKey`) — the card's
-        // own actual rendered height, so `cardBottomPadding` can place its
-        // top edge a fixed gap below the top controls' own measured bottom
-        // edge, rather than guessing either number.
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(key: MapCardHeightKey.self, value: geo.size.height)
-            }
-        )
-        .onPreferenceChange(MapCardHeightKey.self) { cardMeasuredHeight = $0 }
     }
 
     /// Live `seats_remaining` is this screen's own established
@@ -698,7 +703,7 @@ struct MapExploreView: View {
 
     private var visibleEvents: [MapEventRow] {
         var list = app.mapEvents.filter { $0.lat != nil && $0.lng != nil }
-        if catFilter != "all" { list = list.filter { $0.catKey == catFilter } }
+        if catFilter != "all" { list = list.filter { effectiveCatKey($0) == catFilter } }
         if openNowOnly { list = list.filter { ($0.seatsRemaining ?? 0) > 0 } }
         if sortByDistance, let coords = app.userCoords {
             list.sort { distanceKm(coords, $0) ?? .greatestFiniteMagnitude < distanceKm(coords, $1) ?? .greatestFiniteMagnitude }
@@ -716,54 +721,22 @@ struct MapExploreView: View {
         return 6371 * 2 * atan2(sqrt(h), sqrt(1 - h))
     }
 
-    // Bug 3 (prior pass) / follow-up bug 1: this capsule + its fixed-height
-    // hit region is the ONLY thing a sheet-resize drag is recognized from —
-    // no gesture is attached to the sheet as a whole or to the List below,
-    // so a drag that begins anywhere in the list's actual content or the
-    // filter row is never competed for by this gesture at all. Full sheet
-    // width, ~40pt tall (between the ticket's 36–44pt spec) — generous
-    // enough to hit reliably without spilling down into the filter chips
-    // right below it. `minimumDistance: 2` (not 0) keeps a plain tap on the
-    // handle from being misread as a zero-length drag.
-    //
-    // `.highPriorityGesture` (not `.gesture`) — scoped to ONLY this small
-    // view, never the sheet or the List (the ticket's own "do not attach a
-    // high-priority/simultaneous gesture across the whole sheet/list" is
-    // about scope, not about priority as such) — so that within this one
-    // ~40pt strip, the custom gesture wins outright over the system's own
-    // sheet-resize recognizer, which (per `.presentationContentInteraction`
-    // above) is now biased toward content-scrolling everywhere else but can
-    // still independently claim touches on this same non-scrollable capsule
-    // unless explicitly out-prioritized here too.
-    private var dragHandle: some View {
-        Capsule()
-            .fill(app.palette.rule)
-            .frame(width: 36, height: 4)
-            .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
-            .contentShape(Rectangle())
-            .highPriorityGesture(
-                DragGesture(minimumDistance: 2)
-                    .onChanged { _ in
-                        if handleDragStartFraction == nil { handleDragStartFraction = sheetFraction }
-                    }
-                    .onEnded { value in
-                        let start = handleDragStartFraction ?? sheetFraction
-                        let deltaFraction = value.translation.height / UIScreen.main.bounds.height
-                        let current = start + deltaFraction
-                        let nearest = detentFractions.min(by: { abs($0 - current) < abs($1 - current) }) ?? 0.72
-                        withAnimation(.easeOut(duration: 0.25)) { sheetDetent = MapExploreView.detent(for: nearest) }
-                        handleDragStartFraction = nil
-                    }
-            )
-            .accessibilityIdentifier("map.sheet.handle")
+    /// Bug 4 follow-up (category filter mismatch audit): mirrors web's own
+    /// `fetchLiveEvents()` fallback (`row.cat_key || cosmetic?.catKey`) —
+    /// iOS's `visibleEvents` used to compare `$0.catKey` directly with no
+    /// such fallback. The live seeded demo data's own `cat_key` column was
+    /// confirmed (by reading migration 020) to already match `categories`'
+    /// keys exactly, so this wasn't reproducible against that dataset — but
+    /// any row whose own `cat_key` column ever comes back nil/empty (a
+    /// gap web already covers) would silently and permanently fail every
+    /// non-"all" filter comparison while still showing fine under "Tất cả"
+    /// (no filter applied) — the exact shape of the reported symptom.
+    private func effectiveCatKey(_ ev: MapEventRow) -> String? {
+        ev.catKey ?? EventCatalog.find(ev.id)?.catKey
     }
-
-    private let detentFractions: [Double] = [0.12, 0.45, 0.72]
 
     private var sheetContent: some View {
         VStack(spacing: 0) {
-            dragHandle
-
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(categories, id: \.key) { cat in

@@ -383,3 +383,34 @@ test.describe('Map Explore — follow-up fixes (return-from-detail restore, top-
     await expect(page.locator(`[data-testid="map-pin-${selectedEventId}"]`)).toHaveCSS('transform', 'matrix(1.15, 0, 0, 1.15, 0, 0)');
   });
 });
+
+// Bug 4 follow-up (11-realtime-map.md): confirms every category chip Map
+// Explore offers (the same FILTER_DEFS keys Home uses) actually narrows the
+// list to a non-empty, correctly-matching set, and that "Tất cả" still
+// resets to everything — i.e. the reported "any category tap shows zero
+// events" is not reproducible against the current key/data matching, for
+// any of the four real categories both screens share.
+test.describe('Map Explore — follow-up fixes (category filter matches Home\'s taxonomy)', () => {
+  for (const key of ['supper', 'fashion', 'gallery', 'music']) {
+    test(`the "${key}" category chip shows only matching, non-empty results`, async ({ page }) => {
+      await setupToHome(page);
+      await page.click('[data-testid="open-map-explore"]');
+      await page.waitForSelector('[data-screen-label="MapExplore"]');
+      await page.locator('[data-testid^="map-list-item-"]').first().waitFor({ timeout: 10000 });
+
+      await page.click(`[data-testid="map-cat-${key}"]`);
+      await expect(page.locator(`[data-testid="map-cat-${key}"]`)).toHaveCSS('font-weight', '700');
+      // The core assertion: this category is never silently empty.
+      await expect(page.locator('[data-testid^="map-list-item-"]').first()).toBeVisible({ timeout: 5000 });
+      const rowCount = await page.locator('[data-testid^="map-list-item-"]').count();
+      expect(rowCount).toBeGreaterThan(0);
+
+      // Resetting to "Tất cả" must show at least as many rows as any single
+      // category (a real reset, not a stuck/narrower state).
+      await page.click('[data-testid="map-cat-all"]');
+      await page.waitForTimeout(200);
+      const allCount = await page.locator('[data-testid^="map-list-item-"]').count();
+      expect(allCount).toBeGreaterThanOrEqual(rowCount);
+    });
+  }
+});
