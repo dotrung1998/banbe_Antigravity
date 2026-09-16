@@ -187,12 +187,15 @@ export default function Policy() {
               ['Hồ sơ và sự kiện (host)\nProfile and events (hosts)', 'Tên tổ chức, Instagram, giới thiệu, ảnh sự kiện, địa điểm và toạ độ sự kiện\nOrganizer name, Instagram, bio, event photos, event venue and coordinates', 'Trang sự kiện công khai\nThe public event page'],
               ['Lời mời\nInvites', 'Số điện thoại khách mời do host nhập cho sự kiện riêng tư\nPhone numbers hosts enter for invite-only events', 'Mở sự kiện riêng tư cho đúng người\nUnlocking a private event for the right people'],
               ['Yêu thích, theo dõi\nFavorites, follows', 'Sự kiện bạn lưu, host bạn theo dõi\nEvents you saved, hosts you follow', 'Danh sách của riêng bạn\nYour own lists'],
+              ['Hoá đơn, biên nhận\nInvoices, receipts', 'Tệp do host tải lên cho một khoản đã thanh toán\nFiles a host uploads for a paid booking', 'Bằng chứng thanh toán giữa bạn và host\nProof of payment between you and the host'],
+              ['Đăng nhập qua Google/Facebook\nGoogle/Facebook sign-in', 'Email, tên hiển thị và ảnh đại diện do Google/Facebook cung cấp khi bạn chọn đăng nhập bằng dịch vụ đó\nEmail, display name and avatar that Google/Facebook provide when you choose to sign in that way', 'Tạo và đăng nhập tài khoản\nCreating and signing in to your account'],
+              ['Thông báo trong ứng dụng\nIn-app notifications', 'Thông báo về đặt chỗ, thanh toán, tranh chấp, sự kiện\nNotices about your bookings, payments, disputes, events', 'Báo cho bạn biết diễn biến; bạn xoá được từng thông báo bất kỳ lúc nào\nKeeping you informed; you can delete each one at any time'],
               ['Kỹ thuật\nTechnical', 'Địa chỉ IP, loại thiết bị và trình duyệt, nhật ký truy cập và lỗi\nIP address, device and browser type, access and error logs', 'Bảo mật, giới hạn tần suất, sửa lỗi\nSecurity, rate limiting, fixing bugs'],
             ]}
           />
           <Bi
-            vi="Chúng tôi không thu thập: vị trí thiết bị, danh bạ, giấy tờ tuỳ thân, số thẻ hay thông tin đăng nhập ngân hàng của bạn. Giao dịch diễn ra trong ứng dụng ngân hàng hoặc ví của bạn; phần chúng tôi nhận được là thông báo chuyển khoản từ tài khoản host đã kết nối, gồm tên người chuyển, số tiền, nội dung và thời điểm, như nêu ở bảng trên."
-            en="We do not collect: device location, contacts, identity documents, card numbers or your banking credentials. The transfer happens in your bank or wallet app; what reaches us is the transfer notification from the host's connected account, with the sender name, amount, memo and timestamp, as set out in the table above."
+            vi="Chúng tôi không thu thập: danh bạ, giấy tờ tuỳ thân, số thẻ hay thông tin đăng nhập ngân hàng của bạn. Với vị trí thiết bị: nếu bạn cho phép, ứng dụng đọc vị trí hiện tại để tính khoảng cách tới sự kiện và định vị bản đồ gần bạn; toạ độ này xử lý ngay trên thiết bị của bạn và không được gửi về máy chủ hay lưu trữ. Giao dịch diễn ra trong ứng dụng ngân hàng hoặc ví của bạn; phần chúng tôi nhận được là thông báo chuyển khoản từ tài khoản host đã kết nối, gồm tên người chuyển, số tiền, nội dung và thời điểm, như nêu ở bảng trên."
+            en="We do not collect: contacts, identity documents, card numbers or your banking credentials. Device location: if you grant permission, the app reads your current position to show distance to events and to center the nearby map; this happens on your device only and is never sent to or stored on our servers. The transfer happens in your bank or wallet app; what reaches us is the transfer notification from the host's connected account, with the sender name, amount, memo and timestamp, as set out in the table above."
           />
         </Section>
 
@@ -205,6 +208,10 @@ export default function Policy() {
             vi="Chúng tôi không dùng dữ liệu cho quảng cáo, không phân tích nội dung trò chuyện, và không ra quyết định tự động ảnh hưởng đến bạn ngoài việc đếm số lần vắng mặt như nêu tại Điều A5."
             en="We do not use data for advertising, analyze chat content, or make automated decisions about you other than counting no-shows as described in Section A5."
           />
+          <Bi
+            vi="Khi tranh chấp được giải quyết, chúng tôi luôn gửi email xác nhận cho cả khách và host. Khi host tải lên hoặc thay hoá đơn/biên nhận: bạn luôn được thông báo trong ứng dụng; email chỉ được gửi nếu bạn đã bật mục “tự động gửi email hoá đơn” trong Tuỳ chọn, trừ khi hoá đơn/biên nhận bị thay thế — trường hợp đó luôn có email để bạn kịp tải bản cũ trước khi bị xoá."
+            en="When a dispute is resolved, we always email a confirmation to both the guest and the host. When a host uploads or replaces an invoice/receipt: you are always notified in the app; an email is sent only if you turned on “auto-email documents” in Preferences — except when a document is replaced, which always emails you so you have time to download the old one before it's gone."
+          />
         </Section>
 
         <Section id="B4" titleVi="B4. Ai nhìn thấy gì" titleEn="B4. Who sees what">
@@ -215,6 +222,7 @@ export default function Policy() {
               ['Tên, ảnh, số lần tham dự và vắng mặt\nName, avatar, attended and no-show counts', 'Host và đồng tổ chức của sự kiện bạn đặt; người bạn trò chuyện.\nHosts and co-hosts of events you book; people you chat with.'],
               ['Đặt chỗ, vào cửa\nBookings, check-ins', 'Bạn, host và đồng tổ chức của sự kiện đó.\nYou, and the host and co-hosts of that event.'],
               ['Trò chuyện\nChat', 'Hai bên trong cuộc trò chuyện; nhân viên banbe khi có báo cáo hoặc tranh chấp.\nThe two parties; banbe staff when there is a report or dispute.'],
+              ['Hoá đơn, biên nhận\nInvoices, receipts', 'Bạn và host của sự kiện đó. banbe (kể cả nhân viên) không xem được các tệp này.\nYou and the host of that event. banbe (including staff) cannot view these files.'],
               ['Hồ sơ host, sự kiện công khai, ảnh, địa điểm\nHost profile, public events, photos, venue', 'Mọi người, kể cả chưa đăng nhập. Host tổ chức tại nhà riêng có thể chọn chỉ hiện khu vực.\nEveryone, including without an account. Hosts using their own home can choose to show only the area.'],
               ['Sự kiện riêng tư\nInvite-only events', 'Người có đường dẫn, hoặc có số điện thoại đã xác minh nằm trong danh sách mời.\nPeople with the link, or whose verified phone number is on the invite list.'],
             ]}
@@ -223,8 +231,8 @@ export default function Policy() {
 
         <Section id="B5" titleVi="B5. Bên xử lý thay chúng tôi" titleEn="B5. Who processes data for us">
           <Bi
-            vi="Chúng tôi dùng: Supabase (cơ sở dữ liệu, xác thực, lưu trữ tệp); Vercel (lưu trữ ứng dụng web); [Vietnamese SMS provider] để gửi mã OTP; Google để gửi email đăng nhập, email vé và email thông báo. Các bên này chỉ xử lý theo chỉ dẫn của chúng tôi và không được dùng dữ liệu cho mục đích riêng."
-            en="We use: Supabase (database, authentication, file storage); Vercel (web app hosting); [Vietnamese SMS provider] to deliver OTP codes; Google to deliver sign-in, ticket and notice emails. They process only on our instructions and may not use the data for their own purposes."
+            vi="Chúng tôi dùng: Supabase (cơ sở dữ liệu, xác thực, lưu trữ tệp); Vercel (lưu trữ ứng dụng web); [Vietnamese SMS provider] để gửi mã OTP; Google để gửi email đăng nhập, email vé và email thông báo, và (cùng với Meta/Facebook) để xác thực nếu bạn chọn đăng nhập bằng Google hoặc Facebook. Các bên này chỉ xử lý theo chỉ dẫn của chúng tôi và không được dùng dữ liệu cho mục đích riêng."
+            en="We use: Supabase (database, authentication, file storage); Vercel (web app hosting); [Vietnamese SMS provider] to deliver OTP codes; Google to deliver sign-in, ticket and notice emails, and (together with Meta/Facebook) to authenticate you if you choose to sign in with Google or Facebook. They process only on our instructions and may not use the data for their own purposes."
           />
           <Bi
             vi="Chúng tôi không bán, cho thuê hay trao đổi dữ liệu cá nhân. Chúng tôi cung cấp dữ liệu cho cơ quan nhà nước khi có yêu cầu hợp pháp bằng văn bản, và thông báo cho bạn khi pháp luật cho phép."
@@ -246,7 +254,9 @@ export default function Policy() {
               ['Tài khoản, hồ sơ, yêu thích, theo dõi\nAccount, profile, favorites, follows', 'Khi bạn xoá tài khoản, hoặc sau 6 tháng không hoạt động, 14 tháng với tài khoản có hồ sơ tổ chức; xoá ngay lập tức.\nYou delete your account, or 6 months of inactivity, 14 months for accounts with an organizer profile; removed immediately.'],
               ['Mã OTP\nOTP codes', 'Một ngày sau khi hết hạn.\nOne day after expiry.'],
               ['Đặt chỗ, vào cửa\nBookings, check-ins', 'Giữ làm sổ sách của host. Khi bạn xoá tài khoản, dòng ghi chép còn lại nhưng không còn gắn với bạn.\nKept as the host\'s ledger. When you delete your account the record stays with your identity detached.'],
-              ['Trò chuyện\nChat', 'Nội dung tin nhắn được xoá 12 tháng sau khi sự kiện kết thúc, trừ khi còn tranh chấp chưa giải quyết. Khi bạn xoá tài khoản, tin nhắn của bạn được xoá nội dung ngay, cùng ngoại lệ đó.\nMessage bodies are erased 12 months after the event ends, unless a dispute is still unresolved. When you delete your account your own messages are erased at once, with the same exception.'],
+              ['Trò chuyện\nChat', 'Trò chuyện thường: không tự động xoá theo thời gian; bạn xoá được từng tin nhắn của mình bất kỳ lúc nào. Trò chuyện tranh chấp: sau khi tranh chấp được giải quyết, toàn bộ nội dung bị xoá vĩnh viễn trong vòng 72 giờ; bạn không tự xoá được tin nhắn tranh chấp trước đó.\nOrdinary chat: not erased automatically by time; you can delete your own individual messages at any time. Dispute chat: once a dispute is resolved, its full content is permanently deleted within 72 hours; you cannot delete dispute messages yourself beforehand.'],
+              ['Hoá đơn, biên nhận\nInvoices, receipts', '12 tháng sau ngày sự kiện. Nếu bị thay thế, bản cũ bị xoá sau 24 giờ.\n12 months after the event date. If replaced, the old file is deleted after 24 hours.'],
+              ['Thông báo trong ứng dụng\nIn-app notifications', 'Không tự động xoá theo thời gian; bạn xoá bất kỳ lúc nào.\nNot erased automatically by time; you delete them yourself, any time.'],
               ['Danh sách mời\nInvite lists', '30 ngày sau sự kiện.\n30 days after the event.'],
               ['Ảnh sự kiện\nEvent photos', 'Cùng với sự kiện; host xoá được bất kỳ lúc nào.\nWith the event; hosts can delete any time.'],
               ['Nhật ký kỹ thuật\nTechnical logs', '30 ngày.\n30 days.'],
