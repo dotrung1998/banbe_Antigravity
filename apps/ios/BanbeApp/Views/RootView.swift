@@ -119,6 +119,10 @@ struct RootView: View {
     private func confirmMapCloseSwipe() {
         guard app.screen == .mapExplore else { return }
         withAnimation(.easeOut(duration: mapCloseConfirmedDuration)) { app.mapCloseSwipeProgress = 1 }
+        // Follow-up bug 1: the distinct, one-shot "genuinely confirmed"
+        // signal — see its own doc comment on `AppState` for why this is
+        // separate from the continuous progress value above.
+        app.mapCloseConfirmed = true
     }
 
     private func cancelMapCloseSwipe() {
@@ -269,6 +273,9 @@ struct RootView: View {
                     // fresh it doesn't start looking pre-collapsed from a
                     // stale prior close.
                     app.mapCloseSwipeProgress = 0
+                    // Follow-up bug 1: same reasoning — a future fresh open
+                    // must start with this false too.
+                    app.mapCloseConfirmed = false
                 }
             }
         }

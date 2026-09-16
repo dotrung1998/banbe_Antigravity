@@ -404,6 +404,44 @@ No new automated test added — this is a pure animation-timing change (curve/du
 4. Repeat step 3 several times in a row, at different drag distances (barely past the edge, halfway to the threshold) — the cancelled re-settle should consistently feel slow every time, never occasionally fast.
 5. Confirm returning from Event Detail (tap "Xem chi tiết" then "‹ Bản đồ", or swipe back from Event Detail) still waits ~1.28s total before the sheet reappears, exactly as before this pass — this path must look completely unaffected by the above.
 
+## Follow-up (2026-09-16): confirmed-close still passed through each detent in sequence; "← Đóng"/"Tìm ở đây" mismatched height and color
+
+### Bug 1 — confirmed close visibly passed through tall → mid → peek instead of one direct motion
+
+**Root cause, confirmed by reasoning through the actual mechanism, not guessed**: 0a4f78e's `confirmMapCloseSwipe()`/`closeMap()` only ever animated `app.mapCloseSwipeProgress` (driving `sheetContent`'s own `.scaleEffect`/`.offset` in `apps/ios/BanbeApp/Views/MapExploreView.swift`) — the sheet's REAL `isPresented` binding (`sheetPresented`) stayed `true` the entire time. So a "confirmed close" was never an actual sheet dismissal at all — it was our own content shrinking INSIDE a sheet that, as far as `.presentationDetents`/UIKit's presentation controller was concerned, was still fully presented and still open to being resized. Shrinking the CONTENT that way is indistinguishable, to the system, from "the content wants less space" — and since the only sizes `.presentationDetents([.fraction(0.12), .fraction(0.45), .fraction(0.72)], ...)` actually knows about are those three fixed values, the presentation controller re-snapped through whichever of them were between the current detent and the smallest one, on the way down — exactly "tall → mid → peek in sequence" as reported, rather than sliding straight off-screen.
+
+**Fix**: 
+- `apps/ios/BanbeApp/State/AppState.swift` — new `@Published var mapCloseConfirmed: Bool = false`: a distinct, one-shot "genuinely confirmed" signal, separate from the continuous `mapCloseSwipeProgress` (which can't reliably distinguish "confirmed" from "merely live-dragged all the way to the edge without releasing").
+- `apps/ios/BanbeApp/Views/RootView.swift` — `confirmMapCloseSwipe()` now also sets `app.mapCloseConfirmed = true` (alongside its existing fast progress animation); the existing post-commit reset block (inside `.onChange(of: isCommittingBack)`'s `asyncAfter`) also resets it back to `false`.
+- `apps/ios/BanbeApp/Views/MapExploreView.swift` — `closeMap()` (the button) likewise sets `app.mapCloseConfirmed = true` immediately and resets it in its own delayed block. New `.onChange(of: app.mapCloseConfirmed)` in `body`: when it flips true, `withAnimation(.easeOut(duration: 0.22)) { sheetPresented = false }` — this triggers the REAL, system-native sheet dismiss, which is categorically a different transition from a detent change and is guaranteed by the platform to animate directly from wherever the sheet currently sits to fully off-screen, never re-snapping to a named detent along the way. The `.scaleEffect`/`.offset` content transform is left untouched and keeps playing underneath/alongside this as a purely decorative flourish — it's the ACTUAL sheet frame's own dismissal, not that transform, that fixes the reported bug.
+- The cancelled-swipe path (`cancelMapCloseSwipe()`) is untouched — it never set `mapCloseConfirmed` and still doesn't; the sheet stays presented (correctly) through a cancelled swipe, only the content's own transform springs back.
+
+**Web**: not applicable — web's own bottom sheet (`src/screens/MapExplore.jsx`) is a plain absolutely-positioned `<div>` with a `top` CSS percentage, not a native `.sheet`/`.presentationDetents` construct with discrete named detents a browser could "snap through" — there is no equivalent failure mode architecturally, confirmed by inspection, not assumed.
+
+### Bug 2 — "← Đóng" and "Tìm ở đây" mismatched height and color
+
+**Root cause, iOS (`apps/ios/BanbeApp/Views/MapExploreView.swift`)**: two independent, compounding issues, both now fixed:
+1. "← Đóng"'s own `Text` was `font(.system(size: 13, weight: .semibold))` + `.padding(.horizontal, 12)` while "Tìm ở đây" was `size: 12` + `.padding(.horizontal, 14)` — a real intrinsic-size mismatch (both already shared the same `.padding(.vertical, 8)`).
+2. Even with matching font/padding, "← Đóng" sits inside an `HStack` alongside the 38pt-tall compass circle — `HStack`'s DEFAULT `alignment: .center` vertically centers each child within the row's own height, which the taller compass button drives to 38pt; "← Đóng" (at its own, smaller intrinsic height) would render centered a few points below the row's top edge. "Tìm ở đây" is a separate, independent `ZStack` child, top-anchored directly against the whole screen with no taller sibling — so it always sat higher than "← Đóng", by roughly `(38 - closeHeight) / 2`, regardless of #1.
+
+Both already used the identical `.regularMaterial` background and `app.palette.ink` foreground — no color TOKEN ever actually differed between them in code; the perceived "different colors" most likely came from the differing capsule SIZE sampling a different amount of the same translucent blurred backdrop, reading as a different tint at a glance.
+
+**Fix**: "← Đóng"'s `Text` changed to `font(.system(size: 12, weight: .semibold))` + `.padding(.horizontal, 14)` (matching "Tìm ở đây" exactly). The enclosing `HStack` gained `alignment: .top`, so "← Đóng" (and the compass button) sit flush at the row's own top edge instead of vertically centered against the compass's greater height — matching "Tìm ở đây"'s own independent top-anchoring. No new color/size token introduced anywhere; both pills now share every visual style property (font size, padding, background, foreground) exactly.
+
+**Web (`src/screens/MapExplore.jsx`)**: a smaller, analogous mismatch — `map-back` had no explicit `fontWeight` (falling back to the browser default, normal/400) and used `padding: '8px 12px'`, while `map-search-here` explicitly used `fontWeight: 600` and `padding: '8px 16px'` (same `photoPill()` base otherwise, `fontSize` already defaulting to 12 for both). Fixed by matching `map-back`'s `padding`/`fontWeight` to `map-search-here`'s exactly — no new token, same `photoPill()` background/`color: ink` both already had.
+
+### Tests
+
+**Web**: `tests/map-explore.spec.js` gained one new case, `follow-up bug 2: "← Đóng" renders at the same height/weight as "Tìm ở đây"` — pans the map twice via the exposed `window.__mapExploreMapForTests.panBy(...)` test hook (the first `moveend` only establishes the baseline bounds per `MapExplore.jsx`'s own handler, only the second flips `boundsChanged` and reveals "Tìm ở đây"), then asserts both buttons' `boundingBox().height` are equal and their computed `font-weight` match. Full fast suite re-run (`--project=chromium --grep-invert "real backend"`): 118/118 passed (117 prior + 1 new).
+
+**iOS**: no new automated test for Bug 1 (a detent-snapping-vs-direct-dismiss visual distinction isn't something this project's UI-test harness could reliably assert even if it existed — same reasoning as every prior pass); no automated test needed for Bug 2 either (a pure static layout/style fix, not a behavior). Both Debug and Release `xcodebuild -sdk iphonesimulator` builds are clean.
+
+**iOS manual verification checklist (this pass)**:
+1. Open Map Explore at any detent (tall, mid, or peek — try all three separately), then swipe fully past the dismiss threshold — the sheet should animate in ONE continuous fast motion directly to fully closed; it must NOT visibly pause at, or snap into, either of the other two detent heights on the way down.
+2. Repeat step 1 but tap "← Đóng" instead of swiping, from each of the three detents — same requirement: one direct fast collapse, no visible stop at an intermediate detent.
+3. Start a swipe and release it EARLY (before the dismiss threshold) — confirm this is UNCHANGED from the prior pass: the sheet slowly (~1s) settles back to its exact previous detent, never disappearing.
+4. Look at "← Đóng" and "Tìm ở đây" side by side (pan the map so "Tìm ở đây" appears) — both pills should now be the same height and the same color/tint, with "← Đóng" sitting at the same vertical position as "Tìm ở đây", not lower.
+
 **iOS**: no new automated test, same reasoning as every prior pass. Both Debug and Release `xcodebuild -sdk iphonesimulator` builds are clean after this pass.
 
 **iOS manual verification checklist (this pass)**:

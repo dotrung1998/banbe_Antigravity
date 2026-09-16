@@ -496,4 +496,33 @@ test.describe('Map Explore — Map Explore -> Home close flow follow-up', () => 
     // The card must still be showing the same event, not have been cleared.
     await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
   });
+
+  test('follow-up bug 2: "← Đóng" renders at the same height/weight as "Tìm ở đây"', async ({ page }) => {
+    await setupToHome(page);
+    await page.click('[data-testid="open-map-explore"]');
+    await page.waitForSelector('[data-screen-label="MapExplore"]');
+    // Pan the map so "Tìm ở đây" actually appears (it's conditional on
+    // `boundsChanged`, only set once a real `moveend` fires).
+    // Two real camera moves via the map's own API (the same one
+    // `window.__mapExploreMapForTests` exposes for other tests in this
+    // file) — the FIRST `moveend` only establishes the baseline bounds
+    // (see `MapExplore.jsx`'s own `map.on('moveend', ...)`), only the
+    // SECOND one actually flips `boundsChanged`.
+    await page.waitForFunction(() => !!window.__mapExploreMapForTests);
+    await page.evaluate(() => window.__mapExploreMapForTests.panBy([80, 80], { duration: 0 }));
+    await page.waitForTimeout(200);
+    await page.evaluate(() => window.__mapExploreMapForTests.panBy([80, 80], { duration: 0 }));
+    await page.locator('[data-testid="map-search-here"]').waitFor({ timeout: 10000 });
+
+    const back = page.locator('[data-testid="map-back"]');
+    const searchHere = page.locator('[data-testid="map-search-here"]');
+    const [backBox, searchBox, backWeight, searchWeight] = await Promise.all([
+      back.boundingBox(),
+      searchHere.boundingBox(),
+      back.evaluate(el => getComputedStyle(el).fontWeight),
+      searchHere.evaluate(el => getComputedStyle(el).fontWeight),
+    ]);
+    expect(backBox.height).toBeCloseTo(searchBox.height, 0);
+    expect(backWeight).toBe(searchWeight);
+  });
 });

@@ -244,11 +244,35 @@ struct MapExploreView: View {
             .onTapGesture { selectedId = nil }
             .ignoresSafeArea()
 
-            HStack {
+            // Follow-up (11-realtime-map.md, bug 2): "← Đóng" used to read
+            // `font(.system(size: 13, ...))` + `.padding(.horizontal, 12)`
+            // — one point larger and two points narrower than "Tìm ở đây"
+            // (below, size 12 / horizontal 14) — now matched exactly, so
+            // both pills render at the identical intrinsic height (same
+            // font size, same 8pt vertical padding both had already).
+            // `alignment: .top` on this HStack is the other half of the
+            // fix: by default an `HStack` vertically CENTERS its children
+            // within the row's own height, and the row's height here is
+            // driven by the 38pt-tall compass circle — even with matching
+            // font/padding, "← Đóng" would still render centered a few
+            // points below the row's top edge (roughly `(38 - ownHeight) /
+            // 2`), which is exactly what made it sit lower than "Tìm ở
+            // đây" (an independent ZStack child, top-anchored on its own,
+            // with no taller sibling to be centered against). Top-aligning
+            // this HStack instead means "← Đóng" sits flush at the same
+            // top edge as "Tìm ở đây", matching both its position and its
+            // size. Both already shared the same `.regularMaterial`
+            // background and `app.palette.ink` foreground — no color token
+            // actually differed in code, but the differing capsule SIZE
+            // made the same translucent material sample a different amount
+            // of blurred backdrop, reading as a perceptibly different tint;
+            // matching size resolves that as a side effect, without
+            // introducing any new color value for either button.
+            HStack(alignment: .top) {
                 Button { closeMap() } label: {
                     Text(app.T("← Đóng", "← Close"))
-                        .font(.system(size: 13, weight: .semibold))
-                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 14).padding(.vertical, 8)
                         .background(.regularMaterial, in: Capsule())
                 }
                 .accessibilityIdentifier("map.back")
@@ -349,6 +373,26 @@ struct MapExploreView: View {
             // only when the user actually taps a different category chip.
             guard !isPreview else { return }
             recenterOnFilterDensityHotspot()
+        }
+        .onChange(of: app.mapCloseConfirmed) { _, confirmed in
+            // Follow-up bug 1 (11-realtime-map.md): a confirmed close used
+            // to rely ENTIRELY on the `.scaleEffect`/`.offset` transform
+            // below (driven by `app.mapCloseSwipeProgress`) to fake a
+            // "collapse" — but shrinking the CONTENT that way, while the
+            // sheet stayed technically `isPresented: true` the whole time,
+            // let `.presentationDetents` interpret the shrinking content as
+            // a resize request and re-snap through each of its three fixed
+            // detents (tall → mid → peek) on the way down, instead of one
+            // continuous motion to fully closed. Flipping `sheetPresented`
+            // to `false` here triggers the REAL, system-native sheet
+            // dismiss — categorically a different transition from a detent
+            // change, guaranteed to animate straight from wherever the
+            // sheet currently is to fully off-screen, never re-snapping to
+            // a named detent along the way. The `.scaleEffect`/`.offset`
+            // transform is untouched and keeps playing underneath/alongside
+            // this as a purely decorative flourish on the content.
+            guard confirmed else { return }
+            withAnimation(.easeOut(duration: 0.22)) { sheetPresented = false }
         }
         .sheet(isPresented: $sheetPresented) {
             sheetContent
@@ -572,9 +616,15 @@ struct MapExploreView: View {
     /// dismiss threshold (`cancelMapCloseSwipe()`, same file).
     private func closeMap() {
         withAnimation(.easeOut(duration: 0.22)) { app.mapCloseSwipeProgress = 1 }
+        // Follow-up bug 1: the same distinct "genuinely confirmed" signal
+        // `RootView.confirmMapCloseSwipe()` sets — triggers the real sheet
+        // dismiss via the `.onChange(of: app.mapCloseConfirmed)` handler in
+        // `body`, below.
+        app.mapCloseConfirmed = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
             app.mapExploreState = nil
             app.mapCloseSwipeProgress = 0
+            app.mapCloseConfirmed = false
             app.goBack()
         }
     }

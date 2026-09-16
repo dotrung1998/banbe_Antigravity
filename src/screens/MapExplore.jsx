@@ -600,7 +600,16 @@ export default function MapExplore() {
           three of this screen's own floating pills — not just the compass —
           for consistency, since any of them sharing a corner with a future
           maplibre control would have the identical problem. */}
-      <div ref={backRef} onClick={closeMap} data-testid="map-back" style={{ ...photoPill({}), top: 16, left: 16, padding: '8px 12px', zIndex: 3 }}>
+      {/* Follow-up (11-realtime-map.md, bug 2): this used to omit
+          `fontWeight` (falling back to the browser default, normal/400)
+          and use a narrower `padding` ('8px 12px') than "Tìm ở đây" below
+          (600/'8px 16px') — same `photoPill()` base (background/color
+          token), so the two never actually differed in color by value,
+          but the lighter weight read as a visibly different tint at a
+          glance. Matched to "Tìm ở đây"'s own padding/fontWeight exactly
+          (fontSize was already 12 by default from `photoPill()`, so no
+          change needed there) — same height, same look, no new token. */}
+      <div ref={backRef} onClick={closeMap} data-testid="map-back" style={{ ...photoPill({}), top: 16, left: 16, padding: '8px 16px', fontWeight: 600, zIndex: 3 }}>
         ← {T('Đóng', 'Close')}
       </div>
 

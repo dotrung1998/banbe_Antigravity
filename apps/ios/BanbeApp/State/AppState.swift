@@ -406,6 +406,19 @@ final class AppState: ObservableObject {
     /// inventing its own).
     @Published var mapCloseSwipeProgress: CGFloat = 0
 
+    /// Follow-up (11-realtime-map.md, bug 1): a distinct, one-shot signal
+    /// from a CONFIRMED close (swipe past the threshold, or the "← Đóng"
+    /// button) — separate from the continuous `mapCloseSwipeProgress`
+    /// above, which can't reliably distinguish "genuinely confirmed" from
+    /// "just live-dragged all the way to the edge without releasing yet".
+    /// `MapExploreView` observes this to trigger a REAL native sheet
+    /// dismiss (`sheetPresented = false`) instead of relying only on its
+    /// own `.scaleEffect`/`.offset` fake-collapse, which was letting
+    /// `.presentationDetents` treat the shrinking content as a resize
+    /// request and re-snap through each of its three fixed detents on the
+    /// way down instead of animating straight to fully closed.
+    @Published var mapCloseConfirmed: Bool = false
+
     private let locationService = LocationService()
     private var tickTimer: Timer?
     private var chatPollTimer: Timer?
