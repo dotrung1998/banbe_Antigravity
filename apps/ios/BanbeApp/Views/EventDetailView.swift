@@ -19,6 +19,13 @@ struct EventDetailView: View {
         // Named after whichever list it is ("Going"/"Saved"/"Completed
         // events"), so the pill says where it actually goes.
         case .eventList: return app.eventListTitle
+        // Follow-up bug 2: this used to fall through to the "banbe"/Home
+        // default below, even though `backFromEvent()` already correctly
+        // routed back to Map Explore (eventBackScreen was `.mapExplore`,
+        // not `.home`) — the pill *said* "banbe" while *behaving* like it
+        // went to the map, which read as wrong regardless of the real
+        // destination being correct.
+        case .mapExplore: return app.T("Bản đồ", "Map")
         default: return "banbe"
         }
     }
@@ -61,6 +68,15 @@ struct EventDetailView: View {
             HStack {
                 pill("‹ \(backLabel)") { app.backFromEvent() }
                     .accessibilityIdentifier("event.back")
+                    // Follow-up bug 2: an explicit, map-specific
+                    // accessibility label — distinct from the visible pill
+                    // text — so VoiceOver users get the same "this returns
+                    // to the map, not Home" clarity the sighted fix gives.
+                    .accessibilityLabel(
+                        app.eventBackScreen == .mapExplore
+                            ? app.T("Quay lại bản đồ", "Back to map")
+                            : "‹ \(backLabel)"
+                    )
                 Spacer()
                 pill(app.sharedFlash ? app.T("Đã sao chép link", "Link copied") : app.T("Chia sẻ", "Share")) {
                     share()

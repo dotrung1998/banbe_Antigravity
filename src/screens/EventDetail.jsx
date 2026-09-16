@@ -19,6 +19,13 @@ export default function EventDetail() {
     // Named after whichever list it is ("Going"/"Saved"/"Completed
     // events"), so the pill says where it actually goes.
     eventList: eventListTitle,
+    // Follow-up bug 2 (11-realtime-map.md): `eventBackScreen` already
+    // correctly resolves to 'mapExplore' when Event Detail was opened from
+    // the map's preview card (goEvent()'s own eventBackScreen logic), and
+    // backFromEvent() already navigated there correctly — this table just
+    // never had an entry for it, so the pill fell through to the 'banbe'
+    // default and *said* Home while *going* to the map.
+    mapExplore: T('Bản đồ', 'Map'),
   };
   const backLabel = BACK_LABELS[s.eventBackScreen] || 'banbe';
   const cameFromHome = (s.eventBackScreen || 'home') === 'home';

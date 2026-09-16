@@ -226,7 +226,12 @@ struct RootView: View {
         case .langPick: LangPickView()
         case .themePick: ThemePickView()
         case .policy: PolicyView()
-        case .mapExplore: MapExploreView()
+        // `MapExploreView.init(restored:)` reads `app.mapExploreState`
+        // (11-realtime-map.md, bug 2) directly at construction time — not
+        // in a later `.task` — so the very first frame this switch draws
+        // already shows the restored camera/detent/filters/selection
+        // instead of flashing the defaults for a frame first.
+        case .mapExplore: MapExploreView(restored: app.mapExploreState)
         case .home: HomeView()
         case .profile: AccountView()
         case .inbox: InboxView()

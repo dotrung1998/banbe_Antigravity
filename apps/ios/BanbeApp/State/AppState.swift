@@ -776,7 +776,32 @@ final class AppState: ObservableObject {
         Task { await loadBookingForCurrentEvent() }
         Task { await loadLiveEventStatus() }
     }
-    func backFromEvent() { screen = eventBackScreen }
+    /// Follow-up bug 2: `goBack()`'s `.event` case (the edge-swipe path) and
+    /// EventDetailView's explicit back-button both call this SAME function
+    /// — neither maintains its own separate "how do I get back to the map"
+    /// logic, per the ticket's "one shared returnToMapExplore() path"
+    /// requirement. It only special-cases the destination screen actually
+    /// being `.mapExplore`; every other `eventBackScreen` target is an
+    /// ordinary screen switch, unchanged from before.
+    func backFromEvent() {
+        if eventBackScreen == .mapExplore {
+            returnToMapExplore()
+        } else {
+            screen = eventBackScreen
+        }
+    }
+
+    /// The one path both back mechanisms use to return to a retained Map
+    /// Explore. Kept as its own named function (rather than inlining `screen
+    /// = .mapExplore` into `backFromEvent()`) so it's a single, greppable
+    /// seam if a future pass needs to attach more return-specific behavior
+    /// here (e.g. a dedicated transition) without touching both call sites.
+    /// `mapExploreState` itself is untouched here — MapExploreView's own
+    /// `init(restored:)`/`.task` (11-realtime-map.md) read and clear it once
+    /// the view is actually back on screen.
+    func returnToMapExplore() {
+        screen = .mapExplore
+    }
     func goOrganizer() { screen = .organizer }
     func backToEvent() { screen = .event }
     func openHeld() { screen = .confirmed }

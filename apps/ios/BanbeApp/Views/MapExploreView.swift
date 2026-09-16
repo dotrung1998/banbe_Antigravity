@@ -9,19 +9,19 @@ import CoreLocation
 /// same screen.
 struct MapExploreView: View {
     @EnvironmentObject var app: AppState
-    @State private var cameraPosition: MapCameraPosition = .automatic
+    @State private var cameraPosition: MapCameraPosition
     @State private var lastQueriedRegion: MKCoordinateRegion?
     @State private var boundsChanged = false
-    @State private var catFilter = "all"
-    @State private var openNowOnly = false
-    @State private var sortByDistance = false
-    @State private var initialCenterSet = false
+    @State private var catFilter: String
+    @State private var openNowOnly: Bool
+    @State private var sortByDistance: Bool
+    @State private var initialCenterSet: Bool
     // Defaults to the "tall" snap point (covers most of the screen, leaving
     // a small map strip visible at top) per the ticket's layout spec — not
     // the smallest detent, and not a binary toggle: `.presentationDetents`
     // gives all three snap points (tall/mid/peek) standard drag-to-resize
     // behavior for free.
-    @State private var sheetDetent: PresentationDetent = .fraction(0.72)
+    @State private var sheetDetent: PresentationDetent
     @State private var awaitingRecenterAfterGrant = false
 
     // The pin/list-row currently showing the compact in-map preview card —
@@ -34,10 +34,55 @@ struct MapExploreView: View {
     // Bug 3: drag-to-resize is scoped to this custom handle only (not the
     // sheet or the List) — see `dragHandle`.
     @State private var handleDragStartFraction: Double?
-    // Bug 2: true for exactly one pass through `.task` after a restore, so
-    // the list-scroll-to-selection below fires once, not on every later
-    // `visibleEvents` change.
-    @State private var pendingScrollToRestoredSelection = false
+    // Bug 2 follow-up: true only when this instance was constructed with a
+    // saved snapshot AND that snapshot had a selection — drives a single
+    // scroll-to-row once the list has rows to scroll to (see `init` below).
+    @State private var pendingScrollToRestoredSelection: Bool
+    // Bug 2 follow-up: captured once at construction time so `.task` below
+    // knows whether to skip density-hotspot centering — reading
+    // `app.mapExploreState` itself in `.task` would already be too late,
+    // and clearing it (an @Published var) doesn't retroactively un-restore
+    // the @State values that already seeded from it in `init`.
+    private let hadRestoredState: Bool
+
+    /// Seeds every local `@State` directly from a saved snapshot (or plain
+    /// defaults) INSIDE `init`, rather than restoring them a moment later
+    /// inside `.task`. Root cause of the "abrupt pop-in" reported in bug 2's
+    /// follow-up: `.task` runs only after the very first frame has already
+    /// been drawn with `.automatic`/`"all"`/`.fraction(0.72)` etc., so a
+    /// return-to-map visibly flashed the *default* camera/filters/detent for
+    /// one frame before snapping to the *restored* ones a moment later — a
+    /// real, visible "reinitialize then jump" rather than a smooth restore.
+    /// Seeding here means the very first frame RootView draws for this view
+    /// already shows the restored state, including the sheet's own initial
+    /// `.presentationDetents` selection — the sheet's native slide-up-from-
+    /// bottom presentation animation then plays directly TO the saved
+    /// detent, not to the default one first.
+    init(restored: MapExploreState?) {
+        hadRestoredState = restored != nil
+        if let restored {
+            _cameraPosition = State(initialValue: .region(MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: restored.cameraCenterLat, longitude: restored.cameraCenterLng),
+                span: MKCoordinateSpan(latitudeDelta: restored.cameraSpanLat, longitudeDelta: restored.cameraSpanLng)
+            )))
+            _catFilter = State(initialValue: restored.catFilter)
+            _openNowOnly = State(initialValue: restored.openNowOnly)
+            _sortByDistance = State(initialValue: restored.sortByDistance)
+            _sheetDetent = State(initialValue: MapExploreView.detent(for: restored.sheetFraction))
+            _selectedId = State(initialValue: restored.selectedId)
+            _initialCenterSet = State(initialValue: true) // restored camera counts as already "set"
+            _pendingScrollToRestoredSelection = State(initialValue: restored.selectedId != nil)
+        } else {
+            _cameraPosition = State(initialValue: .automatic)
+            _catFilter = State(initialValue: "all")
+            _openNowOnly = State(initialValue: false)
+            _sortByDistance = State(initialValue: false)
+            _sheetDetent = State(initialValue: .fraction(0.72))
+            _selectedId = State(initialValue: nil)
+            _initialCenterSet = State(initialValue: false)
+            _pendingScrollToRestoredSelection = State(initialValue: false)
+        }
+    }
 
     private let categories: [(key: String, vi: String, en: String, glyph: String)] = [
         ("all", "Tất cả", "All", "▪︎"),
@@ -131,6 +176,23 @@ struct MapExploreView: View {
                     Spacer()
                     selectedCard(ev)
                         .padding(.bottom, 8)
+                        // Follow-up bug 3: without this, selecting A then B
+                        // keeps the SAME `selectedCard`/`CatalogPhoto`/
+                        // `RemoteImage` view identity across the change (the
+                        // `if let ev = selectedEvent` branch itself doesn't
+                        // toggle, so SwiftUI just re-renders it in place) —
+                        // and `RemoteImage`'s own `@State private var image`
+                        // (Components.swift) only clears/reloads on a fresh
+                        // `init`, not on a later `path` change to an existing
+                        // instance, so A's already-loaded image kept showing
+                        // under B's title/meta/CTA. Keying the whole card by
+                        // `ev.id` forces a brand-new view (and a brand-new
+                        // `RemoteImage` with it) on every selection change,
+                        // so title/image/meta/CTA all reset atomically and
+                        // any in-flight load for the previous id is
+                        // cancelled by SwiftUI tearing that old view down —
+                        // correct even for a rapid A → B → C.
+                        .id(ev.id)
                 }
                 .padding(.bottom, UIScreen.main.bounds.height * cardAnchorFraction)
                 .animation(.easeOut(duration: 0.28), value: cardAnchorFraction)
@@ -165,26 +227,41 @@ struct MapExploreView: View {
         .sheet(isPresented: .constant(true)) {
             sheetContent
                 .presentationDetents([.fraction(0.12), .fraction(0.45), .fraction(0.72)], selection: $sheetDetent)
-                // Bug 3: the system's own drag indicator is hidden in favor
-                // of `dragHandle` inside `sheetContent` — see that view's
-                // own comment for why a handle-only custom gesture is used
-                // instead of relying on the system's built-in drag-to-resize
-                // recognizer, which is what was intercepting the List's own
-                // scroll at the mid detent.
+                // Bug 3 (11-realtime-map.md, prior pass): the system's own
+                // drag indicator is hidden in favor of `dragHandle` inside
+                // `sheetContent`.
                 .presentationDragIndicator(.hidden)
+                // Follow-up bug 1: hiding the indicator above only hides the
+                // drawn affordance — the system's own resize-vs-scroll
+                // gesture recognizer is still attached to the sheet's whole
+                // content view regardless (that recognizer isn't something
+                // SwiftUI code can remove, only re-bias). Its *default*
+                // ambiguous-arbitration behavior is what let a drag started
+                // anywhere in the List/filter area resize the sheet instead
+                // of scrolling it at mid — and, competing over the very same
+                // touches, is also what could make the custom `dragHandle`
+                // gesture below intermittently lose arbitration to the
+                // system one on the identical hit area. `.scrolls` tells the
+                // system explicitly "content in here always scrolls; only
+                // resize the sheet from a genuine non-scrollable drag" —
+                // the standard, documented fix for a `.sheet` + `List`
+                // combination that needs both a resizable sheet AND a
+                // normally-scrolling list (this is the same pattern behind
+                // Apple's own Maps app bottom sheet).
+                .presentationContentInteraction(.scrolls)
                 .presentationBackgroundInteraction(.enabled)
                 .interactiveDismissDisabled()
         }
         .task {
-            // Bug 2: a snapshot saved by `openEventDetail(_:)` right before
-            // leaving for Event Detail takes priority over density-hotspot
-            // centering — re-running that computation on every return would
-            // silently discard exactly where the user had the map (possibly
-            // after their own manual pan/zoom too), even though the whole
-            // point of restoring is "don't re-initialize."
+            // Bug 2: the actual restore now happens in `init` (see its own
+            // comment) — by the time this runs, `cameraPosition`/filters/
+            // `sheetDetent`/`selectedId` are already correct. This only
+            // decides whether density-hotspot centering should run at all
+            // (never for a restored instance — re-running it would discard
+            // exactly where the user had the map) and clears the snapshot
+            // now that this instance has fully consumed it.
             await app.loadMapEvents()
-            if let saved = app.mapExploreState {
-                applyRestoredState(saved)
+            if hadRestoredState {
                 app.mapExploreState = nil
             } else {
                 centerOnDensityHotspot()
@@ -229,9 +306,9 @@ struct MapExploreView: View {
     // MARK: - Bug 2: retained navigation state across Event Detail
 
     /// One of the three literal `.presentationDetents` fractions, read back
-    /// from either a stored `Double` (restore) or `sheetDetent` (equality
-    /// against the same three literals — see `sheetFraction` below).
-    private func detent(for fraction: Double) -> PresentationDetent {
+    /// from a stored `Double` — `static` so `init` can call it before `self`
+    /// is fully initialized.
+    private static func detent(for fraction: Double) -> PresentationDetent {
         if fraction == 0.12 { return .fraction(0.12) }
         if fraction == 0.45 { return .fraction(0.45) }
         return .fraction(0.72)
@@ -264,23 +341,6 @@ struct MapExploreView: View {
     private func closeMap() {
         app.mapExploreState = nil
         app.goBack()
-    }
-
-    private func applyRestoredState(_ saved: MapExploreState) {
-        initialCenterSet = true // skip density-hotspot centering
-        cameraPosition = .region(MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: saved.cameraCenterLat, longitude: saved.cameraCenterLng),
-            span: MKCoordinateSpan(latitudeDelta: saved.cameraSpanLat, longitudeDelta: saved.cameraSpanLng)
-        ))
-        sheetDetent = detent(for: saved.sheetFraction)
-        catFilter = saved.catFilter
-        openNowOnly = saved.openNowOnly
-        sortByDistance = saved.sortByDistance
-        selectedId = saved.selectedId
-        // Best-effort list-scroll restore (SwiftUI's List has no pixel
-        // scrollTop to round-trip the way a web scroll container does) —
-        // scroll the restored selection back into view once its row exists.
-        if saved.selectedId != nil { pendingScrollToRestoredSelection = true }
     }
 
     // MARK: - Density-hotspot initial center
@@ -515,20 +575,32 @@ struct MapExploreView: View {
         return 6371 * 2 * atan2(sqrt(h), sqrt(1 - h))
     }
 
-    // Bug 3: this small capsule is the ONLY thing a sheet-resize drag is
-    // recognized from — no gesture is attached to the sheet as a whole or
-    // to the List below, so a drag that begins anywhere in the list's
-    // actual content is never competed for at all; it's just a normal
-    // ScrollView-driven scroll. `minimumDistance: 2` (not 0) keeps a plain
-    // tap on the handle from being misread as a zero-length drag.
+    // Bug 3 (prior pass) / follow-up bug 1: this capsule + its fixed-height
+    // hit region is the ONLY thing a sheet-resize drag is recognized from —
+    // no gesture is attached to the sheet as a whole or to the List below,
+    // so a drag that begins anywhere in the list's actual content or the
+    // filter row is never competed for by this gesture at all. Full sheet
+    // width, ~40pt tall (between the ticket's 36–44pt spec) — generous
+    // enough to hit reliably without spilling down into the filter chips
+    // right below it. `minimumDistance: 2` (not 0) keeps a plain tap on the
+    // handle from being misread as a zero-length drag.
+    //
+    // `.highPriorityGesture` (not `.gesture`) — scoped to ONLY this small
+    // view, never the sheet or the List (the ticket's own "do not attach a
+    // high-priority/simultaneous gesture across the whole sheet/list" is
+    // about scope, not about priority as such) — so that within this one
+    // ~40pt strip, the custom gesture wins outright over the system's own
+    // sheet-resize recognizer, which (per `.presentationContentInteraction`
+    // above) is now biased toward content-scrolling everywhere else but can
+    // still independently claim touches on this same non-scrollable capsule
+    // unless explicitly out-prioritized here too.
     private var dragHandle: some View {
         Capsule()
             .fill(app.palette.rule)
             .frame(width: 36, height: 4)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
             .contentShape(Rectangle())
-            .gesture(
+            .highPriorityGesture(
                 DragGesture(minimumDistance: 2)
                     .onChanged { _ in
                         if handleDragStartFraction == nil { handleDragStartFraction = sheetFraction }
@@ -538,7 +610,7 @@ struct MapExploreView: View {
                         let deltaFraction = value.translation.height / UIScreen.main.bounds.height
                         let current = start + deltaFraction
                         let nearest = detentFractions.min(by: { abs($0 - current) < abs($1 - current) }) ?? 0.72
-                        withAnimation(.easeOut(duration: 0.25)) { sheetDetent = detent(for: nearest) }
+                        withAnimation(.easeOut(duration: 0.25)) { sheetDetent = MapExploreView.detent(for: nearest) }
                         handleDragStartFraction = nil
                     }
             )

@@ -204,3 +204,80 @@ test.describe('Map Explore — bug fixes (card anchor, state restore, mid-detent
     expect(peekTop).toBeGreaterThan(midTop + 50);
   });
 });
+
+test.describe('Map Explore — follow-up fixes (handle-only drag, map-specific back, stale card image)', () => {
+  test('bug 1: a drag starting in the filter row never resizes the sheet', async ({ page }) => {
+    await setupToHome(page);
+    await page.click('[data-testid="open-map-explore"]');
+    await page.waitForSelector('[data-screen-label="MapExplore"]');
+    await page.locator('[data-testid^="map-list-item-"]').first().waitFor({ timeout: 10000 });
+
+    const handleTopBefore = await page.locator('[data-testid="map-sheet-handle"]').evaluate(el => el.getBoundingClientRect().top);
+    const chip = page.locator('[data-testid="map-cat-all"]');
+    const box = await chip.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 200, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    const handleTopAfter = await page.locator('[data-testid="map-sheet-handle"]').evaluate(el => el.getBoundingClientRect().top);
+    // The sheet's own top edge (proxied via the handle's position) must be
+    // unchanged — only a drag that starts on the handle itself may resize it.
+    expect(Math.abs(handleTopAfter - handleTopBefore)).toBeLessThan(5);
+
+    // The handle itself must still work afterward (confirms this isn't just
+    // a coincidentally-already-at-that-detent false pass).
+    await dragHandle(page, 200);
+    await page.waitForTimeout(400);
+    const handleTopAfterRealDrag = await page.locator('[data-testid="map-sheet-handle"]').evaluate(el => el.getBoundingClientRect().top);
+    expect(handleTopAfterRealDrag).toBeGreaterThan(handleTopAfter + 50);
+  });
+
+  test('bug 2: the back pill from a map-opened event reads Map, not Home/banbe', async ({ page }) => {
+    const pin = await openMapWithAPin(page);
+    await pin.click();
+    await page.locator('[data-testid="map-card-cta"]').click();
+    await expect(page.locator('[data-screen-label="EventDetail"], [data-screen-label="Event"]')).toBeVisible();
+
+    const backText = (await page.locator('[data-testid="event-detail-back"]').innerText()).trim();
+    // eventBackScreen already correctly resolves to 'mapExplore' and
+    // backFromEvent() already navigates there — this only checks the label
+    // itself, which used to fall through to the Home ('banbe') default.
+    expect(backText).toMatch(/Bản đồ|Map/i);
+    expect(backText).not.toMatch(/banbe/i);
+
+    // And it must actually still go back to the map, not just claim to.
+    await page.locator('[data-testid="event-detail-back"]').click();
+    await expect(page.locator('[data-screen-label="MapExplore"]')).toBeVisible();
+  });
+
+  test('bug 3: selecting a different event after an Event Detail round trip never shows the previous event\'s card content', async ({ page }) => {
+    await setupToHome(page);
+    await page.click('[data-testid="open-map-explore"]');
+    await page.waitForSelector('[data-screen-label="MapExplore"]');
+    const pins = page.locator('[data-testid^="map-pin-"]');
+    await pins.first().waitFor({ timeout: 10000 });
+    const count = await pins.count();
+    test.skip(count < 2, 'needs at least two loaded events to tell "still A" apart from "correctly B"');
+
+    const pinA = pins.nth(0);
+    const idB = (await pins.nth(1).getAttribute('data-testid')).replace('map-pin-', '');
+
+    await pinA.click();
+    const titleA = await page.locator('[data-testid="map-card-title"]').innerText();
+
+    await page.locator('[data-testid="map-card-cta"]').click();
+    await expect(page.locator('[data-screen-label="EventDetail"], [data-screen-label="Event"]')).toBeVisible();
+    await page.locator('[data-testid="event-detail-back"]').click();
+    await page.waitForSelector('[data-screen-label="MapExplore"]');
+
+    // Via the list row, not the pin: selecting A zoomed the camera in tight
+    // on A's own location, so B's marker may now sit outside the map's
+    // visible viewport — the list row is unaffected by camera position and
+    // exercises the exact same `selectEvent()` path a pin tap would.
+    await page.locator(`[data-testid="map-list-item-${idB}"]`).click();
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    const titleB = await page.locator('[data-testid="map-card-title"]').innerText();
+    expect(titleB).not.toBe(titleA);
+  });
+});
