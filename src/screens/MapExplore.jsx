@@ -110,7 +110,11 @@ export default function MapExplore() {
 
       const center = densityHotspot(initial.map(e => ({ lat: e.lat, lng: e.lng }))) || { lat: 10.7769, lng: 106.7009 };
 
-      const maplibregl = (await import('maplibre-gl')).default;
+      // maplibre-gl 6.x ships pure named ESM exports — there is no
+      // `default` export. `(await import(...)).default` was silently
+      // `undefined`, so `new maplibregl.Map(...)` threw and the map never
+      // initialized (11-realtime-map.md: "web map doesn't render at all").
+      const maplibregl = await import('maplibre-gl');
       if (!active || !mapDivRef.current || mapRef.current) return;
 
       const map = new maplibregl.Map({
@@ -149,7 +153,7 @@ export default function MapExplore() {
     markersRef.current = [];
     let cancelled = false;
     (async () => {
-      const maplibregl = (await import('maplibre-gl')).default;
+      const maplibregl = await import('maplibre-gl');
       if (cancelled) return;
       for (const ev of events) {
         const el = document.createElement('div');
@@ -270,6 +274,29 @@ export default function MapExplore() {
           style={{ padding: '10px 0 6px', display: 'flex', justifyContent: 'center', cursor: 'grab' }}
         >
           <div style={{ width: 36, height: 4, borderRadius: 2, background: rule }} />
+        </div>
+
+        {/* Primary, always-present control for the list/map balance — the
+            drag handle above still works as an additional way to move
+            between snap points, but these two buttons are the explicit,
+            tap-driven way, per the ticket. "tall" (list large, small map
+            strip) is today's default; "peek" (list small, map large) was
+            previously only reachable by dragging all the way down. */}
+        <div style={{ display: 'flex', gap: 8, padding: '0 16px 10px' }}>
+          <div
+            onClick={() => setSheetSnap('tall')}
+            data-testid="map-sheet-list-large"
+            style={{ ...fieldGlass({}), flex: 1, textAlign: 'center', padding: '7px 0', fontSize: 12, cursor: 'pointer', color: ink, fontWeight: sheetSnap === 'tall' ? 700 : 400, border: sheetSnap === 'tall' ? `1px solid ${ink}` : 'none' }}
+          >
+            {T('List lớn', 'Big list')}
+          </div>
+          <div
+            onClick={() => setSheetSnap('peek')}
+            data-testid="map-sheet-list-small"
+            style={{ ...fieldGlass({}), flex: 1, textAlign: 'center', padding: '7px 0', fontSize: 12, cursor: 'pointer', color: ink, fontWeight: sheetSnap === 'peek' ? 700 : 400, border: sheetSnap === 'peek' ? `1px solid ${ink}` : 'none' }}
+          >
+            {T('List nhỏ', 'Big map')}
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: 8, padding: '0 16px 10px', overflowX: 'auto' }}>

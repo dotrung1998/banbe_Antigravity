@@ -254,6 +254,17 @@ struct MapExploreView: View {
 
             List(visibleEvents) { ev in
                 HStack(spacing: 12) {
+                    // Same left-side thumbnail every other event card in
+                    // this app uses (CatalogPhoto -> RemoteImage ->
+                    // PhotoLoader) — was missing here entirely (bug 1,
+                    // 11-realtime-map.md). The map screen's own rows only
+                    // carry the live DB columns (no `img`), so the cosmetic
+                    // photo path is joined back from the bundled catalogue
+                    // by id, same as the price/img join the web build does
+                    // in MapExplore.jsx's fetchLiveEvents().
+                    if let path = EventCatalog.find(ev.id)?.img {
+                        CatalogPhoto(path: path, height: 52, width: 52, cornerRadius: 10)
+                    }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(ev.name).font(.system(size: 14, weight: .semibold))
                         Text(ev.area + (sortByDistance ? distanceSuffix(ev) : ""))
