@@ -97,6 +97,11 @@ const initialState = {
   dashboardBack: 'home',
   loading: false,
   filter: 'all',
+  // Home's second, independent chip row (12-home-filters.md) — multi-select,
+  // AND-combined with `filter`/`area` above, not folded into either.
+  filterAttending: false,
+  filterSaved: false,
+  filterSoldOut: false,
   formName: '',
   formEmail: '',
   chatDraft: '',
@@ -1932,7 +1937,17 @@ export function GocProvider({ children }) {
 
   // ---- filter ----
   const pickFilter = useCallback((key) => set({ filter: key }), [set]);
-  const clearFilters = useCallback(() => set({ filter: 'all', area: 'all' }), [set]);
+  const clearFilters = useCallback(() => set({
+    filter: 'all', area: 'all', filterAttending: false, filterSaved: false, filterSoldOut: false,
+  }), [set]);
+  // Home's second chip row (12-home-filters.md) — each independent, AND-combined
+  // with `filter`/`area` and with each other, not mutually exclusive.
+  const toggleHomeFilter = useCallback((key) => set(prev => {
+    if (key === 'attending') return { filterAttending: !prev.filterAttending };
+    if (key === 'saved') return { filterSaved: !prev.filterSaved };
+    if (key === 'soldOut') return { filterSoldOut: !prev.filterSoldOut };
+    return {};
+  }), [set]);
 
   // ---- share ----
   const shareEvent = useCallback((ev) => {
@@ -2756,7 +2771,7 @@ export function GocProvider({ children }) {
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
-    pickFilter, clearFilters, shareEvent, referralLink, shareReferral,
+    pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
@@ -2785,7 +2800,7 @@ export function GocProvider({ children }) {
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
-    pickFilter, clearFilters, shareEvent, referralLink, shareReferral,
+    pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,

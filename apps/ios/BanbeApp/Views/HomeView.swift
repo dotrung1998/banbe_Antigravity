@@ -38,6 +38,7 @@ struct HomeView: View {
                 paymentBanners
                 if !app.savedStrip.isEmpty { savedStrip }
                 filterTabs
+                homeExtraFilterChips
                 if app.feed.isEmpty {
                     emptyState
                 } else {
@@ -282,6 +283,37 @@ struct HomeView: View {
         }
         .foregroundStyle(app.palette.ink)
         .padding(.top, 16)
+        .padding(.bottom, 14)
+    }
+
+    // Second, independent chip row (12-home-filters.md) — multi-select,
+    // AND-combined with filterTabs' category row and the area picker, not a
+    // third incompatible filter system: each reuses an existing definition
+    // (isGoing's status set from note 04, isSaved's favorites, .soldOut's
+    // static catalogue flag) rather than recomputing any of them.
+    private var homeExtraFilterChips: some View {
+        let chips: [(key: String, vi: String, en: String, active: Bool)] = [
+            ("attending", "Đang tham gia", "Attending", app.filterAttending),
+            ("saved", "Đã lưu", "Saved", app.filterSaved),
+            ("soldOut", "Hết chỗ", "Sold out", app.filterSoldOut),
+        ]
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(chips, id: \.key) { chip in
+                    Button { app.toggleHomeFilter(chip.key) } label: {
+                        Text(app.T(chip.vi, chip.en))
+                            .font(.system(size: 12, weight: chip.active ? .bold : .regular))
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(.thinMaterial, in: Capsule())
+                            .overlay(Capsule().stroke(chip.active ? app.palette.ink : .clear, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("filter.\(chip.key.lowercased())")
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+        .foregroundStyle(app.palette.ink)
         .padding(.bottom, 14)
     }
 

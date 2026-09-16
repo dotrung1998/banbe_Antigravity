@@ -4,6 +4,17 @@ import { EVENTS, bg } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert } from '../theme.js';
 
+// Second, independent chip row (12-home-filters.md) — multi-select,
+// AND-combined with FILTER_DEFS' category row and the area picker, not a
+// third incompatible filter system: each reuses an existing definition
+// (isGoing's status set from note 04, isSaved's favorites, e.soldOut's
+// static catalogue flag) rather than recomputing any of them.
+const HOME_EXTRA_FILTERS = [
+  { key: 'attending', vi: 'Đang tham gia', en: 'Attending' },
+  { key: 'saved', vi: 'Đã lưu', en: 'Saved' },
+  { key: 'soldOut', vi: 'Hết chỗ', en: 'Sold out' },
+];
+
 export const FILTER_DEFS = [
   { key: 'all', vi: 'Tất cả', en: 'All' },
   { key: 'supper', vi: 'Supper club', en: 'Supper club' },
@@ -15,7 +26,7 @@ export const FILTER_DEFS = [
 export default function Home() {
   const {
     state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, toggleFav,
-    goProfile, goInbox, goEvent, goNotifications, goMapExplore, openArea, toggleLang, pickFilter, clearFilters,
+    goProfile, goInbox, goEvent, goNotifications, goMapExplore, openArea, toggleLang, pickFilter, clearFilters, toggleHomeFilter,
     becomeHost, switchToHost,
     canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary,
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
@@ -82,6 +93,9 @@ export default function Home() {
   const demoted = e => (e.cancelled && (e.cancelledHoursAgo == null || e.cancelledHoursAgo >= 2)) ? 1 : 0;
   const feed = useMemo(() => EVENTS
     .filter(e => !e.inviteOnly && (s.filter === 'all' || e.catKey === s.filter || e.cat2Key === s.filter) && curArea.match(e))
+    .filter(e => !s.filterAttending || isGoing(e.key))
+    .filter(e => !s.filterSaved || isSaved(e.key))
+    .filter(e => !s.filterSoldOut || e.soldOut)
     .sort((a, b) => demoted(a) - demoted(b))
     .map(e => {
       let seats = e.seats;
@@ -99,7 +113,7 @@ export default function Home() {
         goingLabel: trStatus('Đang tham gia' + ((s.tickets[e.key] || 1) > 1 ? ' ▪︎ ' + s.tickets[e.key] + ' vé' : '')),
         saveLabel: saved ? T('Đã lưu', 'Saved') : T('Lưu', 'Save'),
       };
-    }), [s.filter, s.tickets, curArea, isSaved, isGoing, trStatus, stripKm, T]);
+    }), [s.filter, s.filterAttending, s.filterSaved, s.filterSoldOut, s.tickets, curArea, isSaved, isGoing, trStatus, stripKm, T]);
 
   const heldKey = heldEv ? heldEv.key : null;
   const savedKeys = [...new Set([...s.favorites, ...s.attending, ...s.invited, ...(heldKey ? [heldKey] : [])])];
@@ -230,6 +244,22 @@ export default function Home() {
         {filters.map(f => (
           <span key={f.key} onClick={() => pickFilter(f.key)} style={f.style}>{f.label}</span>
         ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, padding: '0 20px 14px', overflowX: 'auto' }}>
+        {HOME_EXTRA_FILTERS.map(f => {
+          const active = f.key === 'attending' ? s.filterAttending : f.key === 'saved' ? s.filterSaved : s.filterSoldOut;
+          return (
+            <span
+              key={f.key}
+              onClick={() => toggleHomeFilter(f.key)}
+              data-testid={`home-filter-${f.key.toLowerCase()}`}
+              style={{ ...fieldGlass({}), padding: '6px 12px', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer', color: ink, fontWeight: active ? 700 : 400, border: active ? `1px solid ${ink}` : 'none' }}
+            >
+              {T(f.vi, f.en)}
+            </span>
+          );
+        })}
       </div>
 
       {feed.map(ev => (

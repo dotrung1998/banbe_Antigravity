@@ -165,6 +165,11 @@ final class AppState: ObservableObject {
     }
     @Published var area: String = "all"
     @Published var filter: String = "all"
+    // Home's second, independent chip row (12-home-filters.md) — multi-select,
+    // AND-combined with `filter`/`area` above, not folded into either.
+    @Published var filterAttending = false
+    @Published var filterSaved = false
+    @Published var filterSoldOut = false
 
     // MARK: Session
     @Published var user: Profile?
@@ -532,6 +537,9 @@ final class AppState: ObservableObject {
             .filter { !$0.inviteOnly }
             .filter { filter == "all" || $0.catKey == filter || $0.cat2Key == filter }
             .filter { currentArea.match($0) }
+            .filter { !filterAttending || isGoing($0.key) }
+            .filter { !filterSaved || isSaved($0.key) }
+            .filter { !filterSoldOut || $0.soldOut }
             .sorted { a, b in demoted(a) < demoted(b) }
     }
 
@@ -952,7 +960,21 @@ final class AppState: ObservableObject {
     }
 
     func pickFilter(_ key: String) { filter = key }
-    func clearFilters() { filter = "all"; area = "all" }
+    func clearFilters() {
+        filter = "all"; area = "all"
+        filterAttending = false; filterSaved = false; filterSoldOut = false
+    }
+
+    /// Home's second chip row (12-home-filters.md) — each independent,
+    /// AND-combined with `filter`/`area` and with each other.
+    func toggleHomeFilter(_ key: String) {
+        switch key {
+        case "attending": filterAttending.toggle()
+        case "saved": filterSaved.toggle()
+        case "soldOut": filterSoldOut.toggle()
+        default: break
+        }
+    }
     func openArea() { areaAsking = true }
     func pickArea(_ key: String) { area = key; areaAsking = false }
 
