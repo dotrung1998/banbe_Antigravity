@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase.js';
 import { findEvent, haversineKm } from '../data/events.js';
 import { densityHotspot } from '../lib/densityHotspot.js';
 import { FILTER_DEFS } from './Home.jsx';
-import { paper, ink, rule, photoPill, fieldGlass } from '../theme.js';
+import { paper, ink, rule, alert, photoPill, fieldGlass, cardGlass, inkButton } from '../theme.js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 // Category glyph per FILTER_DEFS key — no icon set exists anywhere else in
@@ -50,8 +50,18 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
       startsAt: row.starts_at,
       price: cosmetic?.price,
       img: cosmetic?.img,
+      // Same "date ▪︎ time" display text the event card/list already show
+      // (events.js's own `when` field) — reused, not reformatted from
+      // starts_at here, so the map's card never disagrees with the rest of
+      // the app about how a date reads.
+      when: cosmetic?.when,
       urgent: row.seats_remaining != null && row.seats_remaining <= 5,
       isNew: cosmetic ? cosmetic.until != null && cosmetic.until <= 1 : false,
+      // Live seats_remaining is this screen's own established "real-time-ish"
+      // signal (already used for `urgent` above) — reused for sold-out too,
+      // falling back to the static catalogue's flag only when a row has no
+      // seats_remaining of its own to check.
+      soldOut: row.seats_remaining != null ? row.seats_remaining <= 0 : !!cosmetic?.soldOut,
     };
   });
 }
@@ -70,6 +80,17 @@ export default function MapExplore() {
   const [boundsChanged, setBoundsChanged] = useState(false);
   const [page, setPage] = useState(0);
   const lastQueriedBounds = useRef(null);
+  // The pin/list-row currently showing the compact in-map preview card —
+  // null when nothing is selected. Not a second data source: it's just an
+  // id into the same `events`/`visibleEvents` this screen already loads.
+  const [selectedId, setSelectedId] = useState(null);
+  const lastAnimatedPinIdRef = useRef(null);
+  // Hoisted above the sheet-drag section below (which also reads/writes
+  // dragOffsetVh) purely so selectEvent() — defined before that section —
+  // can compute the sheet's current pixel height for the camera padding.
+  const [dragOffsetVh, setDragOffsetVh] = useState(0);
+  const mapStripFraction = Math.min(0.95, Math.max(0.05, SHEET_SNAPS[sheetSnap] + dragOffsetVh));
+  const sheetTopVh = mapStripFraction * 100;
 
   // ---- location permission state (drives the compass button's opacity) ----
   const [locPermission, setLocPermission] = useState('prompt'); // 'granted' | 'denied' | 'prompt'
@@ -98,6 +119,31 @@ export default function MapExplore() {
       { enableHighAccuracy: true, timeout: 10000 },
     );
   }, [allowLocation]);
+
+  // ---- pin/list-row selection: camera zoom + compact in-map preview card ----
+  // Reuses the same `events`/`visibleEvents` this screen already loads —
+  // selecting is just remembering an id, never a second query.
+  const selectEvent = useCallback((ev) => {
+    setSelectedId(ev.id);
+    const map = mapRef.current;
+    if (!map) return;
+    // Padding keeps the selected pin above BOTH the bottom sheet and the
+    // compact preview card that's about to appear just above it (point 2 —
+    // "not hidden beneath the bottom sheet"), rather than flying to a
+    // geometric center that a real user can't actually see. sheetPx here
+    // mirrors the exact same math the sheet's own `top: ${sheetTopVh}vh`
+    // style uses, so this stays correct across List lớn/List nhỏ/mid-drag.
+    const sheetPx = window.innerHeight * (1 - mapStripFraction);
+    const CARD_ALLOWANCE = 150; // approx. compact card height + gap
+    map.flyTo({
+      center: [ev.lng, ev.lat],
+      zoom: Math.max(map.getZoom(), 15.5),
+      padding: { top: 80, bottom: sheetPx + CARD_ALLOWANCE, left: 30, right: 30 },
+      duration: 550,
+    });
+  }, [mapStripFraction]);
+
+  const clearSelection = useCallback(() => setSelectedId(null), []);
 
   // ---- initial load: density-hotspot center (never the user's own GPS), then draw the map ----
   useEffect(() => {
@@ -148,6 +194,11 @@ export default function MapExplore() {
         if (!lastQueriedBounds.current) { lastQueriedBounds.current = map.getBounds(); return; }
         setBoundsChanged(true);
       });
+      // A tap on the map background (not a pin — those are separate marker
+      // DOM elements, never reaches this) clears the selected-event card.
+      // This is a genuine click, not `moveend`, so it can never be confused
+      // with "Search here" (that's tied only to the explicit button).
+      map.on('click', () => setSelectedId(null));
       lastQueriedBounds.current = map.getBounds();
       mapRef.current = map;
     })();
@@ -165,7 +216,7 @@ export default function MapExplore() {
     return () => clearInterval(interval);
   }, []);
 
-  // ---- draw/refresh pins whenever the event list changes ----
+  // ---- draw/refresh pins whenever the event list or selection changes ----
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -176,21 +227,33 @@ export default function MapExplore() {
       const maplibregl = await import('maplibre-gl');
       if (cancelled) return;
       for (const ev of events) {
+        const isSelected = ev.id === selectedId;
         const el = document.createElement('div');
-        el.style.cssText = `width:30px;height:30px;border-radius:50%;background:${paper};border:1.5px solid ${ink};display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;box-shadow:0 2px 6px rgba(27,25,22,0.3);position:relative;`;
+        // Selected pin sits slightly larger and settles there — plain CSS
+        // transform, no separate library. The one-shot "pop" keyframe below
+        // only plays the instant a *different* pin becomes selected, not on
+        // every poll-triggered marker rebuild while the same one stays
+        // selected (that would be exactly the "flashy, repeats itself"
+        // effect the ticket asked to avoid).
+        el.style.cssText = `width:30px;height:30px;border-radius:50%;background:${paper};border:1.5px solid ${ink};display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;box-shadow:${isSelected ? `0 0 0 3px ${ink}, ` : ''}0 2px 6px rgba(27,25,22,0.3);position:relative;transform:scale(${isSelected ? 1.15 : 1});z-index:${isSelected ? 1 : 0};`;
+        el.setAttribute('data-testid', `map-pin-${ev.id}`);
         el.textContent = CAT_GLYPH[ev.catKey] || CAT_GLYPH.all;
         if (ev.urgent || ev.isNew) {
           const dot = document.createElement('span');
           dot.style.cssText = `position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:${ev.urgent ? '#9A3E2D' : '#48582F'};border:1.5px solid ${paper};`;
           el.appendChild(dot);
         }
-        el.addEventListener('click', () => goEvent(ev.id));
+        if (isSelected && lastAnimatedPinIdRef.current !== ev.id) {
+          el.style.animation = 'gocPinPop 0.32s cubic-bezier(.22,.61,.36,1) both';
+          lastAnimatedPinIdRef.current = ev.id;
+        }
+        el.addEventListener('click', (e) => { e.stopPropagation(); selectEvent(ev); });
         const marker = new maplibregl.Marker({ element: el }).setLngLat([ev.lng, ev.lat]).addTo(map);
         markersRef.current.push(marker);
       }
     })();
     return () => { cancelled = true; };
-  }, [events, goEvent]);
+  }, [events, selectedId, selectEvent]);
 
   const searchHere = useCallback(async () => {
     const map = mapRef.current;
@@ -222,10 +285,26 @@ export default function MapExplore() {
     return list;
   }, [events, catFilter, openNowOnly, sortByDistance, s.userCoords]);
 
+  const selectedEvent = useMemo(
+    () => (selectedId ? visibleEvents.find(e => e.id === selectedId) || null : null),
+    [visibleEvents, selectedId],
+  );
+
+  // The selected event must honor every active filter this screen has
+  // (category, open-now, and whichever the freshness poll's latest
+  // response still contains) exactly like the pins/list it was picked
+  // from — if a poll refresh or a filter change makes it fall out of
+  // `visibleEvents` (cancelled, sold out and filtered by "Còn chỗ",
+  // recategorized, or just no longer in the current bbox), the selection
+  // clears itself instead of the card going stale. No second query: this
+  // only ever reads the same `visibleEvents` the map/list already render.
+  useEffect(() => {
+    if (selectedId && !selectedEvent) setSelectedId(null);
+  }, [selectedId, selectedEvent]);
+
   // ---- drag-to-resize bottom sheet (pointer events, translateY, snap on release) ----
   const sheetRef = useRef(null);
   const dragState = useRef(null);
-  const [dragOffsetVh, setDragOffsetVh] = useState(0);
 
   const onHandlePointerDown = (e) => {
     dragState.current = { startY: e.clientY, startSnap: SHEET_SNAPS[sheetSnap] };
@@ -245,9 +324,6 @@ export default function MapExplore() {
     setDragOffsetVh(0);
     dragState.current = null;
   };
-
-  const mapStripFraction = Math.min(0.95, Math.max(0.05, SHEET_SNAPS[sheetSnap] + dragOffsetVh));
-  const sheetTopVh = mapStripFraction * 100;
 
   const compassOpacity = locPermission === 'granted' ? 1 : DISABLED_OPACITY;
 
@@ -274,6 +350,57 @@ export default function MapExplore() {
           style={{ ...photoPill({}), top: 16, left: '50%', transform: 'translateX(-50%)', padding: '8px 16px', fontSize: 12, fontWeight: 600 }}
         >
           {T('Tìm ở đây', 'Search here')}
+        </div>
+      )}
+
+      {/* Compact in-map preview — never a full-screen modal. Anchored just
+          above the sheet's OWN current top edge (the same sheetTopVh that
+          positions the sheet itself below), so it automatically sits in a
+          sensible spot in both List lớn (near the top third, well clear of
+          the sheet's filter/list controls) and List nhỏ (a thin strip just
+          above the peeking sheet, without covering the map) — one rule,
+          not two special-cased layouts. */}
+      {selectedEvent && (
+        <div
+          data-testid="map-selected-card"
+          style={{
+            ...cardGlass({}), position: 'absolute', left: 16, right: 16,
+            bottom: `calc(${100 - sheetTopVh}vh + 10px)`,
+            padding: 12, display: 'flex', flexDirection: 'column', gap: 10,
+            boxShadow: '0 10px 28px rgba(27,25,22,0.22)',
+          }}
+        >
+          <div style={{ display: 'flex', gap: 10 }}>
+            {selectedEvent.img && (
+              <div style={{ backgroundImage: `url(${selectedEvent.img})`, backgroundSize: 'cover', backgroundPosition: 'center', width: 64, height: 64, borderRadius: 10, flexShrink: 0 }} />
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedEvent.name}</div>
+                <span
+                  onClick={clearSelection}
+                  data-testid="map-card-close"
+                  style={{ cursor: 'pointer', color: ink, opacity: 0.5, fontSize: 18, lineHeight: 1, flex: 'none' }}
+                >×</span>
+              </div>
+              <div style={{ fontSize: 11, color: ink, opacity: 0.65, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {[selectedEvent.when, selectedEvent.area].filter(Boolean).join(' ▪︎ ')}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                {selectedEvent.price && <span style={{ fontSize: 13, color: ink, fontWeight: 600 }}>{selectedEvent.price}</span>}
+                <span style={{ fontSize: 11, fontWeight: 600, color: selectedEvent.soldOut ? alert : ink }}>
+                  {selectedEvent.soldOut ? T('Hết chỗ', 'Sold out') : T('Còn chỗ', 'Available')}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div
+            onClick={() => goEvent(selectedEvent.id)}
+            data-testid="map-card-cta"
+            style={{ ...inkButton({}), padding: '10px 0', fontSize: 13 }}
+          >
+            {T('Xem chi tiết', 'View details')}
+          </div>
         </div>
       )}
 
@@ -363,7 +490,7 @@ export default function MapExplore() {
           {visibleEvents.map(ev => (
             <div
               key={ev.id}
-              onClick={() => goEvent(ev.id)}
+              onClick={() => selectEvent(ev)}
               data-testid={`map-list-item-${ev.id}`}
               style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: `1px solid ${rule}`, cursor: 'pointer', alignItems: 'center' }}
             >

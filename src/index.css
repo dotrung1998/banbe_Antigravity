@@ -108,3 +108,13 @@ input::placeholder {
   from { opacity: 1; transform: translateY(0); }
   to { opacity: 0; transform: translateY(-6px); }
 }
+
+/* A map pin picking up selection (MapExplore.jsx) — grows briefly past its
+   resting selected size then settles back, once per selection change (not
+   replayed on every poll refresh while the same pin stays selected). Same
+   easing as gocIn/gocSheetIn, not a new curve. */
+@keyframes gocPinPop {
+  0% { transform: scale(1); }
+  55% { transform: scale(1.32); }
+  100% { transform: scale(1.15); }
+}
