@@ -374,13 +374,18 @@ struct MapExploreView: View {
                 // closed toward Home, tracking `app.mapCloseSwipeProgress`
                 // — RootView's own edge-swipe progress, mirrored (not
                 // re-tracked) into `AppState` — LIVE (0 at rest, 1 at full
-                // commit), and springs back up with the same character if
-                // the swipe is released without committing, since
-                // `app.mapCloseSwipeProgress` itself is what animates back
-                // to 0 in that case (see `RootView.swift`'s own gesture
-                // handlers). The explicit "← Đóng" button drives the exact
-                // same published value for the same visual — see
-                // `closeMap()`.
+                // commit). No `.animation(value:)` here on purpose: the
+                // live-drag phase must track the finger with zero lag, and
+                // the two ENDED outcomes deliberately animate at different
+                // speeds — a confirmed close (swipe past the threshold, or
+                // the "← Đóng" button, `closeMap()` below) is fast/snappy
+                // (`RootView.confirmMapCloseSwipe()`, 0.22s); a cancelled
+                // swipe (released early) re-settles slowly and
+                // deliberately over ~1s (`RootView.cancelMapCloseSwipe()`)
+                // — this view has no say in which; it purely inherits
+                // whichever transaction RootView's gesture code (or this
+                // screen's own `closeMap()`) was using when it last wrote
+                // the value.
                 .scaleEffect(1 - 0.15 * app.mapCloseSwipeProgress, anchor: .bottom)
                 .offset(y: 70 * app.mapCloseSwipeProgress)
                 .presentationDetents([.fraction(0.12), .fraction(0.45), .fraction(0.72)], selection: $sheetDetent)
@@ -556,11 +561,15 @@ struct MapExploreView: View {
     /// should start fresh, not silently resume an unrelated past session.
     ///
     /// Task 1 (11-realtime-map.md follow-up): mirrors RootView's own
-    /// edge-swipe-commit timing (animate the shared progress to 1, THEN —
-    /// after that animation's own duration — actually switch screens and
-    /// reset the value) so the button gives the exact same shrink/bubble
-    /// visual as the swipe gesture, from the one shared signal, rather than
-    /// a second, button-specific animation.
+    /// edge-swipe-COMMIT timing (`RootView.confirmMapCloseSwipe()`'s
+    /// `mapCloseConfirmedDuration`, 0.22s) — animate the shared progress to
+    /// 1, THEN — after that duration — actually switch screens and reset
+    /// the value — so the button gives the exact same fast, snappy
+    /// shrink-away visual as a COMPLETED swipe. This button always takes
+    /// that fast/confirmed path; there is no "cancelled" case for a plain
+    /// tap, so it never uses the separate, slower (~1s) settle RootView's
+    /// own gesture uses when a swipe is released without crossing the
+    /// dismiss threshold (`cancelMapCloseSwipe()`, same file).
     private func closeMap() {
         withAnimation(.easeOut(duration: 0.22)) { app.mapCloseSwipeProgress = 1 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {

@@ -34,6 +34,21 @@ struct RootView: View {
     // ScrollView beneath it.
     private let edgeSwipeZoneWidth: CGFloat = 20
 
+    // Follow-up (11-realtime-map.md): `app.mapCloseSwipeProgress` used to
+    // resolve through the SAME `.interactiveSpring(response: 0.28, ...)` on
+    // every release, whether the swipe committed or cancelled — one shared
+    // feel for two situations that need to read differently. A confirmed
+    // close (swipe past the threshold, or the "← Đóng" button) should be
+    // fast/snappy; a cancelled swipe (released early) should settle back
+    // slowly and deliberately, matching the same "slow but certain"
+    // philosophy already used for the Event-Detail-return path (commit
+    // 4193f8e's `postDismissRevealDelay` — a fully separate signal/state
+    // from this one, see that constant's own doc comment; this pass
+    // doesn't touch it and doesn't need to). Named here so both branches
+    // below read the same two literal values rather than repeating them.
+    private let mapCloseConfirmedDuration: TimeInterval = 0.22
+    private let mapCloseCancelledDuration: TimeInterval = 1.0
+
     private var dragProgress: CGFloat {
         guard !isCommittingBack else { return 1 }
         let width = UIScreen.main.bounds.width
@@ -71,10 +86,8 @@ struct RootView: View {
             .onEnded { value in
                 defer { isDragTracking = false }
                 guard isDragTracking, abs(value.translation.height) < 80 else {
-                    withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) {
-                        dragTranslation = 0
-                        if app.screen == .mapExplore { app.mapCloseSwipeProgress = 0 }
-                    }
+                    withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) { dragTranslation = 0 }
+                    cancelMapCloseSwipe()
                     return
                 }
                 // A firm flick commits even if it hasn't crossed the
@@ -84,17 +97,33 @@ struct RootView: View {
                 let crossedDistance = value.translation.width > width * 0.35
                 let flicked = value.predictedEndTranslation.width > width * 0.6
                 if crossedDistance || flicked {
-                    withAnimation(.easeOut(duration: 0.22)) {
-                        isCommittingBack = true
-                        if app.screen == .mapExplore { app.mapCloseSwipeProgress = 1 }
-                    }
+                    withAnimation(.easeOut(duration: 0.22)) { isCommittingBack = true }
+                    confirmMapCloseSwipe()
                 } else {
-                    withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) {
-                        dragTranslation = 0
-                        if app.screen == .mapExplore { app.mapCloseSwipeProgress = 0 }
-                    }
+                    withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) { dragTranslation = 0 }
+                    cancelMapCloseSwipe()
                 }
             }
+    }
+
+    // Follow-up (11-realtime-map.md): the screen's own X-offset spring-back
+    // (`dragTranslation`, above — unrelated to this ticket, left at its
+    // existing fast `.interactiveSpring`) and the sheet's own
+    // `mapCloseSwipeProgress` are now animated as two INDEPENDENT
+    // transactions, in their own `withAnimation` calls, rather than one
+    // shared block — this is what actually lets them diverge, since
+    // `MapExploreView`'s `.scaleEffect`/`.offset` reading
+    // `mapCloseSwipeProgress` has no `.animation(value:)` of its own (see
+    // that file's own comment) and purely inherits whichever transaction
+    // last wrote the value.
+    private func confirmMapCloseSwipe() {
+        guard app.screen == .mapExplore else { return }
+        withAnimation(.easeOut(duration: mapCloseConfirmedDuration)) { app.mapCloseSwipeProgress = 1 }
+    }
+
+    private func cancelMapCloseSwipe() {
+        guard app.screen == .mapExplore else { return }
+        withAnimation(.easeOut(duration: mapCloseCancelledDuration)) { app.mapCloseSwipeProgress = 0 }
     }
 
     private var isPeeking: Bool { isDragTracking || isCommittingBack }

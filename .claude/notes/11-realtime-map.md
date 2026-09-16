@@ -377,6 +377,33 @@ Full fast suite re-run (`--project=chromium --grep-invert "real backend"`): 117/
 7. With location previously granted (compass tapped once already, or granted earlier elsewhere in the app), reopen Map Explore — every list row should already show its distance in km without needing to tap "Gần bạn" at all; tapping "Gần bạn" should still re-sort/filter by proximity exactly as before.
 8. Select an event, then pan/drag the map away from its pin — tap anywhere on the preview card except the "Xem chi tiết" button and the "×" — the camera should fly back to the selected event, same animation style as the original selection; confirm the "×" and "Xem chi tiết" still work normally and don't ALSO trigger the recenter.
 
+## Follow-up (2026-09-16): confirmed-close vs. cancelled-swipe need two different animation speeds, not one shared spring
+
+Commit 7666fde's `mapCloseSwipeProgress` correctly identified the ONE signal both triggers should share, but resolved every release through the identical `.interactiveSpring(response: 0.28, dampingFraction: 0.86)` regardless of whether the swipe committed or cancelled — one feel for two situations the ticket wants to read differently: a confirmed close (swipe past the threshold, or the "← Đóng" button) should be fast/snappy; a cancelled swipe (released early) should re-settle slowly and deliberately (~1s), the same "slow but certain" philosophy already used for the separate Event-Detail-return path (commit 4193f8e).
+
+**Root cause of the "one shared spring" problem**: `RootView.swift`'s `edgeSwipe.onEnded` wrote `dragTranslation` (the screen's own X-offset spring-back) and `app.mapCloseSwipeProgress` (the sheet's shrink) INSIDE the SAME `withAnimation(...)` closure, in both of the two "cancel" branches — meaning the sheet was structurally forced to always match whatever curve/duration the screen's own X-offset spring-back happened to use, with no way to give it a different one without also changing that unrelated screen-position animation.
+
+**Fix**: `apps/ios/BanbeApp/Views/RootView.swift` — `dragTranslation`'s own spring-back (unrelated to this ticket, left exactly as it was — still `.interactiveSpring(response: 0.28, dampingFraction: 0.86)`) and `app.mapCloseSwipeProgress` are now written in two INDEPENDENT `withAnimation` calls, via two new small helper methods:
+- `confirmMapCloseSwipe()` — `withAnimation(.easeOut(duration: mapCloseConfirmedDuration))` where `mapCloseConfirmedDuration = 0.22` (unchanged value, now named) — called from the commit branch (swipe crossed the threshold, or flicked).
+- `cancelMapCloseSwipe()` — `withAnimation(.easeOut(duration: mapCloseCancelledDuration))` where `mapCloseCancelledDuration = 1.0` (new) — called from BOTH cancel branches (the early `guard ... else` for an aborted/too-vertical drag, and the later `else` for a drag that didn't cross the commit threshold).
+
+Both new methods early-return unless `app.screen == .mapExplore` (same guard the inline code already had). `apps/ios/BanbeApp/Views/MapExploreView.swift` — `sheetContent`'s `.scaleEffect`/`.offset` reading `app.mapCloseSwipeProgress` needed NO changes at all: it deliberately has no `.animation(value:)` of its own (documented in the prior pass specifically so it could inherit whichever transaction wrote the value), which is exactly what makes this split effective without touching the view that renders it. `closeMap()` (the explicit "← Đóng" button) is untouched — it already used `.easeOut(duration: 0.22)`, i.e. it was ALREADY the fast/confirmed path and always will be, since a plain tap has no "cancelled" case to speak of; its own comment was updated to name that explicitly and point at `RootView`'s two new methods for contrast.
+
+**Confirmed no interference with 4193f8e's Event-Detail-return delay**: that path (`sheetPresented`, `postDismissRevealTask`, `restoreBubbleProgress`, `eventDetailDismissDuration`/`postDismissRevealDelay`) is a fully separate set of state, triggered only by returning FROM Event Detail (a child screen) — this pass's `mapCloseSwipeProgress`/`confirmMapCloseSwipe()`/`cancelMapCloseSwipe()` is triggered only by the user actively swiping/tapping to LEAVE Map Explore for Home. Neither reads nor writes anything the other owns; both remain fully independent and coexist without any shared code path.
+
+**Web — confirmed no equivalent split needed**: re-inspected `src/screens/MapExplore.jsx` — its own `closingProgress` is written ONLY by `closeMap()` (the button); there is no edge-swipe-back gesture on web at all (reconfirmed — `dragState`/`onHandlePointer*` in this same file is the SHEET-RESIZE handle drag, tall/mid/peek, entirely unrelated to closing the screen). Since web has no "cancelled swipe" case to differentiate from "confirmed close" in the first place — every closure on web IS the confirmed-close case — there is nothing to split there, and no change was made.
+
+### Tests
+
+No new automated test added — this is a pure animation-timing change (curve/duration only, no new observable DOM state a Playwright assertion could distinguish beyond timing, which this suite has generally avoided asserting on directly). The existing "closing via the button shows a shrink/bubble transition" web test and the full map-explore suite were re-run to confirm no regression (25/25 passed) — expected, since no web files changed in this pass. Both Debug and Release `xcodebuild -sdk iphonesimulator` builds are clean.
+
+**iOS manual verification checklist (this pass)**:
+1. Open Map Explore, start a left-edge swipe past the dismiss threshold (or flick it) — the sheet should shrink away FAST/snappy, matching how it felt before this pass (no change expected here).
+2. Tap "← Đóng" instead — same fast/snappy shrink, indistinguishable in feel from step 1.
+3. Start a left-edge swipe, then release EARLY (before crossing the threshold, a plain unhurried release) — the sheet should visibly take about a full second to settle back to its previous size/detent — noticeably slower and more deliberate than steps 1/2, not a quick snap.
+4. Repeat step 3 several times in a row, at different drag distances (barely past the edge, halfway to the threshold) — the cancelled re-settle should consistently feel slow every time, never occasionally fast.
+5. Confirm returning from Event Detail (tap "Xem chi tiết" then "‹ Bản đồ", or swipe back from Event Detail) still waits ~1.28s total before the sheet reappears, exactly as before this pass — this path must look completely unaffected by the above.
+
 **iOS**: no new automated test, same reasoning as every prior pass. Both Debug and Release `xcodebuild -sdk iphonesimulator` builds are clean after this pass.
 
 **iOS manual verification checklist (this pass)**:
