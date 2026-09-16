@@ -124,12 +124,13 @@ struct MapExploreView: View {
     private let cardTopNudge: CGFloat = 24
     // Bug 2 follow-up (deliberate restore-reveal delay): whether the sheet
     // (and, by extension, the preview card — see `body`) is actually
-    // presented. A FRESH open shows it immediately; a RESTORED instance
+    // presented. A FRESH open shows it immediately; a RESTORED instance (or
+    // one recovering from an interrupted close-swipe — task 2 follow-up)
     // starts with this `false` and only flips `true` once
-    // `postDismissRevealTask` (below) fires, after Event Detail's own
-    // dismissal animation has fully finished PLUS the ticket's explicit
-    // additional 1.0s pause — never early, never behind the outgoing
-    // Event Detail screen.
+    // `postDismissRevealTask` (below) fires, after the outgoing
+    // animation/gesture has fully finished PLUS the ticket's explicit
+    // additional pause — never early, never behind whatever's still
+    // animating away.
     @State private var sheetPresented: Bool
     // Bug 2 follow-up: holds the cancellable delayed-reveal task so a
     // second navigation (or a fast repeated back gesture) can't reveal
@@ -143,10 +144,18 @@ struct MapExploreView: View {
     /// close enough that waiting for the slightly longer of the two is the
     /// safe choice — waiting too little would reveal the sheet while Event
     /// Detail is still visibly sliding away, exactly the bug being fixed).
+    /// Also reused (task 2 follow-up) as the "let the interrupted-swipe's
+    /// own spring-back settle first" wait before an interrupted close-swipe
+    /// recovers, for the exact same reason.
     private let eventDetailDismissDuration: TimeInterval = 0.28
     /// The ticket's own explicit, additional pause AFTER that animation —
-    /// deliberate, not incidental.
-    private let postDismissRevealDelay: TimeInterval = 1.0
+    /// deliberate, not incidental. Task 3 follow-up: shortened from the
+    /// original 1.0s to 0.5s (ticket's explicit request to halve every
+    /// "slow, deliberate" delay this feature uses) — this single constant
+    /// now backs BOTH the Event-Detail-return reveal and the interrupted-
+    /// close-swipe reveal (task 2 follow-up), so there is only one place to
+    /// tune this going forward, not two that could drift apart.
+    private let postDismissRevealDelay: TimeInterval = 0.5
     // Bug 3 follow-up: `onMapCameraChange`'s callback, before this fix, only
     // ever wrote `lastQueriedRegion` ONCE (its first call — see the `body`
     // comment above `.onMapCameraChange`), then froze it forever afterward.
@@ -423,13 +432,15 @@ struct MapExploreView: View {
                 // the two ENDED outcomes deliberately animate at different
                 // speeds — a confirmed close (swipe past the threshold, or
                 // the "← Đóng" button, `closeMap()` below) is fast/snappy
-                // (`RootView.confirmMapCloseSwipe()`, 0.22s); a cancelled
-                // swipe (released early) re-settles slowly and
-                // deliberately over ~1s (`RootView.cancelMapCloseSwipe()`)
-                // — this view has no say in which; it purely inherits
-                // whichever transaction RootView's gesture code (or this
-                // screen's own `closeMap()`) was using when it last wrote
-                // the value.
+                // (both now call the one shared `AppState.confirmMapExploreClose()`,
+                // 0.22s); an interrupted swipe (released early) instead
+                // hides the sheet and hands off to the SAME delayed-reveal
+                // recovery Event Detail returns use (`RootView.cancelMapCloseSwipe()`
+                // → `app.mapCloseSwipeCancelled` → this view's own
+                // `.onChange(of: app.mapCloseSwipeCancelled)`, below) — this
+                // view has no say in which of the two the swipe took; it
+                // purely inherits whichever transaction last wrote this
+                // value.
                 .scaleEffect(1 - 0.15 * app.mapCloseSwipeProgress, anchor: .bottom)
                 .offset(y: 70 * app.mapCloseSwipeProgress)
                 .presentationDetents([.fraction(0.12), .fraction(0.45), .fraction(0.72)], selection: $sheetDetent)
@@ -485,33 +496,34 @@ struct MapExploreView: View {
                 app.mapExploreState = nil
                 // Bug 2 follow-up: the sheet/card must not reveal until
                 // Event Detail's own dismissal animation has fully finished
-                // AND the ticket's explicit additional 1.0s has elapsed —
-                // never early, never behind the outgoing screen. Held in
-                // `postDismissRevealTask` so `.onDisappear` can cancel it:
-                // if the user leaves this instance again before the delay
-                // completes (a second navigation, or a fast repeated
-                // gesture), it must never reveal stale UI onto whatever
-                // screen is now showing instead.
-                postDismissRevealTask = Task {
-                    let delayNanoseconds = UInt64((eventDetailDismissDuration + postDismissRevealDelay) * 1_000_000_000)
-                    try? await Task.sleep(nanoseconds: delayNanoseconds)
-                    guard !Task.isCancelled else { return }
-                    sheetPresented = true
-                    // ANIMATION REQUIREMENT: the one and only place
-                    // `restoreBubbleProgress` is ever written after `init` —
-                    // fires at the exact same moment the sheet/card reveal.
-                    withAnimation(.interpolatingSpring(stiffness: 180, damping: 14)) {
-                        restoreBubbleProgress = 1
-                    }
-                }
+                // AND the ticket's explicit additional delay has elapsed —
+                // never early, never behind the outgoing screen.
+                scheduleSheetReveal(after: eventDetailDismissDuration + postDismissRevealDelay)
             } else {
                 centerOnDensityHotspot()
             }
         }
+        .onChange(of: app.mapCloseSwipeCancelled) { _, cancelled in
+            // Task 2 (11-realtime-map.md follow-up): an interrupted
+            // left-edge swipe never navigates anywhere (RootView's own
+            // gesture code already guarantees that — see its own comment)
+            // — it hands off here instead, treating the interruption
+            // exactly like a return from Event Detail: hide the sheet/card
+            // immediately, then reveal them again after the same delay,
+            // reusing `scheduleSheetReveal(after:)` verbatim rather than a
+            // second recovery path.
+            guard cancelled else { return }
+            app.mapCloseSwipeCancelled = false // one-shot pulse — consume immediately
+            guard !isPreview else { return }
+            postDismissRevealTask?.cancel()
+            sheetPresented = false
+            restoreBubbleProgress = 0
+            scheduleSheetReveal(after: eventDetailDismissDuration + postDismissRevealDelay)
+        }
         .onDisappear {
             // Bug 2 follow-up: guards the delayed reveal above — cancelling
             // here means a torn-down instance (the user left again before
-            // the 1.28s elapsed) can never fire `sheetPresented = true`
+            // the delay elapsed) can never fire `sheetPresented = true`
             // onto whatever's on screen now.
             postDismissRevealTask?.cancel()
         }
@@ -604,28 +616,40 @@ struct MapExploreView: View {
     /// back") clears the snapshot — reopening the map later from Home
     /// should start fresh, not silently resume an unrelated past session.
     ///
-    /// Task 1 (11-realtime-map.md follow-up): mirrors RootView's own
-    /// edge-swipe-COMMIT timing (`RootView.confirmMapCloseSwipe()`'s
-    /// `mapCloseConfirmedDuration`, 0.22s) — animate the shared progress to
-    /// 1, THEN — after that duration — actually switch screens and reset
-    /// the value — so the button gives the exact same fast, snappy
-    /// shrink-away visual as a COMPLETED swipe. This button always takes
-    /// that fast/confirmed path; there is no "cancelled" case for a plain
-    /// tap, so it never uses the separate, slower (~1s) settle RootView's
-    /// own gesture uses when a swipe is released without crossing the
-    /// dismiss threshold (`cancelMapCloseSwipe()`, same file).
+    /// Task 1 (11-realtime-map.md follow-up): now just calls
+    /// `AppState.confirmMapExploreClose()` — the ONE shared confirm path a
+    /// completed left-edge swipe (`RootView`'s `edgeSwipe` commit branch)
+    /// also calls directly. Not a second, parallel implementation that
+    /// happens to produce the same visual: literally the same function
+    /// owns the fast sheet-dismiss animation, the snapshot clear, and the
+    /// actual navigation for both triggers now.
     private func closeMap() {
-        withAnimation(.easeOut(duration: 0.22)) { app.mapCloseSwipeProgress = 1 }
-        // Follow-up bug 1: the same distinct "genuinely confirmed" signal
-        // `RootView.confirmMapCloseSwipe()` sets — triggers the real sheet
-        // dismiss via the `.onChange(of: app.mapCloseConfirmed)` handler in
-        // `body`, below.
-        app.mapCloseConfirmed = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
-            app.mapExploreState = nil
-            app.mapCloseSwipeProgress = 0
-            app.mapCloseConfirmed = false
-            app.goBack()
+        app.confirmMapExploreClose()
+    }
+
+    /// Task 2 (11-realtime-map.md follow-up): schedules the delayed sheet
+    /// reveal — shared verbatim between a genuine restore from Event
+    /// Detail (`.task`'s `hadRestoredState` branch) and an interrupted
+    /// close-swipe's recovery (`.onChange(of: app.mapCloseSwipeCancelled)`),
+    /// per the ticket's explicit "reuse that exact same restore path, not
+    /// a new one." Held in `postDismissRevealTask` so `.onDisappear` (or a
+    /// second call to this same method) can cancel a still-pending one —
+    /// if the user leaves this instance again (or interrupts a second
+    /// swipe) before the delay completes, it must never reveal stale UI
+    /// onto whatever's on screen by then.
+    private func scheduleSheetReveal(after delay: TimeInterval) {
+        postDismissRevealTask?.cancel()
+        postDismissRevealTask = Task {
+            let delayNanoseconds = UInt64(delay * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+            guard !Task.isCancelled else { return }
+            sheetPresented = true
+            // ANIMATION REQUIREMENT: the restore-only "bubble" spring —
+            // fires at the exact same moment the sheet/card reveal, for
+            // both the callers of this method.
+            withAnimation(.interpolatingSpring(stiffness: 180, damping: 14)) {
+                restoreBubbleProgress = 1
+            }
         }
     }
 

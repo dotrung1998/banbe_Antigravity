@@ -419,6 +419,38 @@ final class AppState: ObservableObject {
     /// way down instead of animating straight to fully closed.
     @Published var mapCloseConfirmed: Bool = false
 
+    /// Follow-up (11-realtime-map.md, task 2): a one-shot signal from an
+    /// INTERRUPTED left-edge swipe (released before crossing the dismiss
+    /// threshold) — `MapExploreView` observes this to hide and then
+    /// re-reveal its sheet, reusing the exact same delayed-reveal
+    /// mechanism as returning from Event Detail (`scheduleSheetReveal(after:)`),
+    /// rather than the old "spring the content transform back" behavior.
+    /// Consumed (reset to `false`) by `MapExploreView` itself the instant
+    /// it reacts, so it stays a genuine one-shot pulse.
+    @Published var mapCloseSwipeCancelled: Bool = false
+
+    /// Follow-up (11-realtime-map.md, task 1): the ONE shared "confirmed
+    /// close" path — both the "← Đóng" button (`MapExploreView.closeMap()`)
+    /// and a completed left-edge swipe (`RootView`'s `edgeSwipe` commit
+    /// branch) call this SAME function, not two parallel implementations
+    /// that happen to agree. Animates the fast, direct sheet-shrink
+    /// (`mapCloseSwipeProgress`) and sets `mapCloseConfirmed` (which
+    /// `MapExploreView` observes to flip its own `sheetPresented` false —
+    /// see that flag's own doc comment for why a real dismiss is needed
+    /// instead of just the content transform), clears the snapshot, and
+    /// performs the actual navigation after the animation's own duration.
+    func confirmMapExploreClose() {
+        guard screen == .mapExplore else { return }
+        withAnimation(.easeOut(duration: 0.22)) { mapCloseSwipeProgress = 1 }
+        mapCloseConfirmed = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            self.mapExploreState = nil
+            self.mapCloseSwipeProgress = 0
+            self.mapCloseConfirmed = false
+            self.goBack()
+        }
+    }
+
     private let locationService = LocationService()
     private var tickTimer: Timer?
     private var chatPollTimer: Timer?

@@ -34,21 +34,6 @@ struct RootView: View {
     // ScrollView beneath it.
     private let edgeSwipeZoneWidth: CGFloat = 20
 
-    // Follow-up (11-realtime-map.md): `app.mapCloseSwipeProgress` used to
-    // resolve through the SAME `.interactiveSpring(response: 0.28, ...)` on
-    // every release, whether the swipe committed or cancelled — one shared
-    // feel for two situations that need to read differently. A confirmed
-    // close (swipe past the threshold, or the "← Đóng" button) should be
-    // fast/snappy; a cancelled swipe (released early) should settle back
-    // slowly and deliberately, matching the same "slow but certain"
-    // philosophy already used for the Event-Detail-return path (commit
-    // 4193f8e's `postDismissRevealDelay` — a fully separate signal/state
-    // from this one, see that constant's own doc comment; this pass
-    // doesn't touch it and doesn't need to). Named here so both branches
-    // below read the same two literal values rather than repeating them.
-    private let mapCloseConfirmedDuration: TimeInterval = 0.22
-    private let mapCloseCancelledDuration: TimeInterval = 1.0
-
     private var dragProgress: CGFloat {
         guard !isCommittingBack else { return 1 }
         let width = UIScreen.main.bounds.width
@@ -98,7 +83,16 @@ struct RootView: View {
                 let flicked = value.predictedEndTranslation.width > width * 0.6
                 if crossedDistance || flicked {
                     withAnimation(.easeOut(duration: 0.22)) { isCommittingBack = true }
-                    confirmMapCloseSwipe()
+                    // Task 1 (11-realtime-map.md follow-up): a completed
+                    // edge-swipe now calls the EXACT SAME shared confirm
+                    // path the "← Đóng" button calls — not a second,
+                    // parallel implementation. `AppState.confirmMapExploreClose()`
+                    // owns the fast sheet-dismiss animation, the snapshot
+                    // clear, and (0.22s later) the actual `goBack()` —
+                    // see the `.onChange(of: isCommittingBack)` handler
+                    // below for why this view's own generic reset must NOT
+                    // also call `goBack()` for this specific screen.
+                    app.confirmMapExploreClose()
                 } else {
                     withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) { dragTranslation = 0 }
                     cancelMapCloseSwipe()
@@ -106,28 +100,21 @@ struct RootView: View {
             }
     }
 
-    // Follow-up (11-realtime-map.md): the screen's own X-offset spring-back
-    // (`dragTranslation`, above — unrelated to this ticket, left at its
-    // existing fast `.interactiveSpring`) and the sheet's own
-    // `mapCloseSwipeProgress` are now animated as two INDEPENDENT
-    // transactions, in their own `withAnimation` calls, rather than one
-    // shared block — this is what actually lets them diverge, since
-    // `MapExploreView`'s `.scaleEffect`/`.offset` reading
-    // `mapCloseSwipeProgress` has no `.animation(value:)` of its own (see
-    // that file's own comment) and purely inherits whichever transaction
-    // last wrote the value.
-    private func confirmMapCloseSwipe() {
-        guard app.screen == .mapExplore else { return }
-        withAnimation(.easeOut(duration: mapCloseConfirmedDuration)) { app.mapCloseSwipeProgress = 1 }
-        // Follow-up bug 1: the distinct, one-shot "genuinely confirmed"
-        // signal — see its own doc comment on `AppState` for why this is
-        // separate from the continuous progress value above.
-        app.mapCloseConfirmed = true
-    }
-
+    /// Task 2 (11-realtime-map.md follow-up): an interrupted swipe must
+    /// NOT navigate anywhere (it never did — `isCommittingBack` never
+    /// becomes `true` on this path, so `goBack()` is never reached) — it
+    /// only needs to undo the LIVE-drag visual feedback and hand off to
+    /// `MapExploreView`'s own hide-then-reveal recovery, which reuses the
+    /// exact same delayed-reveal mechanism as returning from Event Detail
+    /// (`AppState.mapCloseSwipeCancelled`, observed by that view — see its
+    /// own doc comment). `mapCloseSwipeProgress` is reset unanimated, not
+    /// sprung back over ~1s the way the prior pass did: it drives a
+    /// content transform that's about to be hidden entirely (`sheetPresented
+    /// = false`) anyway, so animating it here would be invisible work.
     private func cancelMapCloseSwipe() {
         guard app.screen == .mapExplore else { return }
-        withAnimation(.easeOut(duration: mapCloseCancelledDuration)) { app.mapCloseSwipeProgress = 0 }
+        app.mapCloseSwipeProgress = 0
+        app.mapCloseSwipeCancelled = true
     }
 
     private var isPeeking: Bool { isDragTracking || isCommittingBack }
@@ -258,24 +245,23 @@ struct RootView: View {
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
                 withTransaction(transaction) {
-                    app.goBack()
+                    // Task 1 (11-realtime-map.md follow-up): Map Explore's
+                    // own confirmed close now navigates through the SHARED
+                    // `AppState.confirmMapExploreClose()` (called directly
+                    // from the commit branch above), which already owns
+                    // its own `goBack()`/snapshot-clear/progress-reset
+                    // timing on its own, independently-scheduled 0.22s
+                    // timer. Calling `goBack()` again here for that same
+                    // screen would double-navigate — every OTHER screen's
+                    // swipe-back still goes through this generic path
+                    // exactly as before, unaffected.
+                    if app.screen != .mapExplore { app.goBack() }
                     isCommittingBack = false
                     // The offset formula falls back to dragTranslation once
                     // isCommittingBack flips back off — leaving it at the
                     // drag's last value pushed the newly-arrived screen off
                     // to the right instead of resetting to 0.
                     dragTranslation = 0
-                    // Task 1: by this point `app.screen` has already
-                    // changed away from `.mapExplore` (via `app.goBack()`
-                    // just above), so the MapExploreView instance that was
-                    // reading this value is already gone — safe to reset
-                    // here, unanimated, so the NEXT time Map Explore opens
-                    // fresh it doesn't start looking pre-collapsed from a
-                    // stale prior close.
-                    app.mapCloseSwipeProgress = 0
-                    // Follow-up bug 1: same reasoning — a future fresh open
-                    // must start with this false too.
-                    app.mapCloseConfirmed = false
                 }
             }
         }
