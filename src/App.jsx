@@ -39,6 +39,7 @@ import Verifications from './screens/Verifications.jsx';
 import Disputes from './screens/Disputes.jsx';
 import ToastStack from './screens/ToastStack.jsx';
 import Policy from './screens/Policy.jsx';
+import MapExplore from './screens/MapExplore.jsx';
 
 const SCREENS = {
   splash: Splash,
@@ -72,6 +73,7 @@ const SCREENS = {
   verifications: Verifications,
   disputes: Disputes,
   policy: Policy,
+  mapExplore: MapExplore,
 };
 
 function Shell() {

@@ -226,6 +226,7 @@ struct RootView: View {
         case .langPick: LangPickView()
         case .themePick: ThemePickView()
         case .policy: PolicyView()
+        case .mapExplore: MapExploreView()
         case .home: HomeView()
         case .profile: AccountView()
         case .inbox: InboxView()

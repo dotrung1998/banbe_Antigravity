@@ -42,3 +42,32 @@ struct Event: Codable, Identifiable, Hashable {
         case createdAt = "created_at"
     }
 }
+
+/// A narrower projection of `events`, used only by the map explore screen
+/// (11-realtime-map.md) — needs `cat_key` (for the pin glyph) which `Event`
+/// above doesn't carry, and skips fields the map has no use for.
+struct MapEventRow: Codable, Identifiable, Hashable {
+    let id: String
+    var catKey: String?
+    var name: String
+    var area: String
+    var lat: Double?
+    var lng: Double?
+    var startsAt: Date?
+    var priceVnd: Int
+    var seatsRemaining: Int?
+    var status: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case catKey = "cat_key"
+        case name
+        case area
+        case lat
+        case lng
+        case startsAt = "starts_at"
+        case priceVnd = "price_vnd"
+        case seatsRemaining = "seats_remaining"
+        case status
+    }
+}

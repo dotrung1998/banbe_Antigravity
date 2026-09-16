@@ -4,7 +4,7 @@ import { EVENTS, bg } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert } from '../theme.js';
 
-const FILTER_DEFS = [
+export const FILTER_DEFS = [
   { key: 'all', vi: 'Tất cả', en: 'All' },
   { key: 'supper', vi: 'Supper club', en: 'Supper club' },
   { key: 'fashion', vi: 'Thời trang', en: 'Fashion' },
@@ -15,7 +15,7 @@ const FILTER_DEFS = [
 export default function Home() {
   const {
     state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, toggleFav,
-    goProfile, goInbox, goEvent, goNotifications, openArea, toggleLang, pickFilter, clearFilters,
+    goProfile, goInbox, goEvent, goNotifications, goMapExplore, openArea, toggleLang, pickFilter, clearFilters,
     becomeHost, switchToHost,
     canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary,
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
@@ -143,6 +143,9 @@ export default function Home() {
             <span onClick={openArea} style={{ fontSize: 11, color: ink, cursor: 'pointer' }}>banbe ▪︎ {curArea.key === 'all' ? 'Sài Gòn' : curArea.label} ▾</span>
           </div>
           <div style={{ display: 'flex', gap: 14, alignItems: 'baseline' }}>
+            <span onClick={goMapExplore} data-testid="open-map-explore" style={{ fontSize: 15, color: ink, cursor: 'pointer', lineHeight: 1 }}>
+              🗺️
+            </span>
             {!!s.user && (
               <span onClick={goNotifications} data-testid="notification-bell" style={{ position: 'relative', fontSize: 15, color: ink, cursor: 'pointer', lineHeight: 1 }}>
                 🔔

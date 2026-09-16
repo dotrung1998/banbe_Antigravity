@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import UIKit
+import CoreLocation
 import Supabase
 
 /// Which screen is showing. The web app (src/App.jsx) keys one screen at a
@@ -14,6 +15,7 @@ enum Screen: String {
     case paymentDetails, billing, payout, documents, documentView
     case verifications, disputes
     case policy
+    case mapExplore
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -359,6 +361,19 @@ final class AppState: ObservableObject {
     @Published var createError = ""
     @Published var orgVerifyRequested = false
 
+    // MARK: Map explore (11-realtime-map.md)
+    /// Real `events` rows for whatever the map's current query is (initial
+    /// density-hotspot area, or the last "search here" bbox) — separate
+    /// from `CatalogEvent.all` (the bundled cosmetic catalogue), joined
+    /// back to it per-row in MapExploreView since seats/status here are
+    /// live and the catalogue's are not.
+    @Published var mapEvents: [MapEventRow] = []
+    @Published var mapEventsLoading = true
+    /// Mirrors `locationService.authorizationStatus` as a `@Published` so
+    /// the compass button's opacity (full vs. the app's 0.16 disabled
+    /// token) updates the instant permission changes, granted or revoked.
+    @Published var locationAuthStatus: CLAuthorizationStatus = .notDetermined
+
     private let locationService = LocationService()
     private var tickTimer: Timer?
     private var chatPollTimer: Timer?
@@ -366,6 +381,10 @@ final class AppState: ObservableObject {
     init() {
         locationService.onUpdate = { [weak self] coords in
             self?.userCoords = coords
+        }
+        locationAuthStatus = locationService.authorizationStatus
+        locationService.onAuthorizationChange = { [weak self] status in
+            self?.locationAuthStatus = status
         }
         // The splash always shows now (Task 2) — `screen` always starts
         // .splash regardless of whether this device has been through
@@ -714,6 +733,7 @@ final class AppState: ObservableObject {
     // MARK: - Navigation
 
     func goHome() { screen = .home }
+    func goMapExplore() { screen = .mapExplore }
     func goProfile() { screen = .profile }
     // "organizer" is a pass-through, exactly like "event" itself already
     // is: entering an event from an organizer page keeps whatever back
@@ -885,6 +905,7 @@ final class AppState: ObservableObject {
         case .documents: screen = .profile
         case .documentView: screen = .documents
         case .verifications, .disputes: screen = .profile
+        case .mapExplore: goHome()
         default: break
         }
     }
@@ -915,6 +936,7 @@ final class AppState: ObservableObject {
         case .documents: return .profile
         case .documentView: return .documents
         case .verifications, .disputes: return .profile
+        case .mapExplore: return .home
         default: return .home
         }
     }

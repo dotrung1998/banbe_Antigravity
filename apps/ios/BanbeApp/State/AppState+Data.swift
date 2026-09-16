@@ -337,6 +337,33 @@ extension AppState {
         }
     }
 
+    /// Live `events` rows for the map explore screen (11-realtime-map.md) —
+    /// optionally scoped to a lat/lng bounding box (the "search here" case,
+    /// or a poll re-query of the last-searched box); nil bounds is the
+    /// initial load, used only to compute the density-hotspot center.
+    @MainActor
+    func loadMapEvents(bounds: (south: Double, north: Double, west: Double, east: Double)? = nil) async {
+        do {
+            var filter = SupabaseService.client
+                .from("events")
+                .select("id, cat_key, name, area, lat, lng, starts_at, price_vnd, seats_remaining, status")
+                .eq("status", value: "live")
+            if let bounds {
+                filter = filter
+                    .gte("lat", value: bounds.south).lte("lat", value: bounds.north)
+                    .gte("lng", value: bounds.west).lte("lng", value: bounds.east)
+            }
+            let rows: [MapEventRow] = try await filter
+                .order("starts_at", ascending: true)
+                .limit(60)
+                .execute().value
+            mapEvents = rows
+        } catch {
+            print("Failed to load map events:", error)
+        }
+        mapEventsLoading = false
+    }
+
     // MARK: - Organizer mode
 
     func toggleOrganizerMode() {

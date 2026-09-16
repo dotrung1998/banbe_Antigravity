@@ -159,6 +159,10 @@ struct HomeView: View {
                     .accessibilityIdentifier("header.area")
                 }
                 HStack(spacing: 12) {
+                    Button { app.goMapExplore() } label: {
+                        Text("🗺️").font(.system(size: 15))
+                    }
+                    .accessibilityIdentifier("header.mapExplore")
                     if app.isSignedIn {
                         Button { app.goNotifications() } label: {
                             ZStack(alignment: .topTrailing) {
