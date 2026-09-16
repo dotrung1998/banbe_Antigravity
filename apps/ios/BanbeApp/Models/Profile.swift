@@ -22,6 +22,11 @@ struct Profile: Codable, Identifiable, Hashable {
     /// payment document copies. Absent on any row created before that
     /// migration's default backfill, hence Optional.
     var autoEmailDocuments: Bool?
+    /// Proof-of-consent (migration 055, banbe_User_Policy.md B1/B3) — nil
+    /// until AppState+Data.swift's applySession() records it. Note 10 (this
+    /// field was previously never read or written anywhere on iOS at all —
+    /// see that note's Task 1 for the gap this closes).
+    var policyAcceptedAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -37,5 +42,6 @@ struct Profile: Codable, Identifiable, Hashable {
         case noShowCount = "no_show_count"
         case createdAt = "created_at"
         case autoEmailDocuments = "auto_email_documents"
+        case policyAcceptedAt = "policy_accepted_at"
     }
 }

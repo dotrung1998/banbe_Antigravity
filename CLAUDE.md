@@ -11,3 +11,4 @@
 - [.claude/notes/07-notifications.md](.claude/notes/07-notifications.md) — in-app toast + real push: BROKEN (no proactive surfacing at all) before this pass, fixed for in-app; push blocked on a real APNs key
 - [.claude/notes/08-payment-documents.md](.claude/notes/08-payment-documents.md) — auto-generated invoice/receipt replaced with organizer-uploaded files: WORKING (web + iOS)
 - [.claude/notes/09-auth-onboarding.md](.claude/notes/09-auth-onboarding.md) — mandatory login + policy consent + splash-before-login: WORKING (web + iOS); policy version-bump question still open, see file
+- [.claude/notes/10-oauth-login.md](.claude/notes/10-oauth-login.md) — Google/Facebook sign-in via Supabase OAuth: WORKING (web + iOS); manual Google/Facebook/Supabase-dashboard setup steps still needed before it's live, see file

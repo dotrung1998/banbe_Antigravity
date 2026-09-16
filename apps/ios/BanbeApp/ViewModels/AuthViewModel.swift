@@ -199,6 +199,42 @@ final class AuthViewModel: ObservableObject {
         try await AuthAPIService.requestPasswordReset(email: email)
     }
 
+    // MARK: - OAuth (note 10)
+
+    /// Presents the provider's sign-in as an `ASWebAuthenticationSession`
+    /// sheet and awaits the resulting session directly — unlike the web
+    /// app, there's no page navigation away from the app here, so
+    /// AppState.policyConsent (checked by the caller before this ever
+    /// runs) simply survives in memory across the whole flow; no
+    /// localStorage-style stash needed the way GocContext.jsx's
+    /// syncUser()/PENDING_OAUTH_CONSENT_KEY needs one.
+    ///
+    /// `redirectTo` reuses the `banbe://` scheme already registered for the
+    /// shared-organizer-link deep link (project.yml) — this needs
+    /// `banbe://login-callback` added to the Supabase dashboard's
+    /// Authentication > URL Configuration > Redirect URLs allow-list (see
+    /// .claude/notes/10-oauth-login.md's Task 4 checklist); it does NOT go
+    /// through the app's existing `.onOpenURL`/`handleDeepLink` — the SDK's
+    /// ASWebAuthenticationSession completion handler catches the redirect
+    /// itself before that ever fires.
+    private func signIn(with provider: Provider) async {
+        errorMessage = nil
+        do {
+            _ = try await SupabaseService.client.auth.signInWithOAuth(
+                provider: provider,
+                redirectTo: URL(string: "banbe://login-callback")
+            )
+            // The auth-state-change loop in init() picks up the resulting
+            // session (event .signedIn) the same way it does for every
+            // other sign-in method — nothing further to do here.
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func signInWithGoogle() async { await signIn(with: .google) }
+    func signInWithFacebook() async { await signIn(with: .facebook) }
+
     func signOut() async {
         try? await SupabaseService.client.auth.signOut()
     }

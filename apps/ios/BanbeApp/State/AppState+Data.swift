@@ -165,6 +165,52 @@ extension AppState {
             mode = canHostNow ? "host" : "goer"
             autoEmailDocuments = profile.autoEmailDocuments == true
 
+            // Proof-of-consent bookkeeping (note 10 — this was a gap this
+            // app never closed on any path before now, not just OAuth: see
+            // that note's Task 1). For an 'email'-provider session
+            // (password/emailed-code — LoginView.canRequest already
+            // requires the tick before either ever runs), any profile with
+            // no recorded consent yet just passed through that gate and
+            // can be stamped unconditionally, same as GocContext.jsx's
+            // syncUser(). An OAuth session is different: nothing gated it
+            // client-side except the check `signInWithGoogle()`/
+            // `signInWithFacebook()`'s caller must already have made
+            // before ever calling this — but since ASWebAuthenticationSession
+            // is a modal sheet in the same process (not a real navigation
+            // away, unlike the web), `policyConsent` is still sitting in
+            // memory right now and can just be read directly — no
+            // localStorage-style stash needed the way the web's redirect
+            // round trip requires.
+            if profile.policyAcceptedAt == nil {
+                let provider = session.user.appMetadata["provider"]?.stringValue
+                let hasConsentProof = (provider == nil || provider == "email") || policyConsent
+                if hasConsentProof {
+                    struct ConsentUpdate: Encodable {
+                        let policyAcceptedAt: String
+                        let policyVersion: String
+                        enum CodingKeys: String, CodingKey {
+                            case policyAcceptedAt = "policy_accepted_at"
+                            case policyVersion = "policy_version"
+                        }
+                    }
+                    let update = ConsentUpdate(policyAcceptedAt: ISO8601DateFormatter().string(from: Date()), policyVersion: PolicyView.version)
+                    do {
+                        try await SupabaseService.client.from("profiles").update(update).eq("id", value: session.user.id).execute()
+                    } catch {
+                        print("Failed to record policy consent:", error)
+                    }
+                } else {
+                    print("OAuth sign-in reached a session with no recorded consent proof — signing back out.")
+                    try? await SupabaseService.client.auth.signOut()
+                    // AppState has no authMode of its own (LoginView owns a
+                    // local @State one, defaulting to .login) — nothing
+                    // else to set here beyond the screen/mandatory-gate flags.
+                    screen = .login
+                    authMandatory = true
+                    return
+                }
+            }
+
             // Language & theme follow the account once it has saved
             // preferences, so signing in on any device restores them.
             if profile.prefsSaved == true {

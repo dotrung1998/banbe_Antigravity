@@ -5,7 +5,7 @@ export default function Login() {
   const {
     state, T, set,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType,
-    loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram,
+    loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram,
     emailValid, passwordValid, setAuthMethod, requestPasswordResetSubmit, submitCurrentForm,
     togglePolicyConsent, openPolicy,
   } = useGoc();
@@ -90,10 +90,18 @@ export default function Login() {
         </div>
         <h2 style={{ ...display(25, { lineHeight: 1.3, margin: '10px 0 0' }) }}>{s.authMode === 'signup' ? T('Tạo tài khoản banbe', 'Create your banbe account') : T('Chào mừng trở lại', 'Welcome back')}</h2>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '12px 0 0' }}>{T('Một tài khoản cho tất cả. Muốn tổ chức sự kiện, bạn chỉ cần bật chế độ tổ chức trong Tài khoản.', 'One account for everything. To host events, just switch on organizer mode from your Account.')}</p>
+        {/* Task 2 (note 10) — real Supabase OAuth, not a stub like the three
+            below. Gated on the consent checkbox inside loginGoogle/
+            loginFacebook themselves (startOAuth), regardless of which tab
+            is active — unlike password/email, an OAuth attempt can't be
+            pre-classified as "definitely just a login" ahead of time. */}
+        <div onClick={loginGoogle} data-testid="login-google" style={{ ...fieldGlass({ marginTop: 12, padding: 13, border: 'none' }), display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: ink }}>{T('Tiếp tục với Google', 'Continue with Google')}</span>
+        </div>
         <div onClick={loginZalo} style={zaloBtn}>{T('Tiếp tục với Zalo', 'Continue with Zalo')}</div>
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
           <div onClick={loginPhone} style={{ ...fieldGlass({ padding: '13px 4px', border: 'none' }), ...socialBtn }}>{T('Gửi OTP', 'Send OTP')}</div>
-          <div onClick={loginFacebook} style={{ ...fieldGlass({ padding: '13px 4px', border: 'none' }), ...socialBtn }}>Facebook</div>
+          <div onClick={loginFacebook} data-testid="login-facebook" style={{ ...fieldGlass({ padding: '13px 4px', border: 'none' }), ...socialBtn }}>Facebook</div>
           <div onClick={loginInstagram} style={{ ...fieldGlass({ padding: '13px 4px', border: 'none' }), ...socialBtn }}>Instagram</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16 }}>
@@ -139,10 +147,13 @@ export default function Login() {
           <input value={s.loginEmailCode} onChange={loginEmailCodeType} onKeyDown={loginEmailKey} placeholder={T('Mã 6 số', '6-digit code')} inputMode="numeric" autoFocus style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 20, letterSpacing: '0.2em', textAlign: 'center', fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
         )}
 
-        {/* Task 1 — unticked by default, gates `valid`/submit above. Exactly
-            banbe_User_Policy.md's summary-screen wording. Signup only — a
-            returning account signing in already consented once. */}
-        {!awaitingCode && isSignup && (
+        {/* Task 1 — unticked by default, gates `valid`/submit above.
+            Exactly banbe_User_Policy.md's summary-screen wording. Renders
+            on both tabs now (note 10): it only gates password/email
+            submit on Signup (consentOk above), but also gates the Google/
+            Facebook buttons unconditionally, since OAuth can't tell in
+            advance whether it's about to create a brand-new account. */}
+        {!awaitingCode && (
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14 }}>
             <input
               type="checkbox" checked={s.policyConsent} onChange={togglePolicyConsent}

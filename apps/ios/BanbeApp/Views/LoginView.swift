@@ -105,6 +105,24 @@ struct LoginView: View {
                 .lineSpacing(3)
                 .padding(.top, 12)
 
+                // Task 3 (note 10) — real Supabase OAuth via
+                // ASWebAuthenticationSession, gated on the consent checkbox
+                // below regardless of tab (startOAuth's web counterpart —
+                // an OAuth attempt can't be pre-classified as "definitely
+                // just a login" the way a password attempt against an
+                // existing account can).
+                VStack(spacing: 10) {
+                    oauthButton(app.T("Tiếp tục với Google", "Continue with Google")) {
+                        Task { await startOAuth { await auth.signInWithGoogle() } }
+                    }
+                    .accessibilityIdentifier("login.google")
+                    oauthButton(app.T("Tiếp tục với Facebook", "Continue with Facebook")) {
+                        Task { await startOAuth { await auth.signInWithFacebook() } }
+                    }
+                    .accessibilityIdentifier("login.facebook")
+                }
+                .padding(.top, 16)
+
                 if auth.codeSent {
                     BanbeField(label: nil, placeholder: app.T("Mã 6 số", "6-digit code"),
                                text: $code, keyboard: .numberPad)
@@ -156,9 +174,12 @@ struct LoginView: View {
 
                 // Task 1 — unticked by default, gates `canRequest` above.
                 // Exactly banbe_User_Policy.md's summary-screen wording.
-                // Signup only — a returning account signing in already
-                // consented once.
-                if !auth.codeSent && mode == .signup {
+                // Renders on both tabs now (note 10): it only gates
+                // password/email submit on Signup (`canRequest`), but also
+                // gates the Google/Facebook buttons unconditionally, since
+                // OAuth can't tell in advance whether it's about to create
+                // a brand-new account.
+                if !auth.codeSent {
                     HStack(alignment: .top, spacing: 8) {
                         Button {
                             app.policyConsent.toggle()
@@ -286,6 +307,31 @@ struct LoginView: View {
             await auth.signUpWithPassword(email: email, password: password,
                                           displayName: displayName, locale: app.lang)
         }
+    }
+
+    private func oauthButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .foregroundStyle(app.palette.ink)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Refuses to start the OAuth flow at all unless the checkbox is
+    /// already ticked — same gate `canRequest` applies to password/code
+    /// submit on Signup, just unconditional here (see the button-row
+    /// comment above for why).
+    private func startOAuth(_ signIn: () async -> Void) async {
+        guard app.policyConsent else {
+            localError = app.T("Hãy đánh dấu ô đồng ý điều khoản trước.", "Please tick the consent checkbox first.")
+            return
+        }
+        localError = ""
+        await signIn()
     }
 
     private func sendReset() async {

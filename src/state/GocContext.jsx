@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { EVENTS, findEvent, haversineKm } from '../data/events.js';
-import { supabase } from '../lib/supabase.js';
+import { supabase, getAuthRedirectUrl } from '../lib/supabase.js';
 import { requestAuthEmail, requestPasswordSignup, requestPasswordReset } from '../lib/authEmail.js';
 import { renderPaymentDocument } from '../lib/paymentDocument.js';
 import { buildVietQrPayload } from '../lib/vietqr.js';
@@ -19,6 +19,14 @@ const GocCtx = createContext(null);
 // this. The query param is stripped from the visible URL immediately so it
 // doesn't linger if the page gets shared or bookmarked from here.
 const REFERRAL_STORAGE_KEY = 'banbe.pendingReferral';
+// Google/Facebook sign-in (note 10) does a full-page redirect away from and
+// back to this SPA — every in-memory React state value, including
+// s.policyConsent, is gone by the time the app remounts on return. This is
+// the same "survive a redirect" trick REFERRAL_STORAGE_KEY above already
+// uses: stashed only if the consent checkbox was actually ticked before the
+// redirect started, read back (and cleared) once in syncUser() to decide
+// whether a brand-new OAuth profile's consent may be recorded.
+const PENDING_OAUTH_CONSENT_KEY = 'banbe.pendingOAuthConsent';
 if (typeof window !== 'undefined') {
   const params = new URLSearchParams(window.location.search);
   const ref = params.get('ref');
@@ -443,19 +451,56 @@ export function GocProvider({ children }) {
       });
 
       // Proof-of-consent bookkeeping (Task 1, migration 055,
-      // banbe_User_Policy.md B1/B3): the ONLY way to ever reach a session
-      // at all now is through Login.jsx's mandatory, unticked-by-default
-      // consent checkbox (submitCurrentForm is disabled until it's
-      // checked) — so any session belonging to a profile with no recorded
-      // consent yet just passed through that gate, and can be recorded
-      // here unconditionally rather than needing to thread the checkbox's
-      // transient UI state through the async sign-in/verify flow.
+      // banbe_User_Policy.md B1/B3). For an 'email'-provider session
+      // (password/emailed-code, or a legacy row predating this column
+      // entirely), the ONLY way to ever reach one at all is through
+      // Login.jsx's mandatory, unticked-by-default consent checkbox
+      // (submitCurrentForm is disabled until it's checked) — so any such
+      // profile with no recorded consent yet just passed through that
+      // gate, and can be stamped unconditionally.
+      //
+      // An OAuth session (note 10 — Google/Facebook) is different: nothing
+      // client-side ran a submit function first, and signInWithOAuth's
+      // full-page redirect wipes s.policyConsent from memory before this
+      // ever runs. Proof instead comes from PENDING_OAUTH_CONSENT_KEY,
+      // stashed in localStorage only if the checkbox was actually ticked
+      // right before the redirect (loginGoogle/loginFacebook below) — if
+      // it's missing, this profile reached a session with no verifiable
+      // consent at all, so it's signed back out rather than silently
+      // let in; nothing is stamped either way when the account already
+      // has policy_accepted_at, so a *returning* OAuth sign-in is unaffected.
       if (profile && !profile.policy_accepted_at) {
-        const { error } = await supabase
-          .from('profiles')
-          .update({ policy_accepted_at: new Date().toISOString(), policy_version: POLICY_VERSION })
-          .eq('id', user.id);
-        if (error) console.warn('Failed to record policy consent:', error);
+        const provider = user.app_metadata?.provider;
+        let hasConsentProof = true;
+        if (provider && provider !== 'email') {
+          hasConsentProof = false;
+          try {
+            if (localStorage.getItem(PENDING_OAUTH_CONSENT_KEY)) hasConsentProof = true;
+            localStorage.removeItem(PENDING_OAUTH_CONSENT_KEY);
+          } catch { /* private browsing, etc. — treated as no proof */ }
+        }
+        if (hasConsentProof) {
+          const { error } = await supabase
+            .from('profiles')
+            .update({ policy_accepted_at: new Date().toISOString(), policy_version: POLICY_VERSION })
+            .eq('id', user.id);
+          if (error) console.warn('Failed to record policy consent:', error);
+        } else {
+          console.warn('OAuth sign-in reached a session with no recorded consent proof — signing back out.');
+          await supabase.auth.signOut();
+          // Not T(...) here — this effect only runs once (deps: [set]), so
+          // any T it captured is frozen at mount-time s.lang, not the
+          // user's current choice. A fixed bilingual string sidesteps that
+          // stale-closure risk rather than silently showing the wrong
+          // language sometimes.
+          set({
+            user: null, sessionChecked: true,
+            screen: 'login', authMode: 'signup', authMandatory: true,
+            reserveError: 'Cần đồng ý với điều khoản trước khi đăng ký bằng Google/Facebook. Hãy đánh dấu ô đồng ý rồi thử lại. ▪︎ '
+              + 'You need to agree to the terms before signing up with Google/Facebook. Please tick the consent box and try again.',
+          });
+          return;
+        }
       }
 
       // The account's actual host page name — Account's "Hosting" card used
@@ -2214,7 +2259,30 @@ export function GocProvider({ children }) {
     const { error } = await supabase.auth.verifyOtp({ phone: s.loginPhoneNumber.trim(), token: s.loginCode.trim(), type: 'sms' });
     if (error) set({ reserveError: error.message });
   }, [set, s.loginPhoneNumber, s.loginCode, T]);
-  const loginFacebook = useCallback(() => set({ reserveError: T('Facebook chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Facebook is not available yet. Use email or phone OTP.') }), [set, T]);
+  // Google/Facebook (note 10). Gated on the consent checkbox regardless of
+  // which tab is active — unlike password/code, an OAuth attempt can't be
+  // pre-classified as "just a login": Supabase creates the account right
+  // then if the provider identity is new, with no separate signup step to
+  // gate instead. Stashes proof of that tick in localStorage before the
+  // redirect, since the full-page round trip wipes s.policyConsent from
+  // memory — syncUser() reads it back once the session lands.
+  const startOAuth = useCallback(async (provider) => {
+    if (!s.policyConsent) {
+      return set({ reserveError: T('Hãy đánh dấu ô đồng ý điều khoản trước.', 'Please tick the consent checkbox first.') });
+    }
+    try { localStorage.setItem(PENDING_OAUTH_CONSENT_KEY, '1'); } catch { /* private browsing, etc. */ }
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider, options: { redirectTo: getAuthRedirectUrl() },
+    });
+    if (error) {
+      try { localStorage.removeItem(PENDING_OAUTH_CONSENT_KEY); } catch { /* ignore */ }
+      set({ reserveError: error.message });
+    }
+    // No further state change on success: signInWithOAuth navigates the
+    // whole page away immediately, so there's nothing left to update here.
+  }, [set, T, s.policyConsent]);
+  const loginGoogle = useCallback(() => startOAuth('google'), [startOAuth]);
+  const loginFacebook = useCallback(() => startOAuth('facebook'), [startOAuth]);
   const loginInstagram = useCallback(() => set({ reserveError: T('Instagram chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Instagram is not available yet. Use email or phone OTP.') }), [set, T]);
 
   // ---- Account > Security ----
@@ -2699,7 +2767,7 @@ export function GocProvider({ children }) {
     pickFilter, clearFilters, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
-    loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
+    loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
@@ -2728,7 +2796,7 @@ export function GocProvider({ children }) {
     pickFilter, clearFilters, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     addToCalendar, giveTicket,
-    loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
+    loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,

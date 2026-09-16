@@ -456,10 +456,19 @@ test.describe('Login & Signup Notification Messages', () => {
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Zalo chưa khả dụng/);
   });
 
-  test('shows Facebook not available error', async ({ page }) => {
+  // Facebook is real OAuth now (note 10), gated on the consent checkbox
+  // regardless of tab — clicking it unticked shows that gate's message
+  // instead of the old "not available yet" stub.
+  test('Facebook requires consent before starting OAuth', async ({ page }) => {
     await openLogin(page);
     await page.locator('[data-screen-label="Login"]').getByText('Facebook').click();
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Facebook chưa khả dụng/);
+    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Hãy đánh dấu ô đồng ý điều khoản trước/);
+  });
+
+  test('Google requires consent before starting OAuth', async ({ page }) => {
+    await openLogin(page);
+    await page.getByTestId('login-google').click();
+    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Hãy đánh dấu ô đồng ý điều khoản trước/);
   });
 
   test('shows Instagram not available error', async ({ page }) => {
