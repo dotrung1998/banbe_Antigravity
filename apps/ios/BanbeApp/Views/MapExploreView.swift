@@ -201,6 +201,15 @@ struct MapExploreView: View {
             _sheetDetent = State(initialValue: MapExploreView.detent(for: restored.sheetFraction))
             _selectedId = State(initialValue: restored.selectedId)
             _initialCenterSet = State(initialValue: true) // restored camera counts as already "set"
+            // Root cause fix (11-realtime-map.md follow-up): seeded here,
+            // synchronously, from the SAME restored region `cameraPosition`
+            // uses above — see the non-restored branch's own comment for
+            // why this can no longer be left to `onMapCameraChange`'s first
+            // callback.
+            _lastQueriedRegion = State(initialValue: MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: restored.cameraCenterLat, longitude: restored.cameraCenterLng),
+                span: MKCoordinateSpan(latitudeDelta: restored.cameraSpanLat, longitudeDelta: restored.cameraSpanLng)
+            ))
             _pendingScrollToRestoredSelection = State(initialValue: restored.selectedId != nil)
         } else {
             _cameraPosition = State(initialValue: .automatic)
@@ -252,6 +261,16 @@ struct MapExploreView: View {
                 // has flown it toward a selected pin — instead of a stale
                 // snapshot from whenever this view was first constructed.
                 currentCameraRegion = context.region
+                // Root cause fix (11-realtime-map.md follow-up): this "if
+                // nil, freeze" branch is now only a defensive fallback —
+                // both real init paths (`centerOnDensityHotspot()` and
+                // `init(restored:)`) already seed `lastQueriedRegion`
+                // synchronously and directly, from a region this view
+                // itself chose, specifically because this callback's FIRST
+                // invocation is not reliable enough to freeze forever: it
+                // was observed reporting a region nowhere near Vietnam
+                // before MapKit had caught up to `cameraPosition`, silently
+                // corrupting every later bounded poll/pagination reload.
                 if lastQueriedRegion == nil { lastQueriedRegion = context.region; return }
                 boundsChanged = true
             }
@@ -683,7 +702,30 @@ struct MapExploreView: View {
             return CLLocationCoordinate2D(latitude: lat, longitude: lng)
         }
         let center = densityHotspot(points) ?? CLLocationCoordinate2D(latitude: 10.7769, longitude: 106.7009)
-        cameraPosition = .region(MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12)))
+        let region = MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12))
+        cameraPosition = .region(region)
+        // Root cause fix (11-realtime-map.md follow-up): seeded here,
+        // synchronously and directly from the SAME region `cameraPosition`
+        // above just got — not left for `onMapCameraChange`'s own "freeze on
+        // first callback" branch (still below, now just a defensive
+        // fallback) to capture. That first callback is not guaranteed to
+        // reflect this region yet — MapKit's `Map(position:)` was observed,
+        // on a fresh load, reporting an initial callback centered nowhere
+        // near Vietnam (e.g. ~51°N/10°E) before it had caught up to the
+        // `cameraPosition` this method sets — and since `lastQueriedRegion`
+        // is a permanent one-time freeze (by design, for "Search here"
+        // bookkeeping), that bogus region then fed every future poll/
+        // pagination reload's bounds query FOREVER, each legitimately
+        // returning zero rows for a real region that far from Vietnam. That
+        // silently wiped `app.mapEvents` to empty the next time any bounded
+        // reload happened to fire — which a category filter change (via
+        // `recenterOnFilterDensityHotspot()`'s own camera move, below) was
+        // often what finally nudged MapKit into emitting that first
+        // unreliable callback, making it look like "changing the filter
+        // clears everything" when the actual defect was here, in camera-
+        // bounds tracking, unrelated to the selection/filter decoupling
+        // fixed earlier in this same file.
+        lastQueriedRegion = region
     }
 
     /// Task 2b (11-realtime-map.md follow-up): reuses the EXACT SAME
