@@ -126,6 +126,14 @@ test.describe('Map Explore — bug fixes (card anchor, state restore, mid-detent
     await pin.click();
     const card = page.locator('[data-testid="map-selected-card"]');
     await expect(card).toBeVisible();
+    // The card's "upper" anchor is now measured from real geometry (the
+    // top controls' and the card's own rendered height, via ResizeObserver
+    // — 11-realtime-map.md follow-up, "preview card overlaps top
+    // controls"), which settles a frame or two after the card's first
+    // paint (it renders once at a sane fallback height, then again at its
+    // real one) — wait for that to settle before treating this as the
+    // baseline "tall" position.
+    await page.waitForTimeout(150);
     const tallBox = await card.boundingBox();
 
     // Drag from tall toward mid (roughly a quarter of the viewport height).
@@ -279,5 +287,99 @@ test.describe('Map Explore — follow-up fixes (handle-only drag, map-specific b
     await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
     const titleB = await page.locator('[data-testid="map-card-title"]').innerText();
     expect(titleB).not.toBe(titleA);
+  });
+});
+
+test.describe('Map Explore — follow-up fixes (return-from-detail restore, top-controls overlap)', () => {
+  test('returning from Event Detail via the normal back action retains camera, selected preview, filters and sheet detent', async ({ page }) => {
+    await setupToHome(page);
+    await page.click('[data-testid="open-map-explore"]');
+    await page.waitForSelector('[data-screen-label="MapExplore"]');
+
+    // Filter first, then select via a LIST ROW (not a raw pin): the map
+    // draws a pin for every loaded event regardless of category — only the
+    // list panel is actually filtered — so selecting straight off an
+    // unfiltered pin here could pick an event the "music" filter then
+    // excludes, clearing the very selection this test means to restore
+    // later (a real, separate quirk of this screen's filter model, not
+    // this test's own bug). A list row under an active filter is
+    // guaranteed to belong to that filter.
+    await page.click('[data-testid="map-cat-music"]');
+    const row = page.locator('[data-testid^="map-list-item-"]').first();
+    await row.waitFor({ timeout: 10000 });
+    const testid = await row.getAttribute('data-testid');
+    const selectedEventId = testid.replace('map-list-item-', '');
+
+    // Change enough state that "restored to the default" would be a
+    // detectable failure, not a coincidence: a non-default category filter,
+    // a non-default sheet snap, and a selection.
+    await row.click();
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    await page.click('[data-testid="map-sheet-list-small"]'); // peek
+    await page.waitForTimeout(400);
+
+    await page.locator('[data-testid="map-card-cta"]').click();
+    await expect(page.locator('[data-screen-label="EventDetail"], [data-screen-label="Event"]')).toBeVisible();
+    await page.locator('[data-testid="event-detail-back"]').click();
+    await page.waitForSelector('[data-screen-label="MapExplore"]', { timeout: 5000 });
+
+    // Filter retained.
+    await expect(page.locator('[data-testid="map-cat-music"]')).toHaveCSS('font-weight', '700');
+    // Sheet detent retained (peek).
+    await expect(page.locator('[data-testid="map-sheet-list-small"]')).toHaveCSS('font-weight', '700');
+    // Selection + card retained.
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    await expect(page.locator(`[data-testid="map-pin-${selectedEventId}"]`)).toHaveCSS('transform', 'matrix(1.15, 0, 0, 1.15, 0, 0)');
+  });
+
+  test('the preview card never overlaps the top controls at TALL or MID', async ({ page }) => {
+    const pin = await openMapWithAPin(page);
+    await pin.click();
+    const card = page.locator('[data-testid="map-selected-card"]');
+    await expect(card).toBeVisible();
+    await page.waitForTimeout(150); // let the measured (not fallback) card height settle
+
+    const controlBoxes = await Promise.all(
+      ['map-back', 'map-compass'].map(id => page.locator(`[data-testid="${id}"]`).boundingBox())
+    );
+
+    const assertNoOverlap = async (label) => {
+      const cardBox = await card.boundingBox();
+      for (const controlBox of controlBoxes) {
+        const overlaps = cardBox.y < controlBox.y + controlBox.height
+          && cardBox.y + cardBox.height > controlBox.y
+          && cardBox.x < controlBox.x + controlBox.width
+          && cardBox.x + cardBox.width > controlBox.x;
+        expect(overlaps, `card must not overlap top controls at ${label}`).toBe(false);
+      }
+    };
+    await assertNoOverlap('tall (default)');
+
+    await dragHandle(page, 200); // toward mid
+    await page.waitForTimeout(400);
+    await assertNoOverlap('mid');
+  });
+
+  test('the first post-return polling cycle does not reset map state', async ({ page }) => {
+    const pin = await openMapWithAPin(page);
+    const testid = await pin.getAttribute('data-testid');
+    const selectedEventId = testid.replace('map-pin-', '');
+
+    await pin.click();
+    await page.click('[data-testid="map-sheet-list-small"]'); // peek
+    await page.waitForTimeout(400);
+    await page.locator('[data-testid="map-card-cta"]').click();
+    await expect(page.locator('[data-screen-label="EventDetail"], [data-screen-label="Event"]')).toBeVisible();
+    await page.locator('[data-testid="event-detail-back"]').click();
+    await page.waitForSelector('[data-screen-label="MapExplore"]', { timeout: 5000 });
+
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    // POLL_MS is 5000 — wait through at least one full poll cycle and
+    // confirm the restored selection/detent are still exactly as restored,
+    // not reset by the poll's own `setEvents(fresh)`.
+    await page.waitForTimeout(5600);
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    await expect(page.locator('[data-testid="map-sheet-list-small"]')).toHaveCSS('font-weight', '700');
+    await expect(page.locator(`[data-testid="map-pin-${selectedEventId}"]`)).toHaveCSS('transform', 'matrix(1.15, 0, 0, 1.15, 0, 0)');
   });
 });

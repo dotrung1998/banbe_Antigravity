@@ -113,8 +113,60 @@ export default function MapExplore() {
   // padding below reads for a precise "how much of the screen is the sheet
   // covering right now" — only the CARD's anchor is pinned to the nearest
   // snap point instead.
-  const cardAnchorFraction = sheetSnap === 'peek' ? SHEET_SNAPS.peek : SHEET_SNAPS.tall;
-  const cardBottomVh = (1 - cardAnchorFraction) * 100;
+  //
+  // Follow-up (top-controls overlap, 11-realtime-map.md): "upper" used to
+  // be a fixed viewport-height fraction (`SHEET_SNAPS.tall`) — on some
+  // viewport sizes that put the card's own top edge above the back/compass/
+  // "Tìm ở đây" row entirely. `topControlsBottom`/`cardHeight` below are
+  // the row's and card's own ACTUALLY MEASURED pixel geometry (via refs +
+  // `ResizeObserver`), not a guessed constant — see `cardBottomPx`.
+  const backRef = useRef(null);
+  const compassRef = useRef(null);
+  const searchHereRef = useRef(null);
+  const cardRef = useRef(null);
+  const [topControlsBottom, setTopControlsBottom] = useState(56);
+  const [cardHeight, setCardHeight] = useState(150);
+  const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
+  const CARD_TOP_GAP = 12;
+
+  useEffect(() => {
+    const onResize = () => setViewportHeight(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Re-measures whenever "Tìm ở đây" appears/disappears (it can be the
+  // taller of the row when shown, on some locales/font sizes) or the
+  // viewport itself resizes/rotates.
+  useEffect(() => {
+    const els = [backRef.current, compassRef.current, searchHereRef.current].filter(Boolean);
+    if (!els.length) return;
+    const measure = () => setTopControlsBottom(Math.max(...els.map(el => el.getBoundingClientRect().bottom)));
+    measure();
+    const ro = new ResizeObserver(measure);
+    els.forEach(el => ro.observe(el));
+    return () => ro.disconnect();
+  }, [boundsChanged]);
+
+  useEffect(() => {
+    if (!cardRef.current) return;
+    const measure = () => setCardHeight(cardRef.current.getBoundingClientRect().height);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(cardRef.current);
+    return () => ro.disconnect();
+  }, [selectedId]);
+
+  // A single, always-px `bottom` value (never mixing vh/px units across
+  // states) so the CSS `transition` below interpolates smoothly whichever
+  // way the anchor changes — same reasoning as the iOS fix's single
+  // `cardBottomPadding` (both replace what used to be a fixed-fraction
+  // computation with one driven by real, measured geometry for the
+  // "upper" case; "peek" is unchanged, already nowhere near the top
+  // controls).
+  const cardBottomPx = sheetSnap === 'peek'
+    ? viewportHeight * (1 - SHEET_SNAPS.peek) + 10
+    : Math.max(8, viewportHeight - topControlsBottom - CARD_TOP_GAP - cardHeight - 8);
 
   // ---- location permission state (drives the compass button's opacity) ----
   const [locPermission, setLocPermission] = useState('prompt'); // 'granted' | 'denied' | 'prompt'
@@ -268,26 +320,47 @@ export default function MapExplore() {
       if (cancelled) return;
       for (const ev of events) {
         const isSelected = ev.id === selectedId;
+        // Follow-up (11-realtime-map.md, "first post-return polling cycle
+        // does not reset map state"): a real, confirmed, pre-existing bug —
+        // MapLibre's own `Marker._update()` unconditionally OVERWRITES
+        // `this._element.style.transform` (translate-for-position only, no
+        // scale) every time it's called, which happens synchronously
+        // inside `addTo()` itself, not just on a later `move`. Since every
+        // poll tick rebuilds every marker from scratch (`markersRef.current
+        // .forEach(m => m.remove())` above, then brand-new `el`s here),
+        // whichever pin stays selected got a FRESH element with no ongoing
+        // `gocPinPop` animation (deliberately not replayed — see below) to
+        // paper over this: previously the SAME `el` carried both our own
+        // inline `transform:scale(...)` AND Marker's position transform,
+        // and only the pop keyframe's `fill-mode: both` accidentally kept
+        // the scale visible after the FIRST selection (a running CSS
+        // animation's computed value overrides a later plain inline-style
+        // write to the same property) — the instant a later poll rebuilt
+        // the marker with no animation to replay, Marker's own `_update()`
+        // silently wiped the scale back to identity with nothing left to
+        // mask it. Fixed at the root: the scale/animation/border/shadow
+        // styling now lives on an INNER child div (`pinEl`) that Marker
+        // never touches at all — `el` (the one actually handed to
+        // `new Marker({element: el})`) stays a plain, transform-free
+        // positioning shell, so Marker is free to fully own its own
+        // transform forever without erasing anything of ours.
         const el = document.createElement('div');
-        // Selected pin sits slightly larger and settles there — plain CSS
-        // transform, no separate library. The one-shot "pop" keyframe below
-        // only plays the instant a *different* pin becomes selected, not on
-        // every poll-triggered marker rebuild while the same one stays
-        // selected (that would be exactly the "flashy, repeats itself"
-        // effect the ticket asked to avoid).
-        el.style.cssText = `width:30px;height:30px;border-radius:50%;background:${paper};border:1.5px solid ${ink};display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;box-shadow:${isSelected ? `0 0 0 3px ${ink}, ` : ''}0 2px 6px rgba(27,25,22,0.3);position:relative;transform:scale(${isSelected ? 1.15 : 1});z-index:${isSelected ? 1 : 0};`;
-        el.setAttribute('data-testid', `map-pin-${ev.id}`);
-        el.textContent = CAT_GLYPH[ev.catKey] || CAT_GLYPH.all;
+        el.style.cssText = 'position:relative;';
+        const pinEl = document.createElement('div');
+        pinEl.style.cssText = `width:30px;height:30px;border-radius:50%;background:${paper};border:1.5px solid ${ink};display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;box-shadow:${isSelected ? `0 0 0 3px ${ink}, ` : ''}0 2px 6px rgba(27,25,22,0.3);transform:scale(${isSelected ? 1.15 : 1});z-index:${isSelected ? 1 : 0};`;
+        pinEl.setAttribute('data-testid', `map-pin-${ev.id}`);
+        pinEl.textContent = CAT_GLYPH[ev.catKey] || CAT_GLYPH.all;
         if (ev.urgent || ev.isNew) {
           const dot = document.createElement('span');
           dot.style.cssText = `position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:${ev.urgent ? '#9A3E2D' : '#48582F'};border:1.5px solid ${paper};`;
-          el.appendChild(dot);
+          pinEl.appendChild(dot);
         }
         if (isSelected && lastAnimatedPinIdRef.current !== ev.id) {
-          el.style.animation = 'gocPinPop 0.32s cubic-bezier(.22,.61,.36,1) both';
+          pinEl.style.animation = 'gocPinPop 0.32s cubic-bezier(.22,.61,.36,1) both';
           lastAnimatedPinIdRef.current = ev.id;
         }
-        el.addEventListener('click', (e) => { e.stopPropagation(); selectEvent(ev); });
+        pinEl.addEventListener('click', (e) => { e.stopPropagation(); selectEvent(ev); });
+        el.appendChild(pinEl);
         const marker = new maplibregl.Marker({ element: el }).setLngLat([ev.lng, ev.lat]).addTo(map);
         markersRef.current.push(marker);
       }
@@ -439,15 +512,38 @@ export default function MapExplore() {
 
   const compassOpacity = locPermission === 'granted' ? 1 : DISABLED_OPACITY;
 
+  // ANIMATION REQUIREMENT (11-realtime-map.md follow-up): a soft "bubble"
+  // settle for the sheet, but ONLY on a genuine restore — `bubbleIn` starts
+  // `true` exclusively when this mount received a `restored` snapshot (the
+  // same one-shot `restoredRef`/`restored` read used for every other bug 2
+  // field above), and is flipped to `false` exactly once via the effect
+  // below, never touched again by a filter change or the 5s poll. A fresh
+  // (non-restored) open starts at `false` already, so it never bubbles.
+  const [bubbleIn, setBubbleIn] = useState(() => !!restored);
+  useEffect(() => {
+    if (!bubbleIn) return;
+    // Double rAF: the initial (offset) inline style needs to actually
+    // paint on screen for at least one frame before flipping the state
+    // that removes it, or the browser can coalesce both style values into
+    // the same paint and the CSS `transition` below never has a "from"
+    // state to animate away from.
+    const raf1 = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setBubbleIn(false));
+    });
+    return () => cancelAnimationFrame(raf1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: paper }} data-screen-label="MapExplore">
       <div ref={mapDivRef} style={{ position: 'absolute', inset: 0 }} />
 
-      <div onClick={closeMap} data-testid="map-back" style={{ ...photoPill({}), top: 16, left: 16, padding: '8px 12px' }}>
+      <div ref={backRef} onClick={closeMap} data-testid="map-back" style={{ ...photoPill({}), top: 16, left: 16, padding: '8px 12px' }}>
         ← {T('Đóng', 'Close')}
       </div>
 
       <div
+        ref={compassRef}
         onClick={recenterOnUser}
         data-testid="map-compass"
         style={{ ...photoPill({}), top: 16, right: 16, width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: compassOpacity }}
@@ -457,6 +553,7 @@ export default function MapExplore() {
 
       {boundsChanged && (
         <div
+          ref={searchHereRef}
           onClick={searchHere}
           data-testid="map-search-here"
           style={{ ...photoPill({}), top: 16, left: '50%', transform: 'translateX(-50%)', padding: '8px 16px', fontSize: 12, fontWeight: 600 }}
@@ -473,10 +570,11 @@ export default function MapExplore() {
           position, which is what caused the card to slide down early. */}
       {selectedEvent && (
         <div
+          ref={cardRef}
           data-testid="map-selected-card"
           style={{
             ...cardGlass({}), position: 'absolute', left: 16, right: 16,
-            bottom: `calc(${cardBottomVh}vh + 10px)`,
+            bottom: cardBottomPx,
             transition: 'bottom 0.28s cubic-bezier(.22,.61,.36,1)',
             padding: 12, display: 'flex', flexDirection: 'column', gap: 10,
             boxShadow: '0 10px 28px rgba(27,25,22,0.22)',
@@ -522,7 +620,17 @@ export default function MapExplore() {
           position: 'absolute', left: 0, right: 0, bottom: 0, top: `${sheetTopVh}vh`,
           background: paper, borderRadius: '20px 20px 0 0', boxShadow: '0 -6px 24px rgba(27,25,22,0.18)',
           display: 'flex', flexDirection: 'column',
-          transition: dragState.current ? 'none' : 'top 0.28s cubic-bezier(.22,.61,.36,1)',
+          // ANIMATION REQUIREMENT: the extra `transform` (only non-identity
+          // while `bubbleIn`) is what gives a restore its soft overshoot —
+          // `cubic-bezier(0.34, 1.56, 0.64, 1)` is a standard "back out"
+          // curve (briefly overshoots past 1 before settling), the closest
+          // CSS-easing equivalent of the iOS build's
+          // `.interpolatingSpring` for the same restore-only bubble. `top`
+          // keeps its own existing drag-snap easing, untouched.
+          transform: bubbleIn ? 'translateY(14px) scale(0.985)' : 'translateY(0) scale(1)',
+          transition: dragState.current
+            ? 'none'
+            : 'top 0.28s cubic-bezier(.22,.61,.36,1), transform 0.42s cubic-bezier(0.34, 1.56, 0.64, 1)',
         }}
       >
         {/* Bug 3: `touchAction: 'none'` used to sit on the WHOLE sheet div

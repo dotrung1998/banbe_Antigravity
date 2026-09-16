@@ -7,6 +7,30 @@ import CoreLocation
 /// gives drag-to-resize/snap for free on iOS 17+, this project's deployment
 /// target) — no custom gesture code needed here, unlike the web build of the
 /// same screen.
+/// The close/compass row's (and, when shown, "Tìm ở đây"'s) actual rendered
+/// bottom edge, in the `"mapExploreTop"` named coordinate space — read by
+/// `MapExploreView` to place the selected-event card's "upper" anchor a
+/// fixed gap below the REAL controls instead of a guessed constant.
+/// `reduce: max` — both views that write this sit at the same top offset,
+/// so whichever is taller (normally the compass, but not necessarily on
+/// every font-size/locale) wins.
+private struct MapTopControlsBottomYKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// The selected-event preview card's own actual rendered height — read by
+/// `MapExploreView` for the same reason as `MapTopControlsBottomYKey`
+/// above. Only one card exists at a time, so `reduce` is a plain overwrite.
+private struct MapCardHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 struct MapExploreView: View {
     @EnvironmentObject var app: AppState
     @State private var cameraPosition: MapCameraPosition
@@ -44,6 +68,45 @@ struct MapExploreView: View {
     // and clearing it (an @Published var) doesn't retroactively un-restore
     // the @State values that already seeded from it in `init`.
     private let hadRestoredState: Bool
+    // Follow-up (edge-swipe race): true only for the non-interactive
+    // "peeked at" copy RootView renders underneath an in-progress edge
+    // swipe (see that call site's comment) — never for the real, on-screen
+    // instance. Skips every side effect below (`app.loadMapEvents()`,
+    // clearing `app.mapExploreState`, the 5s poll, density-hotspot
+    // centering) so a mid-drag preview — including one the user aborts —
+    // can never race the real instance for the one-shot snapshot.
+    private let isPreview: Bool
+    // Restore-only "bubble" spring: 0 right after a restored construction
+    // (sheet content starts very slightly scaled down/offset), animated to
+    // 1 exactly once in `.task` below via an interpolating spring (a touch
+    // of overshoot, then settle) — never touched again afterward, so a
+    // later poll/filter change can't replay it. A fresh (non-restored) open
+    // starts straight at 1: only a genuine restore gets the bubble.
+    @State private var restoreBubbleProgress: CGFloat
+    // Measured, not guessed: the actual bottom edge (in this view's own
+    // coordinate space, which already accounts for the safe area the same
+    // way the card's own placement does — see `cardBottomPadding`) of the
+    // close/compass row and, when shown, "Tìm ở đây" — both anchor at the
+    // same `.padding(.top, 8)`, so whichever is taller sets this. Read via
+    // `MapTopControlsBottomYKey` below. The default (90) is only what's
+    // used for the very first layout pass before the real measurement
+    // lands — safe-area-top (~47–59pt on notched devices) + the row's own
+    // ~38pt height + the top padding roughly matches it, so there's no
+    // visible "starts overlapping, then jumps" moment even on that first
+    // frame.
+    @State private var topControlsBottomY: CGFloat = 90
+    // Measured, not guessed: the preview card's own actual rendered height
+    // — read via `MapCardHeightKey` from a `.background(GeometryReader{...})`
+    // on `selectedCard(_:)` itself. The default (150) is only the fallback
+    // for the one frame before a card has ever been measured.
+    @State private var cardMeasuredHeight: CGFloat = 150
+    // Fixed breathing room between the top controls' measured bottom edge
+    // and the card's own top edge — the only literal constant left in this
+    // calculation, deliberately (a "no gap at all" value would look wrong
+    // regardless of device, so this isn't the kind of "magic hardcoded
+    // y-offset" the ticket is about — the OVERLAP-avoiding part is fully
+    // measured; this only controls cosmetic spacing beyond that).
+    private let cardTopGap: CGFloat = 12
 
     /// Seeds every local `@State` directly from a saved snapshot (or plain
     /// defaults) INSIDE `init`, rather than restoring them a moment later
@@ -58,8 +121,10 @@ struct MapExploreView: View {
     /// `.presentationDetents` selection — the sheet's native slide-up-from-
     /// bottom presentation animation then plays directly TO the saved
     /// detent, not to the default one first.
-    init(restored: MapExploreState?) {
+    init(restored: MapExploreState?, isPreview: Bool = false) {
         hadRestoredState = restored != nil
+        self.isPreview = isPreview
+        restoreBubbleProgress = restored != nil ? 0 : 1
         if let restored {
             _cameraPosition = State(initialValue: .region(MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: restored.cameraCenterLat, longitude: restored.cameraCenterLng),
@@ -138,6 +203,18 @@ struct MapExploreView: View {
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 16)
             .padding(.top, 8)
+            // Follow-up bug 3: measures this row's ACTUAL rendered bottom
+            // edge — in the same coordinate space the card is placed in,
+            // which (since neither this row nor the card ever calls
+            // `.ignoresSafeArea()`) already sits below the safe area the
+            // same way the row itself already does, with no separate
+            // manual safe-area-inset math needed. Feeds `topControlsBottomY`
+            // via `MapTopControlsBottomYKey` below.
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(key: MapTopControlsBottomYKey.self, value: geo.frame(in: .named("mapExploreTop")).maxY)
+                }
+            )
 
             // Deliberately NOT a third child of the HStack above. It used to
             // sit between two Spacers there ([Close] Spacer [SearchHere]
@@ -162,42 +239,51 @@ struct MapExploreView: View {
                 .accessibilityIdentifier("map.searchHere")
                 .foregroundStyle(app.palette.ink)
                 .padding(.top, 8)
+                // Same reasoning as the close/compass row above — "Tìm ở
+                // đây" sits at the identical top offset, so on the (rare)
+                // devices/font sizes where it's the taller of the two, the
+                // `reduce: max` in `MapTopControlsBottomYKey` picks it up.
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(key: MapTopControlsBottomYKey.self, value: geo.frame(in: .named("mapExploreTop")).maxY)
+                    }
+                )
             }
 
-            // Compact in-map preview — never a full-screen modal. Bug 1
-            // fix: anchored to `cardAnchorFraction`, NOT the sheet's raw,
-            // continuously-varying `sheetFraction` — the card only has two
-            // resting positions ("upper", used for both tall AND mid, so
-            // it never gets pulled down mid-screen just because the sheet
-            // moved to mid; "lower", only once the sheet is genuinely at
-            // peek), matching the web build's identical fix.
+            // Compact in-map preview — never a full-screen modal. Stays ONE
+            // view (bottom-anchored, same shape as the prior pass) so the
+            // required smooth animation between the upper and peek anchors
+            // keeps working via a single `.animation(value: cardBottomPadding)`
+            // — only the VALUE fed into that padding changed (see below),
+            // not the structure.
+            //
+            // Follow-up (top-controls overlap): "upper" used to be a fixed
+            // fraction of the screen height (the old `cardAnchorFraction`,
+            // tied only to the sheet's tall/mid/peek split) — on some sizes
+            // that put the card's own top edge ABOVE the close/compass/"Tìm
+            // ở đây" row entirely, exactly the overlap the screenshot
+            // showed. `cardBottomPadding` (below) now derives the "upper"
+            // value from `topControlsBottomY` (the row's actual measured
+            // bottom edge, via the `.background(GeometryReader{...})` calls
+            // above) and `cardMeasuredHeight` (the card's own actual
+            // measured height, via the `.background(GeometryReader{...})`
+            // in `selectedCard(_:)`) so the card's top edge lands exactly
+            // `cardTopGap` below the real controls on every screen size —
+            // never a guessed constant. "Peek" is unaffected: unchanged
+            // bottom-anchored math, nowhere near the top controls.
             if let ev = selectedEvent {
                 VStack {
                     Spacer()
                     selectedCard(ev)
-                        .padding(.bottom, 8)
-                        // Follow-up bug 3: without this, selecting A then B
-                        // keeps the SAME `selectedCard`/`CatalogPhoto`/
-                        // `RemoteImage` view identity across the change (the
-                        // `if let ev = selectedEvent` branch itself doesn't
-                        // toggle, so SwiftUI just re-renders it in place) —
-                        // and `RemoteImage`'s own `@State private var image`
-                        // (Components.swift) only clears/reloads on a fresh
-                        // `init`, not on a later `path` change to an existing
-                        // instance, so A's already-loaded image kept showing
-                        // under B's title/meta/CTA. Keying the whole card by
-                        // `ev.id` forces a brand-new view (and a brand-new
-                        // `RemoteImage` with it) on every selection change,
-                        // so title/image/meta/CTA all reset atomically and
-                        // any in-flight load for the previous id is
-                        // cancelled by SwiftUI tearing that old view down —
-                        // correct even for a rapid A → B → C.
                         .id(ev.id)
+                        .padding(.bottom, 8)
                 }
-                .padding(.bottom, UIScreen.main.bounds.height * cardAnchorFraction)
-                .animation(.easeOut(duration: 0.28), value: cardAnchorFraction)
+                .padding(.bottom, cardBottomPadding)
+                .animation(.easeOut(duration: 0.28), value: cardBottomPadding)
             }
         }
+        .coordinateSpace(name: "mapExploreTop")
+        .onPreferenceChange(MapTopControlsBottomYKey.self) { topControlsBottomY = $0 }
         .onChange(of: visibleEvents.map(\.id)) { _, ids in
             // The selected event must honor every active filter this
             // screen has, exactly like the pins/list it was picked from —
@@ -226,6 +312,23 @@ struct MapExploreView: View {
         }
         .sheet(isPresented: .constant(true)) {
             sheetContent
+                // ANIMATION REQUIREMENT (11-realtime-map.md follow-up): a
+                // soft "bubble" settle layered ON TOP of the system's own
+                // slide-up-from-bottom sheet presentation — SwiftUI doesn't
+                // expose control over that presentation's own physics, so
+                // this doesn't try to replace it, only adds a subtle extra
+                // overshoot-then-settle via a genuine `.interpolatingSpring`
+                // driven by `restoreBubbleProgress`. That value starts at 0
+                // ONLY when this instance was constructed from a restored
+                // snapshot (`init`) and animates to 1 exactly once, from
+                // `.task` below — never touched by polling or filter
+                // changes, so it can only ever play on an actual
+                // restore/return, never while just staying on the screen.
+                // A fresh (non-restored) open starts at 1 already, so this
+                // has no effect there at all (both expressions evaluate to
+                // their identity values).
+                .scaleEffect(0.965 + 0.035 * restoreBubbleProgress, anchor: .top)
+                .offset(y: (1 - restoreBubbleProgress) * 18)
                 .presentationDetents([.fraction(0.12), .fraction(0.45), .fraction(0.72)], selection: $sheetDetent)
                 // Bug 3 (11-realtime-map.md, prior pass): the system's own
                 // drag indicator is hidden in favor of `dragHandle` inside
@@ -253,6 +356,13 @@ struct MapExploreView: View {
                 .interactiveDismissDisabled()
         }
         .task {
+            // Follow-up (edge-swipe race): the non-interactive "peeked at"
+            // copy RootView renders during an edge-swipe drag must never
+            // run any of this — see `isPreview`'s own doc comment for the
+            // confirmed bug this caused (a mid-drag, possibly-aborted
+            // preview racing the real instance to load data and clear the
+            // one-shot snapshot).
+            guard !isPreview else { return }
             // Bug 2: the actual restore now happens in `init` (see its own
             // comment) — by the time this runs, `cameraPosition`/filters/
             // `sheetDetent`/`selectedId` are already correct. This only
@@ -263,11 +373,18 @@ struct MapExploreView: View {
             await app.loadMapEvents()
             if hadRestoredState {
                 app.mapExploreState = nil
+                // ANIMATION REQUIREMENT: the one and only place
+                // `restoreBubbleProgress` is ever written after `init` —
+                // runs exactly once, only for a genuine restore.
+                withAnimation(.interpolatingSpring(stiffness: 180, damping: 14)) {
+                    restoreBubbleProgress = 1
+                }
             } else {
                 centerOnDensityHotspot()
             }
         }
         .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in
+            guard !isPreview else { return }
             Task { await app.loadMapEvents(bounds: lastQueriedRegion.map(boundsOf)) }
         }
         .onChange(of: app.userCoords) { _, newValue in
@@ -284,9 +401,23 @@ struct MapExploreView: View {
     // MARK: - Bug 1: card's two-state vertical anchor
 
     /// Deliberately NOT the continuously-varying `sheetFraction` — only two
-    /// resting positions exist for the card (see the `body` comment above).
-    private var cardAnchorFraction: Double {
-        sheetDetent == .fraction(0.12) ? 0.12 : 0.72
+    /// resting positions exist for the card: "upper" (tall AND mid — see
+    /// the `body` comment above) and "peek" (bottom-anchored, unchanged
+    /// from the prior pass). Replaces the old fixed-fraction
+    /// `cardAnchorFraction` — the "upper" case is now derived from actually
+    /// measured geometry (`topControlsBottomY`/`cardMeasuredHeight`) rather
+    /// than a screen-height fraction that could put the card above the top
+    /// controls on some sizes (11-realtime-map.md, "preview card overlaps
+    /// top controls").
+    private var cardBottomPadding: CGFloat {
+        let screenHeight = UIScreen.main.bounds.height
+        if sheetDetent == .fraction(0.12) { return screenHeight * 0.12 } // peek: unchanged
+        let desiredTopY = topControlsBottomY + cardTopGap
+        // The card's OWN bottom-padding (`.padding(.bottom, 8)` inside
+        // `selectedCard`'s wrapper, above) is folded in here so
+        // `cardMeasuredHeight` (measured on `selectedCard(_:)` itself, not
+        // its wrapper) lines up with this padding's own reference point.
+        return max(8, screenHeight - desiredTopY - cardMeasuredHeight - 8)
     }
 
     private func reapplyCameraOffset(for ev: MapEventRow) {
@@ -462,6 +593,16 @@ struct MapExploreView: View {
         .padding(.horizontal, 16)
         .foregroundStyle(app.palette.ink)
         .accessibilityIdentifier("map.selectedCard")
+        // Feeds `cardMeasuredHeight` (via `MapCardHeightKey`) — the card's
+        // own actual rendered height, so `cardBottomPadding` can place its
+        // top edge a fixed gap below the top controls' own measured bottom
+        // edge, rather than guessing either number.
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(key: MapCardHeightKey.self, value: geo.size.height)
+            }
+        )
+        .onPreferenceChange(MapCardHeightKey.self) { cardMeasuredHeight = $0 }
     }
 
     /// Live `seats_remaining` is this screen's own established

@@ -90,7 +90,27 @@ struct RootView: View {
             // missing: dragging used to uncover empty space because nothing
             // was actually rendered behind the current screen.
             if isPeeking {
-                screenView(for: app.backTargetScreen)
+                // `isPreview: true` — follow-up bug 1/2 (11-realtime-map.md):
+                // this was the actual confirmed root cause of "edge-swipe
+                // back to Map Explore returns to a broken/reloaded state."
+                // Before this flag existed, this peeked-at copy was a FULL
+                // `MapExploreView(restored:)` instance — including its own
+                // `.task`, which awaits `app.loadMapEvents()` and then
+                // clears `app.mapExploreState` once it resolves. That ran
+                // for every edge-swipe drag the user started, including ones
+                // that never committed (sprang back to Event Detail) — a
+                // second, independent load/clear race against whichever
+                // instance the ACTUAL navigation later creates. A user who
+                // merely touched-and-released near the edge, then tapped
+                // "‹ Bản đồ" afterward, could already have had their
+                // snapshot silently wiped by this throwaway preview's own
+                // `.task` before the real return ever happened. `isPreview`
+                // stops this copy from running any of that side-effecting
+                // work — it only needs to render, from whatever `app.mapEvents`/
+                // `app.mapExploreState` already hold, a static visual
+                // backdrop (`.allowsHitTesting(false)` below already makes
+                // it non-interactive).
+                screenView(for: app.backTargetScreen, isPreview: true)
                     .offset(x: peekOffset)
                     .overlay(Color.black.opacity((1 - dragProgress) * 0.1))
                     .allowsHitTesting(false)
@@ -218,9 +238,12 @@ struct RootView: View {
 
     /// The SCREENS map, factored out so both the current screen and the
     /// peeked-at previous one (during a swipe) can render from the same
-    /// switch instead of keeping two copies in sync.
+    /// switch instead of keeping two copies in sync. `isPreview` only ever
+    /// matters to the `.mapExplore` case (see its own call site's comment)
+    /// — every other screen ignores it, so this stays a one-line addition
+    /// rather than a second switch to keep in sync.
     @ViewBuilder
-    private func screenView(for screen: Screen) -> some View {
+    private func screenView(for screen: Screen, isPreview: Bool = false) -> some View {
         switch screen {
         case .splash: SplashView()
         case .langPick: LangPickView()
@@ -231,7 +254,7 @@ struct RootView: View {
         // in a later `.task` — so the very first frame this switch draws
         // already shows the restored camera/detent/filters/selection
         // instead of flashing the defaults for a frame first.
-        case .mapExplore: MapExploreView(restored: app.mapExploreState)
+        case .mapExplore: MapExploreView(restored: app.mapExploreState, isPreview: isPreview)
         case .home: HomeView()
         case .profile: AccountView()
         case .inbox: InboxView()
