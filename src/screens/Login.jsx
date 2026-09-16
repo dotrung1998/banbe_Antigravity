@@ -91,10 +91,12 @@ export default function Login() {
         <h2 style={{ ...display(25, { lineHeight: 1.3, margin: '10px 0 0' }) }}>{s.authMode === 'signup' ? T('Tạo tài khoản banbe', 'Create your banbe account') : T('Chào mừng trở lại', 'Welcome back')}</h2>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '12px 0 0' }}>{T('Một tài khoản cho tất cả. Muốn tổ chức sự kiện, bạn chỉ cần bật chế độ tổ chức trong Tài khoản.', 'One account for everything. To host events, just switch on organizer mode from your Account.')}</p>
         {/* Task 2 (note 10) — real Supabase OAuth, not a stub like the three
-            below. Gated on the consent checkbox inside loginGoogle/
-            loginFacebook themselves (startOAuth), regardless of which tab
-            is active — unlike password/email, an OAuth attempt can't be
-            pre-classified as "definitely just a login" ahead of time. */}
+            below. Not gated on the consent checkbox at all (fixed after a
+            regression — see note 10's follow-up): consent for a genuinely
+            new OAuth profile is handled AFTER the redirect completes, by
+            routing to a mandatory one-time Policy screen, not by trying to
+            gate the button beforehand. A returning user goes straight
+            through with zero friction, same as password login. */}
         <div onClick={loginGoogle} data-testid="login-google" style={{ ...fieldGlass({ marginTop: 12, padding: 13, border: 'none' }), display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: ink }}>{T('Tiếp tục với Google', 'Continue with Google')}</span>
         </div>
@@ -147,13 +149,14 @@ export default function Login() {
           <input value={s.loginEmailCode} onChange={loginEmailCodeType} onKeyDown={loginEmailKey} placeholder={T('Mã 6 số', '6-digit code')} inputMode="numeric" autoFocus style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 20, letterSpacing: '0.2em', textAlign: 'center', fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
         )}
 
-        {/* Task 1 — unticked by default, gates `valid`/submit above.
-            Exactly banbe_User_Policy.md's summary-screen wording. Renders
-            on both tabs now (note 10): it only gates password/email
-            submit on Signup (consentOk above), but also gates the Google/
-            Facebook buttons unconditionally, since OAuth can't tell in
-            advance whether it's about to create a brand-new account. */}
-        {!awaitingCode && (
+        {/* Task 1 — unticked by default, gates `valid`/submit above. Exactly
+            banbe_User_Policy.md's summary-screen wording. Signup only — a
+            returning account signing in already consented once. (Note 10
+            briefly made this render on both tabs to also gate the OAuth
+            buttons; reverted — OAuth consent is handled post-redirect now,
+            see the button comment above, so this goes back to exactly
+            note 09's fix.) */}
+        {!awaitingCode && isSignup && (
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14 }}>
             <input
               type="checkbox" checked={s.policyConsent} onChange={togglePolicyConsent}

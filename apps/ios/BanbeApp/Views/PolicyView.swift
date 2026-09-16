@@ -10,12 +10,27 @@ struct PolicyView: View {
 
     static let version = "2026-09-18" // keep in sync with src/lib/policy.js's POLICY_VERSION
 
+    /// Set only for a brand-new OAuth (Google/Facebook) profile that
+    /// reached a session with no policyAcceptedAt yet
+    /// (AppState+Data.swift's applySession(), note 10's OAuth consent
+    /// fix) — no back-out (there's nowhere legitimate to go; the account
+    /// already exists) and a mandatory "I agree" bar instead of the
+    /// ordinary read-only view. A returning user, or anyone who signed up
+    /// via email/password (already gated by LoginView's own checkbox),
+    /// never sees this mode at all.
+    private var gateActive: Bool { app.policyGateActive }
+
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
                     HStack {
-                        Button("‹ Quay lại / Back") { app.screen = app.policyBackScreen }
-                            .font(.system(size: 12)).buttonStyle(.plain)
+                        if gateActive {
+                            Text("Đọc và đồng ý để tiếp tục / Read and agree to continue")
+                                .font(.system(size: 12)).opacity(0.7)
+                        } else {
+                            Button("‹ Quay lại / Back") { app.screen = app.policyBackScreen }
+                                .font(.system(size: 12)).buttonStyle(.plain)
+                        }
                         Spacer()
                         Text("Phiên bản / Version \(Self.version)")
                             .font(.system(size: 11)).opacity(0.5)
@@ -64,6 +79,29 @@ struct PolicyView: View {
                 .foregroundStyle(app.palette.ink)
                 .padding(.horizontal, 22)
                 .padding(.bottom, 40)
+            }
+        .safeAreaInset(edge: .bottom) {
+            policyGateBar
+        }
+    }
+
+    @ViewBuilder
+    private var policyGateBar: some View {
+            if gateActive {
+                Button {
+                    app.acceptPolicyGate()
+                } label: {
+                    Text("Tôi đồng ý ▪︎ Tiếp tục / I agree ▪︎ Continue")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(app.palette.ink)
+                        .foregroundStyle(app.palette.paper)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 22).padding(.vertical, 10)
+                .background(app.palette.paper)
+                .overlay(alignment: .top) { Rectangle().fill(app.palette.rule).frame(height: 1) }
             }
         }
 

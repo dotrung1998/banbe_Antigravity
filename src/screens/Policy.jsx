@@ -7,16 +7,26 @@ import { POLICY_VERSION } from '../lib/policy.js';
 // document's own alternating structure) — not a paraphrase or summary.
 // Where the source and English differ, the Vietnamese text prevails (A1).
 export default function Policy() {
-  const { backFromPolicy } = useGoc();
+  const { state, backFromPolicy, acceptPolicyGate } = useGoc();
+  // Set only for a brand-new OAuth (Google/Facebook) profile that reached a
+  // session with no policy_accepted_at yet (syncUser(), note 10's OAuth
+  // consent fix) — no back-out (there's nowhere legitimate to go; the
+  // account already exists) and a mandatory "I agree" bar instead of the
+  // ordinary read-only view. A returning user, or anyone who signed up via
+  // email/password (already gated by Login.jsx's own checkbox), never sees
+  // this mode at all.
+  const gateActive = state.policyGateActive;
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Policy">
       <div style={{ padding: '66px 22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <span onClick={backFromPolicy} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>‹ Quay lại / Back</span>
+        {gateActive
+          ? <span style={{ fontSize: 12, color: ink, opacity: 0.7 }}>Đọc và đồng ý để tiếp tục / Read and agree to continue</span>
+          : <span onClick={backFromPolicy} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>‹ Quay lại / Back</span>}
         <span style={{ fontSize: 11, color: ink, opacity: 0.5 }}>Phiên bản / Version {POLICY_VERSION}</span>
       </div>
 
-      <div style={{ padding: '18px 22px 60px' }}>
+      <div style={{ padding: gateActive ? '18px 22px 100px' : '18px 22px 60px' }}>
         <p style={{ fontSize: 11, color: ink, opacity: 0.55, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
           Điều khoản và quyền riêng tư · v1.0 · Terms and privacy
         </p>
@@ -305,6 +315,21 @@ export default function Policy() {
           </p>
         </div>
       </div>
+
+      {gateActive && (
+        <div
+          style={{ position: 'fixed', left: 0, right: 0, bottom: 0, padding: '16px 22px 22px', background: paper, borderTop: `1px solid ${rule}` }}
+          data-testid="policy-gate-bar"
+        >
+          <div
+            onClick={acceptPolicyGate}
+            style={{ fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 15, background: ink, color: paper, cursor: 'pointer' }}
+            data-testid="policy-gate-accept"
+          >
+            Tôi đồng ý ▪︎ Tiếp tục / I agree ▪︎ Continue
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -57,6 +57,8 @@ No change to `syncUser()`'s existing auto-stamp (`GocContext.jsx` ~line 428: wri
 
 Tests updated in `tests/auth-notifications.spec.js`: `openLogin()` no longer ticks the checkbox unconditionally (it doesn't exist on the default Login tab anymore); a new `consentToSignup(page)` helper is called instead, right after each test's `Đăng ký` tab switch, before any actual signup submit. `tests/auth-and-booking.spec.js`'s tab-switch test needed no change (never submits). Full fast suite re-run: 88 passed, 0 failed.
 
+**Briefly regressed and re-fixed (2026-09-21, see .claude/notes/10-oauth-login.md)**: adding Google/Facebook OAuth put the checkbox back on the Login tab so the OAuth buttons had somewhere to gate it from — undone once OAuth consent moved to a post-redirect mandatory Policy-screen gate instead, which needs no pre-redirect checkbox state at all. This file's Signup-only rendering (the fix directly above) is current again.
+
 ## Fixed: iOS swipe-back gesture (2026-09-16)
 Two bugs in the custom edge-swipe gesture (`apps/ios/BanbeApp/Views/RootView.swift` — this app has no `NavigationStack`/`UINavigationController` anywhere; `RootView`'s `ZStack` screen switch reimplements swipe-to-back from scratch with a plain `DragGesture`, so none of the UIKit-specific mechanisms named in the ticket — `interactivePopGestureRecognizer`, its delegate, `navigationBarBackButtonHidden` — literally exist in this codebase; the fixes below are the SwiftUI-equivalent root causes).
 

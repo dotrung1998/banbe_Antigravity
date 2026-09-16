@@ -106,18 +106,21 @@ struct LoginView: View {
                 .padding(.top, 12)
 
                 // Task 3 (note 10) — real Supabase OAuth via
-                // ASWebAuthenticationSession, gated on the consent checkbox
-                // below regardless of tab (startOAuth's web counterpart —
-                // an OAuth attempt can't be pre-classified as "definitely
-                // just a login" the way a password attempt against an
-                // existing account can).
+                // ASWebAuthenticationSession. Not gated on the consent
+                // checkbox at all (fixed after a regression — see note 10's
+                // follow-up): a returning user must go straight through
+                // with zero friction, same as password login. Consent for
+                // a genuinely new profile is handled after the session
+                // lands, by AppState+Data.swift's applySession() routing to
+                // a mandatory Policy screen — not by trying to gate this
+                // button beforehand.
                 VStack(spacing: 10) {
                     oauthButton(app.T("Tiếp tục với Google", "Continue with Google")) {
-                        Task { await startOAuth { await auth.signInWithGoogle() } }
+                        Task { await auth.signInWithGoogle() }
                     }
                     .accessibilityIdentifier("login.google")
                     oauthButton(app.T("Tiếp tục với Facebook", "Continue with Facebook")) {
-                        Task { await startOAuth { await auth.signInWithFacebook() } }
+                        Task { await auth.signInWithFacebook() }
                     }
                     .accessibilityIdentifier("login.facebook")
                 }
@@ -174,12 +177,12 @@ struct LoginView: View {
 
                 // Task 1 — unticked by default, gates `canRequest` above.
                 // Exactly banbe_User_Policy.md's summary-screen wording.
-                // Renders on both tabs now (note 10): it only gates
-                // password/email submit on Signup (`canRequest`), but also
-                // gates the Google/Facebook buttons unconditionally, since
-                // OAuth can't tell in advance whether it's about to create
-                // a brand-new account.
-                if !auth.codeSent {
+                // Signup only — a returning account signing in already
+                // consented once. (Note 10 briefly made this render on both
+                // tabs to also gate the OAuth buttons; reverted — OAuth
+                // consent is handled post-redirect now, see the button
+                // comment above, so this is back to exactly note 09's fix.)
+                if !auth.codeSent && mode == .signup {
                     HStack(alignment: .top, spacing: 8) {
                         Button {
                             app.policyConsent.toggle()
@@ -319,19 +322,6 @@ struct LoginView: View {
                 .foregroundStyle(app.palette.ink)
         }
         .buttonStyle(.plain)
-    }
-
-    /// Refuses to start the OAuth flow at all unless the checkbox is
-    /// already ticked — same gate `canRequest` applies to password/code
-    /// submit on Signup, just unconditional here (see the button-row
-    /// comment above for why).
-    private func startOAuth(_ signIn: () async -> Void) async {
-        guard app.policyConsent else {
-            localError = app.T("Hãy đánh dấu ô đồng ý điều khoản trước.", "Please tick the consent checkbox first.")
-            return
-        }
-        localError = ""
-        await signIn()
     }
 
     private func sendReset() async {

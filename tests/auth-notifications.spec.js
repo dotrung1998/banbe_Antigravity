@@ -456,19 +456,22 @@ test.describe('Login & Signup Notification Messages', () => {
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Zalo chưa khả dụng/);
   });
 
-  // Facebook is real OAuth now (note 10), gated on the consent checkbox
-  // regardless of tab — clicking it unticked shows that gate's message
-  // instead of the old "not available yet" stub.
-  test('Facebook requires consent before starting OAuth', async ({ page }) => {
+  // Google/Facebook are real OAuth now (note 10), but — after a regression
+  // where the consent checkbox briefly gated them and reappeared on the
+  // Login tab to have somewhere to render — neither is gated on consent at
+  // all: a returning user must reach the provider with zero friction, same
+  // as password login. Consent for a genuinely new profile is handled
+  // after the redirect completes instead (see tests/oauth-consent-e2e.spec.js
+  // for that part, which needs a real session to exercise).
+  test('the policy consent checkbox stays Signup-only, including with Google/Facebook present', async ({ page }) => {
     await openLogin(page);
-    await page.locator('[data-screen-label="Login"]').getByText('Facebook').click();
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Hãy đánh dấu ô đồng ý điều khoản trước/);
-  });
+    const login = page.locator('[data-screen-label="Login"]');
+    await expect(login.getByTestId('login-google')).toBeVisible();
+    await expect(login.getByTestId('login-facebook')).toBeVisible();
+    await expect(login.getByTestId('login-policy-consent')).toHaveCount(0);
 
-  test('Google requires consent before starting OAuth', async ({ page }) => {
-    await openLogin(page);
-    await page.getByTestId('login-google').click();
-    await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Hãy đánh dấu ô đồng ý điều khoản trước/);
+    await page.getByText('Đăng ký', { exact: true }).click();
+    await expect(login.getByTestId('login-policy-consent')).toBeVisible();
   });
 
   test('shows Instagram not available error', async ({ page }) => {

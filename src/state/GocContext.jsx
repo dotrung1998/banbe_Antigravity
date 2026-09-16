@@ -19,14 +19,6 @@ const GocCtx = createContext(null);
 // this. The query param is stripped from the visible URL immediately so it
 // doesn't linger if the page gets shared or bookmarked from here.
 const REFERRAL_STORAGE_KEY = 'banbe.pendingReferral';
-// Google/Facebook sign-in (note 10) does a full-page redirect away from and
-// back to this SPA — every in-memory React state value, including
-// s.policyConsent, is gone by the time the app remounts on return. This is
-// the same "survive a redirect" trick REFERRAL_STORAGE_KEY above already
-// uses: stashed only if the consent checkbox was actually ticked before the
-// redirect started, read back (and cleared) once in syncUser() to decide
-// whether a brand-new OAuth profile's consent may be recorded.
-const PENDING_OAUTH_CONSENT_KEY = 'banbe.pendingOAuthConsent';
 if (typeof window !== 'undefined') {
   const params = new URLSearchParams(window.location.search);
   const ref = params.get('ref');
@@ -65,6 +57,10 @@ const initialState = {
   // whenever Login mounts fresh; gates submitCurrentForm alongside the
   // existing email/password validity checks.
   policyConsent: false,
+  // True only for a brand-new OAuth profile with no policy_accepted_at yet
+  // (syncUser()) — Policy.jsx renders as a mandatory, no-back-out gate
+  // instead of the ordinary "view the policy" screen while this is set.
+  policyGateActive: false,
   // Task 4 (migration 056): one-time, account-level opt-in — mirrors
   // profiles.auto_email_documents, loaded in syncUser() like locale/theme.
   autoEmailDocuments: false,
@@ -460,45 +456,31 @@ export function GocProvider({ children }) {
       // gate, and can be stamped unconditionally.
       //
       // An OAuth session (note 10 — Google/Facebook) is different: nothing
-      // client-side ran a submit function first, and signInWithOAuth's
-      // full-page redirect wipes s.policyConsent from memory before this
-      // ever runs. Proof instead comes from PENDING_OAUTH_CONSENT_KEY,
-      // stashed in localStorage only if the checkbox was actually ticked
-      // right before the redirect (loginGoogle/loginFacebook below) — if
-      // it's missing, this profile reached a session with no verifiable
-      // consent at all, so it's signed back out rather than silently
-      // let in; nothing is stamped either way when the account already
-      // has policy_accepted_at, so a *returning* OAuth sign-in is unaffected.
+      // client-side ran a submit function first, so a brand-new profile
+      // here genuinely has never seen the policy. This used to try to gate
+      // the OAuth *button* itself on a localStorage-stashed "was it ticked
+      // before the redirect" flag — that was fragile (storage partitioning,
+      // a cleared/blocked store, or simply losing the value across the
+      // full-page round trip could all silently sign a real user back out
+      // for no reason they could see) and, worse, required showing the
+      // checkbox on the Login tab too just so it had somewhere to render,
+      // regressing note 09's Signup-only fix. Fixed: consent for a new
+      // OAuth profile is handled entirely AFTER the redirect, right here —
+      // route to a mandatory one-time Policy screen (acceptPolicyGate()
+      // stamps consent and continues) instead of trying to verify intent
+      // before the fact. A *returning* OAuth sign-in never reaches this
+      // block at all (its profile already has policy_accepted_at), so it's
+      // exactly as frictionless as password login.
       if (profile && !profile.policy_accepted_at) {
         const provider = user.app_metadata?.provider;
-        let hasConsentProof = true;
-        if (provider && provider !== 'email') {
-          hasConsentProof = false;
-          try {
-            if (localStorage.getItem(PENDING_OAUTH_CONSENT_KEY)) hasConsentProof = true;
-            localStorage.removeItem(PENDING_OAUTH_CONSENT_KEY);
-          } catch { /* private browsing, etc. — treated as no proof */ }
-        }
-        if (hasConsentProof) {
+        if (!provider || provider === 'email') {
           const { error } = await supabase
             .from('profiles')
             .update({ policy_accepted_at: new Date().toISOString(), policy_version: POLICY_VERSION })
             .eq('id', user.id);
           if (error) console.warn('Failed to record policy consent:', error);
         } else {
-          console.warn('OAuth sign-in reached a session with no recorded consent proof — signing back out.');
-          await supabase.auth.signOut();
-          // Not T(...) here — this effect only runs once (deps: [set]), so
-          // any T it captured is frozen at mount-time s.lang, not the
-          // user's current choice. A fixed bilingual string sidesteps that
-          // stale-closure risk rather than silently showing the wrong
-          // language sometimes.
-          set({
-            user: null, sessionChecked: true,
-            screen: 'login', authMode: 'signup', authMandatory: true,
-            reserveError: 'Cần đồng ý với điều khoản trước khi đăng ký bằng Google/Facebook. Hãy đánh dấu ô đồng ý rồi thử lại. ▪︎ '
-              + 'You need to agree to the terms before signing up with Google/Facebook. Please tick the consent box and try again.',
-          });
+          set({ policyGateActive: true, screen: 'policy' });
           return;
         }
       }
@@ -858,6 +840,21 @@ export function GocProvider({ children }) {
   const togglePolicyConsent = useCallback(() => set(prev => ({ policyConsent: !prev.policyConsent })), [set]);
   const openPolicy = useCallback(() => set(prev => ({ screen: 'policy', policyBackScreen: prev.screen })), [set]);
   const backFromPolicy = useCallback(() => set(prev => ({ screen: prev.policyBackScreen || 'login' })), [set]);
+
+  // The "I agree" button Policy.jsx shows only while policyGateActive
+  // (syncUser()'s post-OAuth-redirect consent gate for a brand-new
+  // Google/Facebook profile — see note 10). Stamps consent for real, then
+  // hands off to the exact same postAuthDestination() every other sign-in
+  // path uses, so this doesn't need its own bespoke "where do I go now".
+  const acceptPolicyGate = useCallback(async () => {
+    if (!s.user?.id) return;
+    const { error } = await supabase
+      .from('profiles')
+      .update({ policy_accepted_at: new Date().toISOString(), policy_version: POLICY_VERSION })
+      .eq('id', s.user.id);
+    if (error) { console.warn('Failed to record policy consent:', error); return; }
+    set(prev => ({ policyGateActive: false, ...postAuthDestination(prev) }));
+  }, [set, s.user?.id]);
   // Tapping a photo in either gallery ("Hình ảnh" on an event, "Ảnh của X"
   // on an organizer page) opens it larger, over a dimmed backdrop, with the
   // whole gallery loaded in behind it so left/right swipes can move through
@@ -2259,28 +2256,21 @@ export function GocProvider({ children }) {
     const { error } = await supabase.auth.verifyOtp({ phone: s.loginPhoneNumber.trim(), token: s.loginCode.trim(), type: 'sms' });
     if (error) set({ reserveError: error.message });
   }, [set, s.loginPhoneNumber, s.loginCode, T]);
-  // Google/Facebook (note 10). Gated on the consent checkbox regardless of
-  // which tab is active — unlike password/code, an OAuth attempt can't be
-  // pre-classified as "just a login": Supabase creates the account right
-  // then if the provider identity is new, with no separate signup step to
-  // gate instead. Stashes proof of that tick in localStorage before the
-  // redirect, since the full-page round trip wipes s.policyConsent from
-  // memory — syncUser() reads it back once the session lands.
+  // Google/Facebook (note 10). Not gated on the consent checkbox at all —
+  // unlike password/code, an OAuth attempt can't be pre-classified as
+  // "just a login" ahead of time (Supabase creates the account right then
+  // if the provider identity is new), and a *returning* user must be able
+  // to click straight through with zero friction. Consent for a genuinely
+  // new profile is handled after the redirect completes instead — see
+  // syncUser()'s policyGateActive branch.
   const startOAuth = useCallback(async (provider) => {
-    if (!s.policyConsent) {
-      return set({ reserveError: T('Hãy đánh dấu ô đồng ý điều khoản trước.', 'Please tick the consent checkbox first.') });
-    }
-    try { localStorage.setItem(PENDING_OAUTH_CONSENT_KEY, '1'); } catch { /* private browsing, etc. */ }
     const { error } = await supabase.auth.signInWithOAuth({
       provider, options: { redirectTo: getAuthRedirectUrl() },
     });
-    if (error) {
-      try { localStorage.removeItem(PENDING_OAUTH_CONSENT_KEY); } catch { /* ignore */ }
-      set({ reserveError: error.message });
-    }
+    if (error) set({ reserveError: error.message });
     // No further state change on success: signInWithOAuth navigates the
     // whole page away immediately, so there's nothing left to update here.
-  }, [set, T, s.policyConsent]);
+  }, [set]);
   const loginGoogle = useCallback(() => startOAuth('google'), [startOAuth]);
   const loginFacebook = useCallback(() => startOAuth('facebook'), [startOAuth]);
   const loginInstagram = useCallback(() => set({ reserveError: T('Instagram chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Instagram is not available yet. Use email or phone OTP.') }), [set, T]);
@@ -2761,7 +2751,7 @@ export function GocProvider({ children }) {
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, deleteNotification, openNotification, clearChatHighlight, dismissToast,
     canHost, toggleOrganizerMode, enableOrganizerMode,
-    pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy,
+    pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, shareEvent, referralLink, shareReferral,
@@ -2790,7 +2780,7 @@ export function GocProvider({ children }) {
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, deleteNotification, openNotification, clearChatHighlight, dismissToast,
     canHost, toggleOrganizerMode, enableOrganizerMode,
-    pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy,
+    pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, shareEvent, referralLink, shareReferral,

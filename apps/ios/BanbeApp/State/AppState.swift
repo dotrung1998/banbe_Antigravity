@@ -135,6 +135,11 @@ final class AppState: ObservableObject {
     @Published var policyConsent = false
     @Published var policyBackScreen: Screen = .login
     func openPolicy() { policyBackScreen = screen; screen = .policy }
+    /// True only for a brand-new OAuth profile with no policyAcceptedAt yet
+    /// (AppState+Data.swift's applySession()) — PolicyView renders as a
+    /// mandatory, no-back-out gate instead of the ordinary "view the
+    /// policy" screen while this is set.
+    @Published var policyGateActive = false
     /// Every screen a signed-out visitor may ever legitimately be on —
     /// RootView's guard redirects anything else to .login. The
     /// enforcement point for "no guest browsing of any screen" (Task 1).
@@ -633,6 +638,27 @@ final class AppState: ObservableObject {
         // (finishOnboarding), not before.
         if !hasOnboarded { screen = .langPick; return }
         postAuthDestination(isSignedIn: isSignedIn)
+    }
+
+    /// The "I agree" button PolicyView shows only while policyGateActive
+    /// (applySession()'s post-OAuth-redirect consent gate for a brand-new
+    /// Google/Facebook profile — see note 10). Stamps consent for real,
+    /// then hands off to the exact same postAuthDestination() every other
+    /// sign-in path uses, so this doesn't need its own bespoke "where do I
+    /// go now".
+    func acceptPolicyGate() {
+        guard let uid = userID else { return }
+        Task {
+            do {
+                let update = ConsentUpdate(policyAcceptedAt: ISO8601DateFormatter().string(from: Date()), policyVersion: PolicyView.version)
+                try await SupabaseService.client.from("profiles").update(update).eq("id", value: uid).execute()
+            } catch {
+                print("Failed to record policy consent:", error)
+                return
+            }
+            policyGateActive = false
+            postAuthDestination(isSignedIn: true)
+        }
     }
     func pickLang(_ value: String) {
         lang = value
