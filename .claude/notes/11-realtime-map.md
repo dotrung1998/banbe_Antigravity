@@ -482,6 +482,55 @@ No new automated test — this pass is entirely about a native iOS edge-swipe ge
 4. Confirm a genuine Event-Detail return (tap "Xem chi tiết" then "‹ Bản đồ", or swipe back from Event Detail) now reveals the sheet after about 0.78s total (0.28s wait + the new 0.5s pause) instead of the prior ~1.28s — noticeably quicker than before, but still a deliberate pause, not instant.
 5. Try an interrupted swipe immediately followed by a genuine attempt to swipe-close or tap "← Đóng" for real, back to back — confirm the earlier interrupted attempt's pending reveal doesn't fire late and clobber the real close (the shared `postDismissRevealTask` cancellation should prevent this, but it's worth deliberately trying to break).
 
+## Design change (2026-09-16): decouple the selected-event preview card from the list's active filter entirely
+
+Commit 00af7a35 intentionally coupled the preview card's selection to the list's own filtered result set ("honor every active filter... the selection clears itself instead of the card going stale"). Confirmed and reproduced: this was the wrong behavior. Selecting an event and then tapping ANY filter chip below (including re-selecting "Tất cả") cleared the card and reset the pin's own selected styling, even though the user never touched the card or the map background — the filter and the selection were never supposed to be coupled at all.
+
+### The decoupling fix
+
+**Web (`src/screens/MapExplore.jsx`)** — `selectedEvent`'s `useMemo` used to read `visibleEvents` (the list-filtered array). Changed to read the full, unfiltered `events` directly:
+```js
+const selectedEvent = useMemo(
+  () => (selectedId ? events.find(e => e.id === selectedId) || null : null),
+  [events, selectedId],
+);
+```
+This is the exact decoupling fix — the ONE place `visibleEvents` fed into the selection at all. The clearing effect (`if (!loading && selectedId && !selectedEvent) setSelectedId(null)`) needed no code change of its own: since `selectedEvent` itself now derives from unfiltered `events`, that effect automatically only fires when the event is genuinely gone from the loaded data (cancelled/deleted, or excluded by a bounds-limited poll/search-here re-query) — never merely because it doesn't match the active category/open-now filter. The map's own pins were ALREADY drawn from unfiltered `events` (a pre-existing, correct baseline this screen has had since the very first pass — only the LIST panel was ever filtered) — `selectedEvent` now matches that same baseline instead of disagreeing with it.
+
+**iOS (`apps/ios/BanbeApp/Views/MapExploreView.swift`)** — the equivalent coupling existed AND, unlike web, iOS's own map PINS were also drawn from the filtered `visibleEvents` (a genuine, pre-existing web/iOS divergence, not something a previous ticket flagged). Fixed both:
+- New `mapEventsWithCoordinates` computed property — `app.mapEvents.filter { $0.lat != nil && $0.lng != nil }` — the same unfiltered baseline web's `events` already was.
+- `selectedEvent` now reads `mapEventsWithCoordinates.first { $0.id == selectedId }` instead of `visibleEvents.first { ... }`.
+- The clearing effect's own dependency, `.onChange(of: visibleEvents.map(\.id))`, changed to `.onChange(of: mapEventsWithCoordinates.map(\.id))` — same reasoning as web: it now only fires when the event is genuinely gone from `app.mapEvents`, never merely filtered out.
+- The map's own `Map { ForEach(visibleEvents) { ... } }` pin source changed to `ForEach(mapEventsWithCoordinates)` — this is the SWEEP FINDING described below, fixed alongside the main decoupling since it's the same root cause and directly relevant to the sweep's own scenario 1 (a selected event's pin used to visually vanish from the map the instant a category filter excluded it, even though its card kept floating above the sheet referencing a pin no longer shown anywhere).
+- `visibleEvents` itself was refactored to build FROM `mapEventsWithCoordinates` (`var list = mapEventsWithCoordinates; if catFilter != "all" { ... }`) instead of re-deriving the lat/lng filter separately — purely a small dedup, no behavior change to the LIST's own filtering.
+
+**What was deliberately NOT touched**: the LIST panel (`visibleEvents`, both platforms) is still fully filtered by category/open-now/distance exactly as before — only the SELECTION's own identity lookup changed sources. `recenterOnFilterDensityHotspot()`/its web equivalent (task 2b, prior pass) still correctly reads the FILTERED `visibleEvents` (recentering on wherever the ACTIVE filter's own results cluster is the whole point of that feature, unrelated to this decoupling). The list-scroll-restore effect (both platforms) and the "Còn chỗ"/"Gần bạn" chips' own filter/sort logic are unchanged.
+
+### Sweep results
+
+| # | Scenario | Result |
+|---|---|---|
+| 1 | Select an event, cycle a category filter that includes it → one that doesn't → back to "Tất cả" | **Passed after the fix** (was broken before — the core bug). Card/pin persist unchanged throughout; the list narrows/widens correctly each time. A genuine, related bug was ALSO found and fixed on iOS: the selected pin itself used to vanish from the map (not just the list row) when a non-matching category was applied, since iOS's pins were drawn from `visibleEvents` too — see `mapEventsWithCoordinates` above. |
+| 2 | "Gần bạn" (nearby sort) toggle, then a search-here re-query | **Passed**, with one real nuance found and now explicitly tested for: "Gần bạn" alone never affects selection (it only re-sorts `visibleEvents`, which nothing about the selection reads). A search-here re-query is a genuine BOUNDS-RESTRICTED re-fetch — if the user pans far enough that the selected event's own coordinates fall outside the newly queried bounds, it legitimately disappears from the loaded data and the card correctly clears; this is one of the ticket's own explicitly-endorsed clearing cases ("the underlying event actually disappearing from the data entirely"), not a regression. Tested separately: a small pan that keeps the event within bounds preserves the selection through the re-query. |
+| 3 | Live poll updates the event's own data while selected | **Passed**, already correct before this pass — the poll's `setEvents(fresh)`/`app.mapEvents` update flows straight into the card's own render (both platforms bind directly to the live row), and (per the earlier `Marker`-overwrite fix from a prior pass, web) the pin's own selected styling survives a poll rebuild too. No flicker/clear/reopen observed. |
+| 4 | Filter applied before an Event Detail round trip | **Passed**, already correct in shape (both `catFilter` and `selectedId` are independent fields in `MapExploreState`/its web equivalent, saved/restored separately) — but this pass's fix is what makes the RESTORED selection stay put once the RESTORED filter is reapplied to `visibleEvents` after the round trip, since before this fix the restore's own catFilter could immediately re-trigger the same "clears if filtered out" coupling the instant both were reapplied together. Confirmed via a new test selecting through a "Nhạc" filter specifically (not "Tất cả", so the coupling bug would have fired immediately post-restore before this pass). |
+| 5 | Switching filters at each of the three sheet detents | **Passed** — no interaction found between `sheetDetent`/`sheetSnap` and the filter/selection logic; they're entirely independent pieces of state on both platforms, confirmed by reading and by test. |
+| 6 | Rapidly tapping multiple filter chips in succession while a card is open | **Passed** — `catFilter` is plain synchronous state on both platforms (a `useState`/`@State` string, not batched/debounced), so each tap resolves in the order dispatched with no race window; the FINAL tap's filter is what the list ends up matching, and the card — now reading unfiltered data — was never at risk of a stale intermediate value regardless. |
+
+### Tests
+
+**Web**: `tests/map-explore.spec.js` — the OLD test asserting the removed (now-wrong) coupling behavior ("selection clears if the selected event drops out of the filtered results") was deleted, not patched, per the ticket's own "remove the coupling, don't add a condition on top of it" instruction. New `describe` block, "Map Explore — selection/filter decoupling (design change follow-up)" (8 cases, all passing): the direct repro/fix verification for categories and for "Còn chỗ", plus one test per regression-sweep scenario above (2 tests for scenario 2's two distinct sub-cases). Full fast suite re-run (`--project=chromium --grep-invert "real backend"`): 125/125 passed (118 prior, minus 1 removed, plus 8 new = 125).
+
+**iOS**: no new automated test, same reasoning as every prior pass. Both Debug and Release `xcodebuild -sdk iphonesimulator` builds are clean.
+
+**iOS manual verification checklist (this pass)**:
+1. Select an event (pin or list row), then tap through every category chip in turn, including back to "Tất cả" — the preview card must never disappear or change, and the selected event's own PIN must remain visible on the map and stay at its selected (larger) size throughout, even while filtered OUT of the list below it.
+2. With an event selected, toggle "Còn chỗ" on and off — same requirement: card and pin untouched; only the list's own row membership changes.
+3. With an event selected, toggle "Gần bạn" — selection untouched; only the list re-sorts.
+4. Select an event through a non-"Tất cả" category filter, open "Xem chi tiết", then return via "‹ Bản đồ" — confirm BOTH the filter chip and the selected card/pin are restored correctly and independently (this is the scenario that would have silently failed before this pass, since the restored filter and restored selection used to fight each other via the now-removed coupling).
+5. Select an event, then drag the sheet through tall/mid/peek while tapping different category chips at each stop — no unexpected interaction between detent and selection/filter state.
+6. Select an event, then rapidly tap several different category chips back-to-back as fast as possible — the final chip tapped should be the one left active, the list should match it, and the card should still be showing the original selection throughout, never a stale or blank state mid-sequence.
+
 **iOS**: no new automated test, same reasoning as every prior pass. Both Debug and Release `xcodebuild -sdk iphonesimulator` builds are clean after this pass.
 
 **iOS manual verification checklist (this pass)**:

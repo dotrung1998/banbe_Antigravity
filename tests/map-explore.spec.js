@@ -84,28 +84,12 @@ test.describe('Map Explore — pin/list selection', () => {
     await expect(page.locator('[data-testid="map-selected-card"]')).toHaveCount(0);
   });
 
-  test('selection clears if the selected event drops out of the filtered results', async ({ page }) => {
-    const pin = await openMapWithAPin(page);
-    const testid = await pin.getAttribute('data-testid');
-    const id = testid.replace('map-pin-', '');
-    await pin.click();
-    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
-    // "Còn chỗ" (open-now) filters visibleEvents down to seats_remaining > 0
-    // — if the selected event doesn't have live seats (sold out or a NULL
-    // seats_remaining row), it drops out of visibleEvents and the
-    // useEffect that watches `selectedEvent` should clear the stale
-    // selection rather than leave the card showing something no longer in
-    // the current filtered set.
-    await page.click('[data-testid="map-chip-open-now"]');
-    // Either the card cleared (event had no live seats) or it's still
-    // showing the same still-qualifying event — both are correct; what's
-    // never correct is the card surviving while genuinely absent from the
-    // list. Confirm consistency between the two directly:
-    const stillInList = await page.locator(`[data-testid="map-list-item-${id}"]`).count();
-    if (stillInList === 0) {
-      await expect(page.locator('[data-testid="map-selected-card"]')).toHaveCount(0);
-    }
-  });
+  // Design change (11-realtime-map.md follow-up): this test used to assert
+  // the OPPOSITE — that toggling "Còn chỗ" clears a selection that drops
+  // out of the filtered list. That coupling was confirmed to be the wrong
+  // behavior and was removed entirely (not patched); see the new
+  // "selection/filter decoupling" describe block below for its
+  // replacement and the full regression sweep.
 });
 
 // Drags the sheet handle by `dyPx` (positive = downward, toward peek).
@@ -524,5 +508,182 @@ test.describe('Map Explore — Map Explore -> Home close flow follow-up', () => 
     ]);
     expect(backBox.height).toBeCloseTo(searchBox.height, 0);
     expect(backWeight).toBe(searchWeight);
+  });
+});
+
+// Design change (11-realtime-map.md follow-up): the selected-event preview
+// card is now fully decoupled from the list's active filter — selecting
+// reads the full, unfiltered `events`, never the filtered `visibleEvents`.
+// This block is both the direct repro/verification of that change and the
+// full regression sweep the ticket asked for.
+test.describe('Map Explore — selection/filter decoupling (design change follow-up)', () => {
+  test('applying/removing category filters never clears an existing selection — only the list narrows', async ({ page }) => {
+    const pin = await openMapWithAPin(page);
+    const testid = await pin.getAttribute('data-testid');
+    const id = testid.replace('map-pin-', '');
+    await pin.click();
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    const title = await page.locator('[data-testid="map-card-title"]').innerText();
+
+    // Cycle through every category, including ones this event does NOT
+    // belong to (the list row for it must then disappear) and back to
+    // "Tất cả" — the card/pin selection must never react to any of this.
+    for (const key of ['supper', 'fashion', 'gallery', 'music', 'all']) {
+      await page.click(`[data-testid="map-cat-${key}"]`);
+      await page.waitForTimeout(150);
+      await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+      expect(await page.locator('[data-testid="map-card-title"]').innerText()).toBe(title);
+      await expect(page.locator(`[data-testid="map-pin-${id}"]`)).toHaveCSS('transform', 'matrix(1.15, 0, 0, 1.15, 0, 0)');
+      // The pin itself must also still be rendered on the map regardless
+      // of category (pins were already unfiltered on web; this reconfirms
+      // it while sweeping) — the list row's own membership is the only
+      // thing allowed to change per filter.
+      await expect(page.locator(`[data-testid="map-pin-${id}"]`)).toBeVisible();
+    }
+  });
+
+  test('toggling "Còn chỗ" never clears an existing selection — only the list narrows', async ({ page }) => {
+    const pin = await openMapWithAPin(page);
+    const testid = await pin.getAttribute('data-testid');
+    const id = testid.replace('map-pin-', '');
+    await pin.click();
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    const title = await page.locator('[data-testid="map-card-title"]').innerText();
+
+    await page.click('[data-testid="map-chip-open-now"]');
+    await page.waitForTimeout(150);
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    expect(await page.locator('[data-testid="map-card-title"]').innerText()).toBe(title);
+    await expect(page.locator(`[data-testid="map-pin-${id}"]`)).toHaveCSS('transform', 'matrix(1.15, 0, 0, 1.15, 0, 0)');
+
+    // Toggle back off — same requirement, and the list itself must have
+    // reverted to including whatever it did before (a real, working
+    // filter, not one that's silently stopped narrowing anything).
+    await page.click('[data-testid="map-chip-open-now"]');
+    await page.waitForTimeout(150);
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+  });
+
+  test('sweep 2a: toggling "Gần bạn" (nearby sort) preserves an existing selection', async ({ page, context }) => {
+    await context.grantPermissions(['geolocation']);
+    await context.setGeolocation({ latitude: 10.78, longitude: 106.7 });
+    const pin = await openMapWithAPin(page);
+    const testid = await pin.getAttribute('data-testid');
+    const id = testid.replace('map-pin-', '');
+    await pin.click();
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+
+    // Grant location the app's own real way (compass tap) — `sortByDistance`
+    // only re-SORTS `visibleEvents`, and never touches `selectedEvent`'s own
+    // (now unfiltered) derivation at all.
+    await page.click('[data-testid="map-compass"]');
+    await expect(page.locator('[data-testid="map-chip-nearby"]')).toBeVisible({ timeout: 5000 });
+    await page.click('[data-testid="map-chip-nearby"]');
+    await page.waitForTimeout(200);
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    await expect(page.locator(`[data-testid="map-pin-${id}"]`)).toHaveCSS('transform', 'matrix(1.15, 0, 0, 1.15, 0, 0)');
+  });
+
+  test('sweep 2b: a search-here re-query preserves an existing selection that stays within the new bounds', async ({ page }) => {
+    const pin = await openMapWithAPin(page);
+    const testid = await pin.getAttribute('data-testid');
+    const id = testid.replace('map-pin-', '');
+    await pin.click();
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+
+    // A SMALL pan (not a recenter to some other location entirely) —
+    // small enough that the selected event's own coordinates stay well
+    // within the re-queried bounds; "Search here" is a genuine bounds-
+    // restricted re-fetch, so panning far enough away to truly exclude the
+    // event IS one of the ticket's own explicitly-endorsed clearing cases
+    // ("the underlying event actually disappearing from the data
+    // entirely") — this test is specifically about the case where it
+    // doesn't leave the queried area at all.
+    await page.waitForFunction(() => !!window.__mapExploreMapForTests);
+    await page.evaluate(() => window.__mapExploreMapForTests.panBy([15, 15], { duration: 0 }));
+    await page.waitForTimeout(150);
+    await page.evaluate(() => window.__mapExploreMapForTests.panBy([15, 15], { duration: 0 }));
+    await page.locator('[data-testid="map-search-here"]').waitFor({ timeout: 10000 });
+    await page.click('[data-testid="map-search-here"]');
+    await page.waitForTimeout(400);
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    await expect(page.locator(`[data-testid="map-pin-${id}"]`)).toHaveCSS('transform', 'matrix(1.15, 0, 0, 1.15, 0, 0)');
+  });
+
+  test('sweep 3: a live poll refresh updates the card without clearing or flickering it', async ({ page }) => {
+    const pin = await openMapWithAPin(page);
+    const testid = await pin.getAttribute('data-testid');
+    const id = testid.replace('map-pin-', '');
+    await pin.click();
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    const title = await page.locator('[data-testid="map-card-title"]').innerText();
+
+    // POLL_MS is 5000 — wait through a full cycle with no interaction.
+    await page.waitForTimeout(5600);
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    expect(await page.locator('[data-testid="map-card-title"]').innerText()).toBe(title);
+    await expect(page.locator(`[data-testid="map-pin-${id}"]`)).toHaveCSS('transform', 'matrix(1.15, 0, 0, 1.15, 0, 0)');
+  });
+
+  test('sweep 4: a filter applied before an Event Detail round trip restores independently of the selection', async ({ page }) => {
+    await setupToHome(page);
+    await page.click('[data-testid="open-map-explore"]');
+    await page.waitForSelector('[data-screen-label="MapExplore"]');
+    await page.click('[data-testid="map-cat-music"]');
+    const row = page.locator('[data-testid^="map-list-item-"]').first();
+    await row.waitFor({ timeout: 10000 });
+    const rowTestid = await row.getAttribute('data-testid');
+    const id = rowTestid.replace('map-list-item-', '');
+    await row.click();
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+
+    await page.locator('[data-testid="map-card-cta"]').click();
+    await expect(page.locator('[data-screen-label="EventDetail"], [data-screen-label="Event"]')).toBeVisible();
+    await page.locator('[data-testid="event-detail-back"]').click();
+    await page.waitForSelector('[data-screen-label="MapExplore"]', { timeout: 5000 });
+    // Let the restored pin's one-shot "pop" overshoot (`gocPinPop`, 0.32s)
+    // settle to its final resting scale before asserting on it.
+    await page.waitForTimeout(500);
+
+    // Both restored, independently — the filter didn't have to "let" the
+    // selection back in, and the selection didn't have to "let" the
+    // filter apply.
+    await expect(page.locator('[data-testid="map-cat-music"]')).toHaveCSS('font-weight', '700');
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    await expect(page.locator(`[data-testid="map-pin-${id}"]`)).toHaveCSS('transform', 'matrix(1.15, 0, 0, 1.15, 0, 0)');
+  });
+
+  test('sweep 5: switching filters at every sheet detent leaves selection/detent state uncorrupted', async ({ page }) => {
+    const pin = await openMapWithAPin(page);
+    await pin.click();
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+
+    for (const detentTestId of ['map-sheet-list-large', 'map-sheet-list-small']) {
+      await page.click(`[data-testid="${detentTestId}"]`);
+      await page.waitForTimeout(300);
+      await page.click('[data-testid="map-cat-music"]');
+      await page.waitForTimeout(150);
+      await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+      await expect(page.locator(`[data-testid="${detentTestId}"]`)).toHaveCSS('font-weight', '700');
+      await page.click('[data-testid="map-cat-all"]');
+    }
+  });
+
+  test('sweep 6: rapidly tapping several filter chips in succession leaves a card matching the last tap, never a stale one', async ({ page }) => {
+    const pin = await openMapWithAPin(page);
+    await pin.click();
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    const title = await page.locator('[data-testid="map-card-title"]').innerText();
+
+    // No waits between clicks — deliberately racy.
+    for (const key of ['supper', 'fashion', 'gallery', 'music', 'all']) {
+      await page.click(`[data-testid="map-cat-${key}"]`);
+    }
+    await expect(page.locator('[data-testid="map-cat-all"]')).toHaveCSS('font-weight', '700');
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    expect(await page.locator('[data-testid="map-card-title"]').innerText()).toBe(title);
+    // The list must match the LAST tapped filter ("Tất cả" — everything),
+    // not some intermediate one from mid-race.
+    await expect(page.locator('[data-testid^="map-list-item-"]').first()).toBeVisible();
   });
 });

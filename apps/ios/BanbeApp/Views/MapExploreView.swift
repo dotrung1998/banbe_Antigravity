@@ -224,8 +224,19 @@ struct MapExploreView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
+            // Sweep finding (11-realtime-map.md follow-up): this used to
+            // read `visibleEvents` (the LIST-filtered set) — meaning
+            // changing the category filter could make a SELECTED event's
+            // own pin vanish from the map while its card kept floating
+            // above the sheet, referencing a pin no longer shown anywhere.
+            // Web's own pins have always drawn from the full, unfiltered
+            // set regardless of category (only its LIST panel is
+            // filtered) — `mapEventsWithCoordinates` brings iOS to the
+            // same baseline `selectedEvent` (below) now also uses, so a
+            // selection's pin and its card stay consistent with each other
+            // through any filter change.
             Map(position: $cameraPosition) {
-                ForEach(visibleEvents) { ev in
+                ForEach(mapEventsWithCoordinates) { ev in
                     Annotation(ev.name, coordinate: CLLocationCoordinate2D(latitude: ev.lat ?? 0, longitude: ev.lng ?? 0)) {
                         pin(for: ev)
                     }
@@ -349,22 +360,28 @@ struct MapExploreView: View {
                 .animation(.easeOut(duration: 0.28), value: cardBottomPadding)
             }
         }
-        .onChange(of: visibleEvents.map(\.id)) { _, ids in
-            // The selected event must honor every active filter this
-            // screen has, exactly like the pins/list it was picked from —
-            // if a poll refresh or a filter change makes it fall out of
-            // `visibleEvents` (cancelled, sold out and filtered by "Còn
-            // chỗ", recategorized, or just no longer in the current bbox),
-            // the selection clears itself instead of the card going stale.
-            // No second query: this only ever reads the same
-            // `visibleEvents` the map/list already render.
+        .onChange(of: mapEventsWithCoordinates.map(\.id)) { _, ids in
+            // Design change (11-realtime-map.md follow-up): this used to
+            // key off `visibleEvents` (the LIST-filtered set) — meaning a
+            // category/open-now filter change, or even re-selecting "Tất
+            // cả", could silently clear an unrelated selection the instant
+            // it didn't match whatever filter was now active. That
+            // coupling is removed entirely, not just patched: this now
+            // reads `mapEventsWithCoordinates` (the same unfiltered
+            // baseline `selectedEvent` and the map's own pins use), so it
+            // only ever clears the selection because the underlying event
+            // is genuinely gone from the loaded data — cancelled, deleted,
+            // or no longer inside whatever bounds a poll/search-here last
+            // queried — never merely because it doesn't match the active
+            // category/open-now filter. No second query: this still only
+            // ever reads data this screen already loaded.
             //
             // Guarded on `mapEventsLoading == false`: a restored `selectedId`
             // (bug 2) is applied before `app.mapEvents` has necessarily
             // settled from its own reload, and without this guard that
             // transient "not loaded yet" state was indistinguishable from
-            // "genuinely filtered out" — the same race the web build hit
-            // and fixed the same way.
+            // "genuinely gone" — the same race the web build hit and fixed
+            // the same way.
             if !app.mapEventsLoading, let id = selectedId, !ids.contains(id) { selectedId = nil }
         }
         .onChange(of: sheetDetent) { _, _ in
@@ -693,9 +710,15 @@ struct MapExploreView: View {
 
     // MARK: - Pin/list selection: camera zoom + compact in-map preview card
 
+    /// Design change (11-realtime-map.md follow-up): reads
+    /// `mapEventsWithCoordinates` (the full, unfiltered baseline — see its
+    /// own doc comment) instead of `visibleEvents` (the LIST-filtered set)
+    /// — a selection now persists through any category/open-now filter
+    /// change instead of clearing the instant it stops matching whatever
+    /// filter is active.
     private var selectedEvent: MapEventRow? {
         guard let selectedId else { return nil }
-        return visibleEvents.first { $0.id == selectedId }
+        return mapEventsWithCoordinates.first { $0.id == selectedId }
     }
 
     /// How much of the screen the bottom sheet currently covers, read back
@@ -907,10 +930,22 @@ struct MapExploreView: View {
         .onTapGesture { selectEvent(ev) }
     }
 
+    /// Sweep finding (11-realtime-map.md follow-up): the full, unfiltered
+    /// set of loaded events that have coordinates to place on the map at
+    /// all — the SAME baseline the map's own pins (`body`, above) and
+    /// `selectedEvent`/its clearing effect now use, mirroring web's
+    /// identical `events` (which never even loads rows missing lat/lng, via
+    /// its own SQL query). Only `visibleEvents` (below — the LIST panel)
+    /// is further filtered by category/open-now/distance; selecting is
+    /// deliberately never coupled to that narrower set.
+    private var mapEventsWithCoordinates: [MapEventRow] {
+        app.mapEvents.filter { $0.lat != nil && $0.lng != nil }
+    }
+
     // MARK: - List
 
     private var visibleEvents: [MapEventRow] {
-        var list = app.mapEvents.filter { $0.lat != nil && $0.lng != nil }
+        var list = mapEventsWithCoordinates
         if catFilter != "all" { list = list.filter { effectiveCatKey($0) == catFilter } }
         if openNowOnly { list = list.filter { ($0.seatsRemaining ?? 0) > 0 } }
         if sortByDistance, let coords = app.userCoords {

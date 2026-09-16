@@ -409,9 +409,23 @@ export default function MapExplore() {
     return list;
   }, [events, catFilter, openNowOnly, sortByDistance, s.userCoords]);
 
+  // Design change (11-realtime-map.md follow-up): the selected event's
+  // preview card is intentionally decoupled from the list's active filter.
+  // This used to read `visibleEvents` (the FILTERED list) — meaning
+  // selecting an event, then tapping ANY filter chip (including "Tất cả"
+  // itself, since the underlying `events`/`visibleEvents` identity changes
+  // on every render regardless), silently cleared the card the instant the
+  // selection didn't happen to match whatever filter was now active.
+  // Reading the FULL, unfiltered `events` here instead — the exact same
+  // data source the map's own pins already draw from regardless of
+  // category (see the marker-drawing effect below, `for (const ev of
+  // events)`, never `visibleEvents`) — means a selection now persists
+  // through any filter change, and (since this is the ONLY place
+  // `visibleEvents` fed into the selection at all) a current selection can
+  // never narrow or otherwise affect what the list itself shows either.
   const selectedEvent = useMemo(
-    () => (selectedId ? visibleEvents.find(e => e.id === selectedId) || null : null),
-    [visibleEvents, selectedId],
+    () => (selectedId ? events.find(e => e.id === selectedId) || null : null),
+    [events, selectedId],
   );
 
   // Task 2b (11-realtime-map.md follow-up): reuses the EXACT SAME
@@ -435,19 +449,24 @@ export default function MapExplore() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catFilter]);
 
-  // The selected event must honor every active filter this screen has
-  // (category, open-now, and whichever the freshness poll's latest
-  // response still contains) exactly like the pins/list it was picked
-  // from — if a poll refresh or a filter change makes it fall out of
-  // `visibleEvents` (cancelled, sold out and filtered by "Còn chỗ",
-  // recategorized, or just no longer in the current bbox), the selection
-  // clears itself instead of the card going stale. No second query: this
-  // only ever reads the same `visibleEvents` the map/list already render.
+  // Design change (11-realtime-map.md follow-up): this effect used to key
+  // off `visibleEvents` (via the old `selectedEvent` derivation above) —
+  // the FILTERED list — which meant a category/open-now filter change, or
+  // even re-selecting "Tất cả", could silently clear an unrelated
+  // selection the instant it didn't match whatever filter was now active.
+  // That coupling is removed entirely, not just patched: `selectedEvent`
+  // is now derived from the FULL, unfiltered `events` (above), so this
+  // effect only ever clears the selection because the underlying event
+  // itself is genuinely gone from the loaded data — cancelled, deleted, or
+  // (a poll re-query) no longer inside whatever bounds were last queried —
+  // never merely because it doesn't match the active category/open-now
+  // filter. No second query: this still only ever reads the same `events`
+  // the map's own pins already draw from regardless of filter.
   //
   // Guarded on `!loading`: a restored `selectedId` (bug 2) is set on the
   // very first render, before the initial fetchLiveEvents() call has
-  // resolved — `events`/`visibleEvents` are still `[]` at that instant, so
-  // `selectedEvent` is momentarily null too. Without this guard, that
+  // resolved — `events` is still `[]` at that instant, so `selectedEvent`
+  // is momentarily null too. Without this guard, that
   // transient "not loaded yet" state was indistinguishable from "genuinely
   // filtered out" and cleared the restored selection before its own data
   // even arrived, every single time.
