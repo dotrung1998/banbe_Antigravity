@@ -71,3 +71,26 @@ struct MapEventRow: Codable, Identifiable, Hashable {
         case status
     }
 }
+
+/// MapExploreView's own local state, saved onto `AppState.mapExploreState`
+/// right before navigating to Event Detail and restored on return — see
+/// that property's own doc comment and `.claude/notes/11-realtime-map.md`
+/// (bug 2). Plain data, not `Codable`/persisted anywhere beyond memory —
+/// this only needs to survive one screen's round trip within a single app
+/// session, not a relaunch.
+struct MapExploreState {
+    var cameraCenterLat: Double
+    var cameraCenterLng: Double
+    var cameraSpanLat: Double
+    var cameraSpanLng: Double
+    /// One of the three literal fractions `MapExploreView.sheetContent`'s
+    /// `.presentationDetents` declares (0.12/0.45/0.72) — see that view's
+    /// own `sheetFraction`/`detent(for:)` for why a plain Double is used
+    /// instead of storing `PresentationDetent` directly (it isn't a type
+    /// this struct can hold a stable literal of across platform versions).
+    var sheetFraction: Double
+    var catFilter: String
+    var openNowOnly: Bool
+    var sortByDistance: Bool
+    var selectedId: String?
+}

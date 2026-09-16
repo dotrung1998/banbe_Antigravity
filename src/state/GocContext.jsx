@@ -277,6 +277,15 @@ const initialState = {
   attendanceLoading: false,
   // { url, organizer, eventKey } while a gallery photo is open in the viewer.
   photoViewer: null,
+  // Snapshot of MapExplore.jsx's own local state (camera center/zoom, sheet
+  // detent, filters, selected event, list scroll position), saved right
+  // before navigating to Event Detail from the in-map preview card's CTA so
+  // MapExplore can restore it instead of re-initializing from scratch on
+  // return — App.jsx's Shell unmounts/remounts the whole screen component
+  // on every `screen` change, so this has to live up here to survive that.
+  // Explicitly cleared (not just left stale) on an intentional exit via the
+  // "← Đóng" button, so reopening the map from Home later starts fresh.
+  mapExploreState: null,
   // Liked photo URLs. Local-only: there's no table to hang a photo like on,
   // and inventing one would mean a migration that isn't live yet.
   photoLikes: [],
@@ -1706,6 +1715,11 @@ export function GocProvider({ children }) {
   const goHome = useCallback(() => set({ screen: 'home' }), [set]);
   const goMapExplore = useCallback(() => set({ screen: 'mapExplore' }), [set]);
   const backFromMapExplore = useCallback(() => set({ screen: 'home' }), [set]);
+  // Plain setter, not map-specific logic — MapExplore.jsx owns deciding
+  // *when* to save (right before its CTA navigates to Event Detail) and
+  // when to clear (its own "← Đóng" wrapper), this just holds the snapshot
+  // across the unmount/remount that switching `screen` away and back causes.
+  const setMapExploreState = useCallback((snapshot) => set({ mapExploreState: snapshot }), [set]);
   const goProfile = useCallback(() => set({ screen: 'profile' }), [set]);
   const goInbox = useCallback(() => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'inbox', authBackScreen: 'home' });
@@ -2762,7 +2776,7 @@ export function GocProvider({ children }) {
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
-    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore,
+    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
     loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof,
@@ -2791,7 +2805,7 @@ export function GocProvider({ children }) {
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
-    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore,
+    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState,
     goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
     loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof,

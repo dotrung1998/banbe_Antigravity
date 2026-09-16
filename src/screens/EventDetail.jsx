@@ -60,7 +60,7 @@ export default function EventDetail() {
       <div style={{ position: 'relative', height: 400 }}>
         <div style={bg(ev.img, { width: '100%', height: '100%', borderRadius: 0 })} />
         <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 78, pointerEvents: 'none', background: `linear-gradient(to bottom, rgba(247,244,236,0) 0%, rgba(247,244,236,0.3) 62%, ${paper} 100%)` }} />
-        <div onClick={backFromEvent} style={photoPill({ top: 66, left: 16, padding: '8px 13px' })}>‹ {backLabel}</div>
+        <div onClick={backFromEvent} data-testid="event-detail-back" style={photoPill({ top: 66, left: 16, padding: '8px 13px' })}>‹ {backLabel}</div>
         <div onClick={() => shareEvent(ev)} style={photoPill({ top: 66, right: 16, padding: '8px 13px' })}>
           {s.shared ? T('Đã sao chép link', 'Link copied') : T('Chia sẻ', 'Share')}
         </div>

@@ -67,23 +67,34 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
 }
 
 export default function MapExplore() {
-  const { state: s, T, goEvent, backFromMapExplore, allowLocation } = useGoc();
+  const { state: s, T, goEvent, backFromMapExplore, allowLocation, setMapExploreState } = useGoc();
+  // Restored once, at mount, if MapExplore.jsx's own CTA saved a snapshot
+  // right before navigating to Event Detail (bug 2) — App.jsx's Shell
+  // unmounts/remounts this whole component on every `screen` change, so
+  // without this every local useState below would just reset to its
+  // hardcoded default the instant the user comes back. Read into a ref
+  // once so later renders (after the snapshot is consumed/cleared) don't
+  // keep re-reading a stale closure.
+  const restoredRef = useRef(s.mapExploreState);
+  const restored = restoredRef.current;
   const mapDivRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
+  const listRef = useRef(null);
+  const listScrollRestoredRef = useRef(false);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [catFilter, setCatFilter] = useState('all');
-  const [openNowOnly, setOpenNowOnly] = useState(false);
-  const [sortByDistance, setSortByDistance] = useState(false);
-  const [sheetSnap, setSheetSnap] = useState('tall');
+  const [catFilter, setCatFilter] = useState(() => restored?.catFilter ?? 'all');
+  const [openNowOnly, setOpenNowOnly] = useState(() => restored?.openNowOnly ?? false);
+  const [sortByDistance, setSortByDistance] = useState(() => restored?.sortByDistance ?? false);
+  const [sheetSnap, setSheetSnap] = useState(() => restored?.sheetSnap ?? 'tall');
   const [boundsChanged, setBoundsChanged] = useState(false);
   const [page, setPage] = useState(0);
   const lastQueriedBounds = useRef(null);
   // The pin/list-row currently showing the compact in-map preview card —
   // null when nothing is selected. Not a second data source: it's just an
   // id into the same `events`/`visibleEvents` this screen already loads.
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(() => restored?.selectedId ?? null);
   const lastAnimatedPinIdRef = useRef(null);
   // Hoisted above the sheet-drag section below (which also reads/writes
   // dragOffsetVh) purely so selectEvent() — defined before that section —
@@ -91,6 +102,19 @@ export default function MapExplore() {
   const [dragOffsetVh, setDragOffsetVh] = useState(0);
   const mapStripFraction = Math.min(0.95, Math.max(0.05, SHEET_SNAPS[sheetSnap] + dragOffsetVh));
   const sheetTopVh = mapStripFraction * 100;
+  // Bug 1 fix: the selected-event preview card's own vertical anchor is
+  // deliberately NOT tied to the sheet's continuous, freely-dragged
+  // position above — only two states exist for the card: "upper" (used for
+  // BOTH tall and mid, so it never gets pulled down into the middle of the
+  // screen just because the sheet is at mid) and "lower" (only once the
+  // sheet is genuinely all the way down at peek). `mapStripFraction`
+  // (which does vary continuously while dragging) is still exactly what
+  // the SHEET itself uses for its own `top`, and still what the camera
+  // padding below reads for a precise "how much of the screen is the sheet
+  // covering right now" — only the CARD's anchor is pinned to the nearest
+  // snap point instead.
+  const cardAnchorFraction = sheetSnap === 'peek' ? SHEET_SNAPS.peek : SHEET_SNAPS.tall;
+  const cardBottomVh = (1 - cardAnchorFraction) * 100;
 
   // ---- location permission state (drives the compass button's opacity) ----
   const [locPermission, setLocPermission] = useState('prompt'); // 'granted' | 'denied' | 'prompt'
@@ -145,6 +169,15 @@ export default function MapExplore() {
 
   const clearSelection = useCallback(() => setSelectedId(null), []);
 
+  // Once a restored snapshot has been read into `restoredRef` (above), clear
+  // context's own copy — it's served its purpose for this mount, and
+  // leaving it sitting in context risks a second, unrelated mount
+  // mistakenly reusing the exact same snapshot later.
+  useEffect(() => {
+    if (restored) setMapExploreState(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ---- initial load: density-hotspot center (never the user's own GPS), then draw the map ----
   useEffect(() => {
     let active = true;
@@ -154,7 +187,14 @@ export default function MapExplore() {
       setEvents(initial);
       setLoading(false);
 
-      const center = densityHotspot(initial.map(e => ({ lat: e.lat, lng: e.lng }))) || { lat: 10.7769, lng: 106.7009 };
+      // Bug 2: a restored camera center takes priority over density-hotspot
+      // centering — re-running that computation on every return from Event
+      // Detail would silently discard exactly where the user had the map
+      // (possibly after their own manual pan/zoom), even though the whole
+      // point of restoring is "don't re-initialize." Hotspot centering only
+      // ever runs for a genuinely fresh visit (no restored snapshot).
+      const center = restored?.cameraCenter
+        || densityHotspot(initial.map(e => ({ lat: e.lat, lng: e.lng }))) || { lat: 10.7769, lng: 106.7009 };
 
       // maplibre-gl 6.x ships pure named ESM exports — there is no
       // `default` export. `(await import(...)).default` was silently
@@ -187,7 +227,7 @@ export default function MapExplore() {
         container: mapDivRef.current,
         style: 'https://tiles.openfreemap.org/styles/positron',
         center: [center.lng, center.lat],
-        zoom: 13,
+        zoom: restored?.cameraZoom ?? 13,
       });
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
       map.on('moveend', () => {
@@ -298,9 +338,71 @@ export default function MapExplore() {
   // recategorized, or just no longer in the current bbox), the selection
   // clears itself instead of the card going stale. No second query: this
   // only ever reads the same `visibleEvents` the map/list already render.
+  //
+  // Guarded on `!loading`: a restored `selectedId` (bug 2) is set on the
+  // very first render, before the initial fetchLiveEvents() call has
+  // resolved — `events`/`visibleEvents` are still `[]` at that instant, so
+  // `selectedEvent` is momentarily null too. Without this guard, that
+  // transient "not loaded yet" state was indistinguishable from "genuinely
+  // filtered out" and cleared the restored selection before its own data
+  // even arrived, every single time.
   useEffect(() => {
-    if (selectedId && !selectedEvent) setSelectedId(null);
-  }, [selectedId, selectedEvent]);
+    if (!loading && selectedId && !selectedEvent) setSelectedId(null);
+  }, [loading, selectedId, selectedEvent]);
+
+  // Bug 2: best-effort list-scroll restore — once, the first time the list
+  // actually has rows to scroll through. A plain scrollTop pixel value
+  // (unlike a SwiftUI List's opaque scroll position) round-trips exactly
+  // on web, so this restores precisely rather than approximately.
+  useEffect(() => {
+    if (listScrollRestoredRef.current) return;
+    if (!restored?.listScrollTop || visibleEvents.length === 0) return;
+    if (listRef.current) listRef.current.scrollTop = restored.listScrollTop;
+    listScrollRestoredRef.current = true;
+  }, [visibleEvents, restored]);
+
+  // Bug 1 (camera half): "the selected pin must remain visible ... at all
+  // detents" — re-applies the padding (not the center/zoom, so this never
+  // re-triggers the selection pop or re-centers unnecessarily) whenever the
+  // sheet's snap state itself changes while something stays selected, e.g.
+  // selecting at "tall" then switching to "List nhỏ" afterward.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !selectedEvent) return;
+    const sheetPx = window.innerHeight * (1 - mapStripFraction);
+    const CARD_ALLOWANCE = 150;
+    map.easeTo({ padding: { top: 80, bottom: sheetPx + CARD_ALLOWANCE, left: 30, right: 30 }, duration: 300 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetSnap]);
+
+  // Bug 2: snapshot everything MapExplore itself owns right before handing
+  // off to the full-screen Event Detail screen, so returning restores it
+  // instead of re-initializing from scratch. Saved into GocContext (not
+  // local state) because App.jsx's Shell unmounts this whole component the
+  // instant `screen` changes away from 'mapExplore'.
+  const openEventDetail = useCallback((id) => {
+    const map = mapRef.current;
+    const center = map?.getCenter();
+    setMapExploreState({
+      cameraCenter: center ? { lat: center.lat, lng: center.lng } : null,
+      cameraZoom: map?.getZoom() ?? null,
+      sheetSnap,
+      catFilter,
+      openNowOnly,
+      sortByDistance,
+      selectedId,
+      listScrollTop: listRef.current?.scrollTop ?? 0,
+    });
+    goEvent(id);
+  }, [sheetSnap, catFilter, openNowOnly, sortByDistance, selectedId, goEvent, setMapExploreState]);
+
+  // An explicit exit (as opposed to "on my way to Event Detail, be right
+  // back") clears the snapshot — reopening the map later from Home should
+  // start fresh, not silently resume a session from an unrelated visit.
+  const closeMap = useCallback(() => {
+    setMapExploreState(null);
+    backFromMapExplore();
+  }, [setMapExploreState, backFromMapExplore]);
 
   // ---- drag-to-resize bottom sheet (pointer events, translateY, snap on release) ----
   const sheetRef = useRef(null);
@@ -308,7 +410,17 @@ export default function MapExplore() {
 
   const onHandlePointerDown = (e) => {
     dragState.current = { startY: e.clientY, startSnap: SHEET_SNAPS[sheetSnap] };
-    sheetRef.current?.setPointerCapture(e.pointerId);
+    // Capture on the handle itself (`e.currentTarget`, the element this
+    // handler is actually attached to) — capturing on `sheetRef`'s outer
+    // container instead was a real, pre-existing bug: pointer capture
+    // retargets subsequent pointermove/pointerup events to the CAPTURING
+    // element and bubbles from there, so with the sheet (an ancestor of
+    // this handle) as the capture target, those events could never reach
+    // this handle's own onPointerMove/onPointerUp at all — the drag never
+    // progressed past the very first pixel. Confirmed by instrumenting a
+    // real drag end-to-end (the sheet's own `top` never changed no matter
+    // how far or slow the drag), not just inferred from reading the code.
+    e.currentTarget.setPointerCapture(e.pointerId);
   };
   const onHandlePointerMove = (e) => {
     if (!dragState.current) return;
@@ -331,7 +443,7 @@ export default function MapExplore() {
     <div style={{ position: 'fixed', inset: 0, background: paper }} data-screen-label="MapExplore">
       <div ref={mapDivRef} style={{ position: 'absolute', inset: 0 }} />
 
-      <div onClick={backFromMapExplore} data-testid="map-back" style={{ ...photoPill({}), top: 16, left: 16, padding: '8px 12px' }}>
+      <div onClick={closeMap} data-testid="map-back" style={{ ...photoPill({}), top: 16, left: 16, padding: '8px 12px' }}>
         ← {T('Đóng', 'Close')}
       </div>
 
@@ -353,19 +465,19 @@ export default function MapExplore() {
         </div>
       )}
 
-      {/* Compact in-map preview — never a full-screen modal. Anchored just
-          above the sheet's OWN current top edge (the same sheetTopVh that
-          positions the sheet itself below), so it automatically sits in a
-          sensible spot in both List lớn (near the top third, well clear of
-          the sheet's filter/list controls) and List nhỏ (a thin strip just
-          above the peeking sheet, without covering the map) — one rule,
-          not two special-cased layouts. */}
+      {/* Compact in-map preview — never a full-screen modal. Anchored to the
+          card's own two-state anchor (bug 1: "upper" for both tall/mid so
+          it never gets pulled down mid-screen just because the sheet moved
+          to mid; "lower", tucked above the sheet, only once the sheet is
+          genuinely at peek) — not the sheet's continuously-dragged
+          position, which is what caused the card to slide down early. */}
       {selectedEvent && (
         <div
           data-testid="map-selected-card"
           style={{
             ...cardGlass({}), position: 'absolute', left: 16, right: 16,
-            bottom: `calc(${100 - sheetTopVh}vh + 10px)`,
+            bottom: `calc(${cardBottomVh}vh + 10px)`,
+            transition: 'bottom 0.28s cubic-bezier(.22,.61,.36,1)',
             padding: 12, display: 'flex', flexDirection: 'column', gap: 10,
             boxShadow: '0 10px 28px rgba(27,25,22,0.22)',
           }}
@@ -395,7 +507,7 @@ export default function MapExplore() {
             </div>
           </div>
           <div
-            onClick={() => goEvent(selectedEvent.id)}
+            onClick={() => openEventDetail(selectedEvent.id)}
             data-testid="map-card-cta"
             style={{ ...inkButton({}), padding: '10px 0', fontSize: 13 }}
           >
@@ -409,16 +521,30 @@ export default function MapExplore() {
         style={{
           position: 'absolute', left: 0, right: 0, bottom: 0, top: `${sheetTopVh}vh`,
           background: paper, borderRadius: '20px 20px 0 0', boxShadow: '0 -6px 24px rgba(27,25,22,0.18)',
-          display: 'flex', flexDirection: 'column', touchAction: 'none',
+          display: 'flex', flexDirection: 'column',
           transition: dragState.current ? 'none' : 'top 0.28s cubic-bezier(.22,.61,.36,1)',
         }}
       >
+        {/* Bug 3: `touchAction: 'none'` used to sit on the WHOLE sheet div
+            above — since touch-action's "used value" for a touch is the
+            intersection of the touched element's own value AND every
+            ancestor's, an ancestor declaring 'none' disables native touch
+            scrolling for every descendant too, including the list further
+            down, regardless of that list's own (default/auto) touch-action.
+            That's what made the list unscrollable at mid: the drag-vs-scroll
+            *pointer handlers* were already correctly scoped to just this
+            handle (never attached to the sheet or the list), only the CSS
+            was too broad. Scoping `touchAction: 'none'` to just this small
+            handle element — the only thing that actually needs to suppress
+            the browser's native pan/scroll to do its own pointer-based
+            drag — leaves the list with its default touch-action, so it
+            scrolls normally at every detent. */}
         <div
           onPointerDown={onHandlePointerDown}
           onPointerMove={onHandlePointerMove}
           onPointerUp={onHandlePointerUp}
           data-testid="map-sheet-handle"
-          style={{ padding: '10px 0 6px', display: 'flex', justifyContent: 'center', cursor: 'grab' }}
+          style={{ padding: '10px 0 6px', display: 'flex', justifyContent: 'center', cursor: 'grab', touchAction: 'none' }}
         >
           <div style={{ width: 36, height: 4, borderRadius: 2, background: rule }} />
         </div>
@@ -479,6 +605,8 @@ export default function MapExplore() {
         </div>
 
         <div
+          ref={listRef}
+          data-testid="map-list-scroll"
           style={{ flex: 1, overflowY: 'auto', padding: '0 16px 24px' }}
           onScroll={(e) => {
             const el = e.currentTarget;

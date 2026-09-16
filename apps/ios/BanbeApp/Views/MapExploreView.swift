@@ -31,6 +31,13 @@ struct MapExploreView: View {
     // Non-nil only for the brief overshoot phase of the selection "pop" —
     // see `selectEvent(_:)`.
     @State private var poppingId: String?
+    // Bug 3: drag-to-resize is scoped to this custom handle only (not the
+    // sheet or the List) — see `dragHandle`.
+    @State private var handleDragStartFraction: Double?
+    // Bug 2: true for exactly one pass through `.task` after a restore, so
+    // the list-scroll-to-selection below fires once, not on every later
+    // `visibleEvents` change.
+    @State private var pendingScrollToRestoredSelection = false
 
     private let categories: [(key: String, vi: String, en: String, glyph: String)] = [
         ("all", "Tất cả", "All", "▪︎"),
@@ -64,7 +71,7 @@ struct MapExploreView: View {
             .ignoresSafeArea()
 
             HStack {
-                Button { app.goBack() } label: {
+                Button { closeMap() } label: {
                     Text(app.T("← Đóng", "← Close"))
                         .font(.system(size: 13, weight: .semibold))
                         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -112,21 +119,21 @@ struct MapExploreView: View {
                 .padding(.top, 8)
             }
 
-            // Compact in-map preview — never a full-screen modal. Anchored
-            // just above the sheet's OWN current fraction (sheetFraction,
-            // derived from sheetDetent below), so it automatically sits in
-            // a sensible spot at every detent: near the top third in the
-            // tall/0.72 detent (well clear of the sheet's own filter/list
-            // controls), and a thin strip just above the small 0.12 peek
-            // detent (without covering the map) — one rule, not two
-            // special-cased layouts.
+            // Compact in-map preview — never a full-screen modal. Bug 1
+            // fix: anchored to `cardAnchorFraction`, NOT the sheet's raw,
+            // continuously-varying `sheetFraction` — the card only has two
+            // resting positions ("upper", used for both tall AND mid, so
+            // it never gets pulled down mid-screen just because the sheet
+            // moved to mid; "lower", only once the sheet is genuinely at
+            // peek), matching the web build's identical fix.
             if let ev = selectedEvent {
                 VStack {
                     Spacer()
                     selectedCard(ev)
                         .padding(.bottom, 8)
                 }
-                .padding(.bottom, UIScreen.main.bounds.height * sheetFraction)
+                .padding(.bottom, UIScreen.main.bounds.height * cardAnchorFraction)
+                .animation(.easeOut(duration: 0.28), value: cardAnchorFraction)
             }
         }
         .onChange(of: visibleEvents.map(\.id)) { _, ids in
@@ -138,18 +145,50 @@ struct MapExploreView: View {
             // the selection clears itself instead of the card going stale.
             // No second query: this only ever reads the same
             // `visibleEvents` the map/list already render.
-            if let id = selectedId, !ids.contains(id) { selectedId = nil }
+            //
+            // Guarded on `mapEventsLoading == false`: a restored `selectedId`
+            // (bug 2) is applied before `app.mapEvents` has necessarily
+            // settled from its own reload, and without this guard that
+            // transient "not loaded yet" state was indistinguishable from
+            // "genuinely filtered out" — the same race the web build hit
+            // and fixed the same way.
+            if !app.mapEventsLoading, let id = selectedId, !ids.contains(id) { selectedId = nil }
+        }
+        .onChange(of: sheetDetent) { _, _ in
+            // Bug 1 (camera half): re-applies the region shift (not a full
+            // re-center/zoom, so this never replays the selection pop)
+            // whenever the sheet's detent itself changes while something
+            // stays selected — e.g. selecting at tall, then switching to
+            // peek afterward.
+            if let ev = selectedEvent { reapplyCameraOffset(for: ev) }
         }
         .sheet(isPresented: .constant(true)) {
             sheetContent
                 .presentationDetents([.fraction(0.12), .fraction(0.45), .fraction(0.72)], selection: $sheetDetent)
-                .presentationDragIndicator(.visible)
+                // Bug 3: the system's own drag indicator is hidden in favor
+                // of `dragHandle` inside `sheetContent` — see that view's
+                // own comment for why a handle-only custom gesture is used
+                // instead of relying on the system's built-in drag-to-resize
+                // recognizer, which is what was intercepting the List's own
+                // scroll at the mid detent.
+                .presentationDragIndicator(.hidden)
                 .presentationBackgroundInteraction(.enabled)
                 .interactiveDismissDisabled()
         }
         .task {
+            // Bug 2: a snapshot saved by `openEventDetail(_:)` right before
+            // leaving for Event Detail takes priority over density-hotspot
+            // centering — re-running that computation on every return would
+            // silently discard exactly where the user had the map (possibly
+            // after their own manual pan/zoom too), even though the whole
+            // point of restoring is "don't re-initialize."
             await app.loadMapEvents()
-            centerOnDensityHotspot()
+            if let saved = app.mapExploreState {
+                applyRestoredState(saved)
+                app.mapExploreState = nil
+            } else {
+                centerOnDensityHotspot()
+            }
         }
         .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in
             Task { await app.loadMapEvents(bounds: lastQueriedRegion.map(boundsOf)) }
@@ -163,6 +202,85 @@ struct MapExploreView: View {
             awaitingRecenterAfterGrant = false
             recenterOnUser()
         }
+    }
+
+    // MARK: - Bug 1: card's two-state vertical anchor
+
+    /// Deliberately NOT the continuously-varying `sheetFraction` — only two
+    /// resting positions exist for the card (see the `body` comment above).
+    private var cardAnchorFraction: Double {
+        sheetDetent == .fraction(0.12) ? 0.12 : 0.72
+    }
+
+    private func reapplyCameraOffset(for ev: MapEventRow) {
+        guard let lat = ev.lat, let lng = ev.lng else { return }
+        let zoomSpan = 0.01
+        let visibleFraction = 1 - sheetFraction
+        let desiredScreenFraction = visibleFraction * 0.38
+        let latShift = zoomSpan * (0.5 - desiredScreenFraction)
+        withAnimation(.easeInOut(duration: 0.3)) {
+            cameraPosition = .region(MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: lat - latShift, longitude: lng),
+                span: MKCoordinateSpan(latitudeDelta: zoomSpan, longitudeDelta: zoomSpan)
+            ))
+        }
+    }
+
+    // MARK: - Bug 2: retained navigation state across Event Detail
+
+    /// One of the three literal `.presentationDetents` fractions, read back
+    /// from either a stored `Double` (restore) or `sheetDetent` (equality
+    /// against the same three literals — see `sheetFraction` below).
+    private func detent(for fraction: Double) -> PresentationDetent {
+        if fraction == 0.12 { return .fraction(0.12) }
+        if fraction == 0.45 { return .fraction(0.45) }
+        return .fraction(0.72)
+    }
+
+    /// Snapshots everything this view owns right before handing off to the
+    /// full-screen Event Detail screen, so returning restores it instead of
+    /// re-initializing from scratch. Saved onto `AppState` (not kept only
+    /// here) because RootView recreates this whole view the instant
+    /// `screen` changes away from `.mapExplore`.
+    private func openEventDetail(_ id: String) {
+        let region = lastQueriedRegion
+        app.mapExploreState = MapExploreState(
+            cameraCenterLat: region?.center.latitude ?? 10.7769,
+            cameraCenterLng: region?.center.longitude ?? 106.7009,
+            cameraSpanLat: region?.span.latitudeDelta ?? 0.05,
+            cameraSpanLng: region?.span.longitudeDelta ?? 0.05,
+            sheetFraction: sheetFraction,
+            catFilter: catFilter,
+            openNowOnly: openNowOnly,
+            sortByDistance: sortByDistance,
+            selectedId: selectedId
+        )
+        app.goEvent(id)
+    }
+
+    /// An explicit exit (as opposed to "on my way to Event Detail, be right
+    /// back") clears the snapshot — reopening the map later from Home
+    /// should start fresh, not silently resume an unrelated past session.
+    private func closeMap() {
+        app.mapExploreState = nil
+        app.goBack()
+    }
+
+    private func applyRestoredState(_ saved: MapExploreState) {
+        initialCenterSet = true // skip density-hotspot centering
+        cameraPosition = .region(MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: saved.cameraCenterLat, longitude: saved.cameraCenterLng),
+            span: MKCoordinateSpan(latitudeDelta: saved.cameraSpanLat, longitudeDelta: saved.cameraSpanLng)
+        ))
+        sheetDetent = detent(for: saved.sheetFraction)
+        catFilter = saved.catFilter
+        openNowOnly = saved.openNowOnly
+        sortByDistance = saved.sortByDistance
+        selectedId = saved.selectedId
+        // Best-effort list-scroll restore (SwiftUI's List has no pixel
+        // scrollTop to round-trip the way a web scroll container does) —
+        // scroll the restored selection back into view once its row exists.
+        if saved.selectedId != nil { pendingScrollToRestoredSelection = true }
     }
 
     // MARK: - Density-hotspot initial center
@@ -268,7 +386,7 @@ struct MapExploreView: View {
                     }
                 }
             }
-            Button(action: { app.goEvent(ev.id) }) {
+            Button(action: { openEventDetail(ev.id) }) {
                 Text(app.T("Xem chi tiết", "View details"))
                     .font(.system(size: 13, weight: .semibold))
                     .frame(maxWidth: .infinity)
@@ -397,8 +515,42 @@ struct MapExploreView: View {
         return 6371 * 2 * atan2(sqrt(h), sqrt(1 - h))
     }
 
+    // Bug 3: this small capsule is the ONLY thing a sheet-resize drag is
+    // recognized from — no gesture is attached to the sheet as a whole or
+    // to the List below, so a drag that begins anywhere in the list's
+    // actual content is never competed for at all; it's just a normal
+    // ScrollView-driven scroll. `minimumDistance: 2` (not 0) keeps a plain
+    // tap on the handle from being misread as a zero-length drag.
+    private var dragHandle: some View {
+        Capsule()
+            .fill(app.palette.rule)
+            .frame(width: 36, height: 4)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { _ in
+                        if handleDragStartFraction == nil { handleDragStartFraction = sheetFraction }
+                    }
+                    .onEnded { value in
+                        let start = handleDragStartFraction ?? sheetFraction
+                        let deltaFraction = value.translation.height / UIScreen.main.bounds.height
+                        let current = start + deltaFraction
+                        let nearest = detentFractions.min(by: { abs($0 - current) < abs($1 - current) }) ?? 0.72
+                        withAnimation(.easeOut(duration: 0.25)) { sheetDetent = detent(for: nearest) }
+                        handleDragStartFraction = nil
+                    }
+            )
+            .accessibilityIdentifier("map.sheet.handle")
+    }
+
+    private let detentFractions: [Double] = [0.12, 0.45, 0.72]
+
     private var sheetContent: some View {
         VStack(spacing: 0) {
+            dragHandle
+
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(categories, id: \.key) { cat in
@@ -431,33 +583,46 @@ struct MapExploreView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
 
-            List(visibleEvents) { ev in
-                HStack(spacing: 12) {
-                    // Same left-side thumbnail every other event card in
-                    // this app uses (CatalogPhoto -> RemoteImage ->
-                    // PhotoLoader) — was missing here entirely (bug 1,
-                    // 11-realtime-map.md). The map screen's own rows only
-                    // carry the live DB columns (no `img`), so the cosmetic
-                    // photo path is joined back from the bundled catalogue
-                    // by id, same as the price/img join the web build does
-                    // in MapExplore.jsx's fetchLiveEvents().
-                    if let path = EventCatalog.find(ev.id)?.img {
-                        CatalogPhoto(path: path, height: 52, width: 52, cornerRadius: 10)
+            ScrollViewReader { proxy in
+                List(visibleEvents) { ev in
+                    HStack(spacing: 12) {
+                        // Same left-side thumbnail every other event card in
+                        // this app uses (CatalogPhoto -> RemoteImage ->
+                        // PhotoLoader) — was missing here entirely (bug 1,
+                        // 11-realtime-map.md). The map screen's own rows only
+                        // carry the live DB columns (no `img`), so the cosmetic
+                        // photo path is joined back from the bundled catalogue
+                        // by id, same as the price/img join the web build does
+                        // in MapExplore.jsx's fetchLiveEvents().
+                        if let path = EventCatalog.find(ev.id)?.img {
+                            CatalogPhoto(path: path, height: 52, width: 52, cornerRadius: 10)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(ev.name).font(.system(size: 14, weight: .semibold))
+                            Text(ev.area + (sortByDistance ? distanceSuffix(ev) : ""))
+                                .font(.system(size: 11)).opacity(0.6)
+                        }
+                        Spacer()
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(ev.name).font(.system(size: 14, weight: .semibold))
-                        Text(ev.area + (sortByDistance ? distanceSuffix(ev) : ""))
-                            .font(.system(size: 11)).opacity(0.6)
+                    .id(ev.id)
+                    .contentShape(Rectangle())
+                    .onTapGesture { selectEvent(ev) }
+                    .onAppear {
+                        if ev.id == visibleEvents.last?.id { Task { await app.loadMapEvents(bounds: lastQueriedRegion.map(boundsOf)) } }
                     }
-                    Spacer()
                 }
-                .contentShape(Rectangle())
-                .onTapGesture { selectEvent(ev) }
-                .onAppear {
-                    if ev.id == visibleEvents.last?.id { Task { await app.loadMapEvents(bounds: lastQueriedRegion.map(boundsOf)) } }
+                .listStyle(.plain)
+                .onChange(of: visibleEvents.map(\.id)) { _, ids in
+                    // Bug 2 (best-effort list-scroll restore): SwiftUI's
+                    // List has no pixel scrollTop to round-trip the way a
+                    // web scroll container does, so this restores by
+                    // scrolling the previously-selected row back into view
+                    // instead, once its data actually exists to scroll to.
+                    guard pendingScrollToRestoredSelection, let id = selectedId, ids.contains(id) else { return }
+                    pendingScrollToRestoredSelection = false
+                    proxy.scrollTo(id, anchor: .top)
                 }
             }
-            .listStyle(.plain)
         }
         .foregroundStyle(app.palette.ink)
     }

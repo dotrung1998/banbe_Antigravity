@@ -107,3 +107,100 @@ test.describe('Map Explore — pin/list selection', () => {
     }
   });
 });
+
+// Drags the sheet handle by `dyPx` (positive = downward, toward peek).
+async function dragHandle(page, dyPx) {
+  const handle = page.locator('[data-testid="map-sheet-handle"]');
+  const box = await handle.boundingBox();
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y + dyPx, { steps: 10 });
+  await page.mouse.up();
+}
+
+test.describe('Map Explore — bug fixes (card anchor, state restore, mid-detent scrolling)', () => {
+  test('bug 1: the preview card stays in the upper area at both tall and mid, and only moves down at peek', async ({ page }) => {
+    const pin = await openMapWithAPin(page);
+    await pin.click();
+    const card = page.locator('[data-testid="map-selected-card"]');
+    await expect(card).toBeVisible();
+    const tallBox = await card.boundingBox();
+
+    // Drag from tall toward mid (roughly a quarter of the viewport height).
+    await dragHandle(page, 200);
+    await page.waitForTimeout(400);
+    const midBox = await card.boundingBox();
+    // The card must NOT have moved down with the sheet — same anchor as tall.
+    expect(Math.abs(midBox.y - tallBox.y)).toBeLessThan(5);
+
+    // Now snap all the way to peek via the explicit "List nhỏ" control.
+    await page.click('[data-testid="map-sheet-list-small"]');
+    await page.waitForTimeout(400);
+    const peekBox = await card.boundingBox();
+    // Only now should the card have moved substantially further down.
+    expect(peekBox.y).toBeGreaterThan(tallBox.y + 100);
+  });
+
+  test('bug 2: map camera, sheet detent, filters and selection survive a round trip through Event Detail', async ({ page }) => {
+    const pin = await openMapWithAPin(page);
+    const testid = await pin.getAttribute('data-testid');
+    const selectedEventId = testid.replace('map-pin-', '');
+
+    await pin.click();
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    // Move off the "tall" default so restoring-to-default would be a
+    // detectable failure, not a coincidence.
+    await page.click('[data-testid="map-sheet-list-small"]'); // peek
+    await page.waitForTimeout(400);
+
+    await page.locator('[data-testid="map-card-cta"]').click();
+    await expect(page.locator('[data-screen-label="EventDetail"], [data-screen-label="Event"]')).toBeVisible();
+
+    // Navigate back via the app's own real back control (this app has no
+    // browser-level routing/URLs — `screen` is plain in-memory state — so
+    // `page.goBack()` would do nothing meaningful here).
+    await page.locator('[data-testid="event-detail-back"]').click();
+    await page.waitForSelector('[data-screen-label="MapExplore"]', { timeout: 5000 });
+
+    // Restored, not re-initialized: same sheet detent (peek — the "List
+    // nhỏ" control still reads as active) and the same event still
+    // selected, with its card showing again.
+    await expect(page.locator('[data-testid="map-sheet-list-small"]')).toHaveCSS('font-weight', '700');
+    const card = page.locator('[data-testid="map-selected-card"]');
+    await expect(card).toBeVisible();
+    // Computed style reports `transform` as a resolved matrix, not the
+    // literal `scale(...)` — matrix(1.15, 0, 0, 1.15, 0, 0) is what a
+    // `scale(1.15)` (the selected-pin styling) resolves to.
+    await expect(page.locator(`[data-testid="map-pin-${selectedEventId}"]`)).toHaveCSS('transform', 'matrix(1.15, 0, 0, 1.15, 0, 0)');
+  });
+
+  test('bug 3: the list scrolls normally at the MID detent, and only the handle resizes the sheet', async ({ page }) => {
+    await setupToHome(page);
+    await page.click('[data-testid="open-map-explore"]');
+    await page.waitForSelector('[data-screen-label="MapExplore"]');
+    await page.locator('[data-testid^="map-list-item-"]').first().waitFor({ timeout: 10000 });
+
+    // Move to mid via a handle drag (also exercises "smooth snap on drag").
+    await dragHandle(page, 200);
+    await page.waitForTimeout(400);
+
+    const list = page.locator('[data-testid="map-list-scroll"]');
+    const before = await list.evaluate(el => el.scrollTop);
+    // A wheel scroll inside the list content itself (not the handle) must
+    // scroll the list, not resize the sheet.
+    await list.hover();
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(200);
+    const after = await list.evaluate(el => el.scrollTop);
+    expect(after).toBeGreaterThan(before);
+
+    // The sheet itself must still be resizable from the handle after this.
+    const midTop = await page.locator('[data-testid="map-sheet-handle"]').evaluate(el => el.getBoundingClientRect().top);
+    await dragHandle(page, 200);
+    await page.waitForTimeout(400);
+    const peekTop = await page.locator('[data-testid="map-sheet-handle"]').evaluate(el => el.getBoundingClientRect().top);
+    expect(peekTop).toBeGreaterThan(midTop + 50);
+  });
+});

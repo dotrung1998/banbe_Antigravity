@@ -382,6 +382,16 @@ final class AppState: ObservableObject {
     /// the compass button's opacity (full vs. the app's 0.16 disabled
     /// token) updates the instant permission changes, granted or revoked.
     @Published var locationAuthStatus: CLAuthorizationStatus = .notDetermined
+    /// Snapshot of MapExploreView's own local state, saved right before its
+    /// preview card's CTA navigates to Event Detail — `MapExploreView` is a
+    /// plain SwiftUI View struct RootView re-instantiates from scratch every
+    /// time `screen` becomes `.mapExplore` again, so its own `@State` can't
+    /// survive that round trip on its own. `AppState` itself is never torn
+    /// down across screen switches, so this is where it has to live.
+    /// Explicitly cleared (not just left stale) on an intentional exit via
+    /// the "← Đóng" button, so reopening the map from Home later starts
+    /// fresh rather than silently resuming an unrelated past session.
+    @Published var mapExploreState: MapExploreState?
 
     private let locationService = LocationService()
     private var tickTimer: Timer?
