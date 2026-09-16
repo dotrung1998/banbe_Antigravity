@@ -157,17 +157,21 @@ export default function Home() {
             <span onClick={openArea} style={{ fontSize: 11, color: ink, cursor: 'pointer' }}>banbe ▪︎ {curArea.key === 'all' ? 'Sài Gòn' : curArea.label} ▾</span>
           </div>
           <div style={{ display: 'flex', gap: 14, alignItems: 'baseline' }}>
-            <span onClick={goMapExplore} data-testid="open-map-explore" style={{ fontSize: 15, color: ink, cursor: 'pointer', lineHeight: 1 }}>
-              🗺️
+            <span onClick={goMapExplore} data-testid="open-map-explore" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, color: ink, cursor: 'pointer' }}>
+              <span style={{ fontSize: 15, lineHeight: 1 }}>🗺️</span>
+              <span style={{ fontSize: 9, lineHeight: 1 }}>{T('Bản đồ', 'Map')}</span>
             </span>
             {!!s.user && (
-              <span onClick={goNotifications} data-testid="notification-bell" style={{ position: 'relative', fontSize: 15, color: ink, cursor: 'pointer', lineHeight: 1 }}>
-                🔔
-                {s.unreadNotifications > 0 && (
-                  <span style={{ position: 'absolute', top: -4, right: -7, minWidth: 14, height: 14, padding: '0 3px', borderRadius: 7, background: ink, color: paper, fontSize: 9, fontWeight: 700, lineHeight: '14px', textAlign: 'center' }}>
-                    {s.unreadNotifications > 9 ? '9+' : s.unreadNotifications}
-                  </span>
-                )}
+              <span onClick={goNotifications} data-testid="notification-bell" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, color: ink, cursor: 'pointer' }}>
+                <span style={{ position: 'relative', fontSize: 15, lineHeight: 1 }}>
+                  🔔
+                  {s.unreadNotifications > 0 && (
+                    <span style={{ position: 'absolute', top: -4, right: -7, minWidth: 14, height: 14, padding: '0 3px', borderRadius: 7, background: ink, color: paper, fontSize: 9, fontWeight: 700, lineHeight: '14px', textAlign: 'center' }}>
+                      {s.unreadNotifications > 9 ? '9+' : s.unreadNotifications}
+                    </span>
+                  )}
+                </span>
+                <span style={{ fontSize: 9, lineHeight: 1 }}>{T('Thông báo', 'Notifications')}</span>
               </span>
             )}
             {!!s.user && <span onClick={goInbox} style={{ fontSize: 12, color: ink, cursor: 'pointer', borderBottom: `1px solid ${ink}`, paddingBottom: 2 }}>Tin nhắn</span>}
