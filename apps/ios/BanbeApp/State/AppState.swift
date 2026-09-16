@@ -86,6 +86,10 @@ struct PhotoViewerItem: Equatable {
     /// The event the photo belongs to — what the save button saves, and
     /// what the shared link points at.
     let eventKey: String
+    /// The tapped thumbnail's on-screen frame (global coordinate space) at
+    /// the moment it was opened — where the dismiss animation shrinks back
+    /// to (14-photo-viewer.md), rather than fading/sliding away generically.
+    let originRect: CGRect
     var path: String { gallery[index] }
 }
 
@@ -770,11 +774,11 @@ final class AppState: ObservableObject {
     /// X" on an organizer page) opens it larger, over a dimmed backdrop —
     /// with a light tap of haptic feedback, which is the part the web
     /// version can't do (navigator.vibrate isn't implemented on iOS Safari).
-    func openPhoto(gallery: [String], index: Int, organizer: String, eventKey: String) {
+    func openPhoto(gallery: [String], index: Int, organizer: String, eventKey: String, originRect: CGRect) {
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.prepare()
         generator.impactOccurred()
-        photoViewer = PhotoViewerItem(gallery: gallery, index: index, organizer: organizer, eventKey: eventKey)
+        photoViewer = PhotoViewerItem(gallery: gallery, index: index, organizer: organizer, eventKey: eventKey, originRect: originRect)
     }
     func closePhoto() { photoViewer = nil }
     func showPhoto(at index: Int) {

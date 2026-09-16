@@ -867,9 +867,17 @@ export function GocProvider({ children }) {
   // navigator.vibrate is the web's only haptic and iOS Safari doesn't
   // implement it, so this is a no-op there — the native app does it
   // properly (see AppState.openPhoto).
-  const openPhoto = useCallback((gallery, index, organizer, eventKey) => {
+  // originRect: the tapped thumbnail's getBoundingClientRect() at click
+  // time — where PhotoViewer's dismiss animation shrinks back to (see
+  // 14-photo-viewer.md). Copied into a plain object immediately; a live
+  // DOMRect is a view onto layout that can change/go stale, and this one
+  // only ever needs to be read back later, never re-measured.
+  const openPhoto = useCallback((gallery, index, organizer, eventKey, originRect) => {
     try { navigator.vibrate?.(8); } catch { /* unsupported — no haptic, no harm */ }
-    set({ photoViewer: { gallery, index, organizer, eventKey } });
+    const rect = originRect
+      ? { top: originRect.top, left: originRect.left, width: originRect.width, height: originRect.height }
+      : null;
+    set({ photoViewer: { gallery, index, organizer, eventKey, originRect: rect } });
   }, [set]);
   const closePhoto = useCallback(() => set({ photoViewer: null }), [set]);
   const showPhotoAt = useCallback((index) => set(prev => {

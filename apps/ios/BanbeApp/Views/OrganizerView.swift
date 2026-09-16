@@ -102,10 +102,15 @@ struct OrganizerView: View {
 
                         LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
                             ForEach(Array(event.orgGallery.enumerated()), id: \.offset) { index, path in
-                                Button { app.openPhoto(gallery: event.orgGallery, index: index, organizer: event.orgName, eventKey: event.key) } label: {
-                                    CatalogPhoto(path: path, height: 158)
+                                GeometryReader { geo in
+                                    Button {
+                                        app.openPhoto(gallery: event.orgGallery, index: index, organizer: event.orgName, eventKey: event.key, originRect: geo.frame(in: .global))
+                                    } label: {
+                                        CatalogPhoto(path: path, height: 158)
+                                    }
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
+                                .frame(height: 158)
                             }
                         }
                         .padding(.top, 14)

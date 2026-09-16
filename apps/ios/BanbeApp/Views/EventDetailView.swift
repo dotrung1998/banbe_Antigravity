@@ -179,10 +179,19 @@ struct EventDetailView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 8) {
                     ForEach(Array(event.gallery.enumerated()), id: \.offset) { index, path in
-                        Button { app.openPhoto(gallery: event.gallery, index: index, organizer: event.orgName, eventKey: event.key) } label: {
-                            CatalogPhoto(path: path, height: 186, width: 148)
+                        // GeometryReader wraps each thumbnail so its own
+                        // tap can read `geo.frame(in: .global)` at the
+                        // moment it's tapped — the origin rect the photo
+                        // viewer's dismiss animation shrinks back to.
+                        GeometryReader { geo in
+                            Button {
+                                app.openPhoto(gallery: event.gallery, index: index, organizer: event.orgName, eventKey: event.key, originRect: geo.frame(in: .global))
+                            } label: {
+                                CatalogPhoto(path: path, height: 186, width: 148)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                        .frame(width: 148, height: 186)
                         .accessibilityIdentifier("event.photo.\(index)")
                     }
                 }

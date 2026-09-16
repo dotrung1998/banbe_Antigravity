@@ -6,26 +6,67 @@ import SwiftUI
 /// photo sits in the middle third of the display with the same 14pt corner
 /// every other photo in the app has, and the credit/tagline/actions sit
 /// right against the photo's own top and bottom edges rather than the
-/// screen's. A left/right swipe moves through the rest of the gallery it
-/// was opened from without closing the viewer; a plain tap (no movement)
-/// closes it.
+/// screen's.
+///
+/// Gesture zones (14-photo-viewer.md — fixes tapping the photo instantly
+/// closing the viewer, the previous behavior, on this platform too):
+/// - Tap/release on the LEFT half of the PHOTO ITSELF -> previous photo.
+/// - Tap/release on the RIGHT half of the PHOTO ITSELF -> next photo.
+/// - A horizontal drag past `swipeThreshold` on the photo -> same
+///   prev/next, unchanged from before this fix.
+/// - A downward drag past `swipeThreshold` on the photo -> dismiss.
+/// - A tap anywhere OUTSIDE the photo (credit line, tagline/actions row,
+///   the blurred/dimmed surround) -> dismiss.
+/// The photo's own gesture is `.highPriorityGesture` (the same
+/// parent-vs-child gesture-precedence convention this app's swipe-back fix
+/// already established, RootView.swift/note 09) so it always wins over the
+/// backdrop's plain `.onTapGesture` dismiss for anything starting on the
+/// photo. Dismissing (either path) shrinks the photo back to the exact
+/// thumbnail rect it was opened from, rather than fading/sliding away
+/// generically.
 struct PhotoViewerView: View {
     @EnvironmentObject var app: AppState
     let item: PhotoViewerItem
 
     @State private var shared = false
-    @State private var dragTranslation: CGFloat = 0
+    // The photo's own natural (pre-transform) on-screen frame, captured
+    // continuously so the dismiss animation knows exactly what to shrink
+    // from, regardless of screen size/orientation.
+    @State private var photoRect: CGRect = .zero
+    // Non-nil only while the shrink-back dismiss animation is playing.
+    @State private var dismissTransform: (scale: CGSize, offset: CGSize)?
 
     private var liked: Bool { app.isPhotoLiked(item.path) }
     private var saved: Bool { app.isSaved(item.eventKey) }
 
-    /// A swipe past this many points changes the photo; anything short of
-    /// that (including a plain tap, which never moves at all) closes the
-    /// viewer instead.
+    /// A swipe past this many points changes the photo (or, vertically,
+    /// dismisses); anything short of that (including a plain tap, which
+    /// never moves at all) is a tap instead.
     private let swipeThreshold: CGFloat = 44
+    private let dismissDuration: Double = 0.28
+
+    /// Same easing this app already uses for its entrance animations.
+    private var dismissAnimation: Animation {
+        .timingCurve(0.22, 0.61, 0.36, 1, duration: dismissDuration)
+    }
+
+    private func dismiss() {
+        guard dismissTransform == nil else { return }
+        guard photoRect != .zero else { app.closePhoto(); return }
+        let o = item.originRect
+        let scale = CGSize(width: o.width / photoRect.width, height: o.height / photoRect.height)
+        let offset = CGSize(width: o.midX - photoRect.midX, height: o.midY - photoRect.midY)
+        withAnimation(dismissAnimation) {
+            dismissTransform = (scale, offset)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + dismissDuration) {
+            app.closePhoto()
+        }
+    }
 
     var body: some View {
         GeometryReader { proxy in
+            let photoWidth = proxy.size.width - 40
             ZStack {
                 // The photo itself, blown up and blurred into a backdrop.
                 // Pushed past the edges so the blur has no soft, transparent
@@ -45,18 +86,53 @@ struct PhotoViewerView: View {
                 // The "stage": credit, photo and the tagline/actions row
                 // stacked tight against one another as one column, so the
                 // text sits close to the photo's own edges instead of the
-                // screen's.
+                // screen's. This whole column is the "outside" tap target —
+                // the photo below carves out its own gesture area and wins
+                // via `.highPriorityGesture` for anything starting on it.
                 VStack(alignment: .leading, spacing: 8) {
                     caption(app.T("Ảnh của", "Photo by") + " \(item.organizer)")
                         .accessibilityIdentifier("photoViewer.credit")
 
                     CatalogPhoto(path: item.path,
                                  height: proxy.size.height / 3,
-                                 width: proxy.size.width - 40,
+                                 width: photoWidth,
                                  cornerRadius: 14)
                         .shadow(color: .black.opacity(0.4), radius: 22, y: 10)
                         .id(item.index)
                         .transition(.opacity)
+                        .background(
+                            GeometryReader { photoGeo in
+                                Color.clear
+                                    .onAppear { photoRect = photoGeo.frame(in: .global) }
+                                    .onChange(of: photoGeo.frame(in: .global)) { _, newValue in photoRect = newValue }
+                            }
+                        )
+                        .scaleEffect(dismissTransform?.scale ?? CGSize(width: 1, height: 1))
+                        .offset(dismissTransform?.offset ?? .zero)
+                        .contentShape(Rectangle())
+                        .highPriorityGesture(
+                            DragGesture(minimumDistance: 0)
+                                .onEnded { value in
+                                    let dx = value.translation.width
+                                    let dy = value.translation.height
+                                    if abs(dy) > abs(dx) && dy > swipeThreshold {
+                                        dismiss()
+                                        return
+                                    }
+                                    if abs(dx) > swipeThreshold {
+                                        if dx < 0 { app.showPhoto(at: item.index + 1) }
+                                        else { app.showPhoto(at: item.index - 1) }
+                                        return
+                                    }
+                                    // A plain tap: which half of the
+                                    // photo's own width it landed in.
+                                    if value.location.x >= photoWidth / 2 {
+                                        app.showPhoto(at: item.index + 1)
+                                    } else {
+                                        app.showPhoto(at: item.index - 1)
+                                    }
+                                }
+                        )
                         .accessibilityIdentifier("photoViewer.photo")
 
                     // Top-aligned, not bottom: the row is as tall as the
@@ -73,28 +149,20 @@ struct PhotoViewerView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
+                .contentShape(Rectangle())
+                .onTapGesture { dismiss() }
             }
             .animation(.easeOut(duration: 0.18), value: item.index)
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipped()
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in dragTranslation = value.translation.width }
-                    .onEnded { value in
-                        let dx = value.translation.width
-                        dragTranslation = 0
-                        if abs(dx) > swipeThreshold {
-                            if dx < 0 { app.showPhoto(at: item.index + 1) }
-                            else { app.showPhoto(at: item.index - 1) }
-                        } else {
-                            app.closePhoto()
-                        }
-                    }
-            )
         }
         .ignoresSafeArea()
         .transition(.opacity)
+        // Driven by the same `withAnimation(dismissAnimation) { ... }`
+        // block that sets `dismissTransform` in `dismiss()` — no separate
+        // `.animation(value:)` needed here, that transaction already
+        // covers every dependent property, this one included.
+        .opacity(dismissTransform == nil ? 1 : 0)
     }
 
     private var actions: some View {
