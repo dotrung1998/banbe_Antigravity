@@ -50,12 +50,31 @@ struct RootView: View {
                 guard isDragTracking else { return }
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
-                withTransaction(transaction) { dragTranslation = max(0, value.translation.width) }
+                withTransaction(transaction) {
+                    dragTranslation = max(0, value.translation.width)
+                    // Task 1 (11-realtime-map.md follow-up): mirrors this
+                    // gesture's own live progress into
+                    // `app.mapCloseSwipeProgress` — see that property's own
+                    // doc comment — so `MapExploreView`'s sheet can track
+                    // the Map-Explore-closing-to-Home drag directly,
+                    // without a second, independent tracker anywhere else.
+                    // Scoped to `.mapExplore` specifically: that's the only
+                    // screen for which the CURRENT, foreground instance
+                    // being dragged away is ever a `MapExploreView` at all
+                    // (the Event-Detail-to-Map-Explore swipe reveals
+                    // MapExploreView as the non-interactive `isPreview`
+                    // BACKDROP underneath, a different, already-handled
+                    // case — see that flag's own doc comment).
+                    if app.screen == .mapExplore { app.mapCloseSwipeProgress = dragProgress }
+                }
             }
             .onEnded { value in
                 defer { isDragTracking = false }
                 guard isDragTracking, abs(value.translation.height) < 80 else {
-                    withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) { dragTranslation = 0 }
+                    withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) {
+                        dragTranslation = 0
+                        if app.screen == .mapExplore { app.mapCloseSwipeProgress = 0 }
+                    }
                     return
                 }
                 // A firm flick commits even if it hasn't crossed the
@@ -65,9 +84,15 @@ struct RootView: View {
                 let crossedDistance = value.translation.width > width * 0.35
                 let flicked = value.predictedEndTranslation.width > width * 0.6
                 if crossedDistance || flicked {
-                    withAnimation(.easeOut(duration: 0.22)) { isCommittingBack = true }
+                    withAnimation(.easeOut(duration: 0.22)) {
+                        isCommittingBack = true
+                        if app.screen == .mapExplore { app.mapCloseSwipeProgress = 1 }
+                    }
                 } else {
-                    withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) { dragTranslation = 0 }
+                    withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) {
+                        dragTranslation = 0
+                        if app.screen == .mapExplore { app.mapCloseSwipeProgress = 0 }
+                    }
                 }
             }
     }
@@ -207,6 +232,14 @@ struct RootView: View {
                     // drag's last value pushed the newly-arrived screen off
                     // to the right instead of resetting to 0.
                     dragTranslation = 0
+                    // Task 1: by this point `app.screen` has already
+                    // changed away from `.mapExplore` (via `app.goBack()`
+                    // just above), so the MapExploreView instance that was
+                    // reading this value is already gone — safe to reset
+                    // here, unanimated, so the NEXT time Map Explore opens
+                    // fresh it doesn't start looking pre-collapsed from a
+                    // stale prior close.
+                    app.mapCloseSwipeProgress = 0
                 }
             }
         }

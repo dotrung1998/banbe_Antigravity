@@ -293,8 +293,19 @@ export default function MapExplore() {
       map.on('click', () => setSelectedId(null));
       lastQueriedBounds.current = map.getBounds();
       mapRef.current = map;
+      // Test-only hook (Task 2b, 11-realtime-map.md follow-up) — there's no
+      // other way for Playwright to read the live map's own center/zoom
+      // from outside; never read by any app code.
+      if (typeof window !== 'undefined') window.__mapExploreMapForTests = map;
     })();
-    return () => { active = false; mapRef.current?.remove(); mapRef.current = null; };
+    return () => {
+      active = false;
+      if (typeof window !== 'undefined' && window.__mapExploreMapForTests === mapRef.current) {
+        window.__mapExploreMapForTests = null;
+      }
+      mapRef.current?.remove();
+      mapRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -403,6 +414,27 @@ export default function MapExplore() {
     [visibleEvents, selectedId],
   );
 
+  // Task 2b (11-realtime-map.md follow-up): reuses the EXACT SAME
+  // `densityHotspot` import the initial-load effect above calls, scoped
+  // here to `visibleEvents` (already reflecting the just-changed
+  // `catFilter`, plus whichever other filters are active) instead of every
+  // loaded event, so the camera moves to wherever THIS filter's own
+  // results are most concentrated. `catFilterMountedRef` mirrors iOS's
+  // `.onChange` semantics (never fires for the value a mount starts with,
+  // only for a later, genuine change) — `useEffect` itself has no such
+  // built-in distinction, so it's done explicitly here.
+  const catFilterMountedRef = useRef(false);
+  useEffect(() => {
+    if (!catFilterMountedRef.current) { catFilterMountedRef.current = true; return; }
+    const map = mapRef.current;
+    if (!map) return;
+    const points = visibleEvents.map(e => ({ lat: e.lat, lng: e.lng }));
+    const center = densityHotspot(points);
+    if (!center) return; // no matching events for this filter — leave the camera where it is
+    map.flyTo({ center: [center.lng, center.lat], zoom: 13, duration: 700 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catFilter]);
+
   // The selected event must honor every active filter this screen has
   // (category, open-now, and whichever the freshness poll's latest
   // response still contains) exactly like the pins/list it was picked
@@ -469,12 +501,30 @@ export default function MapExplore() {
     goEvent(id);
   }, [sheetSnap, catFilter, openNowOnly, sortByDistance, selectedId, goEvent, setMapExploreState]);
 
+  // Task 1 (11-realtime-map.md follow-up): web has no edge-swipe-back
+  // gesture at all (confirmed by inspection, App.jsx's Shell has no
+  // dual-rendering/backdrop concept the way RootView's edge-swipe does on
+  // iOS) — the only Map-Explore-closing-to-Home trigger here is this
+  // button, so there's no "live drag progress" to track. This gives the
+  // button the same shrink/bubble VISUAL as iOS's button+swipe both get
+  // (see `cardBottomPx`'s sibling `closingProgress` below), just without a
+  // gesture behind it — animate to fully closed, THEN actually navigate,
+  // matching iOS's own button timing (`closeMap()` there).
+  const [closingProgress, setClosingProgress] = useState(0);
+
   // An explicit exit (as opposed to "on my way to Event Detail, be right
   // back") clears the snapshot — reopening the map later from Home should
   // start fresh, not silently resume a session from an unrelated visit.
   const closeMap = useCallback(() => {
-    setMapExploreState(null);
-    backFromMapExplore();
+    setClosingProgress(1);
+    // Matches the sheet's own `transform` transition duration (0.42s, the
+    // same bounce curve the restore-only bubble already uses) so the
+    // shrink actually finishes playing before this component unmounts,
+    // rather than being cut short partway through.
+    setTimeout(() => {
+      setMapExploreState(null);
+      backFromMapExplore();
+    }, 420);
   }, [setMapExploreState, backFromMapExplore]);
 
   // ---- drag-to-resize bottom sheet (pointer events, translateY, snap on release) ----
@@ -538,7 +588,19 @@ export default function MapExplore() {
     <div style={{ position: 'fixed', inset: 0, background: paper }} data-screen-label="MapExplore">
       <div ref={mapDivRef} style={{ position: 'absolute', inset: 0 }} />
 
-      <div ref={backRef} onClick={closeMap} data-testid="map-back" style={{ ...photoPill({}), top: 16, left: 16, padding: '8px 12px' }}>
+      {/* Follow-up discovery (11-realtime-map.md): maplibre-gl.css gives its
+          own `.maplibregl-ctrl-top-right` an explicit `z-index: 2` — this
+          screen's own floating controls had no z-index at all (defaulting
+          to the same stacking level as the plain map container), so the
+          library's own zoom +/- control (added below, `top-right`) was
+          silently sitting ON TOP of the compass button in that exact
+          corner, intercepting real clicks/taps meant for it. Confirmed via
+          `document.elementFromPoint` at the compass's own center returning
+          the maplibre control's icon, not this button. `zIndex: 3` on all
+          three of this screen's own floating pills — not just the compass —
+          for consistency, since any of them sharing a corner with a future
+          maplibre control would have the identical problem. */}
+      <div ref={backRef} onClick={closeMap} data-testid="map-back" style={{ ...photoPill({}), top: 16, left: 16, padding: '8px 12px', zIndex: 3 }}>
         ← {T('Đóng', 'Close')}
       </div>
 
@@ -546,7 +608,7 @@ export default function MapExplore() {
         ref={compassRef}
         onClick={recenterOnUser}
         data-testid="map-compass"
-        style={{ ...photoPill({}), top: 16, right: 16, width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: compassOpacity }}
+        style={{ ...photoPill({}), top: 16, right: 16, width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: compassOpacity, zIndex: 3 }}
       >
         🧭
       </div>
@@ -556,7 +618,7 @@ export default function MapExplore() {
           ref={searchHereRef}
           onClick={searchHere}
           data-testid="map-search-here"
-          style={{ ...photoPill({}), top: 16, left: '50%', transform: 'translateX(-50%)', padding: '8px 16px', fontSize: 12, fontWeight: 600 }}
+          style={{ ...photoPill({}), top: 16, left: '50%', transform: 'translateX(-50%)', padding: '8px 16px', fontSize: 12, fontWeight: 600, zIndex: 3 }}
         >
           {T('Tìm ở đây', 'Search here')}
         </div>
@@ -580,7 +642,20 @@ export default function MapExplore() {
             boxShadow: '0 10px 28px rgba(27,25,22,0.22)',
           }}
         >
-          <div style={{ display: 'flex', gap: 10 }}>
+          {/* Task 4 (11-realtime-map.md follow-up): tapping anywhere in this
+              non-CTA row re-flies the camera back to the selected event —
+              reuses `selectEvent(_)` verbatim (the exact same fly/zoom
+              logic used when the event was first selected), not a new
+              camera animation. The "×" close span (a descendant of this
+              row) calls `e.stopPropagation()` first so it doesn't ALSO
+              trigger this recenter on its way up; the CTA button below is a
+              separate sibling div, never a descendant, so it needs no such
+              guard. */}
+          <div
+            onClick={() => selectEvent(selectedEvent)}
+            data-testid="map-card-recenter"
+            style={{ display: 'flex', gap: 10, cursor: 'pointer' }}
+          >
             {selectedEvent.img && (
               <div data-testid="map-card-photo" style={{ backgroundImage: `url(${selectedEvent.img})`, backgroundSize: 'cover', backgroundPosition: 'center', width: 64, height: 64, borderRadius: 10, flexShrink: 0 }} />
             )}
@@ -588,7 +663,7 @@ export default function MapExplore() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                 <div data-testid="map-card-title" style={{ fontSize: 14, fontWeight: 700, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedEvent.name}</div>
                 <span
-                  onClick={clearSelection}
+                  onClick={(e) => { e.stopPropagation(); clearSelection(); }}
                   data-testid="map-card-close"
                   style={{ cursor: 'pointer', color: ink, opacity: 0.5, fontSize: 18, lineHeight: 1, flex: 'none' }}
                 >×</span>
@@ -616,6 +691,7 @@ export default function MapExplore() {
 
       <div
         ref={sheetRef}
+        data-testid="map-sheet"
         style={{
           position: 'absolute', left: 0, right: 0, bottom: 0, top: `${sheetTopVh}vh`,
           background: paper, borderRadius: '20px 20px 0 0', boxShadow: '0 -6px 24px rgba(27,25,22,0.18)',
@@ -626,8 +702,13 @@ export default function MapExplore() {
           // curve (briefly overshoots past 1 before settling), the closest
           // CSS-easing equivalent of the iOS build's
           // `.interpolatingSpring` for the same restore-only bubble. `top`
-          // keeps its own existing drag-snap easing, untouched.
-          transform: bubbleIn ? 'translateY(14px) scale(0.985)' : 'translateY(0) scale(1)',
+          // keeps its own existing drag-snap easing, untouched. Task 1
+          // follow-up: `closingProgress` (only ever non-zero while
+          // `closeMap()` is in flight) composes into the SAME transform,
+          // shrinking the sheet down as it closes — see `closeMap()`'s own
+          // comment for why web only has a button trigger for this, not a
+          // live-tracked drag.
+          transform: `translateY(${(bubbleIn ? 14 : 0) + 70 * closingProgress}px) scale(${(bubbleIn ? 0.985 : 1) * (1 - 0.15 * closingProgress)})`,
           transition: dragState.current
             ? 'none'
             : 'top 0.28s cubic-bezier(.22,.61,.36,1), transform 0.42s cubic-bezier(0.34, 1.56, 0.64, 1)',
@@ -680,7 +761,10 @@ export default function MapExplore() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, padding: '0 16px 10px', overflowX: 'auto' }}>
+        {/* Task 2a (11-realtime-map.md follow-up): wraps onto as many rows
+            as needed instead of requiring horizontal scrolling to see
+            every category — every filter is visible up front now. */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '0 16px 10px' }}>
           {FILTER_DEFS.map(f => (
             <div
               key={f.key}
@@ -735,7 +819,12 @@ export default function MapExplore() {
                 <div style={{ fontSize: 14, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.name}</div>
                 <div style={{ fontSize: 11, color: ink, opacity: 0.6 }}>
                   {ev.area}
-                  {sortByDistance && s.userCoords && haversineKm(s.userCoords, ev) != null ? ` ▪︎ ${haversineKm(s.userCoords, ev).toFixed(1)} km` : ''}
+                  {/* Task 3 (11-realtime-map.md follow-up): shown whenever
+                      location permission is already granted, independent
+                      of "Gần bạn" — that chip still only controls
+                      SORTING/filtering by distance, unchanged; this is
+                      purely about whether the km figure is DISPLAYED. */}
+                  {(sortByDistance || locPermission === 'granted') && s.userCoords && haversineKm(s.userCoords, ev) != null ? ` ▪︎ ${haversineKm(s.userCoords, ev).toFixed(1)} km` : ''}
                 </div>
               </div>
               {ev.price && <div style={{ fontSize: 12, color: ink, whiteSpace: 'nowrap' }}>{ev.price}</div>}

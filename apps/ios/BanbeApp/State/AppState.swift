@@ -393,6 +393,19 @@ final class AppState: ObservableObject {
     /// fresh rather than silently resuming an unrelated past session.
     @Published var mapExploreState: MapExploreState?
 
+    /// Task 1 (11-realtime-map.md follow-up): mirrors `RootView`'s own
+    /// edge-swipe-back gesture progress (0 at rest, 1 at full commit) so
+    /// `MapExploreView`'s sheet can track the Map-Explore-closing-to-Home
+    /// drag live, without a second/independent gesture recognizer anywhere
+    /// else. `RootView`'s own `@State` (`dragTranslation`/`isCommittingBack`)
+    /// remains the sole source of truth for the gesture itself — this is
+    /// only where its already-computed progress is exposed to a screen that
+    /// can't see RootView's private state. Written by RootView's gesture
+    /// handlers AND by `MapExploreView.closeMap()` (the explicit "← Đóng"
+    /// button uses the exact same signal for the same visual, rather than
+    /// inventing its own).
+    @Published var mapCloseSwipeProgress: CGFloat = 0
+
     private let locationService = LocationService()
     private var tickTimer: Timer?
     private var chatPollTimer: Timer?

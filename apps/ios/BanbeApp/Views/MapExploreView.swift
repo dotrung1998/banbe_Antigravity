@@ -2,6 +2,54 @@ import SwiftUI
 import MapKit
 import CoreLocation
 
+/// Task 2a (11-realtime-map.md follow-up): a minimal left-to-right,
+/// top-to-bottom wrapping layout — the category filter row no longer
+/// requires horizontal scrolling to discover every option; every chip is
+/// visible up front, wrapping onto as many rows as needed. `Layout` was
+/// introduced in iOS 16, well within this project's iOS 17 deployment
+/// target (`project.yml:4-5`), so no third-party dependency was pulled in
+/// for what's otherwise a well-known, small amount of layout math.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var totalHeight: CGFloat = 0
+        var lineWidth: CGFloat = 0
+        var lineHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if lineWidth > 0, lineWidth + spacing + size.width > maxWidth {
+                totalHeight += lineHeight + lineSpacing
+                lineWidth = 0
+                lineHeight = 0
+            }
+            lineWidth += (lineWidth > 0 ? spacing : 0) + size.width
+            lineHeight = max(lineHeight, size.height)
+        }
+        totalHeight += lineHeight
+        return CGSize(width: maxWidth == .infinity ? lineWidth : maxWidth, height: totalHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var lineHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += lineHeight + lineSpacing
+                lineHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+    }
+}
+
 /// Map + list explore screen (.claude/notes/11-realtime-map.md). Full-screen
 /// native MapKit behind a native `.sheet` bottom sheet (`.presentationDetents`
 /// gives drag-to-resize/snap for free on iOS 17+, this project's deployment
@@ -294,6 +342,14 @@ struct MapExploreView: View {
             // peek afterward.
             if let ev = selectedEvent { reapplyCameraOffset(for: ev) }
         }
+        .onChange(of: catFilter) { _, _ in
+            // Task 2b (11-realtime-map.md follow-up): `.onChange` never
+            // fires for the value `init` seeded (only for a later, genuine
+            // change), so this never re-runs on a restored/fresh mount —
+            // only when the user actually taps a different category chip.
+            guard !isPreview else { return }
+            recenterOnFilterDensityHotspot()
+        }
         .sheet(isPresented: $sheetPresented) {
             sheetContent
                 // ANIMATION REQUIREMENT (11-realtime-map.md follow-up): a
@@ -313,6 +369,20 @@ struct MapExploreView: View {
                 // so this has no effect there at all.
                 .scaleEffect(0.965 + 0.035 * restoreBubbleProgress, anchor: .top)
                 .offset(y: (1 - restoreBubbleProgress) * 18)
+                // Task 1 (11-realtime-map.md follow-up): the sheet visibly
+                // shrinks/bubbles down as the user edge-swipes Map Explore
+                // closed toward Home, tracking `app.mapCloseSwipeProgress`
+                // — RootView's own edge-swipe progress, mirrored (not
+                // re-tracked) into `AppState` — LIVE (0 at rest, 1 at full
+                // commit), and springs back up with the same character if
+                // the swipe is released without committing, since
+                // `app.mapCloseSwipeProgress` itself is what animates back
+                // to 0 in that case (see `RootView.swift`'s own gesture
+                // handlers). The explicit "← Đóng" button drives the exact
+                // same published value for the same visual — see
+                // `closeMap()`.
+                .scaleEffect(1 - 0.15 * app.mapCloseSwipeProgress, anchor: .bottom)
+                .offset(y: 70 * app.mapCloseSwipeProgress)
                 .presentationDetents([.fraction(0.12), .fraction(0.45), .fraction(0.72)], selection: $sheetDetent)
                 // Follow-up bug 4 (11-realtime-map.md): reverted back to the
                 // SYSTEM's own visible drag indicator. The prior pass's
@@ -484,9 +554,20 @@ struct MapExploreView: View {
     /// An explicit exit (as opposed to "on my way to Event Detail, be right
     /// back") clears the snapshot — reopening the map later from Home
     /// should start fresh, not silently resume an unrelated past session.
+    ///
+    /// Task 1 (11-realtime-map.md follow-up): mirrors RootView's own
+    /// edge-swipe-commit timing (animate the shared progress to 1, THEN —
+    /// after that animation's own duration — actually switch screens and
+    /// reset the value) so the button gives the exact same shrink/bubble
+    /// visual as the swipe gesture, from the one shared signal, rather than
+    /// a second, button-specific animation.
     private func closeMap() {
-        app.mapExploreState = nil
-        app.goBack()
+        withAnimation(.easeOut(duration: 0.22)) { app.mapCloseSwipeProgress = 1 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            app.mapExploreState = nil
+            app.mapCloseSwipeProgress = 0
+            app.goBack()
+        }
     }
 
     // MARK: - Density-hotspot initial center
@@ -503,6 +584,28 @@ struct MapExploreView: View {
         }
         let center = densityHotspot(points) ?? CLLocationCoordinate2D(latitude: 10.7769, longitude: 106.7009)
         cameraPosition = .region(MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12)))
+    }
+
+    /// Task 2b (11-realtime-map.md follow-up): reuses the EXACT SAME
+    /// `densityHotspot(_:)` free function `centerOnDensityHotspot()` above
+    /// calls at initial load — scoped here to `visibleEvents` (which
+    /// already reflects the just-changed `catFilter`, plus whichever other
+    /// filters/bounds are active) instead of every loaded event, so the
+    /// camera moves to wherever THIS filter's own results are most
+    /// concentrated, not wherever the previous filter's were. No `initialCenterSet`
+    /// guard here — unlike the initial-load call, this is meant to re-run
+    /// every time the category actually changes.
+    private func recenterOnFilterDensityHotspot() {
+        let points = visibleEvents.compactMap { ev -> CLLocationCoordinate2D? in
+            guard let lat = ev.lat, let lng = ev.lng else { return nil }
+            return CLLocationCoordinate2D(latitude: lat, longitude: lng)
+        }
+        // No matching events for this filter — leave the camera exactly
+        // where it was rather than snapping to a meaningless fallback.
+        guard let center = densityHotspot(points) else { return }
+        withAnimation(.easeInOut(duration: 0.6)) {
+            cameraPosition = .region(MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12)))
+        }
     }
 
     // MARK: - Pin/list selection: camera zoom + compact in-map preview card
@@ -566,6 +669,18 @@ struct MapExploreView: View {
     private func selectedCard(_ ev: MapEventRow) -> some View {
         let cosmetic = EventCatalog.find(ev.id)
         VStack(alignment: .leading, spacing: 10) {
+            // Task 4 (11-realtime-map.md follow-up): tapping anywhere in
+            // this non-CTA area re-flies the camera back to the selected
+            // event — reuses `selectEvent(_:)` verbatim (the exact same
+            // fly/zoom logic used when the event was first selected) rather
+            // than a new camera animation; since `ev` is already the
+            // selection, `isNewSelection` is false inside it, so the pop
+            // animation correctly doesn't replay, only the camera flies
+            // back. The "×" close button (below, its own `Button`) and the
+            // CTA button (a sibling, not a descendant, of this HStack)
+            // handle/consume their own taps first, per SwiftUI's normal
+            // Button-vs-ancestor-gesture precedence — this never fires for
+            // either.
             HStack(alignment: .top, spacing: 10) {
                 if let path = cosmetic?.img {
                     CatalogPhoto(path: path, height: 64, width: 64, cornerRadius: 10)
@@ -592,6 +707,9 @@ struct MapExploreView: View {
                     }
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture { selectEvent(ev) }
+            .accessibilityIdentifier("map.card.recenter")
             Button(action: { openEventDetail(ev.id) }) {
                 Text(app.T("Xem chi tiết", "View details"))
                     .font(.system(size: 13, weight: .semibold))
@@ -624,7 +742,14 @@ struct MapExploreView: View {
     /// Same 0.16 disabled-button opacity token this app already uses
     /// elsewhere (Components.swift's InkButton) — never a new value.
     private var compassOpacity: Double {
-        app.locationAuthStatus == .authorizedWhenInUse || app.locationAuthStatus == .authorizedAlways ? 1 : 0.16
+        locationGranted ? 1 : 0.16
+    }
+
+    /// Task 3 (11-realtime-map.md follow-up): whether location permission
+    /// is already granted, independent of "Gần bạn"'s own on/off state —
+    /// used to show each list row's distance in km by default once true.
+    private var locationGranted: Bool {
+        app.locationAuthStatus == .authorizedWhenInUse || app.locationAuthStatus == .authorizedAlways
     }
 
     /// Tapping the dimmed compass button always re-prompts rather than
@@ -737,18 +862,20 @@ struct MapExploreView: View {
 
     private var sheetContent: some View {
         VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(categories, id: \.key) { cat in
-                        Text("\(cat.glyph) \(app.T(cat.vi, cat.en))")
-                            .font(.system(size: 12, weight: catFilter == cat.key ? .bold : .regular))
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(.thinMaterial, in: Capsule())
-                            .onTapGesture { catFilter = cat.key }
-                    }
+            // Task 2a (11-realtime-map.md follow-up): every category is
+            // visible up front now — wraps onto as many rows as needed
+            // instead of requiring the user to discover horizontal
+            // scrolling (`FlowLayout`, below).
+            FlowLayout(spacing: 8, lineSpacing: 8) {
+                ForEach(categories, id: \.key) { cat in
+                    Text("\(cat.glyph) \(app.T(cat.vi, cat.en))")
+                        .font(.system(size: 12, weight: catFilter == cat.key ? .bold : .regular))
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(.thinMaterial, in: Capsule())
+                        .onTapGesture { catFilter = cat.key }
                 }
-                .padding(.horizontal, 16)
             }
+            .padding(.horizontal, 16)
             .padding(.top, 8)
 
             HStack(spacing: 8) {
@@ -785,7 +912,13 @@ struct MapExploreView: View {
                         }
                         VStack(alignment: .leading, spacing: 2) {
                             Text(ev.name).font(.system(size: 14, weight: .semibold))
-                            Text(ev.area + (sortByDistance ? distanceSuffix(ev) : ""))
+                            // Task 3 (11-realtime-map.md follow-up): shown
+                            // whenever location permission is already
+                            // granted, independent of "Gần bạn" — that chip
+                            // still only controls SORTING/filtering by
+                            // distance, unchanged; this is purely about
+                            // whether the km figure is DISPLAYED at all.
+                            Text(ev.area + (sortByDistance || locationGranted ? distanceSuffix(ev) : ""))
                                 .font(.system(size: 11)).opacity(0.6)
                         }
                         Spacer()

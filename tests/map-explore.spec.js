@@ -414,3 +414,86 @@ test.describe('Map Explore — follow-up fixes (category filter matches Home\'s 
     });
   }
 });
+
+test.describe('Map Explore — Map Explore -> Home close flow follow-up', () => {
+  test('task 1: closing via the button shows a shrink/bubble transition before actually leaving', async ({ page }) => {
+    await setupToHome(page);
+    await page.click('[data-testid="open-map-explore"]');
+    await page.waitForSelector('[data-screen-label="MapExplore"]');
+    const sheet = page.locator('[data-testid="map-sheet"]');
+    const identityTransform = await sheet.evaluate(el => getComputedStyle(el).transform);
+
+    await page.click('[data-testid="map-back"]');
+    // Mid-transition (closeMap()'s own 420ms delay before it actually
+    // navigates) — the sheet must already be visibly shrinking, not still
+    // at rest.
+    await page.waitForTimeout(150);
+    const midTransform = await sheet.evaluate(el => getComputedStyle(el).transform);
+    expect(midTransform).not.toBe(identityTransform);
+
+    // ...and the close still actually completes afterward.
+    await expect(page.locator('[data-screen-label="Home"]')).toBeVisible({ timeout: 2000 });
+  });
+
+  test('task 2a: the category filter row wraps instead of requiring horizontal scroll', async ({ page }) => {
+    await openMapWithAPin(page);
+    const row = page.locator('[data-testid="map-cat-all"]').locator('xpath=..');
+    const { scrollWidth, clientWidth } = await row.evaluate(el => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }));
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
+  });
+
+  test('task 2b: switching category re-centers the map on that category\'s own density hotspot', async ({ page }) => {
+    await openMapWithAPin(page);
+    await page.waitForFunction(() => !!window.__mapExploreMapForTests);
+    const centerBefore = await page.evaluate(() => window.__mapExploreMapForTests.getCenter());
+
+    await page.click('[data-testid="map-cat-music"]');
+    await page.locator('[data-testid^="map-list-item-"]').first().waitFor({ timeout: 10000 });
+    await page.waitForTimeout(900); // the recenter flyTo's own 700ms duration
+
+    const centerAfter = await page.evaluate(() => window.__mapExploreMapForTests.getCenter());
+    const moved = Math.abs(centerAfter.lat - centerBefore.lat) > 0.0005 || Math.abs(centerAfter.lng - centerBefore.lng) > 0.0005;
+    expect(moved).toBe(true);
+  });
+
+  test('task 3: list shows distance in km once location is granted, without touching "Gần bạn"', async ({ page, context }) => {
+    await context.grantPermissions(['geolocation']);
+    await context.setGeolocation({ latitude: 10.78, longitude: 106.7 });
+    await openMapWithAPin(page);
+
+    // The app's own real grant flow (the compass button), never "Gần bạn".
+    await page.click('[data-testid="map-compass"]');
+    await expect(page.locator('[data-testid="map-chip-nearby"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="map-chip-nearby"]')).toHaveCSS('font-weight', '400');
+
+    const firstRow = page.locator('[data-testid^="map-list-item-"]').first();
+    await expect(firstRow).toContainText('km', { timeout: 10000 });
+  });
+
+  test('task 4: tapping the preview card\'s non-CTA area re-centers on the selected event', async ({ page }) => {
+    const pin = await openMapWithAPin(page);
+    await pin.click();
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    await page.waitForFunction(() => !!window.__mapExploreMapForTests);
+    await page.waitForTimeout(700); // let selectEvent()'s own initial flyTo settle first
+
+    const centerAtSelection = await page.evaluate(() => window.__mapExploreMapForTests.getCenter());
+
+    // Move the camera away directly via the map's own API — a real user
+    // drag on a WebGL canvas isn't reliably reproducible under Playwright;
+    // panBy() exercises the exact same camera-movement primitive a drag
+    // would, without that synthetic-gesture reliability question.
+    await page.evaluate(() => window.__mapExploreMapForTests.panBy([300, 300], { duration: 0 }));
+    const centerAfterPan = await page.evaluate(() => window.__mapExploreMapForTests.getCenter());
+    const actuallyPanned = Math.abs(centerAfterPan.lat - centerAtSelection.lat) > 0.001 || Math.abs(centerAfterPan.lng - centerAtSelection.lng) > 0.001;
+    expect(actuallyPanned).toBe(true);
+
+    await page.click('[data-testid="map-card-recenter"]');
+    await page.waitForTimeout(700); // selectEvent()'s own 550ms flyTo duration
+    const centerAfterRecenter = await page.evaluate(() => window.__mapExploreMapForTests.getCenter());
+    const movedBack = Math.abs(centerAfterRecenter.lat - centerAfterPan.lat) > 0.0005 || Math.abs(centerAfterRecenter.lng - centerAfterPan.lng) > 0.0005;
+    expect(movedBack).toBe(true);
+    // The card must still be showing the same event, not have been cleared.
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+  });
+});
