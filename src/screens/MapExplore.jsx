@@ -115,6 +115,26 @@ export default function MapExplore() {
       // `undefined`, so `new maplibregl.Map(...)` threw and the map never
       // initialized (11-realtime-map.md: "web map doesn't render at all").
       const maplibregl = await import('maplibre-gl');
+      // maplibre-gl locates its tile-decoding worker at runtime via
+      // `new URL('./maplibre-gl-worker.mjs', import.meta.url)`, computed
+      // from a variable rather than a static string literal — Vite/
+      // Rollup's special `new Worker(new URL(...))` bundling only
+      // recognizes a literal, so it never bundles this worker at all; a
+      // production build then never emits `maplibre-gl-worker.mjs` and the
+      // URL 404s (a static host's SPA fallback can mask this as an HTTP
+      // 200 of index.html) — the map style/sprite/source *metadata* still
+      // load fine over plain fetch from the main thread, but no vector
+      // tile is ever decoded into pixels, so only markers (plain DOM
+      // elements, not part of the tile canvas) paint; the base map stays
+      // blank/gray. Confirmed via Playwright's `page.on('worker', ...)`:
+      // the worker was created and immediately closed. vite.config.js's
+      // `maplibreWorkerFiles()` plugin serves/emits the worker file (and
+      // the sibling `maplibre-gl-shared.mjs` it itself imports — a bare
+      // `?url` copy of just the worker file breaks that relative import
+      // once it's alone in a hashed output directory) at this fixed path,
+      // identically in dev and in a production build, so this path always
+      // resolves regardless of mode. See 11-realtime-map.md.
+      maplibregl.setWorkerUrl('/maplibre-gl-worker/maplibre-gl-worker.mjs');
       if (!active || !mapDivRef.current || mapRef.current) return;
 
       const map = new maplibregl.Map({
