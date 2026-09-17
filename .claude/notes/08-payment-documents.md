@@ -211,5 +211,54 @@ three remaining live hypotheses (auth/session failure, a genuine per-path
 storage-side failure, or a slow/hung request) it actually is — no further
 data-layer investigation should be needed before that detail is read.**
 
+## 2026-09-17 follow-up #3 — separate bug found: print itself silently drops via UIPrintInteractionController re-entrancy
+
+**Symptom**: not a load failure this time — tapping "Tải về ▪︎ In" on a real
+iPhone produced repeated `"cannot add handler to 0 from 0 - dropping"` in
+the Xcode console and no job ever reached Print Center. Reported as
+starting only after 8616a8e/63bc160.
+
+**Root cause, confirmed**: `present(printFor:)`
+(`DocumentViews.swift`, `DocumentWebView.Coordinator`) uses
+`UIPrintInteractionController.shared` — the only way to get an instance at
+all (`UIPrintInteractionController.h:41`: the class has **no public
+`init`**, only the `sharedPrintController`/`.shared` class property — so
+"create a fresh instance per attempt" isn't actually available via the
+public API, contrary to what a first read of this bug class suggests).
+`updateUIView` (`DocumentWebView`) guarded against calling `present()`
+twice for one tap by resetting the `printRequested` binding — but that
+reset is itself deferred (`DispatchQueue.main.async`, required because
+SwiftUI forbids synchronous state mutation from inside a view update),
+while the `present(printFor:)` call right after it runs immediately. If
+`updateUIView` fires again before that deferred reset executes — e.g.
+because some unrelated `@Published` field on the shared `AppState` changes
+(unrelated to this diagnosis, but 8616a8e and this pass's earlier work both
+*added* published fields this screen observes — `documentFileURLFailed`,
+`documentFileURLErrorDetail`, `loadFailedDetail` — meaning there are more
+things now that can trigger a stray re-render mid-tap than before those
+commits, which fits "only started after 8616a8e") — `printRequested` is
+still `true`, and `present()` gets called a second time on the same shared
+controller before the first call has resolved. That double-call is what
+iOS's print stack logs as "cannot add handler to 0 from 0 - dropping": the
+second `present()` tries to register a completion handler on a
+connection/job the first call already owns (and is possibly already
+tearing down), and it's silently discarded rather than erroring.
+
+**Fix applied**: added a synchronous, `Coordinator`-owned guard
+(`isPresentingPrint`) that is not tied to SwiftUI's render timing —
+`present(printFor:)` now no-ops if a previous call hasn't resolved yet, and
+only clears the guard from `UIPrintInteractionController`'s own completion
+handler (or immediately if `presentAnimated:completionHandler:`'s `Bool`
+return says it never started at all — e.g. printing unavailable — since the
+completion handler then never fires). The `printRequested` binding's
+existing async reset is kept (still needed so a later, separate tap can
+re-trigger the flow) but is no longer what prevents re-entrancy.
+
+**Not yet verified on a real device** (no physical iPhone or interactive
+simulator session available from this pass) — confirmed only via a clean
+`xcodebuild` build. Next real-device retest should tap print multiple times
+in a row, including once after a retry, and confirm: no "cannot add
+handler" log, and a job actually reaches Print Center/AirPrint each time.
+
 ### Task 4 — pre-migration cleanup (migration `20260920000058_058_cleanup_auto_generated_documents.sql`)
 Deleted **25 of 26** `payment_documents` rows (every one with `file_path IS NULL` — the old `ensure_payment_document()`-minted rows). The 1 surviving row is the real test upload mentioned in Task 3 above (has a real `file_path`, correctly not matched by the `WHERE file_path IS NULL` cleanup condition — this predates migration 057, so it has no `purge_after` either; left as-is, not backfilled, since it wasn't part of what was asked). `payment_document_counters` reset from 20 rows (several already past `next_number = 1`, e.g. `org_vuonsau`/invoice at 3) to **0 rows** — deleted outright rather than zeroed, since `upload_payment_document()`'s own `ON CONFLICT ... DO UPDATE` recreates a row at `next_number = 1` the moment each organizer/kind/year is next actually used. Confirmed post-migration: 1 remaining `payment_documents` row, 0 with `file_path IS NULL`, 0 counter rows.

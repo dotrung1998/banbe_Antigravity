@@ -313,9 +313,23 @@ private struct DocumentWebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         if printRequested {
-            // Reset first: the print controller is presented asynchronously
-            // and another updateUIView in the meantime would stack a second
-            // sheet on top of the first.
+            // Resetting this binding is itself deferred (SwiftUI forbids
+            // mutating state synchronously from inside a view update), which
+            // leaves a real window where an unrelated AppState change (e.g.
+            // documentFileURLFailed/documentFileURLErrorDetail, both added
+            // alongside this document viewer's error handling) re-triggers
+            // updateUIView while printRequested is still true — calling
+            // present(printFor:) a second time before the first call ever
+            // resolved. That double-call on UIPrintInteractionController's
+            // single shared instance (see present(printFor:) below — it has
+            // no public initializer, so there is no "fresh instance" to
+            // hand out instead) is exactly what produced the real-device
+            // "cannot add handler to 0 from 0 - dropping" log spam with no
+            // print job ever reaching Print Center: the coordinator's own
+            // `isPresentingPrint` guard below is synchronous and doesn't
+            // depend on this binding's reset timing, so it's the actual
+            // re-entrancy guard now — this reset just clears the SwiftUI-level
+            // flag so a later, separate tap can set it again.
             DispatchQueue.main.async { printRequested = false }
             context.coordinator.present(printFor: webView)
         }
@@ -323,6 +337,12 @@ private struct DocumentWebView: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         private let parent: DocumentWebView
+        // Guards UIPrintInteractionController.shared re-entrancy — see the
+        // comment on updateUIView above. Set the instant present() is
+        // called, cleared only from the print controller's own completion
+        // handler once that specific job has actually resolved (completed,
+        // failed, or cancelled), never optimistically.
+        private var isPresentingPrint = false
         init(_ parent: DocumentWebView) { self.parent = parent }
 
         func load(into webView: WKWebView, url: URL) {
@@ -376,13 +396,29 @@ private struct DocumentWebView: UIViewRepresentable {
         /// document to window.print().
         @MainActor
         func present(printFor webView: WKWebView) {
+            // Apple gives no way to allocate a new UIPrintInteractionController
+            // (no public init — only the `shared` class property exists, see
+            // UIPrintInteractionController.h), so "fresh instance per attempt"
+            // isn't available as a fix here. What actually matters is never
+            // calling present() on it again while a previous call hasn't
+            // resolved yet — that's what produced "cannot add handler to 0
+            // from 0 - dropping" with no job reaching Print Center.
+            guard !isPresentingPrint else { return }
+            isPresentingPrint = true
             let controller = UIPrintInteractionController.shared
             let info = UIPrintInfo(dictionary: nil)
             info.outputType = .general
             info.jobName = "banbe"
             controller.printInfo = info
             controller.printFormatter = webView.viewPrintFormatter()
-            controller.present(animated: true, completionHandler: nil)
+            let started = controller.present(animated: true) { [weak self] _, _, _ in
+                self?.isPresentingPrint = false
+            }
+            // present(animated:completionHandler:) returns false when it
+            // couldn't even start (e.g. printing unavailable) — in that case
+            // the completion handler above never runs, so the guard must be
+            // released here instead of staying stuck true forever.
+            if !started { isPresentingPrint = false }
         }
     }
 }
