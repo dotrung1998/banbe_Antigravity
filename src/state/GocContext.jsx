@@ -328,6 +328,9 @@ const initialState = {
   chatMessages: [],
   inboxThreads: [],
   calAdded: false,
+  // Bug 3 (15-organizer-checkin.md follow-up): the event key the calendar
+  // picker sheet is currently open for, or null when closed.
+  calendarPickerFor: null,
   booking: null,
   reserveError: '',
   // The real events row's own status/starts_at for whichever event is
@@ -2298,7 +2301,59 @@ export function GocProvider({ children }) {
       console.warn('cancelEvent RPC failed:', e);
     }
   }, []);
-  const addToCalendar = useCallback(() => set({ calAdded: true }), [set]);
+  // Bug 3 (15-organizer-checkin.md follow-up): this used to just flip
+  // `calAdded` to change the button's own label — no calendar event was
+  // ever actually created. Opens a small picker (Google Calendar vs an
+  // .ics file, the latter covering Apple Calendar and every other calendar
+  // app that can import one) instead of silently pretending to add
+  // anything.
+  const openCalendarPicker = useCallback(() => set({ calendarPickerFor: s.eventKey }), [set, s.eventKey]);
+  const closeCalendarPicker = useCallback(() => set({ calendarPickerFor: null }), [set]);
+
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const toICSDate = (d) => (
+    d.getUTCFullYear() + pad2(d.getUTCMonth() + 1) + pad2(d.getUTCDate())
+    + 'T' + pad2(d.getUTCHours()) + pad2(d.getUTCMinutes()) + pad2(d.getUTCSeconds()) + 'Z'
+  );
+  const calendarEventFor = (ev) => {
+    const start = ev.startDate || new Date();
+    const end = new Date(start.getTime() + 2 * 60 * 60 * 1000); // 2h default — this catalogue has no end time of its own
+    return { title: ev.name, start, end, location: ev.locationLabel || ev.where || '', description: ev.desc || '' };
+  };
+
+  const addToCalendarGoogle = useCallback((ev) => {
+    const { title, start, end, location, description } = calendarEventFor(ev);
+    const params = new URLSearchParams({
+      action: 'TEMPLATE', text: title,
+      dates: `${toICSDate(start)}/${toICSDate(end)}`,
+      details: description, location,
+    });
+    window.open(`https://calendar.google.com/calendar/render?${params.toString()}`, '_blank', 'noopener');
+    set({ calAdded: true, calendarPickerFor: null });
+  }, [set]);
+
+  const addToCalendarICS = useCallback((ev) => {
+    const { title, start, end, location, description } = calendarEventFor(ev);
+    const esc = (v) => String(v).replace(/[\\,;]/g, (m) => '\\' + m).replace(/\n/g, '\\n');
+    const ics = [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//banbe//event//VI', 'BEGIN:VEVENT',
+      `UID:${(crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))}@banbe.app`,
+      `DTSTAMP:${toICSDate(new Date())}`,
+      `DTSTART:${toICSDate(start)}`,
+      `DTEND:${toICSDate(end)}`,
+      `SUMMARY:${esc(title)}`,
+      `LOCATION:${esc(location)}`,
+      `DESCRIPTION:${esc(description)}`,
+      'END:VEVENT', 'END:VCALENDAR',
+    ].join('\r\n');
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${ev.key || 'event'}.ics`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    set({ calAdded: true, calendarPickerFor: null });
+  }, [set]);
   const giveTicket = useCallback((ev) => {
     const url = 'https://banbe.app/ve/' + ev.key + '-x7f2';
     if (navigator.share) navigator.share({ title: 'banbe ▪︎ ' + ev.name, text: T('Mình có vé cho bạn', 'I have a ticket for you'), url }).catch(() => {});
@@ -3111,7 +3166,7 @@ export function GocProvider({ children }) {
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
-    addToCalendar, giveTicket,
+    openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread,
     orgRegNameType, orgRegIgType, orgRegDescType,
@@ -3140,7 +3195,7 @@ export function GocProvider({ children }) {
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
-    addToCalendar, giveTicket,
+    openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread,
     orgRegNameType, orgRegIgType, orgRegDescType,

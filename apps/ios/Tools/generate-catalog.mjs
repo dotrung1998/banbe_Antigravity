@@ -45,6 +45,12 @@ const rows = EVENTS.map(e => ({
   inviteOnly: e.inviteOnly,
   until: e.until,
   untilLabel: e.untilLabel,
+  // Bug 3 (15-organizer-checkin.md follow-up): "Add to Calendar" needs a
+  // real, structured start time — startDate is already a resolved JS Date
+  // on the web side; emit it as an ISO string so Swift can decode it as a
+  // real Date instead of re-parsing `when`/`where`'s display text.
+  startDate: e.startDate ? e.startDate.toISOString() : null,
+  locationLabel: e.locationLabel,
 }));
 
 const out = new URL('../BanbeApp/Resources/events.json', import.meta.url);

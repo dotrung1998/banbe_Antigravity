@@ -7,7 +7,7 @@ import { paper, ink, rule, display, cardGlass, alert } from '../theme.js';
 
 export default function Confirmed() {
   const {
-    state, T, set, curEvent: ev, goHome, addToCalendar, giveTicket, openPaymentDetails, forfeitExpiredHold, goReserve,
+    state, T, set, curEvent: ev, goHome, openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket, openPaymentDetails, forfeitExpiredHold, goReserve,
     loadReceiptStatus, requestReceipt, openDocumentFromNotification,
   } = useGoc();
   const s = state;
@@ -229,7 +229,32 @@ export default function Confirmed() {
       {showQr && (
         <div onClick={() => giveTicket(ev)} style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0', cursor: 'pointer' }}>{giveLabel}</div>
       )}
-      <div onClick={addToCalendar} style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0', cursor: 'pointer' }}>{calendarLabel}</div>
+      <div onClick={openCalendarPicker} data-testid="confirmed-add-to-calendar" style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0', cursor: 'pointer' }}>{calendarLabel}</div>
+
+      {s.calendarPickerFor === ev.key && (
+        <div onClick={closeCalendarPicker} style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.4)', display: 'flex', alignItems: 'flex-end', zIndex: 50 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: paper, width: '100%', borderRadius: '18px 18px 0 0', padding: '10px 22px 28px' }}>
+            <div style={{ width: 36, height: 4, background: rule, borderRadius: 2, margin: '6px auto 18px' }} />
+            <p style={{ fontSize: 13, fontWeight: 600, color: ink, margin: '0 0 14px' }}>
+              {T('Thêm vào lịch nào?', 'Add to which calendar?')}
+            </p>
+            <div onClick={() => addToCalendarGoogle(ev)} data-testid="calendar-pick-google"
+                 style={{ ...cardGlass({ padding: '14px 16px', marginBottom: 10, cursor: 'pointer' }) }}>
+              <span style={{ fontSize: 14, color: ink }}>Google Calendar</span>
+            </div>
+            <div onClick={() => addToCalendarICS(ev)} data-testid="calendar-pick-apple"
+                 style={{ ...cardGlass({ padding: '14px 16px', marginBottom: 10, cursor: 'pointer' }) }}>
+              <span style={{ fontSize: 14, color: ink }}>{T('Lịch Apple ▪︎ Ứng dụng khác', 'Apple Calendar ▪︎ Other apps')}</span>
+              <div style={{ fontSize: 11, color: ink, opacity: 0.65, marginTop: 3 }}>
+                {T('Tải file .ics — mở bằng Lịch hoặc bất kỳ ứng dụng lịch nào khác.', 'Downloads an .ics file — open it with Calendar or any other calendar app.')}
+              </div>
+            </div>
+            <div onClick={closeCalendarPicker} style={{ textAlign: 'center', fontSize: 13, color: ink, opacity: 0.7, padding: '10px 0', cursor: 'pointer' }}>
+              {T('Huỷ', 'Cancel')}
+            </div>
+          </div>
+        </div>
+      )}
       {/* 15-organizer-checkin.md follow-up: receipts are organizer-uploaded
           now (08-payment-documents.md), not auto-issued the moment a
           booking is confirmed — so this screen can't assume one exists yet.

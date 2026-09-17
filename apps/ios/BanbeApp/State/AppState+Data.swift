@@ -1,5 +1,7 @@
 import Foundation
 import Supabase
+import EventKit
+import UIKit
 
 /// Row payloads for the writes this app makes. PostgREST needs `Encodable`
 /// values, so each write gets a small explicit struct rather than an
@@ -846,7 +848,80 @@ extension AppState {
         }
     }
 
-    func addToCalendar() { calAdded = true }
+    // Bug 3 (15-organizer-checkin.md follow-up): this used to just flip
+    // `calAdded` to change the button's own label — no calendar event was
+    // ever actually created. `openCalendarPicker()` shows a confirmation
+    // dialog (Google Calendar vs Apple Calendar); the two functions below
+    // do the real, platform-appropriate work for each choice.
+
+    func openCalendarPicker(for event: CatalogEvent) {
+        calendarPickerEvent = event
+        calendarError = ""
+    }
+    func closeCalendarPicker() { calendarPickerEvent = nil }
+
+    /// Same `calendar.google.com/calendar/render` deep link the web app
+    /// uses — works whether or not the Google Calendar app is installed
+    /// (falls back to opening it in Safari).
+    func addToCalendarGoogle(_ event: CatalogEvent) {
+        let start = event.startDate ?? Date()
+        let end = start.addingTimeInterval(2 * 60 * 60) // 2h default — the catalogue has no end time of its own
+        var comps = URLComponents(string: "https://calendar.google.com/calendar/render")!
+        comps.queryItems = [
+            URLQueryItem(name: "action", value: "TEMPLATE"),
+            URLQueryItem(name: "text", value: event.name),
+            URLQueryItem(name: "dates", value: "\(Self.icsDate(start))/\(Self.icsDate(end))"),
+            URLQueryItem(name: "details", value: event.desc),
+            URLQueryItem(name: "location", value: event.locationLabel ?? event.where),
+        ]
+        guard let url = comps.url else { return }
+        UIApplication.shared.open(url)
+        calAdded = true
+        calendarPickerEvent = nil
+    }
+
+    private static func icsDate(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f.string(from: d)
+    }
+
+    /// EventKit — the real Apple Calendar path. Requests access every time
+    /// (EKEventStore itself no-ops instantly if already granted; this also
+    /// means a user who denied it the first time gets a fresh chance to
+    /// reconsider rather than being silently stuck forever).
+    func addToCalendarApple(_ event: CatalogEvent) {
+        let store = EKEventStore()
+        Task {
+            do {
+                let granted: Bool
+                if #available(iOS 17.0, *) {
+                    granted = try await store.requestFullAccessToEvents()
+                } else {
+                    granted = try await store.requestAccess(to: .event)
+                }
+                guard granted else {
+                    calendarError = T("banbe cần quyền truy cập Lịch để thêm sự kiện này. Bật trong Cài đặt > banbe > Lịch.",
+                                      "banbe needs Calendar access to add this event. Turn it on in Settings > banbe > Calendar.")
+                    return
+                }
+                let ekEvent = EKEvent(eventStore: store)
+                ekEvent.title = event.name
+                ekEvent.startDate = event.startDate ?? Date()
+                ekEvent.endDate = ekEvent.startDate.addingTimeInterval(2 * 60 * 60)
+                ekEvent.location = event.locationLabel ?? event.where
+                ekEvent.notes = event.desc
+                ekEvent.calendar = store.defaultCalendarForNewEvents
+                try store.save(ekEvent, span: .thisEvent)
+                calAdded = true
+                calendarPickerEvent = nil
+            } catch {
+                print("addToCalendarApple failed:", error)
+                calendarError = T("Không thể thêm vào lịch. Thử lại nhé.", "Couldn't add to your calendar. Please try again.")
+            }
+        }
+    }
 
     // MARK: - Chat
 

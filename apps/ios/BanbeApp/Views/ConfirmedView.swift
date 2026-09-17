@@ -232,7 +232,14 @@ struct ConfirmedView: View {
                     }
                     footerButton(app.calAdded ? app.T("Đã thêm vào lịch", "Added to calendar")
                                               : app.T("Thêm vào lịch", "Add to calendar")) {
-                        app.addToCalendar()
+                        app.openCalendarPicker(for: event)
+                    }
+                    .accessibilityIdentifier("confirmed.addToCalendar")
+                    if !app.calendarError.isEmpty {
+                        Text(app.calendarError)
+                            .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 22).padding(.top, 8)
                     }
                     // 15-organizer-checkin.md follow-up: receipts are
                     // organizer-uploaded now (08-payment-documents.md), not
@@ -263,6 +270,17 @@ struct ConfirmedView: View {
         }
         .onDisappear { pollTask?.cancel(); receiptPollTask?.cancel() }
         .onChange(of: app.receiptDoc) { _, _ in startReceiptPollingIfNeeded() }
+        .confirmationDialog(
+            app.T("Thêm vào lịch nào?", "Add to which calendar?"),
+            isPresented: Binding(get: { app.calendarPickerEvent != nil }, set: { if !$0 { app.closeCalendarPicker() } }),
+            titleVisibility: .visible
+        ) {
+            if let pickerEvent = app.calendarPickerEvent {
+                Button("Google Calendar") { app.addToCalendarGoogle(pickerEvent) }
+                Button(app.T("Lịch Apple", "Apple Calendar")) { app.addToCalendarApple(pickerEvent) }
+                Button(app.T("Huỷ", "Cancel"), role: .cancel) { app.closeCalendarPicker() }
+            }
+        }
         // app.now ticks every second app-wide, which is what drives
         // `countdown` above — the moment it notices this screen's own
         // deadline has passed while still 'holding', forfeit immediately

@@ -207,6 +207,19 @@ export const EVENTS = ROWS.map((r, idx) => {
     soldOut: !!st.soldOut, inviteOnly: !!INVITE_ONLY[r[0]],
     cat2Key: (CAT2[r[0]] || {}).key || null, catDisplay: r[2] + (CAT2[r[0]] ? ' ▪︎ ' + CAT2[r[0]].label : ''),
     until, untilLabel: until != null ? untilLabel(until) : '', agoLabel,
+    // Bug 3 (15-organizer-checkin.md follow-up): "Add to Calendar" needs a
+    // real, structured start time to build an actual calendar event from —
+    // r[7]/r[9] are already parsed into a real (hardcoded-year) date by
+    // relDays() for the "until N days" display; exposing that same
+    // resolved Date directly here (plus the raw area name as a location)
+    // means the calendar feature never has to re-parse a display string.
+    startDate: (() => {
+      const m = r[7].match(/(\d{1,2})\.(\d{2})/);
+      if (!m) return null;
+      const [hh, mm] = (r[9] || '19:00').split(':').map(Number);
+      return new Date(2026, parseInt(m[2], 10) - 1, parseInt(m[1], 10), hh, mm || 0);
+    })(),
+    locationLabel: r[5],
   };
 });
 

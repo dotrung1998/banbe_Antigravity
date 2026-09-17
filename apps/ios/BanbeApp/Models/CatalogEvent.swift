@@ -50,6 +50,12 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
     let inviteOnly: Bool
     let until: Int?
     let untilLabel: String
+    /// Bug 3 (15-organizer-checkin.md follow-up): "Add to Calendar" needs a
+    /// real, structured start time — resolved once on the web side (the
+    /// catalogue's own hardcoded-year date + time), emitted as ISO8601 so
+    /// there's nothing left to re-parse here.
+    let startDate: Date?
+    let locationLabel: String?
 
     enum CodingKeys: String, CodingKey {
         case key, catKey, cat, cat2Key, catDisplay, name, img, lat, lng, meta
@@ -57,7 +63,7 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
         case when, price, seats, seatsLong, urgent, desc, included, host, hostShort
         case greeting, gallery, orgGallery, orgName, orgIg, orgDesc, orgSince
         case orgCount, orgTrusted, cancelled, cancelledHoursAgo, endedHoursAgo
-        case soldOut, inviteOnly, until, untilLabel
+        case soldOut, inviteOnly, until, untilLabel, startDate, locationLabel
     }
 
     /// Absolute URLs for the photos, which the catalogue stores as the web
@@ -103,9 +109,11 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
 /// The catalogue itself, decoded once from the bundled resource.
 enum EventCatalog {
     static let all: [CatalogEvent] = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
         guard let url = Bundle.main.url(forResource: "events", withExtension: "json"),
               let data = try? Data(contentsOf: url),
-              let events = try? JSONDecoder().decode([CatalogEvent].self, from: data)
+              let events = try? decoder.decode([CatalogEvent].self, from: data)
         else {
             assertionFailure("events.json missing or unreadable — run Tools/generate-catalog.mjs")
             return []

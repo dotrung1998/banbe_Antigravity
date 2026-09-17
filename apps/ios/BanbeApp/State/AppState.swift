@@ -222,6 +222,10 @@ final class AppState: ObservableObject {
     @Published var reserveError = ""
     @Published var loading = false
     @Published var calAdded = false
+    // Bug 3 (15-organizer-checkin.md follow-up): the event the calendar
+    // picker confirmation dialog is currently open for, or nil when closed.
+    @Published var calendarPickerEvent: CatalogEvent?
+    @Published var calendarError = ""
     @Published var sharedFlash = false
 
     // MARK: Chat

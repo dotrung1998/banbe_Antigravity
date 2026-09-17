@@ -67,7 +67,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 3,
-    "untilLabel": "Còn 3 ngày"
+    "untilLabel": "Còn 3 ngày",
+    "startDate": "2026-07-11T17:00:00.000Z",
+    "locationLabel": "Bình Thạnh"
   },
   {
     "key": "comnha",
@@ -137,7 +139,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 1,
-    "untilLabel": "Ngày mai"
+    "untilLabel": "Ngày mai",
+    "startDate": "2026-07-09T17:30:00.000Z",
+    "locationLabel": "Quận 3"
   },
   {
     "key": "bandai",
@@ -207,7 +211,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 2,
-    "untilLabel": "Còn 2 ngày"
+    "untilLabel": "Còn 2 ngày",
+    "startDate": "2026-07-10T17:00:00.000Z",
+    "locationLabel": "Thảo Điền"
   },
   {
     "key": "phokhuya",
@@ -277,7 +283,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 3,
-    "untilLabel": "Còn 3 ngày"
+    "untilLabel": "Còn 3 ngày",
+    "startDate": "2026-07-11T21:00:00.000Z",
+    "locationLabel": "Quận 4"
   },
   {
     "key": "vuonsau",
@@ -347,7 +355,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 4,
-    "untilLabel": "Còn 4 ngày"
+    "untilLabel": "Còn 4 ngày",
+    "startDate": "2026-07-12T16:00:00.000Z",
+    "locationLabel": "Gò Vấp"
   },
   {
     "key": "orbit",
@@ -417,7 +427,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 2,
-    "untilLabel": "Còn 2 ngày"
+    "untilLabel": "Còn 2 ngày",
+    "startDate": "2026-07-10T18:00:00.000Z",
+    "locationLabel": "Quận 1"
   },
   {
     "key": "aeie",
@@ -487,7 +499,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 3,
-    "untilLabel": "Còn 3 ngày"
+    "untilLabel": "Còn 3 ngày",
+    "startDate": "2026-07-11T14:00:00.000Z",
+    "locationLabel": "Thảo Điền"
   },
   {
     "key": "fanci",
@@ -557,7 +571,9 @@
     "soldOut": true,
     "inviteOnly": false,
     "until": 1,
-    "untilLabel": "Ngày mai"
+    "untilLabel": "Ngày mai",
+    "startDate": "2026-07-09T17:00:00.000Z",
+    "locationLabel": "Quận 1"
   },
   {
     "key": "compound",
@@ -627,7 +643,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 4,
-    "untilLabel": "Còn 4 ngày"
+    "untilLabel": "Còn 4 ngày",
+    "startDate": "2026-07-12T15:00:00.000Z",
+    "locationLabel": "Quận 1"
   },
   {
     "key": "motlop",
@@ -697,7 +715,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 0,
-    "untilLabel": "Hôm nay"
+    "untilLabel": "Hôm nay",
+    "startDate": "2026-07-08T17:30:00.000Z",
+    "locationLabel": "Quận 3"
   },
   {
     "key": "vungtrang",
@@ -767,7 +787,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 4,
-    "untilLabel": "Còn 4 ngày"
+    "untilLabel": "Còn 4 ngày",
+    "startDate": "2026-07-12T16:00:00.000Z",
+    "locationLabel": "Thảo Điền"
   },
   {
     "key": "sonmai",
@@ -837,7 +859,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 2,
-    "untilLabel": "Còn 2 ngày"
+    "untilLabel": "Còn 2 ngày",
+    "startDate": "2026-07-10T16:30:00.000Z",
+    "locationLabel": "Quận 1"
   },
   {
     "key": "khongnguoi",
@@ -907,7 +931,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 3,
-    "untilLabel": "Còn 3 ngày"
+    "untilLabel": "Còn 3 ngày",
+    "startDate": "2026-07-11T15:00:00.000Z",
+    "locationLabel": "Quận 3"
   },
   {
     "key": "noigiay",
@@ -977,7 +1003,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 0,
-    "untilLabel": "Hôm nay"
+    "untilLabel": "Hôm nay",
+    "startDate": "2026-07-08T17:00:00.000Z",
+    "locationLabel": "Quận 1"
   },
   {
     "key": "phong302",
@@ -1047,7 +1075,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 4,
-    "untilLabel": "Còn 4 ngày"
+    "untilLabel": "Còn 4 ngày",
+    "startDate": "2026-07-12T13:00:00.000Z",
+    "locationLabel": "Quận 5"
   },
   {
     "key": "chieucham",
@@ -1117,7 +1147,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 4,
-    "untilLabel": "Còn 4 ngày"
+    "untilLabel": "Còn 4 ngày",
+    "startDate": "2026-07-12T13:00:00.000Z",
+    "locationLabel": "Yentown, Quận 1"
   },
   {
     "key": "jazzgac",
@@ -1187,7 +1219,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 1,
-    "untilLabel": "Ngày mai"
+    "untilLabel": "Ngày mai",
+    "startDate": "2026-07-09T19:00:00.000Z",
+    "locationLabel": "Quận 1"
   },
   {
     "key": "bangcoi",
@@ -1257,7 +1291,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 2,
-    "untilLabel": "Còn 2 ngày"
+    "untilLabel": "Còn 2 ngày",
+    "startDate": "2026-07-10T18:00:00.000Z",
+    "locationLabel": "Quận 3"
   },
   {
     "key": "modular",
@@ -1327,7 +1363,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 3,
-    "untilLabel": "Còn 3 ngày"
+    "untilLabel": "Còn 3 ngày",
+    "startDate": "2026-07-11T19:30:00.000Z",
+    "locationLabel": "Quận 4"
   },
   {
     "key": "pianomuon",
@@ -1397,7 +1435,9 @@
     "soldOut": false,
     "inviteOnly": false,
     "until": 4,
-    "untilLabel": "Còn 4 ngày"
+    "untilLabel": "Còn 4 ngày",
+    "startDate": "2026-07-12T20:00:00.000Z",
+    "locationLabel": "Quận 1"
   },
   {
     "key": "banrieng",
@@ -1467,6 +1507,8 @@
     "soldOut": false,
     "inviteOnly": true,
     "until": 7,
-    "untilLabel": "Còn 7 ngày"
+    "untilLabel": "Còn 7 ngày",
+    "startDate": "2026-07-15T17:30:00.000Z",
+    "locationLabel": "Bình Thạnh"
   }
 ]
