@@ -59,6 +59,20 @@ export default function Confirmed() {
     else set({ receiptDoc: undefined, receiptRequestSent: false, receiptRequestError: '' });
   }, [isPaid, s.booking?.id, loadReceiptStatus, set]);
 
+  // Bug 1 (15-organizer-checkin.md follow-up): a guest sitting on this exact
+  // screen while the organizer uploads (from Attendance's own poll picking
+  // up a "Xem Receipt"/request_receipt() ask, or unprompted) previously had
+  // to leave and come back for the control to notice — matches this app's
+  // established polling convention elsewhere (Attendance's own 6s poll,
+  // 41340ee; PaymentDetails' 6s poll). Stops once a receipt is actually
+  // found — nothing left to poll for once it exists.
+  useEffect(() => {
+    if (!isPaid || !s.booking?.id || s.receiptDoc) return undefined;
+    const bookingId = s.booking.id;
+    const id = setInterval(() => loadReceiptStatus(bookingId), 6000);
+    return () => clearInterval(id);
+  }, [isPaid, s.booking?.id, s.receiptDoc, loadReceiptStatus]);
+
   // While a booking is sitting unpaid, poll for a phase change — the
   // organizer confirming, the bank webhook matching, or the guest freezing
   // it from another tab. The guest may already be looking at this exact
@@ -224,7 +238,7 @@ export default function Confirmed() {
       {showQr && s.receiptDoc !== undefined && (
         <div
           onClick={() => {
-            if (s.receiptDoc) openDocumentFromNotification(s.receiptDoc.id);
+            if (s.receiptDoc) openDocumentFromNotification(s.receiptDoc.id, 'confirmed');
             else if (!s.receiptRequestSent) requestReceipt(s.booking.id);
           }}
           style={{

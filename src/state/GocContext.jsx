@@ -139,6 +139,11 @@ const initialState = {
   documentsKind: 'invoice',
   documentsRole: 'guest',
   documentId: null,
+  // Bug 2 (15-organizer-checkin.md follow-up): which screen opened the
+  // viewer — 'documents' (the Receipts/Invoices list, the old fixed
+  // behavior) or 'confirmed' (the ticket screen's own "Xem Receipt").
+  // backFromDocument() reads this instead of a single hardcoded target.
+  documentBack: 'documents',
   // Signed URL for the current document's uploaded file (migration 056) —
   // '' while loading/absent (a legacy, pre-upload document has no
   // file_path at all and falls back to the old rendered-HTML viewer).
@@ -1683,8 +1688,8 @@ export function GocProvider({ children }) {
     set({ documentsLoading: false, documents: data || [] });
   }, [set, T, s.user?.id, s.documentsKind, s.documentsRole, s.myOrganizerIds]);
 
-  const openDocument = useCallback((id) => set({ screen: 'documentView', documentId: id }), [set]);
-  const backFromDocument = useCallback(() => set({ screen: 'documents' }), [set]);
+  const openDocument = useCallback((id, backTo = 'documents') => set({ screen: 'documentView', documentId: id, documentBack: backTo }), [set]);
+  const backFromDocument = useCallback(() => set(prev => ({ screen: prev.documentBack || 'documents' })), [set]);
   const backFromDocuments = useCallback(() => set({ screen: 'profile' }), [set]);
 
   const currentDocument = useMemo(
@@ -1739,10 +1744,10 @@ export function GocProvider({ children }) {
   // straight to the document it's about, without needing the full
   // Documents list loaded first — fetches the one row RLS allows this
   // account to see (the guest it belongs to) and opens the viewer on it.
-  const openDocumentFromNotification = useCallback(async (documentId) => {
+  const openDocumentFromNotification = useCallback(async (documentId, backTo = 'documents') => {
     const { data, error } = await supabase.from('payment_documents').select('*').eq('id', documentId).maybeSingle();
     if (error || !data) return;
-    set({ documents: [data], documentId: data.id, documentsKind: data.kind, documentsRole: 'guest', screen: 'documentView' });
+    set({ documents: [data], documentId: data.id, documentsKind: data.kind, documentsRole: 'guest', screen: 'documentView', documentBack: backTo });
   }, [set]);
 
   // Keeps documentFileUrl pointed at whichever document is open — a signed

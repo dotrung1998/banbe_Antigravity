@@ -12,6 +12,12 @@ import SwiftUI
 struct ConfirmedView: View {
     @EnvironmentObject var app: AppState
     @State private var pollTask: Task<Void, Never>?
+    // Bug 1 (15-organizer-checkin.md follow-up): a separate poll from
+    // `pollTask` above — different stop condition (runs until a receipt is
+    // actually found, not until the payment phase changes) — matching this
+    // app's established polling convention elsewhere (AttendanceView's own
+    // 6s poll, 41340ee; PaymentViews' 6s poll).
+    @State private var receiptPollTask: Task<Void, Never>?
 
     private var event: CatalogEvent { app.currentEvent }
     // payment_state is the source of truth for every phase distinction
@@ -255,7 +261,8 @@ struct ConfirmedView: View {
         .onChange(of: phase) { _, newPhase in
             if newPhase == .confirmed { pollTask?.cancel() } else { startPollingIfNeeded() }
         }
-        .onDisappear { pollTask?.cancel() }
+        .onDisappear { pollTask?.cancel(); receiptPollTask?.cancel() }
+        .onChange(of: app.receiptDoc) { _, _ in startReceiptPollingIfNeeded() }
         // app.now ticks every second app-wide, which is what drives
         // `countdown` above — the moment it notices this screen's own
         // deadline has passed while still 'holding', forfeit immediately
@@ -328,7 +335,7 @@ struct ConfirmedView: View {
 
     private func receiptButtonTapped() {
         if let doc = app.receiptDoc {
-            Task { await app.openDocumentFromNotification(doc.id) }
+            Task { await app.openDocumentFromNotification(doc.id, backTo: .confirmed) }
         } else if !app.receiptRequestSent, let bookingID = app.booking?.id {
             Task { await app.requestReceipt(bookingID: bookingID) }
         }
@@ -340,9 +347,24 @@ struct ConfirmedView: View {
             app.receiptChecked = false
             app.receiptRequestSent = false
             app.receiptRequestError = ""
+            receiptPollTask?.cancel()
             return
         }
         Task { await app.loadReceiptStatus(bookingID: bookingID) }
+        startReceiptPollingIfNeeded()
+    }
+
+    private func startReceiptPollingIfNeeded() {
+        receiptPollTask?.cancel()
+        guard isPaid, app.receiptDoc == nil, let bookingID = app.booking?.id else { return }
+        receiptPollTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                if Task.isCancelled { return }
+                guard app.booking?.id == bookingID, app.receiptDoc == nil else { return }
+                await app.loadReceiptStatus(bookingID: bookingID)
+            }
+        }
     }
 
     private func footerButton(_ title: String, action: @escaping () -> Void) -> some View {

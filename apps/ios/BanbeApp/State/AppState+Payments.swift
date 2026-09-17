@@ -324,8 +324,9 @@ extension AppState {
         }
     }
 
-    func openDocument(_ id: UUID) {
+    func openDocument(_ id: UUID, backTo: Screen = .documents) {
         documentID = id
+        documentBack = backTo
         screen = .documentView
         documentFileURL = nil
         if let path = documents.first(where: { $0.id == id })?.filePath, !path.isEmpty {

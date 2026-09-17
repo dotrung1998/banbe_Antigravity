@@ -340,6 +340,12 @@ final class AppState: ObservableObject {
     @Published var documentsKind = "invoice"
     @Published var documentsRole = "guest"
     @Published var documentID: UUID?
+    // Bug 2 (15-organizer-checkin.md follow-up): which screen opened the
+    // viewer — .documents (the Receipts/Invoices list, the old fixed
+    // behavior) or .confirmed (the ticket screen's own "Xem Receipt").
+    // goBack()/backTargetScreen read this instead of a single hardcoded
+    // target.
+    @Published var documentBack: Screen = .documents
     // Signed URL for the current document's uploaded file (migration 056)
     // — nil while loading/absent (a legacy document has no file_path and
     // falls back to the old rendered-HTML viewer instead).
@@ -1063,7 +1069,7 @@ final class AppState: ObservableObject {
         case .billing: screen = .paymentDetails
         case .payout: screen = .profile
         case .documents: screen = .profile
-        case .documentView: screen = .documents
+        case .documentView: screen = documentBack
         case .verifications, .disputes: screen = .profile
         case .mapExplore: goHome()
         default: break
@@ -1094,7 +1100,7 @@ final class AppState: ObservableObject {
         case .billing: return .paymentDetails
         case .payout: return .profile
         case .documents: return .profile
-        case .documentView: return .documents
+        case .documentView: return documentBack
         case .verifications, .disputes: return .profile
         case .mapExplore: return .home
         default: return .home

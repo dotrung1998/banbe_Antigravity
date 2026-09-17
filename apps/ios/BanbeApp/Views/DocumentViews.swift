@@ -118,7 +118,7 @@ struct DocumentViewerView: View {
         ZStack {
             app.palette.paper.ignoresSafeArea()
             VStack(spacing: 0) {
-                BackLink(label: app.T("Quay lại", "Back")) { app.screen = .documents }
+                BackLink(label: app.T("Quay lại", "Back")) { app.screen = app.documentBack }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 22).padding(.top, 8).padding(.bottom, 14)
                     .accessibilityIdentifier("documentView.back")
@@ -239,7 +239,7 @@ struct DocumentViewerView: View {
             replacing = false
             pendingFileURL = nil
             reason = ""
-            app.screen = .documents
+            app.screen = app.documentBack
         }
     }
 }

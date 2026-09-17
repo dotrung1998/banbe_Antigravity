@@ -633,7 +633,7 @@ extension AppState {
     /// Deep-links a bell notification straight to the document it's about,
     /// without needing the full Documents list loaded first — fetches the
     /// one row RLS allows this account to see and opens the viewer on it.
-    func openDocumentFromNotification(_ targetID: UUID) async {
+    func openDocumentFromNotification(_ targetID: UUID, backTo: Screen = .documents) async {
         do {
             let doc: PaymentDocument = try await SupabaseService.client
                 .from("payment_documents").select("*")
@@ -643,6 +643,7 @@ extension AppState {
             documentID = doc.id
             documentsKind = doc.kind
             documentsRole = "guest"
+            documentBack = backTo
             screen = .documentView
             documentFileURL = nil
             if let path = doc.filePath, !path.isEmpty {
