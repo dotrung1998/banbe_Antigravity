@@ -108,6 +108,17 @@ private struct ProfileName: Decodable {
         case displayName = "display_name"
     }
 }
+/// Row shape for the payment_documents query loadAttendanceGuests() runs to
+/// populate AttendanceGuest.hasReceipt/receiptVersionCount/receiptPendingDelete
+/// — mirrors the web's equivalent query in GocContext.jsx.
+private struct AttendanceReceiptRow: Decodable {
+    let bookingId: UUID
+    let supersededAt: Date?
+    enum CodingKeys: String, CodingKey {
+        case bookingId = "booking_id"
+        case supersededAt = "superseded_at"
+    }
+}
 private struct ThreadRow: Decodable {
     let id: UUID
     let eventId: String
@@ -1132,6 +1143,30 @@ extension AppState {
                     .execute().value
                 for profile in profiles { names[profile.id] = profile.displayName }
             }
+            // Upload Receipt's reason prompt (08-payment-documents.md's
+            // 2026-09-17 follow-up #5) needs to know, per booking, whether a
+            // *live* receipt already exists — upload_payment_document()
+            // (056) requires a reason exactly when one does — plus how many
+            // superseded-but-still-queryable copies (056's 24h soft-delete
+            // window) are still pending deletion. Mirrors the web's
+            // equivalent query in GocContext.jsx's loadAttendanceGuests().
+            var receiptCounts: [UUID: (live: Int, pendingDelete: Int)] = [:]
+            if !bookings.isEmpty {
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                let nowIso = isoFormatter.string(from: Date())
+                let receiptRows: [AttendanceReceiptRow] = try await SupabaseService.client
+                    .from("payment_documents").select("booking_id, superseded_at")
+                    .eq("kind", value: "receipt")
+                    .in("booking_id", values: bookings.map(\.id.uuidString))
+                    .or("superseded_at.is.null,purge_after.gt.\(nowIso)")
+                    .execute().value
+                for row in receiptRows {
+                    var entry = receiptCounts[row.bookingId] ?? (live: 0, pendingDelete: 0)
+                    if row.supersededAt != nil { entry.pendingDelete += 1 } else { entry.live += 1 }
+                    receiptCounts[row.bookingId] = entry
+                }
+            }
             let rightNow = Date()
             attendanceGuests = bookings
                 // Expired holds are seats nobody actually has — listing them
@@ -1139,6 +1174,7 @@ extension AppState {
                 .filter { $0.status != "pending" || ($0.expiresAt ?? .distantFuture) > rightNow }
                 .map { booking in
                     let raw = (names[booking.userId ?? UUID()] ?? "").trimmingCharacters(in: .whitespaces)
+                    let receipts = receiptCounts[booking.id] ?? (live: 0, pendingDelete: 0)
                     return AttendanceGuest(
                         id: booking.id,
                         name: raw.isEmpty ? "Khách" : raw,
@@ -1147,7 +1183,10 @@ extension AppState {
                         paid: booking.paidMarkedAt != nil,
                         totalVnd: booking.totalVnd ?? 0,
                         code: booking.code ?? "",
-                        hasProof: !(booking.proofPath ?? "").isEmpty
+                        hasProof: !(booking.proofPath ?? "").isEmpty,
+                        hasReceipt: receipts.live > 0,
+                        receiptVersionCount: receipts.live + receipts.pendingDelete,
+                        receiptPendingDelete: receipts.pendingDelete
                     )
                 }
             attendanceLoading = false

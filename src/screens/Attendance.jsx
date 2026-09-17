@@ -13,6 +13,23 @@ export default function Attendance() {
   const fileInputRef = useRef(null);
   const [uploadingFor, setUploadingFor] = useState(null);
   const [uploadErrorFor, setUploadErrorFor] = useState(null);
+  // Replacing an existing live receipt requires a reason
+  // (upload_payment_document()'s own REASON_REQUIRED gate, migration 056) —
+  // pendingReplace holds the picked file until the organizer actually
+  // supplies one. Only entered when the guest already hasReceipt; a first
+  // upload skips straight to uploadPaymentDocument() with no reason needed,
+  // matching the RPC's own condition exactly.
+  const [pendingReplace, setPendingReplace] = useState(null); // { bookingId, file } | null
+  const [replaceReason, setReplaceReason] = useState('');
+
+  const UPLOAD_ERROR_MESSAGES = {
+    REASON_REQUIRED: T('Cần nêu lý do khi thay thế biên nhận đã có.', 'A reason is required to replace an existing receipt.'),
+    FILE_REQUIRED: T('Vui lòng chọn tệp.', 'Please choose a file.'),
+    NOT_AUTHORIZED: T('Bạn không có quyền tải lên cho đơn này.', "You're not authorized to upload for this booking."),
+    INVALID_PATH: T('Có lỗi khi tải tệp lên. Thử lại nhé.', 'Something went wrong uploading the file. Please try again.'),
+    BOOKING_NOT_FOUND: T('Không tìm thấy đơn đặt chỗ này.', "Couldn't find that booking."),
+  };
+  const uploadErrorMessage = (code) => UPLOAD_ERROR_MESSAGES[code] || T('Không tải lên được. Thử lại nhé.', "Couldn't upload. Please try again.");
 
   // 15-organizer-checkin.md follow-up: this screen only ever reloaded on
   // mount (openAttendance) or right after the organizer's own actions
@@ -52,15 +69,40 @@ export default function Attendance() {
     fileInputRef.current.dataset.bookingId = bookingId;
     fileInputRef.current.click();
   };
+  const runUpload = async (bookingId, file, reason = '') => {
+    setUploadingFor(bookingId);
+    const result = await uploadPaymentDocument(bookingId, 'receipt', file, reason);
+    setUploadingFor(null);
+    if (!result.success) {
+      setUploadErrorFor({ bookingId, code: result.error });
+      return false;
+    }
+    setUploadErrorFor(null);
+    await loadAttendanceGuests(s.attendanceEventKey);
+    return true;
+  };
   const onReceiptFileChosen = async (e) => {
     const file = e.target.files?.[0];
     const bookingId = fileInputRef.current.dataset.bookingId;
     e.target.value = '';
     if (!file || !bookingId) return;
-    setUploadingFor(bookingId);
-    const result = await uploadPaymentDocument(bookingId, 'receipt', file);
-    setUploadingFor(null);
-    if (!result.success) setUploadErrorFor(bookingId);
+    setUploadErrorFor(null);
+    // Matches upload_payment_document()'s own condition exactly: a reason is
+    // required only when a live document already exists for this
+    // booking+kind (loadAttendanceGuests() populates hasReceipt for this).
+    const guest = s.attendanceGuests.find(g => g.id === bookingId);
+    if (guest?.hasReceipt) {
+      setPendingReplace({ bookingId, file });
+      setReplaceReason('');
+      return;
+    }
+    await runUpload(bookingId, file);
+  };
+  const submitReplace = async () => {
+    if (!pendingReplace) return;
+    if (!replaceReason.trim()) return; // button below is disabled in this case too
+    const ok = await runUpload(pendingReplace.bookingId, pendingReplace.file, replaceReason.trim());
+    if (ok) { setPendingReplace(null); setReplaceReason(''); }
   };
 
   const attKey = s.attendanceEventKey;
@@ -130,10 +172,54 @@ export default function Attendance() {
                       }}
                       data-testid="guest-upload-receipt"
                     >
-                      {uploadingFor === g.id ? T('Đang tải lên…', 'Uploading…') : T('Tải lên biên nhận', 'Upload receipt')}
+                      {uploadingFor === g.id
+                        ? T('Đang tải lên…', 'Uploading…')
+                        : (g.hasReceipt ? T('Thay biên nhận', 'Replace receipt') : T('Tải lên biên nhận', 'Upload receipt'))}
                     </span>
-                    {uploadErrorFor === g.id && (
-                      <span style={{ fontSize: 10.5, color: alert }}>{T('Không tải lên được. Thử lại nhé.', "Couldn't upload. Please try again.")}</span>
+                    {/* Surfaces the 24h soft-delete window (upload_payment_document(),
+                        migration 056) — only shown when there's actually something
+                        pending, so the far more common single-upload case stays
+                        uncluttered. */}
+                    {g.receiptPendingDelete > 0 && (
+                      <span style={{ fontSize: 10.5, color: ink, opacity: 0.6, marginTop: 2 }} data-testid="guest-receipt-version">
+                        {T(
+                          `Phiên bản hiện tại (${g.receiptVersionCount}) · ${g.receiptPendingDelete} bản cũ sẽ xoá trong 24h`,
+                          `Current version (${g.receiptVersionCount}) · ${g.receiptPendingDelete} old version${g.receiptPendingDelete > 1 ? 's' : ''} will be deleted within 24h`,
+                        )}
+                      </span>
+                    )}
+                    {pendingReplace?.bookingId === g.id ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }} onClick={(e) => e.stopPropagation()}>
+                        <textarea
+                          value={replaceReason}
+                          onChange={(e) => setReplaceReason(e.target.value)}
+                          placeholder={T('Vì sao thay thế bản cũ?', 'Why are you replacing the old one?')}
+                          rows={2}
+                          data-testid="guest-replace-reason"
+                          style={{ fontSize: 11.5, padding: 8, borderRadius: 10, border: '1px solid rgba(27,25,22,0.16)', fontFamily: "'Be Vietnam Pro', sans-serif", resize: 'vertical' }}
+                        />
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <span
+                            onClick={() => { setPendingReplace(null); setReplaceReason(''); }}
+                            style={{ flex: 1, fontSize: 11, textAlign: 'center', color: ink, opacity: 0.7, padding: '6px 0', cursor: 'pointer' }}
+                          >
+                            {T('Huỷ', 'Cancel')}
+                          </span>
+                          <span
+                            onClick={replaceReason.trim() ? submitReplace : undefined}
+                            data-testid="guest-replace-submit"
+                            style={{
+                              flex: 1, fontSize: 11, fontWeight: 600, textAlign: 'center', color: paper,
+                              background: replaceReason.trim() ? ink : 'rgba(27,25,22,0.35)',
+                              borderRadius: 10, padding: '6px 0', cursor: replaceReason.trim() ? 'pointer' : 'default',
+                            }}
+                          >
+                            {uploadingFor === g.id ? T('Đang tải lên…', 'Uploading…') : T('Xác nhận thay thế', 'Confirm replacement')}
+                          </span>
+                        </div>
+                      </div>
+                    ) : uploadErrorFor?.bookingId === g.id && (
+                      <span style={{ fontSize: 10.5, color: alert }} data-testid="guest-upload-error">{uploadErrorMessage(uploadErrorFor.code)}</span>
                     )}
                   </>
                 ) : (

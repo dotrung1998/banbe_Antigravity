@@ -311,5 +311,93 @@ rendered row's third line = `"E2E dispute-flow test event (cap) · 12 Thg 9"`
 (vi) / `"... · Sep 12"` (en) — no "0đ" anywhere. `xcodebuild` and `vite
 build` both succeed for the iOS/web changes respectively.
 
+## 2026-09-17 follow-up #5 — Check-in "Upload Receipt" always failed on replace (REASON_REQUIRED), plus 1a2767c's caption alignment/size
+
+**Context**: commit 1a2767c added the event/date caption; this pass covers
+two separate follow-ups against it and against a pre-existing bug in the
+Check-in screen's upload flow.
+
+**BUG 1 — replacing a receipt via Check-in's "Upload Receipt" always failed.**
+Root cause, confirmed by re-reading `upload_payment_document()` (056):
+it raises `REASON_REQUIRED` whenever a live document already exists for
+the booking+kind — but `src/screens/Attendance.jsx:61` (web) and
+`apps/ios/BanbeApp/Views/AttendanceView.swift:166` (iOS, pre-fix) both
+called it with no reason at all, every time. The client's generic
+catch-all then surfaced "Couldn't upload. Please try again." for what was
+actually always the same, entirely expected exception — not a real failure.
+
+Confirmed live with an isolated repro (same `tests/e2e/setup.mjs` fixtures
+as prior follow-ups): a first upload with no existing document succeeds
+with no reason; a second upload on the same booking+kind with **no**
+reason is rejected with exactly `REASON_REQUIRED`; the same second upload
+**with** a reason succeeds, supersedes the first row (`superseded_at` set,
+`purge_after` = +24h) and inserts a live replacement (`purge_after` =
++12 months, migration 057's anchor). This is the exact mechanic the fix
+below now drives correctly.
+
+**Fix applied**:
+- `src/state/GocContext.jsx` `uploadPaymentDocument()` — now returns the
+  RPC's actual exception code (`REASON_REQUIRED`, `FILE_REQUIRED`,
+  `AUTH_REQUIRED`, `NOT_AUTHORIZED`, `INVALID_PATH`, `BOOKING_NOT_FOUND`)
+  instead of collapsing every failure into `UPLOAD_FAILED`.
+- `src/screens/Attendance.jsx` — `onReceiptFileChosen` now checks the
+  freshly-loaded guest's `hasReceipt` (see below) and, only when true,
+  shows an inline reason textarea (`pickReceiptFile` no longer uploads
+  immediately in that case) before calling `uploadPaymentDocument()` with
+  the reason; a first upload skips this and uploads immediately, matching
+  the RPC's own condition exactly. The error line now renders
+  `uploadErrorMessage(code)` instead of one hardcoded string.
+- `src/state/GocContext.jsx` `loadAttendanceGuests()` — now also queries
+  `payment_documents` (`kind=receipt`, `booking_id IN (...)`,
+  `superseded_at IS NULL OR purge_after > now()`) and attaches
+  `hasReceipt`/`receiptVersionCount`/`receiptPendingDelete` per guest. The
+  version indicator (`"Phiên bản hiện tại (N) · M bản cũ sẽ xoá trong
+  24h"`) only renders when `receiptPendingDelete > 0`, to avoid cluttering
+  the far more common single-upload case with a redundant "(1)".
+- iOS: `AppState+Payments.swift` `uploadPaymentDocument()` already accepted
+  a `reason` param and already special-cased `REASON_REQUIRED` in its
+  catch block (pre-existing) — extended the same catch to cover
+  `FILE_REQUIRED`/`NOT_AUTHORIZED`/`BOOKING_NOT_FOUND` too, matching the
+  web's mapping. `AppState.swift` `AttendanceGuest` gained
+  `hasReceipt`/`receiptVersionCount`/`receiptPendingDelete`;
+  `AppState+Data.swift` `loadAttendanceGuests()` runs the equivalent
+  `payment_documents` query. `AttendanceView.swift` — picking a file now
+  reads it into memory immediately (`handlePickedReceipt`, not deferred,
+  since a `fileImporter` URL's security-scoped access isn't guaranteed to
+  survive across view updates) and, when `hasReceipt`, holds it in
+  `pendingReplace` behind an inline reason `TextField` before calling
+  `uploadPaymentDocument()`; the version indicator and real error message
+  are shown the same way as web.
+
+**Verified end-to-end** (not just read): the isolated repro's actual
+numbers after a real replace — one superseded row (`pendingDelete: 1`),
+one live row (`live: 1`) — are exactly `receiptVersionCount: 2`,
+`receiptPendingDelete: 1`, i.e. the rendered label reads **"Phiên bản hiện
+tại (2) · 1 bản cũ sẽ xoá trong 24h"**, matching the ticket's own example
+verbatim. `xcodebuild` and `vite build` both succeed.
+
+**BUG 2 — 1a2767c's caption line was too small/faint and sat low.**
+Reported as "lệch xuống" (sitting low) and hard to read. Root cause on web:
+the caption span had no explicit `lineHeight` (unlike a plain default), and
+was sized/weighted the same as the plain secondary "number ▪︎ party" line
+above it (11.5px, regular, opacity 0.7) rather than the amount line it was
+actually replacing (12.5px, semibold) — under-weighted for what is, in the
+uploaded-receipt case, the most useful line in the row. On iOS, the
+equivalent `Text(caption)` had the same mismatch (11.5pt regular vs. the
+amount branch's 12.5pt semibold).
+
+**Fix applied**: matched the caption's styling to the amount line it
+replaces on both platforms — 12.5px/pt, semibold, and gave all three lines
+in the web row (`Documents.jsx`) an explicit `lineHeight: 1.3` so they sit
+on a consistent rhythm rather than depending on the browser's/font's
+default leading for one line and not the others. `xcodebuild`/`vite build`
+both succeed; **actual rendered-pixel alignment not verified in a running
+browser or simulator from this pass** (no visual session available) — if
+it still reads off after this, the next thing to check is `DISPLAY_FACE`'s
+(web) or `BanbeTheme.display`'s (iOS) own font metrics against the plain
+system font used by the sibling lines, since a custom display face's
+line-height/baseline can differ from a system font at the same declared
+size even with `lineHeight` set explicitly.
+
 ### Task 4 — pre-migration cleanup (migration `20260920000058_058_cleanup_auto_generated_documents.sql`)
 Deleted **25 of 26** `payment_documents` rows (every one with `file_path IS NULL` — the old `ensure_payment_document()`-minted rows). The 1 surviving row is the real test upload mentioned in Task 3 above (has a real `file_path`, correctly not matched by the `WHERE file_path IS NULL` cleanup condition — this predates migration 057, so it has no `purge_after` either; left as-is, not backfilled, since it wasn't part of what was asked). `payment_document_counters` reset from 20 rows (several already past `next_number = 1`, e.g. `org_vuonsau`/invoice at 3) to **0 rows** — deleted outright rather than zeroed, since `upload_payment_document()`'s own `ON CONFLICT ... DO UPDATE` recreates a row at `next_number = 1` the moment each organizer/kind/year is next actually used. Confirmed post-migration: 1 remaining `payment_documents` row, 0 with `file_path IS NULL`, 0 counter rows.

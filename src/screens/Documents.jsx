@@ -68,16 +68,24 @@ export default function Documents() {
               data-testid="document-row"
             >
               <div onClick={() => openDocument(doc.id)} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1, cursor: 'pointer' }}>
-                <span style={{ ...display(15, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>
+                <span style={{ ...display(15, { lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>
                   {doc.event?.name || party}
                 </span>
-                <span style={{ fontSize: 11.5, color: ink, opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <span style={{ fontSize: 11.5, lineHeight: 1.3, color: ink, opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {doc.number} ▪︎ {party}
                 </span>
                 {hasAmount ? (
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: ink }}>{formatVnd(doc.total_vnd)}</span>
+                  <span style={{ fontSize: 12.5, lineHeight: 1.3, fontWeight: 600, color: ink }}>{formatVnd(doc.total_vnd)}</span>
                 ) : caption ? (
-                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} data-testid="document-caption">
+                  // Was 11.5/opacity 0.7, matching the plain "number ▪︎ party"
+                  // line above it — too small/faint to read at a glance, and
+                  // relying on the browser's default font leading (no
+                  // explicit lineHeight, unlike the other two lines here)
+                  // let it visually drift low within its own line box.
+                  // Bumped to the same size/weight as the amount line it
+                  // replaces and given the same explicit lineHeight as its
+                  // siblings so all three lines sit on a consistent rhythm.
+                  <span style={{ fontSize: 12.5, lineHeight: 1.3, fontWeight: 600, color: ink, opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} data-testid="document-caption">
                     {caption}
                   </span>
                 ) : null}

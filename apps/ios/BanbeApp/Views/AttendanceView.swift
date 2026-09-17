@@ -11,6 +11,23 @@ struct AttendanceView: View {
     // .fileImporter needs one shared presentation per view, not one per row.
     @State private var uploadTarget: UUID?
     @State private var uploadErrorFor: UUID?
+    // Replacing an existing live receipt requires a reason
+    // (upload_payment_document()'s own REASON_REQUIRED gate, migration
+    // 056) — pendingReplace holds the already-read file data until the
+    // organizer actually supplies one. Only entered when the guest already
+    // hasReceipt; a first upload skips straight to uploadPaymentDocument()
+    // with no reason needed, matching the RPC's own condition exactly. Data
+    // is copied out of the picked URL immediately (not deferred) since a
+    // fileImporter URL's security-scoped access isn't guaranteed to survive
+    // across view updates.
+    @State private var pendingReplace: PendingReceiptUpload?
+    @State private var replaceReason: String = ""
+
+    private struct PendingReceiptUpload {
+        let bookingID: UUID
+        let data: Data
+        let ext: String
+    }
     // request_receipt() (migration 061) deep-links here via
     // openNotification() — the guest's own "Xem Receipt" asked for one
     // that doesn't exist yet. Mirrors DisputeChatPanel's chatHighlight
@@ -46,7 +63,7 @@ struct AttendanceView: View {
             uploadTarget = nil
             switch result {
             case .success(let url):
-                Task { await uploadReceipt(bookingID: bookingID, url: url) }
+                Task { await handlePickedReceipt(bookingID: bookingID, url: url) }
             case .failure(let error):
                 print("Attendance receipt picker failed:", error)
             }
@@ -158,13 +175,39 @@ struct AttendanceView: View {
         }
     }
 
-    private func uploadReceipt(bookingID: UUID, url: URL) async {
+    private func handlePickedReceipt(bookingID: UUID, url: URL) async {
         guard url.startAccessingSecurityScopedResource() else { return }
         defer { url.stopAccessingSecurityScopedResource() }
         guard let data = try? Data(contentsOf: url) else { return }
         let ext = url.pathExtension.lowercased()
-        let ok = await app.uploadPaymentDocument(bookingID: bookingID, kind: "receipt", fileData: data, fileExtension: ext.isEmpty ? "jpg" : ext)
+        let fileExt = ext.isEmpty ? "jpg" : ext
+        // Matches upload_payment_document()'s own condition exactly: a
+        // reason is required only when a live document already exists for
+        // this booking+kind (loadAttendanceGuests() populates hasReceipt).
+        if app.attendanceGuests.first(where: { $0.id == bookingID })?.hasReceipt == true {
+            pendingReplace = PendingReceiptUpload(bookingID: bookingID, data: data, ext: fileExt)
+            replaceReason = ""
+            return
+        }
+        await runUpload(bookingID: bookingID, data: data, ext: fileExt, reason: "")
+    }
+
+    private func runUpload(bookingID: UUID, data: Data, ext: String, reason: String) async {
+        uploadErrorFor = nil
+        let ok = await app.uploadPaymentDocument(bookingID: bookingID, kind: "receipt", fileData: data, fileExtension: ext, reason: reason)
         uploadErrorFor = ok ? nil : bookingID
+        if ok {
+            pendingReplace = nil
+            replaceReason = ""
+            if let key = app.attendanceEventKey { await app.loadAttendanceGuests(key) }
+        }
+    }
+
+    private func submitReplace() async {
+        guard let pending = pendingReplace else { return }
+        let trimmed = replaceReason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return } // the button below is disabled in this case too
+        await runUpload(bookingID: pending.bookingID, data: pending.data, ext: pending.ext, reason: trimmed)
     }
 
     private func guestRow(_ guest: AttendanceGuest) -> some View {
@@ -191,7 +234,7 @@ struct AttendanceView: View {
 
                         Button(app.documentUploading && uploadTarget == guest.id
                                ? app.T("Đang tải lên…", "Uploading…")
-                               : app.T("Tải lên biên nhận", "Upload receipt")) {
+                               : (guest.hasReceipt ? app.T("Thay biên nhận", "Replace receipt") : app.T("Tải lên biên nhận", "Upload receipt"))) {
                             uploadTarget = guest.id
                         }
                         .font(.system(size: 11, weight: .semibold))
@@ -211,10 +254,55 @@ struct AttendanceView: View {
                         .disabled(app.documentUploading)
                         .accessibilityIdentifier("guest.uploadReceipt")
 
-                        if uploadErrorFor == guest.id {
-                            Text(app.T("Không tải lên được. Thử lại nhé.", "Couldn't upload. Please try again."))
+                        // Surfaces the 24h soft-delete window
+                        // (upload_payment_document(), migration 056) — only
+                        // shown when there's actually something pending, so
+                        // the far more common single-upload case stays
+                        // uncluttered.
+                        if guest.receiptPendingDelete > 0 {
+                            Text(app.T(
+                                "Phiên bản hiện tại (\(guest.receiptVersionCount)) · \(guest.receiptPendingDelete) bản cũ sẽ xoá trong 24h",
+                                "Current version (\(guest.receiptVersionCount)) · \(guest.receiptPendingDelete) old version\(guest.receiptPendingDelete > 1 ? "s" : "") will be deleted within 24h"
+                            ))
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(app.palette.ink.opacity(0.6))
+                            .accessibilityIdentifier("guest.receiptVersion")
+                        }
+
+                        if pendingReplace?.bookingID == guest.id {
+                            VStack(alignment: .leading, spacing: 6) {
+                                TextField(app.T("Vì sao thay thế bản cũ?", "Why are you replacing the old one?"), text: $replaceReason, axis: .vertical)
+                                    .font(.system(size: 11.5))
+                                    .padding(8)
+                                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+                                    .accessibilityIdentifier("guest.replaceReason")
+                                HStack(spacing: 6) {
+                                    Button(app.T("Huỷ", "Cancel")) { pendingReplace = nil; replaceReason = "" }
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(app.palette.ink.opacity(0.7))
+                                        .buttonStyle(.plain)
+                                    Spacer()
+                                    let trimmedReason = replaceReason.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    Button(app.documentUploading ? app.T("Đang tải lên…", "Uploading…") : app.T("Xác nhận thay thế", "Confirm replacement")) {
+                                        Task { await submitReplace() }
+                                    }
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(app.palette.paper)
+                                    .padding(.horizontal, 10).padding(.vertical, 6)
+                                    .background(trimmedReason.isEmpty || app.documentUploading ? app.palette.ink.opacity(0.35) : app.palette.ink, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    .buttonStyle(.plain)
+                                    .disabled(trimmedReason.isEmpty || app.documentUploading)
+                                    .accessibilityIdentifier("guest.replaceSubmit")
+                                }
+                            }
+                            .padding(.top, 2)
+                        } else if uploadErrorFor == guest.id {
+                            Text(app.documentUploadError.isEmpty
+                                 ? app.T("Không tải lên được. Thử lại nhé.", "Couldn't upload. Please try again.")
+                                 : app.documentUploadError)
                                 .font(.system(size: 10.5))
                                 .foregroundStyle(BanbeTheme.alert)
+                                .accessibilityIdentifier("guest.uploadError")
                         }
                     } else {
                         Text(app.T("Có nhận khách này không?", "Accept this guest?"))

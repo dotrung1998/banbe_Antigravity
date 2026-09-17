@@ -95,8 +95,16 @@ struct DocumentsView: View {
                         Text(formatVnd(doc.totalVnd))
                             .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                     } else if !caption.isEmpty {
+                        // Was 11.5pt/regular/opacity 0.7 — same as the plain
+                        // "number ▪︎ party" line above it, which read as too
+                        // small/faint and sat low relative to the name line
+                        // above. Matched to the amount line's own size/weight
+                        // (12.5pt semibold) so both branches of this
+                        // conditional share one consistent baseline rhythm
+                        // instead of the caption looking like an
+                        // afterthought next to it.
                         Text(caption)
-                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.75))
                             .lineLimit(1)
                     }
                 }

@@ -117,6 +117,15 @@ struct AttendanceGuest: Identifiable, Equatable {
     /// Whether the guest already sent a transfer screenshot — the strongest
     /// signal there is that this is the right row to mark paid.
     var hasProof: Bool = false
+    /// Whether a live receipt document already exists for this booking —
+    /// upload_payment_document() (migration 056) requires a reason exactly
+    /// when this is true (08-payment-documents.md's 2026-09-17 follow-up
+    /// #5). Mirrors the web's AttendanceGuest.hasReceipt.
+    var hasReceipt: Bool = false
+    /// Live (0 or 1) + superseded-but-still-queryable (056's 24h soft-delete
+    /// window) receipt rows for this booking.
+    var receiptVersionCount: Int = 0
+    var receiptPendingDelete: Int = 0
 }
 
 struct InboxThread: Identifiable, Equatable {

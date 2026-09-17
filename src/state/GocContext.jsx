@@ -1771,7 +1771,15 @@ export function GocProvider({ children }) {
       return { success: true, doc };
     } catch (e) {
       console.warn('uploadPaymentDocument failed:', e);
-      return { success: false, error: e.message === 'REASON_REQUIRED' ? 'REASON_REQUIRED' : 'UPLOAD_FAILED' };
+      // upload_payment_document() (056) raises one of these exact codes as
+      // its exception message — propagate whichever one it actually was
+      // instead of collapsing every failure into the same generic
+      // "Couldn't upload" (08-payment-documents.md's 2026-09-17 follow-up
+      // #5: this is exactly what made a plain REASON_REQUIRED — the
+      // Attendance upload button never sending a reason — indistinguishable
+      // from a real failure).
+      const KNOWN_CODES = ['REASON_REQUIRED', 'FILE_REQUIRED', 'AUTH_REQUIRED', 'NOT_AUTHORIZED', 'INVALID_PATH', 'BOOKING_NOT_FOUND'];
+      return { success: false, error: KNOWN_CODES.includes(e.message) ? e.message : 'UPLOAD_FAILED' };
     }
   }, []);
 
@@ -2827,23 +2835,51 @@ export function GocProvider({ children }) {
       const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', userIds);
       names = Object.fromEntries((profiles || []).map(p => [p.id, p.display_name]));
     }
+    // Upload Receipt's reason prompt (08-payment-documents.md's 2026-09-17
+    // follow-up #5) needs to know, per booking, whether a *live* receipt
+    // already exists — upload_payment_document() (056) requires a reason
+    // exactly when one does — plus how many superseded-but-still-queryable
+    // copies (056's 24h soft-delete window) are still pending deletion, to
+    // show next to the upload control.
+    const bookingIds = (bookings || []).map(b => b.id);
+    let docsByBooking = {};
+    if (bookingIds.length) {
+      const nowIso = new Date().toISOString();
+      const { data: docs } = await supabase
+        .from('payment_documents')
+        .select('booking_id, superseded_at, purge_after')
+        .eq('kind', 'receipt')
+        .in('booking_id', bookingIds)
+        .or(`superseded_at.is.null,purge_after.gt.${nowIso}`);
+      for (const d of docs || []) {
+        const entry = docsByBooking[d.booking_id] || { live: 0, pendingDelete: 0 };
+        if (d.superseded_at) entry.pendingDelete += 1; else entry.live += 1;
+        docsByBooking[d.booking_id] = entry;
+      }
+    }
     const now = Date.now();
     const guests = (bookings || [])
       .filter(b => b.status !== 'pending' || !b.expires_at || new Date(b.expires_at).getTime() > now)
-      .map(b => ({
-        id: b.id,
-        name: (names[b.user_id] || '').trim() || 'Khách',
-        qty: b.qty,
-        checkedIn: b.status === 'attended',
-        // Paid means the organizer confirmed the money arrived — which is
-        // also what issued the receipt. hold_seats marks instant-approval
-        // bookings 'confirmed' up front, so status alone isn't the answer.
-        paid: !!b.paid_marked_at,
-        payMethod: b.paid_method || '',
-        totalVnd: b.total_vnd || 0,
-        code: b.code || '',
-        hasProof: !!b.proof_path,
-      }));
+      .map(b => {
+        const docInfo = docsByBooking[b.id] || { live: 0, pendingDelete: 0 };
+        return {
+          id: b.id,
+          name: (names[b.user_id] || '').trim() || 'Khách',
+          qty: b.qty,
+          checkedIn: b.status === 'attended',
+          // Paid means the organizer confirmed the money arrived — which is
+          // also what issued the receipt. hold_seats marks instant-approval
+          // bookings 'confirmed' up front, so status alone isn't the answer.
+          paid: !!b.paid_marked_at,
+          payMethod: b.paid_method || '',
+          totalVnd: b.total_vnd || 0,
+          code: b.code || '',
+          hasProof: !!b.proof_path,
+          hasReceipt: docInfo.live > 0,
+          receiptVersionCount: docInfo.live + docInfo.pendingDelete,
+          receiptPendingDelete: docInfo.pendingDelete,
+        };
+      });
     set({ attendanceGuests: guests, attendanceLoading: false });
   }, [set]);
   const openAttendance = useCallback((key) => {

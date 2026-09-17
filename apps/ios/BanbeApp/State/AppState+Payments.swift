@@ -484,9 +484,22 @@ extension AppState {
         } catch {
             print("uploadPaymentDocument failed:", error)
             documentUploading = false
-            documentUploadError = "\(error)".contains("REASON_REQUIRED")
-                ? T("Cần nêu lý do khi thay thế chứng từ đã có.", "A reason is required when replacing an existing document.")
-                : T("Không tải lên được. Thử lại nhé.", "Couldn't upload. Please try again.")
+            // upload_payment_document() (056) raises one of these exact
+            // codes — surface whichever one it actually was instead of
+            // collapsing every failure into the same generic message
+            // (08-payment-documents.md's 2026-09-17 follow-up #5).
+            let raw = "\(error)"
+            if raw.contains("REASON_REQUIRED") {
+                documentUploadError = T("Cần nêu lý do khi thay thế chứng từ đã có.", "A reason is required when replacing an existing document.")
+            } else if raw.contains("FILE_REQUIRED") {
+                documentUploadError = T("Vui lòng chọn tệp.", "Please choose a file.")
+            } else if raw.contains("NOT_AUTHORIZED") {
+                documentUploadError = T("Bạn không có quyền tải lên cho đơn này.", "You're not authorized to upload for this booking.")
+            } else if raw.contains("BOOKING_NOT_FOUND") {
+                documentUploadError = T("Không tìm thấy đơn đặt chỗ này.", "Couldn't find that booking.")
+            } else {
+                documentUploadError = T("Không tải lên được. Thử lại nhé.", "Couldn't upload. Please try again.")
+            }
             return false
         }
     }
