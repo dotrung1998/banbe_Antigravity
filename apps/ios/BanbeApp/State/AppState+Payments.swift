@@ -297,8 +297,14 @@ extension AppState {
             // to mint here anymore. `superseded_at IS NULL` hides a replaced
             // version immediately (Task 5's soft-delete: the row itself
             // still exists, queryable for 24h, but never in this list).
+            //
+            // `events(...)` embeds via the event_id FK — needed because an
+            // uploaded file's row leaves the `event` jsonb column at its
+            // '{}' default (only event_id is set), confirmed live
+            // (08-payment-documents.md's 2026-09-17 follow-up #4) — the web
+            // side's loadDocuments() (GocContext.jsx) embeds the same way.
             var query = SupabaseService.client
-                .from("payment_documents").select("*")
+                .from("payment_documents").select("*, events(name, starts_at, event_date, event_time)")
                 .eq("kind", value: documentsKind)
                 .is("superseded_at", value: nil)
 

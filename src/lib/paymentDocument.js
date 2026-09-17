@@ -113,6 +113,32 @@ function formatDate(value) {
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
 }
 
+/**
+ * "12 Thg 9" / "Sep 12" — a short, list-row-friendly date, distinct from
+ * formatDate()'s full "dd.mm.yyyy" (that one's for the printed document
+ * itself). Used by the Documents list to caption an uploaded receipt/invoice
+ * with its event's date instead of a `total_vnd` figure that a raw upload
+ * never actually has (08-payment-documents.md's 2026-09-17 follow-up #4).
+ */
+export function formatShortDate(value, lang = 'vi') {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  if (lang === 'en') return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${d.getDate()} Thg ${d.getMonth() + 1}`;
+}
+
+/** starts_at, falling back to the legacy event_date/event_time pair — same
+ * anchor precedence as upload_payment_document()'s 12-month retention clock
+ * (057), so a receipt's displayed date always matches the one its own
+ * purge/reminder schedule is actually anchored to. */
+export function eventDateAnchor(event) {
+  if (!event) return null;
+  if (event.starts_at) return event.starts_at;
+  if (event.event_date) return `${event.event_date}T${event.event_time || '00:00:00'}`;
+  return null;
+}
+
 const PAY_METHOD_LABELS = {
   bank: ['Chuyển khoản ngân hàng', 'Bank transfer'],
   momo: ['Ví MoMo', 'MoMo wallet'],

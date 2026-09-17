@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
-import { formatVnd } from '../lib/paymentDocument.js';
+import { formatVnd, formatShortDate, eventDateAnchor } from '../lib/paymentDocument.js';
 import { paper, ink, rule, display, fieldGlass } from '../theme.js';
 
 // One list, four ways in: invoices or receipts, mine or the ones I issued.
@@ -43,6 +43,24 @@ export default function Documents() {
       <div style={{ ...fieldGlass({ margin: '18px 22px 40px', display: 'flex', flexDirection: 'column' }) }}>
         {s.documents.map((doc, i, arr) => {
           const party = isHost ? (doc.buyer?.name || T('Khách', 'Guest')) : (doc.seller?.name || '');
+          // A raw uploaded file (migration 056) has no real total_vnd — it's
+          // a snapshot-free file the organizer handed over, not a
+          // structured invoice with actual line items. Showing "0đ" there
+          // was never true; caption with the event + date instead, which a
+          // legacy structured invoice's already-populated `event` jsonb (or
+          // an upload's event_id join, see loadDocuments()) can both supply.
+          const hasAmount = Number(doc.total_vnd) > 0;
+          // The jsonb `event` snapshot (legacy structured invoices only)
+          // shapes its date as {date, time}; the events(...) join used for
+          // an uploaded file's row shapes it as {starts_at, event_date,
+          // event_time} — same field names as the events table itself,
+          // hence eventDateAnchor() (shared with the 057 retention anchor).
+          const eventName = doc.event?.name || doc.events?.name || '';
+          const eventDateRaw = doc.event?.name
+            ? (doc.event.date ? `${doc.event.date}T${doc.event.time || '00:00:00'}` : null)
+            : eventDateAnchor(doc.events);
+          const eventDate = formatShortDate(eventDateRaw, s.lang);
+          const caption = [eventName, eventDate].filter(Boolean).join(' · ');
           return (
             <div
               key={doc.id}
@@ -56,7 +74,13 @@ export default function Documents() {
                 <span style={{ fontSize: 11.5, color: ink, opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {doc.number} ▪︎ {party}
                 </span>
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: ink }}>{formatVnd(doc.total_vnd)}</span>
+                {hasAmount ? (
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: ink }}>{formatVnd(doc.total_vnd)}</span>
+                ) : caption ? (
+                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} data-testid="document-caption">
+                    {caption}
+                  </span>
+                ) : null}
               </div>
               <span
                 onClick={(e) => { e.stopPropagation(); downloadDocument(doc); }}

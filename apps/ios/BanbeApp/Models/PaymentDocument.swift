@@ -32,12 +32,19 @@ struct PaymentDocument: Codable, Identifiable, Hashable {
     var uploadReason: String?
     var supersededAt: Date?
     var purgeAfter: Date?
+    // A raw upload's `event` jsonb column stays at its '{}' default —
+    // upload_payment_document() (056) only ever sets event_id, never a
+    // snapshot — so DocumentsView needs a live join for the event's
+    // name/date on an uploaded file's row. Populated only when the query
+    // asks for it (`select("*, events(...)")`, see loadDocuments()); nil
+    // for any query that doesn't embed it.
+    var events: PaymentDocumentEventJoin?
 
     var isReceipt: Bool { kind == "receipt" }
     var isUploaded: Bool { filePath?.isEmpty == false }
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, number, seller, buyer, event, lines, note
+        case id, kind, number, seller, buyer, event, lines, note, events
         case bookingId = "booking_id"
         case eventId = "event_id"
         case organizerId = "organizer_id"
@@ -51,6 +58,23 @@ struct PaymentDocument: Codable, Identifiable, Hashable {
         case uploadReason = "upload_reason"
         case supersededAt = "superseded_at"
         case purgeAfter = "purge_after"
+    }
+}
+
+/// The `events(name, starts_at, event_date, event_time)` embed — same field
+/// names as the `events` table itself, and the same starts_at/event_date
+/// fallback anchor migration 057's retention clock already uses.
+struct PaymentDocumentEventJoin: Codable, Hashable {
+    var name: String?
+    var startsAt: Date?
+    var eventDate: String?
+    var eventTime: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case startsAt = "starts_at"
+        case eventDate = "event_date"
+        case eventTime = "event_time"
     }
 }
 
@@ -78,11 +102,13 @@ struct DocumentEvent: Codable, Hashable {
     var id: String?
     var key: String?
     var name: String?
+    var date: String?
+    var time: String?
     var area: String?
     var bookingCode: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, key, name, area
+        case id, key, name, date, time, area
         case bookingCode = "booking_code"
     }
 }
@@ -171,4 +197,51 @@ func formatVnd(_ amount: Int) -> String {
     formatter.groupingSeparator = "."
     formatter.groupingSize = 3
     return (formatter.string(from: NSNumber(value: amount)) ?? "\(amount)") + "₫"
+}
+
+/// "12 Thg 9" / "Sep 12" — mirrors formatShortDate() in
+/// src/lib/paymentDocument.js. Used by DocumentsView to caption an uploaded
+/// receipt/invoice's row with its event's date instead of a fake "0đ"
+/// (08-payment-documents.md's 2026-09-17 follow-up #4).
+func formatShortDate(_ date: Date?, lang: String) -> String? {
+    guard let date else { return nil }
+    if lang == "en" {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter.string(from: date)
+    }
+    let calendar = Calendar(identifier: .gregorian)
+    let day = calendar.component(.day, from: date)
+    let month = calendar.component(.month, from: date)
+    return "\(day) Thg \(month)"
+}
+
+private let eventDateOnlyFormatter: DateFormatter = {
+    let f = DateFormatter()
+    f.dateFormat = "yyyy-MM-dd"
+    f.timeZone = TimeZone(identifier: "UTC")
+    return f
+}()
+
+/// The jsonb `event` snapshot (legacy structured invoices) shapes its date
+/// as separate `date`/`time` strings; the `events(...)` join used for an
+/// uploaded file's row (see loadDocuments()) decodes `starts_at` straight to
+/// a `Date`, falling back to `event_date`/`event_time` — same
+/// starts_at/event_date precedence as migration 057's retention anchor.
+extension PaymentDocument {
+    var displayEventCaption: (name: String?, date: Date?) {
+        if let name = event.name, !name.isEmpty {
+            var date: Date?
+            if let dateStr = event.date {
+                date = eventDateOnlyFormatter.date(from: dateStr)
+            }
+            return (name, date)
+        }
+        if let join = events, let name = join.name {
+            let date = join.startsAt ?? join.eventDate.flatMap { eventDateOnlyFormatter.date(from: $0) }
+            return (name, date)
+        }
+        return (nil, nil)
+    }
 }

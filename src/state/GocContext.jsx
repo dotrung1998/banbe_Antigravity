@@ -1696,7 +1696,17 @@ export function GocProvider({ children }) {
     // mint here anymore. `superseded_at IS NULL` hides a replaced version
     // immediately (Task 5's soft-delete: the row itself still exists,
     // queryable for 24h, but never in this list).
-    let query = supabase.from('payment_documents').select('*').eq('kind', s.documentsKind).is('superseded_at', null);
+    //
+    // `events(...)` embeds via the event_id FK — the `event` jsonb column is
+    // only ever populated for a legacy structured invoice; an uploaded raw
+    // receipt/invoice (migration 056's upload_payment_document()) leaves it
+    // at its '{}' default and only ever sets event_id, confirmed live
+    // (08-payment-documents.md's 2026-09-17 follow-up #4). Named `events`
+    // (bare table name, not `event:events(...)`) both because that's what a
+    // text FK embed on this schema is confirmed to need (same follow-up's
+    // `organizers` embed note) and because an `event:` alias would collide
+    // with the existing jsonb column's key in the same row.
+    let query = supabase.from('payment_documents').select('*, events(name, starts_at, event_date, event_time)').eq('kind', s.documentsKind).is('superseded_at', null);
     if (s.documentsRole === 'host') {
       // An organizer is usually also a goer, so filtering by RLS alone would
       // mix their own tickets into the list of documents they issued.

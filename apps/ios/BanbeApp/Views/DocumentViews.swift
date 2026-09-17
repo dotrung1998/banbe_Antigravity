@@ -73,6 +73,15 @@ struct DocumentsView: View {
 
     private func row(_ doc: PaymentDocument) -> some View {
         let party = isHost ? (doc.buyer.name ?? app.T("Khách", "Guest")) : (doc.seller.name ?? "")
+        // A raw uploaded file (migration 056) has no real totalVnd — showing
+        // "0đ" for it was never true. Caption with the event + date instead
+        // (from the jsonb snapshot on a legacy structured invoice, or the
+        // events(...) join on an uploaded file's row — displayEventCaption
+        // picks whichever is actually populated).
+        let hasAmount = doc.totalVnd > 0
+        let (eventName, eventDate) = doc.displayEventCaption
+        let dateLabel = formatShortDate(eventDate, lang: app.lang)
+        let caption = [eventName, dateLabel].compactMap { $0 }.joined(separator: " · ")
         return Button { app.openDocument(doc.id) } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -82,8 +91,14 @@ struct DocumentsView: View {
                     Text("\(doc.number) ▪︎ \(party)")
                         .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                         .lineLimit(1)
-                    Text(formatVnd(doc.totalVnd))
-                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                    if hasAmount {
+                        Text(formatVnd(doc.totalVnd))
+                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                    } else if !caption.isEmpty {
+                        Text(caption)
+                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                            .lineLimit(1)
+                    }
                 }
                 Spacer()
                 Text("›").font(.system(size: 15)).foregroundStyle(app.palette.ink)

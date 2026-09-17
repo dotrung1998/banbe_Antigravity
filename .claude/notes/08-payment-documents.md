@@ -260,5 +260,56 @@ simulator session available from this pass) — confirmed only via a clean
 in a row, including once after a retry, and confirm: no "cannot add
 handler" log, and a job actually reaches Print Center/AirPrint each time.
 
+## 2026-09-17 follow-up #4 — Documents list showed fake "0đ" for uploaded receipts, replaced with event + date
+
+**Context**: `payment_documents.total_vnd defaults to 0` and is never
+populated by `upload_payment_document()` (056, confirmed re-reading its
+`INSERT` — only `booking_id, event_id, organizer_id, user_id, kind, number,
+file_path, uploaded_by, upload_reason` are set) — it's only meaningful for
+the legacy structured-invoice path (024's `ensure_payment_document()`,
+which does populate `seller`/`buyer`/`event`/`lines`/`total_vnd` from a real
+snapshot). The Documents list (`src/screens/Documents.jsx:59` web,
+`apps/ios/BanbeApp/Views/DocumentViews.swift:85` `DocumentsView.row(_:)`
+iOS) rendered `formatVnd(total_vnd)` unconditionally, showing a fake "0đ"
+next to every raw-uploaded receipt/invoice.
+
+**New fact confirmed live** (not assumed): built an isolated repro
+(same `tests/e2e/setup.mjs` fixtures as the 2026-09-17 #2 entry) — a real
+`upload_payment_document()`-created row has `event: {}` (the jsonb
+default) and `event_id` populated, confirmed both on the RPC's own return
+value and on a plain `select('*')` read back as the real guest. **The `event`
+jsonb snapshot is never populated on an uploaded document** — only a legacy
+structured invoice (024's generator) sets it, with shape `{id, key, name,
+date, time, area, booking_code}` (`024:359-363`). Also confirmed live: a
+`select('*, events(name, starts_at, event_date, event_time)')` embed via the
+`event_id` FK works correctly under the real guest's RLS session (not just
+service-role) and returns a normal nested object keyed `events` (plural —
+no collision with the existing singular `event` jsonb column).
+
+**Fix applied**:
+- `src/lib/paymentDocument.js` — added `formatShortDate(value, lang)`
+  ("12 Thg 9" / "Sep 12") and `eventDateAnchor(event)` (starts_at falling
+  back to event_date+event_time — same precedence as 057's retention clock).
+- `src/state/GocContext.jsx` `loadDocuments()` — select now embeds
+  `events(name, starts_at, event_date, event_time)`.
+- `src/screens/Documents.jsx` — the amount line only renders when
+  `total_vnd > 0`; otherwise renders `"<event name> · <date>"`, sourced from
+  the jsonb `event` snapshot when populated (legacy invoices), else the
+  `events` join (uploads).
+- iOS: `PaymentDocument.swift` — added `PaymentDocumentEventJoin` (decodes
+  the `events(...)` embed), `events` field on `PaymentDocument`, `date`/
+  `time` added to `DocumentEvent` (was silently dropping those jsonb keys
+  before), `formatShortDate(_:lang:)`, and `displayEventCaption` (mirrors
+  the web's source-picking logic). `AppState+Payments.swift`
+  `loadDocuments()` select updated to match. `DocumentViews.swift`
+  `DocumentsView.row(_:)` updated the same way as the web row.
+
+**Verified end-to-end against a real uploaded receipt under real RLS** (not
+service-role, not a static read) — the exact query+logic now in
+`Documents.jsx` returns, for a freshly uploaded receipt with `total_vnd: 0`:
+rendered row's third line = `"E2E dispute-flow test event (cap) · 12 Thg 9"`
+(vi) / `"... · Sep 12"` (en) — no "0đ" anywhere. `xcodebuild` and `vite
+build` both succeed for the iOS/web changes respectively.
+
 ### Task 4 — pre-migration cleanup (migration `20260920000058_058_cleanup_auto_generated_documents.sql`)
 Deleted **25 of 26** `payment_documents` rows (every one with `file_path IS NULL` — the old `ensure_payment_document()`-minted rows). The 1 surviving row is the real test upload mentioned in Task 3 above (has a real `file_path`, correctly not matched by the `WHERE file_path IS NULL` cleanup condition — this predates migration 057, so it has no `purge_after` either; left as-is, not backfilled, since it wasn't part of what was asked). `payment_document_counters` reset from 20 rows (several already past `next_number = 1`, e.g. `org_vuonsau`/invoice at 3) to **0 rows** — deleted outright rather than zeroed, since `upload_payment_document()`'s own `ON CONFLICT ... DO UPDATE` recreates a row at `next_number = 1` the moment each organizer/kind/year is next actually used. Confirmed post-migration: 1 remaining `payment_documents` row, 0 with `file_path IS NULL`, 0 counter rows.
