@@ -7,12 +7,27 @@ import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 export default function Attendance() {
   const {
     state, set, T, trStatus, goDashboard, toggleCheckin, openQrScan, openCancelBooking, markGuestPaid, uploadPaymentDocument,
-    openVerificationDetail, openRejectGuest,
+    openVerificationDetail, openRejectGuest, loadAttendanceGuests,
   } = useGoc();
   const s = state;
   const fileInputRef = useRef(null);
   const [uploadingFor, setUploadingFor] = useState(null);
   const [uploadErrorFor, setUploadErrorFor] = useState(null);
+
+  // 15-organizer-checkin.md follow-up: this screen only ever reloaded on
+  // mount (openAttendance) or right after the organizer's own actions
+  // (accept/reject/check-in) — a guest holding a NEW slot or submitting
+  // payment while the organizer already has this screen open never showed
+  // up until the organizer left and reopened it. Matches this app's own
+  // established polling convention elsewhere (PaymentDetails' 6s,
+  // DisputeChatPanel's 4s — no realtime subscription exists anywhere in
+  // this codebase, see 03-dispute-chat.md).
+  useEffect(() => {
+    const key = s.attendanceEventKey;
+    if (!key) return undefined;
+    const id = setInterval(() => loadAttendanceGuests(key), 6000);
+    return () => clearInterval(id);
+  }, [s.attendanceEventKey, loadAttendanceGuests]);
   // request_receipt() (migration 061) deep-links here via openNotification()
   // — the guest's own "Xem Receipt" asked for one that doesn't exist yet.
   // Mirrors DisputeChatPanel.jsx's chatHighlight scroll/flash pattern: a

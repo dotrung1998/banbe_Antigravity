@@ -1021,7 +1021,15 @@ final class AppState: ObservableObject {
     /// other again.
     var paymentDetailsBackTarget: Screen {
         let booking = paymentBookings.first { $0.id == paymentBookingID }
-        return booking?.paymentState == .cancelled ? .home : paymentBack
+        // Bug 3 (15-organizer-checkin.md follow-up): a confirmed booking is
+        // as terminal here as a cancelled one — the "Paid" card's own
+        // button (not this back path) is how a guest reaches their ticket
+        // now, so leaving via back/swipe should land on Home directly too,
+        // same reasoning as the cancelled case above.
+        switch booking?.paymentState {
+        case .cancelled, .confirmed: return .home
+        default: return paymentBack
+        }
     }
 
     var canSwipeBack: Bool {

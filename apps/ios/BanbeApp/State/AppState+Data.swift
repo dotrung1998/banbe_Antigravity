@@ -681,7 +681,16 @@ extension AppState {
                 .single().execute().value
             booking = fresh
             self.eventKey = eventKey ?? fresh.eventId
-            holdDeadline = fresh.expiresAt
+            // Bug 3 (15-organizer-checkin.md follow-up): `expiresAt` is the
+            // legacy mirror column hold_seats() sets once at creation and
+            // nothing ever clears afterward — an organizer accepting
+            // quickly re-armed `holdDeadline` to that stale future
+            // timestamp, which HomeView's own held-event card reads in
+            // isolation (unlike ConfirmedView's own phase logic, which
+            // already prefers `booking.holdExpiresAt`). That column is
+            // actively maintained (nil once confirmed/rejected), so a
+            // confirmed booking never re-arms this at all.
+            holdDeadline = fresh.holdExpiresAt
             now = Date()
             screen = .confirmed
             await loadLiveEventStatus()

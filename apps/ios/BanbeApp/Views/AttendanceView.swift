@@ -17,6 +17,14 @@ struct AttendanceView: View {
     // scroll/flash pattern: scroll the matching guest row into view, flash
     // it briefly, then clear the request so it doesn't refire.
     @State private var highlightedGuestID: UUID?
+    // 15-organizer-checkin.md follow-up: this screen only ever reloaded on
+    // appear or right after the organizer's own actions (accept/reject/
+    // check-in) — a guest holding a NEW slot or submitting payment while
+    // the organizer already has this screen open never showed up until
+    // they left and reopened it. Matches this app's own polling convention
+    // elsewhere (PaymentViews' 6s poll) — no realtime subscription exists
+    // anywhere in this codebase.
+    @State private var pollTask: Task<Void, Never>?
 
     private var event: CatalogEvent? { EventCatalog.find(app.attendanceEventKey) }
     private var checkedCount: Int { app.attendanceGuests.filter(\.checkedIn).count }
@@ -27,6 +35,9 @@ struct AttendanceView: View {
                 content(proxy: proxy)
             }
         }
+        .onAppear { startPolling() }
+        .onChange(of: app.attendanceEventKey) { _, _ in startPolling() }
+        .onDisappear { pollTask?.cancel() }
         .fileImporter(
             isPresented: Binding(get: { uploadTarget != nil }, set: { if !$0 { uploadTarget = nil } }),
             allowedContentTypes: [.pdf, .jpeg, .png, .image]
@@ -121,6 +132,19 @@ struct AttendanceView: View {
             // loads — this can't scroll to a row that isn't rendered yet).
             .onChange(of: app.attendanceHighlightBookingID) { _, _ in scrollToHighlightIfNeeded(proxy: proxy) }
             .onChange(of: app.attendanceGuests) { _, _ in scrollToHighlightIfNeeded(proxy: proxy) }
+    }
+
+    private func startPolling() {
+        pollTask?.cancel()
+        guard let key = app.attendanceEventKey else { return }
+        pollTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                if Task.isCancelled { return }
+                guard app.attendanceEventKey == key else { return }
+                await app.loadAttendanceGuests(key)
+            }
+        }
     }
 
     private func scrollToHighlightIfNeeded(proxy: ScrollViewProxy) {

@@ -547,8 +547,14 @@ struct PaymentDetailsView: View {
             Text(app.T("Đã xác nhận. Vé và biên nhận của bạn đã sẵn sàng.",
                        "Confirmed. Your ticket and receipt are ready."))
                 .font(.system(size: 13)).foregroundStyle(app.palette.ink)
-            InkButton(title: app.T("Xem biên nhận", "View receipt"), cornerRadius: 14) {
-                app.openDocuments(kind: "receipt", role: "guest")
+            // 15-organizer-checkin.md follow-up: this used to open the
+            // Documents list directly (mislabeled "Xem biên nhận"/"View
+            // receipt") — the ticket/QR screen (ConfirmedView) is the right
+            // destination from a "Paid" card, and it already has its own
+            // "Xem Receipt" control (request_receipt()) once there.
+            InkButton(title: app.T("Xem vé", "View Ticket"), cornerRadius: 14) {
+                guard let booking else { return }
+                Task { await app.openBookingConfirmed(bookingID: booking.id, eventKey: booking.eventKey) }
             }
         }
         .padding(16)

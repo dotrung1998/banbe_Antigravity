@@ -1030,7 +1030,13 @@ export function GocProvider({ children }) {
   // Straight to Home instead, every time, for this one terminal state.
   const backFromPaymentDetails = useCallback(() => set(prev => {
     const b = prev.paymentBookings.find(x => x.id === prev.paymentBookingId);
-    return { screen: b?.payment_state === 'cancelled' ? 'home' : (prev.paymentBack || 'profile') };
+    // Bug 3 (15-organizer-checkin.md follow-up): a confirmed booking is as
+    // terminal here as a cancelled one — the "Paid" card's own button (not
+    // this back path) is how a guest reaches their ticket now, so leaving
+    // via back should land on Home directly too, same reasoning as the
+    // cancelled case above.
+    const isTerminal = b?.payment_state === 'cancelled' || b?.payment_state === 'confirmed';
+    return { screen: isTerminal ? 'home' : (prev.paymentBack || 'profile') };
   }), [set]);
   const backFromBilling = useCallback(() => set({ screen: 'paymentDetails' }), [set]);
 
@@ -2764,7 +2770,21 @@ export function GocProvider({ children }) {
       screen: 'confirmed',
       eventKey: eventKey || data.event_id,
       booking: data,
-      holdDeadline: data.expires_at ? new Date(data.expires_at).getTime() : null,
+      // Bug 3 (15-organizer-checkin.md follow-up): this used to read the
+      // legacy `expires_at` mirror column, which hold_seats() sets once at
+      // creation and NOTHING ever clears afterward — not confirm_payment()
+      // (migration 060), not reject_pending_guest(). An organizer accepting
+      // quickly (well within the original 30-min hold window) landed the
+      // guest here with `holdDeadline` re-armed to that stale future
+      // timestamp, which Home.jsx's own `heldEv`/`heldKey` (unrelated to
+      // Confirmed.jsx's own phase logic, which already correctly prefers
+      // `booking.hold_expires_at`) reads in isolation — so leaving this
+      // screen for Home showed a "Đang giữ chỗ"/holding tag on an
+      // already-confirmed booking's event card until something else
+      // happened to clear it. `hold_expires_at` is the actively-maintained
+      // column (NULL once confirmed/rejected) — using it here instead
+      // means a confirmed booking never re-arms this at all.
+      holdDeadline: data.hold_expires_at ? new Date(data.hold_expires_at).getTime() : null,
       now: Date.now(),
     });
   }, [set]);
@@ -3046,7 +3066,7 @@ export function GocProvider({ children }) {
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState,
-    goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
+    goChat, goLogin, goDashboard, goCreate, openAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
     loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof,
     openBilling, billingNameType, billingAddressType, billingPhoneType, billingTaxCodeType, saveBillingDetails,
@@ -3075,7 +3095,7 @@ export function GocProvider({ children }) {
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState,
-    goChat, goLogin, goDashboard, goCreate, openAttendance, openHeld, goHostIntro, createBack,
+    goChat, goLogin, goDashboard, goCreate, openAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
     loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof,
     openBilling, billingNameType, billingAddressType, billingPhoneType, billingTaxCodeType, saveBillingDetails,

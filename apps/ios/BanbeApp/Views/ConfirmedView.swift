@@ -322,7 +322,7 @@ struct ConfirmedView: View {
         } else if app.receiptRequestSent {
             return app.T("Đã gửi yêu cầu ▪︎ Đang chờ người tổ chức", "Request sent ▪︎ waiting on the organizer")
         } else {
-            return app.T("Xem Receipt ▪︎ Yêu cầu biên nhận", "View Receipt ▪︎ Request one")
+            return app.T("Yêu cầu Receipt", "Request Receipt")
         }
     }
 

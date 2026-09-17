@@ -240,7 +240,7 @@ export default function Confirmed() {
             ? T('Đang gửi yêu cầu…', 'Sending request…')
             : s.receiptRequestSent
             ? T('Đã gửi yêu cầu ▪︎ Đang chờ người tổ chức', 'Request sent ▪︎ waiting on the organizer')
-            : T('Xem Receipt ▪︎ Yêu cầu biên nhận', 'View Receipt ▪︎ Request one')}
+            : T('Yêu cầu Receipt', 'Request Receipt')}
         </div>
       )}
       {s.receiptRequestError && (

@@ -22,7 +22,7 @@ export default function PaymentDetails() {
   const {
     state, T, set, loadPaymentBookings, backFromPaymentDetails,
     copyPayField, submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer,
-    openBilling, openDocuments, forfeitExpiredHold, openBookingConfirmed,
+    openBilling, forfeitExpiredHold, openBookingConfirmed,
   } = useGoc();
   const s = state;
   const fileRef = useRef(null);
@@ -310,9 +310,15 @@ export default function PaymentDetails() {
           <p style={{ fontSize: 13, lineHeight: 1.55, color: ink, margin: 0 }}>
             {T('Đã xác nhận. Vé và biên nhận của bạn đã sẵn sàng.', 'Confirmed. Your ticket and receipt are ready.')}
           </p>
-          <div onClick={() => openDocuments('receipt', 'guest')}
+          {/* 15-organizer-checkin.md follow-up: this used to open the
+              Documents list directly (mislabeled "Xem biên nhận"/"View
+              receipt") — the ticket/QR screen (Confirmed.jsx) is the right
+              destination from a "Paid" card, and it already has its own
+              "Xem Receipt" control (request_receipt(), 3e9199a) once
+              there, so nothing is lost by routing through it instead. */}
+          <div onClick={() => openBookingConfirmed(booking.id, booking.event_id)}
                style={{ ...inkButton({ marginTop: 12, borderRadius: 14, padding: 13, fontSize: 13.5 }) }}>
-            {T('Xem biên nhận', 'View receipt')}
+            {T('Xem vé', 'View Ticket')}
           </div>
         </div>
       ) : (isHolding || isPending) && (
