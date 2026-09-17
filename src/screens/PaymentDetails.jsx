@@ -22,7 +22,7 @@ export default function PaymentDetails() {
   const {
     state, T, set, loadPaymentBookings, backFromPaymentDetails,
     copyPayField, submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer,
-    openBilling, openDocuments, forfeitExpiredHold,
+    openBilling, openDocuments, forfeitExpiredHold, openBookingConfirmed,
   } = useGoc();
   const s = state;
   const fileRef = useRef(null);
@@ -91,10 +91,17 @@ export default function PaymentDetails() {
         set(prev => ({
           paymentBookings: prev.paymentBookings.map(b => (b.id === bookingId ? { ...b, ...data } : b)),
         }));
+        // 15-organizer-checkin.md follow-up: an organizer accepting from
+        // Check-in (confirm_payment(), migration 060) shouldn't leave the
+        // guest reading an inline "Đã xác nhận" card on this screen — they
+        // should land straight on the ticket/QR screen, the same place
+        // they'd already be if they'd been staring at Confirmed.jsx instead
+        // of PaymentDetails.jsx when it happened.
+        if (data.payment_state === 'confirmed') openBookingConfirmed(bookingId, data.event_id);
       }
     }, 6000);
     return () => { active = false; clearInterval(id); };
-  }, [booking?.id, phase, isConfirmed, isExpired, set]);
+  }, [booking?.id, phase, isConfirmed, isExpired, set, openBookingConfirmed]);
 
   const msLeft = booking?.hold_expires_at
     ? Math.max(0, new Date(booking.hold_expires_at).getTime() - tick) : 0;

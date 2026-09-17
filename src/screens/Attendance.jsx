@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { findEvent } from '../data/events.js';
 import { formatVnd } from '../lib/paymentDocument.js';
@@ -6,13 +6,31 @@ import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 
 export default function Attendance() {
   const {
-    state, T, trStatus, goDashboard, toggleCheckin, openQrScan, openCancelBooking, markGuestPaid, uploadPaymentDocument,
+    state, set, T, trStatus, goDashboard, toggleCheckin, openQrScan, openCancelBooking, markGuestPaid, uploadPaymentDocument,
     openVerificationDetail, openRejectGuest,
   } = useGoc();
   const s = state;
   const fileInputRef = useRef(null);
   const [uploadingFor, setUploadingFor] = useState(null);
   const [uploadErrorFor, setUploadErrorFor] = useState(null);
+  // request_receipt() (migration 061) deep-links here via openNotification()
+  // — the guest's own "Xem Receipt" asked for one that doesn't exist yet.
+  // Mirrors DisputeChatPanel.jsx's chatHighlight scroll/flash pattern: a
+  // ref per booking id, scroll the matching one into view, flash it
+  // briefly, then clear the request so it doesn't refire on every render.
+  const uploadRefs = useRef({});
+  const [highlightedBookingId, setHighlightedBookingId] = useState(null);
+  useEffect(() => {
+    const targetId = s.attendanceHighlightBookingId;
+    if (!targetId) return;
+    const node = uploadRefs.current[targetId];
+    if (!node) return; // guests list may still be loading — try again once it renders
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlightedBookingId(targetId);
+    set({ attendanceHighlightBookingId: null });
+    const timeout = setTimeout(() => setHighlightedBookingId(null), 2200);
+    return () => clearTimeout(timeout);
+  }, [s.attendanceHighlightBookingId, s.attendanceGuests, set]);
 
   const pickReceiptFile = (bookingId) => {
     setUploadErrorFor(null);
@@ -85,8 +103,16 @@ export default function Attendance() {
                       {T('Đã thanh toán ✓', 'Paid ✓')}
                     </span>
                     <span
+                      ref={(node) => { uploadRefs.current[g.id] = node; }}
                       onClick={(e) => { e.stopPropagation(); pickReceiptFile(g.id); }}
-                      style={{ fontSize: 11, fontWeight: 600, color: ink, width: 'fit-content', cursor: uploadingFor === g.id ? 'default' : 'pointer', border: '1px solid rgba(27,25,22,0.16)', borderRadius: 10, padding: '4px 8px', marginTop: 2, opacity: uploadingFor === g.id ? 0.6 : 1 }}
+                      style={{
+                        fontSize: 11, fontWeight: 600, color: ink, width: 'fit-content',
+                        cursor: uploadingFor === g.id ? 'default' : 'pointer', borderRadius: 10, padding: '4px 8px', marginTop: 2,
+                        opacity: uploadingFor === g.id ? 0.6 : 1,
+                        border: highlightedBookingId === g.id ? `1px solid ${alert}` : '1px solid rgba(27,25,22,0.16)',
+                        boxShadow: highlightedBookingId === g.id ? `0 0 0 3px ${alert}33` : 'none',
+                        transition: 'box-shadow 0.3s ease, border-color 0.3s ease',
+                      }}
                       data-testid="guest-upload-receipt"
                     >
                       {uploadingFor === g.id ? T('Đang tải lên…', 'Uploading…') : T('Tải lên biên nhận', 'Upload receipt')}

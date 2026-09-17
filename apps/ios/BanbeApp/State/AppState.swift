@@ -250,6 +250,12 @@ final class AppState: ObservableObject {
     @Published var chatHighlight: (bookingID: UUID, messageID: UUID?)?
     func clearChatHighlight() { chatHighlight = nil }
 
+    /// Set by openNotification()'s "receipt_requested" case — the same
+    /// scroll-to-and-highlight idea as chatHighlight above, but for
+    /// AttendanceView's per-guest "Upload receipt" control. Cleared once
+    /// AttendanceView has actually applied it.
+    @Published var attendanceHighlightBookingID: UUID?
+
     /// Shows a small toast and fires a light (not the heavier .success/
     /// .warning system) haptic alongside it, so it feels gentle — see
     /// startNotificationPolling() in AppState+Data.swift for what triggers
@@ -301,6 +307,15 @@ final class AppState: ObservableObject {
     // awaiting the organizer's confirm window.
     @Published var nudgeSending = false
     @Published var nudgeError = ""
+    // 15-organizer-checkin.md follow-up: ConfirmedView's "Xem Receipt".
+    // `receiptChecked` distinguishes "haven't looked yet" from "looked and
+    // there genuinely isn't one" — `receiptDoc == nil` alone can't, since
+    // that's also the not-yet-checked state.
+    @Published var receiptDoc: PaymentDocument?
+    @Published var receiptChecked = false
+    @Published var receiptRequestSending = false
+    @Published var receiptRequestError = ""
+    @Published var receiptRequestSent = false
     @Published var paymentBack: Screen = .profile
     @Published var billingName = ""
     @Published var billingAddress = ""
@@ -994,6 +1009,21 @@ final class AppState: ObservableObject {
     /// exactly this reason (nowhere legitimate for it to go when
     /// `authMandatory` is set), and swiping back used to reach
     /// `authBackScreen` regardless, bypassing that gate entirely.
+    /// A rejected/cancelled booking is over — every exit from
+    /// PaymentDetailsView must land on Home directly, not whatever screen
+    /// sent the guest here (which can itself still be mid-transition off a
+    /// now-dead timer UI). This app has no real NavigationStack (screen is
+    /// a flat single published enum, see goBack()'s own comment below), but
+    /// there are still TWO separate exit paths that both need this check:
+    /// the in-view BackLink (PaymentViews.swift) and this edge-swipe
+    /// gesture's goBack()/backTargetScreen below — a single shared
+    /// computed property means neither can drift out of sync with the
+    /// other again.
+    var paymentDetailsBackTarget: Screen {
+        let booking = paymentBookings.first { $0.id == paymentBookingID }
+        return booking?.paymentState == .cancelled ? .home : paymentBack
+    }
+
     var canSwipeBack: Bool {
         switch screen {
         case .splash, .langPick, .themePick, .home, .login: return false
@@ -1021,7 +1051,7 @@ final class AppState: ObservableObject {
         case .preferences, .editName, .security: screen = .profile
         case .login: screen = authBackScreen
         case .confirmed, .refunded, .notifications: goHome()
-        case .paymentDetails: screen = paymentBack
+        case .paymentDetails: screen = paymentDetailsBackTarget
         case .billing: screen = .paymentDetails
         case .payout: screen = .profile
         case .documents: screen = .profile
@@ -1052,7 +1082,7 @@ final class AppState: ObservableObject {
         case .preferences, .editName, .security: return .profile
         case .login: return authBackScreen
         case .confirmed, .refunded, .notifications: return .home
-        case .paymentDetails: return paymentBack
+        case .paymentDetails: return paymentDetailsBackTarget
         case .billing: return .paymentDetails
         case .payout: return .profile
         case .documents: return .profile

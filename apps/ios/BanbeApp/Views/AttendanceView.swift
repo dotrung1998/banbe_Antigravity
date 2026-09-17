@@ -11,13 +11,40 @@ struct AttendanceView: View {
     // .fileImporter needs one shared presentation per view, not one per row.
     @State private var uploadTarget: UUID?
     @State private var uploadErrorFor: UUID?
+    // request_receipt() (migration 061) deep-links here via
+    // openNotification() — the guest's own "Xem Receipt" asked for one
+    // that doesn't exist yet. Mirrors DisputeChatPanel's chatHighlight
+    // scroll/flash pattern: scroll the matching guest row into view, flash
+    // it briefly, then clear the request so it doesn't refire.
+    @State private var highlightedGuestID: UUID?
 
     private var event: CatalogEvent? { EventCatalog.find(app.attendanceEventKey) }
     private var checkedCount: Int { app.attendanceGuests.filter(\.checkedIn).count }
 
     var body: some View {
         ScreenScaffold {
-            VStack(alignment: .leading, spacing: 0) {
+            ScrollViewReader { proxy in
+                content(proxy: proxy)
+            }
+        }
+        .fileImporter(
+            isPresented: Binding(get: { uploadTarget != nil }, set: { if !$0 { uploadTarget = nil } }),
+            allowedContentTypes: [.pdf, .jpeg, .png, .image]
+        ) { result in
+            guard let bookingID = uploadTarget else { return }
+            uploadTarget = nil
+            switch result {
+            case .success(let url):
+                Task { await uploadReceipt(bookingID: bookingID, url: url) }
+            case .failure(let error):
+                print("Attendance receipt picker failed:", error)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func content(proxy: ScrollViewProxy) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
                 BackLink(label: app.T("Trang của bạn", "Your dashboard")) { app.goDashboard() }
 
                 if let event {
@@ -74,6 +101,7 @@ struct AttendanceView: View {
                         }
                         ForEach(app.attendanceGuests) { guest in
                             guestRow(guest)
+                                .id(guest.id)
                             if guest.id != app.attendanceGuests.last?.id {
                                 Divider().overlay(app.palette.rule)
                             }
@@ -87,19 +115,22 @@ struct AttendanceView: View {
             .padding(.horizontal, 22)
             .padding(.top, 16)
             .padding(.bottom, 40)
-        }
-        .fileImporter(
-            isPresented: Binding(get: { uploadTarget != nil }, set: { if !$0 { uploadTarget = nil } }),
-            allowedContentTypes: [.pdf, .jpeg, .png, .image]
-        ) { result in
-            guard let bookingID = uploadTarget else { return }
-            uploadTarget = nil
-            switch result {
-            case .success(let url):
-                Task { await uploadReceipt(bookingID: bookingID, url: url) }
-            case .failure(let error):
-                print("Attendance receipt picker failed:", error)
-            }
+            // request_receipt() deep-link: scroll the matching guest row
+            // into view and flash it, once the guests list has actually
+            // loaded (openAttendance sets attendanceGuests = [] first, then
+            // loads — this can't scroll to a row that isn't rendered yet).
+            .onChange(of: app.attendanceHighlightBookingID) { _, _ in scrollToHighlightIfNeeded(proxy: proxy) }
+            .onChange(of: app.attendanceGuests) { _, _ in scrollToHighlightIfNeeded(proxy: proxy) }
+    }
+
+    private func scrollToHighlightIfNeeded(proxy: ScrollViewProxy) {
+        guard let target = app.attendanceHighlightBookingID,
+              app.attendanceGuests.contains(where: { $0.id == target }) else { return }
+        withAnimation { proxy.scrollTo(target, anchor: .center) }
+        highlightedGuestID = target
+        app.attendanceHighlightBookingID = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            if highlightedGuestID == target { highlightedGuestID = nil }
         }
     }
 
@@ -142,7 +173,16 @@ struct AttendanceView: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(app.palette.ink)
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(highlightedGuestID == guest.id ? BanbeTheme.alert : app.palette.rule,
+                                        lineWidth: highlightedGuestID == guest.id ? 2 : 1)
+                        )
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(highlightedGuestID == guest.id ? BanbeTheme.alert.opacity(0.12) : Color.clear)
+                        )
+                        .animation(.easeInOut(duration: 0.3), value: highlightedGuestID)
                         .buttonStyle(.plain)
                         .disabled(app.documentUploading)
                         .accessibilityIdentifier("guest.uploadReceipt")

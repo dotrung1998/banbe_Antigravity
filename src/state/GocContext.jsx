@@ -161,6 +161,13 @@ const initialState = {
   // the organizer's confirm window.
   nudgeSending: false,
   nudgeError: '',
+  // 15-organizer-checkin.md follow-up: the guest's "Xem Receipt" button on
+  // Confirmed.jsx — null while unchecked, a payment_documents row once one
+  // is found, or `false` once checked and confirmed to not exist yet.
+  receiptDoc: undefined,
+  receiptRequestSending: false,
+  receiptRequestError: '',
+  receiptRequestSent: false,
   // The organizer's verification queue, and the admin dispute desk.
   verifications: [],
   verificationsLoading: false,
@@ -217,6 +224,11 @@ const initialState = {
   // notification row from before migration 050 added message_id). Cleared
   // once DisputeChatPanel has actually applied it.
   chatHighlight: null,
+  // Set by openNotification()'s 'receipt_requested' branch — the same
+  // scroll-to-and-highlight idea as chatHighlight above, but for
+  // Attendance.jsx's per-guest "Upload receipt" control instead of a chat
+  // message. Cleared once Attendance.jsx has applied it.
+  attendanceHighlightBookingId: null,
   // This account's own shareable code — null until signed in and loaded.
   referralCode: null,
   referralShared: false,
@@ -651,6 +663,60 @@ export function GocProvider({ children }) {
     }, 280);
   }, [set]);
 
+  // Real event assignment for the signed-in account: which of the catalogue
+  // events they're attending (from actual bookings) and which they organize
+  // (from owning the organizer row events.organizer_id points at). The
+  // frontend catalogue (src/data/events.js) still supplies all the cosmetic
+  // detail — photos, galleries, descriptions — that the database rows don't
+  // duplicate; this only resolves *which* catalogue keys are genuinely
+  // "mine", by real id, instead of from placeholder demo state.
+  //
+  // `attending`/`tickets` REPLACE on every call, they do not merge with
+  // whatever was there before — mirrors AppState+Data.swift's loadMyEvents()
+  // (`attending = going`, a plain assignment). This used to union new
+  // results into the previous array instead, which meant a booking that
+  // stopped qualifying (e.g. an admin resolving a dispute as "Mở lại chỗ" /
+  // "return to pool", `resolve_dispute()` setting `status='expired'` —
+  // outside this filter, supabase/migrations/20260914000047_...sql:80-83)
+  // could never leave `attending` for the rest of that session: the guest
+  // kept seeing the event under "Going" even after losing the ticket, no
+  // matter how many times this ran, because every re-run only ever added to
+  // the set, never removed a stale key the fresh query no longer returned.
+  //
+  // Defined here (above the toast poll below, which now also calls it on a
+  // fresh 'booking_declined' notification) rather than further down where
+  // it originally sat — a const referenced inside an effect defined above
+  // its own declaration is a temporal-dead-zone ReferenceError in JS, not
+  // just a lint nit, since the effect's dependency array evaluates
+  // `loadMyEvents` on every render, not only when the effect itself runs.
+  const loadMyEvents = useCallback(async (uid) => {
+    if (!uid) return;
+    const [{ data: bookings }, { data: organizers }] = await Promise.all([
+      supabase
+        .from('bookings')
+        .select('event_id, qty, status')
+        .eq('user_id', uid)
+        .in('status', ['pending', 'confirmed', 'attended']),
+      supabase
+        .from('organizers')
+        .select('id')
+        .or(`owner_id.eq.${uid},user_id.eq.${uid}`),
+    ]);
+
+    const attending = [...new Set((bookings || []).map(b => b.event_id))];
+    const tickets = Object.fromEntries((bookings || []).map(b => [b.event_id, b.qty]));
+    set({ attending, tickets });
+
+    const organizerIds = (organizers || []).map(o => o.id);
+    set({ myOrganizerIds: organizerIds });
+    if (organizerIds.length) {
+      const { data: events } = await supabase.from('events').select('id').in('organizer_id', organizerIds);
+      set({ myOrgEventKeys: (events || []).map(e => e.id) });
+    } else {
+      set({ myOrgEventKeys: [] });
+    }
+  }, [set]);
+
   // Unread count for the notification bell, refreshed on login AND on a
   // 5s poll thereafter (matching this app's existing poll conventions —
   // DisputeChatPanel's 4s, PaymentDetails' 6s — since there is no realtime
@@ -685,65 +751,31 @@ export function GocProvider({ children }) {
         .limit(50);
       if (!active || error) return;
       const rows = data || [];
+      let attendingStale = false;
       for (const n of rows) {
         if (!toastedIds.has(n.id) && new Date(n.created_at) > sessionStart) {
           toastedIds.add(n.id);
           pushToast(n);
+          // reject_pending_guest() (migration 059) cancels a booking that
+          // may already be sitting in `s.attending`/`s.tickets` (the
+          // "Going" tag), but nothing else refreshes those outside of
+          // loadMyEvents()'s own sign-in-mount effect or goGoingList()
+          // opening the Going tab (80423dd) — a guest declined while
+          // already looking at Home would keep seeing "Going" indefinitely
+          // otherwise. This poll already runs every 5s regardless of
+          // whether the toast is tapped, so it's the one place that can
+          // catch this without a real realtime subscription (none exist
+          // anywhere in this codebase, see 03-dispute-chat.md).
+          if (n.kind === 'booking_declined') attendingStale = true;
         }
       }
       set({ notifications: rows, unreadNotifications: rows.filter(n => !n.read_at).length });
+      if (attendingStale) loadMyEvents(s.user.id);
     };
     poll();
     const interval = setInterval(poll, 5000);
     return () => { active = false; clearInterval(interval); };
-  }, [set, s.user?.id, pushToast]);
-
-  // Real event assignment for the signed-in account: which of the catalogue
-  // events they're attending (from actual bookings) and which they organize
-  // (from owning the organizer row events.organizer_id points at). The
-  // frontend catalogue (src/data/events.js) still supplies all the cosmetic
-  // detail — photos, galleries, descriptions — that the database rows don't
-  // duplicate; this only resolves *which* catalogue keys are genuinely
-  // "mine", by real id, instead of from placeholder demo state.
-  //
-  // `attending`/`tickets` REPLACE on every call, they do not merge with
-  // whatever was there before — mirrors AppState+Data.swift's loadMyEvents()
-  // (`attending = going`, a plain assignment). This used to union new
-  // results into the previous array instead, which meant a booking that
-  // stopped qualifying (e.g. an admin resolving a dispute as "Mở lại chỗ" /
-  // "return to pool", `resolve_dispute()` setting `status='expired'` —
-  // outside this filter, supabase/migrations/20260914000047_...sql:80-83)
-  // could never leave `attending` for the rest of that session: the guest
-  // kept seeing the event under "Going" even after losing the ticket, no
-  // matter how many times this ran, because every re-run only ever added to
-  // the set, never removed a stale key the fresh query no longer returned.
-  const loadMyEvents = useCallback(async (uid) => {
-    if (!uid) return;
-    const [{ data: bookings }, { data: organizers }] = await Promise.all([
-      supabase
-        .from('bookings')
-        .select('event_id, qty, status')
-        .eq('user_id', uid)
-        .in('status', ['pending', 'confirmed', 'attended']),
-      supabase
-        .from('organizers')
-        .select('id')
-        .or(`owner_id.eq.${uid},user_id.eq.${uid}`),
-    ]);
-
-    const attending = [...new Set((bookings || []).map(b => b.event_id))];
-    const tickets = Object.fromEntries((bookings || []).map(b => [b.event_id, b.qty]));
-    set({ attending, tickets });
-
-    const organizerIds = (organizers || []).map(o => o.id);
-    set({ myOrganizerIds: organizerIds });
-    if (organizerIds.length) {
-      const { data: events } = await supabase.from('events').select('id').in('organizer_id', organizerIds);
-      set({ myOrgEventKeys: (events || []).map(e => e.id) });
-    } else {
-      set({ myOrgEventKeys: [] });
-    }
-  }, [set]);
+  }, [set, s.user?.id, pushToast, loadMyEvents]);
 
   useEffect(() => {
     if (!s.user?.id) return;
@@ -1154,6 +1186,34 @@ export function GocProvider({ children }) {
       nudgeSending: false,
       paymentBookings: prev.paymentBookings.map(b => (b.id === bookingId ? { ...b, nudge_count: data.nudge_count } : b)),
     }));
+  }, [set, T]);
+
+  // 15-organizer-checkin.md follow-up: Confirmed.jsx's "Xem Receipt" needs
+  // to know, per booking, whether a live payment_documents receipt already
+  // exists before deciding whether tapping it opens that file or sends a
+  // request instead.
+  const loadReceiptStatus = useCallback(async (bookingId) => {
+    const { data } = await supabase
+      .from('payment_documents')
+      .select('*')
+      .eq('booking_id', bookingId).eq('kind', 'receipt').is('superseded_at', null)
+      .maybeSingle();
+    set({ receiptDoc: data || false });
+  }, [set]);
+
+  const requestReceipt = useCallback(async (bookingId) => {
+    set({ receiptRequestSending: true, receiptRequestError: '' });
+    const { data, error } = await supabase.rpc('request_receipt', { p_booking: bookingId });
+    if (error || !data?.success) {
+      set({
+        receiptRequestSending: false,
+        receiptRequestError: data?.error === 'ALREADY_REQUESTED_RECENTLY'
+          ? T('Bạn vừa yêu cầu gần đây — hãy đợi người tổ chức phản hồi.', "You already asked recently — give the organizer a little time to respond.")
+          : T('Không gửi được yêu cầu. Thử lại nhé.', "Couldn't send the request. Please try again."),
+      });
+      return;
+    }
+    set({ receiptRequestSending: false, receiptRequestSent: true });
   }, [set, T]);
 
   /**
@@ -2823,6 +2883,15 @@ export function GocProvider({ children }) {
       else openPaymentDetails(n.data.booking_id);
     } else if ((n.kind === 'payment_document_uploaded' || n.kind === 'payment_document_replaced') && n.data?.document_id) {
       openDocumentFromNotification(n.data.document_id);
+    } else if (n.kind === 'receipt_requested' && n.data?.event_id && iOrganize(n.data.event_id)) {
+      // The guest's own "Xem Receipt" (Confirmed.jsx) asked for one that
+      // doesn't exist yet — straight to Check-in, same per-event ownership
+      // guard as every other organizer-bound kind above, with the specific
+      // booking's own "Upload receipt" control auto-highlighted (see
+      // Attendance.jsx's attendanceHighlightBookingId effect) so the
+      // organizer doesn't have to hunt for it in a long list.
+      set({ attendanceHighlightBookingId: n.data.booking_id });
+      openAttendance(n.data.event_id);
     }
   }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, openVerifications, openPaymentDetails, openDocumentFromNotification]);
   /**
@@ -2984,7 +3053,7 @@ export function GocProvider({ children }) {
     openPayout, payoutField, savePayoutDetails,
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid, uploadPaymentDocument, openDocumentFromNotification, toggleAutoEmailDocuments,
-    submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer,
+    submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer, loadReceiptStatus, requestReceipt,
     openVerifications, openVerificationDetail, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
@@ -3013,7 +3082,7 @@ export function GocProvider({ children }) {
     openPayout, payoutField, savePayoutDetails,
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid, uploadPaymentDocument, openDocumentFromNotification, toggleAutoEmailDocuments,
-    submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer,
+    submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer, loadReceiptStatus, requestReceipt,
     openVerifications, openVerificationDetail, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,

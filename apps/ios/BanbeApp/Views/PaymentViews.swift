@@ -37,7 +37,7 @@ struct PaymentDetailsView: View {
                 // "lingering countdown before actually leaving" this was
                 // fixed for. Straight to Home instead, every time.
                 BackLink(label: app.T("Quay lại", "Back")) {
-                    app.screen = (booking?.paymentState == .cancelled) ? .home : app.paymentBack
+                    app.screen = app.paymentDetailsBackTarget
                 }
                     .padding(.top, 8).padding(.horizontal, 22)
                     .accessibilityIdentifier("payment.back")
@@ -599,6 +599,14 @@ struct PaymentDetailsView: View {
                     app.paymentBookings[idx].verifyDueAt = fresh.verifyDueAt
                     app.paymentBookings[idx].paidMarkedAt = fresh.paidMarkedAt
                     app.paymentBookings[idx].cancelReason = fresh.cancelReason
+                    // 15-organizer-checkin.md follow-up: an organizer
+                    // accepting from Check-in (confirm_payment(), migration
+                    // 060) shouldn't leave the guest reading an inline
+                    // "Đã thanh toán" card on this screen — straight to the
+                    // ticket/QR screen instead.
+                    if fresh.paymentState == .confirmed {
+                        await app.openBookingConfirmed(bookingID: bookingID, eventKey: fresh.eventId)
+                    }
                     return
                 }
             }

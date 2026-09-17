@@ -228,12 +228,30 @@ struct ConfirmedView: View {
                                               : app.T("Thêm vào lịch", "Add to calendar")) {
                         app.addToCalendar()
                     }
+                    // 15-organizer-checkin.md follow-up: receipts are
+                    // organizer-uploaded now (08-payment-documents.md), not
+                    // auto-issued the moment a booking is confirmed — this
+                    // screen can't assume one exists yet. `receiptChecked`
+                    // distinguishes "haven't looked" from "looked, none
+                    // yet" (both mean nil `receiptDoc`).
+                    if isPaid && app.receiptChecked {
+                        footerButton(receiptButtonLabel) { receiptButtonTapped() }
+                            .opacity(app.receiptRequestSending ? 0.6 : 1)
+                            .accessibilityIdentifier("confirmed.viewReceipt")
+                        if !app.receiptRequestError.isEmpty {
+                            Text(app.receiptRequestError)
+                                .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 22).padding(.top, 8)
+                        }
+                    }
                     footerButton(app.T("Về trang chính", "Back to home")) { app.goHome() }
                 }
             }
         }
-        .onAppear { startPollingIfNeeded() }
-        .onChange(of: app.booking?.id) { _, _ in startPollingIfNeeded() }
+        .onAppear { startPollingIfNeeded(); refreshReceiptStatusIfNeeded() }
+        .onChange(of: app.booking?.id) { _, _ in startPollingIfNeeded(); refreshReceiptStatusIfNeeded() }
+        .onChange(of: isPaid) { _, _ in refreshReceiptStatusIfNeeded() }
         .onChange(of: phase) { _, newPhase in
             if newPhase == .confirmed { pollTask?.cancel() } else { startPollingIfNeeded() }
         }
@@ -294,6 +312,37 @@ struct ConfirmedView: View {
                 }
             }
         }
+    }
+
+    private var receiptButtonLabel: String {
+        if app.receiptDoc != nil {
+            return app.T("Xem Receipt", "View Receipt")
+        } else if app.receiptRequestSending {
+            return app.T("Đang gửi yêu cầu…", "Sending request…")
+        } else if app.receiptRequestSent {
+            return app.T("Đã gửi yêu cầu ▪︎ Đang chờ người tổ chức", "Request sent ▪︎ waiting on the organizer")
+        } else {
+            return app.T("Xem Receipt ▪︎ Yêu cầu biên nhận", "View Receipt ▪︎ Request one")
+        }
+    }
+
+    private func receiptButtonTapped() {
+        if let doc = app.receiptDoc {
+            Task { await app.openDocumentFromNotification(doc.id) }
+        } else if !app.receiptRequestSent, let bookingID = app.booking?.id {
+            Task { await app.requestReceipt(bookingID: bookingID) }
+        }
+    }
+
+    private func refreshReceiptStatusIfNeeded() {
+        guard isPaid, let bookingID = app.booking?.id else {
+            app.receiptDoc = nil
+            app.receiptChecked = false
+            app.receiptRequestSent = false
+            app.receiptRequestError = ""
+            return
+        }
+        Task { await app.loadReceiptStatus(bookingID: bookingID) }
     }
 
     private func footerButton(_ title: String, action: @escaping () -> Void) -> some View {

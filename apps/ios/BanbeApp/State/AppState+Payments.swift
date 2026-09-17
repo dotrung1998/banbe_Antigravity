@@ -128,6 +128,48 @@ extension AppState {
         }
     }
 
+    // 15-organizer-checkin.md follow-up: ConfirmedView's "Xem Receipt"
+    // needs to know, per booking, whether a live payment_documents receipt
+    // already exists before deciding whether tapping it opens that file or
+    // sends a request instead.
+    func loadReceiptStatus(bookingID: UUID) async {
+        do {
+            let docs: [PaymentDocument] = try await SupabaseService.client
+                .from("payment_documents").select("*")
+                .eq("booking_id", value: bookingID.uuidString)
+                .eq("kind", value: "receipt")
+                .is("superseded_at", value: nil)
+                .execute().value
+            receiptDoc = docs.first
+            receiptChecked = true
+        } catch {
+            print("loadReceiptStatus failed:", error)
+            receiptDoc = nil
+            receiptChecked = true
+        }
+    }
+
+    func requestReceipt(bookingID: UUID) async {
+        receiptRequestSending = true
+        receiptRequestError = ""
+        do {
+            let result: RequestReceiptResult = try await SupabaseService.client
+                .rpc("request_receipt", params: ["p_booking": bookingID.uuidString])
+                .execute().value
+            receiptRequestSending = false
+            guard result.success == true else {
+                receiptRequestError = result.error == "ALREADY_REQUESTED_RECENTLY"
+                    ? T("Bạn vừa yêu cầu gần đây — hãy đợi người tổ chức phản hồi.", "You already asked recently — give the organizer a little time to respond.")
+                    : T("Không gửi được yêu cầu. Thử lại nhé.", "Couldn't send the request. Please try again.")
+                return
+            }
+            receiptRequestSent = true
+        } catch {
+            receiptRequestSending = false
+            receiptRequestError = T("Không gửi được yêu cầu. Thử lại nhé.", "Couldn't send the request. Please try again.")
+        }
+    }
+
     // MARK: - Billing identity (the buyer block on every document)
 
     func openBilling() {
@@ -1095,6 +1137,11 @@ private struct NudgeResult: Decodable {
         case success, error
         case nudgeCount = "nudge_count"
     }
+}
+
+private struct RequestReceiptResult: Decodable {
+    let success: Bool?
+    let error: String?
 }
 
 /// Shared by forfeitExpiredHold (AppState+Data.swift) — not private, since

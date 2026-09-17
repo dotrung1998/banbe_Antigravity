@@ -488,11 +488,23 @@ extension AppState {
                         .order("created_at", ascending: false)
                         .limit(50)
                         .execute().value
+                    var attendingStale = false
                     for row in rows where !toastedIDs.contains(row.id) && row.createdAt > sessionStart {
                         toastedIDs.insert(row.id)
                         self.pushToast(row)
+                        // reject_pending_guest() (migration 059) cancels a
+                        // booking that may already be sitting in
+                        // attending/tickets (the "Going" tag) — nothing
+                        // else refreshes those outside loadMyEvents()'s own
+                        // sign-in/goGoingList() triggers (80423dd). This
+                        // poll already runs every 5s regardless of whether
+                        // the toast is tapped, so it's the one place that
+                        // can catch this without a real realtime
+                        // subscription (none exist anywhere in this app).
+                        if row.kind == "booking_declined" { attendingStale = true }
                     }
                     self.notifications = rows
+                    if attendingStale { await self.loadMyEvents() }
                 } catch {
                     print("Notification poll failed:", error)
                 }
@@ -599,6 +611,19 @@ extension AppState {
             if let documentIDString = notification.data["document_id"]?.stringValue,
                let documentID = UUID(uuidString: documentIDString) {
                 Task { await openDocumentFromNotification(documentID) }
+            }
+        case "receipt_requested":
+            // The guest's own "Xem Receipt" (ConfirmedView) asked for one
+            // that doesn't exist yet — straight to Check-in, same per-event
+            // ownership guard as above, with the specific booking's own
+            // "Upload receipt" control auto-highlighted (see
+            // AttendanceView's attendanceHighlightBookingID) so the
+            // organizer doesn't have to hunt for it in a long list.
+            if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key),
+               let bookingIDString = notification.data["booking_id"]?.stringValue,
+               let bookingID = UUID(uuidString: bookingIDString) {
+                attendanceHighlightBookingID = bookingID
+                openAttendance(key)
             }
         default:
             break

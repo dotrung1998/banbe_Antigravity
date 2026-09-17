@@ -3,10 +3,13 @@ import QRCode from 'qrcode';
 import { useGoc } from '../state/GocContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
-import { paper, ink, rule, display, cardGlass } from '../theme.js';
+import { paper, ink, rule, display, cardGlass, alert } from '../theme.js';
 
 export default function Confirmed() {
-  const { state, T, set, curEvent: ev, goHome, addToCalendar, giveTicket, openPaymentDetails, forfeitExpiredHold, goReserve } = useGoc();
+  const {
+    state, T, set, curEvent: ev, goHome, addToCalendar, giveTicket, openPaymentDetails, forfeitExpiredHold, goReserve,
+    loadReceiptStatus, requestReceipt, openDocumentFromNotification,
+  } = useGoc();
   const s = state;
 
   // payment_state is the source of truth for every phase distinction below;
@@ -46,6 +49,15 @@ export default function Confirmed() {
       forfeitExpiredHold(s.booking);
     }
   }, [isHolding, holdDeadlineIso, now, s.booking, forfeitExpiredHold]);
+
+  // "Xem Receipt" needs to know, per booking, whether a live
+  // payment_documents row already exists — reset on every booking change
+  // (not just once) since this screen can be reopened for a different
+  // booking without unmounting (openBookingConfirmed just patches state).
+  useEffect(() => {
+    if (isPaid && s.booking?.id) loadReceiptStatus(s.booking.id);
+    else set({ receiptDoc: undefined, receiptRequestSent: false, receiptRequestError: '' });
+  }, [isPaid, s.booking?.id, loadReceiptStatus, set]);
 
   // While a booking is sitting unpaid, poll for a phase change — the
   // organizer confirming, the bank webhook matching, or the guest freezing
@@ -204,6 +216,36 @@ export default function Confirmed() {
         <div onClick={() => giveTicket(ev)} style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0', cursor: 'pointer' }}>{giveLabel}</div>
       )}
       <div onClick={addToCalendar} style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0', cursor: 'pointer' }}>{calendarLabel}</div>
+      {/* 15-organizer-checkin.md follow-up: receipts are organizer-uploaded
+          now (08-payment-documents.md), not auto-issued the moment a
+          booking is confirmed — so this screen can't assume one exists yet.
+          `receiptDoc` is `undefined` while the check is in flight, a real
+          row once found, or `false` once confirmed absent. */}
+      {showQr && s.receiptDoc !== undefined && (
+        <div
+          onClick={() => {
+            if (s.receiptDoc) openDocumentFromNotification(s.receiptDoc.id);
+            else if (!s.receiptRequestSent) requestReceipt(s.booking.id);
+          }}
+          style={{
+            borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0',
+            cursor: (s.receiptDoc || !s.receiptRequestSent) ? 'pointer' : 'default',
+            opacity: s.receiptRequestSending ? 0.6 : 1,
+          }}
+          data-testid="confirmed-view-receipt"
+        >
+          {s.receiptDoc
+            ? T('Xem Receipt', 'View Receipt')
+            : s.receiptRequestSending
+            ? T('Đang gửi yêu cầu…', 'Sending request…')
+            : s.receiptRequestSent
+            ? T('Đã gửi yêu cầu ▪︎ Đang chờ người tổ chức', 'Request sent ▪︎ waiting on the organizer')
+            : T('Xem Receipt ▪︎ Yêu cầu biên nhận', 'View Receipt ▪︎ Request one')}
+        </div>
+      )}
+      {s.receiptRequestError && (
+        <p style={{ fontSize: 11, color: alert, textAlign: 'center', margin: '8px 22px 0' }}>{s.receiptRequestError}</p>
+      )}
       <div onClick={goHome} style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0 34px', cursor: 'pointer' }}>{T('Về trang chính', 'Back to home')}</div>
     </div>
   );
