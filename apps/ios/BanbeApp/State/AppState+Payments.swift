@@ -601,6 +601,18 @@ extension AppState {
             paymentTxnId = ""
             paymentProofUploading = false
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            // Patch `paymentBookings` in place FIRST, before the refetch —
+            // PaymentViews derives its rendered booking straight from this
+            // array, so an immediate patch means the very next render
+            // (including one after navigating away and straight back in,
+            // which re-appears this screen and fires its own
+            // loadPaymentBookings() again) can never race an in-flight
+            // fetch and land on stale 'holding' data.
+            if let idx = paymentBookings.firstIndex(where: { $0.id == bookingID }) {
+                paymentBookings[idx].paymentState = .pendingVerification
+                paymentBookings[idx].transactionId = txn
+                paymentBookings[idx].verifyDueAt = result.verifyDueAt
+            }
             await loadPaymentBookings()
         } catch {
             print("submitPaymentProof failed:", error)
@@ -663,14 +675,25 @@ extension AppState {
         Task { await loadVerifications() }
     }
 
+    // v_pending_verifications has no organizer filter of its own — it
+    // relies on bookings' RLS, an OR of bookings_select_guest (own row) and
+    // bookings_select_host (organizes the event). A plain guest's OWN
+    // pending_verification booking came back too (via the guest policy)
+    // and got miscounted as an organizer-facing "awaiting your OK" item.
+    // Scope explicitly to organizer_id, same pattern loadOrganizerHoldingSummary
+    // already uses below; only admins (bookings_select_admin RLS) see every
+    // organizer's queue.
     func loadVerifications() async {
         guard userID != nil else { verifications = []; return }
+        guard isAdmin || !myOrganizerIDs.isEmpty else { verifications = []; return }
         verificationsLoading = true
         do {
-            verifications = try await SupabaseService.client
+            var query = SupabaseService.client
                 .from("v_pending_verifications").select()
-                .order("proof_submitted_at", ascending: true)
-                .execute().value
+            if !isAdmin {
+                query = query.in("organizer_id", values: myOrganizerIDs)
+            }
+            verifications = try await query.order("proof_submitted_at", ascending: true).execute().value
         } catch {
             print("loadVerifications failed:", error)
             verifications = []
@@ -1034,6 +1057,12 @@ private struct SubmitProofResult: Decodable {
     let success: Bool?
     let error: String?
     let state: String?
+    let verifyDueAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case success, error, state
+        case verifyDueAt = "verify_due_at"
+    }
 }
 
 private struct NudgeResult: Decodable {

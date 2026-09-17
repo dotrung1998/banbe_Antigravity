@@ -1086,6 +1086,18 @@ export function GocProvider({ children }) {
         throw new Error(message);
       }
       set({ paymentSubmitting: false, paymentTxnId: '' });
+      // Patch `paymentBookings` in place FIRST, before the refetch below —
+      // PaymentDetails derives `booking` straight from this array on every
+      // render, so an immediate patch means the very next render (including
+      // one after navigating away and straight back in, which remounts
+      // PaymentDetails and fires its own loadPaymentBookings() again) can
+      // never race an in-flight fetch and land on stale 'holding' data; it
+      // already has the right phase before any network round trip returns.
+      set(prev => ({
+        paymentBookings: prev.paymentBookings.map(b => (b.id === bookingId
+          ? { ...b, payment_state: 'pending_verification', transaction_id: txn, proof_path: path, verify_due_at: data?.verify_due_at || null }
+          : b)),
+      }));
       await loadPaymentBookings();
       // The ticket screen (Confirmed) keeps its own copy of this booking in
       // top-level state, set whenever it was reserved or last reopened — not
@@ -1218,18 +1230,33 @@ export function GocProvider({ children }) {
 
   const loadVerifications = useCallback(async () => {
     if (!s.user?.id) return set({ verifications: [], verificationsLoading: false });
+    // v_pending_verifications has no organizer filter of its own — it
+    // relies on bookings' RLS, which is an OR of bookings_select_guest
+    // (auth.uid() = user_id) and bookings_select_host (organizes the
+    // event). That means a plain guest's OWN pending_verification booking
+    // comes back too (via the guest policy), and got miscounted here as an
+    // organizer-facing "awaiting your OK" item — the Home banner then
+    // showed a guest the organizer-phrased card for their own booking.
+    // Scope explicitly to organizer_id, same established pattern as
+    // loadOrganizerHoldingSummary/loadDocuments below; admins alone see
+    // every organizer's queue (bookings_select_admin RLS exists for this).
+    if (s.accountType !== 'admin' && !s.myOrganizerIds.length) {
+      return set({ verifications: [], verificationsLoading: false });
+    }
     set({ verificationsLoading: true });
-    const { data, error } = await supabase
+    let query = supabase
       .from('v_pending_verifications')
       .select('*')
       .order('proof_submitted_at', { ascending: true });
+    if (s.accountType !== 'admin') query = query.in('organizer_id', s.myOrganizerIds);
+    const { data, error } = await query;
     if (error) {
       console.warn('loadVerifications failed:', error);
       return set({ verifications: [], verificationsLoading: false });
     }
     set({ verifications: data || [], verificationsLoading: false });
     await signProofUrls((data || []).map(v => v.proof_path));
-  }, [set, s.user?.id, signProofUrls]);
+  }, [set, s.user?.id, s.accountType, s.myOrganizerIds, signProofUrls]);
 
   /**
    * The PHASE 1 counterpart of loadVerifications — how many buyers are
