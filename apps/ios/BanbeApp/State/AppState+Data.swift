@@ -542,6 +542,24 @@ extension AppState {
             if let key = notification.data["event_id"]?.stringValue {
                 openAttendance(key)
             }
+        case "hold_created":
+            // 01-hold-payment.md follow-up: the guest's own mirror of
+            // "booking_requested" above (hold_seats(), migration 053) —
+            // takes the guest straight back to their own timer/QR/payment
+            // screen for this exact hold, the same way "dispute_message"
+            // already does for its own guest-facing case below.
+            if let bookingIDString = notification.data["booking_id"]?.stringValue,
+               let bookingID = UUID(uuidString: bookingIDString) {
+                openPaymentDetails(bookingID)
+            }
+        case "payment_awaiting_verification":
+            // 01-hold-payment.md follow-up: fired by submit_payment_proof()
+            // (031:317) when a guest reports having transferred — the
+            // organizer side of BUG 3, previously never wired at all. Same
+            // destination as "booking_requested" (the very next step in the
+            // same request's lifecycle, still shown/actioned from
+            // VerificationsView, not AttendanceView's check-in list).
+            openVerifications()
         case "payment_confirmed":
             if let bookingIDString = notification.data["booking_id"]?.stringValue,
                let bookingID = UUID(uuidString: bookingIDString) {
@@ -728,7 +746,23 @@ extension AppState {
             screen = .confirmed
         } catch {
             loading = false
-            reserveError = T(
+            // hold_seats() (031:38) raises one of these as a plain
+            // `RAISE EXCEPTION '<CODE>'` — no ERRCODE/DETAIL beyond the
+            // message itself, which `PostgrestError.message` carries
+            // verbatim. This used to always show one generic message
+            // regardless of which of the six distinct exceptions fired —
+            // mapped here the same way `describeProofUploadError` already
+            // distinguishes real causes elsewhere in this file, so a
+            // cancelled/ended event says so instead of a vague "try again".
+            let code = (error as? PostgrestError)?.message ?? ""
+            reserveError = [
+                "NOT_AUTHENTICATED": T("Bạn cần đăng nhập để giữ chỗ.", "You need to sign in to hold a spot."),
+                "INVALID_QTY": T("Số lượng chỗ không hợp lệ.", "That number of spots isn’t valid."),
+                "PROFILE_NOT_FOUND": T("Không tìm thấy hồ sơ của bạn. Vui lòng thử lại.", "We couldn’t find your profile. Please try again."),
+                "EVENT_NOT_FOUND": T("Không tìm thấy sự kiện này.", "This event could not be found."),
+                "EVENT_NOT_LIVE": T("Sự kiện này đã bị huỷ hoặc chưa mở.", "This event has been cancelled or isn’t open."),
+                "SOLD_OUT": T("Rất tiếc, chỗ vừa hết.", "Sorry — this just sold out."),
+            ][code] ?? T(
                 "Không thể giữ chỗ lúc này. Vui lòng thử lại.",
                 "Could not hold this spot right now. Please try again."
             )

@@ -49,17 +49,26 @@ export default function EventDetail() {
   // (or even "Sold out ▪︎ message for waitlist") on something that already
   // happened reads as broken, not just unnecessary.
   const ended = ev.endedHoursAgo != null;
+  // Bug 2b (01-hold-payment.md follow-up): `ev.cancelled` already existed
+  // and was already used above for `showRefund`, but this bar never
+  // checked it — a cancelled event (e.g. "Bàn Dài №4") fell through to the
+  // live "Giữ chỗ" default, which then only ever failed later, server-side,
+  // via hold_seats()'s own EVENT_NOT_LIVE check. Checked before `ended`/
+  // `soldOut` since a cancelled event's stale `seats_remaining` can still
+  // read as available or as "sold out" — neither reads as honest here.
   const reserveBarLabel = myBooking
     ? T('Xem vé của bạn ▪︎ mã ' + myBooking.code, 'View your ticket ▪︎ code ' + myBooking.code)
+    : ev.cancelled
+    ? T('Sự kiện đã bị huỷ', 'Event has been cancelled')
     : ended
     ? T('Sự kiện đã kết thúc', 'Event has ended')
     : ev.soldOut
     ? T('Hết chỗ ▪︎ nhắn để vào danh sách chờ', 'Sold out ▪︎ message for waitlist')
     : (T('Giữ chỗ ▪︎ ', 'Reserve ▪︎ ') + trStatus(ev.price));
-  const reserveBarTap = myBooking ? openHeld : ended ? undefined : (ev.soldOut ? goChat : goReserve);
-  const reserveBarStyle = (myBooking || (!ev.soldOut && !ended))
+  const reserveBarTap = myBooking ? openHeld : (ev.cancelled || ended) ? undefined : (ev.soldOut ? goChat : goReserve);
+  const reserveBarStyle = (myBooking || (!ev.soldOut && !ended && !ev.cancelled))
     ? { ...inkButton({ flex: 'none', margin: '0 20px 22px', padding: '15px 0' }) }
-    : { flex: 'none', margin: '0 20px 22px', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 0', borderRadius: 18, cursor: ended ? 'default' : 'pointer', background: 'rgba(238,232,218,0.92)', color: ink };
+    : { flex: 'none', margin: '0 20px 22px', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 0', borderRadius: 18, cursor: (ended || ev.cancelled) ? 'default' : 'pointer', background: 'rgba(238,232,218,0.92)', color: ink };
 
   return (
     <div style={{ animation: 'gocFade 0.32s ease both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Event">

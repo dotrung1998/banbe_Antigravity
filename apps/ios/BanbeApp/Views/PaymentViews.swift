@@ -20,6 +20,7 @@ struct PaymentDetailsView: View {
     @State private var pickedName = ""
     @State private var pickError = ""
     @State private var tick = Date()
+    @State private var pollTask: Task<Void, Never>?
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -63,6 +64,9 @@ struct PaymentDetailsView: View {
                 app.forfeitExpiredHold(booking)
             }
         }
+        .onAppear { startPollingIfNeeded() }
+        .onChange(of: booking?.paymentState) { _, _ in startPollingIfNeeded() }
+        .onDisappear { pollTask?.cancel() }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             Task {
@@ -467,6 +471,44 @@ struct PaymentDetailsView: View {
             .padding(16)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .padding(.top, 14)
+    }
+
+    /// Bug 1 (01-hold-payment.md follow-up): this screen used to fetch
+    /// `paymentBookings` once per appearance (the `.task` above) and never
+    /// again while it stayed mounted — a real phase change while the guest
+    /// stayed on this exact screen (tapping "Tôi đã chuyển khoản" itself,
+    /// or the organizer acting from elsewhere) never patched `app.paymentBookings`,
+    /// so swiping back to it later could still show a frozen countdown
+    /// instead of the correct pending_verification state. Mirrors
+    /// `ConfirmedView`'s own `startPollingIfNeeded()` for the identical
+    /// reason.
+    private func startPollingIfNeeded() {
+        pollTask?.cancel()
+        guard let bookingID = booking?.id, let phaseAtStart = booking?.paymentState,
+              phaseAtStart != .confirmed, phaseAtStart != .expired
+        else { return }
+        pollTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                if Task.isCancelled { break }
+                guard booking?.id == bookingID, booking?.paymentState == phaseAtStart else { return }
+                guard let fresh: Booking = try? await SupabaseService.client
+                    .from("bookings").select().eq("id", value: bookingID.uuidString)
+                    .single().execute().value
+                else { continue }
+                guard let idx = app.paymentBookings.firstIndex(where: { $0.id == bookingID }) else { return }
+                if fresh.paymentState != phaseAtStart {
+                    app.paymentBookings[idx].status = fresh.status
+                    app.paymentBookings[idx].paymentState = fresh.paymentState
+                    app.paymentBookings[idx].paymentRef = fresh.paymentRef ?? app.paymentBookings[idx].paymentRef
+                    app.paymentBookings[idx].holdExpiresAt = fresh.holdExpiresAt
+                    app.paymentBookings[idx].transactionId = fresh.transactionId ?? app.paymentBookings[idx].transactionId
+                    app.paymentBookings[idx].verifyDueAt = fresh.verifyDueAt
+                    app.paymentBookings[idx].paidMarkedAt = fresh.paidMarkedAt
+                    return
+                }
+            }
+        }
     }
 }
 

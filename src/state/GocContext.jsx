@@ -2047,7 +2047,22 @@ export function GocProvider({ children }) {
       }));
     } catch (err) {
       console.warn('Supabase booking failed:', err);
-      set({ loading: false, reserveError: err.message || 'Unable to reserve this event.' });
+      // hold_seats() (031:38) raises one of these as a plain
+      // `RAISE EXCEPTION '<CODE>'` — no ERRCODE/DETAIL, so the code itself
+      // is `err.message` verbatim. This used to fall straight through to
+      // the guest as raw, untranslated text (or a generic fallback on iOS)
+      // — mapped here the same way `submitPaymentProof`'s own RPC errors
+      // already are, so a cancelled/ended event says so instead of a vague
+      // "try again".
+      const message = {
+        NOT_AUTHENTICATED: T('Bạn cần đăng nhập để giữ chỗ.', 'You need to sign in to hold a spot.'),
+        INVALID_QTY: T('Số lượng chỗ không hợp lệ.', 'That number of spots isn’t valid.'),
+        PROFILE_NOT_FOUND: T('Không tìm thấy hồ sơ của bạn. Vui lòng thử lại.', 'We couldn’t find your profile. Please try again.'),
+        EVENT_NOT_FOUND: T('Không tìm thấy sự kiện này.', 'This event could not be found.'),
+        EVENT_NOT_LIVE: T('Sự kiện này đã bị huỷ hoặc chưa mở.', 'This event has been cancelled or isn’t open.'),
+        SOLD_OUT: T('Rất tiếc, chỗ vừa hết.', 'Sorry — this just sold out.'),
+      }[err.message] || T('Không thể giữ chỗ lúc này. Vui lòng thử lại.', 'Could not hold this spot right now. Please try again.');
+      set({ loading: false, reserveError: message });
     }
   }, [set, s.eventKey, s.qty]);
 
@@ -2654,6 +2669,22 @@ export function GocProvider({ children }) {
       // The organizer's side: straight to the check-in list for that event,
       // where "mark as paid" already lives (see Attendance.jsx).
       openAttendance(n.data.event_id);
+    } else if (n.kind === 'hold_created' && n.data?.booking_id) {
+      // 01-hold-payment.md follow-up: the guest's own mirror of
+      // 'booking_requested' above (hold_seats(), migration 053) — takes
+      // the guest straight back to their own timer/QR/payment screen for
+      // this exact hold, the same way `dispute_message` already does for
+      // its own guest-facing case below.
+      openPaymentDetails(n.data.booking_id);
+    } else if (n.kind === 'payment_awaiting_verification' && n.data?.event_id) {
+      // 01-hold-payment.md follow-up: fired by submit_payment_proof()
+      // (031:317) when a guest reports having transferred — the organizer
+      // side of BUG 3, previously never wired at all. Same destination as
+      // 'booking_requested' (this is the very next step in the same
+      // request's lifecycle, still shown/actioned from Verifications —
+      // "Money received"/"Can't find it" — not Attendance's check-in list,
+      // so `openVerifications()` here, not `openAttendance()`).
+      openVerifications();
     } else if (n.kind === 'payment_confirmed' && n.data?.booking_id) {
       openBookingConfirmed(n.data.booking_id, n.data.event_id);
     } else if (n.kind === 'dispute_message' && n.data?.booking_id) {

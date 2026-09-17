@@ -247,6 +247,21 @@ struct EventDetailView: View {
                                        "View your ticket ▪︎ code \(booking.code ?? "")")) {
                     app.openHeld()
                 }
+            } else if event.cancelled {
+                // Bug 2b (01-hold-payment.md follow-up): `event.cancelled`
+                // already existed and was already used elsewhere on this
+                // view (the refund note) but this bar never checked it —
+                // a cancelled event fell through to the live "Giữ chỗ"
+                // default, which then only ever failed later, server-side,
+                // via hold_seats()'s own EVENT_NOT_LIVE check. Checked
+                // before `ended`/`soldOut` since a cancelled event's stale
+                // `seatsRemaining` can still read as available or sold out.
+                Text(app.T("Sự kiện đã bị huỷ", "Event has been cancelled"))
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .foregroundStyle(app.palette.ink)
             } else if ended {
                 Text(app.T("Sự kiện đã kết thúc", "Event has ended"))
                     .font(.system(size: 15, weight: .semibold))

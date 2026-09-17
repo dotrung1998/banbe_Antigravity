@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { useGoc } from '../state/GocContext.jsx';
+import { supabase } from '../lib/supabase.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
@@ -19,7 +20,7 @@ import DisputeChatPanel from './DisputeChatPanel.jsx';
 //                                    to lose the seat they just paid for.
 export default function PaymentDetails() {
   const {
-    state, T, loadPaymentBookings, backFromPaymentDetails,
+    state, T, set, loadPaymentBookings, backFromPaymentDetails,
     copyPayField, submitPaymentProof, paymentTxnType, vietQrFor,
     openBilling, openDocuments, forfeitExpiredHold,
   } = useGoc();
@@ -63,6 +64,31 @@ export default function PaymentDetails() {
     const id = setInterval(() => setTick(Date.now()), 1000);
     return () => clearInterval(id);
   }, [isHolding]);
+
+  // Bug 1 (01-hold-payment.md follow-up): this screen used to fetch
+  // `paymentBookings` once on mount (the `useEffect` above) and never
+  // again — a real phase change while the guest stayed on this exact
+  // screen (e.g. tapping "Tôi đã chuyển khoản" itself, or the organizer
+  // acting from elsewhere) never re-rendered here, so swiping back to it
+  // could show the stale countdown again instead of the correct
+  // pending_verification state. Mirrors `Confirmed.jsx`'s own poll for the
+  // identical reason — the guest may already be looking at this exact
+  // screen when the phase changes.
+  useEffect(() => {
+    if (!booking?.id || isConfirmed || isExpired) return undefined;
+    const bookingId = booking.id;
+    let active = true;
+    const id = setInterval(async () => {
+      const { data } = await supabase.from('bookings').select('*').eq('id', bookingId).maybeSingle();
+      if (!active || !data) return;
+      if (data.payment_state !== phase) {
+        set(prev => ({
+          paymentBookings: prev.paymentBookings.map(b => (b.id === bookingId ? { ...b, ...data } : b)),
+        }));
+      }
+    }, 6000);
+    return () => { active = false; clearInterval(id); };
+  }, [booking?.id, phase, isConfirmed, isExpired, set]);
 
   const msLeft = booking?.hold_expires_at
     ? Math.max(0, new Date(booking.hold_expires_at).getTime() - tick) : 0;
