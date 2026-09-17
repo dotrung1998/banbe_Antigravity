@@ -85,5 +85,57 @@ Upload/replace entry points (not specified by the user, my call): `Attendance.js
 - Whole-project Storage usage (all buckets): **17,075,630 bytes (~16.3 MB)** of the 1GB cap — `pay-proof`: 92 objects / 16,967,907 bytes; `payment-documents`: 1 object / 107,723 bytes (one real test upload from building this feature, a PDF — not one of the auto-generated rows Task 4 removed, and deliberately left alone). `event-photos`/`pay-qr` currently empty.
 - **Runway estimate**: remaining storage ≈ 1,056,666,194 bytes (~1,008 MB). At the one real sample's size (107,723 bytes/file, a PDF) that's **~9,800 uploads** before the 1GB cap — but a single sample isn't a real average; a typical organizer photo (this app's own `normalizeProofFile` caps images around a few hundred KB) or a multi-page scanned PDF (uncompressed, passed through as-is) could run anywhere from ~200KB to a few MB, giving a realistic range of roughly **500–5,000 uploads** before hitting 1GB. The 500MB DB cap is not the binding constraint either way — `payment_documents` rows are small (168kB for 26 rows including index overhead); thousands of uploads would add only single-digit MB to the DB.
 
+## 2026-09-17 follow-up — real-iPhone "receipt won't load" report: strong lead REFUTED by live production data
+
+**Context**: a follow-up prompt suspected `payment_documents_bucket_read`'s
+`split_part(objects.name, '/', 1) = booking_id` RLS assumption was violated
+by a path-construction mismatch between image and PDF uploads (8616a8e's
+timeout/retry fix never actually restoring load-ability). Checked directly
+against production via the service-role key already in `.env.local`
+(`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`) — **every part of this
+hypothesis is false**, confirmed with real objects, not assumptions:
+
+- Queried `payment_documents` for the two real just-uploaded receipts: one
+  `.pdf` (`209f356f-c6d1-4bd1-bfe2-423e30db390f/receipt-1789650394640.pdf`),
+  one `.webp` (`9baf4be7-fe03-4dd4-80d0-bfc16a48bec7/receipt-1789650129477.webp`).
+  Both `file_path`s have the booking id as their exact first path segment,
+  character for character — the web upload path
+  (`GocContext.jsx:1742`, `` `${bookingId}/${kind}-${Date.now()}.${ext}` ``)
+  is what wrote both; there is no image-vs-PDF branch divergence in it.
+- Storage `object/list` confirms both objects actually exist at those exact
+  paths with correct `mimetype` (`application/pdf` / `image/webp`).
+- `bookings.event_id` → `events.organizer_id` chain resolves for the PDF's
+  booking (event `sonmai` → organizer `org_sonmai`), so the RLS join itself
+  has real rows to match against — not an orphaned booking/event.
+- Signed both objects via the real `/storage/v1/object/sign/payment-documents`
+  endpoint (both the single-path and the bulk `paths:[...]` shape the iOS
+  SDK's `createSignedURLs` actually calls) — both return a normal
+  `{path, signedURL}` matching the requested path exactly, no error.
+- Fetched the signed URL's actual bytes: `HTTP/2 200`, correct
+  `content-type` (`application/pdf` / would be `image/webp` for the other),
+  **no `Content-Disposition: attachment`** (so a WKWebView load wouldn't
+  silently turn into an undisplayable download), tested with both a plain
+  curl UA and a real iPhone Safari UA string — no Cloudflare challenge
+  either way.
+- Re-read `signedDocumentFileURL()` (`AppState+Payments.swift:381-409`) and
+  its `makeSignedURL()` counterpart in the vendored supabase-swift package
+  (`StorageFileApi.swift:552-582`) end to end — the relative `signedURL`
+  string the server returns is correctly resolved against
+  `configuration.url` into an absolute URL; nothing is dropped or
+  mismatched. `PaymentDocument.filePath`'s `CodingKeys` (`file_path`) also
+  decode correctly, so `isUploaded`/`doc.filePath` won't spuriously fall
+  back to the dead legacy `ensure_payment_document()` HTML path.
+
+**Conclusion**: the data layer, RLS, signing, and HTTP delivery are all
+verified correct in production for the exact two files the user uploaded.
+The "both image and PDF fail to load" symptom is real (per the user) but is
+not explained by anything server/RLS/path-construction-side — it has to be
+something in the live client runtime on that specific real device (session/
+auth state, WKWebView rendering behavior, or something else not visible
+from static code + REST/curl checks). Reproducing it needs an actual
+interactive trace on that device (exact error/behavior: a `documentFileURLFailed`
+retry banner appearing, vs. a blank/white viewer with no error, vs. a crash)
+— none of which this pass could safely fake without guessing.
+
 ### Task 4 — pre-migration cleanup (migration `20260920000058_058_cleanup_auto_generated_documents.sql`)
 Deleted **25 of 26** `payment_documents` rows (every one with `file_path IS NULL` — the old `ensure_payment_document()`-minted rows). The 1 surviving row is the real test upload mentioned in Task 3 above (has a real `file_path`, correctly not matched by the `WHERE file_path IS NULL` cleanup condition — this predates migration 057, so it has no `purge_after` either; left as-is, not backfilled, since it wasn't part of what was asked). `payment_document_counters` reset from 20 rows (several already past `next_number = 1`, e.g. `org_vuonsau`/invoice at 3) to **0 rows** — deleted outright rather than zeroed, since `upload_payment_document()`'s own `ON CONFLICT ... DO UPDATE` recreates a row at `next_number = 1` the moment each organizer/kind/year is next actually used. Confirmed post-migration: 1 remaining `payment_documents` row, 0 with `file_path IS NULL`, 0 counter rows.
