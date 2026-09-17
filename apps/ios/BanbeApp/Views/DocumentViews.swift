@@ -326,6 +326,27 @@ private struct DocumentWebView: UIViewRepresentable {
             parent.failed = true
         }
 
+        // A network-level failure isn't the only way this can go wrong — an
+        // expired/invalid signed URL (600s expiry on the storage token) or a
+        // storage-side error still comes back as a normal HTTP response, just
+        // a non-2xx one. Without this check, `didFinish` below fired
+        // unconditionally on any completed navigation, `failed` stayed
+        // false, and WKWebView just rendered the error's JSON/HTML body in
+        // place of the document — no retry banner, nothing to indicate a
+        // failure happened at all.
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationResponse: WKNavigationResponse,
+            decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
+        ) {
+            if let http = navigationResponse.response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                parent.failed = true
+                decisionHandler(.cancel)
+                return
+            }
+            decisionHandler(.allow)
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             parent.failed = false
         }
