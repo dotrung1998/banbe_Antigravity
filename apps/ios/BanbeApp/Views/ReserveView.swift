@@ -7,10 +7,16 @@ struct ReserveView: View {
     @EnvironmentObject var app: AppState
 
     private var event: CatalogEvent { app.currentEvent }
-    private var formOK: Bool {
-        !app.formName.trimmingCharacters(in: .whitespaces).isEmpty
-            && app.formEmail.contains("@") && app.formEmail.contains(".")
-    }
+    // 01-hold-payment.md's 2026-09-17 follow-up #6: Name/Email used to be
+    // free-typed fields that never persisted anywhere (bookings has no such
+    // columns) — every organizer-facing view of a guest's name is meant to
+    // be a live join to profiles.display_name (6c6b932), and the
+    // registered email already exists on the session (userEmail). A guest
+    // with a real display_name gets it read-only; one without gets a real
+    // input that writes via setNameAtHold() (rename_display_name(), same
+    // RPC Account's "Đổi tên" uses) instead of a value that goes nowhere.
+    private var hasName: Bool { !(app.user?.displayName ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
+    private var formOK: Bool { hasName }
     private var totalLabel: String {
         event.isFree ? "Miễn phí" : EventLabels.vnd(event.priceVnd * app.qty)
     }
@@ -38,11 +44,53 @@ struct ReserveView: View {
                 .padding(.top, 18)
 
                 VStack(spacing: 12) {
-                    BanbeField(label: app.T("Tên", "Name"),
-                               placeholder: app.T("Tên của bạn", "Your name"),
-                               text: $app.formName)
-                    BanbeField(label: "Email", placeholder: "ban@email.com",
-                               text: $app.formEmail, keyboard: .emailAddress)
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text(app.T("Tên", "Name")).font(.system(size: 11.5))
+                            Spacer()
+                            if hasName {
+                                Button(app.T("Đổi trong Tài khoản", "Change in Account")) { app.goEditName() }
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(app.palette.ink.opacity(0.6))
+                                    .buttonStyle(.plain)
+                            }
+                        }
+                        if hasName {
+                            Text(app.user?.displayName ?? "")
+                                .font(.system(size: 14))
+                                .foregroundStyle(app.palette.ink)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(13)
+                                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .accessibilityIdentifier("reserve.nameReadonly")
+                        } else {
+                            BanbeField(label: nil, placeholder: app.T("Tên của bạn", "Your name"), text: $app.formName)
+                                .accessibilityIdentifier("reserve.nameInput")
+                            Button(app.reserveNameSaving ? app.T("Đang lưu…", "Saving…") : app.T("Lưu tên", "Save name")) {
+                                Task { await app.setNameAtHold(app.formName) }
+                            }
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundStyle(app.palette.ink)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+                            .buttonStyle(.plain)
+                            .disabled(app.reserveNameSaving)
+                            .accessibilityIdentifier("reserve.nameSave")
+                            if !app.reserveNameError.isEmpty {
+                                Text(app.reserveNameError).font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                            }
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Email").font(.system(size: 11.5))
+                        Text(app.userEmail ?? "")
+                            .font(.system(size: 14))
+                            .foregroundStyle(app.palette.ink.opacity(0.75))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(13)
+                            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .accessibilityIdentifier("reserve.emailReadonly")
+                    }
                 }
                 .padding(.top, 20)
 

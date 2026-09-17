@@ -399,5 +399,99 @@ system font used by the sibling lines, since a custom display face's
 line-height/baseline can differ from a system font at the same declared
 size even with `lineHeight` set explicitly.
 
+## 2026-09-17 follow-up #7 — BUG 1: both receipt versions now individually viewable; BUG 2: found and fixed the actual root cause (a genuinely blank headline line)
+
+**Context**: follow-up #5's version-count indicator ("Phiên bản hiện tại (2)
+· 1 bản cũ sẽ xoá trong 24h") only ever showed a count on Attendance — no
+screen let anyone actually open the still-live superseded copy during its
+24h grace window. Separately, the user re-tested #4's caption fix and it
+still looked wrong on the real guest Receipts screen.
+
+**BUG 1 — both versions now listed and individually tappable**:
+- `src/state/GocContext.jsx` `loadDocuments()` (Documents.jsx's query, both
+  host and guest roles) — filter changed from `superseded_at IS NULL` to
+  `superseded_at IS NULL OR purge_after > now()`. RLS
+  (`payment_documents_select_guest`/`_host`, 024) doesn't gate on
+  `superseded_at` at all, confirmed by re-reading it, so this is purely a
+  query-filter change, not an access-control one. A superseded row simply
+  stops matching once `purge_after` passes (hard-deleted by the purge
+  cron) — no separate hide-it step needed.
+- `src/screens/Documents.jsx` — each row now shows "Bản cũ · xoá sau 24h"
+  (superseded) or "Bản hiện tại" (only shown when a superseded twin for the
+  same `booking_id` is *also* in the list — otherwise it's noise on the far
+  more common single-version case).
+- `src/screens/Attendance.jsx`/`GocContext.jsx` `loadAttendanceGuests()` —
+  previously only aggregated counts; now also carries each receipt's `id`
+  so both the live and any still-live superseded copy render as their own
+  tappable row ("Bản hiện tại ›" / "Bản cũ · xoá sau 24h ›"). Reused
+  `openDocumentFromNotification()` (originally bell-notification-only) by
+  adding a `role` param (default `'guest'`, Attendance passes `'host'`) —
+  it already does exactly what's needed here: fetch one row by id and open
+  the viewer, without requiring the full Documents list to be loaded first.
+- iOS mirrors: `AppState+Payments.swift` `loadDocuments()`'s filter,
+  `DocumentsView.row(_:)`'s labels (`DocumentViews.swift`),
+  `AppState+Data.swift` `loadAttendanceGuests()`/`openDocumentFromNotification()`
+  (added `role` param), `AttendanceGuest.receipts: [AttendanceReceipt]`
+  (`AppState.swift`), and `AttendanceView.swift`'s per-receipt tappable rows.
+
+**BUG 2 — actual root cause found, not just another styling tweak**: built
+a real end-to-end repro (fresh organizer + guest + event + booking via
+`tests/e2e/setup.mjs`, a real uploaded receipt, real sign-in, real
+Playwright/Chromium session, injected the real Supabase session the same
+way `tests/global-setup.js` does) and took an **actual screenshot** of the
+guest's own Receipts screen — not a code read. It confirmed the real cause:
+line 1 (`Documents.jsx:72` before this fix) read `doc.event?.name ||
+party` directly — for *every* uploaded document, the jsonb `event`
+snapshot is always `{}` (follow-up #4's finding) **and**, from the guest's
+own view, `party` (`doc.seller?.name`) is *also* always empty (uploads
+never populate seller/buyer either, only `booking_id`/`event_id`/etc. —
+re-confirmed by re-reading `upload_payment_document()`'s `INSERT`). So line
+1 rendered as a genuinely empty `<span>` — which still reserves its own
+line-height in the flex column. That invisible blank line sitting above
+the real two-line content block was the actual cause of "the caption still
+looks off/sits low" through two prior attempts at just tweaking the
+caption's own font-size/line-height/opacity — the caption itself was never
+actually the problem.
+
+**Fix**: line 1 (the row's headline) now uses the same join-aware
+`eventName` the caption already computed (`doc.event?.name ||
+doc.events?.name`, falling back to `party` only if that's *also* empty) —
+never blank for any document whose event resolves, which is effectively
+always. The caption line no longer repeats the event name (redundant now
+that the headline reliably carries it) — it shows just the date. Same fix
+applied on iOS (`DocumentViews.swift`'s `row(_:)`: `headline` replaces the
+old `doc.event.name ?? party`).
+
+**Verified with a real rendered screenshot** (saved during this session,
+not committed) of the guest's real Receipts screen showing both an
+uploaded receipt's live and superseded copy after a real replace: each row
+now reads
+
+```
+Đối Thoại Sơn Mài
+PT-E2E-ORG-<id>-2026-0002 ▪
+Bản hiện tại
+10 Thg 7
+                                              [Tải về]
+```
+and, directly below it,
+```
+Đối Thoại Sơn Mài
+PT-E2E-ORG-<id>-2026-0001 ▪
+Bản cũ · xoá sau 24h
+10 Thg 7
+                                              [Tải về]
+```
+— headline populated, both versions present and independently downloadable,
+version label present on both rows. **Could not get an equivalent
+Attendance/Check-in screenshot** — see `01-hold-payment.md`'s 2026-09-17
+follow-up #6 for why (`Dashboard.jsx`'s event list is a static demo
+catalog, so an ad hoc test event never appears there to click into) — the
+Attendance-side code change is the same shape as Documents.jsx's, reusing
+the same `openDocumentFromNotification()`, and was verified via `xcodebuild`
+build success only, not a rendered screenshot.
+
+Both `vite build` and `xcodebuild` succeed.
+
 ### Task 4 — pre-migration cleanup (migration `20260920000058_058_cleanup_auto_generated_documents.sql`)
 Deleted **25 of 26** `payment_documents` rows (every one with `file_path IS NULL` — the old `ensure_payment_document()`-minted rows). The 1 surviving row is the real test upload mentioned in Task 3 above (has a real `file_path`, correctly not matched by the `WHERE file_path IS NULL` cleanup condition — this predates migration 057, so it has no `purge_after` either; left as-is, not backfilled, since it wasn't part of what was asked). `payment_document_counters` reset from 20 rows (several already past `next_number = 1`, e.g. `org_vuonsau`/invoice at 3) to **0 rows** — deleted outright rather than zeroed, since `upload_payment_document()`'s own `ON CONFLICT ... DO UPDATE` recreates a row at `next_number = 1` the moment each organizer/kind/year is next actually used. Confirmed post-migration: 1 remaining `payment_documents` row, 0 with `file_path IS NULL`, 0 counter rows.

@@ -55,8 +55,14 @@ struct DocumentsView: View {
                             .padding(16)
                             .accessibilityIdentifier("documents.empty")
                     }
+                    // Only label the live row "Bản hiện tại" when its
+                    // superseded twin is also in this list (still within
+                    // the 24h grace window) — in the overwhelmingly common
+                    // single-version case there's nothing to disambiguate
+                    // it from, so the label would just be noise.
+                    let bookingsWithOldCopy = Set(app.documents.filter { $0.supersededAt != nil }.map(\.bookingId))
                     ForEach(app.documents) { doc in
-                        row(doc)
+                        row(doc, hasOldCopy: bookingsWithOldCopy.contains(doc.bookingId))
                         if doc.id != app.documents.last?.id {
                             Rectangle().fill(app.palette.rule).frame(height: 1)
                         }
@@ -71,7 +77,7 @@ struct DocumentsView: View {
         .task { await app.loadDocuments() }
     }
 
-    private func row(_ doc: PaymentDocument) -> some View {
+    private func row(_ doc: PaymentDocument, hasOldCopy: Bool) -> some View {
         let party = isHost ? (doc.buyer.name ?? app.T("Khách", "Guest")) : (doc.seller.name ?? "")
         // A raw uploaded file (migration 056) has no real totalVnd — showing
         // "0đ" for it was never true. Caption with the event + date instead
@@ -81,16 +87,43 @@ struct DocumentsView: View {
         let hasAmount = doc.totalVnd > 0
         let (eventName, eventDate) = doc.displayEventCaption
         let dateLabel = formatShortDate(eventDate, lang: app.lang)
-        let caption = [eventName, dateLabel].compactMap { $0 }.joined(separator: " · ")
+        // 2026-09-17 follow-up #7 (BUG 2): the headline below used to read
+        // `doc.event.name ?? party` directly — for an uploaded document the
+        // jsonb `event` snapshot is always nil AND, from the guest's own
+        // view, `party` (doc.seller.name) is *also* always nil (uploads
+        // never populate seller/buyer either), so the headline rendered as
+        // a genuinely empty Text — which still reserves its own line height
+        // in the VStack. That invisible blank line above the real content
+        // was the actual cause of "the caption still looks off/sits low",
+        // not a padding/font issue on the caption itself. Using the
+        // already-robust `eventName` (join-aware) fixes it for every
+        // uploaded document; the caption no longer repeats the event name
+        // since the headline now reliably carries it.
+        let headline = (eventName?.isEmpty == false) ? eventName! : party
+        let caption = dateLabel ?? ""
         return Button { app.openDocument(doc.id) } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(doc.event.name ?? party)
+                    Text(headline)
                         .font(BanbeTheme.display(15)).foregroundStyle(app.palette.ink)
                         .lineLimit(1)
                     Text("\(doc.number) ▪︎ \(party)")
                         .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                         .lineLimit(1)
+                    // Was invisible outside a bare version-count on
+                    // Attendance only (08-payment-documents.md's
+                    // 2026-09-17 follow-up #7 — BUG 1) — loadDocuments()
+                    // now lists a still-live superseded copy alongside the
+                    // current one, so both need a clear label. A
+                    // superseded row simply stops matching that query (and
+                    // this label) once purge_after passes.
+                    if doc.supersededAt != nil {
+                        Text(app.T("Bản cũ · xoá sau 24h", "Old copy · deletes in 24h"))
+                            .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                    } else if hasOldCopy {
+                        Text(app.T("Bản hiện tại", "Current copy"))
+                            .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                    }
                     if hasAmount {
                         Text(formatVnd(doc.totalVnd))
                             .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)

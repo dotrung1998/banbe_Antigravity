@@ -293,20 +293,26 @@ extension AppState {
         }
         documentsLoading = true
         do {
-            // Documents are organizer-uploaded now (migration 056) — nothing
-            // to mint here anymore. `superseded_at IS NULL` hides a replaced
-            // version immediately (Task 5's soft-delete: the row itself
-            // still exists, queryable for 24h, but never in this list).
+            // Documents are organizer-uploaded now (migration 056). Lists
+            // BOTH the live document AND any still-live superseded copy
+            // (purge_after > now(), Task 5's 24h soft-delete grace window)
+            // — until this pass that old copy was only ever a bare count on
+            // Attendance, with no way to actually open it before it's gone
+            // for good (08-payment-documents.md's 2026-09-17 follow-up #7 —
+            // BUG 1). RLS doesn't gate on superseded_at, so this is purely a
+            // query-filter change. Once purge_after passes the row is
+            // hard-deleted by the purge cron and simply stops matching.
             //
             // `events(...)` embeds via the event_id FK — needed because an
             // uploaded file's row leaves the `event` jsonb column at its
             // '{}' default (only event_id is set), confirmed live
             // (08-payment-documents.md's 2026-09-17 follow-up #4) — the web
             // side's loadDocuments() (GocContext.jsx) embeds the same way.
+            let nowIso = ISO8601DateFormatter().string(from: Date())
             var query = SupabaseService.client
                 .from("payment_documents").select("*, events(name, starts_at, event_date, event_time)")
                 .eq("kind", value: documentsKind)
-                .is("superseded_at", value: nil)
+                .or("superseded_at.is.null,purge_after.gt.\(nowIso)")
 
             if documentsRole == "host" {
                 // An organizer is usually also a goer, so leaning on RLS alone

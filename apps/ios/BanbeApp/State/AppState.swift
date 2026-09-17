@@ -126,6 +126,14 @@ struct AttendanceGuest: Identifiable, Equatable {
     /// window) receipt rows for this booking.
     var receiptVersionCount: Int = 0
     var receiptPendingDelete: Int = 0
+    /// Each individually tappable/openable (08-payment-documents.md's
+    /// 2026-09-17 follow-up #7 — BUG 1), not just counted.
+    var receipts: [AttendanceReceipt] = []
+}
+
+struct AttendanceReceipt: Identifiable, Equatable {
+    let id: UUID
+    let isLive: Bool
 }
 
 struct InboxThread: Identifiable, Equatable {
@@ -219,8 +227,14 @@ final class AppState: ObservableObject {
 
     // MARK: Booking
     @Published var qty: Int = 1
+    // ReserveView's Name field, ONLY used for the empty-display_name case
+    // (01-hold-payment.md's 2026-09-17 follow-up #6): once a real
+    // profiles.display_name exists it's shown read-only from user.displayName
+    // instead, never free-typed. formEmail is gone entirely — the email
+    // field is always a read-only display of userEmail now.
     @Published var formName = ""
-    @Published var formEmail = ""
+    @Published var reserveNameSaving = false
+    @Published var reserveNameError = ""
     @Published var booking: Booking?
     @Published var holdDeadline: Date?
     // The real `events` row's own status for whichever event is currently
@@ -992,7 +1006,7 @@ final class AppState: ObservableObject {
     func goReserve() {
         guard isSignedIn else { return requireAuth(returnTo: .reserve, backTo: .event) }
         formName = user?.displayName ?? ""
-        formEmail = userEmail ?? ""
+        reserveNameError = ""
         screen = .reserve
     }
 

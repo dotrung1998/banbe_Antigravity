@@ -112,9 +112,11 @@ private struct ProfileName: Decodable {
 /// populate AttendanceGuest.hasReceipt/receiptVersionCount/receiptPendingDelete
 /// — mirrors the web's equivalent query in GocContext.jsx.
 private struct AttendanceReceiptRow: Decodable {
+    let id: UUID
     let bookingId: UUID
     let supersededAt: Date?
     enum CodingKeys: String, CodingKey {
+        case id
         case bookingId = "booking_id"
         case supersededAt = "superseded_at"
     }
@@ -416,6 +418,36 @@ extension AppState {
 
     // MARK: - Display name
 
+    /// Reserve's Name field, only for a guest whose profiles.display_name
+    /// is still empty (e.g. an OAuth sign-in whose provider never supplied
+    /// one) — a real write via the same rename_display_name() RPC
+    /// saveDisplayName() uses, not a value that goes nowhere. Deliberately
+    /// does NOT navigate away (unlike saveDisplayName, which returns to
+    /// .profile) or send the name_change notification (unlike a real
+    /// rename, this is a brand-new guest's first-ever name — there's no
+    /// prior organizer relationship yet to notify, and no "old name" to
+    /// report). 01-hold-payment.md's 2026-09-17 follow-up #6.
+    @discardableResult
+    func setNameAtHold(_ name: String) async -> Bool {
+        let newName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !newName.isEmpty else { return false }
+        reserveNameSaving = true
+        reserveNameError = ""
+        do {
+            _ = try await SupabaseService.client
+                .rpc("rename_display_name", params: ["p_new_name": newName])
+                .execute()
+            reserveNameSaving = false
+            user?.displayName = newName
+            formName = newName
+            return true
+        } catch {
+            reserveNameSaving = false
+            reserveNameError = T("Không thể lưu tên lúc này. Vui lòng thử lại.", "Could not save your name right now. Please try again.")
+            return false
+        }
+    }
+
     func goEditName() {
         editNameValue = user?.displayName ?? ""
         editNameError = ""
@@ -669,7 +701,11 @@ extension AppState {
     /// Deep-links a bell notification straight to the document it's about,
     /// without needing the full Documents list loaded first — fetches the
     /// one row RLS allows this account to see and opens the viewer on it.
-    func openDocumentFromNotification(_ targetID: UUID, backTo: Screen = .documents) async {
+    /// `role` defaults to "guest" (the notification case) but Attendance's
+    /// own "view this receipt" taps (08-payment-documents.md's 2026-09-17
+    /// follow-up #7 — BUG 1: a live and a still-live superseded copy are
+    /// both now individually tappable there, not just counted) pass "host".
+    func openDocumentFromNotification(_ targetID: UUID, backTo: Screen = .documents, role: String = "guest") async {
         do {
             let doc: PaymentDocument = try await SupabaseService.client
                 .from("payment_documents").select("*")
@@ -678,7 +714,7 @@ extension AppState {
             documents = [doc]
             documentID = doc.id
             documentsKind = doc.kind
-            documentsRole = "guest"
+            documentsRole = role
             documentBack = backTo
             screen = .documentView
             documentFileURL = nil
@@ -1150,21 +1186,25 @@ extension AppState {
             // superseded-but-still-queryable copies (056's 24h soft-delete
             // window) are still pending deletion. Mirrors the web's
             // equivalent query in GocContext.jsx's loadAttendanceGuests().
-            var receiptCounts: [UUID: (live: Int, pendingDelete: Int)] = [:]
+            var receiptsByBooking: [UUID: [AttendanceReceipt]] = [:]
             if !bookings.isEmpty {
                 let isoFormatter = ISO8601DateFormatter()
                 isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                 let nowIso = isoFormatter.string(from: Date())
                 let receiptRows: [AttendanceReceiptRow] = try await SupabaseService.client
-                    .from("payment_documents").select("booking_id, superseded_at")
+                    .from("payment_documents").select("id, booking_id, superseded_at")
                     .eq("kind", value: "receipt")
                     .in("booking_id", values: bookings.map(\.id.uuidString))
                     .or("superseded_at.is.null,purge_after.gt.\(nowIso)")
+                    .order("issued_at", ascending: false)
                     .execute().value
                 for row in receiptRows {
-                    var entry = receiptCounts[row.bookingId] ?? (live: 0, pendingDelete: 0)
-                    if row.supersededAt != nil { entry.pendingDelete += 1 } else { entry.live += 1 }
-                    receiptCounts[row.bookingId] = entry
+                    // Each row individually tappable/openable, not just
+                    // counted (08-payment-documents.md's 2026-09-17
+                    // follow-up #7 — BUG 1).
+                    receiptsByBooking[row.bookingId, default: []].append(
+                        AttendanceReceipt(id: row.id, isLive: row.supersededAt == nil)
+                    )
                 }
             }
             let rightNow = Date()
@@ -1174,7 +1214,9 @@ extension AppState {
                 .filter { $0.status != "pending" || ($0.expiresAt ?? .distantFuture) > rightNow }
                 .map { booking in
                     let raw = (names[booking.userId ?? UUID()] ?? "").trimmingCharacters(in: .whitespaces)
-                    let receipts = receiptCounts[booking.id] ?? (live: 0, pendingDelete: 0)
+                    let receipts = receiptsByBooking[booking.id] ?? []
+                    let live = receipts.filter(\.isLive).count
+                    let pendingDelete = receipts.count - live
                     return AttendanceGuest(
                         id: booking.id,
                         name: raw.isEmpty ? "Khách" : raw,
@@ -1184,9 +1226,10 @@ extension AppState {
                         totalVnd: booking.totalVnd ?? 0,
                         code: booking.code ?? "",
                         hasProof: !(booking.proofPath ?? "").isEmpty,
-                        hasReceipt: receipts.live > 0,
-                        receiptVersionCount: receipts.live + receipts.pendingDelete,
-                        receiptPendingDelete: receipts.pendingDelete
+                        hasReceipt: live > 0,
+                        receiptVersionCount: receipts.count,
+                        receiptPendingDelete: pendingDelete,
+                        receipts: receipts
                     )
                 }
             attendanceLoading = false

@@ -41,7 +41,13 @@ export default function Documents() {
       </div>
 
       <div style={{ ...fieldGlass({ margin: '18px 22px 40px', display: 'flex', flexDirection: 'column' }) }}>
-        {s.documents.map((doc, i, arr) => {
+        {(() => {
+          // Only label the live row "Bản hiện tại" when its superseded twin
+          // is also in this list (still within the 24h grace window) — in
+          // the overwhelmingly common single-version case there's nothing
+          // to disambiguate it from, so the label would just be noise.
+          const bookingsWithOldCopy = new Set(s.documents.filter(d => d.superseded_at).map(d => d.booking_id));
+          return s.documents.map((doc, i, arr) => {
           const party = isHost ? (doc.buyer?.name || T('Khách', 'Guest')) : (doc.seller?.name || '');
           // A raw uploaded file (migration 056) has no real total_vnd — it's
           // a snapshot-free file the organizer handed over, not a
@@ -60,7 +66,21 @@ export default function Documents() {
             ? (doc.event.date ? `${doc.event.date}T${doc.event.time || '00:00:00'}` : null)
             : eventDateAnchor(doc.events);
           const eventDate = formatShortDate(eventDateRaw, s.lang);
-          const caption = [eventName, eventDate].filter(Boolean).join(' · ');
+          // 2026-09-17 follow-up #7 (BUG 2): line 1 below used to read
+          // `doc.event?.name || party` directly — for an uploaded document
+          // the jsonb `event` snapshot is always empty ({}) AND, from the
+          // guest's own view, `party` (doc.seller?.name) is *also* always
+          // empty (uploads never populate seller/buyer either) — so line 1
+          // rendered as a genuinely blank <span>, which still consumes its
+          // own line-height in the flex column. That invisible blank line
+          // sitting above the real two-line content block was the actual
+          // cause of "the caption still looks off/sits low" — not a
+          // padding/line-height issue on the caption itself. Using the
+          // already-robust `eventName` (join-aware) fixes line 1 for every
+          // uploaded document; the caption below no longer repeats the
+          // event name since line 1 now reliably carries it.
+          const headline = eventName || party;
+          const caption = eventDate; // headline above already carries the event name
           return (
             <div
               key={doc.id}
@@ -69,11 +89,27 @@ export default function Documents() {
             >
               <div onClick={() => openDocument(doc.id)} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1, cursor: 'pointer' }}>
                 <span style={{ ...display(15, { lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>
-                  {doc.event?.name || party}
+                  {headline}
                 </span>
                 <span style={{ fontSize: 11.5, lineHeight: 1.3, color: ink, opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {doc.number} ▪︎ {party}
                 </span>
+                {/* Was invisible outside a bare version-count on Attendance
+                    only (08-payment-documents.md's 2026-09-17 follow-up #7
+                    — BUG 1) — now that loadDocuments() lists a still-live
+                    superseded copy alongside the current one, both need a
+                    clear label so it's obvious which is which; a superseded
+                    row simply stops matching the query (and this label)
+                    once purge_after passes, no separate hide-it step. */}
+                {doc.superseded_at ? (
+                  <span style={{ fontSize: 10.5, lineHeight: 1.3, color: ink, opacity: 0.6 }} data-testid="document-version-label">
+                    {T('Bản cũ · xoá sau 24h', 'Old copy · deletes in 24h')}
+                  </span>
+                ) : bookingsWithOldCopy.has(doc.booking_id) && (
+                  <span style={{ fontSize: 10.5, lineHeight: 1.3, color: ink, opacity: 0.6 }} data-testid="document-version-label">
+                    {T('Bản hiện tại', 'Current copy')}
+                  </span>
+                )}
                 {hasAmount ? (
                   <span style={{ fontSize: 12.5, lineHeight: 1.3, fontWeight: 600, color: ink }}>{formatVnd(doc.total_vnd)}</span>
                 ) : caption ? (
@@ -99,7 +135,8 @@ export default function Documents() {
               </span>
             </div>
           );
-        })}
+        });
+        })()}
 
         {s.documents.length === 0 && (
           <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, padding: '14px 16px', margin: 0 }} data-testid="documents-empty">

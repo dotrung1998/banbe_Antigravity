@@ -104,7 +104,10 @@ export default function Confirmed() {
     return () => { active = false; clearInterval(id); };
   }, [s.booking?.id, phase, set, forfeitExpiredHold]);
 
-  const name = s.formName.trim() || T('Bạn', 'You');
+  // formName used to be a free-typed, never-persisted Reserve.jsx field —
+  // s.user.name (real profiles.display_name, 01-hold-payment.md's
+  // 2026-09-17 follow-up #6) is the actual identity now.
+  const name = (s.user?.name || '').trim() || T('Bạn', 'You');
   const confirmEyebrow = isPaid
     ? T('Đã xác nhận', 'Confirmed')
     : isHolding ? T('Đang giữ chỗ cho bạn', 'Holding your spot')

@@ -7,7 +7,7 @@ import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 export default function Attendance() {
   const {
     state, set, T, trStatus, goDashboard, toggleCheckin, openQrScan, openCancelBooking, markGuestPaid, uploadPaymentDocument,
-    openVerificationDetail, openRejectGuest, loadAttendanceGuests,
+    openVerificationDetail, openRejectGuest, loadAttendanceGuests, openDocumentFromNotification,
   } = useGoc();
   const s = state;
   const fileInputRef = useRef(null);
@@ -176,17 +176,32 @@ export default function Attendance() {
                         ? T('Đang tải lên…', 'Uploading…')
                         : (g.hasReceipt ? T('Thay biên nhận', 'Replace receipt') : T('Tải lên biên nhận', 'Upload receipt'))}
                     </span>
-                    {/* Surfaces the 24h soft-delete window (upload_payment_document(),
-                        migration 056) — only shown when there's actually something
-                        pending, so the far more common single-upload case stays
-                        uncluttered. */}
+                    {/* Was a bare count with no way to actually open either
+                        file (08-payment-documents.md's 2026-09-17 follow-up
+                        #7 — BUG 1) — now each version is its own tappable
+                        row, opening straight into DocumentView the same way
+                        Documents.jsx's own rows do. Only rendered once
+                        there's more than the trivial single-current-receipt
+                        case to show, keeping the far more common
+                        single-upload row uncluttered — but the moment a
+                        superseded copy is still live, both become visible
+                        and individually openable, not just counted. */}
                     {g.receiptPendingDelete > 0 && (
-                      <span style={{ fontSize: 10.5, color: ink, opacity: 0.6, marginTop: 2 }} data-testid="guest-receipt-version">
-                        {T(
-                          `Phiên bản hiện tại (${g.receiptVersionCount}) · ${g.receiptPendingDelete} bản cũ sẽ xoá trong 24h`,
-                          `Current version (${g.receiptVersionCount}) · ${g.receiptPendingDelete} old version${g.receiptPendingDelete > 1 ? 's' : ''} will be deleted within 24h`,
-                        )}
-                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 3 }}>
+                        <span style={{ fontSize: 10, color: ink, opacity: 0.5 }} data-testid="guest-receipt-version">
+                          {T(`Phiên bản hiện tại (${g.receiptVersionCount})`, `Current version (${g.receiptVersionCount})`)}
+                        </span>
+                        {g.receipts.map((r) => (
+                          <span
+                            key={r.id}
+                            onClick={(e) => { e.stopPropagation(); openDocumentFromNotification(r.id, 'attendance', 'host'); }}
+                            style={{ fontSize: 10.5, fontWeight: 600, color: r.isLive ? ink : ink, opacity: r.isLive ? 0.85 : 0.6, cursor: 'pointer', width: 'fit-content', textDecoration: 'underline', textUnderlineOffset: 2 }}
+                            data-testid={r.isLive ? 'guest-receipt-current' : 'guest-receipt-old'}
+                          >
+                            {r.isLive ? T('Bản hiện tại ›', 'Current copy ›') : T('Bản cũ · xoá sau 24h ›', 'Old copy · deletes in 24h ›')}
+                          </span>
+                        ))}
+                      </div>
                     )}
                     {pendingReplace?.bookingId === g.id ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }} onClick={(e) => e.stopPropagation()}>

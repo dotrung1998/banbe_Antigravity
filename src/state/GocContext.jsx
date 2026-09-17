@@ -102,8 +102,14 @@ const initialState = {
   filterAttending: false,
   filterSaved: false,
   filterSoldOut: false,
+  // Reserve.jsx's Name field, ONLY used for the empty-display_name case
+  // (08-payment-documents.md/01-hold-payment.md's 2026-09-17 follow-up #6):
+  // once a real profiles.display_name exists it's shown read-only from
+  // s.user.name instead, never free-typed. formEmail is gone entirely — the
+  // email field is always a read-only display of s.user.email now.
   formName: '',
-  formEmail: '',
+  reserveNameSaving: false,
+  reserveNameError: '',
   chatDraft: '',
   chatBack: 'organizer',
   shared: false,
@@ -1692,10 +1698,18 @@ export function GocProvider({ children }) {
     if (!uid) return set({ documents: [], documentsLoading: false });
     set({ documentsLoading: true, documentsError: '' });
 
-    // Documents are organizer-uploaded now (migration 056) — nothing to
-    // mint here anymore. `superseded_at IS NULL` hides a replaced version
-    // immediately (Task 5's soft-delete: the row itself still exists,
-    // queryable for 24h, but never in this list).
+    // Documents are organizer-uploaded now (migration 056). Lists BOTH the
+    // live document (superseded_at IS NULL) AND any still-live superseded
+    // copy (purge_after > now(), Task 5's 24h soft-delete grace window) —
+    // until this pass, that old copy was only ever surfaced as a bare count
+    // on Attendance ("Phiên bản hiện tại (2) · ..."), with no way for
+    // either the organizer or the guest to actually open it before it's
+    // gone for good (08-payment-documents.md's 2026-09-17 follow-up #7).
+    // RLS (`payment_documents_select_guest`/`_host`, 024) doesn't gate on
+    // superseded_at at all, so this is purely a query-filter change, not an
+    // access-control one. Once purge_after passes, the row (and its
+    // storage object) is hard-deleted by the purge cron and simply stops
+    // matching this query — no separate hide-it step needed here.
     //
     // `events(...)` embeds via the event_id FK — the `event` jsonb column is
     // only ever populated for a legacy structured invoice; an uploaded raw
@@ -1706,7 +1720,8 @@ export function GocProvider({ children }) {
     // text FK embed on this schema is confirmed to need (same follow-up's
     // `organizers` embed note) and because an `event:` alias would collide
     // with the existing jsonb column's key in the same row.
-    let query = supabase.from('payment_documents').select('*, events(name, starts_at, event_date, event_time)').eq('kind', s.documentsKind).is('superseded_at', null);
+    const nowIso = new Date().toISOString();
+    let query = supabase.from('payment_documents').select('*, events(name, starts_at, event_date, event_time)').eq('kind', s.documentsKind).or(`superseded_at.is.null,purge_after.gt.${nowIso}`);
     if (s.documentsRole === 'host') {
       // An organizer is usually also a goer, so filtering by RLS alone would
       // mix their own tickets into the list of documents they issued.
@@ -1786,11 +1801,16 @@ export function GocProvider({ children }) {
   // Deep-links a bell notification ('payment_document_uploaded'/'_replaced')
   // straight to the document it's about, without needing the full
   // Documents list loaded first — fetches the one row RLS allows this
-  // account to see (the guest it belongs to) and opens the viewer on it.
-  const openDocumentFromNotification = useCallback(async (documentId, backTo = 'documents') => {
+  // account to see and opens the viewer on it. `role` defaults to 'guest'
+  // (the notification case) but Attendance's own "view this receipt" taps
+  // (08-payment-documents.md's 2026-09-17 follow-up #7 — BUG 1: a live and
+  // a still-live superseded copy are both now individually tappable there,
+  // not just counted) pass 'host' so DocumentView's organizer-only controls
+  // render correctly.
+  const openDocumentFromNotification = useCallback(async (documentId, backTo = 'documents', role = 'guest') => {
     const { data, error } = await supabase.from('payment_documents').select('*').eq('id', documentId).maybeSingle();
     if (error || !data) return;
-    set({ documents: [data], documentId: data.id, documentsKind: data.kind, documentsRole: 'guest', screen: 'documentView', documentBack: backTo });
+    set({ documents: [data], documentId: data.id, documentsKind: data.kind, documentsRole: role, screen: 'documentView', documentBack: backTo });
   }, [set]);
 
   // Keeps documentFileUrl pointed at whichever document is open — a signed
@@ -2221,8 +2241,27 @@ export function GocProvider({ children }) {
   const qtyPlus = useCallback(() => set(prev => ({ qty: Math.min(6, prev.qty + 1) })), [set]);
   const pickPayNow = useCallback(() => set({ payMode: 'now' }), [set]);
   const pickHold = useCallback(() => set({ payMode: 'hold' }), [set]);
-  const formNameType = useCallback((e) => set({ formName: e.target.value }), [set]);
-  const formEmailType = useCallback((e) => set({ formEmail: e.target.value }), [set]);
+  const formNameType = useCallback((e) => set({ formName: e.target.value, reserveNameError: '' }), [set]);
+  // Reserve.jsx's Name field, for a guest whose profiles.display_name is
+  // still empty (e.g. an OAuth sign-in that never carried a name, or a
+  // handle_new_user() insert whose raw_user_meta_data had no display_name
+  // key — see 01-hold-payment.md's 2026-09-17 follow-up #6 for how this
+  // actually happens) — a real write via the same rename_display_name()
+  // RPC saveDisplayName() (Account/EditName) uses, not a value that goes
+  // nowhere. Deliberately does NOT navigate away (unlike saveDisplayName,
+  // which returns to 'profile') — the guest is mid-hold-flow here.
+  const setNameAtHold = useCallback(async (name) => {
+    const newName = name.trim();
+    if (!newName) return { success: false };
+    set({ reserveNameSaving: true, reserveNameError: '' });
+    const { data, error } = await supabase.rpc('rename_display_name', { p_new_name: newName });
+    if (error) {
+      set({ reserveNameSaving: false, reserveNameError: T('Không thể lưu tên lúc này. Vui lòng thử lại.', 'Could not save your name right now. Please try again.') });
+      return { success: false };
+    }
+    set(prev => ({ reserveNameSaving: false, reserveNameError: '', user: { ...prev.user, name: data?.new_name || newName } }));
+    return { success: true };
+  }, [set, T]);
   const submitReserve = useCallback(async (formOk) => {
     if (!formOk) return;
     set({ loading: true, reserveError: '' });
@@ -2847,13 +2886,17 @@ export function GocProvider({ children }) {
       const nowIso = new Date().toISOString();
       const { data: docs } = await supabase
         .from('payment_documents')
-        .select('booking_id, superseded_at, purge_after')
+        .select('id, booking_id, superseded_at, purge_after')
         .eq('kind', 'receipt')
         .in('booking_id', bookingIds)
-        .or(`superseded_at.is.null,purge_after.gt.${nowIso}`);
+        .or(`superseded_at.is.null,purge_after.gt.${nowIso}`)
+        .order('issued_at', { ascending: false });
       for (const d of docs || []) {
-        const entry = docsByBooking[d.booking_id] || { live: 0, pendingDelete: 0 };
+        const entry = docsByBooking[d.booking_id] || { live: 0, pendingDelete: 0, receipts: [] };
         if (d.superseded_at) entry.pendingDelete += 1; else entry.live += 1;
+        // Each row individually tappable/openable, not just counted
+        // (08-payment-documents.md's 2026-09-17 follow-up #7 — BUG 1).
+        entry.receipts.push({ id: d.id, isLive: !d.superseded_at });
         docsByBooking[d.booking_id] = entry;
       }
     }
@@ -2861,7 +2904,7 @@ export function GocProvider({ children }) {
     const guests = (bookings || [])
       .filter(b => b.status !== 'pending' || !b.expires_at || new Date(b.expires_at).getTime() > now)
       .map(b => {
-        const docInfo = docsByBooking[b.id] || { live: 0, pendingDelete: 0 };
+        const docInfo = docsByBooking[b.id] || { live: 0, pendingDelete: 0, receipts: [] };
         return {
           id: b.id,
           name: (names[b.user_id] || '').trim() || 'Khách',
@@ -2878,6 +2921,7 @@ export function GocProvider({ children }) {
           hasReceipt: docInfo.live > 0,
           receiptVersionCount: docInfo.live + docInfo.pendingDelete,
           receiptPendingDelete: docInfo.pendingDelete,
+          receipts: docInfo.receipts,
         };
       });
     set({ attendanceGuests: guests, attendanceLoading: false });
@@ -3211,7 +3255,7 @@ export function GocProvider({ children }) {
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
-    qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
+    qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread,
@@ -3240,7 +3284,7 @@ export function GocProvider({ children }) {
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
-    qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, formEmailType, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
+    qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread,

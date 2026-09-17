@@ -254,19 +254,31 @@ struct AttendanceView: View {
                         .disabled(app.documentUploading)
                         .accessibilityIdentifier("guest.uploadReceipt")
 
-                        // Surfaces the 24h soft-delete window
-                        // (upload_payment_document(), migration 056) — only
-                        // shown when there's actually something pending, so
-                        // the far more common single-upload case stays
-                        // uncluttered.
+                        // Was a bare count with no way to actually open
+                        // either file (08-payment-documents.md's
+                        // 2026-09-17 follow-up #7 — BUG 1) — now each
+                        // version is its own tappable row, opening straight
+                        // into DocumentView the same way Documents.jsx's own
+                        // rows do. Only shown once there's more than the
+                        // trivial single-current-receipt case, keeping the
+                        // far more common single-upload row uncluttered.
                         if guest.receiptPendingDelete > 0 {
-                            Text(app.T(
-                                "Phiên bản hiện tại (\(guest.receiptVersionCount)) · \(guest.receiptPendingDelete) bản cũ sẽ xoá trong 24h",
-                                "Current version (\(guest.receiptVersionCount)) · \(guest.receiptPendingDelete) old version\(guest.receiptPendingDelete > 1 ? "s" : "") will be deleted within 24h"
-                            ))
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(app.palette.ink.opacity(0.6))
-                            .accessibilityIdentifier("guest.receiptVersion")
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(app.T("Phiên bản hiện tại (\(guest.receiptVersionCount))", "Current version (\(guest.receiptVersionCount))"))
+                                    .font(.system(size: 10)).foregroundStyle(app.palette.ink.opacity(0.5))
+                                    .accessibilityIdentifier("guest.receiptVersion")
+                                ForEach(guest.receipts) { receipt in
+                                    Button(receipt.isLive ? app.T("Bản hiện tại ›", "Current copy ›") : app.T("Bản cũ · xoá sau 24h ›", "Old copy · deletes in 24h ›")) {
+                                        Task { await app.openDocumentFromNotification(receipt.id, backTo: .attendance, role: "host") }
+                                    }
+                                    .font(.system(size: 10.5, weight: .semibold))
+                                    .foregroundStyle(app.palette.ink.opacity(receipt.isLive ? 0.85 : 0.6))
+                                    .underline()
+                                    .buttonStyle(.plain)
+                                    .accessibilityIdentifier(receipt.isLive ? "guest.receiptCurrent" : "guest.receiptOld")
+                                }
+                            }
+                            .padding(.top, 1)
                         }
 
                         if pendingReplace?.bookingID == guest.id {
