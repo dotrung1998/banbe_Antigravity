@@ -67,10 +67,20 @@ struct ReasonOption: Identifiable {
         .init(key: "policy_violation", vi: "Vi phạm quy định", en: "Policy violation"),
         .init(key: "other", vi: "Khác", en: "Other"),
     ]
+    /// 14-organizer-checkin.md (Bug 2b) — ports REJECT_GUEST_REASONS.
+    static let rejectGuest: [ReasonOption] = [
+        .init(key: "no_seats_left", vi: "Hết chỗ thật sự", en: "Actually out of seats"),
+        .init(key: "payment_mismatch", vi: "Không khớp với sao kê", en: "Doesn't match the statement"),
+        .init(key: "suspected_fraud", vi: "Nghi ngờ gian lận", en: "Suspected fraud"),
+        .init(key: "other", vi: "Khác", en: "Other"),
+    ]
 }
 
 struct ReasonPrompt: Equatable {
-    enum Kind { case undoCheckin, cancelBooking }
+    // 14-organizer-checkin.md: .rejectGuest (Bug 2b) picks a reason like the
+    // other two; .confirmCheckin (Bug 3) has no reason list at all — a
+    // plain yes/no, handled separately in ReasonSheetView.
+    enum Kind { case undoCheckin, cancelBooking, rejectGuest, confirmCheckin }
     let kind: Kind
     let bookingID: UUID
     let guestName: String
@@ -287,6 +297,10 @@ final class AppState: ObservableObject {
     @Published var paymentCopied = ""
     @Published var paymentProofUploading = false
     @Published var paymentProofError = ""
+    // 14-organizer-checkin.md: the guest's rate-limited nudge while
+    // awaiting the organizer's confirm window.
+    @Published var nudgeSending = false
+    @Published var nudgeError = ""
     @Published var paymentBack: Screen = .profile
     @Published var billingName = ""
     @Published var billingAddress = ""
@@ -325,6 +339,9 @@ final class AppState: ObservableObject {
     @Published var verifications: [PendingVerification] = []
     @Published var verificationsLoading = false
     @Published var verificationBusy: UUID?
+    // 14-organizer-checkin.md: set by openVerificationDetail() (Attendance's
+    // "Check payment" button) — narrows the queue to exactly one booking.
+    @Published var verificationsFocusBookingID: UUID?
     // 'pay-proof' storage path -> signed viewable URL, for whichever rows
     // loadVerifications last loaded — see signProofUrls.
     @Published var proofUrls: [String: URL] = [:]

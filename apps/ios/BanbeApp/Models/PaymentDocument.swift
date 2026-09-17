@@ -147,6 +147,10 @@ struct PayableBooking: Identifiable, Hashable {
     /// paymentState is still .pendingVerification (escalate_payment_dispute
     /// hasn't run). See PaymentViews.swift's needsInfoCard.
     var disputeReason: String?
+    /// 14-organizer-checkin.md: how many times the guest has already
+    /// nudged the organizer via nudge_organizer() (migration 059) — capped
+    /// server-side at 2 per hold.
+    var nudgeCount: Int = 0
 
     var isPaid: Bool { paymentState == .confirmed || paidMarkedAt != nil }
     var isFrozen: Bool { paymentState == .pendingVerification }

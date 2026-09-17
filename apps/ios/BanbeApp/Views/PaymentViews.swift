@@ -50,17 +50,20 @@ struct PaymentDetailsView: View {
         }
         .accessibilityIdentifier("screen.paymentDetails")
         .task { await app.loadPaymentBookings() }
-        // Only PHASE 1 needs a ticking clock; anywhere else this is both
-        // pointless and actively misleading.
+        // PHASE 1 drives the "seat held for" clock. PHASE 2 (14-organizer-
+        // checkin.md follow-up) now ALSO ticks — not a second "your seat is
+        // at risk" countdown, but a separate, informational read-only one
+        // for the ORGANIZER's own confirm-window deadline (`verifyDueAt`).
         .onReceive(ticker) { now in
-            guard let booking, booking.paymentState.isCountingDown else { return }
+            guard let booking, booking.paymentState.isCountingDown || booking.isFrozen else { return }
             tick = now
             // The moment this screen's own clock notices the hold has
             // lapsed, forfeit it immediately — self-guards against firing
             // twice, since the local patch flips paymentState to .expired
             // on the very next tick, and isCountingDown follows straight
             // from that.
-            if let deadline = booking.holdExpiresAt, Countdown.secondsUntil(deadline, now: now) == 0 {
+            if booking.paymentState.isCountingDown, let deadline = booking.holdExpiresAt,
+               Countdown.secondsUntil(deadline, now: now) == 0 {
                 app.forfeitExpiredHold(booking)
             }
         }
@@ -211,6 +214,46 @@ struct PaymentDetailsView: View {
             if !booking.transactionId.isEmpty {
                 Text(app.T("Mã giao dịch đã gửi: ", "Transaction ID submitted: ") + booking.transactionId)
                     .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+            }
+            // 14-organizer-checkin.md follow-up: read-only — this is the
+            // organizer's own confirm-window clock, not a second "your seat
+            // is at risk" countdown.
+            if let deadline = booking.verifyDueAt {
+                HStack {
+                    Text(app.T("Người tổ chức xác nhận trong", "Organizer confirms within"))
+                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    Spacer()
+                    Text(Countdown.format(Countdown.secondsUntil(deadline, now: tick)))
+                        .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                }
+                .padding(.top, 4)
+                .accessibilityIdentifier("payment.organizerCountdown")
+            }
+            // The ONE actionable control on this screen — everything else
+            // here is read-only status. Disables itself (not just visually
+            // — nudgeOrganizer() itself refuses past 2, server-side) once
+            // nudgeCount reaches the RPC's own limit.
+            Button {
+                Task { await app.nudgeOrganizer(bookingID: booking.id) }
+            } label: {
+                Text(app.nudgeSending
+                     ? app.T("Đang gửi…", "Sending…")
+                     : booking.nudgeCount >= 2
+                     ? app.T("Đã nhắc tối đa 2 lần", "Nudged the max 2 times")
+                     : app.T("Nhắc người tổ chức xác nhận", "Remind the organizer to confirm"))
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(app.palette.rule))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(app.palette.ink)
+            .opacity(booking.nudgeCount >= 2 || app.nudgeSending ? 0.4 : 1)
+            .disabled(booking.nudgeCount >= 2 || app.nudgeSending)
+            .padding(.top, 4)
+            .accessibilityIdentifier("payment.nudgeOrganizer")
+            if !app.nudgeError.isEmpty {
+                Text(app.nudgeError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
             }
         }
         .foregroundStyle(app.palette.ink)

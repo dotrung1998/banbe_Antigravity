@@ -1,0 +1,61 @@
+# Organizer participant-list, verification detail, and check-in confirm (2026-09-17)
+
+## Status: WORKING (web + iOS)
+
+## Files / functions
+- `src/screens/Attendance.jsx` / `apps/ios/BanbeApp/Views/AttendanceView.swift` — the organizer's per-event guest list (`openAttendance`/`loadAttendanceGuests`).
+- `src/screens/Verifications.jsx` / `apps/ios/BanbeApp/Views/VerificationsView.swift` — the organizer's PHASE 2 (`pending_verification`) queue (`v_pending_verifications`).
+- `src/screens/sheets/QrScanSheet.jsx` / `apps/ios/BanbeApp/Views/QRScannerView.swift` — QR-scan check-in.
+- `src/screens/PaymentDetails.jsx` / `apps/ios/BanbeApp/Views/PaymentViews.swift` — the guest's own PHASE 2 screen.
+- `src/screens/sheets/ReasonSheet.jsx` / `apps/ios/BanbeApp/Views/Sheets.swift`'s `ReasonSheetView` — the shared "pick a reason" (or plain confirm) modal.
+- `supabase/migrations/20260920000059_059_reject_pending_guest_and_nudge_organizer.sql` — new `nudge_organizer()` and `reject_pending_guest()` RPCs, `bookings.nudge_count` column.
+
+## Bug 1 — 8bca6b1's own openNotification() fix had no per-event ownership check (confirmed real, fixed)
+
+**Hypothesis confirmed**: `openVerifications()` (web `GocContext.jsx`, iOS `canHost` guard) only ever checked ACCOUNT-level state (`organizerMode || accountType === 'admin' || hasHosted`) — "is this person an organizer of *anything*" — never whether they're the organizer of the SPECIFIC event a `payment_awaiting_verification` notification's `event_id` names. `openAttendance()` (the `booking_requested` branch) had no ownership check at all, not even the account-wide one. For a dual-role account — this app's own explicit design ("one account for everything, switch on organizer mode from Account") and exactly what the shared fast-suite test account is — a guest who is also *some* event's organizer could tap/receive a `payment_awaiting_verification`/`booking_requested` notification about an event they don't organize and still land on the organizer's screen for it, RLS silently returning zero rows as the only real backstop.
+
+**Fix**: `openNotification()` (web `GocContext.jsx:2664-2777`; iOS `AppState+Data.swift:530-`) now checks `n.data.event_id` against `s.myOrgEventKeys`/`myOrgEventKeys` (the real per-event ownership list from `loadMyEvents()`, already existed) before calling `openVerifications()` or `openAttendance()` — a non-owner is blocked from the navigation itself, not just left looking at buttons that silently no-op under RLS. `openVerificationDetail()` (new, below) carries the same guard for its own reachable-from-a-notification path.
+
+## The guest's replacement screen (was the confusing part of Bug 1)
+
+Rather than ever risking the organizer's own screen, `PaymentDetails.jsx`/`PaymentViews.swift`'s existing PHASE 2 card (already guest-framed — "Đang chờ xác nhận"/"your seat is locked") now also shows:
+- A read-only countdown of `verify_due_at` (the organizer's own SLA/confirm-window deadline) — explicitly NOT a second "your seat is at risk" clock, the file's own long-standing top comment about PHASE 2 having no countdown is about that clock, not this new informational one.
+- Exactly ONE actionable control: "Nhắc người tổ chức xác nhận" / "Remind the organizer to confirm" — `nudgeOrganizer()` (web) / `AppState.nudgeOrganizer(bookingID:)` (iOS), calling the new `nudge_organizer()` RPC.
+
+**`nudge_organizer(p_booking uuid)`** (migration 059): guest-only (`bookings.user_id = auth.uid()`), only while `payment_state = 'pending_verification'`, rate-limited to **2** uses per hold via a real `bookings.nudge_count int default 0` column (not client-side debouncing, which resets on reload/reinstall) — the 3rd call is refused server-side with `NUDGE_LIMIT_REACHED`, and the button disables itself once `nudge_count` reaches 2. Inserts a `notifications` row (`kind: 'payment_verification_nudge'`) to the event's organizer. This app has no real push infra (07-notifications.md: no device-token table, no APNs key) — "push notification" here means the same in-app toast + bell notification every other event in this lifecycle already uses, surfaced proactively within one 5s toast-poll cycle either way.
+
+## Bug 2a — "Check payment" (repurposed from the check-in toggle, for not-yet-paid guests)
+
+An unpaid guest's row (`!g.paid`) is no longer tap-to-check-in at all (it used to be, regardless of payment state — check-in never made sense before payment was even reviewed). Instead:
+- `!g.paid && !g.hasProof` (still PHASE 1, no proof yet): a plain "Chưa thanh toán"/"Not paid yet" badge, non-interactive — nothing to check yet (`v_pending_verifications` only ever covers PHASE 2).
+- `!g.paid && g.hasProof` (PHASE 2, awaiting the organizer's decision): a "Kiểm tra thanh toán ›"/"Check payment ›" link — `openVerificationDetail(bookingId, eventKey)` (web `GocContext.jsx`) / `AppState.openVerificationDetail(bookingID:eventKey:)` (iOS) — navigates straight to that ONE booking's own row in Verifications, not just the general queue.
+
+**`openVerificationDetail`** sets `verificationsFocusBookingId`/`verificationsFocusBookingID`, which `Verifications.jsx`/`VerificationsView.swift` filter the queue down to — showing exactly the tapped booking whether it's the only pending item or buried far down a long list, with a "‹ Xem tất cả"/"‹ View all" link back to the full queue (`clearVerificationsFocus`/`app.verificationsFocusBookingID = nil`). Carries the same `myOrgEventKeys` ownership guard as Bug 1's fix, since this is reachable from a bell notification too, not just Attendance's own (already-scoped) list.
+
+Color: reused the existing muted-`alert` convention already used for "Huỷ vé" on this exact screen (`alert` at reduced opacity, not full-strength) — per `.claude/notes/06-design-tokens.md`, `alert` is the one shared accent token and this is its established "distinct but subtle, not harsh" secondary-action pattern; no new color introduced.
+
+## Bug 2b — "Có nhận khách này không?" (accept/reject, repurposed from "Mark as paid")
+
+The old single "Mark as paid" pill (unpaid guest only) is now a labeled choice with two pills:
+- **"Nhận"/"Accept"** (`"Khách đã gửi biên lai ▪︎ Nhận"`/`"Guest sent proof ▪︎ Accept"` when proof was submitted) — unchanged underneath: `markGuestPaid()` → `confirm_payment` RPC.
+- **"Từ chối"/"Reject"** — `openRejectGuest()` opens the shared reason-prompt sheet (kind `'rejectGuest'`, new `REJECT_GUEST_REASONS`/`ReasonOption.rejectGuest` list: no seats left / doesn't match statement / suspected fraud / other — the same "always pick a reason, never free text" convention as undo-check-in/cancel-booking), submitting to the new **`reject_pending_guest(p_booking, p_reason)`** RPC.
+
+**`reject_pending_guest()`** (migration 059) — modeled on `cancel_booking()`'s organizer-authorization shape (`reject_payment()`'s exact check: `organizers.owner_id/user_id = auth.uid()` OR admin), gated to `payment_state IN ('holding', 'pending_verification')` only (an already-confirmed booking goes through "Huỷ vé" instead, which already asks for a reason):
+- Sets **both** `status = 'cancelled'` AND `payment_state = 'cancelled'` — `booking_holds_seat()` (026:112) already returns `false` for `status IN ('cancelled','expired')` regardless of `payment_state`, so `status` alone frees the seat back to the pool; `payment_state` is set the same way purely so the booking drops out of `v_pending_verifications` (which filters strictly on `payment_state = 'pending_verification'` — leaving it untouched, as `cancel_booking()` does, would have left a "rejected" booking still showing in the organizer's own queue).
+- Clears `hold_expires_at` and `verify_due_at` — halts every pending timer, not just the visible status.
+- Inserts the guest's chat message (`'system'` kind, into the existing guest/organizer `threads` row) AND a `notifications` row (`kind: 'booking_declined'`) — same dual-channel pattern `reject_payment()`/`cancel_booking()` already establish, reused rather than reinvented.
+- A second reject/any other transition attempt on an already-terminal booking correctly refuses with `INVALID_STATE`.
+
+**Verified end-to-end against a real booking** (throwaway script against production, cleaned up after — not committed): signed in as the shared fast-suite test account, put it in organizer mode, created a real throwaway event it owns, self-booked it (hold_seats), submitted payment proof (pending_verification), nudged twice (succeeded, `nudge_count` 1→2) then a third time (correctly refused `NUDGE_LIMIT_REACHED`), then called `reject_pending_guest` — confirmed: `status`/`payment_state` both flipped to `cancelled`, `hold_expires_at`/`verify_due_at` both cleared, the booking no longer appears in `v_pending_verifications`, a `booking_declined` notification row landed for the guest with the exact reason text, a matching system chat message landed in the guest/organizer thread, and a second reject attempt was correctly refused (`INVALID_STATE`). Cleaned up the throwaway booking/event and reset the test account's organizer mode back off afterward (the script's own `set_organizer_mode(true)` call had briefly left it on, which broke `payment-state-machine.spec.js`'s "stays hidden from a goer" test until reverted — full fast suite reruns 125/125 clean after).
+
+## Bug 3 — confirm before check-in (both the manual list and QR scan)
+
+A confirmation step now sits before `check_in_guest()` actually fires, on both check-in entry points:
+- **Manual tap** (Attendance list): `toggleCheckin()`/`toggleCheckIn()` now opens a plain yes/no prompt (`reasonPrompt` kind `'confirmCheckin'` — no reason list, unlike the other three kinds) instead of calling the RPC directly. "Xác nhận"/"Confirm" → `confirmCheckin()`/`confirmCheckIn()`, which performs the actual `performCheckIn`/`performCheckIn(bookingID:)` (factored out of the old inline logic so both the confirm dialog and — unchanged — the reversal path share it).
+- **QR scan**: `QrScanSheet.jsx`/`QRScannerView.swift` — a decoded code used to call `checkInByScan()` the instant it was read; now it pauses the scan loop and shows a local (not the app-wide `reasonPrompt`) confirm overlay first, since this screen is already its own full-screen modal. "Xác nhận"/"Confirm" performs the check-in and resumes scanning after the usual status flash; "Để sau"/"Not now" resumes scanning immediately with no check-in.
+
+This only ever applies to an already-**paid** guest now (Bug 2a made an unpaid guest's row non-check-in-tappable at all), so the confirm step is universal for every real check-in action left, not conditional on payment state itself.
+
+## Design tokens used (06-design-tokens.md)
+
+No new color was introduced anywhere in this pass. "Từ chối"/"Reject" and "Kiểm tra thanh toán ›"/"Check payment ›" both reuse the existing `alert` token at reduced opacity (`alert.opacity(0.8)`/`rgba` equivalent) — the same convention "Huỷ vé"/"Cancel booking" already established on this exact screen for a distinct-but-not-harsh secondary action.

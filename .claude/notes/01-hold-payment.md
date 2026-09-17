@@ -38,3 +38,7 @@
 - `payment_awaiting_verification` (organizer, `submit_payment_proof()` 031:317) — found while auditing for "any other payment-related notification kind that should return to the timer/payment screen" per this ticket's own instruction; was never wired at all despite existing since migration 026/031. New branch routes to `openVerifications()` (not `openAttendance()` — this is specifically the "guest reported paying, needs a decision" step, which lives in Verifications' "Money received"/"Can't find it" actions, not Attendance's check-in list).
 
 `vite build` clean; iOS `xcodebuild` clean (Debug + Release); full fast Playwright suite passes (see session for exact count).
+
+## 2026-09-17 — follow-up: Bug 3's openVerifications() call had no per-event ownership check
+
+Confirmed regression: `payment_awaiting_verification`'s new `openVerifications()` call above (and the pre-existing `booking_requested` → `openAttendance()` one) only ever checked account-level state, never whether the current account organizes the SPECIFIC event named in the notification — a dual-role account could land on another organizer's screen. Fixed, plus a full accept/reject/check-in-confirm pass on the organizer's participant list — see `.claude/notes/15-organizer-checkin.md`.

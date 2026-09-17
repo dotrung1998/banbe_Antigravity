@@ -536,10 +536,24 @@ extension AppState {
                 let key = notification.data["event_id"]?.stringValue ?? self.eventKey
                 openThread(id: uuid, eventKey: key, back: .inbox)
             }
+        // 01-hold-payment.md follow-up (bug 1): both organizer-only cases
+        // below used to navigate unconditionally — relying on
+        // `openVerifications()`'s own ACCOUNT-level gate or, for
+        // `openAttendance()`, nothing at all — and RLS silently no-opping
+        // the actual data fetch as the only real backstop. That's an
+        // account-wide check ("is this person an organizer of ANYTHING"),
+        // not an EVENT-specific one, so any dual-role account (this app's
+        // own explicit design — the shared fast-suite test account is
+        // exactly this) could land on another organizer's screen for an
+        // event it only ever booked as a guest. `myOrgEventKeys`
+        // (loadMyEvents(), populated at sign-in) is the real, per-event
+        // ownership list — checked here so a non-owner is blocked from the
+        // navigation itself, not just left looking at buttons that
+        // silently no-op under RLS.
         case "booking_requested":
             // The organizer's side: straight to the check-in list for that
             // event, where "mark as paid" already lives (AttendanceView).
-            if let key = notification.data["event_id"]?.stringValue {
+            if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key) {
                 openAttendance(key)
             }
         case "hold_created":
@@ -559,7 +573,9 @@ extension AppState {
             // destination as "booking_requested" (the very next step in the
             // same request's lifecycle, still shown/actioned from
             // VerificationsView, not AttendanceView's check-in list).
-            openVerifications()
+            if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key) {
+                openVerifications()
+            }
         case "payment_confirmed":
             if let bookingIDString = notification.data["booking_id"]?.stringValue,
                let bookingID = UUID(uuidString: bookingIDString) {
@@ -1005,23 +1021,40 @@ extension AppState {
         }
     }
 
-    /// Tapping a guest checks them in; tapping one already checked in asks
-    /// for a reason first (reversing is never silent — see ReasonSheet).
+    /// Tapping a guest already checked in asks for a reason first (reversing
+    /// is never silent — see ReasonSheet). Tapping one not yet checked in
+    /// (14-organizer-checkin.md, Bug 3) now asks for a plain confirm first
+    /// too — an accidental tap used to check someone in instantly.
     func toggleCheckIn(_ guest: AttendanceGuest) {
         if guest.checkedIn {
             reasonPrompt = ReasonPrompt(kind: .undoCheckin, bookingID: guest.id, guestName: guest.name)
             reasonPromptError = ""
             return
         }
-        if let index = attendanceGuests.firstIndex(where: { $0.id == guest.id }) {
+        reasonPrompt = ReasonPrompt(kind: .confirmCheckin, bookingID: guest.id, guestName: guest.name)
+        reasonPromptError = ""
+    }
+
+    /// The actual check_in_guest() call — factored out of toggleCheckIn so
+    /// the confirm dialog's "Yes" can share this path.
+    @discardableResult
+    func performCheckIn(bookingID: UUID) async -> Bool {
+        if let index = attendanceGuests.firstIndex(where: { $0.id == bookingID }) {
             attendanceGuests[index].checkedIn = true
         }
-        Task {
-            let ok = await checkIn(bookingID: guest.id)
-            if !ok, let index = attendanceGuests.firstIndex(where: { $0.id == guest.id }) {
-                attendanceGuests[index].checkedIn = false
-            }
+        let ok = await checkIn(bookingID: bookingID)
+        if !ok, let index = attendanceGuests.firstIndex(where: { $0.id == bookingID }) {
+            attendanceGuests[index].checkedIn = false
         }
+        return ok
+    }
+
+    /// 14-organizer-checkin.md (Bug 3): the ReasonSheet's "Confirm" for a
+    /// `.confirmCheckin` prompt.
+    func confirmCheckIn() async {
+        guard let prompt = reasonPrompt, prompt.kind == .confirmCheckin else { return }
+        reasonPrompt = nil
+        await performCheckIn(bookingID: prompt.bookingID)
     }
 
     /// Both the manual list and the QR scanner go through this same
@@ -1053,6 +1086,15 @@ extension AppState {
         reasonPromptError = ""
     }
 
+    /// 14-organizer-checkin.md (Bug 2b): "Có nhận khách này không?" ▪︎ "Từ
+    /// chối" — reject_pending_guest() (migration 059) halts every pending
+    /// process for the booking and returns the seat to the pool, then
+    /// notifies the guest via chat + bell notification itself.
+    func openRejectGuest(_ guest: AttendanceGuest) {
+        reasonPrompt = ReasonPrompt(kind: .rejectGuest, bookingID: guest.id, guestName: guest.name)
+        reasonPromptError = ""
+    }
+
     func closeReasonPrompt() {
         reasonPrompt = nil
         reasonPromptError = ""
@@ -1061,8 +1103,9 @@ extension AppState {
     /// Reversing a check-in or cancelling a paid booking always carries one
     /// of the fixed reasons, so the guest's notification says something
     /// concrete — and both are emailed as well as shown in-app.
+    /// `.confirmCheckin` never reaches here — see confirmCheckIn() instead.
     func submitReason(_ label: String) async {
-        guard let prompt = reasonPrompt else { return }
+        guard let prompt = reasonPrompt, prompt.kind != .confirmCheckin else { return }
         reasonPromptBusy = true
         reasonPromptError = ""
         do {
@@ -1080,12 +1123,24 @@ extension AppState {
                         "p_booking": prompt.bookingID.uuidString, "p_reason": label,
                     ])
                     .execute().value
+            case .rejectGuest:
+                result = try await SupabaseService.client
+                    .rpc("reject_pending_guest", params: [
+                        "p_booking": prompt.bookingID.uuidString, "p_reason": label,
+                    ])
+                    .execute().value
+            case .confirmCheckin:
+                return // guarded above; unreachable
             }
             guard result.success == true else { throw AuthAPIError(code: "RPC_FAILED") }
 
             reasonPrompt = nil
             reasonPromptBusy = false
             if let key = attendanceEventKey { await loadAttendanceGuests(key) }
+            // reject_pending_guest() already inserts the guest's chat
+            // message + bell notification itself (migration 059) — no
+            // separate /api/notify email for this kind.
+            guard prompt.kind != .rejectGuest else { return }
             await AuthAPIService.notify(
                 path: "/api/notify",
                 body: [
@@ -1097,6 +1152,8 @@ extension AppState {
             reasonPromptBusy = false
             reasonPromptError = prompt.kind == .undoCheckin
                 ? T("Không thể huỷ điểm danh. Vui lòng thử lại.", "Could not undo the check-in. Please try again.")
+                : prompt.kind == .rejectGuest
+                ? T("Không thể từ chối yêu cầu này. Vui lòng thử lại.", "Could not reject this request. Please try again.")
                 : T("Không thể huỷ vé. Vui lòng thử lại.", "Could not cancel the booking. Please try again.")
         }
     }

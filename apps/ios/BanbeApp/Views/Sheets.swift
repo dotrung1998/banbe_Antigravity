@@ -99,70 +99,113 @@ struct LocationSheetView: View {
     }
 }
 
-/// Port of ReasonSheet.jsx — an organizer reversing a check-in or
-/// cancelling a paid booking must pick one of a fixed list of reasons (no
-/// free text), so the guest's notification always says something concrete.
+/// Port of ReasonSheet.jsx — an organizer reversing a check-in, cancelling a
+/// paid booking, or rejecting a still-pending one must pick one of a fixed
+/// list of reasons (no free text), so the guest's notification always says
+/// something concrete. `.confirmCheckin` (14-organizer-checkin.md, Bug 3)
+/// has no reason list at all — a plain yes/no before marking a guest
+/// arrived.
 struct ReasonSheetView: View {
     @EnvironmentObject var app: AppState
 
     var body: some View {
         if let prompt = app.reasonPrompt {
-            let isUndo = prompt.kind == .undoCheckin
-            let reasons = isUndo ? ReasonOption.undoCheckin : ReasonOption.cancelBooking
-
-            BottomSheet(onDismiss: { if !app.reasonPromptBusy { app.closeReasonPrompt() } }) {
-                Text(isUndo ? app.T("Huỷ điểm danh", "Undo check-in") : app.T("Huỷ vé", "Cancel booking"))
-                    .font(.system(size: 11.5, weight: .semibold))
-                if !prompt.guestName.isEmpty {
-                    Text(isUndo
-                         ? app.T("Vì sao bạn muốn chuyển \(prompt.guestName) về \"Chưa đến\"?",
-                                 "Why move \(prompt.guestName) back to \"Not yet\"?")
-                         : app.T("Vì sao bạn muốn huỷ vé của \(prompt.guestName)?",
-                                 "Why cancel \(prompt.guestName)'s booking?"))
+            if prompt.kind == .confirmCheckin {
+                BottomSheet(onDismiss: { if !app.reasonPromptBusy { app.closeReasonPrompt() } }) {
+                    Text(app.T("Xác nhận điểm danh", "Confirm check-in"))
+                        .font(.system(size: 11.5, weight: .semibold))
+                    Text(prompt.guestName.isEmpty
+                         ? app.T("Bạn có chắc muốn xác nhận khách này đã tới?", "Are you sure this guest has arrived?")
+                         : app.T("Bạn có chắc muốn xác nhận \(prompt.guestName) đã tới?", "Are you sure \(prompt.guestName) has arrived?"))
                         .font(.system(size: 13))
                         .lineSpacing(3)
                         .padding(.top, 8)
-                }
-                Text(app.T("Khách sẽ được báo qua email và trong ứng dụng.",
-                           "The guest will be notified by email and in the app."))
-                    .font(.system(size: 12))
-                    .foregroundStyle(app.palette.ink.opacity(0.7))
-                    .padding(.top, 6)
-
-                VStack(spacing: 0) {
-                    ForEach(reasons) { reason in
-                        Button {
-                            guard !app.reasonPromptBusy else { return }
-                            Task { await app.submitReason(app.T(reason.vi, reason.en)) }
-                        } label: {
-                            Text(app.T(reason.vi, reason.en))
-                                .font(.system(size: 14.5))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 13)
-                                .opacity(app.reasonPromptBusy ? 0.5 : 1)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        Divider().overlay(app.palette.rule)
+                    HStack(spacing: 8) {
+                        Button(app.T("Xác nhận", "Confirm")) { Task { await app.confirmCheckIn() } }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(app.palette.paper)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .buttonStyle(.plain)
+                        Button(app.T("Để sau", "Not now")) { app.closeReasonPrompt() }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(app.palette.ink)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(app.palette.rule))
+                            .buttonStyle(.plain)
                     }
+                    .padding(.top, 16)
                 }
-                .padding(.top, 14)
+            } else {
+                let reasons: [ReasonOption] = prompt.kind == .undoCheckin ? ReasonOption.undoCheckin
+                    : prompt.kind == .rejectGuest ? ReasonOption.rejectGuest
+                    : ReasonOption.cancelBooking
+                let title = prompt.kind == .undoCheckin ? app.T("Huỷ điểm danh", "Undo check-in")
+                    : prompt.kind == .rejectGuest ? app.T("Từ chối yêu cầu đặt chỗ", "Reject this request")
+                    : app.T("Huỷ vé", "Cancel booking")
 
-                if !app.reasonPromptError.isEmpty {
-                    Text(app.reasonPromptError)
+                BottomSheet(onDismiss: { if !app.reasonPromptBusy { app.closeReasonPrompt() } }) {
+                    Text(title)
+                        .font(.system(size: 11.5, weight: .semibold))
+                    if !prompt.guestName.isEmpty {
+                        Text(prompt.kind == .undoCheckin
+                             ? app.T("Vì sao bạn muốn chuyển \(prompt.guestName) về \"Chưa đến\"?",
+                                     "Why move \(prompt.guestName) back to \"Not yet\"?")
+                             : prompt.kind == .rejectGuest
+                             ? app.T("Vì sao bạn không nhận yêu cầu của \(prompt.guestName)?",
+                                     "Why reject \(prompt.guestName)'s request?")
+                             : app.T("Vì sao bạn muốn huỷ vé của \(prompt.guestName)?",
+                                     "Why cancel \(prompt.guestName)'s booking?"))
+                            .font(.system(size: 13))
+                            .lineSpacing(3)
+                            .padding(.top, 8)
+                    }
+                    Text(prompt.kind == .rejectGuest
+                         ? app.T("Chỗ sẽ được mở lại ngay và khách sẽ được báo trong ứng dụng.",
+                                 "The seat is returned to the pool immediately and the guest is notified in the app.")
+                         : app.T("Khách sẽ được báo qua email và trong ứng dụng.",
+                                 "The guest will be notified by email and in the app."))
                         .font(.system(size: 12))
-                        .foregroundStyle(BanbeTheme.alert)
-                        .padding(.top, 12)
-                }
+                        .foregroundStyle(app.palette.ink.opacity(0.7))
+                        .padding(.top, 6)
 
-                Button(app.reasonPromptBusy ? app.T("Đang xử lý…", "Working…") : app.T("Để sau", "Not now")) {
-                    if !app.reasonPromptBusy { app.closeReasonPrompt() }
+                    VStack(spacing: 0) {
+                        ForEach(reasons) { reason in
+                            Button {
+                                guard !app.reasonPromptBusy else { return }
+                                Task { await app.submitReason(app.T(reason.vi, reason.en)) }
+                            } label: {
+                                Text(app.T(reason.vi, reason.en))
+                                    .font(.system(size: 14.5))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 13)
+                                    .opacity(app.reasonPromptBusy ? 0.5 : 1)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            Divider().overlay(app.palette.rule)
+                        }
+                    }
+                    .padding(.top, 14)
+
+                    if !app.reasonPromptError.isEmpty {
+                        Text(app.reasonPromptError)
+                            .font(.system(size: 12))
+                            .foregroundStyle(BanbeTheme.alert)
+                            .padding(.top, 12)
+                    }
+
+                    Button(app.reasonPromptBusy ? app.T("Đang xử lý…", "Working…") : app.T("Để sau", "Not now")) {
+                        if !app.reasonPromptBusy { app.closeReasonPrompt() }
+                    }
+                    .font(.system(size: 13.5))
+                    .frame(maxWidth: .infinity)
+                    .padding(8)
+                    .padding(.top, 14)
+                    .buttonStyle(.plain)
                 }
-                .font(.system(size: 13.5))
-                .frame(maxWidth: .infinity)
-                .padding(8)
-                .padding(.top, 14)
-                .buttonStyle(.plain)
             }
         }
     }

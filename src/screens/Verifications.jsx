@@ -14,7 +14,7 @@ import DisputeChatPanel from './DisputeChatPanel.jsx';
 // and the person who has waited longest is the one closest to giving up.
 export default function Verifications() {
   const {
-    state, T, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadDisputes, backFromDocuments,
+    state, T, set, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadDisputes, backFromDocuments,
   } = useGoc();
   const s = state;
   // { bookingId, kind: 'reject' | 'escalate' } while the reason form for
@@ -49,6 +49,14 @@ export default function Verifications() {
   // empty queue has no business waking this screen every second.
   const tickNow = useTicking(s.verifications.length > 0);
 
+  // 14-organizer-checkin.md: Attendance's "Check payment" button
+  // (openVerificationDetail) sets this so the organizer lands on exactly
+  // the one booking they tapped from — whether it's the only pending item
+  // or buried far down a long queue — instead of the full list.
+  const focusId = s.verificationsFocusBookingId;
+  const visibleVerifications = focusId ? s.verifications.filter(v => v.booking_id === focusId) : s.verifications;
+  const clearVerificationsFocus = () => set({ verificationsFocusBookingId: null });
+
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Verifications">
       <div onClick={backFromDocuments} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="verifications-back">
@@ -56,21 +64,27 @@ export default function Verifications() {
       </div>
       <div style={{ padding: '14px 22px 0' }}>
         <h1 style={{ ...display(24, { margin: 0 }) }} data-testid="verifications-title">
-          {T('Chờ xác nhận', 'Awaiting verification')}
+          {focusId ? T('Chi tiết thanh toán', 'Payment detail') : T('Chờ xác nhận', 'Awaiting verification')}
         </h1>
         <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
           {T('Khách đã báo chuyển khoản. Đối chiếu với sao kê rồi xác nhận — chỗ của họ đang được giữ và đồng hồ đã dừng.',
              "These guests reported a transfer. Check your statement, then confirm — their seat is held and their clock has stopped.")}
         </p>
-        {overdue > 0 && (
+        {!focusId && overdue > 0 && (
           <p style={{ fontSize: 12.5, fontWeight: 600, color: alert, margin: '10px 0 0' }} data-testid="verifications-overdue">
             {overdue} {T('khoản đã quá hạn xác nhận.', overdue === 1 ? 'is past its response window.' : 'are past their response window.')}
           </p>
         )}
+        {focusId && (
+          <div onClick={clearVerificationsFocus} data-testid="verifications-clear-focus"
+               style={{ fontSize: 12, fontWeight: 600, color: ink, opacity: 0.7, cursor: 'pointer', marginTop: 10 }}>
+            {T('‹ Xem tất cả', '‹ View all')}
+          </div>
+        )}
       </div>
 
       <div style={{ margin: '18px 22px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {s.verifications.map(v => {
+        {visibleVerifications.map(v => {
           const slaMsLeft = msUntil(v.verify_due_at, tickNow);
           const slaOverdue = !!v.verify_due_at && slaMsLeft === 0;
           return (
@@ -192,9 +206,11 @@ export default function Verifications() {
           );
         })}
 
-        {s.verifications.length === 0 && (
+        {visibleVerifications.length === 0 && (
           <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: 0 }} data-testid="verifications-empty">
             {s.verificationsLoading ? T('Đang tải…', 'Loading…')
+              : focusId
+              ? T('Khoản thanh toán này không còn trong danh sách chờ nữa.', 'This payment is no longer in the pending queue.')
               : T('Không có khoản nào đang chờ. Thanh toán khớp nội dung chuyển khoản sẽ được xác nhận tự động.',
                   'Nothing waiting. Payments that match their reference are confirmed automatically.')}
           </p>
@@ -203,8 +219,10 @@ export default function Verifications() {
 
       {/* Escalated bookings leave the queue above entirely (they're no
           longer 'pending_verification') — this is the only place left on
-          this screen to keep talking with the guest while banbe decides. */}
-      {myOpenDisputes.length > 0 && (
+          this screen to keep talking with the guest while banbe decides.
+          Hidden while focused on one booking (14-organizer-checkin.md) —
+          that view is meant to be exactly one booking's own detail. */}
+      {!focusId && myOpenDisputes.length > 0 && (
         <div style={{ margin: '0 22px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }} data-testid="verifications-disputes-title">
             {T('Đang chờ banbe quyết định', "Awaiting banbe's decision")}

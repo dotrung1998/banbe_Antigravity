@@ -17,6 +17,16 @@ struct VerificationsView: View {
 
     private var overdueCount: Int { app.verifications.filter { $0.overdue == true }.count }
 
+    // 14-organizer-checkin.md: Attendance's "Check payment" button
+    // (openVerificationDetail) sets verificationsFocusBookingID so the
+    // organizer lands on exactly the one booking they tapped from — whether
+    // it's the only pending item or buried far down a long queue — instead
+    // of the full list.
+    private var visibleVerifications: [PendingVerification] {
+        guard let focusID = app.verificationsFocusBookingID else { return app.verifications }
+        return app.verifications.filter { $0.bookingId == focusID }
+    }
+
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
@@ -24,7 +34,7 @@ struct VerificationsView: View {
                     .padding(.top, 8)
                     .accessibilityIdentifier("verifications.back")
 
-                Text(app.T("Chờ xác nhận", "Awaiting verification"))
+                Text(app.verificationsFocusBookingID != nil ? app.T("Chi tiết thanh toán", "Payment detail") : app.T("Chờ xác nhận", "Awaiting verification"))
                     .font(BanbeTheme.display(24)).padding(.top, 14)
                     .accessibilityIdentifier("verifications.title")
                 Text(app.T("Khách đã báo chuyển khoản. Đối chiếu với sao kê rồi xác nhận — chỗ của họ đang được giữ và đồng hồ đã dừng.",
@@ -33,19 +43,32 @@ struct VerificationsView: View {
                     .foregroundStyle(app.palette.ink.opacity(0.75))
                     .padding(.top, 8)
 
-                if overdueCount > 0 {
+                if app.verificationsFocusBookingID == nil, overdueCount > 0 {
                     Text("\(overdueCount) " + app.T("khoản đã quá hạn xác nhận.", "past the response window."))
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(BanbeTheme.alert)
                         .padding(.top, 10)
                 }
 
-                VStack(spacing: 12) {
-                    ForEach(app.verifications) { row in card(row) }
+                if app.verificationsFocusBookingID != nil {
+                    Button { app.verificationsFocusBookingID = nil } label: {
+                        Text(app.T("‹ Xem tất cả", "‹ View all"))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(app.palette.ink.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 10)
+                    .accessibilityIdentifier("verifications.clearFocus")
+                }
 
-                    if app.verifications.isEmpty {
+                VStack(spacing: 12) {
+                    ForEach(visibleVerifications) { row in card(row) }
+
+                    if visibleVerifications.isEmpty {
                         Text(app.verificationsLoading
                              ? app.T("Đang tải…", "Loading…")
+                             : app.verificationsFocusBookingID != nil
+                             ? app.T("Khoản thanh toán này không còn trong danh sách chờ nữa.", "This payment is no longer in the pending queue.")
                              : app.T("Không có khoản nào đang chờ. Thanh toán khớp nội dung chuyển khoản sẽ được xác nhận tự động.",
                                      "Nothing waiting. Payments that match their reference are confirmed automatically."))
                             .font(.system(size: 12.5))
@@ -59,8 +82,10 @@ struct VerificationsView: View {
                 // Escalated bookings leave the queue above entirely (no
                 // longer 'pending_verification') — this is the only place
                 // left on this screen to keep talking with the guest while
-                // banbe decides.
-                if !app.openDisputes.isEmpty {
+                // banbe decides. Hidden while focused on one booking
+                // (14-organizer-checkin.md) — that view is meant to be
+                // exactly one booking's own detail.
+                if app.verificationsFocusBookingID == nil, !app.openDisputes.isEmpty {
                     Text(app.T("Đang chờ banbe quyết định", "Awaiting banbe's decision"))
                         .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
                         .padding(.top, 24)

@@ -113,7 +113,14 @@ struct AttendanceView: View {
     }
 
     private func guestRow(_ guest: AttendanceGuest) -> some View {
-        Button { app.toggleCheckIn(guest) } label: {
+        // 14-organizer-checkin.md (Bugs 2a/3): check-in only makes sense once
+        // payment is actually confirmed — an unpaid guest's row is no longer
+        // tap-to-check-in at all (it used to be, regardless of payment
+        // state, which is what made check-in reachable on a guest whose
+        // payment hadn't even been reviewed yet).
+        Button {
+            if guest.paid { app.toggleCheckIn(guest) }
+        } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(guest.name).font(BanbeTheme.display(15))
@@ -146,25 +153,50 @@ struct AttendanceView: View {
                                 .foregroundStyle(BanbeTheme.alert)
                         }
                     } else {
-                        // The screenshot the guest already sent is the
-                        // strongest signal there is that this is the right
-                        // row to tap, so it changes the label rather than
-                        // hiding behind a separate indicator.
-                        Button(guest.hasProof
-                               ? app.T("Khách đã gửi biên lai ▪︎ Đánh dấu đã thanh toán",
-                                       "Guest sent proof ▪︎ Mark paid")
-                               : app.T("Đánh dấu đã thanh toán", "Mark as paid")) {
-                            Task { await app.markGuestPaid(guest.id) }
+                        Text(app.T("Có nhận khách này không?", "Accept this guest?"))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(app.palette.ink.opacity(0.8))
+
+                        HStack(spacing: 6) {
+                            // The screenshot the guest already sent is the
+                            // strongest signal there is that this is the
+                            // right guest to accept.
+                            Button(guest.hasProof
+                                   ? app.T("Khách đã gửi biên lai ▪︎ Nhận", "Guest sent proof ▪︎ Accept")
+                                   : app.T("Nhận", "Accept")) {
+                                Task { await app.markGuestPaid(guest.id) }
+                            }
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(app.palette.ink)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("guest.accept")
+
+                            Button(app.T("Từ chối", "Reject")) { app.openRejectGuest(guest) }
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(BanbeTheme.alert.opacity(0.8))
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(BanbeTheme.alert.opacity(0.2), lineWidth: 1))
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("guest.reject")
                         }
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(app.palette.ink)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(app.palette.rule, lineWidth: 1)
-                        )
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("guest.markPaid")
+
+                        // Same muted-alert convention as "Huỷ vé" below —
+                        // distinct from "Từ chối" but not a new color.
+                        // Only shown once there's something concrete to go
+                        // check — a guest who hasn't submitted proof yet has
+                        // nothing to review in Verifications.
+                        if guest.hasProof {
+                            Button(app.T("Kiểm tra thanh toán ›", "Check payment ›")) {
+                                app.openVerificationDetail(bookingID: guest.id, eventKey: app.attendanceEventKey)
+                            }
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(BanbeTheme.alert.opacity(0.8))
+                            .buttonStyle(.plain)
+                            .padding(.top, 2)
+                            .accessibilityIdentifier("guest.checkPayment")
+                        }
                     }
 
                     Button(app.T("Huỷ vé", "Cancel booking")) { app.openCancelBooking(guest) }
@@ -173,7 +205,7 @@ struct AttendanceView: View {
                         .buttonStyle(.plain)
                 }
                 Spacer(minLength: 0)
-                Text(guest.checkedIn ? app.T("Đã đến ✓", "Here ✓") : app.T("Chưa đến", "Not yet"))
+                Text(guest.checkedIn ? app.T("Đã đến ✓", "Here ✓") : guest.paid ? app.T("Chưa đến", "Not yet") : app.T("Chưa thanh toán", "Not paid yet"))
                     .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(guest.checkedIn ? app.palette.paper : app.palette.ink)
                     .padding(.horizontal, 10).padding(.vertical, 5)

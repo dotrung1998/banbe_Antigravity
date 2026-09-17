@@ -157,10 +157,19 @@ const initialState = {
   paymentProofFile: null,
   paymentSubmitting: false,
   paymentSubmitError: '',
+  // 14-organizer-checkin.md: the guest's rate-limited nudge while awaiting
+  // the organizer's confirm window.
+  nudgeSending: false,
+  nudgeError: '',
   // The organizer's verification queue, and the admin dispute desk.
   verifications: [],
   verificationsLoading: false,
   verificationBusy: '',
+  // 14-organizer-checkin.md: set by openVerificationDetail() (Attendance's
+  // "Check payment" button) — narrows the queue below to exactly one
+  // booking instead of the full list, whether it's the only pending item
+  // or buried far down in it.
+  verificationsFocusBookingId: null,
   disputes: [],
   disputesLoading: false,
   disputeBusy: '',
@@ -336,6 +345,13 @@ export const CANCEL_BOOKING_REASONS = [
   { key: 'guest_requested', vi: 'Khách yêu cầu huỷ', en: 'Guest asked to cancel' },
   { key: 'payment_incomplete', vi: 'Không thanh toán đúng hạn', en: 'Payment not completed in time' },
   { key: 'policy_violation', vi: 'Vi phạm quy định', en: 'Policy violation' },
+  { key: 'other', vi: 'Khác', en: 'Other' },
+];
+// 14-organizer-checkin.md (Bug 2b): "Có nhận khách này không?" ▪︎ "Từ chối".
+export const REJECT_GUEST_REASONS = [
+  { key: 'no_seats_left', vi: 'Hết chỗ thật sự', en: 'Actually out of seats' },
+  { key: 'payment_mismatch', vi: 'Không khớp với sao kê', en: "Doesn't match the statement" },
+  { key: 'suspected_fraud', vi: 'Nghi ngờ gian lận', en: 'Suspected fraud' },
   { key: 'other', vi: 'Khác', en: 'Other' },
 ];
 
@@ -959,7 +975,7 @@ export function GocProvider({ children }) {
       .from('bookings')
       .select(`id, qty, total_vnd, code, status, expires_at, paid_marked_at, paid_method,
                proof_path, proof_uploaded_at, created_at, event_id,
-               payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at, dispute_reason,
+               payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at, dispute_reason, nudge_count,
                events(id, key, name, event_date, event_time, area, organizer_id,
                       organizers(id, name, pay_methods, bank_name, bank_account_name,
                                  bank_account_no, momo_phone, pay_note, pay_qr_path))`)
@@ -1093,6 +1109,34 @@ export function GocProvider({ children }) {
   const paymentTxnType = useCallback((e) => set({ paymentTxnId: e.target.value, paymentSubmitError: '' }), [set]);
 
   /**
+   * 14-organizer-checkin.md (Bug 1 follow-up): the guest's ONE actionable
+   * control while awaiting the organizer's confirm window — nudges the
+   * organizer via the same in-app toast + bell notification every other
+   * event in this lifecycle already uses (this app has no real push infra,
+   * see 07-notifications.md). Rate-limited server-side to 2 uses per hold
+   * (nudge_organizer() RPC, migration 059) — the button disables itself
+   * once `nudge_count` reaches that, not just a client-side debounce that
+   * would reset on reload.
+   */
+  const nudgeOrganizer = useCallback(async (bookingId) => {
+    set({ nudgeSending: true, nudgeError: '' });
+    const { data, error } = await supabase.rpc('nudge_organizer', { p_booking: bookingId });
+    if (error || !data?.success) {
+      set({
+        nudgeSending: false,
+        nudgeError: data?.error === 'NUDGE_LIMIT_REACHED'
+          ? T('Bạn đã nhắc tối đa 2 lần cho lượt giữ chỗ này.', "You've already nudged the max 2 times for this hold.")
+          : T('Không gửi được lời nhắc. Thử lại nhé.', "Couldn't send the nudge. Please try again."),
+      });
+      return;
+    }
+    set(prev => ({
+      nudgeSending: false,
+      paymentBookings: prev.paymentBookings.map(b => (b.id === bookingId ? { ...b, nudge_count: data.nudge_count } : b)),
+    }));
+  }, [set, T]);
+
+  /**
    * The dynamic VietQR payload for a booking, or null when the organizer
    * hasn't given us a bank account we can build one from. Returns the raw
    * EMVCo string; the screen renders it with the same qrcode lib the ticket
@@ -1129,8 +1173,23 @@ export function GocProvider({ children }) {
   // own payment at all, not just from acting on it.
   const openVerifications = useCallback(() => {
     if (!(s.organizerMode || s.accountType === 'admin' || s.hasHosted)) return;
-    set({ screen: 'verifications', verifications: [], verificationsLoading: true });
+    set({ screen: 'verifications', verifications: [], verificationsLoading: true, verificationsFocusBookingId: null });
   }, [set, s.organizerMode, s.accountType, s.hasHosted]);
+
+  /**
+   * 14-organizer-checkin.md: Attendance's "Check payment" — jumps straight
+   * to this one booking's own row in Verifications, whether it's the only
+   * pending item or buried far down a long queue, instead of leaving the
+   * organizer to scroll and find it. Same event-ownership guard as bug 1's
+   * openNotification() fix (myOrgEventKeys, not just the account-wide
+   * organizerMode/hasHosted check) since this is reachable from a bell
+   * notification tap too, not just Attendance's own (already-scoped) list.
+   */
+  const openVerificationDetail = useCallback((bookingId, eventKey) => {
+    if (eventKey && !s.myOrgEventKeys.includes(eventKey)) return;
+    if (!(s.organizerMode || s.accountType === 'admin' || s.hasHosted)) return;
+    set({ screen: 'verifications', verifications: [], verificationsLoading: true, verificationsFocusBookingId: bookingId });
+  }, [set, s.organizerMode, s.accountType, s.hasHosted, s.myOrgEventKeys]);
 
   /**
    * Signs every given 'pay-proof' path in one batched call and merges the
@@ -2663,9 +2722,25 @@ export function GocProvider({ children }) {
   // actual thread it's about instead of just sitting there read.
   const openNotification = useCallback((n) => {
     markNotificationRead(n.id);
+    // 01-hold-payment.md follow-up (bug 1): both organizer-only
+    // destinations below used to navigate unconditionally — relying on
+    // `openVerifications()`'s own ACCOUNT-level gate (organizerMode ||
+    // admin || hasHosted) or, for `openAttendance()`, nothing at all — and
+    // RLS silently no-opping the actual data fetch as the only real
+    // backstop. That's an account-wide check ("is this person an
+    // organizer of ANYTHING"), not an EVENT-specific one, so any dual-role
+    // account (this app's own explicit design — "one account for
+    // everything, switch on organizer mode from Account" — the shared
+    // fast-suite test account is exactly this) could land on another
+    // organizer's screen for an event it only ever booked as a guest.
+    // `myOrgEventKeys` (loadMyEvents(), populated at sign-in) is the real,
+    // per-event ownership list — checked here so a non-owner is blocked
+    // from the navigation itself, not just left looking at buttons that
+    // silently no-op under RLS.
+    const iOrganize = (eventId) => s.myOrgEventKeys.includes(eventId);
     if (n.kind === 'new_message' && n.data?.thread_id) {
       openThread(n.data.thread_id, n.data.event_id, 'inbox');
-    } else if (n.kind === 'booking_requested' && n.data?.event_id) {
+    } else if (n.kind === 'booking_requested' && n.data?.event_id && iOrganize(n.data.event_id)) {
       // The organizer's side: straight to the check-in list for that event,
       // where "mark as paid" already lives (see Attendance.jsx).
       openAttendance(n.data.event_id);
@@ -2676,7 +2751,7 @@ export function GocProvider({ children }) {
       // this exact hold, the same way `dispute_message` already does for
       // its own guest-facing case below.
       openPaymentDetails(n.data.booking_id);
-    } else if (n.kind === 'payment_awaiting_verification' && n.data?.event_id) {
+    } else if (n.kind === 'payment_awaiting_verification' && n.data?.event_id && iOrganize(n.data.event_id)) {
       // 01-hold-payment.md follow-up: fired by submit_payment_proof()
       // (031:317) when a guest reports having transferred — the organizer
       // side of BUG 3, previously never wired at all. Same destination as
@@ -2699,7 +2774,7 @@ export function GocProvider({ children }) {
     } else if ((n.kind === 'payment_document_uploaded' || n.kind === 'payment_document_replaced') && n.data?.document_id) {
       openDocumentFromNotification(n.data.document_id);
     }
-  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, openVerifications, openPaymentDetails, openDocumentFromNotification]);
+  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, openVerifications, openPaymentDetails, openDocumentFromNotification]);
   /**
    * The organizer's "mark as paid". confirm_payment issues the receipt in
    * the same transaction (migration 024) and notifies the guest, which is
@@ -2738,13 +2813,26 @@ export function GocProvider({ children }) {
     const guest = s.attendanceGuests.find(g => g.id === bookingId);
     set({ reasonPrompt: { kind: 'cancelBooking', bookingId, guestName: guest?.name || '' }, reasonPromptError: '' });
   }, [set, s.attendanceGuests]);
+  // 14-organizer-checkin.md (Bug 2b): "Có nhận khách này không?" ▪︎ "Từ
+  // chối" — reject_pending_guest() (migration 059) halts every pending
+  // process for the booking (sets both status AND payment_state to
+  // 'cancelled', clears hold_expires_at/verify_due_at) and returns the
+  // seat to the pool, then notifies the guest via chat + bell notification
+  // itself — same reason-required shape as undo-check-in/cancel-booking
+  // above, so the guest's notification always says something concrete.
+  const openRejectGuest = useCallback((bookingId) => {
+    const guest = s.attendanceGuests.find(g => g.id === bookingId);
+    set({ reasonPrompt: { kind: 'rejectGuest', bookingId, guestName: guest?.name || '' }, reasonPromptError: '' });
+  }, [set, s.attendanceGuests]);
   const closeReasonPrompt = useCallback(() => set({ reasonPrompt: null, reasonPromptError: '' }), [set]);
   const submitReasonPrompt = useCallback(async (reasonLabel) => {
     const prompt = s.reasonPrompt;
     if (!prompt) return;
     set({ reasonPromptBusy: true, reasonPromptError: '' });
 
-    const rpcName = prompt.kind === 'undoCheckin' ? 'undo_check_in' : 'cancel_booking';
+    const rpcName = prompt.kind === 'undoCheckin' ? 'undo_check_in'
+      : prompt.kind === 'rejectGuest' ? 'reject_pending_guest'
+      : 'cancel_booking';
     const rpcArgs = prompt.kind === 'undoCheckin'
       ? { p_booking_id: prompt.bookingId, p_reason: reasonLabel }
       : { p_booking: prompt.bookingId, p_reason: reasonLabel };
@@ -2754,6 +2842,8 @@ export function GocProvider({ children }) {
         reasonPromptBusy: false,
         reasonPromptError: prompt.kind === 'undoCheckin'
           ? T('Không thể huỷ điểm danh. Vui lòng thử lại.', 'Could not undo the check-in. Please try again.')
+          : prompt.kind === 'rejectGuest'
+          ? T('Không thể từ chối yêu cầu này. Vui lòng thử lại.', 'Could not reject this request. Please try again.')
           : T('Không thể huỷ vé. Vui lòng thử lại.', 'Could not cancel the booking. Please try again.'),
       });
       return;
@@ -2761,6 +2851,10 @@ export function GocProvider({ children }) {
 
     set({ reasonPrompt: null, reasonPromptBusy: false });
     if (s.attendanceEventKey) loadAttendanceGuests(s.attendanceEventKey);
+    // reject_pending_guest() already inserts the guest's chat message +
+    // bell notification itself (migration 059) — no separate /api/notify
+    // email call for this kind, unlike undo-check-in/cancel-booking below.
+    if (prompt.kind === 'rejectGuest') return;
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
@@ -2775,17 +2869,42 @@ export function GocProvider({ children }) {
     } catch { /* best-effort email; the in-app notification already landed */ }
   }, [set, s.reasonPrompt, s.attendanceEventKey, loadAttendanceGuests, T]);
 
-  const toggleCheckin = useCallback(async (bookingId, checked) => {
-    if (checked) { openUndoCheckin(bookingId); return; } // reversing requires a reason — see below
+  /// The actual check_in_guest() call — factored out of toggleCheckin so
+  /// both the confirm-dialog's "Yes" (below) and the (already-confirmed)
+  /// manual flow share one path.
+  const performCheckIn = useCallback(async (bookingId) => {
     set(prev => ({ attendanceGuests: prev.attendanceGuests.map(g => (g.id === bookingId ? { ...g, checkedIn: true } : g)) }));
     const { data, error } = await supabase.rpc('check_in_guest', { p_reservation_id: bookingId });
     if (error || !data?.success) {
       console.warn('Check-in failed:', error || data?.error);
       set(prev => ({ attendanceGuests: prev.attendanceGuests.map(g => (g.id === bookingId ? { ...g, checkedIn: false } : g)) }));
-      return;
+      return { success: false };
     }
     notifyCheckIn(bookingId);
-  }, [set, notifyCheckIn, openUndoCheckin]);
+    return { success: true };
+  }, [set, notifyCheckIn]);
+
+  // 14-organizer-checkin.md (Bug 3): a confirmation step before actually
+  // marking a guest arrived — an accidental tap used to check someone in
+  // instantly, with only the reason-required UNDO afterward as a backstop.
+  // Reuses the same reasonPrompt/ReasonSheet shell as undo-check-in/cancel-
+  // booking/reject-guest above, but this kind has no reason list — just a
+  // plain yes/no (see ReasonSheet.jsx's own `confirmCheckin` branch).
+  const openConfirmCheckin = useCallback((bookingId) => {
+    const guest = s.attendanceGuests.find(g => g.id === bookingId);
+    set({ reasonPrompt: { kind: 'confirmCheckin', bookingId, guestName: guest?.name || '' }, reasonPromptError: '' });
+  }, [set, s.attendanceGuests]);
+  const confirmCheckin = useCallback(async () => {
+    const prompt = s.reasonPrompt;
+    if (!prompt || prompt.kind !== 'confirmCheckin') return;
+    set({ reasonPrompt: null });
+    await performCheckIn(prompt.bookingId);
+  }, [s.reasonPrompt, set, performCheckIn]);
+
+  const toggleCheckin = useCallback((bookingId, checked) => {
+    if (checked) { openUndoCheckin(bookingId); return; } // reversing requires a reason — see below
+    openConfirmCheckin(bookingId); // Bug 3: confirm before marking arrived
+  }, [openUndoCheckin, openConfirmCheckin]);
 
   // ---- QR check-in ----
   // A guest's ticket QR encodes their booking id directly (Confirmed.jsx),
@@ -2815,8 +2934,8 @@ export function GocProvider({ children }) {
     openPayout, payoutField, savePayoutDetails,
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid, uploadPaymentDocument, openDocumentFromNotification, toggleAutoEmailDocuments,
-    submitPaymentProof, paymentTxnType, vietQrFor,
-    openVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
+    submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer,
+    openVerifications, openVerificationDetail, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, deleteNotification, openNotification, clearChatHighlight, dismissToast,
@@ -2832,7 +2951,7 @@ export function GocProvider({ children }) {
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
-    toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, closeReasonPrompt, submitReasonPrompt,
+    toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
@@ -2844,8 +2963,8 @@ export function GocProvider({ children }) {
     openPayout, payoutField, savePayoutDetails,
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid, uploadPaymentDocument, openDocumentFromNotification, toggleAutoEmailDocuments,
-    submitPaymentProof, paymentTxnType, vietQrFor,
-    openVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
+    submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer,
+    openVerifications, openVerificationDetail, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, deleteNotification, openNotification, clearChatHighlight, dismissToast,
@@ -2861,7 +2980,7 @@ export function GocProvider({ children }) {
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
-    toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, closeReasonPrompt, submitReasonPrompt,
+    toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   ]);
 
   return <GocCtx.Provider value={value}>{children}</GocCtx.Provider>;

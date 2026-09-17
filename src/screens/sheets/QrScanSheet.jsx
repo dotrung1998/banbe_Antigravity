@@ -16,6 +16,14 @@ export default function QrScanSheet() {
   const busyRef = useRef(false);
   const [cameraError, setCameraError] = useState('');
   const [status, setStatus] = useState(null); // { ok: boolean, message: string } | null
+  // 14-organizer-checkin.md (Bug 3): the same confirm-before-check-in step
+  // Attendance.jsx's manual tap now requires (reasonPrompt kind
+  // 'confirmCheckin') — a decoded QR used to check the guest in instantly,
+  // with no chance to catch a misread or an accidental scan. Local state,
+  // not the app-wide reasonPrompt: this sheet is already its own full-
+  // screen overlay, and resuming the scan loop on cancel is simplest kept
+  // entirely inside this component.
+  const [pendingBookingId, setPendingBookingId] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,15 +66,12 @@ export default function QrScanSheet() {
       rafRef.current = requestAnimationFrame(tick);
     }
 
-    async function handleDecoded(bookingId) {
+    function handleDecoded(bookingId) {
+      // Bug 3: pauses the scan loop (busyRef already true) and waits for an
+      // explicit yes/no instead of checking the guest in the instant a code
+      // is decoded — see the confirm/cancel handlers below.
       busyRef.current = true;
-      const result = await checkInByScan(bookingId);
-      setStatus(result.success
-        ? { ok: true, message: T('Đã điểm danh ✓', 'Checked in ✓') }
-        : { ok: false, message: T('Mã không hợp lệ hoặc đã điểm danh rồi.', 'Invalid code, or already checked in.') });
-      // Brief pause so the same code isn't re-scanned a dozen times a second
-      // while it's still in frame, then clear the flash and resume scanning.
-      setTimeout(() => { busyRef.current = false; setStatus(null); }, 1800);
+      setPendingBookingId(bookingId);
     }
 
     start();
@@ -77,6 +82,22 @@ export default function QrScanSheet() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const confirmPendingCheckin = async () => {
+    const bookingId = pendingBookingId;
+    setPendingBookingId(null);
+    const result = await checkInByScan(bookingId);
+    setStatus(result.success
+      ? { ok: true, message: T('Đã điểm danh ✓', 'Checked in ✓') }
+      : { ok: false, message: T('Mã không hợp lệ hoặc đã điểm danh rồi.', 'Invalid code, or already checked in.') });
+    // Brief pause so the same code isn't re-scanned a dozen times a second
+    // while it's still in frame, then clear the flash and resume scanning.
+    setTimeout(() => { busyRef.current = false; setStatus(null); }, 1800);
+  };
+  const cancelPendingCheckin = () => {
+    setPendingBookingId(null);
+    busyRef.current = false;
+  };
 
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 22, background: '#000', display: 'flex', flexDirection: 'column' }}>
@@ -97,6 +118,30 @@ export default function QrScanSheet() {
       {status && (
         <div style={{ position: 'absolute', left: 20, right: 20, bottom: 30, padding: '14px 18px', borderRadius: 14, textAlign: 'center', fontSize: 14, fontWeight: 600, background: status.ok ? ink : alert, color: paper }}>
           {status.message}
+        </div>
+      )}
+
+      {/* Bug 3 (14-organizer-checkin.md): confirm before actually marking
+          this guest arrived — mirrors Attendance.jsx's own manual-tap
+          confirm step, kept local to this sheet rather than the app-wide
+          reasonPrompt (see the `pendingBookingId` state comment above). */}
+      {pendingBookingId && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 1, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ background: paper, borderRadius: 16, padding: '22px 20px', maxWidth: 320, width: '100%' }}>
+            <p style={{ fontSize: 14.5, fontWeight: 600, color: ink, margin: 0, lineHeight: 1.5 }}>
+              {T('Bạn có chắc muốn xác nhận khách này đã tới?', 'Are you sure you want to check this guest in?')}
+            </p>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <div onClick={confirmPendingCheckin} data-testid="qrscan-confirm-checkin"
+                   style={{ flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 600, padding: '11px 12px', borderRadius: 12, cursor: 'pointer', background: ink, color: paper }}>
+                {T('Xác nhận', 'Confirm')}
+              </div>
+              <div onClick={cancelPendingCheckin} data-testid="qrscan-cancel-checkin"
+                   style={{ flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 600, padding: '11px 12px', borderRadius: 12, cursor: 'pointer', border: '1px solid rgba(27,25,22,0.16)', color: ink }}>
+                {T('Để sau', 'Not now')}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

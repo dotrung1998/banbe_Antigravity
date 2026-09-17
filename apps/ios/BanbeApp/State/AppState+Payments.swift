@@ -21,7 +21,7 @@ extension AppState {
                 .from("bookings")
                 .select("""
                     id, qty, total_vnd, code, status, paid_marked_at, proof_uploaded_at, created_at, event_id,
-                    payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at, dispute_reason,
+                    payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at, dispute_reason, nudge_count,
                     events(name, organizers(name, pay_methods, bank_name, bank_account_name,
                                             bank_account_no, momo_phone, pay_note))
                     """)
@@ -95,6 +95,36 @@ extension AppState {
             paymentProofUploading = false
             paymentProofError = T("Không gửi được ảnh xác nhận. Thử lại nhé.",
                                   "Couldn't send that confirmation. Please try again.")
+        }
+    }
+
+    /// 14-organizer-checkin.md (Bug 1 follow-up): the guest's ONE actionable
+    /// control while awaiting the organizer's confirm window — nudges via
+    /// the same in-app toast + bell notification every other event in this
+    /// lifecycle already uses (no real push infra, see 07-notifications.md).
+    /// Rate-limited server-side to 2 uses per hold (nudge_organizer() RPC,
+    /// migration 059) — this only reflects that limit, it doesn't enforce
+    /// its own separate one.
+    func nudgeOrganizer(bookingID: UUID) async {
+        nudgeSending = true
+        nudgeError = ""
+        do {
+            let result: NudgeResult = try await SupabaseService.client
+                .rpc("nudge_organizer", params: ["p_booking": bookingID.uuidString])
+                .execute().value
+            nudgeSending = false
+            guard result.success == true else {
+                nudgeError = result.error == "NUDGE_LIMIT_REACHED"
+                    ? T("Bạn đã nhắc tối đa 2 lần cho lượt giữ chỗ này.", "You've already nudged the max 2 times for this hold.")
+                    : T("Không gửi được lời nhắc. Thử lại nhé.", "Couldn't send the nudge. Please try again.")
+                return
+            }
+            if let idx = paymentBookings.firstIndex(where: { $0.id == bookingID }) {
+                paymentBookings[idx].nudgeCount = result.nudgeCount ?? paymentBookings[idx].nudgeCount
+            }
+        } catch {
+            nudgeSending = false
+            nudgeError = T("Không gửi được lời nhắc. Thử lại nhé.", "Couldn't send the nudge. Please try again.")
         }
     }
 
@@ -431,6 +461,7 @@ private struct PayableBookingRow: Decodable {
     let transactionId: String?
     let verifyDueAt: Date?
     let disputeReason: String?
+    let nudgeCount: Int?
     let events: EventRow?
 
     struct EventRow: Decodable {
@@ -469,6 +500,7 @@ private struct PayableBookingRow: Decodable {
         case transactionId = "transaction_id"
         case verifyDueAt = "verify_due_at"
         case disputeReason = "dispute_reason"
+        case nudgeCount = "nudge_count"
     }
 
     var asPayable: PayableBooking {
@@ -489,7 +521,8 @@ private struct PayableBookingRow: Decodable {
             bankAccountNo: org?.bankAccountNo ?? "",
             momoPhone: org?.momoPhone ?? "",
             payNote: org?.payNote ?? "",
-            disputeReason: disputeReason
+            disputeReason: disputeReason,
+            nudgeCount: nudgeCount ?? 0
         )
     }
 }
@@ -611,6 +644,22 @@ extension AppState {
         guard canHost else { return }
         screen = .verifications
         verifications = []
+        verificationsFocusBookingID = nil
+        Task { await loadVerifications() }
+    }
+
+    /// 14-organizer-checkin.md: Attendance's "Check payment" — jumps
+    /// straight to this one booking's own row, whether it's the only
+    /// pending item or buried far down a long queue. Same event-ownership
+    /// guard as bug 1's openNotification() fix (myOrgEventKeys, not just
+    /// the account-wide canHost check) since this is reachable from a bell
+    /// notification tap too, not just Attendance's own (already-scoped) list.
+    func openVerificationDetail(bookingID: UUID, eventKey: String?) {
+        if let eventKey, !myOrgEventKeys.contains(eventKey) { return }
+        guard canHost else { return }
+        screen = .verifications
+        verifications = []
+        verificationsFocusBookingID = bookingID
         Task { await loadVerifications() }
     }
 
@@ -985,6 +1034,17 @@ private struct SubmitProofResult: Decodable {
     let success: Bool?
     let error: String?
     let state: String?
+}
+
+private struct NudgeResult: Decodable {
+    let success: Bool?
+    let error: String?
+    let nudgeCount: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case success, error
+        case nudgeCount = "nudge_count"
+    }
 }
 
 /// Shared by forfeitExpiredHold (AppState+Data.swift) — not private, since

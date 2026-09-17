@@ -9,6 +9,13 @@ struct QRScannerView: View {
     @EnvironmentObject var app: AppState
     @State private var status: (ok: Bool, message: String)?
     @State private var busy = false
+    // 14-organizer-checkin.md (Bug 3): the same confirm-before-check-in step
+    // AttendanceView's manual tap now requires — a decoded QR used to check
+    // the guest in instantly, with no chance to catch a misread or an
+    // accidental scan. Local state, not `app.reasonPrompt`: this screen is
+    // already its own full-screen overlay, and resuming the scan loop on
+    // cancel is simplest kept entirely inside this view.
+    @State private var pendingCode: String?
 
     var body: some View {
         ZStack {
@@ -45,12 +52,44 @@ struct QRScannerView: View {
                         .padding(.bottom, 30)
                 }
             }
+
+            if let pendingCode {
+                Color.black.opacity(0.6).ignoresSafeArea()
+                VStack(spacing: 16) {
+                    Text(app.T("Bạn có chắc muốn xác nhận khách này đã tới?", "Are you sure you want to check this guest in?"))
+                        .font(.system(size: 14.5, weight: .semibold))
+                        .foregroundStyle(app.palette.ink)
+                        .multilineTextAlignment(.center)
+                    HStack(spacing: 8) {
+                        Button(app.T("Xác nhận", "Confirm")) { confirmPending(pendingCode) }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(app.palette.paper)
+                            .frame(maxWidth: .infinity).padding(.vertical, 11)
+                            .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .buttonStyle(.plain)
+                        Button(app.T("Để sau", "Not now")) { cancelPending() }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(app.palette.ink)
+                            .frame(maxWidth: .infinity).padding(.vertical, 11)
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(app.palette.rule))
+                            .buttonStyle(.plain)
+                    }
+                }
+                .padding(20)
+                .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(.horizontal, 24)
+            }
         }
     }
 
     private func handle(_ code: String) {
         guard !busy else { return }
         busy = true
+        pendingCode = code
+    }
+
+    private func confirmPending(_ code: String) {
+        pendingCode = nil
         Task {
             let ok = await app.checkInByScan(code)
             status = ok
@@ -62,6 +101,11 @@ struct QRScannerView: View {
             status = nil
             busy = false
         }
+    }
+
+    private func cancelPending() {
+        pendingCode = nil
+        busy = false
     }
 }
 

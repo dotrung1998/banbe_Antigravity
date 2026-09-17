@@ -21,7 +21,7 @@ import DisputeChatPanel from './DisputeChatPanel.jsx';
 export default function PaymentDetails() {
   const {
     state, T, set, loadPaymentBookings, backFromPaymentDetails,
-    copyPayField, submitPaymentProof, paymentTxnType, vietQrFor,
+    copyPayField, submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer,
     openBilling, openDocuments, forfeitExpiredHold,
   } = useGoc();
   const s = state;
@@ -57,13 +57,18 @@ export default function PaymentDetails() {
   const isDisputed = phase === 'disputed';
   const isExpired = phase === 'expired';
 
-  // The countdown ticks only in PHASE 1. Running it in PHASE 2 would be
-  // actively misleading, and running it always would spin the CPU forever.
+  // PHASE 1's tick drives the "seat held for" clock. PHASE 2 (14-organizer-
+  // checkin.md follow-up) now ALSO ticks — not the same "your seat is at
+  // risk" framing this file's own top comment warns against, but a
+  // separate, informational read-only countdown of the ORGANIZER's own
+  // confirm-window deadline (`verify_due_at`) — the seat itself is still
+  // explicitly said to be safe either way. Neither phase spins the CPU
+  // once confirmed/expired.
   useEffect(() => {
-    if (!isHolding) return undefined;
+    if (!isHolding && !isPending) return undefined;
     const id = setInterval(() => setTick(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [isHolding]);
+  }, [isHolding, isPending]);
 
   // Bug 1 (01-hold-payment.md follow-up): this screen used to fetch
   // `paymentBookings` once on mount (the `useEffect` above) and never
@@ -94,6 +99,18 @@ export default function PaymentDetails() {
     ? Math.max(0, new Date(booking.hold_expires_at).getTime() - tick) : 0;
   const mm = String(Math.floor(msLeft / 60000)).padStart(2, '0');
   const ss = String(Math.floor((msLeft % 60000) / 1000)).padStart(2, '0');
+
+  // 14-organizer-checkin.md follow-up: the organizer's own PHASE 2 confirm
+  // window (`verify_due_at`, set by submit_payment_proof() — an entirely
+  // different clock from the guest's own PHASE 1 `hold_expires_at` above).
+  // Read-only — nothing here can extend or reset it.
+  const orgMsLeft = booking?.verify_due_at
+    ? Math.max(0, new Date(booking.verify_due_at).getTime() - tick) : 0;
+  const orgHh = String(Math.floor(orgMsLeft / 3600000)).padStart(2, '0');
+  const orgMm = String(Math.floor((orgMsLeft % 3600000) / 60000)).padStart(2, '0');
+  const orgSs = String(Math.floor((orgMsLeft % 60000) / 1000)).padStart(2, '0');
+  const nudgeCount = booking?.nudge_count || 0;
+  const canNudge = isPending && nudgeCount < 2 && !s.nudgeSending;
 
   // The moment this screen's own ticking clock notices the hold has lapsed,
   // forfeit it immediately — self-guards against firing twice, since the
@@ -169,6 +186,41 @@ export default function PaymentDetails() {
             <p style={{ fontSize: 11.5, color: ink, opacity: 0.7, margin: '8px 0 0' }}>
               {T('Mã giao dịch đã gửi: ', 'Transaction ID submitted: ')}<strong>{booking.transaction_id}</strong>
             </p>
+          )}
+          {/* 14-organizer-checkin.md follow-up: read-only — this is the
+              organizer's own confirm-window clock, not a second "your seat
+              is at risk" countdown. */}
+          {booking.verify_due_at && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTop: `1px solid ${rule}` }}>
+              <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>
+                {T('Người tổ chức xác nhận trong', "Organizer confirms within")}
+              </span>
+              <span style={{ ...display(18, { fontVariantNumeric: 'tabular-nums' }) }} data-testid="payment-organizer-countdown">
+                {orgHh}:{orgMm}:{orgSs}
+              </span>
+            </div>
+          )}
+          {/* The ONE actionable control on this screen — everything else
+              here is read-only status. Disables itself (not just visually
+              — nudgeOrganizer() itself refuses past 2, server-side) once
+              nudge_count reaches the RPC's own limit. */}
+          <div
+            onClick={canNudge ? () => nudgeOrganizer(booking.id) : undefined}
+            style={{
+              marginTop: 12, fontSize: 12.5, fontWeight: 600, textAlign: 'center', padding: '11px 0',
+              borderRadius: 12, border: `1px solid ${rule}`, color: ink,
+              opacity: canNudge ? 1 : 0.4, cursor: canNudge ? 'pointer' : 'default',
+            }}
+            data-testid="payment-nudge-organizer"
+          >
+            {s.nudgeSending
+              ? T('Đang gửi…', 'Sending…')
+              : nudgeCount >= 2
+              ? T('Đã nhắc tối đa 2 lần', 'Nudged the max 2 times')
+              : T('Nhắc người tổ chức xác nhận', 'Remind the organizer to confirm')}
+          </div>
+          {s.nudgeError && (
+            <p style={{ fontSize: 11.5, color: alert, margin: '8px 0 0' }}>{s.nudgeError}</p>
           )}
         </div>
       )}
