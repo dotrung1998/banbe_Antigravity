@@ -147,6 +147,10 @@ struct PayableBooking: Identifiable, Hashable {
     /// paymentState is still .pendingVerification (escalate_payment_dispute
     /// hasn't run). See PaymentViews.swift's needsInfoCard.
     var disputeReason: String?
+    /// Set by reject_pending_guest() (migration 059) — the reason the
+    /// organizer picked when declining this guest. See PaymentViews.swift's
+    /// rejectedCard, the dedicated view for paymentState == .cancelled.
+    var cancelReason: String?
     /// 14-organizer-checkin.md: how many times the guest has already
     /// nudged the organizer via nudge_organizer() (migration 059) — capped
     /// server-side at 2 per hold.

@@ -21,7 +21,7 @@ extension AppState {
                 .from("bookings")
                 .select("""
                     id, qty, total_vnd, code, status, paid_marked_at, proof_uploaded_at, created_at, event_id,
-                    payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at, dispute_reason, nudge_count,
+                    payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at, dispute_reason, cancel_reason, nudge_count,
                     events(name, organizers(name, pay_methods, bank_name, bank_account_name,
                                             bank_account_no, momo_phone, pay_note))
                     """)
@@ -392,6 +392,24 @@ extension AppState {
                 .rpc("confirm_payment", params: ["p_booking": bookingID.uuidString, "p_method": method])
                 .execute()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            // 15-organizer-checkin.md follow-up: confirm_payment() (migration
+            // 060) now flips payment_state to 'confirmed' server-side too,
+            // not just status — but PaymentViews' countdown, both Home
+            // banners, and the Verifications queue all read client-side
+            // state only refreshed by their own poll/mount otherwise. Patch
+            // all three in place immediately so none of them linger.
+            if let idx = paymentBookings.firstIndex(where: { $0.id == bookingID }) {
+                paymentBookings[idx].paymentState = .confirmed
+                paymentBookings[idx].holdExpiresAt = nil
+                paymentBookings[idx].verifyDueAt = nil
+            }
+            verifications.removeAll { $0.bookingId == bookingID }
+            if booking?.id == bookingID {
+                booking?.status = "confirmed"
+                booking?.paymentState = .confirmed
+                booking?.holdExpiresAt = nil
+                booking?.verifyDueAt = nil
+            }
             if let key = attendanceEventKey { await loadAttendanceGuests(key) }
         } catch {
             print("markGuestPaid failed:", error)
@@ -461,6 +479,7 @@ private struct PayableBookingRow: Decodable {
     let transactionId: String?
     let verifyDueAt: Date?
     let disputeReason: String?
+    let cancelReason: String?
     let nudgeCount: Int?
     let events: EventRow?
 
@@ -500,6 +519,7 @@ private struct PayableBookingRow: Decodable {
         case transactionId = "transaction_id"
         case verifyDueAt = "verify_due_at"
         case disputeReason = "dispute_reason"
+        case cancelReason = "cancel_reason"
         case nudgeCount = "nudge_count"
     }
 
@@ -522,6 +542,7 @@ private struct PayableBookingRow: Decodable {
             momoPhone: org?.momoPhone ?? "",
             payNote: org?.payNote ?? "",
             disputeReason: disputeReason,
+            cancelReason: cancelReason,
             nudgeCount: nudgeCount ?? 0
         )
     }

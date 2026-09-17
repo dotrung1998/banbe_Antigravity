@@ -31,7 +31,14 @@ struct PaymentDetailsView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Quay lại", "Back")) { app.screen = app.paymentBack }
+                // A rejected/cancelled booking is over — going back to
+                // whatever screen sent the guest here (often still
+                // mid-transition off a now-dead timer UI) is exactly the
+                // "lingering countdown before actually leaving" this was
+                // fixed for. Straight to Home instead, every time.
+                BackLink(label: app.T("Quay lại", "Back")) {
+                    app.screen = (booking?.paymentState == .cancelled) ? .home : app.paymentBack
+                }
                     .padding(.top, 8).padding(.horizontal, 22)
                     .accessibilityIdentifier("payment.back")
 
@@ -115,6 +122,7 @@ struct PaymentDetailsView: View {
                 case .pendingVerification: return app.T("Đang chờ xác nhận", "Awaiting confirmation")
                 case .disputed: return app.T("Đang được xem xét", "Under review")
                 case .expired: return app.T("Đã hết hạn giữ chỗ", "Hold expired")
+                case .cancelled: return app.T("Đã bị từ chối", "Booking declined")
                 default: return app.T("Thanh toán", "Payment")
                 }
             }())
@@ -135,6 +143,11 @@ struct PaymentDetailsView: View {
                 needsInfoCard(booking, reason: reason)
             }
             if phase == .disputed { disputedCard(booking) }
+            // reject_pending_guest() (migration 059) — a dedicated terminal
+            // view, not the generic "no payment details" notice below,
+            // which is meant for an unconfigured-payment-info case, not a
+            // declined booking.
+            if phase == .cancelled { rejectedCard(booking) }
 
             amountCard(booking)
 
@@ -148,7 +161,7 @@ struct PaymentDetailsView: View {
                     Text(booking.payNote).font(.system(size: 12.5)).padding(.top, 16)
                 }
                 if phase == .holding { transferredForm(booking) }
-            } else if !booking.hasAnyPayRail {
+            } else if phase != .cancelled && !booking.hasAnyPayRail {
                 noticeCard(app.T("Người tổ chức chưa thêm thông tin nhận tiền. Nhắn cho họ để hỏi cách chuyển khoản.",
                                  "The organizer hasn't added payment details yet. Message them to ask how to transfer."))
                     .accessibilityIdentifier("payment.noDetails")
@@ -252,6 +265,19 @@ struct PaymentDetailsView: View {
             .disabled(booking.nudgeCount >= 2 || app.nudgeSending)
             .padding(.top, 4)
             .accessibilityIdentifier("payment.nudgeOrganizer")
+            // Warn BEFORE the limit is spent, not just disable silently
+            // after — a guest should get to choose when their 2 nudges are
+            // worth using, not discover the cap only once it's too late.
+            if booking.nudgeCount < 2 {
+                Text(app.T("Bạn chỉ có thể nhắc tối đa 2 lần — hãy chọn thời điểm phù hợp.",
+                           "You can only nudge up to 2 times — choose the right moment."))
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(app.palette.ink.opacity(0.55))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 6)
+                    .accessibilityIdentifier("payment.nudgeLimitNote")
+            }
             if !app.nudgeError.isEmpty {
                 Text(app.nudgeError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
             }
@@ -301,6 +327,30 @@ struct PaymentDetailsView: View {
             DisputeChatPanel(bookingID: booking.id)
         }
         .padding(.top, 16)
+    }
+
+    /// reject_pending_guest() (migration 059) — this booking is over: the
+    /// seat already went back to the pool and every timer already stopped
+    /// server-side. Shows the organizer's own stated reason rather than the
+    /// generic "no payment details" notice this used to fall through to.
+    private func rejectedCard(_ booking: PayableBooking) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(app.T("Người tổ chức đã từ chối yêu cầu này", "The organizer declined this booking"))
+                .font(.system(size: 13.5, weight: .semibold))
+            Text((booking.cancelReason?.isEmpty == false ? booking.cancelReason! : nil)
+                 ?? app.T("Không có lý do cụ thể được nêu.", "No specific reason was given."))
+                .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+            Text(app.T("Chỗ đã được trả lại. Bạn có thể tìm sự kiện khác hoặc nhắn cho người tổ chức nếu có thắc mắc.",
+                       "The seat has been released. You can look for another event, or message the organizer if you have questions."))
+                .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                .padding(.top, 2)
+        }
+        .foregroundStyle(app.palette.ink)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.top, 16)
+        .accessibilityIdentifier("payment.rejected")
     }
 
     private func amountCard(_ booking: PayableBooking) -> some View {
@@ -528,7 +578,7 @@ struct PaymentDetailsView: View {
     private func startPollingIfNeeded() {
         pollTask?.cancel()
         guard let bookingID = booking?.id, let phaseAtStart = booking?.paymentState,
-              phaseAtStart != .confirmed, phaseAtStart != .expired
+              phaseAtStart != .confirmed, phaseAtStart != .expired, phaseAtStart != .cancelled
         else { return }
         pollTask = Task { @MainActor in
             while !Task.isCancelled {
@@ -548,6 +598,7 @@ struct PaymentDetailsView: View {
                     app.paymentBookings[idx].transactionId = fresh.transactionId ?? app.paymentBookings[idx].transactionId
                     app.paymentBookings[idx].verifyDueAt = fresh.verifyDueAt
                     app.paymentBookings[idx].paidMarkedAt = fresh.paidMarkedAt
+                    app.paymentBookings[idx].cancelReason = fresh.cancelReason
                     return
                 }
             }

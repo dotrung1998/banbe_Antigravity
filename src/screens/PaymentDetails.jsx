@@ -56,6 +56,7 @@ export default function PaymentDetails() {
   const isConfirmed = phase === 'confirmed';
   const isDisputed = phase === 'disputed';
   const isExpired = phase === 'expired';
+  const isCancelled = phase === 'cancelled';
 
   // PHASE 1's tick drives the "seat held for" clock. PHASE 2 (14-organizer-
   // checkin.md follow-up) now ALSO ticks — not the same "your seat is at
@@ -80,7 +81,7 @@ export default function PaymentDetails() {
   // identical reason — the guest may already be looking at this exact
   // screen when the phase changes.
   useEffect(() => {
-    if (!booking?.id || isConfirmed || isExpired) return undefined;
+    if (!booking?.id || isConfirmed || isExpired || isCancelled) return undefined;
     const bookingId = booking.id;
     let active = true;
     const id = setInterval(async () => {
@@ -152,6 +153,7 @@ export default function PaymentDetails() {
             : isPending ? T('Đang chờ xác nhận', 'Awaiting confirmation')
             : isDisputed ? T('Đang được xem xét', 'Under review')
             : isExpired ? T('Đã hết hạn giữ chỗ', 'Hold expired')
+            : isCancelled ? T('Đã bị từ chối', 'Booking declined')
             : T('Thanh toán', 'Payment')}
         </h1>
         <p style={{ fontSize: 12.5, color: ink, opacity: 0.75, margin: '6px 0 0' }}>{booking.events?.name}</p>
@@ -219,6 +221,15 @@ export default function PaymentDetails() {
               ? T('Đã nhắc tối đa 2 lần', 'Nudged the max 2 times')
               : T('Nhắc người tổ chức xác nhận', 'Remind the organizer to confirm')}
           </div>
+          {/* Warn BEFORE the limit is spent, not just disable silently after
+              — a guest should get to choose when their 2 nudges are worth
+              using, not discover the cap only once it's too late. */}
+          {nudgeCount < 2 && (
+            <p style={{ fontSize: 10.5, color: ink, opacity: 0.55, textAlign: 'center', margin: '6px 0 0' }} data-testid="payment-nudge-limit-note">
+              {T('Bạn chỉ có thể nhắc tối đa 2 lần — hãy chọn thời điểm phù hợp.',
+                 "You can only nudge up to 2 times — choose the right moment.")}
+            </p>
+          )}
           {s.nudgeError && (
             <p style={{ fontSize: 11.5, color: alert, margin: '8px 0 0' }}>{s.nudgeError}</p>
           )}
@@ -255,6 +266,27 @@ export default function PaymentDetails() {
             </p>
           </div>
           <DisputeChatPanel bookingId={booking.id} />
+        </div>
+      )}
+
+      {/* reject_pending_guest() (migration 059) — this booking is over: the
+          seat already went back to the pool and every timer already
+          stopped server-side. A dedicated view, not the generic "no
+          payment details" notice this used to fall through to. */}
+      {isCancelled && (
+        <div style={{ margin: '16px 22px 0' }}>
+          <div style={{ ...cardGlass({ padding: '16px 18px' }) }} data-testid="payment-rejected">
+            <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>
+              {T('Người tổ chức đã từ chối yêu cầu này', 'The organizer declined this booking')}
+            </span>
+            <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
+              {booking.cancel_reason || T('Không có lý do cụ thể được nêu.', 'No specific reason was given.')}
+            </p>
+            <p style={{ fontSize: 11.5, lineHeight: 1.55, color: ink, opacity: 0.6, margin: '8px 0 0' }}>
+              {T('Chỗ đã được trả lại. Bạn có thể tìm sự kiện khác hoặc nhắn cho người tổ chức nếu có thắc mắc.',
+                 'The seat has been released. You can look for another event, or message the organizer if you have questions.')}
+            </p>
+          </div>
         </div>
       )}
 

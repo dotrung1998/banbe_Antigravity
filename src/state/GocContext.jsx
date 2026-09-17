@@ -975,7 +975,7 @@ export function GocProvider({ children }) {
       .from('bookings')
       .select(`id, qty, total_vnd, code, status, expires_at, paid_marked_at, paid_method,
                proof_path, proof_uploaded_at, created_at, event_id,
-               payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at, dispute_reason, nudge_count,
+               payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at, dispute_reason, cancel_reason, nudge_count,
                events(id, key, name, event_date, event_time, area, organizer_id,
                       organizers(id, name, pay_methods, bank_name, bank_account_name,
                                  bank_account_no, momo_phone, pay_note, pay_qr_path))`)
@@ -991,7 +991,15 @@ export function GocProvider({ children }) {
   const openPaymentDetails = useCallback((bookingId, back = 'profile') => {
     set({ screen: 'paymentDetails', paymentBookingId: bookingId, paymentBack: back, paymentProofError: '' });
   }, [set]);
-  const backFromPaymentDetails = useCallback(() => set(prev => ({ screen: prev.paymentBack || 'profile' })), [set]);
+  // A rejected/cancelled booking is over — going back to whatever screen
+  // sent the guest here (often the ticket/profile screen, which can itself
+  // still be mid-transition off a now-dead timer UI) is exactly the
+  // "lingering countdown before actually leaving" this was fixed for.
+  // Straight to Home instead, every time, for this one terminal state.
+  const backFromPaymentDetails = useCallback(() => set(prev => {
+    const b = prev.paymentBookings.find(x => x.id === prev.paymentBookingId);
+    return { screen: b?.payment_state === 'cancelled' ? 'home' : (prev.paymentBack || 'profile') };
+  }), [set]);
   const backFromBilling = useCallback(() => set({ screen: 'paymentDetails' }), [set]);
 
   /** Copy-to-clipboard with a short "copied" flash, keyed by field. */
@@ -2157,7 +2165,22 @@ export function GocProvider({ children }) {
     try {
       const { data, error } = await supabase.rpc('confirm_payment', { p_booking: bookingId, p_method: payMethod });
       if (error) throw error;
-      set(prev => (prev.booking && prev.booking.id === bookingId ? { booking: { ...prev.booking, status: 'confirmed', paid_method: payMethod } } : {}));
+      // 15-organizer-checkin.md follow-up: confirm_payment() (migration 060)
+      // now flips payment_state to 'confirmed' server-side too, not just
+      // status — but every "awaiting confirmation" surface (the guest's own
+      // PaymentDetails countdown, both Home banners, the Verifications
+      // queue) reads client-side state that's only ever refreshed by its
+      // own poll/mount otherwise. Patch all three in place immediately so
+      // none of them linger even for one poll cycle.
+      set(prev => ({
+        booking: prev.booking && prev.booking.id === bookingId
+          ? { ...prev.booking, status: 'confirmed', payment_state: 'confirmed', paid_method: payMethod, hold_expires_at: null, verify_due_at: null }
+          : prev.booking,
+        paymentBookings: prev.paymentBookings.map(b => (b.id === bookingId
+          ? { ...b, status: 'confirmed', payment_state: 'confirmed', paid_method: payMethod, hold_expires_at: null, verify_due_at: null }
+          : b)),
+        verifications: prev.verifications.filter(v => v.booking_id !== bookingId),
+      }));
       return data;
     } catch (e) {
       console.warn('confirmPayment RPC failed:', e);
