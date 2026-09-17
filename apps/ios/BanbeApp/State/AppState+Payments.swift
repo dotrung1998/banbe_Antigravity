@@ -330,6 +330,7 @@ extension AppState {
         screen = .documentView
         documentFileURL = nil
         documentFileURLFailed = false
+        documentFileURLErrorDetail = ""
         if let path = documents.first(where: { $0.id == id })?.filePath, !path.isEmpty {
             Task {
                 let url = await signedDocumentFileURL(path)
@@ -344,6 +345,7 @@ extension AppState {
     func retryDocumentFileURL() {
         guard let doc = currentDocument, let path = doc.filePath, !path.isEmpty else { return }
         documentFileURLFailed = false
+        documentFileURLErrorDetail = ""
         Task {
             let url = await signedDocumentFileURL(path)
             documentFileURL = url
@@ -379,31 +381,49 @@ extension AppState {
     /// forever — `openDocument`/`openDocumentFromNotification` set
     /// `documentFileURLFailed` when this returns nil either way.
     func signedDocumentFileURL(_ path: String) async -> URL? {
-        await withTaskGroup(of: URL?.self) { group in
+        let (url, detail) = await signedDocumentFileURLResult(path)
+        if url == nil { documentFileURLErrorDetail = detail } else { documentFileURLErrorDetail = "" }
+        return url
+    }
+
+    /// `(url, errorDetail)` — `errorDetail` is only meaningful when `url` is
+    /// nil. Kept separate from `signedDocumentFileURL()`'s `URL?` return so
+    /// the reason a real-device repro actually failed (a thrown auth/network
+    /// error vs. a per-path `.failure` from the sign API vs. the 12s
+    /// timeout) is preserved instead of collapsing into one undifferentiated
+    /// nil, the way it did through two straight investigation passes.
+    private func signedDocumentFileURLResult(_ path: String) async -> (URL?, String) {
+        await withTaskGroup(of: (URL?, String).self) { group in
             group.addTask {
                 do {
                     let results = try await SupabaseService.client.storage
                         .from("payment-documents")
                         .createSignedURLs(paths: [path], expiresIn: 600)
                     for result in results {
-                        if case let .success(resultPath, signedURL) = result, resultPath == path {
-                            return signedURL
+                        switch result {
+                        case let .success(resultPath, signedURL) where resultPath == path:
+                            return (signedURL, "")
+                        case let .failure(resultPath, error) where resultPath == path:
+                            return (nil, "sign API failure: \(error)")
+                        default:
+                            continue
                         }
                     }
-                    return nil
+                    return (nil, "sign API returned no matching result for path")
                 } catch {
                     print("signedDocumentFileURL failed:", error)
-                    return nil
+                    return (nil, "sign request threw: \(error)")
                 }
             }
             group.addTask {
                 try? await Task.sleep(nanoseconds: 12_000_000_000)
-                return nil
+                return (nil, "timed out after 12s")
             }
             // Whichever finishes first wins — a genuine failure and a
             // timeout both mean "no URL", so nothing needs to distinguish
-            // them here; the caller only cares whether it got one.
-            let first = await group.next() ?? nil
+            // them here; the caller only cares whether it got one (the
+            // *reason* is still kept, for display, above).
+            let first = await group.next() ?? (nil, "")
             group.cancelAll()
             return first
         }

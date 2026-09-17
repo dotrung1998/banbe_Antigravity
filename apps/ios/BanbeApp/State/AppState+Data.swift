@@ -672,6 +672,7 @@ extension AppState {
             screen = .documentView
             documentFileURL = nil
             documentFileURLFailed = false
+            documentFileURLErrorDetail = ""
             if let path = doc.filePath, !path.isEmpty {
                 let url = await signedDocumentFileURL(path)
                 documentFileURL = url

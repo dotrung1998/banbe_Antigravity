@@ -137,5 +137,79 @@ interactive trace on that device (exact error/behavior: a `documentFileURLFailed
 retry banner appearing, vs. a blank/white viewer with no error, vs. a crash)
 — none of which this pass could safely fake without guessing.
 
+**Fix applied (63bc160)**: `DocumentWebView.Coordinator` (`DocumentViews.swift`)
+only treated an outright network failure (`didFailProvisionalNavigation`) as
+an error — a non-2xx HTTP response (expired/invalid signed URL, a storage
+error body) still counted as a normal `didFinish`, so it silently rendered
+the error body in place of the document with no retry banner. Added
+`webView(_:decidePolicyFor:decisionHandler:)` to treat any non-2xx response
+as a failure. **This is a detection fix, not a root-cause fix** — see the
+next entry, which re-investigates why the request is non-2xx in the first
+place after this didn't resolve the user's real-device report.
+
+## 2026-09-17 follow-up #2 — re-tested after 63bc160, still fails: signing/RLS/expiry ruled out live, root cause still real-device-only
+
+**Context**: user re-tested on the real iPhone after both 24129a2 (path
+mismatch ruled out) and 63bc160 (non-2xx detection) — still gets a
+load/print failure. Since 63bc160 only makes a failure *visible*, this means
+the signed-URL request itself is genuinely still failing. The previous
+pass's checks all used the **service-role key**, which bypasses storage RLS
+entirely — it never actually exercised the real authenticated-user code
+path (`createSignedURLs` under RLS, the exact call `signedDocumentFileURL()`
+makes). That gap is closed here.
+
+**What was tested this time — a real anon-key session under real RLS, not
+service role**: built an isolated repro using `tests/e2e/setup.mjs`'s
+existing fixtures (`createTestUser`/`createOrganizer`/`createEvent`/`signIn`)
+— created a fresh organizer + participant + event + booking, had the
+*organizer's own authenticated anon-key session* upload a real object and
+call `upload_payment_document()` (exercising the INSERT/RPC RLS too, not
+just SELECT), then had the *participant's own authenticated anon-key
+session* (the actual guest, i.e. the same actor/call shape as the iOS/web
+app) call `storage.from('payment-documents').createSignedUrls([path], 600)`
+— both immediately and again after a 65s wait:
+
+- Both attempts returned a real `signedUrl` with no error, immediately and
+  after the delay — RLS authorizes the real guest correctly, and a signed
+  URL freshly generated 65s apart both fetch `200` with the correct
+  `content-type`.
+- This rules out: RLS denying the real (non-service-role) authenticated
+  user, and the 600s signed-URL expiry being stale by the time the user
+  gets around to viewing/printing (print itself doesn't even re-request —
+  it calls `webView.viewPrintFormatter()` on the already-loaded content,
+  confirmed at `DocumentViewerView.swift`'s print button — `printing = true`
+  → `DocumentWebView.updateUIView` → `present(printFor:)`, no network call).
+- Script used: ad hoc, not checked into the repo (used real test accounts
+  under the `doqanh0906+banbe-e2e-*` Gmail alias convention already
+  established by `tests/e2e/setup.mjs`, cleaned up after itself via the
+  existing `cleanup()` helper).
+
+**Conclusion**: signing, RLS-under-a-real-user-session, and expiry are now
+*all* verified live and clean — this closes out essentially every
+server/RLS/timing hypothesis raised by either investigation pass so far. Combined with
+the prior pass's clean HTTP/content-type checks, the remaining explanation
+has to be specific to the actual real device's own session state (e.g. a
+stale/invalid persisted refresh token failing silently) — something no
+clean-room script reproduces, because a fresh script always starts from a
+just-issued, valid session, unlike a real device that's been signed in for
+a while across app restarts/backgrounding.
+
+**Fix applied (this pass)**: since the actual trigger still can't be
+reproduced without a live device trace, and guessing at a fix here would
+repeat 8616a8e's mistake (masking a symptom instead of fixing a cause), the
+change made is diagnostic rather than corrective: `signedDocumentFileURL()`
+(`AppState+Payments.swift`) now distinguishes and surfaces *why* it returned
+nil — a thrown error (e.g. an auth/session failure), a per-path
+`.failure(path:error:)` from the sign API itself, or the 12s timeout —
+via a new `documentFileURLErrorDetail` published property, shown in small
+print under the existing "couldn't load" retry banner
+(`DocumentViewerView.swift`). `DocumentWebView`'s non-2xx handling (63bc160)
+similarly now captures the actual HTTP status code into a `failedDetail`
+binding shown next to its own retry text. **Next time this reproduces on a
+real device, the on-screen error detail itself should say which of the
+three remaining live hypotheses (auth/session failure, a genuine per-path
+storage-side failure, or a slow/hung request) it actually is — no further
+data-layer investigation should be needed before that detail is read.**
+
 ### Task 4 — pre-migration cleanup (migration `20260920000058_058_cleanup_auto_generated_documents.sql`)
 Deleted **25 of 26** `payment_documents` rows (every one with `file_path IS NULL` — the old `ensure_payment_document()`-minted rows). The 1 surviving row is the real test upload mentioned in Task 3 above (has a real `file_path`, correctly not matched by the `WHERE file_path IS NULL` cleanup condition — this predates migration 057, so it has no `purge_after` either; left as-is, not backfilled, since it wasn't part of what was asked). `payment_document_counters` reset from 20 rows (several already past `next_number = 1`, e.g. `org_vuonsau`/invoice at 3) to **0 rows** — deleted outright rather than zeroed, since `upload_payment_document()`'s own `ON CONFLICT ... DO UPDATE` recreates a row at `next_number = 1` the moment each organizer/kind/year is next actually used. Confirmed post-migration: 1 remaining `payment_documents` row, 0 with `file_path IS NULL`, 0 counter rows.

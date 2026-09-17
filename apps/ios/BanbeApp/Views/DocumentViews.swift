@@ -106,6 +106,7 @@ struct DocumentsView: View {
 struct DocumentViewerView: View {
     @EnvironmentObject private var app: AppState
     @State private var loadFailed = false
+    @State private var loadFailedDetail = ""
     @State private var printing = false
     @State private var replacing = false
     @State private var pendingFileURL: URL?
@@ -132,7 +133,7 @@ struct DocumentViewerView: View {
                         // image URL identically well, so one code path
                         // covers both.
                         if let url = app.documentFileURL {
-                            DocumentWebView(url: url, authenticated: false, failed: $loadFailed, printRequested: $printing)
+                            DocumentWebView(url: url, authenticated: false, failed: $loadFailed, failedDetail: $loadFailedDetail, printRequested: $printing)
                                 .accessibilityIdentifier("document.frame")
                         } else if app.documentFileURLFailed {
                             // 15-organizer-checkin.md follow-up (Bug 1): a
@@ -145,6 +146,13 @@ struct DocumentViewerView: View {
                                            "Couldn't load the document. Check your connection and try again."))
                                     .font(.system(size: 13)).foregroundStyle(app.palette.ink)
                                     .multilineTextAlignment(.center)
+                                if !app.documentFileURLErrorDetail.isEmpty {
+                                    Text(app.documentFileURLErrorDetail)
+                                        .font(.system(size: 10.5, design: .monospaced))
+                                        .foregroundStyle(app.palette.ink.opacity(0.55))
+                                        .multilineTextAlignment(.center)
+                                        .accessibilityIdentifier("documentView.errorDetail")
+                                }
                                 Button(app.T("Thử lại", "Try again")) { app.retryDocumentFileURL() }
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(app.palette.paper)
@@ -162,16 +170,24 @@ struct DocumentViewerView: View {
                         // Legacy: issued before the switch to uploads —
                         // falls back to the old server-rendered HTML.
                         if let url = app.documentURL(doc.id) {
-                            DocumentWebView(url: url, authenticated: true, failed: $loadFailed, printRequested: $printing)
+                            DocumentWebView(url: url, authenticated: true, failed: $loadFailed, failedDetail: $loadFailedDetail, printRequested: $printing)
                                 .accessibilityIdentifier("document.frame")
                         }
                     }
 
                     if loadFailed {
-                        Text(app.T("Chưa tải được chứng từ. Kiểm tra kết nối rồi thử lại.",
-                                   "Couldn't load the document. Check your connection and try again."))
-                            .font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
-                            .padding(.horizontal, 22).padding(.vertical, 10)
+                        VStack(spacing: 2) {
+                            Text(app.T("Chưa tải được chứng từ. Kiểm tra kết nối rồi thử lại.",
+                                       "Couldn't load the document. Check your connection and try again."))
+                                .font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                            if !loadFailedDetail.isEmpty {
+                                Text(loadFailedDetail)
+                                    .font(.system(size: 10.5, design: .monospaced))
+                                    .foregroundStyle(BanbeTheme.alert.opacity(0.7))
+                                    .accessibilityIdentifier("documentView.errorDetail")
+                            }
+                        }
+                        .padding(.horizontal, 22).padding(.vertical, 10)
                     }
 
                     // Nothing to print from a document that failed to load
@@ -281,6 +297,7 @@ private struct DocumentWebView: UIViewRepresentable {
     let url: URL
     var authenticated: Bool = true
     @Binding var failed: Bool
+    @Binding var failedDetail: String
     @Binding var printRequested: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -324,6 +341,7 @@ private struct DocumentWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             parent.failed = true
+            parent.failedDetail = "navigation error: \(error)"
         }
 
         // A network-level failure isn't the only way this can go wrong — an
@@ -341,6 +359,7 @@ private struct DocumentWebView: UIViewRepresentable {
         ) {
             if let http = navigationResponse.response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
                 parent.failed = true
+                parent.failedDetail = "HTTP \(http.statusCode) from \(http.url?.path ?? "?")"
                 decisionHandler(.cancel)
                 return
             }
@@ -349,6 +368,7 @@ private struct DocumentWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             parent.failed = false
+            parent.failedDetail = ""
         }
 
         /// iOS's own print/share pipeline, which is also how a page becomes a

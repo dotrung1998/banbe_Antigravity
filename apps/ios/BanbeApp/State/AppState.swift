@@ -359,6 +359,15 @@ final class AppState: ObservableObject {
     /// failed or timed out" (true, DocumentViewerView shows a real error +
     /// retry instead of spinning forever).
     @Published var documentFileURLFailed = false
+    /// 08-payment-documents.md 2026-09-17 follow-up: `documentFileURLFailed`
+    /// alone gives no signal on WHY — a signing/auth error, an expired
+    /// session, or a non-2xx response from the file itself all collapse
+    /// into the same generic retry banner, which is why two straight
+    /// investigation passes couldn't narrow a real-device repro any
+    /// further from this end. Surfaced (in small print, next to the retry
+    /// button) so the next real-device failure is self-diagnosing instead
+    /// of needing another data-layer investigation pass.
+    @Published var documentFileURLErrorDetail = ""
     @Published var documentUploading = false
     @Published var documentUploadError = ""
     // Task 4 (migration 056): one-time, account-level opt-in — mirrors
