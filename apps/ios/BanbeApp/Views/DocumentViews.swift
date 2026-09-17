@@ -134,6 +134,27 @@ struct DocumentViewerView: View {
                         if let url = app.documentFileURL {
                             DocumentWebView(url: url, authenticated: false, failed: $loadFailed, printRequested: $printing)
                                 .accessibilityIdentifier("document.frame")
+                        } else if app.documentFileURLFailed {
+                            // 15-organizer-checkin.md follow-up (Bug 1): a
+                            // failed/timed-out signed-URL fetch used to leave
+                            // this exact spot showing a permanent, silent
+                            // ProgressView — no error, no retry, nothing to
+                            // do but tap back and assume the app was broken.
+                            VStack(spacing: 12) {
+                                Text(app.T("Chưa tải được chứng từ. Kiểm tra kết nối rồi thử lại.",
+                                           "Couldn't load the document. Check your connection and try again."))
+                                    .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                                    .multilineTextAlignment(.center)
+                                Button(app.T("Thử lại", "Try again")) { app.retryDocumentFileURL() }
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(app.palette.paper)
+                                    .padding(.horizontal, 18).padding(.vertical, 10)
+                                    .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .buttonStyle(.plain)
+                                    .accessibilityIdentifier("documentView.retry")
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(.horizontal, 22)
                         } else {
                             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
@@ -153,15 +174,19 @@ struct DocumentViewerView: View {
                             .padding(.horizontal, 22).padding(.vertical, 10)
                     }
 
-                    Button { printing = true } label: {
-                        Text(app.T("Tải về ▪︎ In", "Download ▪︎ Print"))
-                            .font(.system(size: 15, weight: .semibold))
-                            .frame(maxWidth: .infinity).padding(.vertical, 18).padding(.bottom, 12)
-                            .background(app.palette.ink)
-                            .foregroundStyle(app.palette.paper)
+                    // Nothing to print from a document that failed to load
+                    // at all (no WKWebView is even mounted in that state).
+                    if !(doc.isUploaded && app.documentFileURLFailed) {
+                        Button { printing = true } label: {
+                            Text(app.T("Tải về ▪︎ In", "Download ▪︎ Print"))
+                                .font(.system(size: 15, weight: .semibold))
+                                .frame(maxWidth: .infinity).padding(.vertical, 18).padding(.bottom, 12)
+                                .background(app.palette.ink)
+                                .foregroundStyle(app.palette.paper)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("documentView.download")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("documentView.download")
 
                     if isHost {
                         replaceControls(for: doc)

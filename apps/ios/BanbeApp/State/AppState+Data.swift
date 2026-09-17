@@ -489,19 +489,42 @@ extension AppState {
                         .limit(50)
                         .execute().value
                     var attendingStale = false
+                    // reject_pending_guest() ('booking_declined') and
+                    // cancel_booking() ('booking_cancelled') are separate
+                    // RPCs, different notification kinds — but both mean the
+                    // same thing here: a booking that may already be sitting
+                    // in attending/tickets (the "Going" tag) or in `booking`
+                    // (EventDetailView's own ticket/reserve bar) just
+                    // stopped being real. Treated as one shared category
+                    // rather than hardcoding just the one kind each fix was
+                    // originally written for.
+                    let cancellationKinds: Set<String> = ["booking_declined", "booking_cancelled"]
                     for row in rows where !toastedIDs.contains(row.id) && row.createdAt > sessionStart {
                         toastedIDs.insert(row.id)
                         self.pushToast(row)
-                        // reject_pending_guest() (migration 059) cancels a
-                        // booking that may already be sitting in
-                        // attending/tickets (the "Going" tag) — nothing
-                        // else refreshes those outside loadMyEvents()'s own
-                        // sign-in/goGoingList() triggers (80423dd). This
-                        // poll already runs every 5s regardless of whether
-                        // the toast is tapped, so it's the one place that
-                        // can catch this without a real realtime
-                        // subscription (none exist anywhere in this app).
-                        if row.kind == "booking_declined" { attendingStale = true }
+                        // Nothing else refreshes attending/tickets outside
+                        // loadMyEvents()'s own sign-in/goGoingList()
+                        // triggers (80423dd). This poll already runs every
+                        // 5s regardless of whether the toast is tapped, so
+                        // it's the one place that can catch this without a
+                        // real realtime subscription (none exist anywhere
+                        // in this app).
+                        if cancellationKinds.contains(row.kind) {
+                            attendingStale = true
+                            // EventDetailView's own ticket/reserve bar reads
+                            // straight off the single top-level `booking`
+                            // object (whichever was last loaded into it),
+                            // not a fresh per-event query — no poll/appear
+                            // effect of its own. If that's the exact
+                            // booking that just got declined/cancelled,
+                            // patch it in place so the bar flips
+                            // immediately on the next render.
+                            if let bookingIDString = row.data["booking_id"]?.stringValue,
+                               let bookingID = UUID(uuidString: bookingIDString),
+                               self.booking?.id == bookingID {
+                                self.booking?.status = "cancelled"
+                            }
+                        }
                     }
                     self.notifications = rows
                     if attendingStale { await self.loadMyEvents() }
@@ -646,8 +669,11 @@ extension AppState {
             documentBack = backTo
             screen = .documentView
             documentFileURL = nil
+            documentFileURLFailed = false
             if let path = doc.filePath, !path.isEmpty {
-                documentFileURL = await signedDocumentFileURL(path)
+                let url = await signedDocumentFileURL(path)
+                documentFileURL = url
+                if url == nil { documentFileURLFailed = true }
             }
         } catch {
             print("openDocumentFromNotification failed:", error)

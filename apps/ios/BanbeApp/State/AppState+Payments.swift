@@ -329,8 +329,25 @@ extension AppState {
         documentBack = backTo
         screen = .documentView
         documentFileURL = nil
+        documentFileURLFailed = false
         if let path = documents.first(where: { $0.id == id })?.filePath, !path.isEmpty {
-            Task { documentFileURL = await signedDocumentFileURL(path) }
+            Task {
+                let url = await signedDocumentFileURL(path)
+                documentFileURL = url
+                if url == nil { documentFileURLFailed = true }
+            }
+        }
+    }
+
+    /// Retries fetching the current document's signed URL — the "Try again"
+    /// button DocumentViewerView shows once `documentFileURLFailed` is set.
+    func retryDocumentFileURL() {
+        guard let doc = currentDocument, let path = doc.filePath, !path.isEmpty else { return }
+        documentFileURLFailed = false
+        Task {
+            let url = await signedDocumentFileURL(path)
+            documentFileURL = url
+            if url == nil { documentFileURLFailed = true }
         }
     }
 
@@ -351,20 +368,44 @@ extension AppState {
     /// A signed URL for an uploaded document's own file — the bucket is
     /// private (RLS-scoped to the booking's guest/organizer), so a plain
     /// public URL won't load it.
+    ///
+    /// 15-organizer-checkin.md follow-up (Bug 1): a failure here used to
+    /// return nil with nothing else — `documentFileURL` stayed nil forever,
+    /// which `DocumentViewerView` renders as a bare, permanent
+    /// `ProgressView()` with no error, no retry, and no way to tell a
+    /// genuine failure apart from "still loading". A 12s timeout is added
+    /// here so a hung request (no network, a slow signed-URL round trip)
+    /// surfaces the same way an outright error does, instead of spinning
+    /// forever — `openDocument`/`openDocumentFromNotification` set
+    /// `documentFileURLFailed` when this returns nil either way.
     func signedDocumentFileURL(_ path: String) async -> URL? {
-        do {
-            let results = try await SupabaseService.client.storage
-                .from("payment-documents")
-                .createSignedURLs(paths: [path], expiresIn: 600)
-            for result in results {
-                if case let .success(resultPath, signedURL) = result, resultPath == path {
-                    return signedURL
+        await withTaskGroup(of: URL?.self) { group in
+            group.addTask {
+                do {
+                    let results = try await SupabaseService.client.storage
+                        .from("payment-documents")
+                        .createSignedURLs(paths: [path], expiresIn: 600)
+                    for result in results {
+                        if case let .success(resultPath, signedURL) = result, resultPath == path {
+                            return signedURL
+                        }
+                    }
+                    return nil
+                } catch {
+                    print("signedDocumentFileURL failed:", error)
+                    return nil
                 }
             }
-            return nil
-        } catch {
-            print("signedDocumentFileURL failed:", error)
-            return nil
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 12_000_000_000)
+                return nil
+            }
+            // Whichever finishes first wins — a genuine failure and a
+            // timeout both mean "no URL", so nothing needs to distinguish
+            // them here; the caller only cares whether it got one.
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
         }
     }
 

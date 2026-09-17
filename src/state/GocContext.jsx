@@ -757,21 +757,43 @@ export function GocProvider({ children }) {
       if (!active || error) return;
       const rows = data || [];
       let attendingStale = false;
+      // reject_pending_guest() ('booking_declined') and cancel_booking()
+      // ('booking_cancelled') are two separate RPCs — different code,
+      // different notification kind — but both mean the exact same thing
+      // from this poll's point of view: a booking that may already be
+      // sitting in s.attending/s.tickets (the "Going" tag) or in s.booking
+      // (EventDetail's own "View Ticket" vs "Reserve" bar) just stopped
+      // being real. Treated as one shared category here rather than
+      // hardcoding just the one kind each fix happened to be written for.
+      const CANCELLATION_KINDS = new Set(['booking_declined', 'booking_cancelled']);
       for (const n of rows) {
         if (!toastedIds.has(n.id) && new Date(n.created_at) > sessionStart) {
           toastedIds.add(n.id);
           pushToast(n);
-          // reject_pending_guest() (migration 059) cancels a booking that
-          // may already be sitting in `s.attending`/`s.tickets` (the
-          // "Going" tag), but nothing else refreshes those outside of
+          // Nothing else refreshes s.attending/s.tickets outside of
           // loadMyEvents()'s own sign-in-mount effect or goGoingList()
-          // opening the Going tab (80423dd) — a guest declined while
-          // already looking at Home would keep seeing "Going" indefinitely
-          // otherwise. This poll already runs every 5s regardless of
-          // whether the toast is tapped, so it's the one place that can
-          // catch this without a real realtime subscription (none exist
-          // anywhere in this codebase, see 03-dispute-chat.md).
-          if (n.kind === 'booking_declined') attendingStale = true;
+          // opening the Going tab (80423dd) — a guest whose booking just
+          // got declined/cancelled while already looking at Home would
+          // keep seeing "Going" indefinitely otherwise. This poll already
+          // runs every 5s regardless of whether the toast is tapped, so
+          // it's the one place that can catch this without a real
+          // realtime subscription (none exist anywhere in this codebase,
+          // see 03-dispute-chat.md).
+          if (CANCELLATION_KINDS.has(n.kind)) {
+            attendingStale = true;
+            // EventDetail.jsx's own "Xem vé của bạn"/"View your ticket" bar
+            // reads straight off the single top-level s.booking object
+            // (whichever booking was last loaded into it), not off
+            // paymentBookings/a fresh per-event query — it has no poll or
+            // mount effect of its own. If that's the exact booking that
+            // just got declined/cancelled, patch it in place so the bar
+            // flips to "Reserve" on the very next render.
+            if (n.data?.booking_id) {
+              set(prev => (prev.booking?.id === n.data.booking_id
+                ? { booking: { ...prev.booking, status: 'cancelled' } }
+                : {}));
+            }
+          }
         }
       }
       set({ notifications: rows, unreadNotifications: rows.filter(n => !n.read_at).length });

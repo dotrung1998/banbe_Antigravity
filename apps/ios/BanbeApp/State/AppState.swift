@@ -350,6 +350,11 @@ final class AppState: ObservableObject {
     // — nil while loading/absent (a legacy document has no file_path and
     // falls back to the old rendered-HTML viewer instead).
     @Published var documentFileURL: URL?
+    /// 15-organizer-checkin.md follow-up (Bug 1): distinguishes "still
+    /// fetching the signed URL" (nil, ProgressView) from "fetch actually
+    /// failed or timed out" (true, DocumentViewerView shows a real error +
+    /// retry instead of spinning forever).
+    @Published var documentFileURLFailed = false
     @Published var documentUploading = false
     @Published var documentUploadError = ""
     // Task 4 (migration 056): one-time, account-level opt-in — mirrors
