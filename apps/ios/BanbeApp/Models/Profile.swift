@@ -27,6 +27,10 @@ struct Profile: Codable, Identifiable, Hashable {
     /// field was previously never read or written anywhere on iOS at all —
     /// see that note's Task 1 for the gap this closes).
     var policyAcceptedAt: Date?
+    /// BUG 4 (07-notifications.md's 2026-09-18 follow-up, migration 062) —
+    /// the "•••" menu's "Tắt loại thông báo này" action. Absent on any row
+    /// created before that migration's default backfill, hence Optional.
+    var mutedNotificationKinds: [String]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -43,5 +47,6 @@ struct Profile: Codable, Identifiable, Hashable {
         case createdAt = "created_at"
         case autoEmailDocuments = "auto_email_documents"
         case policyAcceptedAt = "policy_accepted_at"
+        case mutedNotificationKinds = "muted_notification_kinds"
     }
 }

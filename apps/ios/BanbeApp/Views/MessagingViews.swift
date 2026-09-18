@@ -212,65 +212,148 @@ struct NotificationsView: View {
     // up to 50 at once), so a plain local Set is enough; nothing here needs
     // a new query.
     @State private var expandedSections: Set<String> = []
+    // BUG 4: the "•••" action menu, open for at most one row's
+    // notification at a time.
+    @State private var menuFor: AppNotification?
+    // 2026-09-18 follow-up (BUG 3): a notification's SECTION is decided
+    // once — the first time this screen sees it — and frozen from then on,
+    // keyed by id. Reading it only flips its own readAt (handled live in
+    // row(_:), for the bold/dim weight), it never moves the row to a
+    // different section. Without this, section membership was recomputed
+    // from live readAt on every body re-render — app.notifications is also
+    // overwritten wholesale every 5s by the app-wide toast poll
+    // (startNotificationPolling(), AppState+Data.swift), so a plain
+    // computed property re-shuffled a notification the instant either
+    // markNotificationRead() OR that unrelated poll tick re-rendered this
+    // screen — which is what "reading moves it" actually was.
+    @State private var sectionMembership: [UUID: String] = [:]
 
     private struct NotificationSection: Identifiable {
         let id: String
         let title: String
         let items: [AppNotification]
-        let unread: Bool
     }
 
-    private var sections: [NotificationSection] {
-        let unread = app.notifications.filter { $0.readAt == nil }
-        // Instagram/Facebook's own convention: unread sits in its own
-        // section on top regardless of age — a week-old unread notification
-        // still belongs in "Mới", not "Cũ hơn". Everything else buckets by age.
-        var today: [AppNotification] = [], week: [AppNotification] = [], older: [AppNotification] = []
-        let now = Date()
-        for n in app.notifications where n.readAt != nil {
+    private func classifyAtLoad(_ n: AppNotification, now: Date) -> String {
+        guard n.readAt == nil else {
             switch notificationAgeBucket(n.createdAt, now: now) {
-            case .today: today.append(n)
-            case .week: week.append(n)
-            case .older: older.append(n)
+            case .today: return "today"
+            case .week: return "week"
+            case .older: return "older"
             }
         }
+        return "new"
+    }
+
+    /// Assigns a section to any notification not already in
+    /// `sectionMembership` — called on load and whenever `app.notifications`
+    /// changes, but never touches an id that's already been assigned.
+    private func syncSectionMembership() {
+        let now = Date()
+        for n in app.notifications where sectionMembership[n.id] == nil {
+            sectionMembership[n.id] = classifyAtLoad(n, now: now)
+        }
+    }
+
+    // Exactly one bucket per key, regardless of how many unread items are
+    // interleaved with read ones in app.notifications — grouping by a
+    // frozen, pre-computed membership id can never split "Mới" into two
+    // blocks the way a live re-scan keyed on readAt (recomputed mid-list)
+    // could.
+    private var sections: [NotificationSection] {
+        var grouped: [String: [AppNotification]] = ["new": [], "today": [], "week": [], "older": []]
+        let now = Date()
+        for n in app.notifications {
+            let key = sectionMembership[n.id] ?? classifyAtLoad(n, now: now)
+            grouped[key, default: []].append(n)
+        }
         return [
-            NotificationSection(id: "new", title: app.T("Mới", "New"), items: unread, unread: true),
-            NotificationSection(id: "today", title: app.T("Hôm nay", "Today"), items: today, unread: false),
-            NotificationSection(id: "week", title: app.T("7 ngày qua", "Last 7 days"), items: week, unread: false),
-            NotificationSection(id: "older", title: app.T("Cũ hơn", "Older"), items: older, unread: false),
+            NotificationSection(id: "new", title: app.T("Mới", "New"), items: grouped["new"] ?? []),
+            NotificationSection(id: "today", title: app.T("Hôm nay", "Today"), items: grouped["today"] ?? []),
+            NotificationSection(id: "week", title: app.T("7 ngày qua", "Last 7 days"), items: grouped["week"] ?? []),
+            NotificationSection(id: "older", title: app.T("Cũ hơn", "Older"), items: grouped["older"] ?? []),
         ].filter { !$0.items.isEmpty }
     }
 
     var body: some View {
-        ScreenScaffold {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(app.T("Thông báo", "Notifications")).font(BanbeTheme.display(27))
-                    Spacer()
-                    Button(app.T("Xong", "Done")) { app.goHome() }
-                        .font(.system(size: 12)).buttonStyle(.plain)
-                }
-                .padding(.bottom, 14)
+        ZStack {
+            ScreenScaffold {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(app.T("Thông báo", "Notifications")).font(BanbeTheme.display(27))
+                        Spacer()
+                        Button(app.T("Xong", "Done")) { app.goHome() }
+                            .font(.system(size: 12)).buttonStyle(.plain)
+                    }
+                    .padding(.bottom, 14)
 
-                let allSections = sections
-                if allSections.isEmpty {
-                    Text(app.T("Chưa có thông báo nào.", "No notifications yet."))
-                        .font(.system(size: 14))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 80)
-                } else {
-                    ForEach(allSections) { sec in
-                        section(sec)
+                    let allSections = sections
+                    if allSections.isEmpty {
+                        Text(app.T("Chưa có thông báo nào.", "No notifications yet."))
+                            .font(.system(size: 14))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 80)
+                    } else {
+                        ForEach(allSections) { sec in
+                            section(sec)
+                        }
                     }
                 }
+                .foregroundStyle(app.palette.ink)
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 40)
             }
-            .foregroundStyle(app.palette.ink)
-            .padding(.horizontal, 24)
-            .padding(.top, 16)
-            .padding(.bottom, 40)
+            .task {
+                await app.loadNotifications()
+                syncSectionMembership()
+            }
+            .onChange(of: app.notifications) { _, _ in syncSectionMembership() }
+
+            // BUG 4: replaces the old per-row "×" delete with a "•••" menu,
+            // modeled on Facebook's own notification action sheet — but
+            // only the actions this app can actually back for real (no
+            // "Show more"/"Show less": nothing ranks or personalizes this
+            // list; no "Report issue": no generic issue-report mechanism
+            // exists anywhere else in the app to call into — see
+            // 07-notifications.md). Reuses BottomSheet, the same
+            // dim-overlay + sliding-panel component ReasonSheetView already
+            // uses, rather than inventing a new dropdown/floating-menu.
+            if let n = menuFor {
+                BottomSheet(onDismiss: { menuFor = nil }) {
+                    menuRow(n.readAt != nil ? app.T("Đánh dấu chưa đọc", "Mark as unread") : app.T("Đánh dấu đã đọc", "Mark as read")) {
+                        Task {
+                            if n.readAt != nil { await app.markNotificationUnread(n) } else { await app.markNotificationRead(n) }
+                        }
+                        menuFor = nil
+                    }
+                    .accessibilityIdentifier("notification.menu.toggleRead")
+                    Divider().overlay(app.palette.rule)
+                    menuRow(app.T("Tắt loại thông báo này", "Turn off this kind of notification")) {
+                        Task { await app.muteNotificationKind(n.kind) }
+                        menuFor = nil
+                    }
+                    .accessibilityIdentifier("notification.menu.mute")
+                    Divider().overlay(app.palette.rule)
+                    menuRow(app.T("Xoá thông báo này", "Delete this notification"), destructive: true) {
+                        Task { await app.deleteNotification(n) }
+                        menuFor = nil
+                    }
+                    .accessibilityIdentifier("notification.menu.delete")
+                }
+            }
         }
-        .task { await app.loadNotifications() }
+    }
+
+    private func menuRow(_ label: String, destructive: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 14.5))
+                .foregroundStyle(destructive ? BanbeTheme.alert : app.palette.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 14)
+        }
+        .buttonStyle(.plain)
     }
 
     private func section(_ sec: NotificationSection) -> some View {
@@ -283,7 +366,10 @@ struct NotificationsView: View {
                 .kerning(0.5)
                 .foregroundStyle(app.palette.ink.opacity(0.6))
             ForEach(visible) { item in
-                row(item, unread: sec.unread)
+                // Live readAt, not the (frozen) section — marking a
+                // notification read only changes its weight/dimming in
+                // place, per BUG 3, never which section it's in.
+                row(item, unread: item.readAt == nil)
                 Divider().overlay(app.palette.rule)
             }
             if hiddenCount > 0 {
@@ -307,9 +393,12 @@ struct NotificationsView: View {
                     avatar(for: item)
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(alignment: .firstTextBaseline) {
+                            // BUG 3: bold only while unread — reading a
+                            // notification unbolds it in place (fontWeight
+                            // only), it never moves sections.
                             Text(item.title)
                                 .font(BanbeTheme.display(15))
-                                .fontWeight(.bold)
+                                .fontWeight(unread ? .bold : .regular)
                                 .lineLimit(1)
                             Spacer(minLength: 12)
                             Text(app.trStatus(EventLabels.ago(hoursAgo(item.createdAt))))
@@ -328,19 +417,18 @@ struct NotificationsView: View {
             }
             .buttonStyle(.plain)
 
-            // A real, permanent delete (notifications_delete_own
-            // RLS, migration 050) — not audit-sensitive the way
-            // dispute_messages is, so no confirm dialog either.
+            // BUG 4: "•••" opens the action menu (delete / toggle read /
+            // mute this kind) instead of deleting directly.
             Button {
-                Task { await app.deleteNotification(item) }
+                menuFor = item
             } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
+                Text("•••")
+                    .font(.system(size: 15))
                     .foregroundStyle(app.palette.ink.opacity(0.4))
                     .padding(6)
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("notification-delete")
+            .accessibilityIdentifier("notification-menu")
         }
         .opacity(unread ? 1 : 0.6)
         .padding(.vertical, 14)
@@ -359,6 +447,8 @@ struct NotificationsView: View {
             }
             .frame(width: 40, height: 40)
             .clipShape(Circle())
+        case .catalogPhoto(let path):
+            CatalogPhoto(path: path, height: 40, width: 40, cornerRadius: 20)
         case .fallback:
             avatarFallback
         }

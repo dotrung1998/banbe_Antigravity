@@ -64,6 +64,22 @@ struct NotificationReadUpdate: Encodable {
     let readAt: String
     enum CodingKeys: String, CodingKey { case readAt = "read_at" }
 }
+/// The "•••" menu's "Đánh dấu chưa đọc" action (BUG 4) — the exact reverse
+/// of NotificationReadUpdate. A synthesized Encodable would SKIP an
+/// Optional<String> field entirely when nil (encodeIfPresent semantics),
+/// never send `null` — this writes `{"read_at": null}` explicitly instead,
+/// which is what PostgREST needs to actually clear the column.
+struct NotificationUnreadUpdate: Encodable {
+    enum CodingKeys: String, CodingKey { case readAt = "read_at" }
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeNil(forKey: .readAt)
+    }
+}
+struct MutedKindsUpdate: Encodable {
+    let mutedNotificationKinds: [String]
+    enum CodingKeys: String, CodingKey { case mutedNotificationKinds = "muted_notification_kinds" }
+}
 
 // Decodable shapes for the handful of narrow selects below.
 private struct IDRow: Decodable { let id: String }
@@ -220,6 +236,7 @@ extension AppState {
             organizerMode = canHostNow
             mode = canHostNow ? "host" : "goer"
             autoEmailDocuments = profile.autoEmailDocuments == true
+            mutedNotificationKinds = profile.mutedNotificationKinds ?? []
 
             // Proof-of-consent bookkeeping (note 10 — this was a gap this
             // app never closed on any path before now, not just OAuth: see
@@ -531,8 +548,12 @@ extension AppState {
                 .order("created_at", ascending: false)
                 .limit(50)
                 .execute().value
-            notifications = rows
-            notificationAvatarMaps = await loadNotificationAvatarMaps(for: rows)
+            // Filtered client-side, not queried server-side —
+            // mutedNotificationKinds (062) exists purely for this, no
+            // insert-side RPC change (BUG 4).
+            let filtered = rows.filter { !mutedNotificationKinds.contains($0.kind) }
+            notifications = filtered
+            notificationAvatarMaps = await loadNotificationAvatarMaps(for: filtered)
         } catch {
             print("Failed to load notifications:", error)
         }
@@ -562,13 +583,24 @@ extension AppState {
                 // 'event-photos' bucket (005) — getPublicURL() is a local
                 // URL-builder, not a network call, so this is cheap even
                 // though it runs once per resolved event.
+                // 2026-09-18 follow-up (BUG 1): confirmed live that
+                // migration 010's seed rows store storage_path WITH the
+                // bucket name already baked in
+                // ('event-photos/evt_001/cover.jpg') — unlike every other
+                // storage_path/proof_path/file_path column in this schema,
+                // which are bucket-RELATIVE. Passed as-is to
+                // getPublicURL(), this doubles the bucket segment, a broken
+                // URL. Stripped defensively so either convention resolves.
                 let photos: [EventPhotoRow] = try await SupabaseService.client
                     .from("event_photos").select("event_id, storage_path, sort_order")
                     .in("event_id", values: Array(eventIDs))
                     .order("sort_order", ascending: true)
                     .execute().value
                 for p in photos where maps.eventPhotoByEventId[p.eventId] == nil {
-                    if let url = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: p.storagePath) {
+                    let relativePath = p.storagePath.hasPrefix("event-photos/")
+                        ? String(p.storagePath.dropFirst("event-photos/".count))
+                        : p.storagePath
+                    if let url = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relativePath) {
                         maps.eventPhotoByEventId[p.eventId] = url
                     }
                 }
@@ -613,12 +645,17 @@ extension AppState {
             while !Task.isCancelled {
                 guard let self, let uid = self.userID else { return }
                 do {
-                    let rows: [AppNotification] = try await SupabaseService.client
+                    let fetched: [AppNotification] = try await SupabaseService.client
                         .from("notifications").select()
                         .eq("recipient_id", value: uid)
                         .order("created_at", ascending: false)
                         .limit(50)
                         .execute().value
+                    // Filtered client-side, not queried server-side —
+                    // mutedNotificationKinds (062) exists purely for this,
+                    // so a muted kind neither shows in the list nor toasts
+                    // (BUG 4).
+                    let rows = fetched.filter { !self.mutedNotificationKinds.contains($0.kind) }
                     var attendingStale = false
                     // reject_pending_guest() ('booking_declined') and
                     // cancel_booking() ('booking_cancelled') are separate
@@ -688,6 +725,44 @@ extension AppState {
                 .execute()
         } catch {
             print("Failed to mark notification read:", error)
+        }
+    }
+
+    /// The "•••" menu's "Đánh dấu chưa đọc" action (BUG 4) — the exact
+    /// reverse of markNotificationRead(). No new RPC/schema: notifications'
+    /// existing UPDATE RLS (scoped to recipient, migration 019) already
+    /// allows a plain client-side write of NULL back onto a column it
+    /// already lets the recipient set.
+    func markNotificationUnread(_ notification: AppNotification) async {
+        guard notification.readAt != nil else { return }
+        if let index = notifications.firstIndex(where: { $0.id == notification.id }) {
+            notifications[index].readAt = nil
+        }
+        do {
+            try await SupabaseService.client.from("notifications")
+                .update(NotificationUnreadUpdate())
+                .eq("id", value: notification.id)
+                .execute()
+        } catch {
+            print("Failed to mark notification unread:", error)
+        }
+    }
+
+    /// The "•••" menu's "Tắt loại thông báo này" action (BUG 4) —
+    /// profiles.muted_notification_kinds (062), filtered client-side only
+    /// in loadNotifications()/the toast poll; no insert-side RPC change.
+    func muteNotificationKind(_ kind: String) async {
+        guard let uid = userID, !mutedNotificationKinds.contains(kind) else { return }
+        let next = mutedNotificationKinds + [kind]
+        mutedNotificationKinds = next
+        notifications.removeAll { $0.kind == kind }
+        do {
+            try await SupabaseService.client.from("profiles")
+                .update(MutedKindsUpdate(mutedNotificationKinds: next))
+                .eq("id", value: uid)
+                .execute()
+        } catch {
+            print("Failed to mute notification kind:", error)
         }
     }
 

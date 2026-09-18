@@ -235,3 +235,209 @@ iOS `xcodebuild` (Debug, `-destination 'generic/platform=iOS Simulator'`)
 BUILD SUCCEEDED after `xcodegen generate` picked up the two new Swift
 files (`Lib/NotificationPresentation.swift`, and `Views/MessagingViews.swift`'s
 rewritten `NotificationsView`).
+
+## 2026-09-18 follow-up — real-device regressions from the redesign above: avatars, duplicate "New", reorder-on-read, and a new "•••" menu
+
+Live testing surfaced four problems in 937074d. All four investigated end
+to end against real data (not fabricated accounts) using the service-role
+key already in `.env.local` plus `tests/e2e/setup.mjs`'s fixtures for the
+cases that needed a controlled repro.
+
+### BUG 1 — avatar always fell back to the bell: root cause is a real data gap, not a code bug, plus one genuine bug found and fixed along the way
+
+**Confirmed live, not assumed**: built an isolated repro (fresh organizer +
+guest + event + booking) and ran the *exact* batch queries
+`loadNotifications()`/`loadNotificationAvatarMaps()` run, under the real
+guest's and real organizer's own authenticated sessions (not service
+role) — RLS, key matching (`booking_id`/`event_id`/`user_id` are all text/uuid
+strings on both sides, no type mismatch), and the join logic in
+`avatarSourceFor()`/`avatarSource(for:maps:accountType:)` all resolved
+correctly on the first try. **No timing/race, no RLS block, no key
+mismatch** — the mechanism itself was never broken.
+
+**The real cause, confirmed against the actual signed-in dev account's own
+notifications** (`recipient_id 63cdbe55-6ea1-476a-8bf7-0633be842fd3`,
+queried live): every one of its real notifications references a real
+catalogue event (`phong302`, `vuonsau`, `noigiay`, `aeie`) and a real guest
+booking. Checked both source tables directly:
+- `event_photos` has rows **only** for the 4 seed demo events
+  (`evt_001`-`evt_004`, migration `010_seed_data.sql`) — confirmed by
+  repo-wide grep, **there is no upload path anywhere in this app** that
+  ever writes to it. `tapPhotoSlot()` (`GocContext.jsx:2874`, "Create
+  Event"'s photo picker) only increments a cosmetic slot COUNT — it never
+  picks, uploads, or persists an actual file, and `create_event_draft`
+  takes no photo parameter at all.
+- `profiles.avatar_url` is non-null **only** for the same 4 seed profiles
+  (`010_seed_data.sql:16-19`) — confirmed live: the actual guest behind the
+  dev account's real `booking_requested` notifications has
+  `avatar_url: null`. There is no avatar-upload feature anywhere in this
+  app either.
+
+So for any real account's real activity, both source tables the avatar
+logic depends on are — and always were — empty. The bell fallback was
+correct, just useless, because the two DB tables this feature was built
+against have no real writer.
+
+**Fix — a THIRD, actually-populated fallback**: every real event a real
+account interacts with is a catalogue event (`findEvent()`/`EVENTS`,
+`src/data/events.js`; `EventCatalog`, `apps/ios/BanbeApp/Models/CatalogEvent.swift`)
+— the same photo already shown on Home/EventDetail/Dashboard everywhere
+else in the app. `avatarSourceFor()` (`src/lib/notifications.js:38-49`) and
+`avatarSource(for:maps:accountType:)` (`NotificationPresentation.swift:50-59`)
+now fall back to the catalogue photo when `event_photos` has nothing.
+**Caught and avoided a second bug while adding this**: `findEvent()`/
+`EventCatalog.find()` themselves fall back to `EVENTS[0]`/`.all.first` for
+an unrecognized key (deliberate elsewhere, "a screen always has something
+to render") — blindly reusing that here would show a random WRONG event's
+photo for a genuinely non-catalogue `event_id`, worse than the honest bell
+glyph. Matched directly against `EVENTS`/`EventCatalog.all` instead, which
+correctly returns nothing for a real miss (confirmed live:
+`EVENTS.find(e => e.key === 'doesnotexist')` → `undefined`, correctly
+falls through to the bell). iOS renders the catalogue photo via
+`CatalogPhoto` (its own WebP/downsampling/disk-cache loader, not a raw
+`AsyncImage` URL) — new `NotificationAvatarSource.catalogPhoto(String)`
+case, `MessagingViews.swift`'s `avatar(for:)`.
+
+**A second, real, independently-confirmed bug**: `event_photos.storage_path`
+seed rows are stored WITH the bucket name baked in
+(`'event-photos/evt_001/cover.jpg'`) — unlike every other
+`storage_path`/`proof_path`/`file_path` column in this schema
+(`pay-proof`, `payment-documents`), which are bucket-RELATIVE. Passed
+as-is to `getPublicUrl()`/`getPublicURL()`, this doubles the bucket
+segment (confirmed live: produced
+`.../object/public/event-photos/event-photos/evt_.../cover.jpg`, a 404).
+Fixed by stripping a redundant leading `event-photos/` before calling
+`getPublicUrl` (`GocContext.jsx:2144-2148`) / `getPublicURL`
+(`AppState+Data.swift:565-576`) — defensive enough to handle either
+convention. This only affects the 4 seed rows today, but is a real,
+verified bug independent of the catalogue-fallback fix above.
+
+**Verified against real production data, both parts**: `findEvent('phong302').img`
+→ `/photos/DSCF5542.jpg` (a real file), same for `vuonsau`/`noigiay`/`aeie`
+— i.e. avatars now resolve for literally the real notifications the dev
+account already has. The double-prefix fix was verified via the isolated
+repro's own signed URL (previously doubled, now correct after the strip).
+
+### BUG 2 — "New" rendered twice: could not reproduce the literal mechanism, but the redesign structurally guaranteed against the ticket's own hypothesis and against BUG 3's actual cause
+
+Re-read `sections`/`NotificationSection` in both `Notifications.jsx` and
+`MessagingViews.swift` as they stood at 937074d line by line: `unread` was
+already computed as ONE filter over the full list (not a sequential
+scan-and-transition that inserts a divider every time it crosses from read
+to unread while walking a chronologically-sorted list) — the specific
+mechanism the ticket's own hint described ("two non-contiguous unread
+items each start their own section") does not match this codebase's
+actual algorithm, and a single `{key:'new', items: unread}` object cannot
+literally produce two DOM headers within one render.
+
+The most likely real explanation, given what BUG 3 (below) turned out to
+be: section membership was recomputed from **live** `read_at` on every
+render, and the exact same `notifications` array is overwritten wholesale
+every 5s by the app-wide toast poll while a screen may be mid-transition
+from marking something read — a plausible source of a transient
+double-render a screenshot could catch, though not reproduced directly.
+
+**Fix, which also structurally rules this class of bug out**: section
+membership is now decided ONCE per notification (frozen in
+`sectionMembership`/`sectionMembership` state, keyed by id — see BUG 3
+below, same mechanism), so building `sections` is a single grouping pass
+over a **stable** per-item key, never a live re-filter that could disagree
+with itself mid-render. Verified against the real dev account's own 25
+real notifications (7 unread interleaved with 18 read ones, not
+contiguous): grouping by the frozen key produces exactly 3 non-empty
+sections, `new` appearing exactly once with all 7 unread items together,
+regardless of interleaving — script output: `{new: 7, today: 0, week: 16,
+older: 2}`, one bucket per key by construction.
+
+### BUG 3 — reading a notification moved it: real bug, root cause confirmed, fixed on both platforms
+
+**Confirmed real**: section membership was derived from **live** `read_at`
+on every render (`unread = notifications.filter(n => !n.read_at)`, buckets
+built the same way) — the instant `markNotificationRead()` flipped
+`read_at`, the very next render recomputed which bucket the item belonged
+to and it visibly jumped from "Mới" into "Hôm nay"/"Cũ hơn". Made worse by
+the app-wide 5s toast poll, which overwrites the same `notifications`
+array wholesale independent of this screen even being interacted with.
+
+**Fix**: `src/screens/Notifications.jsx:30-57` (`sectionMembership` state
++ `classifyAtLoad()`) / `MessagingViews.swift:215-243`
+(`sectionMembership`/`syncSectionMembership()`/`classifyAtLoad(_:now:)`) —
+a notification's section is assigned exactly once, the first time this
+screen observes it (on mount, and for any new id the toast poll delivers
+later while the screen is open), and never reassigned afterward regardless
+of subsequent `read_at` changes. The row's bold/dim weight still reads
+**live** `read_at` (`Row`'s `unread` prop is now `!n.read_at`, not the
+section's fixed flag; `MessagingViews.swift`'s `row(_:unread:)` call site
+now passes `item.readAt == nil`) — so reading a notification unbolds it in
+place immediately, exactly as asked, without moving it. Verified by
+inspection against the same real 25-notification dataset above (the logic
+change is pure and was exercised by the same script).
+
+### BUG 4 — "×" delete replaced with a "•••" action menu (Xoá / Đánh dấu đã đọc·chưa đọc / Tắt loại thông báo này)
+
+Implemented exactly the three actions this app can back for real, per this
+ticket's own bar — explicitly did NOT add "Show more"/"Show less" (this
+app has no ranking/personalization system for notifications to expose) or
+"Report issue" (grepped for any existing generic issue-report mechanism
+anywhere else in the app — none exists to call into).
+
+- **"Xoá thông báo này"** — unchanged `deleteNotification(id)`, now
+  reached via the menu instead of a direct "×" tap.
+- **"Đánh dấu đã đọc"/"Đánh dấu chưa đọc"** (toggles, label follows current
+  state) — mark-unread did not exist before this pass. New
+  `markNotificationUnread(id)` (`GocContext.jsx`, right after
+  `markNotificationRead`) / `markNotificationUnread(_:)`
+  (`AppState+Data.swift`, right after `markNotificationRead`) — the exact
+  reverse write (`read_at: null`). No new schema — `notifications`' existing
+  UPDATE RLS (recipient-scoped, migration 019) already allows it. **Real
+  Swift gotcha hit and fixed**: a synthesized `Encodable` for a struct with
+  an `Optional<String>` field SKIPS the key entirely when nil
+  (`encodeIfPresent` semantics) rather than sending `null` — silently
+  never clearing `read_at` at all. Fixed with an explicit
+  `NotificationUnreadUpdate: Encodable` that calls
+  `container.encodeNil(forKey:)` (`AppState+Data.swift`, right after
+  `NotificationReadUpdate`).
+- **"Tắt loại thông báo này"** (mute) — built as instructed, cheaply: new
+  migration `20260921000062_062_notification_mute_kinds.sql` adds
+  `profiles.muted_notification_kinds text[] DEFAULT '{}'`. No new RLS
+  needed — `profiles_update_own` (001) is already a blanket own-row policy
+  covering any column, the same reasoning `auto_email_documents` (056)
+  already established. Filtering happens **entirely client-side** — inside
+  `loadNotifications()` (`GocContext.jsx:2126-2129`,
+  `AppState+Data.swift:551-552`) and the 5s toast poll
+  (`GocContext.jsx:790-793`, `AppState+Data.swift:664-669`) — not a single
+  one of the ~15 RPCs that INSERT a `notifications` row needed touching.
+  New `muteNotificationKind(kind)` (both platforms) writes the array back
+  and immediately drops any already-loaded notifications of that kind from
+  local state.
+- **Migration applied to production**: `npx supabase db push` (this
+  sandbox does have working, already-linked `supabase` CLI access via
+  `npx --yes supabase`, despite a global `supabase` binary not being
+  installed — worth remembering for next time rather than assuming no CLI
+  access exists) — confirmed via `migration list` (062 went from
+  `"remote":""` to applied) and a live `profiles` read
+  (`muted_notification_kinds: []` present on real rows). This was done
+  *before* shipping the client code that unconditionally selects this
+  column in the sign-in-path profile fetch (`syncUser()`/`applySession()`)
+  — selecting a genuinely nonexistent column would have failed that entire
+  query (PostgREST 400s the whole request, not just the missing field),
+  breaking sign-in for every account until deployed.
+
+**Verified end to end against real accounts, not fabricated flows**: a
+real anon-key session (not service role) successfully wrote `read_at` to a
+timestamp, then back to `null` (both confirmed by an independent read
+after each write); the same real session wrote
+`muted_notification_kinds: ['referral_joined']` to its own profile and the
+client-side filter simulation correctly dropped that account's one
+existing notification of that kind from the list (1 → 0).
+
+UI: web's menu (`Notifications.jsx`'s `NotificationActionSheet`) reuses
+the exact bottom-sheet visual convention `ReasonSheet.jsx` already
+established (dim overlay + a paper panel sliding up), not a new
+dropdown/floating-menu pattern; iOS's (`MessagingViews.swift`) reuses the
+existing generic `BottomSheet<Content>` component (`Sheets.swift`) the
+same way `ReasonSheetView` does. Row's trailing control changed from a
+delete "×"/`xmark` glyph to "•••" (`notification-menu`/`notification.menu`
+test/accessibility identifiers, replacing `notification-delete`).
+
+Both `vite build` and `xcodebuild` succeed.

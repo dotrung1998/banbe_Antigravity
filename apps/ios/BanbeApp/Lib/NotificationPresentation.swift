@@ -20,6 +20,10 @@ private let guestAvatarKinds: Set<String> = [
 
 enum NotificationAvatarSource: Equatable {
     case image(URL)
+    /// A catalogue photo (findEvent()/EVENTS equivalent — CatalogEvent.img),
+    /// rendered via CatalogPhoto's own specialized loader (WebP derivative,
+    /// downsampling, disk cache) rather than a plain URL — see BUG 1 below.
+    case catalogPhoto(String)
     case fallback
 }
 
@@ -50,6 +54,23 @@ func avatarSource(for notification: AppNotification, maps: NotificationAvatarMap
     let eventId = notification.data["event_id"]?.stringValue ?? booking?.eventId
     if let eventId, let url = maps.eventPhotoByEventId[eventId] {
         return .image(url)
+    }
+    // 2026-09-18 follow-up (BUG 1): `event_photos` has never had a single
+    // real row written to it by any code path in this app — confirmed by
+    // repo-wide grep, the only inserts anywhere are migration 010's
+    // one-time seed for 4 demo events. Every real event a real account
+    // books against is a catalogue event (EventCatalog/CatalogEvent.img) —
+    // the same photo shown on HomeView/EventDetailView/DashboardView
+    // everywhere else in the app — so that's the fallback that actually
+    // has real data for a real account, not a second empty table.
+    // EventCatalog.find() itself falls back to the first catalogue event
+    // for an unrecognized key (deliberate elsewhere, so a screen always has
+    // something to render) — wrong for this use: showing a random OTHER
+    // event's photo for a genuinely non-catalogue event_id would be
+    // misleading, worse than the honest bell fallback. Matched directly
+    // against EventCatalog.all instead.
+    if let eventId, let catalogImg = EventCatalog.all.first(where: { $0.key == eventId })?.img {
+        return .catalogPhoto(catalogImg)
     }
     return .fallback
 }

@@ -409,6 +409,11 @@ final class AppState: ObservableObject {
     // Task 4 (migration 056): one-time, account-level opt-in — mirrors
     // profiles.auto_email_documents, loaded alongside locale/theme.
     @Published var autoEmailDocuments = false
+    // BUG 4 (07-notifications.md's 2026-09-18 follow-up): the "•••" menu's
+    // "Tắt loại thông báo này" action — filtered client-side only (see
+    // loadNotifications()/the toast poll), no insert-side change to any of
+    // the ~15 RPCs that write a notifications row.
+    @Published var mutedNotificationKinds: [String] = []
     // Two-phase payment machine (migrations 026/027).
     @Published var paymentTxnId = ""
     @Published var verifications: [PendingVerification] = []

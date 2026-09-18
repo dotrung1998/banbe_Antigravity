@@ -64,6 +64,11 @@ const initialState = {
   // Task 4 (migration 056): one-time, account-level opt-in — mirrors
   // profiles.auto_email_documents, loaded in syncUser() like locale/theme.
   autoEmailDocuments: false,
+  // BUG 4 (07-notifications.md's 2026-09-18 follow-up): the "•••" menu's
+  // "Tắt loại thông báo này" action — filtered client-side only (see
+  // loadNotifications()/the toast poll), no insert-side change to any of
+  // the ~15 RPCs that write a notifications row.
+  mutedNotificationKinds: [],
   // True only when Login was reached by force (the mandatory post-splash/
   // post-onboarding gate, or the guard effect catching an unauthenticated
   // screen change) rather than a deliberate "sign in to do X" prompt that
@@ -502,7 +507,7 @@ export function GocProvider({ children }) {
       }
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, locale, theme, prefs_saved, display_name, referral_code, policy_accepted_at, policy_version, auto_email_documents')
+        .select('role, locale, theme, prefs_saved, display_name, referral_code, policy_accepted_at, policy_version, auto_email_documents, muted_notification_kinds')
         .eq('id', user.id)
         .maybeSingle();
       const role =
@@ -516,6 +521,7 @@ export function GocProvider({ children }) {
         user: { ...user, name: displayName }, accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer',
         referralCode: profile?.referral_code || null, sessionChecked: true,
         autoEmailDocuments: profile?.auto_email_documents === true,
+        mutedNotificationKinds: profile?.muted_notification_kinds || [],
       });
 
       // Proof-of-consent bookkeeping (Task 1, migration 055,
@@ -780,7 +786,10 @@ export function GocProvider({ children }) {
         .order('created_at', { ascending: false })
         .limit(50);
       if (!active || error) return;
-      const rows = data || [];
+      // Filtered client-side, not queried server-side —
+      // muted_notification_kinds (062) exists purely for this, so a muted
+      // kind neither shows in the list nor toasts (BUG 4).
+      const rows = (data || []).filter(n => !s.mutedNotificationKinds.includes(n.kind));
       let attendingStale = false;
       // reject_pending_guest() ('booking_declined') and cancel_booking()
       // ('booking_cancelled') are two separate RPCs — different code,
@@ -827,7 +836,7 @@ export function GocProvider({ children }) {
     poll();
     const interval = setInterval(poll, 5000);
     return () => { active = false; clearInterval(interval); };
-  }, [set, s.user?.id, pushToast, loadMyEvents]);
+  }, [set, s.user?.id, s.mutedNotificationKinds, pushToast, loadMyEvents]);
 
   useEffect(() => {
     if (!s.user?.id) return;
@@ -2118,7 +2127,9 @@ export function GocProvider({ children }) {
       .order('created_at', { ascending: false })
       .limit(50);
     if (error) { console.warn('Failed to load notifications:', error); return; }
-    const rows = data || [];
+    // Filtered client-side, not queried server-side — muted_notification_kinds
+    // (062) exists purely for this, no insert-side RPC change (BUG 4).
+    const rows = (data || []).filter(n => !s.mutedNotificationKinds.includes(n.kind));
     // Instagram-style avatars (07-notifications.md's 2026-09-18 follow-up):
     // notifications has no actor/avatar column of its own, so this batches
     // the two joins avatarSourceFor() (src/lib/notifications.js) needs —
@@ -2139,12 +2150,21 @@ export function GocProvider({ children }) {
       // event_photos.storage_path lives in the PUBLIC 'event-photos' bucket
       // (005) — getPublicUrl() is a local URL-builder, not a network call,
       // so this is cheap even though it runs once per resolved event.
+      // 2026-09-18 follow-up (BUG 1): confirmed live that migration 010's
+      // seed rows store storage_path WITH the bucket name already baked in
+      // ('event-photos/evt_001/cover.jpg') — unlike every other
+      // storage_path/proof_path/file_path column in this schema (pay-proof,
+      // payment-documents), which are bucket-RELATIVE. Passed as-is to
+      // getPublicUrl(), this doubles the bucket segment
+      // ('.../public/event-photos/event-photos/...'), a broken URL.
+      // Stripped defensively so either convention resolves correctly.
       const { data: photos } = await supabase
         .from('event_photos').select('event_id, storage_path, sort_order')
         .in('event_id', eventIds).order('sort_order', { ascending: true });
       for (const p of photos || []) {
         if (!eventPhotoByEventId[p.event_id]) {
-          eventPhotoByEventId[p.event_id] = supabase.storage.from('event-photos').getPublicUrl(p.storage_path).data.publicUrl;
+          const relativePath = p.storage_path.replace(/^event-photos\//, '');
+          eventPhotoByEventId[p.event_id] = supabase.storage.from('event-photos').getPublicUrl(relativePath).data.publicUrl;
         }
       }
     }
@@ -2161,7 +2181,7 @@ export function GocProvider({ children }) {
       notifications: rows, unreadNotifications: rows.filter(n => !n.read_at).length,
       notificationBookingById: bookingById, notificationEventPhotoByEventId: eventPhotoByEventId, notificationAvatarByUserId: avatarByUserId,
     });
-  }, [set, s.user?.id]);
+  }, [set, s.user?.id, s.mutedNotificationKinds]);
   const goNotifications = useCallback(() => {
     set({ screen: 'notifications' });
     loadNotifications();
@@ -2181,6 +2201,37 @@ export function GocProvider({ children }) {
     const { error } = await supabase.from('notifications').update({ read_at: readAt }).eq('id', id);
     if (error) console.warn('Failed to mark notification read:', error);
   }, [set, s.notifications]);
+
+  // The "•••" menu's "Đánh dấu chưa đọc" action (BUG 4) — the exact
+  // reverse of markNotificationRead(). No new RPC/schema: notifications'
+  // existing UPDATE RLS (notifications_update_own... actually
+  // read_at-scoped to recipient, migration 019) already allows a plain
+  // client-side write of NULL back onto a column it already lets the
+  // recipient set.
+  const markNotificationUnread = useCallback(async (id) => {
+    const target = s.notifications.find(n => n.id === id);
+    if (!target || !target.read_at) return;
+    set(prev => ({
+      notifications: prev.notifications.map(n => (n.id === id ? { ...n, read_at: null } : n)),
+      unreadNotifications: prev.unreadNotifications + 1,
+    }));
+    const { error } = await supabase.from('notifications').update({ read_at: null }).eq('id', id);
+    if (error) console.warn('Failed to mark notification unread:', error);
+  }, [set, s.notifications]);
+
+  // The "•••" menu's "Tắt loại thông báo này" action (BUG 4) —
+  // profiles.muted_notification_kinds (062), filtered client-side only in
+  // loadNotifications()/the toast poll below; no insert-side RPC change.
+  const muteNotificationKind = useCallback(async (kind) => {
+    if (!s.user?.id || s.mutedNotificationKinds.includes(kind)) return;
+    const next = [...s.mutedNotificationKinds, kind];
+    set(prev => {
+      const remaining = prev.notifications.filter(n => n.kind !== kind);
+      return { mutedNotificationKinds: next, notifications: remaining, unreadNotifications: remaining.filter(n => !n.read_at).length };
+    });
+    const { error } = await supabase.from('profiles').update({ muted_notification_kinds: next }).eq('id', s.user.id);
+    if (error) console.warn('Failed to mute notification kind:', error);
+  }, [set, s.user?.id, s.mutedNotificationKinds]);
 
   // A real, permanent delete — not audit-sensitive the way dispute_messages
   // is (05-notify-retention.md's 72h retention is a different table
@@ -3317,7 +3368,7 @@ export function GocProvider({ children }) {
     openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, deleteNotification, openNotification, clearChatHighlight, dismissToast,
+    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, openNotification, clearChatHighlight, dismissToast,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
@@ -3346,7 +3397,7 @@ export function GocProvider({ children }) {
     openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, deleteNotification, openNotification, clearChatHighlight, dismissToast,
+    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, openNotification, clearChatHighlight, dismissToast,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,

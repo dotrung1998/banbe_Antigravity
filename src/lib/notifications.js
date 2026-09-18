@@ -1,6 +1,7 @@
 // Notification-bell presentation helpers — kept separate from GocContext.jsx
 // so the row renderer (Notifications.jsx) doesn't need per-kind branching
 // scattered through its JSX. Mirrors apps/ios/BanbeApp/Lib/NotificationPresentation.swift.
+import { EVENTS } from '../data/events.js';
 
 // Kinds where the notification is fundamentally ABOUT A SPECIFIC GUEST from
 // the organizer's own perspective — these prefer the guest's own avatar
@@ -38,6 +39,23 @@ export function avatarSourceFor(n, { bookingById, eventPhotoByEventId, avatarByU
   const eventId = n.data?.event_id || booking?.event_id;
   if (eventId && eventPhotoByEventId?.[eventId]) {
     return { type: 'image', url: eventPhotoByEventId[eventId] };
+  }
+  // 2026-09-18 follow-up (BUG 1): `event_photos` has never had a single
+  // real row written to it by any code path in this app — confirmed by
+  // repo-wide grep, the only inserts anywhere are migration 010's one-time
+  // seed for 4 demo events (evt_001-evt_004). Every real event a real
+  // account books against is a catalogue event (findEvent()/EVENTS,
+  // src/data/events.js) — the same photo shown on Home/EventDetail/
+  // Dashboard everywhere else in the app — so that's the fallback that
+  // actually has real data for a real account, not a second empty table.
+  // findEvent() itself falls back to EVENTS[0] for an unrecognized key
+  // (deliberate elsewhere, so a screen always has something to render) —
+  // wrong for this use: showing a random OTHER event's photo for a
+  // genuinely non-catalogue event_id would be misleading, worse than the
+  // honest bell fallback. Matched directly against EVENTS instead.
+  const catalogImg = eventId ? EVENTS.find(e => e.key === eventId)?.img : null;
+  if (catalogImg) {
+    return { type: 'image', url: catalogImg };
   }
   return { type: 'fallback' };
 }
