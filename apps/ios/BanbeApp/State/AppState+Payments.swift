@@ -802,11 +802,12 @@ extension AppState {
     /// booking row), but this keeps them from seeing the screen's
     /// organizer-framed copy and action buttons ("Money received"/"Can't
     /// find it") over their own payment at all, not just from acting on it.
-    func openVerifications() {
+    func openVerifications(back: Screen = .profile) {
         guard canHost else { return }
         screen = .verifications
         verifications = []
         verificationsFocusBookingID = nil
+        verificationsBack = back
         Task { await loadVerifications() }
     }
 
@@ -816,12 +817,13 @@ extension AppState {
     /// guard as bug 1's openNotification() fix (myOrgEventKeys, not just
     /// the account-wide canHost check) since this is reachable from a bell
     /// notification tap too, not just Attendance's own (already-scoped) list.
-    func openVerificationDetail(bookingID: UUID, eventKey: String?) {
+    func openVerificationDetail(bookingID: UUID, eventKey: String?, back: Screen = .profile) {
         if let eventKey, !myOrgEventKeys.contains(eventKey) { return }
         guard canHost else { return }
         screen = .verifications
         verifications = []
         verificationsFocusBookingID = bookingID
+        verificationsBack = back
         Task { await loadVerifications() }
     }
 

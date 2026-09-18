@@ -258,7 +258,13 @@ struct ConfirmedView: View {
                                 .padding(.horizontal, 22).padding(.top, 8)
                         }
                     }
-                    footerButton(app.T("Về trang chính", "Back to home")) { app.goHome() }
+                    // Same documentBack-style pattern (07-notifications.md's
+                    // 2026-09-18 follow-up) — honors confirmedBack (default
+                    // .home, unchanged for every non-notification entry
+                    // point) instead of always going home.
+                    footerButton(app.confirmedBack == .notifications ? app.T("‹ Thông báo", "‹ Notifications") : app.T("Về trang chính", "Back to home")) {
+                        app.screen = app.confirmedBack
+                    }
                 }
             }
         }

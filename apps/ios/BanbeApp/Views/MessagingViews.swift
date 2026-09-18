@@ -87,7 +87,7 @@ struct ChatView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 1) {
-                Button("‹ " + (app.chatBack == .inbox ? app.T("Tin nhắn", "Messages") : event.orgName)) {
+                Button("‹ " + (app.chatBack == .inbox ? app.T("Tin nhắn", "Messages") : app.chatBack == .notifications ? app.T("Thông báo", "Notifications") : event.orgName)) {
                     app.chatBackAction()
                 }
                 .font(.system(size: 11))
@@ -197,13 +197,50 @@ struct ChatView: View {
     }
 }
 
-/// Port of src/screens/Notifications.jsx — unread and read split into their
-/// own sections; tapping one marks it read and opens whatever it points at.
+/// Redesigned to read like Instagram/Facebook's own notification list
+/// (07-notifications.md's 2026-09-18 follow-up): a left avatar per row
+/// (derived per-kind — see avatarSource(for:maps:accountType:)), a bold
+/// title + single-line truncated preview, and time-based sections with
+/// unread always pinned to the top regardless of age. Same fonts/colors as
+/// everywhere else in the app (BanbeTheme/app.palette) — no new design system.
+private let notificationCollapseAt = 20
+
 struct NotificationsView: View {
     @EnvironmentObject var app: AppState
+    // Which sections have had their "Xem thêm" tapped — purely a
+    // render-time slice of already-loaded data (loadNotifications() fetches
+    // up to 50 at once), so a plain local Set is enough; nothing here needs
+    // a new query.
+    @State private var expandedSections: Set<String> = []
 
-    private var unread: [AppNotification] { app.notifications.filter { $0.readAt == nil } }
-    private var read: [AppNotification] { app.notifications.filter { $0.readAt != nil } }
+    private struct NotificationSection: Identifiable {
+        let id: String
+        let title: String
+        let items: [AppNotification]
+        let unread: Bool
+    }
+
+    private var sections: [NotificationSection] {
+        let unread = app.notifications.filter { $0.readAt == nil }
+        // Instagram/Facebook's own convention: unread sits in its own
+        // section on top regardless of age — a week-old unread notification
+        // still belongs in "Mới", not "Cũ hơn". Everything else buckets by age.
+        var today: [AppNotification] = [], week: [AppNotification] = [], older: [AppNotification] = []
+        let now = Date()
+        for n in app.notifications where n.readAt != nil {
+            switch notificationAgeBucket(n.createdAt, now: now) {
+            case .today: today.append(n)
+            case .week: week.append(n)
+            case .older: older.append(n)
+            }
+        }
+        return [
+            NotificationSection(id: "new", title: app.T("Mới", "New"), items: unread, unread: true),
+            NotificationSection(id: "today", title: app.T("Hôm nay", "Today"), items: today, unread: false),
+            NotificationSection(id: "week", title: app.T("7 ngày qua", "Last 7 days"), items: week, unread: false),
+            NotificationSection(id: "older", title: app.T("Cũ hơn", "Older"), items: older, unread: false),
+        ].filter { !$0.items.isEmpty }
+    }
 
     var body: some View {
         ScreenScaffold {
@@ -216,14 +253,16 @@ struct NotificationsView: View {
                 }
                 .padding(.bottom, 14)
 
-                if app.notifications.isEmpty {
+                let allSections = sections
+                if allSections.isEmpty {
                     Text(app.T("Chưa có thông báo nào.", "No notifications yet."))
                         .font(.system(size: 14))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 80)
                 } else {
-                    if !unread.isEmpty { section(app.T("Chưa đọc", "Unread"), items: unread, unread: true) }
-                    if !read.isEmpty { section(app.T("Đã đọc", "Read"), items: read, unread: false) }
+                    ForEach(allSections) { sec in
+                        section(sec)
+                    }
                 }
             }
             .foregroundStyle(app.palette.ink)
@@ -234,56 +273,106 @@ struct NotificationsView: View {
         .task { await app.loadNotifications() }
     }
 
-    private func section(_ title: String, items: [AppNotification], unread: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title.uppercased())
+    private func section(_ sec: NotificationSection) -> some View {
+        let expanded = expandedSections.contains(sec.id)
+        let visible = expanded ? sec.items : Array(sec.items.prefix(notificationCollapseAt))
+        let hiddenCount = sec.items.count - visible.count
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(sec.title.uppercased())
                 .font(.system(size: 11, weight: .semibold))
                 .kerning(0.5)
                 .foregroundStyle(app.palette.ink.opacity(0.6))
-            ForEach(items) { item in
-                HStack(alignment: .top, spacing: 10) {
-                    Button { app.openNotification(item) } label: {
-                        HStack(alignment: .top, spacing: 10) {
-                            Circle()
-                                .fill(unread ? app.palette.ink : .clear)
-                                .frame(width: 7, height: 7)
-                                .padding(.top, 6)
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack(alignment: .firstTextBaseline) {
-                                    Text(item.title)
-                                        .font(BanbeTheme.display(16))
-                                        .fontWeight(unread ? .bold : .regular)
-                                    Spacer(minLength: 12)
-                                    Text(app.trStatus(EventLabels.ago(hoursAgo(item.createdAt))))
-                                        .font(.system(size: 11))
-                                }
-                                Text(item.body).font(.system(size: 13)).multilineTextAlignment(.leading)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    // A real, permanent delete (notifications_delete_own
-                    // RLS, migration 050) — not audit-sensitive the way
-                    // dispute_messages is, so no confirm dialog either.
-                    Button {
-                        Task { await app.deleteNotification(item) }
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(app.palette.ink.opacity(0.4))
-                            .padding(6)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("notification-delete")
-                }
-                .opacity(unread ? 1 : 0.6)
-                .padding(.vertical, 14)
+            ForEach(visible) { item in
+                row(item, unread: sec.unread)
                 Divider().overlay(app.palette.rule)
+            }
+            if hiddenCount > 0 {
+                Button(app.T("Xem thêm (\(hiddenCount))", "View more (\(hiddenCount))")) {
+                    expandedSections.insert(sec.id)
+                }
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(app.palette.ink.opacity(0.65))
+                .buttonStyle(.plain)
+                .padding(.vertical, 12)
+                .accessibilityIdentifier("notifications.more.\(sec.id)")
             }
         }
         .padding(.bottom, 22)
+    }
+
+    private func row(_ item: AppNotification, unread: Bool) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Button { app.openNotification(item) } label: {
+                HStack(alignment: .top, spacing: 10) {
+                    avatar(for: item)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(item.title)
+                                .font(BanbeTheme.display(15))
+                                .fontWeight(.bold)
+                                .lineLimit(1)
+                            Spacer(minLength: 12)
+                            Text(app.trStatus(EventLabels.ago(hoursAgo(item.createdAt))))
+                                .font(.system(size: 11))
+                        }
+                        // Instagram's own "bold actor/action + secondary
+                        // preview" shape — one truncated line, not the old
+                        // full-body wrap.
+                        Text(item.body)
+                            .font(.system(size: 13))
+                            .foregroundStyle(app.palette.ink.opacity(0.75))
+                            .lineLimit(1)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            // A real, permanent delete (notifications_delete_own
+            // RLS, migration 050) — not audit-sensitive the way
+            // dispute_messages is, so no confirm dialog either.
+            Button {
+                Task { await app.deleteNotification(item) }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(app.palette.ink.opacity(0.4))
+                    .padding(6)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("notification-delete")
+        }
+        .opacity(unread ? 1 : 0.6)
+        .padding(.vertical, 14)
+    }
+
+    @ViewBuilder
+    private func avatar(for item: AppNotification) -> some View {
+        switch avatarSource(for: item, maps: app.notificationAvatarMaps, accountType: app.accountType) {
+        case .image(let url):
+            AsyncImage(url: url) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFill()
+                } else {
+                    avatarFallback
+                }
+            }
+            .frame(width: 40, height: 40)
+            .clipShape(Circle())
+        case .fallback:
+            avatarFallback
+        }
+    }
+
+    // A plain colored circle with the app's own bell mark — never a broken
+    // image. Used whenever avatarSource(for:maps:accountType:) can't
+    // resolve an event photo or a guest avatar (neither exists, or the
+    // notification kind has no specific actor at all, e.g. referral_joined).
+    private var avatarFallback: some View {
+        Circle()
+            .fill(app.palette.ink.opacity(0.08))
+            .frame(width: 40, height: 40)
+            .overlay(Text("🔔").font(.system(size: 16)))
     }
 
     private func hoursAgo(_ date: Date) -> Int {

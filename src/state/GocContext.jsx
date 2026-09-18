@@ -150,6 +150,15 @@ const initialState = {
   // behavior) or 'confirmed' (the ticket screen's own "Xem Receipt").
   // backFromDocument() reads this instead of a single hardcoded target.
   documentBack: 'documents',
+  // Same documentBack/paymentBack pattern, extended (07-notifications.md's
+  // 2026-09-18 follow-up) so every screen openNotification() can route to
+  // remembers "opened from Notifications" and returns there specifically —
+  // not Home, not wherever else. Each defaults to this screen's own
+  // previous fixed behavior (unchanged for every non-notification entry
+  // point) unless a caller opts in with a different `back` value.
+  attendanceBack: 'dashboard',
+  verificationsBack: 'profile',
+  confirmedBack: 'home',
   // Signed URL for the current document's uploaded file (migration 056) —
   // '' while loading/absent (a legacy, pre-upload document has no
   // file_path at all and falls back to the old rendered-HTML viewer).
@@ -222,6 +231,13 @@ const initialState = {
   editNameSaving: false,
   notifications: [],
   unreadNotifications: 0,
+  // Batch-fetched by loadNotifications() alongside `notifications` itself —
+  // avatarSourceFor() (src/lib/notifications.js) reads these three lookup
+  // tables instead of a join per row. Keyed by id, not by notification —
+  // several notifications about the same booking/event share one entry.
+  notificationBookingById: {},
+  notificationEventPhotoByEventId: {},
+  notificationAvatarByUserId: {},
   // Ephemeral in-app toasts, surfaced proactively (see the polling effect
   // near loadNotifications) — separate from `notifications` itself, which
   // stays the permanent, pull-based inbox (Notifications.jsx). Each entry:
@@ -1293,10 +1309,11 @@ export function GocProvider({ children }) {
   // row), but this keeps them from seeing the screen's organizer-framed
   // copy and action buttons ("Money received"/"Can't find it") over their
   // own payment at all, not just from acting on it.
-  const openVerifications = useCallback(() => {
+  const openVerifications = useCallback((back = 'profile') => {
     if (!(s.organizerMode || s.accountType === 'admin' || s.hasHosted)) return;
-    set({ screen: 'verifications', verifications: [], verificationsLoading: true, verificationsFocusBookingId: null });
+    set({ screen: 'verifications', verifications: [], verificationsLoading: true, verificationsFocusBookingId: null, verificationsBack: back });
   }, [set, s.organizerMode, s.accountType, s.hasHosted]);
+  const backFromVerifications = useCallback(() => set(prev => ({ screen: prev.verificationsBack || 'profile' })), [set]);
 
   /**
    * 14-organizer-checkin.md: Attendance's "Check payment" — jumps straight
@@ -1307,10 +1324,10 @@ export function GocProvider({ children }) {
    * organizerMode/hasHosted check) since this is reachable from a bell
    * notification tap too, not just Attendance's own (already-scoped) list.
    */
-  const openVerificationDetail = useCallback((bookingId, eventKey) => {
+  const openVerificationDetail = useCallback((bookingId, eventKey, back = 'profile') => {
     if (eventKey && !s.myOrgEventKeys.includes(eventKey)) return;
     if (!(s.organizerMode || s.accountType === 'admin' || s.hasHosted)) return;
-    set({ screen: 'verifications', verifications: [], verificationsLoading: true, verificationsFocusBookingId: bookingId });
+    set({ screen: 'verifications', verifications: [], verificationsLoading: true, verificationsFocusBookingId: bookingId, verificationsBack: back });
   }, [set, s.organizerMode, s.accountType, s.hasHosted, s.myOrgEventKeys]);
 
   /**
@@ -2101,7 +2118,49 @@ export function GocProvider({ children }) {
       .order('created_at', { ascending: false })
       .limit(50);
     if (error) { console.warn('Failed to load notifications:', error); return; }
-    set({ notifications: data || [], unreadNotifications: (data || []).filter(n => !n.read_at).length });
+    const rows = data || [];
+    // Instagram-style avatars (07-notifications.md's 2026-09-18 follow-up):
+    // notifications has no actor/avatar column of its own, so this batches
+    // the two joins avatarSourceFor() (src/lib/notifications.js) needs —
+    // bookings (for its event_id/user_id) and, from there, event_photos'
+    // cover image / profiles.avatar_url — instead of a query per row.
+    const bookingIds = [...new Set(rows.map(n => n.data?.booking_id).filter(Boolean))];
+    let bookingById = {};
+    if (bookingIds.length) {
+      const { data: bookings } = await supabase.from('bookings').select('id, event_id, user_id').in('id', bookingIds);
+      bookingById = Object.fromEntries((bookings || []).map(b => [b.id, b]));
+    }
+    const eventIds = [...new Set([
+      ...rows.map(n => n.data?.event_id).filter(Boolean),
+      ...Object.values(bookingById).map(b => b.event_id).filter(Boolean),
+    ])];
+    let eventPhotoByEventId = {};
+    if (eventIds.length) {
+      // event_photos.storage_path lives in the PUBLIC 'event-photos' bucket
+      // (005) — getPublicUrl() is a local URL-builder, not a network call,
+      // so this is cheap even though it runs once per resolved event.
+      const { data: photos } = await supabase
+        .from('event_photos').select('event_id, storage_path, sort_order')
+        .in('event_id', eventIds).order('sort_order', { ascending: true });
+      for (const p of photos || []) {
+        if (!eventPhotoByEventId[p.event_id]) {
+          eventPhotoByEventId[p.event_id] = supabase.storage.from('event-photos').getPublicUrl(p.storage_path).data.publicUrl;
+        }
+      }
+    }
+    const guestUserIds = [...new Set(Object.values(bookingById).map(b => b.user_id).filter(Boolean))];
+    let avatarByUserId = {};
+    if (guestUserIds.length) {
+      // profiles.avatar_url is stored as a full external URL already (seed
+      // data confirms this — not a storage path), so no signing/join step
+      // beyond this one query.
+      const { data: profiles } = await supabase.from('profiles').select('id, avatar_url').in('id', guestUserIds);
+      avatarByUserId = Object.fromEntries((profiles || []).filter(p => p.avatar_url).map(p => [p.id, p.avatar_url]));
+    }
+    set({
+      notifications: rows, unreadNotifications: rows.filter(n => !n.read_at).length,
+      notificationBookingById: bookingById, notificationEventPhotoByEventId: eventPhotoByEventId, notificationAvatarByUserId: avatarByUserId,
+    });
   }, [set, s.user?.id]);
   const goNotifications = useCallback(() => {
     set({ screen: 'notifications' });
@@ -2771,7 +2830,7 @@ export function GocProvider({ children }) {
     // gets; tapping it now takes you straight to the thread.
   }, [set, s.chatDraft, s.chatThreadId, s.user]);
   const chatOnKey = useCallback((e) => { if (e.key === 'Enter') chatSend(); }, [chatSend]);
-  const chatBackFn = useCallback(() => set(prev => ({ screen: prev.chatBack === 'inbox' ? 'inbox' : 'organizer' })), [set]);
+  const chatBackFn = useCallback(() => set(prev => ({ screen: prev.chatBack === 'inbox' || prev.chatBack === 'notifications' ? prev.chatBack : 'organizer' })), [set]);
 
   // A real, permanent delete, own messages only — RLS (messages_delete_own,
   // migration 054) scopes this to `sender_id = auth.uid()`, which a system
@@ -2926,22 +2985,24 @@ export function GocProvider({ children }) {
       });
     set({ attendanceGuests: guests, attendanceLoading: false });
   }, [set]);
-  const openAttendance = useCallback((key) => {
-    set({ screen: 'attendance', attendanceEventKey: key, attendanceGuests: [] });
+  const openAttendance = useCallback((key, back = 'dashboard') => {
+    set({ screen: 'attendance', attendanceEventKey: key, attendanceGuests: [], attendanceBack: back });
     loadAttendanceGuests(key);
   }, [set, loadAttendanceGuests]);
+  const backFromAttendance = useCallback(() => set(prev => ({ screen: prev.attendanceBack || 'dashboard' })), [set]);
 
   // Reopens the Confirmed/ticket screen for a specific booking — used when
   // a 'payment_confirmed' notification arrives (or is tapped) after the
   // guest has moved on elsewhere in the app, since the booking that just
   // unlocked its QR code isn't necessarily the one in state.booking any more.
-  const openBookingConfirmed = useCallback(async (bookingId, eventKey) => {
+  const openBookingConfirmed = useCallback(async (bookingId, eventKey, back = 'home') => {
     const { data } = await supabase.from('bookings').select('*').eq('id', bookingId).maybeSingle();
     if (!data) return;
     set({
       screen: 'confirmed',
       eventKey: eventKey || data.event_id,
       booking: data,
+      confirmedBack: back,
       // Bug 3 (15-organizer-checkin.md follow-up): this used to read the
       // legacy `expires_at` mirror column, which hold_seats() sets once at
       // creation and NOTHING ever clears afterward — not confirm_payment()
@@ -2960,6 +3021,7 @@ export function GocProvider({ children }) {
       now: Date.now(),
     });
   }, [set]);
+  const backFromConfirmed = useCallback(() => set(prev => ({ screen: prev.confirmedBack || 'home' })), [set]);
 
   /**
    * The client-side half of forfeiting a lapsed PHASE 1 hold. Called the
@@ -3040,19 +3102,25 @@ export function GocProvider({ children }) {
     // from the navigation itself, not just left looking at buttons that
     // silently no-op under RLS.
     const iOrganize = (eventId) => s.myOrgEventKeys.includes(eventId);
+    // Every branch below passes 'notifications' as its destination's own
+    // back-target (attendanceBack/verificationsBack/paymentBack/
+    // confirmedBack/documentBack/chatBack — same field/default-param
+    // pattern documentBack/paymentDetailsBackTarget already established) —
+    // a screen reached from the bell always returns to the bell specifically,
+    // not Home or wherever else (07-notifications.md's 2026-09-18 follow-up).
     if (n.kind === 'new_message' && n.data?.thread_id) {
-      openThread(n.data.thread_id, n.data.event_id, 'inbox');
+      openThread(n.data.thread_id, n.data.event_id, 'notifications');
     } else if (n.kind === 'booking_requested' && n.data?.event_id && iOrganize(n.data.event_id)) {
       // The organizer's side: straight to the check-in list for that event,
       // where "mark as paid" already lives (see Attendance.jsx).
-      openAttendance(n.data.event_id);
+      openAttendance(n.data.event_id, 'notifications');
     } else if (n.kind === 'hold_created' && n.data?.booking_id) {
       // 01-hold-payment.md follow-up: the guest's own mirror of
       // 'booking_requested' above (hold_seats(), migration 053) — takes
       // the guest straight back to their own timer/QR/payment screen for
       // this exact hold, the same way `dispute_message` already does for
       // its own guest-facing case below.
-      openPaymentDetails(n.data.booking_id);
+      openPaymentDetails(n.data.booking_id, 'notifications');
     } else if (n.kind === 'payment_awaiting_verification' && n.data?.event_id && iOrganize(n.data.event_id)) {
       // 01-hold-payment.md follow-up: fired by submit_payment_proof()
       // (031:317) when a guest reports having transferred — the organizer
@@ -3061,9 +3129,9 @@ export function GocProvider({ children }) {
       // request's lifecycle, still shown/actioned from Verifications —
       // "Money received"/"Can't find it" — not Attendance's check-in list,
       // so `openVerifications()` here, not `openAttendance()`).
-      openVerifications();
+      openVerifications('notifications');
     } else if (n.kind === 'payment_confirmed' && n.data?.booking_id) {
-      openBookingConfirmed(n.data.booking_id, n.data.event_id);
+      openBookingConfirmed(n.data.booking_id, n.data.event_id, 'notifications');
     } else if (n.kind === 'dispute_message' && n.data?.booking_id) {
       // Only the guest and organizer ever receive this kind (migration
       // 048/050 — admin is deliberately excluded), so accountType alone
@@ -3071,10 +3139,10 @@ export function GocProvider({ children }) {
       // message_id may be absent on a row created before migration 050 —
       // DisputeChatPanel.jsx falls back to scrolling to the bottom instead.
       set({ chatHighlight: { bookingId: n.data.booking_id, messageId: n.data.message_id || null } });
-      if (s.accountType === 'organizer') openVerifications();
-      else openPaymentDetails(n.data.booking_id);
+      if (s.accountType === 'organizer') openVerifications('notifications');
+      else openPaymentDetails(n.data.booking_id, 'notifications');
     } else if ((n.kind === 'payment_document_uploaded' || n.kind === 'payment_document_replaced') && n.data?.document_id) {
-      openDocumentFromNotification(n.data.document_id);
+      openDocumentFromNotification(n.data.document_id, 'notifications');
     } else if (n.kind === 'receipt_requested' && n.data?.event_id && iOrganize(n.data.event_id)) {
       // The guest's own "Xem Receipt" (Confirmed.jsx) asked for one that
       // doesn't exist yet — straight to Check-in, same per-event ownership
@@ -3083,7 +3151,7 @@ export function GocProvider({ children }) {
       // Attendance.jsx's attendanceHighlightBookingId effect) so the
       // organizer doesn't have to hunt for it in a long list.
       set({ attendanceHighlightBookingId: n.data.booking_id });
-      openAttendance(n.data.event_id);
+      openAttendance(n.data.event_id, 'notifications');
     }
   }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, openVerifications, openPaymentDetails, openDocumentFromNotification]);
   /**
@@ -3238,15 +3306,15 @@ export function GocProvider({ children }) {
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState,
-    goChat, goLogin, goDashboard, goCreate, openAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
+    goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
-    loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof,
+    loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof, openBookingConfirmed, backFromConfirmed,
     openBilling, billingNameType, billingAddressType, billingPhoneType, billingTaxCodeType, saveBillingDetails,
     openPayout, payoutField, savePayoutDetails,
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid, uploadPaymentDocument, openDocumentFromNotification, toggleAutoEmailDocuments,
     submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer, loadReceiptStatus, requestReceipt,
-    openVerifications, openVerificationDetail, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
+    openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, deleteNotification, openNotification, clearChatHighlight, dismissToast,
@@ -3267,15 +3335,15 @@ export function GocProvider({ children }) {
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState,
-    goChat, goLogin, goDashboard, goCreate, openAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
+    goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
-    loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof,
+    loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof, openBookingConfirmed, backFromConfirmed,
     openBilling, billingNameType, billingAddressType, billingPhoneType, billingTaxCodeType, saveBillingDetails,
     openPayout, payoutField, savePayoutDetails,
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid, uploadPaymentDocument, openDocumentFromNotification, toggleAutoEmailDocuments,
     submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer, loadReceiptStatus, requestReceipt,
-    openVerifications, openVerificationDetail, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
+    openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, deleteNotification, openNotification, clearChatHighlight, dismissToast,

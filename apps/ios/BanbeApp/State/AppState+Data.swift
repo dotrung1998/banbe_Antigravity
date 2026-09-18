@@ -108,6 +108,34 @@ private struct ProfileName: Decodable {
         case displayName = "display_name"
     }
 }
+/// Row shapes for loadNotificationAvatarMaps()'s batch joins — notifications
+/// has no actor/avatar column, so these back avatarSource(for:maps:accountType:).
+private struct NotificationBookingRow: Decodable {
+    let id: UUID
+    let eventId: String
+    let userId: UUID?
+    enum CodingKeys: String, CodingKey {
+        case id
+        case eventId = "event_id"
+        case userId = "user_id"
+    }
+}
+private struct EventPhotoRow: Decodable {
+    let eventId: String
+    let storagePath: String
+    enum CodingKeys: String, CodingKey {
+        case eventId = "event_id"
+        case storagePath = "storage_path"
+    }
+}
+private struct ProfileAvatarRow: Decodable {
+    let id: UUID
+    let avatarUrl: String?
+    enum CodingKeys: String, CodingKey {
+        case id
+        case avatarUrl = "avatar_url"
+    }
+}
 /// Row shape for the payment_documents query loadAttendanceGuests() runs to
 /// populate AttendanceGuest.hasReceipt/receiptVersionCount/receiptPendingDelete
 /// — mirrors the web's equivalent query in GocContext.jsx.
@@ -497,15 +525,73 @@ extension AppState {
     func loadNotifications() async {
         guard let uid = userID else { notifications = []; return }
         do {
-            notifications = try await SupabaseService.client
+            let rows: [AppNotification] = try await SupabaseService.client
                 .from("notifications").select()
                 .eq("recipient_id", value: uid)
                 .order("created_at", ascending: false)
                 .limit(50)
                 .execute().value
+            notifications = rows
+            notificationAvatarMaps = await loadNotificationAvatarMaps(for: rows)
         } catch {
             print("Failed to load notifications:", error)
         }
+    }
+
+    /// Instagram-style avatars (07-notifications.md's 2026-09-18
+    /// follow-up): notifications has no actor/avatar column of its own, so
+    /// this batches the two joins avatarSource(for:maps:accountType:)
+    /// (Lib/NotificationPresentation.swift) needs — bookings (for its
+    /// event_id/user_id) and, from there, event_photos' cover image /
+    /// profiles.avatar_url — instead of a query per row.
+    private func loadNotificationAvatarMaps(for rows: [AppNotification]) async -> NotificationAvatarMaps {
+        var maps = NotificationAvatarMaps()
+        let bookingIDs = Set(rows.compactMap { $0.data["booking_id"]?.stringValue.flatMap(UUID.init(uuidString:)) })
+        do {
+            if !bookingIDs.isEmpty {
+                let bookings: [NotificationBookingRow] = try await SupabaseService.client
+                    .from("bookings").select("id, event_id, user_id")
+                    .in("id", values: bookingIDs.map(\.uuidString))
+                    .execute().value
+                for b in bookings { maps.bookingById[b.id] = (eventId: b.eventId, userId: b.userId) }
+            }
+            var eventIDs = Set(rows.compactMap { $0.data["event_id"]?.stringValue })
+            eventIDs.formUnion(maps.bookingById.values.map(\.eventId))
+            if !eventIDs.isEmpty {
+                // event_photos.storage_path lives in the PUBLIC
+                // 'event-photos' bucket (005) — getPublicURL() is a local
+                // URL-builder, not a network call, so this is cheap even
+                // though it runs once per resolved event.
+                let photos: [EventPhotoRow] = try await SupabaseService.client
+                    .from("event_photos").select("event_id, storage_path, sort_order")
+                    .in("event_id", values: Array(eventIDs))
+                    .order("sort_order", ascending: true)
+                    .execute().value
+                for p in photos where maps.eventPhotoByEventId[p.eventId] == nil {
+                    if let url = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: p.storagePath) {
+                        maps.eventPhotoByEventId[p.eventId] = url
+                    }
+                }
+            }
+            let guestUserIDs = Set(maps.bookingById.values.compactMap(\.userId))
+            if !guestUserIDs.isEmpty {
+                // profiles.avatar_url is stored as a full external URL
+                // already (seed data confirms this — not a storage path),
+                // so no signing/join step beyond this one query.
+                let profiles: [ProfileAvatarRow] = try await SupabaseService.client
+                    .from("profiles").select("id, avatar_url")
+                    .in("id", values: guestUserIDs.map(\.uuidString))
+                    .execute().value
+                for p in profiles {
+                    if let avatarURL = p.avatarUrl, let url = URL(string: avatarURL) {
+                        maps.avatarByUserId[p.id] = url
+                    }
+                }
+            }
+        } catch {
+            print("loadNotificationAvatarMaps failed:", error)
+        }
+        return maps
     }
 
     /// Refetches on a 5s poll (mirrors GocContext.jsx's own poll — no
@@ -609,12 +695,19 @@ extension AppState {
     /// somewhere real, takes you there.
     func openNotification(_ notification: AppNotification) {
         Task { await markNotificationRead(notification) }
+        // Every branch below passes .notifications as its destination's own
+        // back-target (attendanceBack/verificationsBack/paymentBack/
+        // confirmedBack/documentBack/chatBack — same field/default-param
+        // pattern documentBack/paymentDetailsBackTarget already established)
+        // — a screen reached from the bell always returns to the bell
+        // specifically, not Home or wherever else
+        // (07-notifications.md's 2026-09-18 follow-up).
         switch notification.kind {
         case "new_message":
             if let threadID = notification.data["thread_id"]?.stringValue,
                let uuid = UUID(uuidString: threadID) {
                 let key = notification.data["event_id"]?.stringValue ?? self.eventKey
-                openThread(id: uuid, eventKey: key, back: .inbox)
+                openThread(id: uuid, eventKey: key, back: .notifications)
             }
         // 01-hold-payment.md follow-up (bug 1): both organizer-only cases
         // below used to navigate unconditionally — relying on
@@ -634,7 +727,7 @@ extension AppState {
             // The organizer's side: straight to the check-in list for that
             // event, where "mark as paid" already lives (AttendanceView).
             if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key) {
-                openAttendance(key)
+                openAttendance(key, back: .notifications)
             }
         case "hold_created":
             // 01-hold-payment.md follow-up: the guest's own mirror of
@@ -644,7 +737,7 @@ extension AppState {
             // already does for its own guest-facing case below.
             if let bookingIDString = notification.data["booking_id"]?.stringValue,
                let bookingID = UUID(uuidString: bookingIDString) {
-                openPaymentDetails(bookingID)
+                openPaymentDetails(bookingID, back: .notifications)
             }
         case "payment_awaiting_verification":
             // 01-hold-payment.md follow-up: fired by submit_payment_proof()
@@ -654,13 +747,13 @@ extension AppState {
             // same request's lifecycle, still shown/actioned from
             // VerificationsView, not AttendanceView's check-in list).
             if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key) {
-                openVerifications()
+                openVerifications(back: .notifications)
             }
         case "payment_confirmed":
             if let bookingIDString = notification.data["booking_id"]?.stringValue,
                let bookingID = UUID(uuidString: bookingIDString) {
                 let key = notification.data["event_id"]?.stringValue
-                Task { await openBookingConfirmed(bookingID: bookingID, eventKey: key) }
+                Task { await openBookingConfirmed(bookingID: bookingID, eventKey: key, back: .notifications) }
             }
         case "dispute_message":
             // Only the guest and organizer ever receive this kind
@@ -673,12 +766,12 @@ extension AppState {
                let bookingID = UUID(uuidString: bookingIDString) {
                 let messageID = notification.data["message_id"]?.stringValue.flatMap(UUID.init(uuidString:))
                 chatHighlight = (bookingID: bookingID, messageID: messageID)
-                if accountType == "organizer" { openVerifications() } else { openPaymentDetails(bookingID) }
+                if accountType == "organizer" { openVerifications(back: .notifications) } else { openPaymentDetails(bookingID, back: .notifications) }
             }
         case "payment_document_uploaded", "payment_document_replaced":
             if let documentIDString = notification.data["document_id"]?.stringValue,
                let documentID = UUID(uuidString: documentIDString) {
-                Task { await openDocumentFromNotification(documentID) }
+                Task { await openDocumentFromNotification(documentID, backTo: .notifications) }
             }
         case "receipt_requested":
             // The guest's own "Xem Receipt" (ConfirmedView) asked for one
@@ -691,7 +784,7 @@ extension AppState {
                let bookingIDString = notification.data["booking_id"]?.stringValue,
                let bookingID = UUID(uuidString: bookingIDString) {
                 attendanceHighlightBookingID = bookingID
-                openAttendance(key)
+                openAttendance(key, back: .notifications)
             }
         default:
             break
@@ -751,13 +844,14 @@ extension AppState {
     /// when a 'payment_confirmed' notification is tapped after the guest has
     /// moved on elsewhere in the app, since the booking that just unlocked
     /// its QR code isn't necessarily the one still held in `booking`.
-    func openBookingConfirmed(bookingID: UUID, eventKey: String?) async {
+    func openBookingConfirmed(bookingID: UUID, eventKey: String?, back: Screen = .home) async {
         do {
             let fresh: Booking = try await SupabaseService.client
                 .from("bookings").select().eq("id", value: bookingID.uuidString)
                 .single().execute().value
             booking = fresh
             self.eventKey = eventKey ?? fresh.eventId
+            confirmedBack = back
             // Bug 3 (15-organizer-checkin.md follow-up): `expiresAt` is the
             // legacy mirror column hold_seats() sets once at creation and
             // nothing ever clears afterward — an organizer accepting
@@ -1060,7 +1154,7 @@ extension AppState {
         }
     }
 
-    func chatBackAction() { screen = chatBack == .inbox ? .inbox : .organizer }
+    func chatBackAction() { screen = chatBack == .inbox || chatBack == .notifications ? chatBack : .organizer }
 
     /// A real, permanent delete, own messages only — RLS
     /// (messages_delete_own, migration 054) scopes this to
@@ -1154,9 +1248,10 @@ extension AppState {
 
     // MARK: - Attendance / check-in
 
-    func openAttendance(_ key: String) {
+    func openAttendance(_ key: String, back: Screen = .dashboard) {
         attendanceEventKey = key
         attendanceGuests = []
+        attendanceBack = back
         screen = .attendance
         Task { await loadAttendanceGuests(key) }
     }

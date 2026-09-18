@@ -14,9 +14,12 @@ import DisputeChatPanel from './DisputeChatPanel.jsx';
 // and the person who has waited longest is the one closest to giving up.
 export default function Verifications() {
   const {
-    state, T, set, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadDisputes, backFromDocuments,
+    state, T, set, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadDisputes, backFromVerifications,
   } = useGoc();
   const s = state;
+  // Same documentBack-style pattern (07-notifications.md's 2026-09-18
+  // follow-up) — the label follows verificationsBack too.
+  const backLabel = s.verificationsBack === 'notifications' ? T('Thông báo', 'Notifications') : T('Tài khoản', 'Account');
   // { bookingId, kind: 'reject' | 'escalate' } while the reason form for
   // that row is open — one field, two possible destinations, so opening
   // one always closes the other.
@@ -59,8 +62,8 @@ export default function Verifications() {
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Verifications">
-      <div onClick={backFromDocuments} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="verifications-back">
-        ‹ {T('Tài khoản', 'Account')}
+      <div onClick={backFromVerifications} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="verifications-back">
+        ‹ {backLabel}
       </div>
       <div style={{ padding: '14px 22px 0' }}>
         <h1 style={{ ...display(24, { margin: 0 }) }} data-testid="verifications-title">

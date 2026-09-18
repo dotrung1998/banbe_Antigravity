@@ -260,6 +260,10 @@ final class AppState: ObservableObject {
     // MARK: Notifications
     @Published var notifications: [AppNotification] = []
     var unreadNotifications: Int { notifications.filter { $0.readAt == nil }.count }
+    // Batch-fetched by loadNotifications() alongside `notifications` itself
+    // — avatarSource(for:maps:accountType:) (Lib/NotificationPresentation.swift)
+    // reads this instead of a join per row.
+    @Published var notificationAvatarMaps = NotificationAvatarMaps()
 
     // Ephemeral in-app toasts — mirrors src/screens/ToastStack.jsx on web.
     // Separate from `notifications` (the permanent, pull-based inbox): this
@@ -373,6 +377,15 @@ final class AppState: ObservableObject {
     // goBack()/backTargetScreen read this instead of a single hardcoded
     // target.
     @Published var documentBack: Screen = .documents
+    // Same documentBack/paymentBack pattern, extended (07-notifications.md's
+    // 2026-09-18 follow-up) so every screen openNotification() can route to
+    // remembers "opened from Notifications" and returns there specifically
+    // — not Home, not wherever else. Each defaults to this screen's own
+    // previous fixed behavior (unchanged for every non-notification entry
+    // point) unless a caller opts in with a different `back` value.
+    @Published var attendanceBack: Screen = .dashboard
+    @Published var verificationsBack: Screen = .profile
+    @Published var confirmedBack: Screen = .home
     // Signed URL for the current document's uploaded file (migration 056)
     // — nil while loading/absent (a legacy document has no file_path and
     // falls back to the old rendered-HTML viewer instead).
@@ -1102,16 +1115,18 @@ final class AppState: ObservableObject {
         case .dashboard: backFromDashboard()
         case .hostIntro: goProfile()
         case .create: createBack()
-        case .attendance: goDashboard()
+        case .attendance: screen = attendanceBack
         case .preferences, .editName, .security: screen = .profile
         case .login: screen = authBackScreen
-        case .confirmed, .refunded, .notifications: goHome()
+        case .confirmed: screen = confirmedBack
+        case .refunded, .notifications: goHome()
         case .paymentDetails: screen = paymentDetailsBackTarget
         case .billing: screen = .paymentDetails
         case .payout: screen = .profile
         case .documents: screen = .profile
         case .documentView: screen = documentBack
-        case .verifications, .disputes: screen = .profile
+        case .verifications: screen = verificationsBack
+        case .disputes: screen = .profile
         case .mapExplore: goHome()
         default: break
         }
@@ -1129,20 +1144,22 @@ final class AppState: ObservableObject {
         case .eventList: return .profile
         case .event: return eventBackScreen
         case .organizer, .reserve: return .event
-        case .chat: return chatBack == .inbox ? .inbox : .organizer
+        case .chat: return chatBack == .inbox || chatBack == .notifications ? chatBack : .organizer
         case .dashboard: return dashboardBack
         case .hostIntro: return .profile
         case .create: return hasHosted ? .dashboard : .hostIntro
-        case .attendance: return .dashboard
+        case .attendance: return attendanceBack
         case .preferences, .editName, .security: return .profile
         case .login: return authBackScreen
-        case .confirmed, .refunded, .notifications: return .home
+        case .confirmed: return confirmedBack
+        case .refunded, .notifications: return .home
         case .paymentDetails: return paymentDetailsBackTarget
         case .billing: return .paymentDetails
         case .payout: return .profile
         case .documents: return .profile
         case .documentView: return documentBack
-        case .verifications, .disputes: return .profile
+        case .verifications: return verificationsBack
+        case .disputes: return .profile
         case .mapExplore: return .home
         default: return .home
         }

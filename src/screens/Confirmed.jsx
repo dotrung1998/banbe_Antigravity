@@ -7,7 +7,7 @@ import { paper, ink, rule, display, cardGlass, alert } from '../theme.js';
 
 export default function Confirmed() {
   const {
-    state, T, set, curEvent: ev, goHome, openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket, openPaymentDetails, forfeitExpiredHold, goReserve,
+    state, T, set, curEvent: ev, backFromConfirmed, openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket, openPaymentDetails, forfeitExpiredHold, goReserve,
     loadReceiptStatus, requestReceipt, openDocumentFromNotification,
   } = useGoc();
   const s = state;
@@ -288,7 +288,13 @@ export default function Confirmed() {
       {s.receiptRequestError && (
         <p style={{ fontSize: 11, color: alert, textAlign: 'center', margin: '8px 22px 0' }}>{s.receiptRequestError}</p>
       )}
-      <div onClick={goHome} style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0 34px', cursor: 'pointer' }}>{T('Về trang chính', 'Back to home')}</div>
+      {/* Same documentBack-style pattern (07-notifications.md's 2026-09-18
+          follow-up) — this footer button now honors confirmedBack (default
+          'home', unchanged for every non-notification entry point) instead
+          of always going home. */}
+      <div onClick={backFromConfirmed} style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0 34px', cursor: 'pointer' }}>
+        {s.confirmedBack === 'notifications' ? T('‹ Thông báo', '‹ Notifications') : T('Về trang chính', 'Back to home')}
+      </div>
     </div>
   );
 }

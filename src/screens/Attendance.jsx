@@ -6,10 +6,15 @@ import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 
 export default function Attendance() {
   const {
-    state, set, T, trStatus, goDashboard, toggleCheckin, openQrScan, openCancelBooking, markGuestPaid, uploadPaymentDocument,
+    state, set, T, trStatus, backFromAttendance, toggleCheckin, openQrScan, openCancelBooking, markGuestPaid, uploadPaymentDocument,
     openVerificationDetail, openRejectGuest, loadAttendanceGuests, openDocumentFromNotification,
   } = useGoc();
   const s = state;
+  // Same documentBack-style pattern (07-notifications.md's 2026-09-18
+  // follow-up): the back link's own label follows attendanceBack too, so
+  // "‹ Notifications" doesn't read "‹ Your dashboard" when that's not
+  // actually where the tap goes.
+  const backLabel = s.attendanceBack === 'notifications' ? T('Thông báo', 'Notifications') : T('Trang của bạn', 'Your dashboard');
   const fileInputRef = useRef(null);
   const [uploadingFor, setUploadingFor] = useState(null);
   const [uploadErrorFor, setUploadErrorFor] = useState(null);
@@ -111,7 +116,7 @@ export default function Attendance() {
   if (!attEv) {
     return (
       <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
-        <div onClick={goDashboard} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Trang của bạn', 'Your dashboard')}</div>
+        <div onClick={backFromAttendance} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
       </div>
     );
   }
@@ -123,7 +128,7 @@ export default function Attendance() {
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
-      <div onClick={goDashboard} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Trang của bạn', 'Your dashboard')}</div>
+      <div onClick={backFromAttendance} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
       <div style={{ padding: '14px 22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <div style={{ minWidth: 0 }}>
           <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Điểm danh khách', 'Guest check-in')}</span>

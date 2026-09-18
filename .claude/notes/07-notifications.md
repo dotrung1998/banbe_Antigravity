@@ -106,3 +106,132 @@ All migrations (053, 054) applied via `supabase db push`. `vite build` clean; iO
 **Two new kinds**: `payment_verification_nudge` (guest → organizer, `nudge_organizer()` RPC, migration 059, rate-limited to 2/hold) and `booking_declined` (organizer → guest, `reject_pending_guest()` RPC, same migration) — neither is deep-linked from `openNotification()` (a bell tap on either just marks it read, same as several other kinds e.g. `referral_joined`), by the same reasoning as every other non-deep-linked kind: nothing on the other end needs a dedicated screen beyond what's already reachable normally.
 
 `vite build` clean; iOS `xcodebuild` clean (Debug + Release); full fast Playwright suite 125/125 clean.
+
+## 2026-09-18 — Instagram/Facebook-style redesign: avatars, sections, collapse, back-target wiring
+
+**New facts found, not assumed**:
+- `profiles.avatar_url` is stored as a full external URL already (seed
+  data, `010_seed_data.sql:16-19`, uses real `images.unsplash.com` URLs
+  directly) — no signing or path-joining needed, unlike every other
+  storage-backed field in this codebase.
+- `public.event_photos` (`001_core_schema.sql:93-98`: `event_id`,
+  `storage_path`, `sort_order`) and the public `event-photos` bucket
+  (`005_storage_buckets.sql`) exist in the schema but had **zero
+  consumers anywhere in the app** before this pass (confirmed by
+  repo-wide grep) — every event image shown today comes from the static
+  demo catalogue (`src/data/events.js`'s `LOCAL_PHOTOS`), not this table.
+  This means a real event's own uploaded cover photo will show correctly
+  for a real DB event, but every demo-catalogue event (nearly everything
+  currently visible in the app) has no `event_photos` rows and falls
+  through to the fallback glyph — expected, not a bug.
+- **A real, pre-existing bug found and fixed as a side effect of wiring
+  `confirmedBack`**: `openBookingConfirmed` (web, `GocContext.jsx`) was
+  never included in `GocProvider`'s exported `value` object at all —
+  `PaymentDetails.jsx` destructures and calls it (`:25`, `:100`, `:319`)
+  regardless, meaning every call was silently `undefined()`, throwing a
+  runtime `TypeError`. Fixed by adding it (and the new `backFromConfirmed`)
+  to both the value object and its `useMemo` deps array
+  (`GocContext.jsx:3311`/`:3340`).
+- A new file under `apps/ios/BanbeApp/` requires `xcodegen generate`
+  before `xcodebuild` will see it at all (`project.yml`'s `sources`
+  globs `BanbeApp/` at generation time, not build time) — the committed
+  `.xcodeproj` doesn't auto-discover new files. Ran once this pass for
+  the two new Swift files below.
+
+**1. Avatar helper** — `src/lib/notifications.js` (`avatarSourceFor`) /
+`apps/ios/BanbeApp/Lib/NotificationPresentation.swift` (`avatarSource(for:maps:accountType:)`):
+one small per-kind classifier each, not inline branching in the row
+renderer. `booking_requested`/`payment_awaiting_verification`/
+`receipt_requested`/`payment_verification_nudge`/`guest_renamed` (+
+`dispute_message` only when the viewer is the organizer) prefer the
+guest's `profiles.avatar_url` (joined via `data.booking_id` →
+`bookings.user_id`); everything else with a resolvable `event_id`
+(direct, or via the booking) prefers the event's `event_photos` cover
+(`sort_order` ascending, first row); no resolution → a plain fallback
+circle with the app's own 🔔 glyph, never a broken image.
+
+Batch-fetch (avoids a join per row): `loadNotifications()` —
+`GocContext.jsx:2095-2149`, `AppState+Data.swift:497-554` (new
+`loadNotificationAvatarMaps`, private row structs at `:103-129`) — after
+fetching notifications, collects `booking_id`s → one `bookings` query →
+collects `event_id`s (direct + via booking) → one `event_photos` query
+(`getPublicUrl`/`getPublicURL`, a local URL-builder, not a network call)
+→ collects guest `user_id`s → one `profiles` query for `avatar_url`.
+Stored in new state: `notificationBookingById`/`notificationEventPhotoByEventId`/
+`notificationAvatarByUserId` (web, `GocContext.jsx:225-231`) /
+`notificationAvatarMaps: NotificationAvatarMaps` (iOS, `AppState.swift:263-266`).
+**Known, accepted limitation**: the 5s toast-poll's own `notifications`
+refresh (`startNotificationPolling()`) does not re-run this batch-fetch —
+only opening the Notifications screen (`loadNotifications()`) does. A
+brand-new notification about a never-before-seen event/booking briefly
+shows the fallback glyph in a toast until the bell screen is actually
+opened. Not fixed — toasts are ephemeral and already disappear before
+this would be visually confusing in practice; re-running the joins on
+every 5s poll tick for a value nobody's looking at yet wasn't worth it.
+
+**2. Title/preview** — `src/screens/Notifications.jsx`'s `Row`
+(`fontWeight: 700` unconditionally, `body` now single-line
+`whiteSpace:'nowrap'/textOverflow:'ellipsis'` instead of the old
+multi-line wrap) / `MessagingViews.swift`'s `NotificationsView.row(_:)`
+(`.fontWeight(.bold)` unconditionally, `item.body` now `.lineLimit(1)`).
+
+**3. Time-based sections** — "Mới"/"New" (all unread, regardless of age)
+always first, then "Hôm nay"/"Today", "7 ngày qua"/"Last 7 days", "Cũ
+hơn"/"Older" bucket the REMAINING (read) notifications by `created_at`.
+New `notificationAgeBucket(createdAt, now)` (`src/lib/notifications.js`) /
+`notificationAgeBucket(_:now:)` (`NotificationPresentation.swift`) —
+extends `agoLabel()`/`EventLabels.ago()`'s "hours ago" display concept
+with the coarser buckets a long list needs; empty sections are hidden
+entirely (a single-notification account never shows 3 empty headers).
+
+**4. Collapse at N=20** — `src/screens/Notifications.jsx` (local
+`expandedSections` Set state, applied per-section — not just "Cũ hơn" —
+since any section can in principle exceed 20) / `MessagingViews.swift`
+(`@State private var expandedSections: Set<String>`). A "Xem thêm
+(N)"/"View more (N)" row appears only when a section actually has more
+than 20 items; tapping it reveals the rest in place. Pure render-time
+slice of already-loaded data — `loadNotifications()`'s existing 50-row
+cap was untouched, no new query.
+
+**5. Back-target wiring** — extended the same `documentBack`/
+`paymentDetailsBackTarget` field-per-screen pattern to three destinations
+that didn't have one before: `attendanceBack`/`verificationsBack`/
+`confirmedBack` (web: `GocContext.jsx:152-159`; iOS:
+`AppState.swift:375-383`), each defaulting to that screen's own previous
+fixed target (`.dashboard`/`.profile`/`.home`) so every existing
+non-notification entry point (`Dashboard.jsx`'s "Điểm danh", Attendance's
+"Check payment", `PaymentDetails.jsx`'s auto-redirect-on-confirm) is
+unchanged. `openAttendance`/`openVerifications`/`openVerificationDetail`/
+`openBookingConfirmed` (both platforms) all gained an optional `back`
+param that sets the field; `openNotification()` passes `'notifications'`/
+`.notifications` at every one of its 8 routing branches (web:
+`GocContext.jsx:3104-3151`; iOS: `AppState+Data.swift:610-699`),
+including `openThread`'s existing `back` param (was hardcoded
+`'inbox'`/`.inbox`) and `dispute_message`'s two-way branch. Each
+destination's own back link/button (`Attendance.jsx`/`AttendanceView.swift`,
+`Verifications.jsx`/`VerificationsView.swift`, `Confirmed.jsx`/
+`ConfirmedView.swift`) now reads its field instead of a hardcoded target,
+**and its own label text follows suit** (e.g. "‹ Your dashboard" doesn't
+show when the tap actually goes to Notifications).
+
+**The second exit path, checked and fixed too**: per
+`15-organizer-checkin.md`'s own prior lesson (a swipe-back gesture is a
+SECOND navigation path on iOS, independent of any screen's own back
+button, and got missed once before for `paymentDetailsBackTarget`) —
+`AppState.goBack()`/`backTargetScreen` (`AppState.swift:1094-1149`) were
+updated in the same pass: `.attendance`/`.verifications`/`.confirmed`
+cases now read the new fields instead of `goDashboard()`/`.dashboard`/
+`.home` literals. `chatBackAction()`/`chatBackFn` (both platforms) also
+gained a `.notifications`/`'notifications'` case — previously any
+non-`'inbox'` value collapsed to `'organizer'`, which would have silently
+misrouted a `new_message` notification's back button. Web has no
+equivalent second exit path (confirmed in the prior session's own audit —
+no `popstate`/history-stack wiring anywhere), so only the in-view back
+links needed changing there.
+
+**Verified by build only, not live screenshots** (per this ticket's own
+instruction — reasoned through the logic instead): `vite build` clean;
+iOS `xcodebuild` (Debug, `-destination 'generic/platform=iOS Simulator'`)
+BUILD SUCCEEDED after `xcodegen generate` picked up the two new Swift
+files (`Lib/NotificationPresentation.swift`, and `Views/MessagingViews.swift`'s
+rewritten `NotificationsView`).

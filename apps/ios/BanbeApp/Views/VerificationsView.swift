@@ -30,7 +30,7 @@ struct VerificationsView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Tài khoản", "Account")) { app.screen = .profile }
+                BackLink(label: app.verificationsBack == .notifications ? app.T("Thông báo", "Notifications") : app.T("Tài khoản", "Account")) { app.screen = app.verificationsBack }
                     .padding(.top, 8)
                     .accessibilityIdentifier("verifications.back")
 

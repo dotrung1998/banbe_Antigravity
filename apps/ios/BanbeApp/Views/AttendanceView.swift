@@ -73,7 +73,7 @@ struct AttendanceView: View {
     @ViewBuilder
     private func content(proxy: ScrollViewProxy) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Trang của bạn", "Your dashboard")) { app.goDashboard() }
+                BackLink(label: app.attendanceBack == .notifications ? app.T("Thông báo", "Notifications") : app.T("Trang của bạn", "Your dashboard")) { app.screen = app.attendanceBack }
 
                 if let event {
                     HStack(alignment: .top, spacing: 12) {

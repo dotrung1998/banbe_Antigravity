@@ -8,7 +8,9 @@ export default function Chat() {
   const thread = s.chatMessages.length
     ? s.chatMessages.map(m => ({ id: m.id, who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body }))
     : [{ who: 'host', text: ev.greeting }];
-  const chatBackLabel = s.chatBack === 'inbox' ? T('Tin nhắn', 'Messages') : ev.orgName;
+  const chatBackLabel = s.chatBack === 'inbox' ? T('Tin nhắn', 'Messages')
+    : s.chatBack === 'notifications' ? T('Thông báo', 'Notifications')
+    : ev.orgName;
   const signedInAs = s.user ? ({ zalo: T('qua Zalo', 'via Zalo'), phone: T('qua số điện thoại', 'via phone'), facebook: T('qua Facebook', 'via Facebook'), instagram: T('qua Instagram', 'via Instagram') }[s.user.via] || s.user.email || '') : '';
 
   return (
