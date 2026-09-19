@@ -1990,6 +1990,20 @@ export function GocProvider({ children }) {
   // when to clear (its own "← Đóng" wrapper), this just holds the snapshot
   // across the unmount/remount that switching `screen` away and back causes.
   const setMapExploreState = useCallback((snapshot) => set({ mapExploreState: snapshot }), [set]);
+  // "Open in Map" (Event Detail, home-entry only) — the reverse direction of
+  // MapExplore.jsx's own openEventDetail(): that one snapshots the map's
+  // live state right before leaving for Event Detail; this one builds a
+  // snapshot FROM SCRATCH (there's no live MapExplore instance this
+  // session necessarily) using just the event's own lat/lng, so the map
+  // mounts already centered/zoomed on this pin with its info card showing
+  // — reusing MapExplore's own restored-snapshot mechanism (`selectedId` +
+  // `cameraCenter`/`cameraZoom`) rather than a second, parallel "open on
+  // this event" code path. `0.01`-ish zoom feel matches `selectEvent`'s own
+  // `zoomSpan`-equivalent (zoom 15.5) for a focused single-pin view.
+  const openEventOnMap = useCallback((ev) => {
+    setMapExploreState({ cameraCenter: { lat: ev.lat, lng: ev.lng }, cameraZoom: 15.5, selectedId: ev.key });
+    set({ screen: 'mapExplore' });
+  }, [set, setMapExploreState]);
   const goProfile = useCallback(() => set({ screen: 'profile' }), [set]);
   const goInbox = useCallback(() => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'inbox', authBackScreen: 'home' });
@@ -3454,7 +3468,7 @@ export function GocProvider({ children }) {
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
-    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState,
+    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
     loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof, openBookingConfirmed, backFromConfirmed,
@@ -3483,7 +3497,7 @@ export function GocProvider({ children }) {
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
     isSaved, isGoing, toggleFav, toggleFollow,
-    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState,
+    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
     loadPaymentBookings, openPaymentDetails, backFromPaymentDetails, backFromBilling, copyPayField, uploadPaymentProof, openBookingConfirmed, backFromConfirmed,

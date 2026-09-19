@@ -530,3 +530,95 @@ ordering issue 80c1ac3 fixed, not a leftover of it.
   debug logging in place, once after removing it) — this is the first fix
   in this whole tab-bar saga verified via an actual executed tap on the
   simulator rather than static reasoning about SwiftUI/UIKit behavior.
+
+## Follow-up 6: "Open in Map" (Event Detail), a 5th Home tab, persistent back/share
+
+- **Task 1a ("Open in Map" button, home-entry only)**: reused the existing
+  `eventBackScreen`/`s.eventBackScreen` convention verbatim — the SAME
+  field `goEvent()`/`app.goEvent(_:)` already set to `'home'` vs
+  `'mapExplore'` depending on where Event Detail was entered from (already
+  used by the pre-existing "▪︎ Về trang chính"/"▪︎ Back to home" link,
+  which shows on the OPPOSITE condition). No new "cameFrom" flag was
+  invented. The button calls a new `openEventOnMap(ev)` (web:
+  `GocContext.jsx`) / `app.openEventOnMap(_:)` (iOS: `AppState.swift`) that
+  populates `mapExploreState`/`MapExploreState` — the SAME restore-snapshot
+  mechanism `MapExplore.jsx`'s `openEventDetail`/`MapExploreView.swift`'s
+  `openEventDetail(_:)` already use in the opposite direction — with just
+  the event's own `lat`/`lng` and `selectedId`/`key`, then navigates to the
+  map screen. This means `MapExploreView.init(restored:)` mounts already
+  centered/zoomed on the pin with `selectedEvent`/`selectedId` pre-set, so
+  the exact same selected-pin info card (`map.selectedCard` on iOS,
+  `data-testid="map-selected-card"` on web) MapExplore already renders for
+  a tapped pin/list row shows up automatically — no new card UI was built.
+  `0.01`° iOS span / zoom 15.5 on web both match `selectEvent(_:)`'s own
+  existing focused-pin zoom level.
+- **New fact confirmed by a REAL passing XCUITest, not just code reading**:
+  wrote `apps/ios/BanbeAppUITests/EventDetailOpenInMapUITests.swift` and
+  ran it against the actual built app — `event.openInMap` appears when
+  Event Detail is reached by tapping a Home feed card, tapping it lands on
+  MapExplore with the same event's info card showing, and the button does
+  NOT appear when Event Detail is reached instead via Map's own selected-
+  card "Xem chi tiết" CTA. **Test-authoring gotcha hit while writing this
+  (same class of issue as the bottom-tab-bar work)**: `MapExploreView.swift`'s
+  `map.selectedCard` accessibility identifier (line ~876, on the card's
+  outer VStack) gets inherited by EVERY descendant in the accessibility
+  snapshot, INCLUDING ones with their own more specific identifier set
+  further down (e.g. the "Xem chi tiết" button's own `"map.card.cta"`,
+  line ~869) — XCUITest reported that button's identifier as
+  `"map.selectedCard"`, not `"map.card.cta"`, confirmed via a debug
+  `app.debugDescription` dump. Worked around by looking the button up by
+  its visible label ("Xem chi tiết") instead, which XCUITest's `[string]`
+  subscript also matches against. Worth knowing before trusting
+  `map.card.cta`/other nested-under-`map.selectedCard` identifiers in any
+  future test.
+- **Task 1b (5th Home tab)**: a plain addition to the existing items array/
+  icon set on both platforms — no new gesture/highlight/scroll-collapse
+  code, per the ticket's own instruction. New house-outline glyph (stroke
+  weight 2.4, matching the other four) added to both icon sets; bar width
+  widened 320→360 (web `BottomTabBar.jsx`, iOS `BottomTabBar.swift`) and
+  the iOS overlay window's band correspondingly widened 400→440
+  (`BottomTabBarOverlay.swift`) to keep comfortably containing the now-
+  5-icon bar. Confirmed via the existing `BottomTabBarUITests` suite
+  (re-run after this change) that the other four tabs and the map-sheet-
+  open case still pass with no regression.
+- **Task 3 (persistent back/share on Event Detail)**: these were never a
+  "hide-on-scroll-down" special case (no such logic existed) — they were
+  simply laid out INSIDE the hero photo, which is itself the first child
+  of Event Detail's own internal scrollable container (a container
+  distinct from the shared Shell-level scroll — `EventDetail.jsx` manages
+  its own `overflowY: auto` div; `EventDetailView.swift` has its own
+  `ScrollView`), so they scrolled out of view exactly like anything else
+  in that container. Fixed by moving the back/share pills OUT of the
+  scrollable region: web renders them as `position: 'fixed'` siblings of
+  the scrollable div (was `position: 'absolute'` inside the hero, inheriting
+  `photoPill()`'s own default `position`, now overridden — same override-
+  via-`extra`-object pattern as every other `photoPill()`/`barGlass()` call
+  in this codebase); iOS moved the whole `backShareRow` HStack out of
+  `hero` into a ZStack sibling of the ScrollView (`EventDetailView.swift`).
+  Confirmed via a REAL executed UI test
+  (`EventDetailOpenInMapUITests.testBackButtonStaysVisibleWhileScrolling`)
+  that actually scrolls the ScrollView (`app.swipeUp()` ×4, well past the
+  hero photo's height) and re-checks `event.back` is still `isHittable`
+  and functional afterward — not just that the modifier was moved in the
+  source.
+- File:line — web: `src/state/GocContext.jsx` (`openEventOnMap`, next to
+  `setMapExploreState`), `src/screens/EventDetail.jsx` (fixed-position back/
+  share pills + the "▪︎ Xem trên bản đồ"/"▪︎ Open in map" link),
+  `src/screens/BottomTabBar.jsx` (`home` icon + item, widened `maxWidth`).
+  iOS: `apps/ios/BanbeApp/State/AppState.swift` (`openEventOnMap`, next to
+  `returnToMapExplore`), `apps/ios/BanbeApp/Views/EventDetailView.swift`
+  (`backShareRow` moved to a ZStack sibling, the "▪︎ Xem trên bản đồ" button),
+  `apps/ios/BanbeApp/Views/BottomTabBar.swift` (`HomeGlyph` + `home` item,
+  widened `.frame(maxWidth:)`), `apps/ios/BanbeApp/Views/BottomTabBarOverlay.swift`
+  (widened `bandWidth`). New test file:
+  `apps/ios/BanbeAppUITests/EventDetailOpenInMapUITests.swift`.
+- Verification: `npx vite build` clean; `xcodebuild build` →
+  **BUILD SUCCEEDED**; `xcodebuild test
+  -only-testing:BanbeAppUITests/EventDetailOpenInMapUITests` →
+  **TEST SUCCEEDED** (both tests); `xcodebuild test
+  -only-testing:BanbeAppUITests/BottomTabBarUITests` re-run →
+  **TEST SUCCEEDED** (no regression from the 5th tab). Web side (Task 1a's
+  `openEventOnMap`, Task 3's fixed-position pills) was verified by build +
+  code-reading only — no Playwright run in this pass, so the web
+  equivalents of these three tasks are not executed-test-confirmed the way
+  the iOS side now is.

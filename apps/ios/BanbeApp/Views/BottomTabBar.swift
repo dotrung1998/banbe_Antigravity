@@ -38,6 +38,7 @@ struct BottomTabBar: View {
 
     private var items: [Item] {
         [
+            Item(id: "home", icon: { AnyView(HomeGlyph(color: $0)) }, label: app.T("Trang chính", "Home"), action: { app.goHome() }, badge: 0),
             Item(id: "map", icon: { AnyView(MapGlyph(color: $0)) }, label: app.T("Bản đồ", "Map"), action: { app.goMapExplore() }, badge: 0),
             Item(id: "notifications", icon: { AnyView(NotificationsGlyph(color: $0)) }, label: app.T("Thông báo", "Notifications"), action: { app.goNotifications() }, badge: app.unreadNotifications),
             // No badge here: unlike Notifications, nothing in the schema
@@ -68,6 +69,7 @@ struct BottomTabBar: View {
     private func syncActiveToScreen() {
         guard !isDragging else { return }
         switch app.screen {
+        case .home: activeID = "home"
         case .mapExplore: activeID = "map"
         case .notifications: activeID = "notifications"
         case .inbox: activeID = "inbox"
@@ -150,7 +152,10 @@ struct BottomTabBar: View {
             }
         }
         .frame(height: barHeight)
-        .frame(maxWidth: 320)
+        // Task 1b follow-up: widened from 320 (fit for 4 icons) to fit the
+        // new Home tab without cramping the existing four — matches the
+        // web bar's own 320→360 bump.
+        .frame(maxWidth: 360)
         .contentShape(Rectangle())
         .gesture(scrubGesture)
         .backgroundPreferenceValue(TabItemFrameKey.self) { anchors in
@@ -310,6 +315,38 @@ private struct ProfileGlyph: View {
                     p.addCurve(to: CGPoint(x: 19 * s, y: 19.2 * s), control1: CGPoint(x: 6.3 * s, y: 15.3 * s), control2: CGPoint(x: 17.7 * s, y: 15.3 * s))
                 }
                 .stroke(color, style: StrokeStyle(lineWidth: 2.6 * s, lineCap: .round))
+            }
+        }
+    }
+}
+
+// Task 1b follow-up: a straightforward addition to the existing icon set —
+// same stroke weight (2.4) and rounded joins as the other four, a plain
+// house silhouette. Unlike the map icon's own earlier "avoid the classic
+// filled house outline" constraint (about not using a house FOR a map
+// glyph specifically), a house for an actual Home tab is the universally
+// understood, semantically correct choice, not a borrowed IG/FB/Twitter
+// shape — mirrors src/screens/BottomTabBar.jsx's own Home icon exactly,
+// shape for shape.
+private struct HomeGlyph: View {
+    let color: Color
+    var body: some View {
+        GeometryReader { geo in
+            let s = geo.size.width / 24
+            ZStack {
+                Path { p in
+                    p.move(to: CGPoint(x: 4 * s, y: 11.5 * s))
+                    p.addLine(to: CGPoint(x: 12 * s, y: 4 * s))
+                    p.addLine(to: CGPoint(x: 20 * s, y: 11.5 * s))
+                }
+                .stroke(color, style: StrokeStyle(lineWidth: 2.4 * s, lineCap: .round, lineJoin: .round))
+                Path { p in
+                    p.move(to: CGPoint(x: 6 * s, y: 10 * s))
+                    p.addLine(to: CGPoint(x: 6 * s, y: 19.5 * s))
+                    p.addLine(to: CGPoint(x: 18 * s, y: 19.5 * s))
+                    p.addLine(to: CGPoint(x: 18 * s, y: 10 * s))
+                }
+                .stroke(color, style: StrokeStyle(lineWidth: 2.4 * s, lineJoin: .round))
             }
         }
     }

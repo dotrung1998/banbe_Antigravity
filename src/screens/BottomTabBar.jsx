@@ -39,6 +39,19 @@ const ICONS = {
       <path d="M5 19.2c1.3-3.9 4.2-5.8 7-5.8s5.7 1.9 7 5.8" stroke={c} strokeWidth="2.6" strokeLinecap="round" fill="none" />
     </svg>
   ),
+  // Task 1b follow-up: a straightforward addition to the existing icon set
+  // — same stroke weight (2.4-2.6) and rounded joins as the other four, a
+  // plain house silhouette. Unlike the map icon's own earlier "avoid the
+  // classic filled house outline" constraint (about not using a house FOR
+  // a map glyph), a house for an actual Home tab is the universally
+  // understood, semantically correct choice, not a borrowed IG/FB/Twitter
+  // shape (none of those three put a house on a Home-equivalent tab).
+  home: (c) => (
+    <svg viewBox="0 0 24 24" width="100%" height="100%">
+      <path d="M4 11.5 12 4l8 7.5" fill="none" stroke={c} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6 10v9.5h12V10" fill="none" stroke={c} strokeWidth="2.4" strokeLinejoin="round" />
+    </svg>
+  ),
 };
 
 // Top-level/primary screens only — flow screens that own the bottom of the
@@ -64,7 +77,7 @@ const ICON_SIZE = 30;
 const BAR_BOTTOM_OFFSET = 10;
 
 export default function BottomTabBar({ collapsed }) {
-  const { state, T, goProfile, goInbox, goNotifications, goMapExplore } = useGoc();
+  const { state, T, goHome, goProfile, goInbox, goNotifications, goMapExplore } = useGoc();
   const s = state;
 
   // Inbox/messages has no unread-tracking concept anywhere in the schema
@@ -73,11 +86,12 @@ export default function BottomTabBar({ collapsed }) {
   // Notifications has a real unread count (s.unreadNotifications, already
   // used by the old header bell).
   const items = useMemo(() => [
+    { key: 'home', icon: 'home', onClick: goHome, label: T('Trang chính', 'Home'), testId: 'tab-home', badge: 0 },
     { key: 'mapExplore', icon: 'map', onClick: goMapExplore, label: T('Bản đồ', 'Map'), testId: 'tab-map', badge: 0 },
     { key: 'notifications', icon: 'notifications', onClick: goNotifications, label: T('Thông báo', 'Notifications'), testId: 'tab-notifications', badge: s.unreadNotifications || 0 },
     { key: 'inbox', icon: 'inbox', onClick: goInbox, label: T('Tin nhắn', 'Messages'), testId: 'tab-inbox', badge: 0 },
     { key: 'profile', icon: 'profile', onClick: goProfile, label: T('Tài khoản', 'Account'), testId: 'tab-profile', badge: 0 },
-  ], [goMapExplore, goNotifications, goInbox, goProfile, T, s.unreadNotifications]);
+  ], [goHome, goMapExplore, goNotifications, goInbox, goProfile, T, s.unreadNotifications]);
 
   // FEATURE — scrub-to-select: press anywhere on the bar and drag; a soft
   // highlight blob follows the finger in real time and lands on whichever
@@ -196,7 +210,9 @@ export default function BottomTabBar({ collapsed }) {
       style={{
         ...barGlass({}),
         position: 'absolute', left: '50%', bottom: BAR_BOTTOM_OFFSET,
-        width: 'calc(100% - 56px)', maxWidth: 320,
+        // Task 1b follow-up: widened from 320 (fit for 4 icons) to fit the
+        // new Home tab without cramping the existing four.
+        width: 'calc(100% - 56px)', maxWidth: 360,
         borderRadius: 999,
         // BUG 2 follow-up (623ec1e real-device report): the bar was already
         // meant to paint above MapExplore's own content by plain document

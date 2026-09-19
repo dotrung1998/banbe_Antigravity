@@ -2,6 +2,72 @@
 
 ## Status: WORKING (web + iOS), first pass
 
+## Follow-up (unify dismiss + live drag tracking, this session)
+
+- **Backdrop-tap vs swipe-past-threshold dismiss were NOT actually two
+  separate implementations — verified by reading, not assumed.** A ticket
+  asked to "make backdrop-tap use the exact same shrink-back animation as
+  swipe-past-threshold, instead of whatever plain dismiss it currently
+  does." Both `src/screens/sheets/PhotoViewer.jsx`'s `onBackdropClick` and
+  `apps/ios/BanbeApp/Views/PhotoViewerView.swift`'s backdrop
+  `.onTapGesture` already called the exact same `dismiss()`/`dismiss()`
+  function the swipe-past-threshold branch calls — this was already true
+  as of the original first pass documented above ("Dismissing (either
+  path) shrinks the photo back to the exact thumbnail rect it was opened
+  from"). No code changed for this part; it's flagged here so a future
+  pass doesn't re-"fix" something that was never actually broken.
+- **Live drag-follow WAS genuinely missing — this part of the ticket's
+  premise was correct.** Before this pass, both platforms only evaluated
+  `dx`/`dy` once, at release (`onPhotoPointerUp` / the `DragGesture`'s
+  `onEnded`) — the photo and backdrop gave zero visual feedback while a
+  finger was still down mid-drag. Added on both platforms:
+  - The photo's transform now follows the finger 1:1 (translateY web /
+    `.offset` iOS) once a drag is clearly vertical-and-downward (gated so
+    a horizontal swipe-browse drag is never affected).
+  - The backdrop (blurred copy + dim layer) fades opacity linearly with
+    drag progress over a fixed reveal distance (200px/pt, independent of
+    the much smaller existing dismiss threshold), so continuing to hold a
+    drag past the threshold without releasing keeps revealing more.
+  - Release logic is UNCHANGED: past threshold still calls the same
+    `dismiss()`, short of it now springs back to the open position with
+    the same easing/duration as dismiss itself (previously: nothing
+    visually happened at all pre-release, so there was no "spring back"
+    state to preserve).
+  - **"Continue from the current dragged position" needed no special-case
+    code on either platform** — it falls out of how each platform's
+    existing dismiss computation already works: web's `dismiss()` reads
+    `el.getBoundingClientRect()`, which reflects whatever inline
+    `transform` the live drag already applied; iOS's `dismiss()` computes
+    a target `dismissTransform` and assigns it inside `withAnimation`,
+    which SwiftUI animates from the CURRENTLY-RENDERED `.offset()`/
+    `.scaleEffect()` value (`dragTranslation`, applied unanimated) to the
+    new target, regardless of which `@State` produced the starting value.
+  - Web implementation is ref-driven (direct `.style.transform`/`.opacity`
+    writes in `onPhotoPointerMove`), not React-state-driven — deliberately
+    reusing the exact pattern this session's bottom-tab-bar scrub gesture
+    already established, for the same reason: a state update per pixel of
+    drag would be needless re-render churn for a purely visual, per-frame
+    value. iOS's `dragTranslation`/`isDraggingDown` ARE plain `@State`,
+    which is the normal, correct SwiftUI idiom for a live `DragGesture`
+    follow (not the same footgun as the earlier GeometryReader/
+    PreferenceKey scroll-tracking issue — that was a RunLoop-mode timing
+    bug specific to that mechanism, unrelated to `DragGesture.onChanged`).
+- File:line — web: `src/screens/sheets/PhotoViewer.jsx` (`dismiss()`,
+  `onPhotoPointerDown`/`onPhotoPointerMove`/`onPhotoPointerUp`,
+  `backdropRef`/`dimRef`, `DRAG_REVEAL_DISTANCE`). iOS:
+  `apps/ios/BanbeApp/Views/PhotoViewerView.swift` (`dismiss()`,
+  `dragTranslation`/`isDraggingDown`/`dragProgress`, the `DragGesture`'s
+  `.onChanged`, the backdrop's `.opacity(1 - dragProgress)`).
+- Verification: `npx vite build` clean; `xcodebuild build` →
+  **BUILD SUCCEEDED**. No live-drag/visual verification was performed on
+  either platform (no simulator touch-drag injection tool available in
+  this sandbox for iOS, no Playwright run for web in this pass) — the
+  release-time decision logic (past-threshold dismiss, short-of-threshold
+  snap-back) is unchanged from the already-tested original implementation,
+  and the live-tracking additions were verified by reading the resulting
+  code's data flow (see the "needed no special-case code" bullet above),
+  not by watching it drag on a real device/simulator.
+
 Numbered 14, not 13 — `.claude/notes/13-policy-accuracy-review.md` already claimed 13 in this same session, right before this ticket arrived.
 
 ## Audit findings

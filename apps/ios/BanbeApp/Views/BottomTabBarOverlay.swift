@@ -75,17 +75,17 @@ final class BottomTabBarOverlay {
     private var window: UIWindow?
 
     // Comfortably contains BottomTabBar at its full resting size —
-    // `.frame(maxWidth: 320)` + 28pt horizontal padding each side (376),
-    // plus headroom for its shadow (radius 14) and the scrub gesture's
-    // highlight blur; `barHeight` (72) + its own bottom padding (2), plus
-    // the same shadow/blur headroom and the device's home-indicator safe
-    // area. Deliberately generous rather than pixel-exact — this band is
-    // the ONLY part of the screen a touch can be silently absorbed by
-    // empty space within it (see doc comment above), so it trades a little
-    // extra unreachable margin at the very bottom of the screen for not
-    // needing to keep it in lockstep, pixel-for-pixel, with BottomTabBar's
-    // own layout constants.
-    private static let bandWidth: CGFloat = 400
+    // `.frame(maxWidth: 360)` (widened from 320 for the Task 1b Home tab
+    // addition) + 28pt horizontal padding each side (416), plus headroom
+    // for its shadow (radius 14) and the scrub gesture's highlight blur;
+    // `barHeight` (72) + its own bottom padding (2), plus the same shadow/
+    // blur headroom and the device's home-indicator safe area. Deliberately
+    // generous rather than pixel-exact — this band is the ONLY part of the
+    // screen a touch can be silently absorbed by empty space within it (see
+    // doc comment above), so it trades a little extra unreachable margin at
+    // the very bottom of the screen for not needing to keep it in lockstep,
+    // pixel-for-pixel, with BottomTabBar's own layout constants.
+    private static let bandWidth: CGFloat = 440
     private static let bandHeight: CGFloat = 160
 
     /// Called from RootView's `.onAppear` once a `UIWindowScene` and the

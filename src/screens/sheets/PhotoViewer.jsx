@@ -43,10 +43,26 @@ const GESTURE_THRESHOLD = 44;
 //   the dimmed/blurred surround) -> dismiss.
 // Dismissing (either path) shrinks the photo back to the exact thumbnail
 // rect it was opened from, rather than fading/sliding away generically.
+// Task 2b follow-up: how far (px) a downward drag has to travel before the
+// backdrop is fully revealed (opacity 0) — independent of GESTURE_THRESHOLD
+// (which only decides prev/next/dismiss at release); a careful drag can
+// travel well past the threshold without releasing, and should keep
+// getting visibly closer to fully-revealed the whole way.
+const DRAG_REVEAL_DISTANCE = 200;
+
 export default function PhotoViewer() {
   const { state: s, T, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer, isSaved, toggleFav } = useGoc();
   const drag = useRef(null);
   const photoRef = useRef(null);
+  // Task 2b follow-up: the blurred-copy backdrop and its dim overlay, so a
+  // live downward drag can fade them imperatively (see onPhotoPointerMove)
+  // without going through React state on every pointer move — the same
+  // ref-driven-not-state-driven pattern this session's bottom-tab-bar work
+  // already established for a live drag-follow visual, for the same
+  // reason (a state update per pixel of drag would be needless re-render
+  // churn for a purely visual, per-frame value).
+  const backdropRef = useRef(null);
+  const dimRef = useRef(null);
   // Set only while the shrink-back dismiss animation is playing — holds the
   // computed transform so render can apply it, and blocks a second dismiss
   // from starting mid-animation. Cleared (along with the real close) once
@@ -75,6 +91,20 @@ export default function PhotoViewer() {
   const liked = isPhotoLiked(url);
   const saved = isSaved(eventKey);
 
+  // Task 2a (real-device follow-up): confirmed by reading this function's
+  // own call sites, not assumed — the backdrop's `onBackdropClick` below
+  // and the swipe-past-threshold branch in `onPhotoPointerUp` already both
+  // call this SAME `dismiss()`, not two separate "plain" vs "shrink-back"
+  // implementations. Nothing changed here; kept as the one shared dismiss
+  // path both triggers already used.
+  //
+  // Task 2b: reads `el.getBoundingClientRect()` for the CURRENT on-screen
+  // rect — during an active live drag (see onPhotoPointerMove below) that
+  // already reflects the imperative `translateY(...)` transform applied so
+  // far, so calling dismiss() mid-drag naturally computes "the rest of the
+  // way to origin FROM here," continuing smoothly rather than jumping —
+  // no special-casing needed for "continue from the current dragged
+  // position," it falls out of reading the live rect.
   const dismiss = () => {
     if (closing) return;
     const el = photoRef.current;
@@ -84,20 +114,69 @@ export default function PhotoViewer() {
     const scaleY = originRect.height / current.height;
     const dx = (originRect.left + originRect.width / 2) - (current.left + current.width / 2);
     const dy = (originRect.top + originRect.height / 2) - (current.top + current.height / 2);
+    // Clears the live-drag inline styles (transform/transition) — the
+    // element's OWN declared `transform`/`transition` (in the JSX below)
+    // take back over on the next render with the real `closing` value, so
+    // this just needs to not leave a stale `transition: none` behind.
+    if (backdropRef.current) { backdropRef.current.style.transition = ''; backdropRef.current.style.opacity = ''; }
+    if (dimRef.current) { dimRef.current.style.transition = ''; dimRef.current.style.opacity = ''; }
     setClosing({ transform: `translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY})` });
     setTimeout(closePhoto, DISMISS_MS);
   };
 
   const onBackdropClick = () => dismiss();
 
-  const onPhotoPointerDown = (e) => { drag.current = { x: e.clientX, y: e.clientY }; };
+  const onPhotoPointerDown = (e) => {
+    drag.current = { x: e.clientX, y: e.clientY, dragging: false };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  // Task 2b: live 1:1 tracking for a downward (dismiss-direction) drag —
+  // previously this gesture only evaluated dx/dy once, at release
+  // (onPhotoPointerUp), with no visual feedback while the finger was still
+  // down. Gated so it only engages once the drag is CLEARLY vertical and
+  // downward (matches the exact axis-priority check onPhotoPointerUp
+  // already used at release, just evaluated progressively) — a horizontal
+  // swipe-browse drag is never affected by this at all.
+  const onPhotoPointerMove = (e) => {
+    if (!drag.current || closing) return;
+    const dx = e.clientX - drag.current.x;
+    const dy = e.clientY - drag.current.y;
+    if (!drag.current.dragging) {
+      if (dy < 6 || dy <= Math.abs(dx)) return;
+      drag.current.dragging = true;
+    }
+    const progress = Math.min(1, dy / DRAG_REVEAL_DISTANCE);
+    const el = photoRef.current;
+    if (el) { el.style.transition = 'none'; el.style.transform = `translateY(${dy}px) scale(${1 - progress * 0.06})`; }
+    if (backdropRef.current) { backdropRef.current.style.transition = 'none'; backdropRef.current.style.opacity = String(1 - progress); }
+    if (dimRef.current) { dimRef.current.style.transition = 'none'; dimRef.current.style.opacity = String(1 - progress); }
+  };
+
   const onPhotoPointerUp = (e) => {
     if (!drag.current) return;
+    const wasDragging = drag.current.dragging;
     const dx = e.clientX - drag.current.x;
     const dy = e.clientY - drag.current.y;
     drag.current = null;
     if (Math.abs(dy) > Math.abs(dx) && dy > GESTURE_THRESHOLD) {
       dismiss();
+      return;
+    }
+    if (wasDragging) {
+      // Task 2b: released short of the threshold — spring the live-dragged
+      // photo/backdrop back to fully open, same easing/duration as the
+      // dismiss animation itself, then hand control back to the element's
+      // own declared (identity/opacity-1) style once the spring finishes.
+      const el = photoRef.current;
+      if (el) { el.style.transition = `transform ${DISMISS_MS}ms ${DISMISS_EASING}`; el.style.transform = ''; }
+      if (backdropRef.current) { backdropRef.current.style.transition = `opacity ${DISMISS_MS}ms ease`; backdropRef.current.style.opacity = ''; }
+      if (dimRef.current) { dimRef.current.style.transition = `opacity ${DISMISS_MS}ms ease`; dimRef.current.style.opacity = ''; }
+      setTimeout(() => {
+        if (el) el.style.transition = '';
+        if (backdropRef.current) backdropRef.current.style.transition = '';
+        if (dimRef.current) dimRef.current.style.transition = '';
+      }, DISMISS_MS);
       return;
     }
     if (Math.abs(dx) > GESTURE_THRESHOLD) {
@@ -164,6 +243,7 @@ export default function PhotoViewer() {
           Tapping here (or anywhere else that isn't the photo itself)
           dismisses — this is the "outside" area. */}
       <div
+        ref={backdropRef}
         aria-hidden
         onClick={onBackdropClick}
         style={{
@@ -173,7 +253,7 @@ export default function PhotoViewer() {
           }),
         }}
       />
-      <div aria-hidden onClick={onBackdropClick} style={{ position: 'absolute', inset: 0, background: 'rgba(12,12,12,0.28)' }} />
+      <div ref={dimRef} aria-hidden onClick={onBackdropClick} style={{ position: 'absolute', inset: 0, background: 'rgba(12,12,12,0.28)' }} />
 
       {/* The "stage": credit, photo and the tagline/actions row stacked
           tight against one another as one column. The column itself (not
@@ -192,6 +272,7 @@ export default function PhotoViewer() {
           data-index={index}
           onClick={stop(() => {})}
           onPointerDown={stop(onPhotoPointerDown)}
+          onPointerMove={stop(onPhotoPointerMove)}
           onPointerUp={stop(onPhotoPointerUp)}
           style={{
             ...bg(url, {

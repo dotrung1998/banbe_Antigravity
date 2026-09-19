@@ -35,6 +35,29 @@ struct PhotoViewerView: View {
     @State private var photoRect: CGRect = .zero
     // Non-nil only while the shrink-back dismiss animation is playing.
     @State private var dismissTransform: (scale: CGSize, offset: CGSize)?
+    // Task 2b follow-up: live 1:1 drag-follow for the dismiss gesture —
+    // previously this view only evaluated `value.translation` once, in
+    // `onEnded`, with no visual feedback while the finger was still down.
+    // `dragTranslation` is updated on every `onChanged` callback with NO
+    // `withAnimation` wrapper (unlike `dismissTransform`, which always
+    // animates) so the photo tracks the finger exactly, the same
+    // distinction src/screens/sheets/PhotoViewer.jsx's ref-driven (not
+    // state-driven) live styles draw on web. `isDraggingDown` gates this
+    // to a clearly-vertical-and-downward drag only, so a horizontal
+    // swipe-browse drag is never affected.
+    @State private var dragTranslation: CGSize = .zero
+    @State private var isDraggingDown = false
+
+    // How far (pt) a downward drag has to travel before the backdrop is
+    // fully revealed (opacity 0) — independent of `swipeThreshold` (which
+    // only decides prev/next/dismiss at release); a careful drag can
+    // travel well past the threshold without releasing, and should keep
+    // getting visibly closer to fully-revealed the whole way.
+    private let dragRevealDistance: CGFloat = 200
+    private var dragProgress: CGFloat {
+        guard isDraggingDown else { return 0 }
+        return min(1, max(0, dragTranslation.height / dragRevealDistance))
+    }
 
     private var liked: Bool { app.isPhotoLiked(item.path) }
     private var saved: Bool { app.isSaved(item.eventKey) }
@@ -50,6 +73,23 @@ struct PhotoViewerView: View {
         .timingCurve(0.22, 0.61, 0.36, 1, duration: dismissDuration)
     }
 
+    // Task 2a (real-device follow-up): confirmed by reading this function's
+    // own call sites, not assumed — the backdrop's `.onTapGesture { dismiss()
+    // }` below and the swipe-past-threshold branch in the drag gesture's
+    // `onEnded` already both call this SAME function, not two separate
+    // "plain" vs "shrink-back" implementations. Nothing changed here.
+    //
+    // Task 2b: `photoRect` is the photo's LAYOUT frame (from the
+    // `GeometryReader` in `.background`), which `.scaleEffect`/`.offset`
+    // never change (those are post-layout render transforms, not layout
+    // itself) — so unlike web's `getBoundingClientRect()`, it stays
+    // constant during a live drag. `withAnimation` still makes this
+    // "continue from the current dragged position" correctly: it animates
+    // the `.offset()`/`.scaleEffect()` modifiers' CURRENTLY-RENDERED value
+    // (`dragTranslation`, applied unanimated by onChanged below) to the
+    // NEW target computed here, regardless of which state produced the
+    // starting value — SwiftUI tracks the resolved value per frame, not
+    // which `@State` fed it.
     private func dismiss() {
         guard dismissTransform == nil else { return }
         guard photoRect != .zero else { app.closePhoto(); return }
@@ -82,6 +122,11 @@ struct PhotoViewerView: View {
                     .blur(radius: 34)
                     .overlay(Color.black.opacity(0.38))
                     .allowsHitTesting(false)
+                    // Task 2b: fades progressively as a downward dismiss
+                    // drag continues, revealing Event Detail underneath —
+                    // unanimated (no `.animation(value:)` targets this),
+                    // same live 1:1 reasoning as the photo's own offset.
+                    .opacity(1 - dragProgress)
 
                 // The "stage": credit, photo and the tagline/actions row
                 // stacked tight against one another as one column, so the
@@ -107,16 +152,39 @@ struct PhotoViewerView: View {
                                     .onChange(of: photoGeo.frame(in: .global)) { _, newValue in photoRect = newValue }
                             }
                         )
-                        .scaleEffect(dismissTransform?.scale ?? CGSize(width: 1, height: 1))
-                        .offset(dismissTransform?.offset ?? .zero)
+                        .scaleEffect(dismissTransform?.scale ?? (isDraggingDown ? CGSize(width: 1 - dragProgress * 0.06, height: 1 - dragProgress * 0.06) : CGSize(width: 1, height: 1)))
+                        .offset(dismissTransform?.offset ?? (isDraggingDown ? dragTranslation : .zero))
                         .contentShape(Rectangle())
                         .highPriorityGesture(
                             DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    guard dismissTransform == nil else { return }
+                                    let dx = value.translation.width
+                                    let dy = value.translation.height
+                                    if isDraggingDown {
+                                        dragTranslation = value.translation
+                                    } else if dy > 6 && dy > abs(dx) {
+                                        isDraggingDown = true
+                                        dragTranslation = value.translation
+                                    }
+                                }
                                 .onEnded { value in
                                     let dx = value.translation.width
                                     let dy = value.translation.height
                                     if abs(dy) > abs(dx) && dy > swipeThreshold {
                                         dismiss()
+                                        return
+                                    }
+                                    if isDraggingDown {
+                                        // Task 2b: released short of the
+                                        // threshold — spring back to fully
+                                        // open, same easing/duration as the
+                                        // dismiss animation itself, rather
+                                        // than the swipe/tap logic below.
+                                        withAnimation(dismissAnimation) {
+                                            isDraggingDown = false
+                                            dragTranslation = .zero
+                                        }
                                         return
                                     }
                                     if abs(dx) > swipeThreshold {

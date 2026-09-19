@@ -1013,6 +1013,26 @@ final class AppState: ObservableObject {
     func returnToMapExplore() {
         screen = .mapExplore
     }
+    /// "Open in Map" (Event Detail, home-entry only) — the reverse
+    /// direction of `MapExploreView.openEventDetail`'s own snapshot
+    /// capture (which saves the live map's state right before leaving for
+    /// Event Detail): this builds a `MapExploreState` from scratch, using
+    /// just the event's own lat/lng, so `MapExploreView.init(restored:)`
+    /// mounts the map already centered/zoomed on this pin with its info
+    /// card showing — reusing that same restore mechanism rather than a
+    /// second, parallel "open on this event" code path. `0.01`° span
+    /// matches `selectEvent(_:)`'s own `zoomSpan` for a focused single-pin
+    /// view; `sheetFraction: 0.72` matches a fresh (non-restored) open's
+    /// default "tall" detent.
+    func openEventOnMap(_ event: CatalogEvent) {
+        mapExploreState = MapExploreState(
+            cameraCenterLat: event.lat, cameraCenterLng: event.lng,
+            cameraSpanLat: 0.01, cameraSpanLng: 0.01,
+            sheetFraction: 0.72, catFilter: "all", openNowOnly: false, sortByDistance: false,
+            selectedId: event.key
+        )
+        screen = .mapExplore
+    }
     func goOrganizer() { screen = .organizer }
     func backToEvent() { screen = .event }
     func openHeld() { screen = .confirmed }

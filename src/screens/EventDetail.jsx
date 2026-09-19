@@ -3,7 +3,7 @@ import { bg, mapsUrl } from '../data/events.js';
 import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 
 export default function EventDetail() {
-  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap } = useGoc();
   const s = state;
 
   // Event Detail is reached from several different places (the home feed, an
@@ -72,18 +72,35 @@ export default function EventDetail() {
 
   return (
     <div style={{ animation: 'gocFade 0.32s ease both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Event">
+      {/* Task 3 (14-photo-viewer.md follow-up notes / 06-design-tokens.md):
+          moved out of the photo header (which scrolls away with the rest
+          of the content, inside this screen's OWN scroll container below —
+          not the shared Shell-level one) into a fixed overlay, so both
+          stay visible/tappable the whole time the user scrolls. */}
+      <div onClick={backFromEvent} data-testid="event-detail-back" style={photoPill({ position: 'fixed', top: 66, left: 16, padding: '8px 13px', zIndex: 5 })}>‹ {backLabel}</div>
+      <div onClick={() => shareEvent(ev)} style={photoPill({ position: 'fixed', top: 66, right: 16, padding: '8px 13px', zIndex: 5 })}>
+        {s.shared ? T('Đã sao chép link', 'Link copied') : T('Chia sẻ', 'Share')}
+      </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div style={{ position: 'relative', height: 400 }}>
         <div style={bg(ev.img, { width: '100%', height: '100%', borderRadius: 0 })} />
         <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 78, pointerEvents: 'none', background: `linear-gradient(to bottom, rgba(247,244,236,0) 0%, rgba(247,244,236,0.3) 62%, ${paper} 100%)` }} />
-        <div onClick={backFromEvent} data-testid="event-detail-back" style={photoPill({ top: 66, left: 16, padding: '8px 13px' })}>‹ {backLabel}</div>
-        <div onClick={() => shareEvent(ev)} style={photoPill({ top: 66, right: 16, padding: '8px 13px' })}>
-          {s.shared ? T('Đã sao chép link', 'Link copied') : T('Chia sẻ', 'Share')}
-        </div>
       </div>
       <div style={{ padding: '22px 22px 30px', display: 'flex', flexDirection: 'column' }}>
         {!cameFromHome && (
           <div onClick={goHome} style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer', marginBottom: 10 }}>{T('▪︎ Về trang chính', '▪︎ Back to home')}</div>
+        )}
+        {/* Task 1a: only when this screen was reached from Home, not from
+            tapping the event inside Map's own sheet list — reuses the
+            exact same `cameFromHome`/`eventBackScreen` convention the
+            "Về trang chính" link right above already established, just
+            the opposite condition (that one hides FROM home; this one
+            shows only FROM home). MapExplore's own info card for this
+            pin — the same `selectedEvent` card `MapExplore.jsx` already
+            renders for a pin/list tap — appears automatically once there,
+            since `openEventOnMap` sets `selectedId` the same way. */}
+        {cameFromHome && (
+          <div onClick={() => openEventOnMap(ev)} style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer', marginBottom: 10 }}>{T('▪︎ Xem trên bản đồ', '▪︎ Open in map')}</div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11.5, color: ink }}>{evCat}</span>

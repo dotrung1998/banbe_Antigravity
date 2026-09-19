@@ -41,7 +41,7 @@ struct EventDetailView: View {
     }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             app.palette.paper.ignoresSafeArea()
             VStack(spacing: 0) {
                 ScrollView {
@@ -52,39 +52,48 @@ struct EventDetailView: View {
                 }
                 actionBar
             }
+            // Task 3 follow-up: back/share used to live INSIDE `hero`,
+            // which scrolls away with the rest of the content the instant
+            // the user scrolls the photo out of view. Rendered here
+            // instead — a ZStack sibling of the ScrollView, not a
+            // descendant of it — so they float persistently regardless of
+            // scroll position, the same floating-pill treatment the map
+            // screen's own back/compass buttons already get.
+            backShareRow
         }
     }
 
-    private var hero: some View {
-        ZStack(alignment: .top) {
-            CatalogPhoto(path: event.img, height: 400, cornerRadius: 0)
-                .overlay(alignment: .bottom) {
-                    LinearGradient(
-                        colors: [app.palette.paper.opacity(0), app.palette.paper],
-                        startPoint: .top, endPoint: .bottom
-                    )
-                    .frame(height: 78)
-                }
-            HStack {
-                pill("‹ \(backLabel)") { app.backFromEvent() }
-                    .accessibilityIdentifier("event.back")
-                    // Follow-up bug 2: an explicit, map-specific
-                    // accessibility label — distinct from the visible pill
-                    // text — so VoiceOver users get the same "this returns
-                    // to the map, not Home" clarity the sighted fix gives.
-                    .accessibilityLabel(
-                        app.eventBackScreen == .mapExplore
-                            ? app.T("Quay lại bản đồ", "Back to map")
-                            : "‹ \(backLabel)"
-                    )
-                Spacer()
-                pill(app.sharedFlash ? app.T("Đã sao chép link", "Link copied") : app.T("Chia sẻ", "Share")) {
-                    share()
-                }
+    private var backShareRow: some View {
+        HStack {
+            pill("‹ \(backLabel)") { app.backFromEvent() }
+                .accessibilityIdentifier("event.back")
+                // Follow-up bug 2: an explicit, map-specific
+                // accessibility label — distinct from the visible pill
+                // text — so VoiceOver users get the same "this returns
+                // to the map, not Home" clarity the sighted fix gives.
+                .accessibilityLabel(
+                    app.eventBackScreen == .mapExplore
+                        ? app.T("Quay lại bản đồ", "Back to map")
+                        : "‹ \(backLabel)"
+                )
+            Spacer()
+            pill(app.sharedFlash ? app.T("Đã sao chép link", "Link copied") : app.T("Chia sẻ", "Share")) {
+                share()
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
         }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+    }
+
+    private var hero: some View {
+        CatalogPhoto(path: event.img, height: 400, cornerRadius: 0)
+            .overlay(alignment: .bottom) {
+                LinearGradient(
+                    colors: [app.palette.paper.opacity(0), app.palette.paper],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .frame(height: 78)
+            }
     }
 
     private func pill(_ text: String, action: @escaping () -> Void) -> some View {
@@ -107,6 +116,22 @@ struct EventDetailView: View {
                     .foregroundStyle(app.palette.ink.opacity(0.65))
                     .buttonStyle(.plain)
                     .padding(.bottom, 10)
+            }
+            // Task 1a: only when this screen was reached from Home, not
+            // from tapping the event inside Map's own sheet list — reuses
+            // the exact same `eventBackScreen` convention the "Về trang
+            // chính" link above already established, just the opposite
+            // condition (that one hides FROM home; this shows only FROM
+            // home). `openEventOnMap` reuses MapExploreView's own restored-
+            // snapshot mechanism, so the same info card that view already
+            // renders for a selected pin/list row appears automatically.
+            if app.eventBackScreen == .home {
+                Button(app.T("▪︎ Xem trên bản đồ", "▪︎ Open in map")) { app.openEventOnMap(event) }
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(app.palette.ink.opacity(0.65))
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 10)
+                    .accessibilityIdentifier("event.openInMap")
             }
 
             HStack(spacing: 8) {
