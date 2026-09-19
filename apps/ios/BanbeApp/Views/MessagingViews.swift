@@ -6,7 +6,7 @@ struct InboxView: View {
     @EnvironmentObject var app: AppState
 
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(tracksBottomBarScroll: true) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(app.T("Tin nhắn", "Messages")).font(BanbeTheme.display(27))
@@ -48,7 +48,7 @@ struct InboxView: View {
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 24)
             .padding(.top, 16)
-            .padding(.bottom, 40)
+            .padding(.bottom, 100)
         }
         .task { await app.loadInboxThreads() }
     }
@@ -281,7 +281,7 @@ struct NotificationsView: View {
 
     var body: some View {
         ZStack {
-            ScreenScaffold {
+            ScreenScaffold(tracksBottomBarScroll: true) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .firstTextBaseline) {
                         Text(app.T("Thông báo", "Notifications")).font(BanbeTheme.display(27))
@@ -306,7 +306,7 @@ struct NotificationsView: View {
                 .foregroundStyle(app.palette.ink)
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
-                .padding(.bottom, 40)
+                .padding(.bottom, 100)
             }
             .task {
                 await app.loadNotifications()

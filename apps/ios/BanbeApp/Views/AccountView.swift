@@ -13,7 +13,7 @@ struct AccountView: View {
     }
 
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(tracksBottomBarScroll: true) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Text(app.T("Tài khoản", "Account")).font(BanbeTheme.display(27))
@@ -206,7 +206,7 @@ struct AccountView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier(app.isSignedIn ? "account.signOut" : "account.signIn")
                 .padding(.top, 24)
-                .padding(.bottom, 40)
+                .padding(.bottom, 100)
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 20)

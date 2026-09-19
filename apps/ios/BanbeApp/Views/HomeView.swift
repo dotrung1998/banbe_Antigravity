@@ -24,7 +24,7 @@ struct HomeView: View {
     }
 
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(tracksBottomBarScroll: true) {
             // Lazy, so only the cards actually on screen fetch their photo —
             // the eager VStack kicked off all ~21 hero downloads at launch
             // and they all fought for the same bandwidth.
@@ -49,7 +49,7 @@ struct HomeView: View {
                 }
                 hostLink
             }
-            .padding(.bottom, 40)
+            .padding(.bottom, 100)
         }
         .task {
             guard app.userID != nil else { return }
@@ -158,40 +158,6 @@ struct HomeView: View {
                     }
                     .font(.system(size: 11))
                     .accessibilityIdentifier("header.area")
-                }
-                HStack(spacing: 12) {
-                    Button { app.goMapExplore() } label: {
-                        VStack(spacing: 1) {
-                            Text("🗺️").font(.system(size: 15))
-                            Text(app.T("Bản đồ", "Map")).font(.system(size: 9))
-                        }
-                    }
-                    .accessibilityIdentifier("header.mapExplore")
-                    if app.isSignedIn {
-                        Button { app.goNotifications() } label: {
-                            VStack(spacing: 1) {
-                                ZStack(alignment: .topTrailing) {
-                                    Text("🔔").font(.system(size: 15))
-                                    if app.unreadNotifications > 0 {
-                                        Text(app.unreadNotifications > 9 ? "9+" : "\(app.unreadNotifications)")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundStyle(app.palette.paper)
-                                            .padding(.horizontal, 4)
-                                            .frame(minWidth: 14, minHeight: 14)
-                                            .background(app.palette.ink, in: Capsule())
-                                            .offset(x: 7, y: -5)
-                                    }
-                                }
-                                Text(app.T("Thông báo", "Notifications")).font(.system(size: 9))
-                            }
-                        }
-                        Button(app.T("Tin nhắn", "Messages")) { app.goInbox() }
-                            .font(.system(size: 12))
-                            .accessibilityIdentifier("header.messages")
-                    }
-                    Button(app.T("Tài khoản", "Account")) { app.goProfile() }
-                        .font(.system(size: 12))
-                        .accessibilityIdentifier("header.account")
                 }
             }
         }

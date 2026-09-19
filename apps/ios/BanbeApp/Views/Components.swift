@@ -249,6 +249,13 @@ private extension CIImage {
 struct ScreenScaffold<Content: View>: View {
     @EnvironmentObject private var app: AppState
     var scroll = true
+    // Deployment target is iOS 17 (apps/ios/project.yml), so the native
+    // iOS 26 `.tabBarMinimizeBehavior(.onScrollDown)` isn't available —
+    // this is the hand-rolled equivalent: screens that show the bottom tab
+    // bar (BottomTabBar.swift) opt in here so their own ScrollView's offset
+    // drives AppState.bottomBarCollapsed, mirroring src/App.jsx's Shell
+    // (which reads the same signal off its own scroll listener).
+    var tracksBottomBarScroll = false
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -259,11 +266,28 @@ struct ScreenScaffold<Content: View>: View {
                     // maxWidth pins the content to the viewport — without it
                     // any wide child (a photo, a long meta line) makes the
                     // whole page pan sideways.
-                    content().frame(maxWidth: .infinity, alignment: .leading)
+                    content()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            tracksBottomBarScroll
+                                ? AnyView(GeometryReader { proxy in
+                                    Color.clear.preference(key: ScaffoldScrollOffsetKey.self, value: proxy.frame(in: .named("scaffoldScroll")).minY)
+                                })
+                                : AnyView(EmptyView())
+                        )
+                }
+                .coordinateSpace(name: "scaffoldScroll")
+                .onPreferenceChange(ScaffoldScrollOffsetKey.self) { offset in
+                    if tracksBottomBarScroll { app.noteScaffoldScroll(offset) }
                 }
             } else {
                 content().frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
+}
+
+private struct ScaffoldScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }

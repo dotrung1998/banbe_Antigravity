@@ -1,5 +1,6 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { GocProvider, useGoc } from './state/GocContext.jsx';
+import BottomTabBar, { showsBottomBar } from './screens/BottomTabBar.jsx';
 
 import Splash from './screens/Splash.jsx';
 import LangPick from './screens/LangPick.jsx';
@@ -81,14 +82,28 @@ function Shell() {
   const Screen = SCREENS[state.screen] || Home;
   const scrollRef = useRef(null);
   const scrollPositions = useRef({});
+  const lastScrollTop = useRef(0);
+  const [barCollapsed, setBarCollapsed] = useState(false);
+  const showBar = showsBottomBar(state.screen);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = scrollPositions.current[state.screen] || 0;
+    lastScrollTop.current = scrollPositions.current[state.screen] || 0;
+    setBarCollapsed(false);
   }, [state.screen]);
 
+  // Mirrors iOS 26's onScrollDown minimize behavior: scrolling down shrinks
+  // the floating pill a bit, scrolling up (or being at the very top) puts
+  // it straight back to full size.
   const handleScroll = (e) => {
-    scrollPositions.current[state.screen] = e.currentTarget.scrollTop;
+    const top = e.currentTarget.scrollTop;
+    scrollPositions.current[state.screen] = top;
+    const delta = top - lastScrollTop.current;
+    if (top <= 4) setBarCollapsed(false);
+    else if (delta > 6) setBarCollapsed(true);
+    else if (delta < -6) setBarCollapsed(false);
+    lastScrollTop.current = top;
   };
 
   return (
@@ -98,7 +113,9 @@ function Shell() {
         onScroll={handleScroll}
         style={{ width: '100%', maxWidth: 480, height: '100%', position: 'relative', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'var(--bb-bg)' }}
       >
-        <Screen key={state.screen} />
+        <div style={{ paddingBottom: showBar ? 92 : 0 }}>
+          <Screen key={state.screen} />
+        </div>
         {state.areaAsking && <AreaSheet />}
         {state.askingLocation && <LocationSheet />}
         {state.scanningQr && <QrScanSheet />}
@@ -106,6 +123,7 @@ function Shell() {
         {state.reasonPrompt && <ReasonSheet />}
         {state.loading && <Loading label={T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
+      {showBar && <BottomTabBar collapsed={barCollapsed} />}
       <ToastStack />
     </div>
   );

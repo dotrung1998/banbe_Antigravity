@@ -75,3 +75,51 @@ equivalent — iOS renders the same visual result with flat
 diffing was run (no such tooling in this repo) — verification was
 build-clean + a full repo grep confirming zero remaining hardcoded
 `9A3E2D` literals outside `index.css`/`theme.js` themselves.
+
+## Bottom tab bar (Profile/Inbox/Notifications/MapExplore relocated from header)
+
+New facts discovered while doing this move — recorded so a future pass
+doesn't re-derive them:
+
+- **iOS deployment target is 17.0** (`apps/ios/project.yml:4-5`, confirmed
+  again in the generated `.pbxproj`), not iOS 26 — so the native
+  `.tabBarMinimizeBehavior(.onScrollDown)` API is not available. The bar is
+  a hand-rolled `BottomTabBar.swift` overlay in `RootView.swift`, driven by
+  `AppState.bottomBarCollapsed` + `AppState.noteScaffoldScroll()`, which
+  `ScreenScaffold` (`Components.swift`) feeds via a `GeometryReader`
+  preference-key scroll-offset trick when a screen passes
+  `tracksBottomBarScroll: true`. Revisit the native API once/if the
+  deployment target moves to 26.
+- **No shared icon component/library existed on either platform** before
+  this pass (confirmed by grep) — the only prior custom-SVG precedent was
+  the inline orbit-arc spinner in `Loading.jsx`/`Splash.jsx` (round-capped
+  `stroke`, no fill). The new tab icons (`src/screens/BottomTabBar.jsx` /
+  `apps/ios/BanbeApp/Views/BottomTabBar.swift`) follow that same
+  stroke-only, round-cap language, plus the ring/diagonal/dot vocabulary of
+  `public/banbe-mark.png` (the actual banbe mark) — not any borrowed IG/FB/
+  Twitter shape.
+- **Inbox has no real unread-count state anywhere** — no `read_at` on
+  `messages`, no per-thread unread flag in `threads` (confirmed by grep of
+  the whole messaging code path before writing this). Only Notifications
+  has a real unread count (`s.unreadNotifications` / `app.unreadNotifications`,
+  the same one the old header bell already used). The task's own framing
+  assumed both Inbox and Notifications had one — that assumption was wrong
+  for Inbox, so **Inbox intentionally has no badge**, same principle as the
+  "don't fabricate a dot for Profile/MapExplore" instruction.
+- `barGlass()`'s only prior consumer (`HostIntro.jsx`) used
+  `position: 'absolute'` scoped to its own screen; the new bar needs to
+  render identically across 5 different top-level screens, so it lives once
+  in `App.jsx`'s `Shell` (outside the per-screen scroll container) instead,
+  still `position: 'absolute'` — relative to `Shell`'s own
+  `position: fixed; inset: 0` wrapper, which is an equally valid
+  containing block and keeps the pill visually pinned regardless of the
+  inner `ScreenScaffold`/scroll div's own scrollTop.
+- File:line — web: `src/screens/BottomTabBar.jsx` (new), wired at
+  `src/App.jsx:82-121`; old header icons removed from `src/screens/Home.jsx`
+  (was `Home.jsx:160-179`). iOS: `apps/ios/BanbeApp/Views/BottomTabBar.swift`
+  (new), wired at `apps/ios/BanbeApp/Views/RootView.swift:214-226` and
+  `RootView.swift:284-292`; old header buttons removed from
+  `apps/ios/BanbeApp/Views/HomeView.swift` (was `HomeView.swift:162-195`).
+  Scroll-collapse plumbing: `AppState.swift:155-161` (`bottomBarCollapsed`),
+  `AppState.swift:917-929` (`noteScaffoldScroll`), `Components.swift:249-284`
+  (`ScreenScaffold.tracksBottomBarScroll`).

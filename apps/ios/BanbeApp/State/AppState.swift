@@ -153,6 +153,13 @@ final class AppState: ObservableObject {
 
     // MARK: Navigation
     @Published var screen: Screen = .home
+    // Bottom tab bar (BottomTabBar.swift) — shrinks a bit while scrolling
+    // down, same idea as iOS 26's `.tabBarMinimizeBehavior(.onScrollDown)`,
+    // hand-rolled because this app's deployment target is iOS 17. Driven by
+    // ScreenScaffold's own scroll-offset tracking via noteScaffoldScroll(),
+    // and reset to false on every screen change (see RootView).
+    @Published var bottomBarCollapsed: Bool = false
+    private var lastScaffoldScrollOffset: CGFloat = 0
     @Published var eventKey: String = "bepnho"
     @Published var eventBackScreen: Screen = .home
     @Published var authReturnScreen: Screen = .home
@@ -908,6 +915,19 @@ final class AppState: ObservableObject {
     }
 
     // MARK: - Navigation
+
+    /// `offsetY` is the scrolled content's minY in ScreenScaffold's own
+    /// "scaffoldScroll" coordinate space — 0 at the top, increasingly
+    /// negative the further down the user has scrolled. Mirrors src/App.jsx
+    /// Shell's handleScroll(): pinned back open at (or near) the top or
+    /// while scrolling up, shrinks once a real scroll-down is detected.
+    func noteScaffoldScroll(_ offsetY: CGFloat) {
+        let delta = offsetY - lastScaffoldScrollOffset
+        if offsetY >= -4 { bottomBarCollapsed = false }
+        else if delta < -6 { bottomBarCollapsed = true }
+        else if delta > 6 { bottomBarCollapsed = false }
+        lastScaffoldScrollOffset = offsetY
+    }
 
     func goHome() { screen = .home }
     func goMapExplore() { screen = .mapExplore }

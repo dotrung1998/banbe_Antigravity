@@ -216,6 +216,19 @@ struct RootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
 
+            // Relocated from HomeView's top-right header (and mirrored,
+            // pre-this-change, in every other primary screen's own header)
+            // — one persistent floating bar instead, shown only on
+            // top-level/primary screens. Flow screens that own the bottom
+            // of their own viewport for a CTA (ReserveView's "Giữ chỗ",
+            // HostIntroView's "Tạo sự kiện đầu tiên") are deliberately not
+            // in BottomTabBar.visibleScreens.
+            if BottomTabBar.visibleScreens.contains(app.screen) {
+                BottomTabBar()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .allowsHitTesting(!isPeeking)
+            }
+
             // Face ID app-lock sits above everything — see FaceIDLockView.
             // Task 2: splash must show BEFORE the Face ID prompt, not
             // simultaneously over it — held off while app.screen == .splash.
@@ -288,6 +301,9 @@ struct RootView: View {
                 app.authBackScreen = newScreen
                 app.screen = .login
             }
+            // Every screen change starts the bottom tab bar back at full
+            // size, matching src/App.jsx Shell's own per-screen reset.
+            app.bottomBarCollapsed = false
         }
     }
 
