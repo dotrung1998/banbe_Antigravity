@@ -83,6 +83,8 @@ function Shell() {
   const scrollRef = useRef(null);
   const scrollPositions = useRef({});
   const lastScrollTop = useRef(0);
+  const scrollRaf = useRef(null);
+  const pendingScrollTop = useRef(0);
   const [barCollapsed, setBarCollapsed] = useState(false);
   const showBar = showsBottomBar(state.screen);
 
@@ -90,20 +92,41 @@ function Shell() {
     const el = scrollRef.current;
     if (el) el.scrollTop = scrollPositions.current[state.screen] || 0;
     lastScrollTop.current = scrollPositions.current[state.screen] || 0;
+    if (scrollRaf.current) { cancelAnimationFrame(scrollRaf.current); scrollRaf.current = null; }
     setBarCollapsed(false);
   }, [state.screen]);
 
   // Mirrors iOS 26's onScrollDown minimize behavior: scrolling down shrinks
   // the floating pill a bit, scrolling up (or being at the very top) puts
   // it straight back to full size.
+  //
+  // BUG 1 follow-up (64f2719 real-device report): this used to call
+  // setBarCollapsed synchronously on every raw `scroll` event — which on a
+  // touchpad/momentum scroll can fire far more often than the screen can
+  // repaint — forcing a React re-render per pixel scrolled. Reading
+  // scrollTop and deciding the direction still happens on every event (it's
+  // cheap), but the actual state write (the only part that triggers a
+  // re-render) is coalesced to at most once per animation frame via rAF, so
+  // a burst of scroll events between two frames only ever produces one
+  // update instead of one each.
   const handleScroll = (e) => {
     const top = e.currentTarget.scrollTop;
     scrollPositions.current[state.screen] = top;
-    const delta = top - lastScrollTop.current;
-    if (top <= 4) setBarCollapsed(false);
-    else if (delta > 6) setBarCollapsed(true);
-    else if (delta < -6) setBarCollapsed(false);
-    lastScrollTop.current = top;
+    pendingScrollTop.current = top;
+    if (scrollRaf.current) return;
+    scrollRaf.current = requestAnimationFrame(() => {
+      scrollRaf.current = null;
+      // Read the LATEST scrollTop at flush time, not whatever it was when
+      // this frame's rAF was scheduled — several scroll events typically
+      // land in the gap between the schedule and the callback, and only
+      // the most recent one should decide direction.
+      const latestTop = pendingScrollTop.current;
+      const delta = latestTop - lastScrollTop.current;
+      if (latestTop <= 4) setBarCollapsed(false);
+      else if (delta > 6) setBarCollapsed(true);
+      else if (delta < -6) setBarCollapsed(false);
+      lastScrollTop.current = latestTop;
+    });
   };
 
   return (

@@ -921,12 +921,38 @@ final class AppState: ObservableObject {
     /// negative the further down the user has scrolled. Mirrors src/App.jsx
     /// Shell's handleScroll(): pinned back open at (or near) the top or
     /// while scrolling up, shrinks once a real scroll-down is detected.
+    ///
+    /// BUG 1 follow-up (64f2719 real-device report): the PreferenceKey this
+    /// feeds fires on every scroll frame (up to ProMotion's 120Hz), and this
+    /// used to mutate `bottomBarCollapsed` unanimated on every single one —
+    /// a rapid back-and-forth scroll could flip the flag several times a
+    /// frame, each flip snapping the bar's size with no interpolation at
+    /// all, which is what actually read as "laggy" rather than smooth.
+    /// Two independent fixes: (1) throttled to ~30 updates/sec — plenty to
+    /// feel live, far fewer than 120/sec of redundant work; (2) the actual
+    /// mutation is now wrapped in `withAnimation(.spring(...))` and skipped
+    /// entirely when the value wouldn't change, so it can't restart the
+    /// same animation mid-flight against itself.
+    private var lastScaffoldScrollUpdate = Date.distantPast
+
     func noteScaffoldScroll(_ offsetY: CGFloat) {
+        let now = Date()
+        guard now.timeIntervalSince(lastScaffoldScrollUpdate) > 0.033 else { return }
+        lastScaffoldScrollUpdate = now
+
         let delta = offsetY - lastScaffoldScrollOffset
-        if offsetY >= -4 { bottomBarCollapsed = false }
-        else if delta < -6 { bottomBarCollapsed = true }
-        else if delta > 6 { bottomBarCollapsed = false }
         lastScaffoldScrollOffset = offsetY
+
+        let shouldCollapse: Bool
+        if offsetY >= -4 { shouldCollapse = false }
+        else if delta < -6 { shouldCollapse = true }
+        else if delta > 6 { shouldCollapse = false }
+        else { return }
+
+        guard shouldCollapse != bottomBarCollapsed else { return }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            bottomBarCollapsed = shouldCollapse
+        }
     }
 
     func goHome() { screen = .home }

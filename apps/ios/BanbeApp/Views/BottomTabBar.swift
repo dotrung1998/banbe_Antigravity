@@ -5,15 +5,24 @@ import SwiftUI
 /// = "17.0"), so the native iOS 26 `.tabBarMinimizeBehavior(.onScrollDown)`
 /// isn't available; this hand-rolls the same "shrink on scroll down,
 /// restore on scroll up" behavior off AppState.bottomBarCollapsed (see
-/// ScreenScaffold's scroll-offset tracking / AppState.noteScaffoldScroll()).
+/// ScreenScaffold's scroll-offset tracking / AppState.noteScaffoldScroll(),
+/// which now throttles + animates that mutation — see its own doc comment).
 /// Same four destinations as the old header row (Map/Notifications/Inbox/
-/// Account), same custom icon vocabulary as the web bar — a ring, a
-/// diagonal stroke, small filled dots, echoing public/banbe-mark.png's own
+/// Account), same custom icon vocabulary as the web bar — a diagonal
+/// stroke, a ring, small filled dots, echoing public/banbe-mark.png's own
 /// bold round-capped strokes rather than the classic IG/FB/Twitter shapes.
 struct BottomTabBar: View {
     @EnvironmentObject var app: AppState
 
     static let visibleScreens: Set<Screen> = [.home, .mapExplore, .notifications, .inbox, .profile]
+
+    // BUG 2 follow-up: bumped up from 22/19 (expanded/collapsed) to a
+    // single fixed, larger size — the shrink-on-scroll effect is now a
+    // uniform `.scaleEffect` on the whole bar (see body), not a per-icon
+    // size change, so one constant is enough and it stays crisp at every
+    // scale factor instead of laying out at a smaller intrinsic size.
+    private let iconSize: CGFloat = 27
+    private let barHeight: CGFloat = 64
 
     private struct Item: Identifiable {
         let id: String
@@ -36,17 +45,63 @@ struct BottomTabBar: View {
         ]
     }
 
-    private var barHeight: CGFloat { app.bottomBarCollapsed ? 52 : 60 }
-    private var iconSize: CGFloat { app.bottomBarCollapsed ? 19 : 22 }
+    // FEATURE — scrub-to-select: which tab is currently under the finger
+    // during a press/drag, and each tab's own frame (captured via
+    // anchorPreference below) so a raw touch x-position can be hit-tested
+    // against them.
+    @State private var activeID: String?
+    @State private var itemFrames: [String: CGRect] = [:]
+
+    private func hitTest(_ x: CGFloat) -> String? {
+        for item in items {
+            if let frame = itemFrames[item.id], x >= frame.minX, x <= frame.maxX { return item.id }
+        }
+        // A drag that slides past either end still resolves to that end's
+        // tab, rather than losing the highlight — matches a real segmented
+        // control's own edge behavior.
+        if let first = items.first, let frame = itemFrames[first.id], x < frame.minX { return first.id }
+        if let last = items.last, let frame = itemFrames[last.id], x > frame.maxX { return last.id }
+        return nil
+    }
+
+    private var scrubGesture: some Gesture {
+        // minimumDistance: 0 so this also fires for a plain tap-and-release
+        // — a tap that never moves still lands on, and navigates to,
+        // whichever tab it started on.
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onChanged { value in
+                let id = hitTest(value.location.x)
+                if id != activeID {
+                    withAnimation(.interactiveSpring()) { activeID = id }
+                }
+            }
+            .onEnded { value in
+                let id = hitTest(value.location.x)
+                if let id, let item = items.first(where: { $0.id == id }) { item.action() }
+                withAnimation(.easeOut(duration: 0.16)) { activeID = nil }
+            }
+    }
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(items) { item in
-                Button { item.action() } label: {
+        ZStack(alignment: .leading) {
+            // Soft, blurred, darker highlight blob — reuses the ink token
+            // (no new color), not a new tint.
+            if let activeID, let frame = itemFrames[activeID] {
+                Capsule()
+                    .fill(app.palette.ink.opacity(0.12))
+                    .frame(width: frame.width, height: barHeight - 10)
+                    .position(x: frame.midX, y: barHeight / 2)
+                    .blur(radius: 0.5)
+                    .allowsHitTesting(false)
+            }
+
+            HStack(spacing: 0) {
+                ForEach(items) { item in
                     ZStack(alignment: .topTrailing) {
                         item.icon(app.palette.ink)
                             .frame(width: iconSize, height: iconSize)
-                            .frame(width: 40, height: barHeight)
+                            .opacity(activeID == item.id ? 1 : 0.86)
+                            .frame(maxWidth: .infinity, minHeight: barHeight)
                         if item.badge > 0 {
                             Text(item.badge > 9 ? "9+" : "\(item.badge)")
                                 .font(.system(size: 9, weight: .bold))
@@ -54,26 +109,60 @@ struct BottomTabBar: View {
                                 .padding(.horizontal, 4)
                                 .frame(minWidth: 14, minHeight: 14)
                                 .background(BanbeTheme.alert, in: Capsule())
-                                .offset(x: -2, y: 8)
+                                .offset(x: -6, y: 8)
                         }
                     }
+                    .accessibilityIdentifier("tab.\(item.id)")
+                    .accessibilityLabel(item.label)
+                    .anchorPreference(key: TabItemFrameKey.self, value: .bounds) { [item.id: $0] }
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("tab.\(item.id)")
-                .accessibilityLabel(item.label)
-                .frame(maxWidth: .infinity)
             }
         }
         .frame(height: barHeight)
         .frame(maxWidth: 320)
+        .contentShape(Rectangle())
+        .gesture(scrubGesture)
+        .backgroundPreferenceValue(TabItemFrameKey.self) { anchors in
+            GeometryReader { proxy in
+                Color.clear.onAppear { resolveFrames(anchors, proxy) }
+                    .onChange(of: proxy.size) { _, _ in resolveFrames(anchors, proxy) }
+            }
+        }
         .background(.thinMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(app.palette.ink.opacity(0.06)))
         .shadow(color: .black.opacity(0.16), radius: 14, x: 0, y: 6)
-        .animation(.easeInOut(duration: 0.22), value: app.bottomBarCollapsed)
+        // BUG 1 follow-up: the shrink-on-scroll effect used to resize
+        // `barHeight`/icon frames directly — a layout property change that
+        // has to re-flow the HStack every time. A uniform `.scaleEffect` on
+        // the whole capsule is a compositor-only transform (no re-layout),
+        // which is both cheaper and reads smoother; AppState.bottomBarCollapsed
+        // itself is now throttled + set inside `withAnimation(.spring(...))`
+        // (see its own doc comment) instead of being flipped unanimated on
+        // every scroll frame.
+        .scaleEffect(app.bottomBarCollapsed ? 0.86 : 1, anchor: .bottom)
         .padding(.horizontal, 28)
         .padding(.bottom, 8)
     }
+
+    private func resolveFrames(_ anchors: [String: Anchor<CGRect>], _ proxy: GeometryProxy) {
+        var result: [String: CGRect] = [:]
+        for (id, anchor) in anchors { result[id] = proxy[anchor] }
+        itemFrames = result
+    }
 }
+
+private struct TabItemFrameKey: PreferenceKey {
+    static var defaultValue: [String: Anchor<CGRect>] = [:]
+    static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+// BUG 2 follow-up: each glyph dropped to at most 2-3 path elements (was up
+// to 3 with a faint secondary arc on Notifications) and drawn at a bigger
+// relative scale within its own 24pt box, so it reads at a glance instead
+// of needing a second look — same ring/diagonal-stroke/dot vocabulary from
+// 64f2719 (public/banbe-mark.png), just simplified, not a new direction.
 
 private struct MapGlyph: View {
     let color: Color
@@ -81,10 +170,9 @@ private struct MapGlyph: View {
         GeometryReader { geo in
             let s = geo.size.width / 24
             ZStack {
-                Circle().stroke(color, lineWidth: 2.2 * s).frame(width: 6.4 * s, height: 6.4 * s).position(x: 7 * s, y: 16 * s)
-                Path { p in p.move(to: CGPoint(x: 9.6 * s, y: 13.6 * s)); p.addLine(to: CGPoint(x: 16 * s, y: 7 * s)) }
-                    .stroke(color, style: StrokeStyle(lineWidth: 2.2 * s, lineCap: .round))
-                Circle().fill(color).frame(width: 3 * s, height: 3 * s).position(x: 17.3 * s, y: 5.7 * s)
+                Path { p in p.move(to: CGPoint(x: 6.5 * s, y: 18 * s)); p.addLine(to: CGPoint(x: 15.5 * s, y: 7 * s)) }
+                    .stroke(color, style: StrokeStyle(lineWidth: 2.6 * s, lineCap: .round))
+                Circle().fill(color).frame(width: 5.4 * s, height: 5.4 * s).position(x: 16.8 * s, y: 5.6 * s)
             }
         }
     }
@@ -96,11 +184,9 @@ private struct NotificationsGlyph: View {
         GeometryReader { geo in
             let s = geo.size.width / 24
             ZStack {
-                Circle().fill(color).frame(width: 3.2 * s, height: 3.2 * s).position(x: 12 * s, y: 16 * s)
-                Path { p in p.addArc(center: CGPoint(x: 12 * s, y: 17.5 * s), radius: 5 * s, startAngle: .degrees(200), endAngle: .degrees(340), clockwise: false) }
-                    .stroke(color, style: StrokeStyle(lineWidth: 2.2 * s, lineCap: .round))
-                Path { p in p.addArc(center: CGPoint(x: 12 * s, y: 18.3 * s), radius: 9 * s, startAngle: .degrees(200), endAngle: .degrees(340), clockwise: false) }
-                    .stroke(color.opacity(0.55), style: StrokeStyle(lineWidth: 2.2 * s, lineCap: .round))
+                Circle().fill(color).frame(width: 4.2 * s, height: 4.2 * s).position(x: 12 * s, y: 16.5 * s)
+                Path { p in p.addArc(center: CGPoint(x: 12 * s, y: 16.5 * s), radius: 6.6 * s, startAngle: .degrees(200), endAngle: .degrees(340), clockwise: false) }
+                    .stroke(color, style: StrokeStyle(lineWidth: 2.6 * s, lineCap: .round))
             }
         }
     }
@@ -112,13 +198,13 @@ private struct InboxGlyph: View {
         GeometryReader { geo in
             let s = geo.size.width / 24
             ZStack {
-                Circle().fill(color).frame(width: 4 * s, height: 4 * s).position(x: 7 * s, y: 9 * s)
-                Circle().fill(color).frame(width: 4 * s, height: 4 * s).position(x: 17 * s, y: 15 * s)
+                Circle().fill(color).frame(width: 4.8 * s, height: 4.8 * s).position(x: 7 * s, y: 9 * s)
+                Circle().fill(color).frame(width: 4.8 * s, height: 4.8 * s).position(x: 17 * s, y: 15 * s)
                 Path { p in
-                    p.move(to: CGPoint(x: 9 * s, y: 10.5 * s))
-                    p.addQuadCurve(to: CGPoint(x: 15 * s, y: 13.5 * s), control: CGPoint(x: 13 * s, y: 12 * s))
+                    p.move(to: CGPoint(x: 9.3 * s, y: 10.8 * s))
+                    p.addQuadCurve(to: CGPoint(x: 14.7 * s, y: 13.2 * s), control: CGPoint(x: 13 * s, y: 12 * s))
                 }
-                .stroke(color, style: StrokeStyle(lineWidth: 2.2 * s, lineCap: .round))
+                .stroke(color, style: StrokeStyle(lineWidth: 2.4 * s, lineCap: .round))
             }
         }
     }
@@ -130,12 +216,12 @@ private struct ProfileGlyph: View {
         GeometryReader { geo in
             let s = geo.size.width / 24
             ZStack {
-                Circle().stroke(color, lineWidth: 2.2 * s).frame(width: 6.8 * s, height: 6.8 * s).position(x: 12 * s, y: 8.5 * s)
+                Circle().stroke(color, lineWidth: 2.6 * s).frame(width: 7.6 * s, height: 7.6 * s).position(x: 12 * s, y: 8 * s)
                 Path { p in
-                    p.move(to: CGPoint(x: 5.5 * s, y: 19 * s))
-                    p.addCurve(to: CGPoint(x: 18.5 * s, y: 19 * s), control1: CGPoint(x: 6.7 * s, y: 15.4 * s), control2: CGPoint(x: 15.3 * s, y: 15.4 * s))
+                    p.move(to: CGPoint(x: 5 * s, y: 19.2 * s))
+                    p.addCurve(to: CGPoint(x: 19 * s, y: 19.2 * s), control1: CGPoint(x: 6.3 * s, y: 15.3 * s), control2: CGPoint(x: 17.7 * s, y: 15.3 * s))
                 }
-                .stroke(color, style: StrokeStyle(lineWidth: 2.2 * s, lineCap: .round))
+                .stroke(color, style: StrokeStyle(lineWidth: 2.6 * s, lineCap: .round))
             }
         }
     }

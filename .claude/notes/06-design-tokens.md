@@ -123,3 +123,69 @@ doesn't re-derive them:
   Scroll-collapse plumbing: `AppState.swift:155-161` (`bottomBarCollapsed`),
   `AppState.swift:917-929` (`noteScaffoldScroll`), `Components.swift:249-284`
   (`ScreenScaffold.tracksBottomBarScroll`).
+
+## Follow-up (real-device report): smoothness, scrub gesture, bigger icons
+
+Three issues found after 64f2719 shipped, fixed in the same tab bar files
+(no other files touched):
+
+- **BUG 1 root cause, confirmed by reading, not guessed**: on web,
+  `Shell.handleScroll` (`src/App.jsx`) was calling `setBarCollapsed`
+  synchronously on every native `scroll` event — a React re-render per
+  event, and momentum/trackpad scroll fires far more of those than the
+  screen repaints. On iOS, `AppState.noteScaffoldScroll` mutated
+  `bottomBarCollapsed` unanimated on every `PreferenceKey` update (up to
+  120/sec on ProMotion) — a rapid direction change could flip the flag
+  several times inside one frame, each flip snapping the size with no
+  interpolation, which read as jank rather than one smooth transition.
+  Fix, both platforms: (1) collapse is now driven by a `transform: scale()`
+  / `.scaleEffect()` on the whole pill instead of changing `height`/icon
+  `width`/`height` directly (compositor-only, no re-layout); (2) the state
+  write itself is throttled — web via `requestAnimationFrame` coalescing
+  (`src/App.jsx`'s `handleScroll`/`scrollRaf`), iOS via a ~30updates/sec
+  time-guard plus a "skip if the value wouldn't actually change" guard,
+  wrapped in `withAnimation(.spring(response: 0.3, dampingFraction: 0.8))`
+  (`AppState.swift`'s `noteScaffoldScroll`).
+- **Scrub-to-select is deliberately NOT implemented via React state /
+  `@State` per pointer-move on web** — driving the highlight's position
+  through a state update on every `pointermove` would reintroduce exactly
+  Bug 1's mistake inside the new gesture itself. `BottomTabBar.jsx` instead
+  writes `transform`/`opacity`/`width` straight to the highlight div's DOM
+  node via a ref, and keeps those three properties entirely out of that
+  element's JSX `style` object so React's reconciliation (triggered by the
+  much rarer `activeIndex` state change, used only to darken the landed-on
+  icon) never stomps on them. Worth remembering before "cleaning up" that
+  component — the split between ref-driven and state-driven styling there
+  is intentional, not an oversight.
+- **iOS scrub gesture uses `anchorPreference`/`backgroundPreferenceValue`
+  to build the `[String: CGRect]` item-frame map**, not manual per-item
+  `GeometryReader`s — the tab row is a plain equal-width `HStack` so the
+  frames could technically be computed arithmetically, but the
+  anchor-preference route is what the ticket asked for and keeps the frame
+  source-of-truth tied to actual layout rather than an assumption about
+  equal widths that a future icon/badge change could quietly break.
+- **Icon simplification**: iterated on 64f2719's existing vocabulary (ring /
+  diagonal stroke / filled dot, drawn from `public/banbe-mark.png`) rather
+  than replacing it — Map and Notifications each dropped one stroke element
+  (Map's separate "current location" ring; Notifications' second, fainter
+  arc) since those read as clutter at tab-bar size, not as a new direction.
+  Inbox and Profile were already 2-3 elements and were left conceptually
+  the same, just drawn bigger. Base icon size went from 22/19 (expanded/
+  collapsed) to one fixed 27pt/27px — fixed, because collapse is now a
+  whole-bar scale transform rather than a per-icon size change (see BUG 1
+  above), so a single constant covers both states without ever laying out
+  at a smaller intrinsic size.
+- File:line — web: `src/screens/BottomTabBar.jsx` (icons, scrub gesture,
+  transform-based collapse, all rewritten), `src/App.jsx`'s `handleScroll`/
+  `scrollRaf`/`pendingScrollTop` (rAF throttle). iOS:
+  `apps/ios/BanbeApp/Views/BottomTabBar.swift` (icons, scrub gesture via
+  `TabItemFrameKey`, `.scaleEffect`-based collapse, all rewritten),
+  `apps/ios/BanbeApp/State/AppState.swift`'s `noteScaffoldScroll` (throttle
+  + `withAnimation(.spring)`).
+- Verification: `npx vite build` clean; `xcodegen generate` +
+  `xcodebuild -scheme BanbeApp -destination 'platform=iOS Simulator,...'
+  build` → **BUILD SUCCEEDED**. No on-device frame-rate profiling was run
+  (no Instruments/perf tooling available in this sandbox) — verification
+  is code-level (confirmed the exact synchronous-state-write / unanimated-
+  mutation root causes by reading the pre-fix code, then removed them) plus
+  clean builds on both platforms, not a measured before/after FPS number.
