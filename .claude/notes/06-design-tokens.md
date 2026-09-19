@@ -455,3 +455,78 @@ ordering issue 80c1ac3 fixed, not a leftover of it.
   only reasoned through from Apple's documented behavior of `UIWindow`
   `windowLevel` ordering versus in-window modal presentations. Flagging
   this explicitly rather than claiming a confirmation that didn't happen.
+
+## Follow-up 5 (real-device regression on 5f449d9): every tab bar button stopped tapping — root cause confirmed via logging, fix verified via a real XCUITest run
+
+- **Root cause, confirmed via temporary `NSLog` in `hitTest`/the overlay
+  root's `body` before touching any code, not guessed**: exactly the
+  ticket's own hypothesis. `PassthroughWindow.hitTest`
+  (`hitView === rootViewController?.view ? nil : hitView`) assumes a real
+  tap resolves to some deeper, distinct `UIView` than the hosting
+  controller's own root — true for UIKit content, false here.
+  `BottomTabBar`'s content has no `UIViewRepresentable`/`List`/`ScrollView`/
+  text field anywhere in it; SwiftUI hosts and hit-tests the whole Capsule/
+  HStack/icon subtree internally and dispatches through its OWN gesture
+  system once UIKit hands the touch to the ONE view the hosting controller
+  is backed by. `super.hitTest` resolved to `rootViewController.view` for
+  literally every point in the window, so the `===` check was true
+  universally and `hitTest` returned `nil` for every touch, including taps
+  squarely on a real icon.
+- **Fix implemented: the ticket's own "preferred, most robust" option 1** —
+  stopped trying to distinguish empty-space-vs-real-content via view
+  identity at all. `BottomTabBarOverlay.attach()` now sizes the `UIWindow`
+  to a small band (400×160pt, generous rather than pixel-exact) anchored to
+  the bottom-center of the screen instead of the full screen, and
+  `PassthroughWindow`/its `hitTest` override are deleted entirely — a plain
+  `UIWindow`. Passthrough is now a property of the window's own bounds: a
+  touch outside the band is never even offered to this window by UIKit's
+  ordinary window-hit-testing (which considers window frames before
+  per-view hit-testing), so it reaches the main window underneath
+  automatically; a touch inside the band always resolves to the hosting
+  view and SwiftUI dispatches it normally, the same as any other SwiftUI
+  screen.
+- **New fact for future passes: BottomTabBar's own tab items are NOT
+  `Button`s.** They're plain SwiftUI views (`ZStack` + `.accessibilityIdentifier`/
+  `.accessibilityLabel`) — actual tap handling has been the bar-wide
+  `DragGesture` from 623ec1e's scrub-to-select feature since that pass, not
+  a per-item tap target. Confirmed by dumping `app.debugDescription` in a
+  failing UI test: XCUITest classifies three of the four items as `.other`
+  and the one with a numeric badge `Text` child (`tab.notifications`) as
+  `.staticText` — none as `.button`. A query like `app.buttons["tab.map"]`
+  finds nothing and always will; use `app.descendants(matching:
+  .any).matching(identifier:)` (or the specific inferred type) instead.
+  This tripped up this session's OWN first attempt at a verifying UI test,
+  not just anything already in the repo.
+- **Verified with a real, passing XCUITest run — not just reasoning**,
+  since this app already has a `BanbeAppUITests` target with the
+  infrastructure (shared test-account sign-in, `screen.*`/`tab.*`
+  accessibility identifiers) to do this properly. New file
+  `apps/ios/BanbeAppUITests/BottomTabBarUITests.swift`,
+  `testEachTabBarButtonNavigates` (taps all four tabs in sequence, asserts
+  the matching `screen.*` element appears each time) and
+  `testTabBarButtonWorksWhileMapSheetIsOpen` (the exact regression path
+  80c1ac3/5f449d9 targeted: opens MapExplore, confirms its `.sheet()` is up
+  via `map.compass`, then taps `tab.profile` and confirms it navigates) —
+  both **passed** against the actual built app on the booted iOS Simulator
+  (`xcodebuild test -only-testing:BanbeAppUITests/BottomTabBarUITests`,
+  2/2, 0 failures), confirmed AGAIN after removing the temporary debug
+  `NSLog` calls used to find the root cause, so the passing run reflects
+  the exact code now on disk.
+- **Known pre-existing debt, found but out of this pass's scope**: while
+  writing the new test, `BanbeAppUITests/MapExploreSelectionUITests.swift`
+  and `NavigationUITests.swift` were read for reference and are themselves
+  now stale — they call `app.buttons["header.mapExplore"]`/
+  `app.buttons["header.account"]` etc., the OLD header buttons removed
+  several passes ago when navigation moved into `BottomTabBar`. Not fixed
+  here (out of this ticket's scope), but worth knowing the existing UI
+  suite has a real gap here until someone updates those two files to the
+  `tab.*` identifiers.
+- File:line — `apps/ios/BanbeApp/Views/BottomTabBarOverlay.swift` (window
+  banding, `PassthroughWindow` deleted); new file
+  `apps/ios/BanbeAppUITests/BottomTabBarUITests.swift`.
+- Verification: `xcodebuild build` → **BUILD SUCCEEDED**;
+  `xcodebuild test -only-testing:BanbeAppUITests/BottomTabBarUITests` →
+  **TEST SUCCEEDED**, 2/2, run twice (once to find the root cause with
+  debug logging in place, once after removing it) — this is the first fix
+  in this whole tab-bar saga verified via an actual executed tap on the
+  simulator rather than static reasoning about SwiftUI/UIKit behavior.
