@@ -63,6 +63,11 @@ export default function PhotoViewer() {
   // churn for a purely visual, per-frame value).
   const backdropRef = useRef(null);
   const dimRef = useRef(null);
+  // Task 4 follow-up: the credit line and the tagline/actions row, so a
+  // live drag can fade them in sync with the backdrop's own fade (same
+  // `progress` value, same ref-driven-not-state-driven reasoning).
+  const creditRef = useRef(null);
+  const taglineRowRef = useRef(null);
   // Set only while the shrink-back dismiss animation is playing — holds the
   // computed transform so render can apply it, and blocks a second dismiss
   // from starting mid-animation. Cleared (along with the real close) once
@@ -120,6 +125,8 @@ export default function PhotoViewer() {
     // this just needs to not leave a stale `transition: none` behind.
     if (backdropRef.current) { backdropRef.current.style.transition = ''; backdropRef.current.style.opacity = ''; }
     if (dimRef.current) { dimRef.current.style.transition = ''; dimRef.current.style.opacity = ''; }
+    if (creditRef.current) { creditRef.current.style.transition = ''; creditRef.current.style.opacity = ''; }
+    if (taglineRowRef.current) { taglineRowRef.current.style.transition = ''; taglineRowRef.current.style.opacity = ''; }
     setClosing({ transform: `translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY})` });
     setTimeout(closePhoto, DISMISS_MS);
   };
@@ -151,6 +158,11 @@ export default function PhotoViewer() {
     if (el) { el.style.transition = 'none'; el.style.transform = `translateY(${dy}px) scale(${1 - progress * 0.06})`; }
     if (backdropRef.current) { backdropRef.current.style.transition = 'none'; backdropRef.current.style.opacity = String(1 - progress); }
     if (dimRef.current) { dimRef.current.style.transition = 'none'; dimRef.current.style.opacity = String(1 - progress); }
+    // Task 4: caption/buttons fade out in step with the backdrop, so they
+    // don't stay opaque, floating detached, once the backdrop behind them
+    // has mostly revealed Event Detail.
+    if (creditRef.current) { creditRef.current.style.transition = 'none'; creditRef.current.style.opacity = String(1 - progress); }
+    if (taglineRowRef.current) { taglineRowRef.current.style.transition = 'none'; taglineRowRef.current.style.opacity = String(1 - progress); }
   };
 
   const onPhotoPointerUp = (e) => {
@@ -172,10 +184,16 @@ export default function PhotoViewer() {
       if (el) { el.style.transition = `transform ${DISMISS_MS}ms ${DISMISS_EASING}`; el.style.transform = ''; }
       if (backdropRef.current) { backdropRef.current.style.transition = `opacity ${DISMISS_MS}ms ease`; backdropRef.current.style.opacity = ''; }
       if (dimRef.current) { dimRef.current.style.transition = `opacity ${DISMISS_MS}ms ease`; dimRef.current.style.opacity = ''; }
+      // Task 4: restore caption/buttons to full opacity in sync with the
+      // same snap-back transition, rather than leaving them faded.
+      if (creditRef.current) { creditRef.current.style.transition = `opacity ${DISMISS_MS}ms ease`; creditRef.current.style.opacity = ''; }
+      if (taglineRowRef.current) { taglineRowRef.current.style.transition = `opacity ${DISMISS_MS}ms ease`; taglineRowRef.current.style.opacity = ''; }
       setTimeout(() => {
         if (el) el.style.transition = '';
         if (backdropRef.current) backdropRef.current.style.transition = '';
         if (dimRef.current) dimRef.current.style.transition = '';
+        if (creditRef.current) creditRef.current.style.transition = '';
+        if (taglineRowRef.current) taglineRowRef.current.style.transition = '';
       }, DISMISS_MS);
       return;
     }
@@ -264,7 +282,7 @@ export default function PhotoViewer() {
         onClick={onBackdropClick}
         style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', padding: '0 20px' }}
       >
-        <span style={{ ...caption, marginBottom: 8 }}>{T('Ảnh của', 'Photo by')} {organizer}</span>
+        <span ref={creditRef} style={{ ...caption, marginBottom: 8 }}>{T('Ảnh của', 'Photo by')} {organizer}</span>
         <div
           ref={photoRef}
           key={index}
@@ -298,7 +316,7 @@ export default function PhotoViewer() {
             buttons, and bottom-aligning the tagline text inside that box
             pushed it well below the photo — top-aligning puts it right
             after the marginTop gap, matching the credit's spacing above. */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', width: '100%', marginTop: 8 }}>
+        <div ref={taglineRowRef} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', width: '100%', marginTop: 8 }}>
           <span style={caption}>
             {s.photoShared ? T('Đã sao chép link', 'Link copied') : 'banbe ▪︎ bạn mới mỗi tuần'}
           </span>

@@ -69,24 +69,55 @@ import UIKit
 /// SwiftUI's own internal dispatch completely normally, exactly like any
 /// other SwiftUI screen. `PassthroughWindow` and its `hitTest` override
 /// are gone entirely — there is nothing left for them to do.
+///
+/// a5fd823 follow-up (real-device regression: Reserve/View Ticket on Event
+/// Detail visible but not tappable) — root cause confirmed by reading, not
+/// guessed: this window's `isHidden` was set to `false` exactly once, at
+/// `attach()`, and never touched again. `BottomTabBarOverlayRoot`'s own
+/// `if BottomTabBar.visibleScreens.contains(app.screen)` only controls
+/// what SwiftUI DRAWS inside the window — it does nothing to the WINDOW
+/// ITSELF, which stays a real, always-present, always-`isHidden == false`
+/// UIWindow sitting at `.normal + 1` for the app's entire lifetime. A
+/// plain `UIWindow` with no `hitTest` override claims every touch within
+/// its rectangular frame regardless of what its content is currently
+/// showing (an empty SwiftUI view still leaves a real, hit-testable
+/// backing `UIView` filling the window) — so on Event Detail, which was
+/// never in `visibleScreens` and therefore never drew the bar there, this
+/// window was STILL silently swallowing every touch inside its band,
+/// including ones meant for `EventDetailView`'s own `actionBar`
+/// (Reserve/View Ticket), which sits in that exact same bottom-of-screen
+/// region. Fixed by explicitly hiding the window itself (not just its
+/// content) on every screen `visibleScreens` doesn't include — see
+/// `updateVisibility(for:)`, called once at `attach()` and again on every
+/// `RootView` screen change (`RootView.swift`'s `.onChange(of: app.screen)`).
+/// `isHidden = true` removes a `UIWindow` from hit-testing entirely, not
+/// just from rendering.
+///
+/// Also tightened the band itself (independent of the visibility fix
+/// above, and worth keeping even with it): the previous 440×160 band was
+/// deliberately padded well beyond the bar's actual visible footprint,
+/// which meant that even on a screen where the bar DOES show (MapExplore
+/// in particular), genuinely empty margin inside the band — above/below/
+/// beside the pill, not actually covered by any real bar content — still
+/// silently absorbed touches meant for whatever's underneath (the map
+/// sheet's own list content, e.g. at its tallest detent, where the list
+/// scrolls all the way down to the physical bottom edge). The band now
+/// tracks `BottomTabBar`'s real constants directly instead of a rough,
+/// independently-chosen guess.
 @MainActor
 final class BottomTabBarOverlay {
     static let shared = BottomTabBarOverlay()
     private var window: UIWindow?
 
-    // Comfortably contains BottomTabBar at its full resting size —
-    // `.frame(maxWidth: 360)` (widened from 320 for the Task 1b Home tab
-    // addition) + 28pt horizontal padding each side (416), plus headroom
-    // for its shadow (radius 14) and the scrub gesture's highlight blur;
-    // `barHeight` (72) + its own bottom padding (2), plus the same shadow/
-    // blur headroom and the device's home-indicator safe area. Deliberately
-    // generous rather than pixel-exact — this band is the ONLY part of the
-    // screen a touch can be silently absorbed by empty space within it (see
-    // doc comment above), so it trades a little extra unreachable margin at
-    // the very bottom of the screen for not needing to keep it in lockstep,
-    // pixel-for-pixel, with BottomTabBar's own layout constants.
-    private static let bandWidth: CGFloat = 440
-    private static let bandHeight: CGFloat = 160
+    // Tracks BottomTabBar's own layout constants directly (barWidth/
+    // barHeight/bottomOffset there) rather than an independently-chosen,
+    // much more generous guess — see this type's own doc comment for why
+    // that generosity was itself part of the a5fd823 regression. Still a
+    // little larger than the bar's exact footprint (shadow radius 14, the
+    // scrub gesture's highlight blur, the device's home-indicator safe
+    // area), just not padded by 80-90pt of genuinely dead margin anymore.
+    private static var bandWidth: CGFloat { BottomTabBar.barWidth + BottomTabBar.barHorizontalPadding * 2 + 24 }
+    private static var bandHeight: CGFloat { BottomTabBar.barHeight + BottomTabBar.bottomOffset + 34 + 24 }
 
     /// Called from RootView's `.onAppear` once a `UIWindowScene` and the
     /// shared `AppState` are both available. Idempotent — RootView can
@@ -114,8 +145,16 @@ final class BottomTabBarOverlay {
         // it, at any detent) but well below system-owned levels like
         // `.alert` or the keyboard, which must still be able to cover it.
         win.windowLevel = .normal + 1
-        win.isHidden = false
         window = win
+        updateVisibility(for: appState.screen)
+    }
+
+    /// See this type's own doc comment for the full a5fd823 regression
+    /// this fixes. `isHidden` (not `isUserInteractionEnabled`) specifically
+    /// — a hidden `UIWindow` is removed from `UIApplication`'s hit-testing
+    /// pass entirely, not merely told to ignore touches once reached.
+    func updateVisibility(for screen: Screen) {
+        window?.isHidden = !BottomTabBar.visibleScreens.contains(screen)
     }
 }
 

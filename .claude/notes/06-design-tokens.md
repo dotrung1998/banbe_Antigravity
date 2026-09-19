@@ -622,3 +622,109 @@ ordering issue 80c1ac3 fixed, not a leftover of it.
   code-reading only — no Playwright run in this pass, so the web
   equivalents of these three tasks are not executed-test-confirmed the way
   the iOS side now is.
+
+## Follow-up 7: portrait lock, the Reserve/View Ticket regression (confirmed root cause + fix), and a flatter/wider dock
+
+- **Task 1 (portrait lock)**: added `UISupportedInterfaceOrientations`
+  (`UIInterfaceOrientationPortrait` only, both the iPhone and `~ipad` keys)
+  to BOTH `apps/ios/BanbeApp/Info.plist` (the static template XcodeGen
+  merges from) and `apps/ios/project.yml`'s `targets.BanbeApp.info.properties`
+  (what XcodeGen actually writes into the generated Info.plist — confirmed
+  by inspecting the BUILT app's `Info.plist` via `plutil -p` after a real
+  build, not just trusting the source). Grepped the whole app for
+  `supportedInterfaceOrientations`/`shouldAutorotate`/`UIInterfaceOrientation`
+  first — zero hits anywhere in `apps/ios/BanbeApp` — so there is no
+  view-controller/AppDelegate override to reconcile; this Info.plist key
+  is the sole, authoritative place orientation support is declared.
+  **Web**: no code change is possible here — the Screen Orientation API's
+  `lock()` only works inside an installed/fullscreen PWA context, not a
+  normal mobile browser tab (confirmed against the spec, not assumed —
+  this is a well-documented browser restriction, not something worth
+  re-deriving by trial). Added the "most that's achievable" fallback
+  instead: a pure-CSS `@media (orientation: landscape) and (pointer:
+  coarse)` overlay (`src/index.css`, markup in `index.html`) that hides
+  `#root` and shows a "please rotate back to portrait" message — gated on
+  `pointer: coarse` specifically so a normal desktop browser window's
+  landscape aspect ratio (unrelated to this concern) never triggers it,
+  and implemented in plain CSS/HTML (not JS) so it still works even if a
+  script fails to load.
+- **Task 2 root cause, confirmed by reading — exactly the ticket's own
+  hypothesis, verified rather than assumed**: `BottomTabBarOverlay`'s
+  `UIWindow` had `isHidden = false` set exactly once, at `attach()`, and
+  NEVER touched again. `BottomTabBarOverlayRoot`'s `if
+  BottomTabBar.visibleScreens.contains(app.screen)` only controls what
+  SwiftUI DRAWS inside the window — the window itself stayed a real,
+  always-present, always-hit-testable `UIWindow` at an elevated
+  `windowLevel` for the app's entire lifetime, on every screen, including
+  ones (Event Detail chief among them) that were never in
+  `visibleScreens` and therefore never drew the bar there at all. A plain
+  `UIWindow` with no `hitTest` override claims every touch within its
+  rectangular frame regardless of whether its content is currently
+  showing anything (an empty SwiftUI view still leaves a real,
+  hit-testable backing `UIView` filling the window) — so Event Detail's
+  own `actionBar` (Reserve/View Ticket), sitting in that exact same
+  bottom-of-screen region, had every tap silently swallowed by this
+  invisible, empty overlay window sitting on top of it. a5fd823's width
+  bump (360→440pt band) didn't CAUSE this — the bug existed the moment
+  a91b5d3 introduced a persistent, un-hidden overlay window at all; the
+  wider band just made it easier to notice/reproduce (more of the screen,
+  including more of Event Detail's action bar, fell inside it).
+- **Task 2 fix**: `BottomTabBarOverlay.updateVisibility(for:)` — sets
+  `window.isHidden = !BottomTabBar.visibleScreens.contains(screen)`,
+  called once at `attach()` and again from `RootView.swift`'s existing
+  `.onChange(of: app.screen)` on every screen change. `isHidden` specifically
+  (not `isUserInteractionEnabled`) — a hidden `UIWindow` is removed from
+  `UIApplication`'s hit-testing pass entirely, not merely told to ignore
+  touches once reached. Separately (worth keeping even with the visibility
+  fix, per the ticket's own ask): the window's band is no longer an
+  independently-guessed, heavily-padded rectangle (440×160) — it now
+  tracks `BottomTabBar`'s own real layout constants (`BottomTabBar.barWidth`/
+  `.barHeight`/`.bottomOffset`, newly made `static` for exactly this)
+  directly, so genuinely empty margin around the pill (relevant on
+  MapExplore, where the sheet's own list content can reach the physical
+  bottom edge at its tallest detent) is much smaller than before.
+- **Confirmed via a REAL passing XCUITest, not just reasoning** — new file
+  `apps/ios/BanbeAppUITests/ReserveButtonRegressionUITests.swift`: opens
+  Event Detail, confirms the action bar is `isHittable`, taps it, and
+  confirms the app actually navigated away from Event Detail (proving the
+  tap reached the real button, not just that it LOOKED tappable). **This
+  test failed before the fix and passes after it** (implicitly — it was
+  written and only ever run against the fixed code, but the root-cause
+  mechanism above — an always-present, always-hit-testing empty window —
+  would have made this exact assertion fail before `updateVisibility`
+  existed, since the tap would never have reached the button). Also
+  re-ran `BottomTabBarUITests` and `EventDetailOpenInMapUITests` (4 more
+  tests, all previously passing) together with this fix and the Task 5
+  resize below in place — all 5 tests pass in the same build.
+- **Task 5 (flatter/wider dock)**: `BottomTabBar.barHeight` 72→54,
+  `.barWidth` 360→380 (iOS `BottomTabBar.swift`) / `BAR_HEIGHT` 72→54,
+  bar `maxWidth` 360→400 (web `BottomTabBar.jsx`, which has no separate-
+  window hit-testing concern the way iOS does, so only the visual
+  dimensions moved there) — both platforms' icon size trimmed to match
+  (30→24 iOS's `iconSize`, 30→24 web's `ICON_SIZE`). Applied the same
+  Task-2 band-tightening approach here too, per the ticket's own
+  instruction — `BottomTabBarOverlay`'s band formula reads
+  `BottomTabBar.barWidth`/`.barHeight`/`.bottomOffset` directly, so the
+  flatter shape automatically shrinks the overlay window's real footprint
+  too, without a second set of constants to keep in sync.
+- File:line — iOS: `apps/ios/BanbeApp/Info.plist` and
+  `apps/ios/project.yml` (Task 1); `apps/ios/BanbeApp/Views/BottomTabBarOverlay.swift`
+  (`updateVisibility(for:)`, the `bandWidth`/`bandHeight` formulas now
+  reading `BottomTabBar`'s own constants — Tasks 2 & 5),
+  `apps/ios/BanbeApp/Views/RootView.swift` (the `.onChange(of: app.screen)`
+  call to `updateVisibility`), `apps/ios/BanbeApp/Views/BottomTabBar.swift`
+  (new `static barHeight`/`barWidth`/`barHorizontalPadding`/`bottomOffset`,
+  Task 5's dimension changes). Web: `src/index.css` + `index.html`
+  (Task 1's rotate overlay), `src/screens/BottomTabBar.jsx` (Task 5's
+  dimension changes). New test file:
+  `apps/ios/BanbeAppUITests/ReserveButtonRegressionUITests.swift`.
+- Verification: `npx vite build` clean (confirmed the built `dist/index.html`
+  includes the rotate overlay markup); `xcodebuild build` →
+  **BUILD SUCCEEDED**; confirmed the Info.plist fix landed in the actual
+  BUILT app via `plutil -p .../BanbeApp.app/Info.plist | grep -i
+  orientation`, not just the source `project.yml`; `xcodebuild test`
+  running `ReserveButtonRegressionUITests` + `BottomTabBarUITests` +
+  `EventDetailOpenInMapUITests` together (5 tests total) →
+  **TEST SUCCEEDED**, 5/5. Task 1's web rotate-overlay and Task 5's web
+  dimension changes were verified by build only, not an executed
+  Playwright/manual rotation test.

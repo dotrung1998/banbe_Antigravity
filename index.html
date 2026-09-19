@@ -13,6 +13,15 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Task 1 (this session) — web has no OS-level rotation lock (the
+         Screen Orientation API's lock() only works inside an installed/
+         fullscreen PWA, not a normal mobile browser tab, which is what
+         this app runs in); see src/index.css's own comment on the
+         matching media query. Pure CSS/markup, no JS dependency, so it
+         still works even if a script fails to load. -->
+    <div id="bb-rotate-overlay">
+      <p>Vui lòng xoay điện thoại về chiều dọc<br />Please rotate your phone back to portrait</p>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

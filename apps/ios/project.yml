@@ -85,6 +85,14 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.banbe.ios
             CFBundleURLSchemes: [banbe]
+        # Task 1 (this session): portrait-only, no rotation — no view
+        # controller/AppState override needed to match (confirmed by grep:
+        # nothing in this app ever overrides
+        # `supportedInterfaceOrientations`), this key alone is authoritative.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
 
   BanbeAppUITests:
     type: bundle.ui-testing

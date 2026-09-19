@@ -25,8 +25,25 @@ struct BottomTabBar: View {
     // (see body), not a per-icon size change, so one constant is enough and
     // it stays crisp at every scale factor instead of laying out at a
     // smaller intrinsic size.
-    private let iconSize: CGFloat = 30
-    private let barHeight: CGFloat = 72
+    //
+    // Task 5 follow-up (this session): flattened/elongated — 72→54 tall,
+    // 360→420 wide — both to read as a slimmer, more refined pill and,
+    // more functionally, to leave more of the screen's bottom edge clear
+    // for MapExplore's own sheet list at its tallest detent, where the
+    // list scrolls all the way down to the physical bottom edge and was
+    // competing with the bar's own (now also tightened, see
+    // BottomTabBarOverlay.swift) hit-testable band for the same touches.
+    // Icon size trimmed 30→24 to comfortably fit the shorter bar.
+    // `static` (not just `private`) so `BottomTabBarOverlay` can size its
+    // hosting window's band FROM these values directly instead of an
+    // independently-chosen guess — see that type's own doc comment for
+    // why keeping the two in lockstep is the actual point this time.
+    static let barHeight: CGFloat = 54
+    static let barWidth: CGFloat = 380
+    static let barHorizontalPadding: CGFloat = 20
+    static let bottomOffset: CGFloat = 2
+    private let iconSize: CGFloat = 24
+    private var barHeight: CGFloat { Self.barHeight }
 
     private struct Item: Identifiable {
         let id: String
@@ -154,8 +171,9 @@ struct BottomTabBar: View {
         .frame(height: barHeight)
         // Task 1b follow-up: widened from 320 (fit for 4 icons) to fit the
         // new Home tab without cramping the existing four — matches the
-        // web bar's own 320→360 bump.
-        .frame(maxWidth: 360)
+        // web bar's own bump. Task 5: widened again, to `Self.barWidth`,
+        // as part of the flatter/more-elongated pill shape.
+        .frame(maxWidth: Self.barWidth)
         .contentShape(Rectangle())
         .gesture(scrubGesture)
         .backgroundPreferenceValue(TabItemFrameKey.self) { anchors in
@@ -176,10 +194,12 @@ struct BottomTabBar: View {
         // (see its own doc comment) instead of being flipped unanimated on
         // every scroll frame.
         .scaleEffect(app.bottomBarCollapsed ? 0.86 : 1, anchor: .bottom)
-        .padding(.horizontal, 28)
+        // Task 5: narrowed from 28→20, part of the "longer, flatter" pill
+        // (smaller margins + a wider `Self.barWidth` together).
+        .padding(.horizontal, Self.barHorizontalPadding)
         // BUG 3: sits a little closer to the bottom edge than 64f2719/
         // 623ec1e's 8pt — "shift its resting position lower."
-        .padding(.bottom, 2)
+        .padding(.bottom, Self.bottomOffset)
         .onAppear { syncActiveToScreen() }
         .onChange(of: app.screen) { _, _ in
             withAnimation(.easeOut(duration: 0.18)) { syncActiveToScreen() }

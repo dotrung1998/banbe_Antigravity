@@ -70,8 +70,15 @@ export function showsBottomBar(screen) {
 // effect is a uniform CSS `transform: scale()` on the whole bar (see the
 // outer style below), not a per-icon size change, so the icons themselves
 // stay crisp at every scale factor.
-const BAR_HEIGHT = 72;
-const ICON_SIZE = 30;
+// Task 5 follow-up (this session): flattened/elongated — 72→54 tall,
+// 360→380 wide (see the outer style block's maxWidth below) — both to
+// read as a slimmer, more refined pill and, more functionally, to leave
+// more of the screen's bottom edge clear for MapExplore's own sheet list
+// at its tallest detent (matches the iOS side's identical change; web has
+// no separate-window hit-testing concern the way iOS's
+// BottomTabBarOverlay does, so only the visual dimensions moved here).
+const BAR_HEIGHT = 54;
+const ICON_SIZE = 24;
 // BUG 3: sits a little closer to the bottom edge than 64f2719/623ec1e's
 // 18px — "shift its resting position lower."
 const BAR_BOTTOM_OFFSET = 10;
@@ -211,8 +218,10 @@ export default function BottomTabBar({ collapsed }) {
         ...barGlass({}),
         position: 'absolute', left: '50%', bottom: BAR_BOTTOM_OFFSET,
         // Task 1b follow-up: widened from 320 (fit for 4 icons) to fit the
-        // new Home tab without cramping the existing four.
-        width: 'calc(100% - 56px)', maxWidth: 360,
+        // new Home tab without cramping the existing four. Task 5: widened
+        // again (360→400) as part of the flatter/more-elongated shape,
+        // margins narrowed 56→40 (28px/side → 20px/side) to match.
+        width: 'calc(100% - 40px)', maxWidth: 400,
         borderRadius: 999,
         // BUG 2 follow-up (623ec1e real-device report): the bar was already
         // meant to paint above MapExplore's own content by plain document

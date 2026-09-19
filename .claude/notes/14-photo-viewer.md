@@ -113,3 +113,66 @@ Numbered 14, not 13 — `.claude/notes/13-policy-accuracy-review.md` already cla
 **iOS mirrors the same fix**: `PhotoViewerView.swift`'s dismiss doesn't have an equivalent "CSS Animation vs Transition" conflict (SwiftUI's `.animation(.easeOut(duration:), value: item.index)` only fires on `item.index` changes, and the dismiss's `withAnimation(dismissAnimation) { dismissTransform = ... }` is an explicit transaction that isn't fighting a separate still-active implicit animation on the same properties) — no equivalent decoupling was needed there, but flagging that this class of bug is real and worth checking for on iOS too if a future dismiss/entrance animation pairing gets added to this view.
 
 **Web click-vs-pointer subtlety**: the backdrop's dismiss handler had to be `onClick` (not `onPointerDown`/`onPointerUp` like the old single full-screen handler, and not like the photo's own gesture) — `onPointerUp` alone doesn't stop the browser's own subsequent synthetic `click` event from bubbling, so the photo element also needs a no-op `onClick` with `stopPropagation()` purely to swallow that follow-on click before it reaches the backdrop's `onClick` dismiss handler one level up.
+
+## Follow-up (real-device report: backdrop-tap-to-dismiss STILL not working, iOS only) + fade caption/buttons during drag
+
+- **Root cause, confirmed by comparing platforms line-for-line, not
+  guessed**: `PhotoViewerView.swift`'s "stage" VStack (credit + photo +
+  tagline/actions) only ever had `.frame(maxWidth: .infinity, alignment:
+  .leading)` — no `maxHeight`. Its OWN height was therefore just its
+  content's natural height, vertically CENTERED by the enclosing `ZStack`
+  (default `.center` alignment) — leaving real, empty backdrop space above
+  and below it. The blurred backdrop layer directly behind it has
+  `.allowsHitTesting(false)` (correct and deliberate — otherwise it would
+  steal taps meant for the stage), so a tap landing in that dead zone
+  (above the credit line, or below the tagline row, but still visually
+  "the dimmed backdrop") reached NEITHER handler and fell through to
+  whatever's behind the entire `PhotoViewerView`. **This was NOT the same
+  mechanism the earlier "Task 2a" writeup checked** — that pass confirmed
+  the backdrop's tap handler and the swipe-past-threshold path call the
+  same `dismiss()` function, which is true and unrelated to this — it
+  never verified that the backdrop's tap-catching AREA actually covers the
+  whole screen. Fixed by adding `maxHeight: .infinity` to that same
+  `.frame()` (paired with `alignment: .leading`, whose vertical component
+  is `.center` — `Alignment.leading == .init(horizontal: .leading,
+  vertical: .center)` — so the visible content's own on-screen position is
+  unchanged, only the invisible hit-testable box grows to fill the screen).
+- **Web never had this bug** — confirmed by re-reading `PhotoViewer.jsx`'s
+  equivalent "stage" div: it already uses `position: 'absolute', inset: 0`
+  (full-bleed, not sized to its own content), so its `onClick={onBackdropClick}`
+  already covered the true full screen from the start. This is a genuine,
+  narrow iOS-only gap, not a cross-platform one — flagging so a future
+  "port this fix to web too" doesn't get attempted on a working
+  implementation.
+- **Task 4 (fade caption/buttons during drag, restore on snap-back)**:
+  added on both platforms, tied to the SAME `dragProgress`/`progress`
+  value already driving the backdrop's own fade — not a second, parallel
+  progress tracker. iOS: `caption(_:)` (used for both the credit line and
+  the tagline text) and the `actions` HStack each got
+  `.opacity(1 - dragProgress)`. Web: new `creditRef`/`taglineRowRef`,
+  faded imperatively in `onPhotoPointerMove` alongside `backdropRef`/
+  `dimRef`, and restored (with a transition) in the same snap-back branch
+  of `onPhotoPointerUp` and reset in `dismiss()` — mirrors the existing
+  ref-driven pattern for `backdropRef`/`dimRef` exactly, not a new
+  mechanism. On iOS, snap-back needed NO extra code for the "fade back in"
+  half: `dragProgress` is a plain computed property of `dragTranslation`/
+  `isDraggingDown`, both of which the existing snap-back branch already
+  resets inside `withAnimation(dismissAnimation)` — SwiftUI animates every
+  dependent value that changed within that transaction, not just the ones
+  explicitly named, so the caption/buttons' opacity comes back in sync
+  automatically.
+- File:line — iOS: `apps/ios/BanbeApp/Views/PhotoViewerView.swift` (the
+  stage `.frame(maxWidth: .infinity, maxHeight: .infinity, alignment:
+  .leading)` fix; `caption(_:)`'s and `actions`'s new `.opacity(1 -
+  dragProgress)`). Web: `src/screens/sheets/PhotoViewer.jsx`
+  (`creditRef`/`taglineRowRef`, faded in `onPhotoPointerMove`, restored in
+  `onPhotoPointerUp`'s snap-back branch and reset in `dismiss()`).
+- Verification: `xcodebuild build` → **BUILD SUCCEEDED**; `npx vite build`
+  clean. The backdrop-tap fix itself was NOT verified with an executed tap
+  in this pass (no UI test written for it, given the session's iOS UI-test
+  budget went toward the tab-bar/Reserve regression instead) — the root
+  cause and fix are reasoned from SwiftUI's own layout/hit-testing
+  semantics and the direct platform comparison above, not confirmed via a
+  real simulator tap the way Tasks 2/3's iOS fixes elsewhere in this
+  session's notes were. Flagging this as the next thing to verify with a
+  real tap if it's still reported as broken.

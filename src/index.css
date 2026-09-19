@@ -118,3 +118,37 @@ input::placeholder {
   55% { transform: scale(1.32); }
   100% { transform: scale(1.15); }
 }
+
+/* Task 1 (this session) — web has no equivalent of iOS's
+   UISupportedInterfaceOrientations. The Screen Orientation API's
+   `lock()` exists, but browsers only honor it inside an installed/
+   fullscreen PWA context (a document driving its own top-level browsing
+   context via the Fullscreen API, or a standalone-display-mode PWA) —
+   not in a normal mobile Safari/Chrome tab, which is what this app runs
+   in. There is no way to force-lock rotation here; overstating that would
+   be misleading. This is the most that's actually achievable: detect
+   landscape via a pure CSS media query (works even if a script fails to
+   load, unlike a JS-only check) and ask the user to rotate back, instead
+   of rendering the real layout sideways/stretched. `pointer: coarse`
+   scopes this to touch devices specifically, so a normal desktop browser
+   window's landscape aspect ratio (completely unrelated to this concern)
+   never triggers it. */
+#bb-rotate-overlay { display: none; }
+@media (orientation: landscape) and (pointer: coarse) {
+  #root { display: none; }
+  #bb-rotate-overlay {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    text-align: center;
+    background: var(--bb-bg);
+    color: var(--bb-fg);
+    font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+}

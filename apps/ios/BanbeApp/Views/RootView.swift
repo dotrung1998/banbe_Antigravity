@@ -322,6 +322,15 @@ struct RootView: View {
             // Every screen change starts the bottom tab bar back at full
             // size, matching src/App.jsx Shell's own per-screen reset.
             app.bottomBarCollapsed = false
+            // BUG follow-up (a5fd823 real-device report: Reserve/View
+            // Ticket unresponsive on Event Detail) — see
+            // BottomTabBarOverlay.updateVisibility()'s own doc comment for
+            // the full root cause. Must run on every screen change, not
+            // just once at attach time, since the overlay window persists
+            // for the app's lifetime and otherwise keeps intercepting
+            // touches in its band on screens the bar was never meant to
+            // show on.
+            BottomTabBarOverlay.shared.updateVisibility(for: newScreen)
         }
     }
 

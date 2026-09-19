@@ -215,7 +215,28 @@ struct PhotoViewerView: View {
                         actions
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                // Task 3 follow-up (real-device report: backdrop tap does
+                // nothing): this VStack's own natural height is just its
+                // content (credit + photo + tagline row), vertically
+                // CENTERED by the enclosing ZStack — leaving real, empty
+                // backdrop space above and below it that this modifier
+                // chain's `.contentShape`/`.onTapGesture` never covered
+                // (only `maxWidth: .infinity` was set, not `maxHeight`).
+                // The backdrop blur layer directly behind it, meanwhile,
+                // has `.allowsHitTesting(false)` (by design, so it never
+                // steals a tap meant for this VStack) — so a tap landing
+                // in that dead zone reached NEITHER handler and fell
+                // through to whatever's behind the whole viewer. Adding
+                // `maxHeight: .infinity` here (paired with `alignment:
+                // .leading`, whose vertical component is `.center` —
+                // `Alignment.leading == .init(horizontal: .leading,
+                // vertical: .center)` — so the visible content's own
+                // position is unchanged) makes this the full-bleed hit
+                // target the web build's equivalent stage div already is
+                // (`PhotoViewer.jsx`'s `position: 'absolute', inset: 0`
+                // wrapper) — confirmed via that platform comparison that
+                // web never had this gap, only iOS did.
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .contentShape(Rectangle())
                 .onTapGesture { dismiss() }
@@ -251,6 +272,12 @@ struct PhotoViewerView: View {
                 share()
             }
         }
+        // Task 4: fades out with the same `dragProgress` driving the
+        // backdrop's own fade, so the buttons don't stay opaque, floating
+        // detached, once the backdrop behind them has mostly revealed
+        // Event Detail. Restoring is automatic on snap-back — see
+        // `caption(_:)`'s own doc comment for why no extra code is needed.
+        .opacity(1 - dragProgress)
     }
 
     private func action(_ symbol: String, filled: Bool, on: Bool, id: String,
@@ -281,6 +308,17 @@ struct PhotoViewerView: View {
     /// Faint, but never illegible: the blur underneath can land on any
     /// colour, so the white sits on the same soft shadow the on-photo chips
     /// use.
+    ///
+    /// Task 4: fades out progressively during a downward dismiss drag (same
+    /// `dragProgress` the backdrop's own `.opacity(1 - dragProgress)`
+    /// already uses), and back in on snap-back — needs no separate
+    /// "restore" code: `dragProgress` is a plain computed property of
+    /// `dragTranslation`/`isDraggingDown`, and the snap-back branch in the
+    /// drag gesture's `onEnded` already resets both of those INSIDE
+    /// `withAnimation(dismissAnimation)`, which SwiftUI applies to every
+    /// dependent animatable value (this opacity included) that changed
+    /// within that transaction — not just the ones the code explicitly
+    /// names.
     private func caption(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 10.5))
@@ -289,6 +327,7 @@ struct PhotoViewerView: View {
             .foregroundStyle(.white.opacity(0.72))
             .shadow(color: .black.opacity(0.55), radius: 3, y: 1)
             .allowsHitTesting(false)
+            .opacity(1 - dragProgress)
     }
 
     /// Shares the photo's organizer, not the photo file itself — a bare
