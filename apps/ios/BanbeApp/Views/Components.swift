@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import CoreImage.CIFilterBuiltins
 
 /// A photo from the catalogue, loaded remotely from the deployed web app's
@@ -270,15 +271,9 @@ struct ScreenScaffold<Content: View>: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(
                             tracksBottomBarScroll
-                                ? AnyView(GeometryReader { proxy in
-                                    Color.clear.preference(key: ScaffoldScrollOffsetKey.self, value: proxy.frame(in: .named("scaffoldScroll")).minY)
-                                })
+                                ? AnyView(ScaffoldScrollProbe { app.noteScaffoldScroll($0) })
                                 : AnyView(EmptyView())
                         )
-                }
-                .coordinateSpace(name: "scaffoldScroll")
-                .onPreferenceChange(ScaffoldScrollOffsetKey.self) { offset in
-                    if tracksBottomBarScroll { app.noteScaffoldScroll(offset) }
                 }
             } else {
                 content().frame(maxWidth: .infinity, alignment: .leading)
@@ -287,7 +282,67 @@ struct ScreenScaffold<Content: View>: View {
     }
 }
 
-private struct ScaffoldScrollOffsetKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+/// BUG 2 follow-up (4d137235 real-device report): the previous mechanism
+/// here — a `GeometryReader` reporting its frame through a `PreferenceKey`
+/// — is a well-known SwiftUI limitation, not a wiring mistake: preference
+/// values only propagate on the `.default` RunLoop mode, but a LIVE
+/// touch-drag runs `UIScrollView`'s own tracking in `.tracking` mode, so
+/// this style of scroll-offset tracking silently stops updating for as
+/// long as a finger is actually down and only "catches up" once you lift
+/// it and momentum/deceleration kicks in (back on `.default` mode) — or
+/// sometimes not even then. This is exactly why the wiring (present and
+/// correct end-to-end: `tracksBottomBarScroll` on Home/Inbox/Notifications/
+/// Account → this probe → `AppState.noteScaffoldScroll()` →
+/// `bottomBarCollapsed` → `BottomTabBar`'s `.scaleEffect`) looked completely
+/// fine on inspection while still doing nothing live on a real device.
+/// KVO on `UIScrollView.contentOffset` does not have this limitation — the
+/// change notification fires synchronously as the property mutates,
+/// independent of which RunLoop mode is currently active, which is exactly
+/// why plain UIKit code has never needed this workaround.
+private struct ScaffoldScrollProbe: UIViewRepresentable {
+    let onChange: (CGFloat) -> Void
+
+    func makeUIView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateUIView(_ uiView: ProbeView, context: Context) {
+        uiView.onChange = onChange
+    }
+
+    final class ProbeView: UIView {
+        var onChange: ((CGFloat) -> Void)?
+        private weak var observedScrollView: UIScrollView?
+        private var observation: NSKeyValueObservation?
+
+        override func didMoveToWindow() { super.didMoveToWindow(); attachIfNeeded() }
+        override func didMoveToSuperview() { super.didMoveToSuperview(); attachIfNeeded() }
+
+        // Walks up from this (otherwise invisible, zero-size) probe — placed
+        // as the scrolled content's own `.background`, so it's always a
+        // descendant of the actual `UIScrollView` SwiftUI's `ScrollView`
+        // creates — to find and observe that ancestor directly.
+        private func attachIfNeeded() {
+            guard observedScrollView == nil else { return }
+            var responder: UIView? = superview
+            while let candidate = responder {
+                if let scrollView = candidate as? UIScrollView {
+                    observedScrollView = scrollView
+                    // Negated to match the old GeometryReader convention
+                    // this replaces (0 at the top, increasingly negative
+                    // scrolling down) — AppState.noteScaffoldScroll() and
+                    // every doc comment referencing "offsetY" assume that
+                    // sign, so nothing downstream needed to change.
+                    observation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] sv, _ in
+                        self?.onChange?(-sv.contentOffset.y)
+                    }
+                    onChange?(-scrollView.contentOffset.y)
+                    return
+                }
+                responder = candidate.superview
+            }
+        }
+    }
 }

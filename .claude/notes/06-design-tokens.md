@@ -279,3 +279,96 @@ Three issues found after 64f2719 shipped, fixed in the same tab bar files
   fix for a documented class of real-device-only bug (WebGL canvas / UIKit-
   interop layers not always respecting declared stacking order), not one
   reproduced and confirmed fixed in this environment.
+
+## Follow-up 3 (real-device report on 4d137235): iOS-only — icon parity, scroll pipeline, z-index placement
+
+Web was confirmed working on all three by real-device testing; only iOS
+still had all three problems. All three turned out to be iOS-specific
+mechanics, not shared-logic bugs — nothing on the web side changed.
+
+- **BUG 1 root cause**: `MapGlyph` in `BottomTabBar.swift` was never an
+  exact port of the web SVG path — it was a hand-drawn symmetric teardrop
+  (two generic cubic curves) that LOOKED like a pin but wasn't the same
+  outline. Fixed by resolving the web path's relative/smooth SVG commands
+  (`c`, `C`, `s`, `C`) to 4 absolute cubic Bézier segments by hand and
+  porting those exact coordinates into `addCurve` calls — see the comment
+  above `MapGlyph` for the segment-by-segment mapping. Notifications/Inbox
+  were NOT touched — the ticket only flagged Map, and those two were
+  already independently-drawn-but-close-enough bell/envelope shapes on both
+  platforms (not a big enough problem to warrant scope creep here).
+- **BUG 2 root cause — a genuine, documented SwiftUI/UIKit limitation, not
+  a wiring bug.** Audited the full pipeline end to end
+  (`tracksBottomBarScroll` on the 4 screens → `ScreenScaffold` →
+  `AppState.noteScaffoldScroll` → `bottomBarCollapsed` → `BottomTabBar`'s
+  `.scaleEffect`) and every link was already correctly wired — same
+  property names, same call sites, nothing stale or mismatched. The real
+  cause: the previous mechanism (`GeometryReader` reporting its frame
+  through a `PreferenceKey`, attached as `.background` of the scrolled
+  content) only propagates on the `.default` RunLoop mode. A live
+  touch-drag runs `UIScrollView`'s own tracking in `.tracking` mode, so
+  this SPECIFIC scroll-tracking technique silently stops updating for as
+  long as a finger is actually down on a real device — it only catches up
+  once you lift your finger and deceleration resumes on `.default` mode
+  (and sometimes not reliably even then). This is a widely-documented
+  SwiftUI gotcha (searchable as "GeometryReader/PreferenceKey doesn't
+  update during ScrollView drag") — not something introduced by 4d137235's
+  threshold-tightening edit, which only changed `6` to `4` and didn't touch
+  the propagation mechanism at all. Fixed by replacing the GeometryReader/
+  PreferenceKey probe with a `UIViewRepresentable` that walks up from an
+  invisible probe view to find the ancestor `UIScrollView` and observes its
+  `contentOffset` via KVO — KVO notifications fire synchronously as the
+  property mutates, independent of RunLoop mode, which is exactly why plain
+  UIKit scrollView delegates never had this problem. Sign convention
+  preserved exactly (negated `contentOffset.y`, same "0 at top, more
+  negative scrolling down" convention `noteScaffoldScroll` already
+  expected) so nothing downstream needed to change.
+- **BUG 3 root cause — also real, but not what the ticket guessed.**
+  `MapExploreView` does NOT wrap MapKit via `UIViewRepresentable`/
+  `UIViewControllerRepresentable` — confirmed by reading the file: it uses
+  `Map(position: $cameraPosition) { ... }`, MapKit's OWN native SwiftUI
+  view (iOS 17+), not a hand-rolled UIKit wrapper. So the "UIKit view
+  hierarchy ignores SwiftUI zIndex" theory the ticket proposed doesn't
+  apply literally as described. The ACTUAL bug: 4d137235 added
+  `.zIndex(10)` INSIDE `BottomTabBar`'s own `body`, as the last modifier in
+  its internal chain — but `.zIndex()` only affects a view's ordering
+  among its DIRECT siblings in the ZStack it's declared into. One layer of
+  custom-View composition between the modifier and the ZStack (here:
+  `BottomTabBar` is itself a `View` conforming type, called as
+  `BottomTabBar()` from RootView's ZStack) is enough to make a `.zIndex()`
+  set inside that type's own `body` a no-op for ITS position among RootView's
+  other ZStack children — it only affects ordering WITHIN BottomTabBar's own
+  internal view tree, where there was nothing to resolve. This is a real,
+  narrow SwiftUI trap: `.zIndex()` must be applied at the actual ZStack
+  call site, not buried inside a helper view's own body, to do anything.
+  Fixed by moving it to RootView.swift, where `BottomTabBar()` is a direct
+  ZStack child, and adding an explicit `.zIndex(0)` to `screenView(for:
+  app.screen)` too (mixing one explicit zIndex with the other side left
+  at the implicit default is its own known source of flakiness) — did NOT
+  implement the ticket's suggested overlay-`UIWindow`/separate-hosting-
+  controller approach, since the simpler, correctly-scoped fix (zIndex at
+  the right call site) directly addresses the confirmed root cause without
+  the real regression risk of a hand-rolled cross-window touch-passthrough
+  system (which cannot be verified without a real device/simulator touch
+  test in this sandbox). If moving the zIndex call site alone doesn't
+  actually resolve it on a real device, the overlay-UIWindow technique
+  (a second `UIWindow` with an elevated `windowLevel`, its root view's
+  `hitTest` overridden to return `nil` for points outside the bar so
+  touches fall through to the window below) is the documented next-level
+  fallback — flagging it here rather than half-implementing it.
+- File:line — `apps/ios/BanbeApp/Views/BottomTabBar.swift`'s `MapGlyph`
+  (BUG 1), `apps/ios/BanbeApp/Views/Components.swift`'s `ScaffoldScrollProbe`
+  replacing the old `ScaffoldScrollOffsetKey`/`GeometryReader` pair (BUG 2),
+  `apps/ios/BanbeApp/Views/RootView.swift`'s `.zIndex(0)` on `screenView`
+  and `.zIndex(10)` on the `BottomTabBar()` call site, plus the now-inert
+  `.zIndex()` removed from `BottomTabBar.swift`'s own `body` (BUG 3).
+- Verification: `xcodegen generate` + `xcodebuild -scheme BanbeApp
+  -destination 'platform=iOS Simulator,...' build` → **BUILD SUCCEEDED**.
+  As with prior passes, none of the three fixes were verified against
+  actual live touch/scroll/z-order behavior on a real device or simulator
+  session (no such access in this sandbox) — BUG 2 and BUG 3 in particular
+  are fixes for documented classes of SwiftUI/UIKit behavior confirmed by
+  reading Apple's own API contracts and widely-reported limitations, not
+  reproduced-and-fixed in this environment. If any of the three still
+  doesn't hold up on a real device, that's the next thing to re-verify
+  before reaching for a bigger fix (e.g. the overlay-UIWindow fallback
+  above for BUG 3).

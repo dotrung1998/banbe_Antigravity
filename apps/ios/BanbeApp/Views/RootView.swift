@@ -183,6 +183,11 @@ struct RootView: View {
             // what actually keeps the two gestures from arbitrating over the
             // same touch in the first place.
             .scrollDisabled(isDragTracking || isCommittingBack)
+            // BUG 3 follow-up (4d137235 real-device report): explicit,
+            // paired with BottomTabBar's own explicit zIndex below — see
+            // that call site's comment for why "explicit on one side only"
+            // wasn't reliable.
+            .zIndex(0)
 
             // The swipe-back gesture itself, confined to a thin strip along
             // the leading edge rather than attached to the whole screen —
@@ -224,9 +229,31 @@ struct RootView: View {
             // HostIntroView's "Tạo sự kiện đầu tiên") are deliberately not
             // in BottomTabBar.visibleScreens.
             if BottomTabBar.visibleScreens.contains(app.screen) {
+                // BUG 3 follow-up (4d137235 real-device report): 4d137235
+                // put `.zIndex(10)` INSIDE BottomTabBar's own `body` — which
+                // sets the z-ordering of things WITHIN BottomTabBar's own
+                // internal view tree, not BottomTabBar's position among
+                // ITS OWN siblings in THIS ZStack. A `.zIndex()` only
+                // affects sibling ordering when it's the modifier applied
+                // at the point a view is placed into a `ZStack`'s
+                // `ViewBuilder` — one layer of custom-View composition
+                // between the modifier and the ZStack is enough to make it
+                // a no-op for that purpose. That's why the bar still lost
+                // to MapExploreView's `Map()` despite the earlier fix
+                // looking correct on inspection. Moved here instead — this
+                // IS the direct ZStack child position — and given an
+                // explicit value on `screenView(for: app.screen)` above too
+                // (`.zIndex(0)`), since mixing one explicit zIndex with the
+                // other side left at the implicit default has previously
+                // been unreliable specifically around SwiftUI's native
+                // `Map()` view (still true even though it's Apple's own
+                // MapKit view, not a hand-rolled `UIViewRepresentable` —
+                // confirmed by reading MapExploreView.swift, which uses
+                // `Map(position:)` directly, no custom UIKit wrapping).
                 BottomTabBar()
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     .allowsHitTesting(!isPeeking)
+                    .zIndex(10)
             }
 
             // Face ID app-lock sits above everything — see FaceIDLockView.

@@ -179,17 +179,14 @@ struct BottomTabBar: View {
         .onChange(of: app.screen) { _, _ in
             withAnimation(.easeOut(duration: 0.18)) { syncActiveToScreen() }
         }
-        // BUG 2 follow-up (623ec1e real-device report): this bar was
-        // already declared AFTER `screenView(for: app.screen)` in
-        // RootView's ZStack, which SwiftUI normally paints on top with no
-        // z-index needed — but MapExploreView wraps MapKit's `Map`, which
-        // is itself backed by a UIViewRepresentable-hosted MKMapView. That
-        // interop boundary is a known case where SwiftUI's declared ZStack
-        // order isn't reliably respected on a real device (the UIKit-hosted
-        // map view can still end up composited above a later SwiftUI
-        // sibling). An explicit `.zIndex` sidesteps that ambiguity instead
-        // of depending on declaration order alone.
-        .zIndex(10)
+        // BUG 3 follow-up (4d137235 real-device report): a `.zIndex()` set
+        // HERE, inside this view's own `body`, does NOT affect BottomTabBar's
+        // position among its siblings in RootView's ZStack — it only
+        // affects ordering within BottomTabBar's own internal view tree
+        // (irrelevant, there's no overlap to resolve in here). The actual
+        // fix for the bar being covered by MapExploreView's `Map()` lives
+        // at the call site in RootView.swift, where BottomTabBar() is a
+        // direct ZStack child — see that file's comment.
     }
 
     private func resolveFrames(_ anchors: [String: Anchor<CGRect>], _ proxy: GeometryProxy) {
@@ -219,6 +216,16 @@ private struct TabItemFrameKey: PreferenceKey {
 // icon set exactly, shape for shape. See 06-design-tokens.md for the fuller
 // rationale.
 
+// BUG 1 follow-up (4d137235 real-device report): this used to be a
+// hand-drawn symmetric teardrop approximating the web icon's silhouette
+// (two generic cubic curves through (6,5)/(6,15) and (18,15)/(18,5)) rather
+// than the ACTUAL path web draws — close enough to read as "a pin" but
+// visibly a different shape side by side. Ported exactly instead: the web
+// SVG `d="M12 3c-3.3 0-6 2.6-6 6.1C6 13.4 12 21 12 21s6-7.6 6-11.9C18 5.6
+// 15.3 3 12 3z"` is 4 cubic Bézier segments once its relative/smooth (c/s)
+// commands are resolved to absolute control points — see each addCurve
+// below, one SVG command per line, same coordinates, so both platforms
+// trace the literal same outline instead of two independently-drawn pins.
 private struct MapGlyph: View {
     let color: Color
     var body: some View {
@@ -227,8 +234,15 @@ private struct MapGlyph: View {
             ZStack {
                 Path { p in
                     p.move(to: CGPoint(x: 12 * s, y: 3 * s))
-                    p.addCurve(to: CGPoint(x: 12 * s, y: 21 * s), control1: CGPoint(x: 6 * s, y: 5 * s), control2: CGPoint(x: 6 * s, y: 15 * s))
-                    p.addCurve(to: CGPoint(x: 12 * s, y: 3 * s), control1: CGPoint(x: 18 * s, y: 15 * s), control2: CGPoint(x: 18 * s, y: 5 * s))
+                    // c -3.3,0 -6,2.6 -6,6.1
+                    p.addCurve(to: CGPoint(x: 6 * s, y: 9.1 * s), control1: CGPoint(x: 8.7 * s, y: 3 * s), control2: CGPoint(x: 6 * s, y: 5.6 * s))
+                    // C6,13.4 12,21 12,21
+                    p.addCurve(to: CGPoint(x: 12 * s, y: 21 * s), control1: CGPoint(x: 6 * s, y: 13.4 * s), control2: CGPoint(x: 12 * s, y: 21 * s))
+                    // s6,-7.6 6,-11.9 (smooth: c1 reflects the previous c2 through the current point)
+                    p.addCurve(to: CGPoint(x: 18 * s, y: 9.1 * s), control1: CGPoint(x: 12 * s, y: 21 * s), control2: CGPoint(x: 18 * s, y: 13.4 * s))
+                    // C18,5.6 15.3,3 12,3
+                    p.addCurve(to: CGPoint(x: 12 * s, y: 3 * s), control1: CGPoint(x: 18 * s, y: 5.6 * s), control2: CGPoint(x: 15.3 * s, y: 3 * s))
+                    p.closeSubpath()
                 }
                 .stroke(color, style: StrokeStyle(lineWidth: 2.4 * s, lineCap: .round, lineJoin: .round))
                 Circle().fill(color).frame(width: 4.6 * s, height: 4.6 * s).position(x: 12 * s, y: 9.3 * s)
