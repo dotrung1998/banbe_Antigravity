@@ -232,6 +232,10 @@ struct NotificationsView: View {
         let id: String
         let title: String
         let items: [AppNotification]
+        // 2026-09-19 follow-up: "week"/"older" get a finer per-calendar-day
+        // header underneath this section's own title; "new"/"today" stay
+        // flat exactly as before, per this ticket's own ask.
+        var dayGrouped: Bool = false
     }
 
     private func classifyAtLoad(_ n: AppNotification, now: Date) -> String {
@@ -270,8 +274,8 @@ struct NotificationsView: View {
         return [
             NotificationSection(id: "new", title: app.T("Mới", "New"), items: grouped["new"] ?? []),
             NotificationSection(id: "today", title: app.T("Hôm nay", "Today"), items: grouped["today"] ?? []),
-            NotificationSection(id: "week", title: app.T("7 ngày qua", "Last 7 days"), items: grouped["week"] ?? []),
-            NotificationSection(id: "older", title: app.T("Cũ hơn", "Older"), items: grouped["older"] ?? []),
+            NotificationSection(id: "week", title: app.T("7 ngày qua", "Last 7 days"), items: grouped["week"] ?? [], dayGrouped: true),
+            NotificationSection(id: "older", title: app.T("Cũ hơn", "Older"), items: grouped["older"] ?? [], dayGrouped: true),
         ].filter { !$0.items.isEmpty }
     }
 
@@ -358,32 +362,62 @@ struct NotificationsView: View {
 
     private func section(_ sec: NotificationSection) -> some View {
         let expanded = expandedSections.contains(sec.id)
-        let visible = expanded ? sec.items : Array(sec.items.prefix(notificationCollapseAt))
-        let hiddenCount = sec.items.count - visible.count
         return VStack(alignment: .leading, spacing: 6) {
             Text(sec.title.uppercased())
                 .font(.system(size: 11, weight: .semibold))
                 .kerning(0.5)
                 .foregroundStyle(app.palette.ink.opacity(0.6))
-            ForEach(visible) { item in
-                // Live readAt, not the (frozen) section — marking a
-                // notification read only changes its weight/dimming in
-                // place, per BUG 3, never which section it's in.
-                row(item, unread: item.readAt == nil)
-                Divider().overlay(app.palette.rule)
-            }
-            if hiddenCount > 0 {
-                Button(app.T("Xem thêm (\(hiddenCount))", "View more (\(hiddenCount))")) {
-                    expandedSections.insert(sec.id)
+            if !sec.dayGrouped {
+                let visible = expanded ? sec.items : Array(sec.items.prefix(notificationCollapseAt))
+                ForEach(visible) { item in
+                    // Live readAt, not the (frozen) section — marking a
+                    // notification read only changes its weight/dimming in
+                    // place, per BUG 3, never which section it's in.
+                    row(item, unread: item.readAt == nil)
+                    Divider().overlay(app.palette.rule)
                 }
-                .font(.system(size: 12.5, weight: .semibold))
-                .foregroundStyle(app.palette.ink.opacity(0.65))
-                .buttonStyle(.plain)
-                .padding(.vertical, 12)
-                .accessibilityIdentifier("notifications.more.\(sec.id)")
+                moreButton(hiddenCount: sec.items.count - visible.count, sectionID: sec.id)
+            } else {
+                // "7 ngày qua"/"Cũ hơn": one header per calendar day
+                // underneath this section's own outer title, collapsing
+                // whole days at a time (collapseDayGroups() never cuts a
+                // single day's items in half) instead of a flat
+                // notificationCollapseAt slice across the range.
+                let dayGroups = groupNotificationsByDay(sec.items, lang: app.lang)
+                let (visibleDays, hiddenDays): ([NotificationDayGroup], [NotificationDayGroup]) = expanded
+                    ? (dayGroups, [])
+                    : collapseDayGroups(dayGroups, limit: notificationCollapseAt)
+                ForEach(visibleDays) { day in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(day.label)
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(app.palette.ink.opacity(0.5))
+                            .accessibilityIdentifier("notification.dayHeader")
+                        ForEach(day.items) { item in
+                            row(item, unread: item.readAt == nil)
+                            Divider().overlay(app.palette.rule)
+                        }
+                    }
+                    .padding(.bottom, 8)
+                }
+                moreButton(hiddenCount: hiddenDays.reduce(0) { $0 + $1.items.count }, sectionID: sec.id)
             }
         }
         .padding(.bottom, 22)
+    }
+
+    @ViewBuilder
+    private func moreButton(hiddenCount: Int, sectionID: String) -> some View {
+        if hiddenCount > 0 {
+            Button(app.T("Xem thêm (\(hiddenCount))", "View more (\(hiddenCount))")) {
+                expandedSections.insert(sectionID)
+            }
+            .font(.system(size: 12.5, weight: .semibold))
+            .foregroundStyle(app.palette.ink.opacity(0.65))
+            .buttonStyle(.plain)
+            .padding(.vertical, 12)
+            .accessibilityIdentifier("notifications.more.\(sectionID)")
+        }
     }
 
     private func row(_ item: AppNotification, unread: Bool) -> some View {

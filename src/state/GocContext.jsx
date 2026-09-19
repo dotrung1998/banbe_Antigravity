@@ -1835,8 +1835,24 @@ export function GocProvider({ children }) {
   // render correctly.
   const openDocumentFromNotification = useCallback(async (documentId, backTo = 'documents', role = 'guest') => {
     const { data, error } = await supabase.from('payment_documents').select('*').eq('id', documentId).maybeSingle();
-    if (error || !data) return;
+    // 2026-09-19 follow-up: `data: null` with no error is unambiguous here
+    // — payment_documents' RLS (`_select_guest`: `auth.uid() = user_id`)
+    // can never spuriously deny this row to its own notification's
+    // recipient, so an empty result really does mean the row is gone
+    // (the 24h/12-month purge cron, or a manual cleanup like the one that
+    // triggered this fix — every payment_documents row got deleted mid-
+    // session, orphaning any payment_document_uploaded/_replaced/
+    // receipt_requested notification pointing at one). A genuine fetch
+    // error (network/transient) is NOT treated as stale — only a clean
+    // not-found is. Returned (not just a silent `return`) so
+    // openNotification() can tell its caller the target was missing and
+    // react instead of doing nothing — this function has other callers
+    // (Confirmed.jsx's "Xem Receipt", Attendance.jsx's per-receipt rows)
+    // that don't come from a notification and can just ignore this.
+    if (error) { console.warn('openDocumentFromNotification failed:', error); return { success: false, notFound: false }; }
+    if (!data) return { success: false, notFound: true };
     set({ documents: [data], documentId: data.id, documentsKind: data.kind, documentsRole: role, screen: 'documentView', documentBack: backTo });
+    return { success: true };
   }, [set]);
 
   // Keeps documentFileUrl pointed at whichever document is open — a signed
@@ -2177,8 +2193,55 @@ export function GocProvider({ children }) {
       const { data: profiles } = await supabase.from('profiles').select('id, avatar_url').in('id', guestUserIds);
       avatarByUserId = Object.fromEntries((profiles || []).filter(p => p.avatar_url).map(p => [p.id, p.avatar_url]));
     }
+
+    // 2026-09-19 follow-up: proactively prune notifications whose target
+    // has genuinely been deleted — the same check openNotification() does
+    // reactively on tap, run once here so a stale row never has to be
+    // tapped at all to disappear. `bookingById` above is already fetched
+    // for avatars, reused here for free; `payment_documents` wasn't
+    // previously fetched at all for this batch, so a small new query is
+    // added just for its ids (existence only, no need for the full row).
+    const documentIds = [...new Set(
+      rows.filter(n => n.kind === 'payment_document_uploaded' || n.kind === 'payment_document_replaced')
+        .map(n => n.data?.document_id).filter(Boolean)
+    )];
+    let liveDocumentIds = new Set();
+    if (documentIds.length) {
+      const { data: docs } = await supabase.from('payment_documents').select('id').in('id', documentIds);
+      liveDocumentIds = new Set((docs || []).map(d => d.id));
+    }
+    // Only these kinds get a MUST-HAVE-A-LIVE-TARGET check — each one's own
+    // RLS (auth.uid() = user_id on the target row, the recipient by
+    // construction) can't spuriously deny it to its own notification's
+    // recipient, so a genuine miss always means real deletion, never a
+    // permissions false-positive. Every other kind is either a list-level
+    // navigation (booking_requested/payment_awaiting_verification/
+    // receipt_requested → an event's Attendance/Verifications list, where a
+    // missing single booking just means it doesn't show up, not "tap does
+    // nothing") or has no cheap, reliable existence check available
+    // (new_message/hold_created/dispute_message's guest branch — see
+    // 07-notifications.md for the specific reasoning per skipped kind).
+    const staleTargetKinds = {
+      payment_document_uploaded: 'document_id',
+      payment_document_replaced: 'document_id',
+      payment_confirmed: 'booking_id',
+    };
+    const staleIds = [];
+    const liveRows = rows.filter(n => {
+      const field = staleTargetKinds[n.kind];
+      const targetId = field && n.data?.[field];
+      if (!field || !targetId) return true;
+      const stillExists = field === 'document_id' ? liveDocumentIds.has(targetId) : !!bookingById[targetId];
+      if (!stillExists) { staleIds.push(n.id); return false; }
+      return true;
+    });
+    if (staleIds.length) {
+      supabase.from('notifications').delete().in('id', staleIds)
+        .then(({ error }) => { if (error) console.warn('Failed to prune stale notifications:', error); });
+    }
+
     set({
-      notifications: rows, unreadNotifications: rows.filter(n => !n.read_at).length,
+      notifications: liveRows, unreadNotifications: liveRows.filter(n => !n.read_at).length,
       notificationBookingById: bookingById, notificationEventPhotoByEventId: eventPhotoByEventId, notificationAvatarByUserId: avatarByUserId,
     });
   }, [set, s.user?.id, s.mutedNotificationKinds]);
@@ -2251,6 +2314,21 @@ export function GocProvider({ children }) {
       set({ notifications: prevNotifications }); // put it back — the delete didn't actually happen
     }
   }, [set, s.notifications]);
+
+  // 2026-09-19 follow-up (07-notifications.md): openNotification() calls
+  // this whenever a kind's target fetch comes back genuinely not-found
+  // (RLS can't spuriously produce this for these specific kinds — see the
+  // call sites — so an empty result really does mean the row is gone,
+  // e.g. payment_documents' 24h/12-month purge cron, or this session's own
+  // manual test-data cleanup, the real repro that surfaced this bug).
+  // Deletes the dead notification outright (a link to nothing is useless
+  // either way) and surfaces a toast so the tap isn't silently a no-op —
+  // `notification: null` so tapping the toast itself doesn't re-attempt
+  // opening the same now-deleted target.
+  const reportStaleNotification = useCallback((n) => {
+    deleteNotification(n.id);
+    pushToast({ title: T('Nội dung này không còn tồn tại', 'This content no longer exists'), body: '' });
+  }, [deleteNotification, pushToast, T]);
 
   // Consumed once by DisputeChatPanel.jsx after it actually scrolls to/
   // highlights the target message (or the bottom, if there's no
@@ -3048,7 +3126,14 @@ export function GocProvider({ children }) {
   // unlocked its QR code isn't necessarily the one in state.booking any more.
   const openBookingConfirmed = useCallback(async (bookingId, eventKey, back = 'home') => {
     const { data } = await supabase.from('bookings').select('*').eq('id', bookingId).maybeSingle();
-    if (!data) return;
+    // 2026-09-19 follow-up: `data: null` here is unambiguous — this
+    // booking's own RLS (bookings_select_guest, `auth.uid() = user_id`)
+    // can never spuriously deny the booking's own guest, the only
+    // recipient a `payment_confirmed` notification is ever sent to, so an
+    // empty result really does mean the row is gone. Returned (not just a
+    // silent `return`) so openNotification() can tell its caller the
+    // target was missing and react instead of doing nothing.
+    if (!data) return { success: false, notFound: true };
     set({
       screen: 'confirmed',
       eventKey: eventKey || data.event_id,
@@ -3071,6 +3156,7 @@ export function GocProvider({ children }) {
       holdDeadline: data.hold_expires_at ? new Date(data.hold_expires_at).getTime() : null,
       now: Date.now(),
     });
+    return { success: true };
   }, [set]);
   const backFromConfirmed = useCallback(() => set(prev => ({ screen: prev.confirmedBack || 'home' })), [set]);
 
@@ -3135,7 +3221,7 @@ export function GocProvider({ children }) {
   // Tapping a notification marks it read and, for the kinds that point at
   // somewhere real, takes you there — a 'new_message' notification opens the
   // actual thread it's about instead of just sitting there read.
-  const openNotification = useCallback((n) => {
+  const openNotification = useCallback(async (n) => {
     markNotificationRead(n.id);
     // 01-hold-payment.md follow-up (bug 1): both organizer-only
     // destinations below used to navigate unconditionally — relying on
@@ -3182,7 +3268,12 @@ export function GocProvider({ children }) {
       // so `openVerifications()` here, not `openAttendance()`).
       openVerifications('notifications');
     } else if (n.kind === 'payment_confirmed' && n.data?.booking_id) {
-      openBookingConfirmed(n.data.booking_id, n.data.event_id, 'notifications');
+      // 2026-09-19 follow-up: bookings.id under this kind's own RLS
+      // (auth.uid() = user_id, the recipient by construction) can't
+      // spuriously come back empty — a genuine miss means the booking row
+      // itself is gone, not an access issue. See reportStaleNotification().
+      const result = await openBookingConfirmed(n.data.booking_id, n.data.event_id, 'notifications');
+      if (result?.notFound) reportStaleNotification(n);
     } else if (n.kind === 'dispute_message' && n.data?.booking_id) {
       // Only the guest and organizer ever receive this kind (migration
       // 048/050 — admin is deliberately excluded), so accountType alone
@@ -3193,7 +3284,14 @@ export function GocProvider({ children }) {
       if (s.accountType === 'organizer') openVerifications('notifications');
       else openPaymentDetails(n.data.booking_id, 'notifications');
     } else if ((n.kind === 'payment_document_uploaded' || n.kind === 'payment_document_replaced') && n.data?.document_id) {
-      openDocumentFromNotification(n.data.document_id, 'notifications');
+      // 2026-09-19 follow-up (the CONFIRMED real repro: a bulk
+      // payment_documents cleanup this session directly deleted every row,
+      // orphaning any notification of this kind created before it) — same
+      // RLS reasoning as payment_confirmed above; see
+      // openDocumentFromNotification()'s own comment and
+      // reportStaleNotification().
+      const result = await openDocumentFromNotification(n.data.document_id, 'notifications');
+      if (result?.notFound) reportStaleNotification(n);
     } else if (n.kind === 'receipt_requested' && n.data?.event_id && iOrganize(n.data.event_id)) {
       // The guest's own "Xem Receipt" (Confirmed.jsx) asked for one that
       // doesn't exist yet — straight to Check-in, same per-event ownership
@@ -3204,7 +3302,7 @@ export function GocProvider({ children }) {
       set({ attendanceHighlightBookingId: n.data.booking_id });
       openAttendance(n.data.event_id, 'notifications');
     }
-  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, openVerifications, openPaymentDetails, openDocumentFromNotification]);
+  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, openVerifications, openPaymentDetails, openDocumentFromNotification, reportStaleNotification]);
   /**
    * The organizer's "mark as paid". confirm_payment issues the receipt in
    * the same transaction (migration 024) and notifies the guest, which is

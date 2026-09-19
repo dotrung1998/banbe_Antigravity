@@ -552,8 +552,49 @@ extension AppState {
             // mutedNotificationKinds (062) exists purely for this, no
             // insert-side RPC change (BUG 4).
             let filtered = rows.filter { !mutedNotificationKinds.contains($0.kind) }
-            notifications = filtered
-            notificationAvatarMaps = await loadNotificationAvatarMaps(for: filtered)
+            let maps = await loadNotificationAvatarMaps(for: filtered)
+            // 2026-09-19 follow-up: proactively prune notifications whose
+            // target has genuinely been deleted — the same check
+            // openNotification() does reactively on tap, run once here so
+            // a stale row never has to be tapped at all to disappear.
+            // `maps.bookingById`/`maps.liveDocumentIds` are already fetched
+            // for avatars, reused here for free. Only these two kinds get a
+            // MUST-HAVE-A-LIVE-TARGET check — their own RLS can't
+            // spuriously deny the row to its own recipient (see
+            // openBookingConfirmed()'s/openDocumentFromNotification()'s own
+            // comments), so a genuine miss always means real deletion.
+            // Every other kind is either a list-level navigation (a
+            // missing single booking just means it doesn't show up there,
+            // not "tap does nothing") or has no cheap, reliable existence
+            // check available — see 07-notifications.md for the specific
+            // reasoning per skipped kind.
+            var staleIDs: [UUID] = []
+            let liveRows = filtered.filter { n in
+                switch n.kind {
+                case "payment_document_uploaded", "payment_document_replaced":
+                    guard let docID = n.data["document_id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return true }
+                    if maps.liveDocumentIds.contains(docID) { return true }
+                    staleIDs.append(n.id); return false
+                case "payment_confirmed":
+                    guard let bookingID = n.data["booking_id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return true }
+                    if maps.bookingById[bookingID] != nil { return true }
+                    staleIDs.append(n.id); return false
+                default:
+                    return true
+                }
+            }
+            if !staleIDs.isEmpty {
+                Task {
+                    do {
+                        try await SupabaseService.client.from("notifications")
+                            .delete().in("id", values: staleIDs.map(\.uuidString)).execute()
+                    } catch {
+                        print("Failed to prune stale notifications:", error)
+                    }
+                }
+            }
+            notifications = liveRows
+            notificationAvatarMaps = maps
         } catch {
             print("Failed to load notifications:", error)
         }
@@ -619,6 +660,22 @@ extension AppState {
                         maps.avatarByUserId[p.id] = url
                     }
                 }
+            }
+            // 2026-09-19 follow-up: payment_documents wasn't previously
+            // fetched at all for this batch (only used for avatars/photos
+            // above) — a small new query, existence only, so
+            // loadNotifications() can prune a payment_document_uploaded/
+            // _replaced notification whose target row is genuinely gone
+            // (the purge cron, or a manual cleanup) without a second round
+            // trip on top of this one.
+            let documentIDs = Set(rows.filter { $0.kind == "payment_document_uploaded" || $0.kind == "payment_document_replaced" }
+                .compactMap { $0.data["document_id"]?.stringValue.flatMap(UUID.init(uuidString:)) })
+            if !documentIDs.isEmpty {
+                let docs: [UUIDRow] = try await SupabaseService.client
+                    .from("payment_documents").select("id")
+                    .in("id", values: documentIDs.map(\.uuidString))
+                    .execute().value
+                maps.liveDocumentIds = Set(docs.map(\.id))
             }
         } catch {
             print("loadNotificationAvatarMaps failed:", error)
@@ -828,7 +885,15 @@ extension AppState {
             if let bookingIDString = notification.data["booking_id"]?.stringValue,
                let bookingID = UUID(uuidString: bookingIDString) {
                 let key = notification.data["event_id"]?.stringValue
-                Task { await openBookingConfirmed(bookingID: bookingID, eventKey: key, back: .notifications) }
+                // 2026-09-19 follow-up: bookings.id under this kind's own
+                // RLS (auth.uid() = user_id, the recipient by construction)
+                // can't spuriously come back empty — see
+                // openBookingConfirmed()'s own comment and
+                // reportStaleNotification().
+                Task {
+                    let found = await openBookingConfirmed(bookingID: bookingID, eventKey: key, back: .notifications)
+                    if found == false { reportStaleNotification(notification) }
+                }
             }
         case "dispute_message":
             // Only the guest and organizer ever receive this kind
@@ -846,7 +911,15 @@ extension AppState {
         case "payment_document_uploaded", "payment_document_replaced":
             if let documentIDString = notification.data["document_id"]?.stringValue,
                let documentID = UUID(uuidString: documentIDString) {
-                Task { await openDocumentFromNotification(documentID, backTo: .notifications) }
+                // 2026-09-19 follow-up (the CONFIRMED real repro: a bulk
+                // payment_documents cleanup this session directly deleted
+                // every row, orphaning any notification of this kind
+                // created before it) — see openDocumentFromNotification()'s
+                // own comment and reportStaleNotification().
+                Task {
+                    let found = await openDocumentFromNotification(documentID, backTo: .notifications)
+                    if found == false { reportStaleNotification(notification) }
+                }
             }
         case "receipt_requested":
             // The guest's own "Xem Receipt" (ConfirmedView) asked for one
@@ -873,12 +946,25 @@ extension AppState {
     /// own "view this receipt" taps (08-payment-documents.md's 2026-09-17
     /// follow-up #7 — BUG 1: a live and a still-live superseded copy are
     /// both now individually tappable there, not just counted) pass "host".
-    func openDocumentFromNotification(_ targetID: UUID, backTo: Screen = .documents, role: String = "guest") async {
+    ///
+    /// Returns `true` (found, opened), `false` (genuinely zero rows —
+    /// 2026-09-19 follow-up: `.maybeSingle()` instead of the old `.single()`,
+    /// which threw the SAME error for "zero rows" as for a real network/
+    /// decode failure, making the two indistinguishable), or `nil` (a real
+    /// fetch error — NOT the same as not-found, so openNotification() must
+    /// not treat it as stale). payment_documents' RLS (`_select_guest`:
+    /// `auth.uid() = user_id`) can't spuriously deny this row to its own
+    /// notification's recipient, so a confirmed `false` always means the
+    /// row is really gone (the purge cron, or a manual cleanup like the one
+    /// that triggered this fix).
+    @discardableResult
+    func openDocumentFromNotification(_ targetID: UUID, backTo: Screen = .documents, role: String = "guest") async -> Bool? {
         do {
-            let doc: PaymentDocument = try await SupabaseService.client
+            let doc: PaymentDocument? = try await SupabaseService.client
                 .from("payment_documents").select("*")
                 .eq("id", value: targetID.uuidString)
-                .single().execute().value
+                .maybeSingle().execute().value
+            guard let doc else { return false }
             documents = [doc]
             documentID = doc.id
             documentsKind = doc.kind
@@ -893,8 +979,10 @@ extension AppState {
                 documentFileURL = url
                 if url == nil { documentFileURLFailed = true }
             }
+            return true
         } catch {
             print("openDocumentFromNotification failed:", error)
+            return nil
         }
     }
 
@@ -915,15 +1003,48 @@ extension AppState {
         }
     }
 
+    /// 2026-09-19 follow-up (07-notifications.md): openNotification() calls
+    /// this whenever a kind's target fetch comes back genuinely not-found
+    /// (RLS can't spuriously produce this for the specific kinds that call
+    /// this — see their own comments — so an empty result really does mean
+    /// the row is gone, e.g. payment_documents' purge cron, or this
+    /// session's own manual test-data cleanup, the real repro that
+    /// surfaced this bug). Deletes the dead notification outright (a link
+    /// to nothing is useless either way) and surfaces a toast so the tap
+    /// isn't silently a no-op. The synthetic notification's `kind` matches
+    /// no case in openNotification()'s own switch (falls to `default:
+    /// break`) and `readAt` is pre-set so tapping the toast itself can't
+    /// re-attempt opening the same now-deleted target or fire a pointless
+    /// mark-read network call.
+    func reportStaleNotification(_ notification: AppNotification) {
+        Task { await deleteNotification(notification) }
+        pushToast(AppNotification(
+            id: UUID(), recipientId: notification.recipientId, kind: "stale_notice",
+            title: T("Nội dung này không còn tồn tại", "This content no longer exists"),
+            body: "", data: [:], readAt: Date(), createdAt: Date()
+        ))
+    }
+
     /// Reopens the Confirmed/ticket screen for a specific booking — used
     /// when a 'payment_confirmed' notification is tapped after the guest has
     /// moved on elsewhere in the app, since the booking that just unlocked
     /// its QR code isn't necessarily the one still held in `booking`.
-    func openBookingConfirmed(bookingID: UUID, eventKey: String?, back: Screen = .home) async {
+    ///
+    /// Returns `true` (found, opened), `false` (genuinely zero rows —
+    /// 2026-09-19 follow-up: `.maybeSingle()` instead of `.single()`, same
+    /// reasoning as openDocumentFromNotification()'s own comment), or `nil`
+    /// (a real fetch error, not the same as not-found). bookings' own RLS
+    /// (`bookings_select_guest`: `auth.uid() = user_id`) can't spuriously
+    /// deny this row to the booking's own guest, the only recipient a
+    /// `payment_confirmed` notification is ever sent to, so a confirmed
+    /// `false` always means the row is really gone.
+    @discardableResult
+    func openBookingConfirmed(bookingID: UUID, eventKey: String?, back: Screen = .home) async -> Bool? {
         do {
-            let fresh: Booking = try await SupabaseService.client
+            let fresh: Booking? = try await SupabaseService.client
                 .from("bookings").select().eq("id", value: bookingID.uuidString)
-                .single().execute().value
+                .maybeSingle().execute().value
+            guard let fresh else { return false }
             booking = fresh
             self.eventKey = eventKey ?? fresh.eventId
             confirmedBack = back
@@ -940,8 +1061,10 @@ extension AppState {
             now = Date()
             screen = .confirmed
             await loadLiveEventStatus()
+            return true
         } catch {
             print("openBookingConfirmed failed:", error)
+            return nil
         }
     }
 

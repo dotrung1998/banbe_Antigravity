@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { agoLabel, bg } from '../data/events.js';
-import { avatarSourceFor, notificationAgeBucket } from '../lib/notifications.js';
+import { avatarSourceFor, notificationAgeBucket, groupNotificationsByDay, collapseDayGroups } from '../lib/notifications.js';
 import { paper, ink, rule, alert, display } from '../theme.js';
 
 // Redesigned to read like Instagram/Facebook's own notification list
@@ -74,11 +74,15 @@ export default function Notifications() {
     const key = sectionMembership[n.id] ?? classifyAtLoad(n, Date.now());
     grouped[key].push(n);
   }
+  // 2026-09-19 follow-up: "7 ngày qua"/"Cũ hơn" get a finer per-calendar-day
+  // header on top of the existing New/Today/Last-7-days/Older buckets
+  // (unchanged, still stabilized by the frozen sectionMembership above) —
+  // "Mới"/"Hôm nay" stay flat exactly as before, per this ticket's own ask.
   const sections = [
-    { key: 'new', title: T('Mới', 'New'), items: grouped.new },
-    { key: 'today', title: T('Hôm nay', 'Today'), items: grouped.today },
-    { key: 'week', title: T('7 ngày qua', 'Last 7 days'), items: grouped.week },
-    { key: 'older', title: T('Cũ hơn', 'Older'), items: grouped.older },
+    { key: 'new', title: T('Mới', 'New'), items: grouped.new, dayGrouped: false },
+    { key: 'today', title: T('Hôm nay', 'Today'), items: grouped.today, dayGrouped: false },
+    { key: 'week', title: T('7 ngày qua', 'Last 7 days'), items: grouped.week, dayGrouped: true },
+    { key: 'older', title: T('Cũ hơn', 'Older'), items: grouped.older, dayGrouped: true },
   ].filter(sec => sec.items.length > 0);
 
   const avatarMaps = {
@@ -97,22 +101,55 @@ export default function Notifications() {
         <div style={{ padding: '14px 24px 40px' }}>
           {sections.map(sec => {
             const expanded = expandedSections.has(sec.key);
-            const visible = expanded ? sec.items : sec.items.slice(0, COLLAPSE_AT);
-            const hiddenCount = sec.items.length - visible.length;
+            const row = (n) => (
+              <Row
+                key={n.id}
+                n={n}
+                // Live read_at, not the (frozen) section — marking a
+                // notification read only changes its weight/dimming in
+                // place, per BUG 3, never which section it's in.
+                unread={!n.read_at}
+                avatar={avatarSourceFor(n, avatarMaps, s.accountType)}
+                onClick={() => openNotification(n)}
+                onOpenMenu={() => setMenuFor(n)}
+              />
+            );
+            if (!sec.dayGrouped) {
+              const visible = expanded ? sec.items : sec.items.slice(0, COLLAPSE_AT);
+              const hiddenCount = sec.items.length - visible.length;
+              return (
+                <Section key={sec.key} title={sec.title}>
+                  {visible.map(withAgo).map(row)}
+                  {hiddenCount > 0 && (
+                    <div
+                      onClick={() => expandSection(sec.key)}
+                      data-testid={`notifications-more-${sec.key}`}
+                      style={{ padding: '12px 0', fontSize: 12.5, fontWeight: 600, color: ink, opacity: 0.65, cursor: 'pointer' }}
+                    >
+                      {T(`Xem thêm (${hiddenCount})`, `View more (${hiddenCount})`)}
+                    </div>
+                  )}
+                </Section>
+              );
+            }
+            // "7 ngày qua"/"Cũ hơn": one header per calendar day underneath
+            // this section's own outer title, collapsing whole days at a
+            // time (collapseDayGroups() never cuts a single day's items in
+            // half) instead of a flat COLLAPSE_AT slice across the range.
+            const dayGroups = groupNotificationsByDay(sec.items, s.lang);
+            const { visible: visibleDays, hidden: hiddenDays } = expanded
+              ? { visible: dayGroups, hidden: [] }
+              : collapseDayGroups(dayGroups, COLLAPSE_AT);
+            const hiddenCount = hiddenDays.reduce((sum, g) => sum + g.items.length, 0);
             return (
               <Section key={sec.key} title={sec.title}>
-                {visible.map(withAgo).map(n => (
-                  <Row
-                    key={n.id}
-                    n={n}
-                    // Live read_at, not the (frozen) section — marking a
-                    // notification read only changes its weight/dimming in
-                    // place, per BUG 3, never which section it's in.
-                    unread={!n.read_at}
-                    avatar={avatarSourceFor(n, avatarMaps, s.accountType)}
-                    onClick={() => openNotification(n)}
-                    onOpenMenu={() => setMenuFor(n)}
-                  />
+                {visibleDays.map(day => (
+                  <div key={day.key} style={{ marginBottom: 14 }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.5 }} data-testid="notification-day-header">
+                      {day.label}
+                    </span>
+                    <div style={{ marginTop: 4 }}>{day.items.map(withAgo).map(row)}</div>
+                  </div>
                 ))}
                 {hiddenCount > 0 && (
                   <div

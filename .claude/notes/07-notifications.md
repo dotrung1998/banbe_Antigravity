@@ -441,3 +441,124 @@ delete "×"/`xmark` glyph to "•••" (`notification-menu`/`notification.menu
 test/accessibility identifiers, replacing `notification-delete`).
 
 Both `vite build` and `xcodebuild` succeed.
+
+## 2026-09-19 follow-up — stale-target detection/auto-delete, per-calendar-day grouping
+
+**Confirmed real trigger, not fabricated**: this session's own bulk
+`payment_documents` cleanup (direct SQL, clearing test data) deleted all
+but 2 of that table's rows. Queried production directly: every
+`payment_document_uploaded`/`_replaced`/`receipt_requested` notification
+older than the 2 survivors now points at a `document_id` with no matching
+row — e.g. notification `277ef2fc-dc9d-4fbb-acad-8a61c4c06193`
+(`document_id: 5bd5a2d3-22d3-4d0b-84cd-928c31aadb32`, recipient
+`8a4eb34e-...`) — confirmed the id genuinely doesn't exist in
+`payment_documents`.
+
+### BUG — tapping a notification whose target was deleted did nothing
+
+**Root cause, confirmed by reading the actual code**: `openDocumentFromNotification()`
+(web `GocContext.jsx`, iOS `AppState+Data.swift`) and `openBookingConfirmed()`
+(same files) both fetched their target and, on zero rows, did a bare
+`return`/`return` with no signal to the caller — `openNotification()` had
+no way to know the fetch failed, so it just... stopped, silently. **New
+fact**: iOS's versions used `.single()`, not `.maybeSingle()` — `.single()`
+throws the SAME `PGRST116` error for "zero rows" as for a genuine decode/
+network failure, so on iOS the two cases weren't even distinguishable
+before this pass; switched to `.maybeSingle()` (decodes into `T?`, `nil`
+on zero rows without throwing, still throws for a real error/multi-row
+match) specifically so this fix can tell "confirmed gone" apart from "the
+fetch itself broke."
+
+**Fix — generalized, not documents-only, per this ticket's own ask**:
+1. **On tap** (`openNotification()`, both platforms): the two kinds with an
+   existing single-entity fetch (`payment_document_uploaded`/`_replaced` via
+   `openDocumentFromNotification()`; `payment_confirmed` via
+   `openBookingConfirmed()`) now check the result. A confirmed not-found
+   calls the new `reportStaleNotification()` (web: `GocContext.jsx`, right
+   after `deleteNotification`; iOS: `AppState+Data.swift`, right after
+   `deleteNotification`) — deletes the dead notification and pushes a toast
+   ("Nội dung này không còn tồn tại"/"This content no longer exists") with
+   `notification: nil`-equivalent (web: literally `{title, body}`, no
+   `id`/`kind`; iOS: a synthetic `AppNotification` with an unmatched `kind`
+   and `readAt` pre-set) so tapping the TOAST itself can't re-attempt the
+   same dead lookup or fire a pointless mark-read call.
+2. **On list load** (`loadNotifications()`, both platforms): the exact same
+   two-kind check now also runs proactively, reusing data the avatar batch
+   already fetches for free (`bookingById` for `payment_confirmed`) plus
+   ONE small new query (`payment_documents` ids only, for the document
+   kinds — **new fact**: contrary to this ticket's own premise, the avatar
+   batch added in 8256685 never actually fetched `payment_documents` at
+   all, only `bookings`/`event_photos`/`profiles` — this pass is what adds
+   it). Stale rows are pruned from `notifications`/`liveRows` before
+   `set()`/before assigning `notifications`, and best-effort deleted
+   server-side (fire-and-forget, doesn't block the render). No toast on
+   this path — proactively vanishing from a list you're actively scrolling
+   needs no extra "click here" feedback the way an unresponsive tap does.
+3. **RLS-safety reasoning, why these two kinds are trustworthy to
+   auto-delete on**: both `payment_documents` and `bookings` scope their
+   guest-facing SELECT policy to `auth.uid() = user_id`, and the
+   notification's recipient IS that same `user_id` by construction (the
+   RPC that inserts the notification is the same one that set `user_id` on
+   the target row) — ownership never changes afterward, so RLS can never
+   spuriously deny an existing row to its own notification's recipient. An
+   empty result is unambiguous.
+
+**Kinds deliberately SKIPPED for auto-delete, and why** (per this ticket's
+own instruction to log and skip rather than risk a false positive):
+- `booking_requested`, `payment_awaiting_verification`, `receipt_requested`
+  — these route to a LIST screen (`openAttendance()`/`openVerifications()`),
+  not a single-entity fetch. If the specific booking is gone, the list
+  simply doesn't show it — a much softer, already-correct degradation than
+  "tap does nothing," and there's no single id to check existence against
+  without inventing one.
+- `hold_created`, `dispute_message`'s guest branch — both call
+  `openPaymentDetails(bookingId, ...)`, which does **no fetch of its own**
+  at all (pure navigation; the destination screen reads from
+  `paymentBookings`, already loaded at sign-in). Adding an existence check
+  here means a brand-new round trip with no reuse of anything already
+  fetched. Skipped because: (a) no confirmed real trigger exists for a
+  `bookings` row going missing — repo-wide grep of every migration found
+  **zero** application RPCs that hard-delete a `bookings` row (only the
+  one-time `010_seed_data.sql` reset does), unlike `payment_documents`,
+  which has both a real purge cron (057) AND this session's own confirmed
+  manual cleanup; (b) `dispute_message`'s organizer branch and `new_message`
+  both route to list/thread screens, same reasoning as above.
+- `new_message` — `openThread()`; no delete path exists anywhere in this
+  codebase for a `threads` row itself (only individual `messages`/
+  `dispute_messages` rows are ever deletable), so the destination can never
+  actually go missing.
+
+**Verified against the real confirmed repro, not a fabricated one**: ran
+the exact `.maybeSingle()`-equivalent check against real notification
+`277ef2fc-dc9d-4fbb-acad-8a61c4c06193` (`payment_document_uploaded`,
+`document_id: 5bd5a2d3-...`) — confirmed `payment_documents` genuinely has
+no matching row (`error: null, data: null`), applied the fix's own delete,
+and confirmed the notification is now gone (`exists after: false`). This
+is the exact code path `openNotification()` runs on a real tap — the only
+difference from a live tap is this was driven by a script instead of a
+finger, since this session has no way to sign in as the real account's
+actual password.
+
+### FEATURE — per-calendar-day headers within "7 ngày qua"/"Cũ hơn"
+
+New `notificationDayLabel()`/`groupNotificationsByDay()`/`collapseDayGroups()`
+(`src/lib/notifications.js`) and their Swift mirrors
+(`NotificationPresentation.swift`) — "Mới"/"Hôm nay" stay exactly as
+8256685 stabilized them (flat, frozen `sectionMembership`, unchanged); only
+"7 ngày qua"/"Cũ hơn" now render one header per calendar day
+("Thứ Năm, 18 Thg 9"/"Thursday, Sep 18", local calendar day via
+`Calendar.current`, not UTC) instead of one flat block for the whole range.
+`Notifications.jsx`'s row-rendering loop / `MessagingViews.swift`'s
+`section(_:)` both branch on a new `dayGrouped` flag per section.
+
+**Collapse, "whole days at a time, not mid-day"**: `collapseDayGroups(dayGroups, limit)`
+accumulates full days until the NEXT day would push the running total past
+the existing `COLLAPSE_AT`/`notificationCollapseAt` (still 20, unchanged) —
+cuts there, keeping every included day intact. A single day with more than
+20 items on its own is still shown in full rather than split (the
+alternative — truncating mid-day — is exactly what this ticket asked to
+avoid). The existing per-section `expandedSections` "Xem thêm" toggle is
+reused unchanged; expanding a day-grouped section just shows every day in
+full instead of applying the day-level cut.
+
+Both `vite build` and `xcodebuild` succeed.

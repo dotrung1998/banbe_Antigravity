@@ -74,3 +74,53 @@ export function notificationAgeBucket(createdAt, now = Date.now()) {
   if (hours < 24 * 7) return 'week';
   return 'older';
 }
+
+// 2026-09-19 follow-up: within "7 ngày qua"/"Cũ hơn", a finer per-calendar-
+// day header — "Thứ Năm, 18 Thg 9"/"Thursday, Sep 18" — instead of one flat
+// block for the whole range. Local calendar day (not UTC), so a
+// notification just after local midnight starts a new group rather than
+// staying lumped with the previous day's items.
+const VI_WEEKDAYS = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+
+export function notificationDayKey(createdAt) {
+  const d = new Date(createdAt);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+export function notificationDayLabel(createdAt, lang = 'vi') {
+  const d = new Date(createdAt);
+  if (lang === 'en') return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  return `${VI_WEEKDAYS[d.getDay()]}, ${d.getDate()} Thg ${d.getMonth() + 1}`;
+}
+
+/**
+ * Groups an already newest-first-sorted list into per-day buckets (also
+ * newest-day-first, since insertion order follows the input). Pure
+ * grouping — collapsing is a separate concern, see collapseDayGroups().
+ */
+export function groupNotificationsByDay(items, lang) {
+  const byKey = new Map();
+  for (const n of items) {
+    const key = notificationDayKey(n.created_at);
+    if (!byKey.has(key)) byKey.set(key, { key, label: notificationDayLabel(n.created_at, lang), items: [] });
+    byKey.get(key).items.push(n);
+  }
+  return [...byKey.values()];
+}
+
+/**
+ * Collapses whole day-groups at a time, never mid-day — accumulates full
+ * days until adding the next one would cross `limit` total items, then
+ * cuts there. The first day is always kept in full even if it alone
+ * exceeds `limit` (a single very active day still isn't split in half).
+ */
+export function collapseDayGroups(dayGroups, limit) {
+  let count = 0;
+  let cutIndex = dayGroups.length;
+  for (let i = 0; i < dayGroups.length; i++) {
+    if (count > 0 && count + dayGroups[i].items.length > limit) { cutIndex = i; break; }
+    count += dayGroups[i].items.length;
+    if (count >= limit) { cutIndex = i + 1; break; }
+  }
+  return { visible: dayGroups.slice(0, cutIndex), hidden: dayGroups.slice(cutIndex) };
+}

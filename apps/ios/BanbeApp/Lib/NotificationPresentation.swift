@@ -34,6 +34,11 @@ struct NotificationAvatarMaps {
     var bookingById: [UUID: (eventId: String, userId: UUID?)] = [:]
     var eventPhotoByEventId: [String: URL] = [:]
     var avatarByUserId: [UUID: URL] = [:]
+    /// 2026-09-19 follow-up: document ids confirmed to still exist, fetched
+    /// alongside the other batch joins above purely so
+    /// loadNotifications() can prune a stale payment_document_uploaded/
+    /// _replaced notification without a second round trip.
+    var liveDocumentIds: Set<UUID> = []
 }
 
 /// Resolves what a notification row's left-side circle should show. Never
@@ -87,4 +92,71 @@ func notificationAgeBucket(_ createdAt: Date, now: Date = Date()) -> Notificatio
     if hours < 24 { return .today }
     if hours < 24 * 7 { return .week }
     return .older
+}
+
+// 2026-09-19 follow-up: within "7 ngày qua"/"Cũ hơn", a finer per-calendar-
+// day header — "Thứ Năm, 18 Thg 9"/"Thursday, Sep 18" — instead of one flat
+// block for the whole range. Local calendar day (the device's own
+// Calendar.current), so a notification just after local midnight starts a
+// new group rather than staying lumped with the previous day's items.
+private let viWeekdays = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"]
+
+func notificationDayKey(_ createdAt: Date) -> DateComponents {
+    Calendar.current.dateComponents([.year, .month, .day], from: createdAt)
+}
+
+func notificationDayLabel(_ createdAt: Date, lang: String) -> String {
+    if lang == "en" {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMM d"
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter.string(from: createdAt)
+    }
+    let calendar = Calendar.current
+    let weekday = viWeekdays[calendar.component(.weekday, from: createdAt) - 1]
+    let day = calendar.component(.day, from: createdAt)
+    let month = calendar.component(.month, from: createdAt)
+    return "\(weekday), \(day) Thg \(month)"
+}
+
+struct NotificationDayGroup: Identifiable {
+    let id: String
+    let label: String
+    let items: [AppNotification]
+}
+
+/// Groups an already newest-first-sorted list into per-day buckets (also
+/// newest-day-first, since insertion order follows the input). Pure
+/// grouping — collapsing is a separate concern, see collapseDayGroups().
+func groupNotificationsByDay(_ items: [AppNotification], lang: String) -> [NotificationDayGroup] {
+    var order: [String] = []
+    var byKey: [String: (label: String, items: [AppNotification])] = [:]
+    for n in items {
+        let comps = notificationDayKey(n.createdAt)
+        let key = "\(comps.year ?? 0)-\(comps.month ?? 0)-\(comps.day ?? 0)"
+        if byKey[key] == nil {
+            byKey[key] = (label: notificationDayLabel(n.createdAt, lang: lang), items: [])
+            order.append(key)
+        }
+        byKey[key]?.items.append(n)
+    }
+    return order.map { key in
+        let entry = byKey[key]!
+        return NotificationDayGroup(id: key, label: entry.label, items: entry.items)
+    }
+}
+
+/// Collapses whole day-groups at a time, never mid-day — accumulates full
+/// days until adding the next one would cross `limit` total items, then
+/// cuts there. The first day is always kept in full even if it alone
+/// exceeds `limit` (a single very active day still isn't split in half).
+func collapseDayGroups(_ dayGroups: [NotificationDayGroup], limit: Int) -> (visible: [NotificationDayGroup], hidden: [NotificationDayGroup]) {
+    var count = 0
+    var cutIndex = dayGroups.count
+    for i in dayGroups.indices {
+        if count > 0 && count + dayGroups[i].items.count > limit { cutIndex = i; break }
+        count += dayGroups[i].items.count
+        if count >= limit { cutIndex = i + 1; break }
+    }
+    return (Array(dayGroups.prefix(cutIndex)), Array(dayGroups.suffix(from: cutIndex)))
 }
