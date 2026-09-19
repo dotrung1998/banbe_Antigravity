@@ -8,21 +8,25 @@ import SwiftUI
 /// ScreenScaffold's scroll-offset tracking / AppState.noteScaffoldScroll(),
 /// which now throttles + animates that mutation — see its own doc comment).
 /// Same four destinations as the old header row (Map/Notifications/Inbox/
-/// Account), same custom icon vocabulary as the web bar — a diagonal
-/// stroke, a ring, small filled dots, echoing public/banbe-mark.png's own
-/// bold round-capped strokes rather than the classic IG/FB/Twitter shapes.
+/// Account). Icons: Map/Notifications/Inbox use distinct pin/bell/envelope
+/// silhouettes (see the FEATURE comment above their glyph structs), Profile
+/// keeps its original ring+shoulders mark — all four still avoid the
+/// classic IG/FB/Twitter shapes (filled house, paper plane, magnifying
+/// glass) while reading as this app's own icon family.
 struct BottomTabBar: View {
     @EnvironmentObject var app: AppState
 
     static let visibleScreens: Set<Screen> = [.home, .mapExplore, .notifications, .inbox, .profile]
 
-    // BUG 2 follow-up: bumped up from 22/19 (expanded/collapsed) to a
-    // single fixed, larger size — the shrink-on-scroll effect is now a
-    // uniform `.scaleEffect` on the whole bar (see body), not a per-icon
-    // size change, so one constant is enough and it stays crisp at every
-    // scale factor instead of laying out at a smaller intrinsic size.
-    private let iconSize: CGFloat = 27
-    private let barHeight: CGFloat = 64
+    // BUG 2 (64f2719) / BUG 3 (623ec1e) follow-ups: bumped up from 22/19
+    // (expanded/collapsed) to a single fixed, larger size, then bumped
+    // again for BUG 3's "make the resting bar a bit bigger" ask. The
+    // shrink-on-scroll effect is a uniform `.scaleEffect` on the whole bar
+    // (see body), not a per-icon size change, so one constant is enough and
+    // it stays crisp at every scale factor instead of laying out at a
+    // smaller intrinsic size.
+    private let iconSize: CGFloat = 30
+    private let barHeight: CGFloat = 72
 
     private struct Item: Identifiable {
         let id: String
@@ -51,6 +55,26 @@ struct BottomTabBar: View {
     // against them.
     @State private var activeID: String?
     @State private var itemFrames: [String: CGRect] = [:]
+    // BUG 1 fix (623ec1e real-device report): `activeID` used to be purely
+    // drag-transient — `nil` whenever no gesture was in flight, so the
+    // highlight vanished the instant the finger lifted. This flag lets the
+    // gesture "own" `activeID` live while a drag is happening, and lets
+    // `syncActiveToScreen()` own it the rest of the time (after a tap,
+    // after a drag release, on first appearance, or after navigating here
+    // some other way entirely, e.g. a deep link) so the highlight always
+    // sits behind whichever tab is actually current.
+    @State private var isDragging = false
+
+    private func syncActiveToScreen() {
+        guard !isDragging else { return }
+        switch app.screen {
+        case .mapExplore: activeID = "map"
+        case .notifications: activeID = "notifications"
+        case .inbox: activeID = "inbox"
+        case .profile: activeID = "profile"
+        default: activeID = nil
+        }
+    }
 
     private func hitTest(_ x: CGFloat) -> String? {
         for item in items {
@@ -70,6 +94,7 @@ struct BottomTabBar: View {
         // whichever tab it started on.
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
+                isDragging = true
                 let id = hitTest(value.location.x)
                 if id != activeID {
                     withAnimation(.interactiveSpring()) { activeID = id }
@@ -78,7 +103,13 @@ struct BottomTabBar: View {
             .onEnded { value in
                 let id = hitTest(value.location.x)
                 if let id, let item = items.first(where: { $0.id == id }) { item.action() }
-                withAnimation(.easeOut(duration: 0.16)) { activeID = nil }
+                // BUG 1 fix: leave the highlight exactly where the drag
+                // landed instead of clearing it to nil — it stays lit on
+                // the tab just navigated to. `isDragging = false` hands
+                // ownership back to syncActiveToScreen(), which is a no-op
+                // here since `activeID` already matches (or will match, the
+                // moment `app.screen` catches up via its own onChange).
+                isDragging = false
             }
     }
 
@@ -141,7 +172,24 @@ struct BottomTabBar: View {
         // every scroll frame.
         .scaleEffect(app.bottomBarCollapsed ? 0.86 : 1, anchor: .bottom)
         .padding(.horizontal, 28)
-        .padding(.bottom, 8)
+        // BUG 3: sits a little closer to the bottom edge than 64f2719/
+        // 623ec1e's 8pt — "shift its resting position lower."
+        .padding(.bottom, 2)
+        .onAppear { syncActiveToScreen() }
+        .onChange(of: app.screen) { _, _ in
+            withAnimation(.easeOut(duration: 0.18)) { syncActiveToScreen() }
+        }
+        // BUG 2 follow-up (623ec1e real-device report): this bar was
+        // already declared AFTER `screenView(for: app.screen)` in
+        // RootView's ZStack, which SwiftUI normally paints on top with no
+        // z-index needed — but MapExploreView wraps MapKit's `Map`, which
+        // is itself backed by a UIViewRepresentable-hosted MKMapView. That
+        // interop boundary is a known case where SwiftUI's declared ZStack
+        // order isn't reliably respected on a real device (the UIKit-hosted
+        // map view can still end up composited above a later SwiftUI
+        // sibling). An explicit `.zIndex` sidesteps that ambiguity instead
+        // of depending on declaration order alone.
+        .zIndex(10)
     }
 
     private func resolveFrames(_ anchors: [String: Anchor<CGRect>], _ proxy: GeometryProxy) {
@@ -158,11 +206,18 @@ private struct TabItemFrameKey: PreferenceKey {
     }
 }
 
-// BUG 2 follow-up: each glyph dropped to at most 2-3 path elements (was up
-// to 3 with a faint secondary arc on Notifications) and drawn at a bigger
-// relative scale within its own 24pt box, so it reads at a glance instead
-// of needing a second look — same ring/diagonal-stroke/dot vocabulary from
-// 64f2719 (public/banbe-mark.png), just simplified, not a new direction.
+// FEATURE follow-up (623ec1e real-device report): Map/Notifications/Inbox
+// were still hard to tell apart at a glance despite 64f2719's stroke-count
+// trim, so these three moved to unambiguous, differently-shaped silhouettes
+// — a pin/marker for Map, a bell for Notifications, an envelope for Inbox —
+// instead of iterating further on the shared ring/diagonal-stroke/dot
+// vocabulary those three used before (that vocabulary is what made them
+// hard to distinguish: they all read as "a ring plus a stroke"). Profile is
+// deliberately UNCHANGED (user confirmed it already reads fine) and the new
+// three match its stroke weight (2.4-2.6) and rounded joins/caps so the set
+// still reads as one family — mirrors src/screens/BottomTabBar.jsx's own
+// icon set exactly, shape for shape. See 06-design-tokens.md for the fuller
+// rationale.
 
 private struct MapGlyph: View {
     let color: Color
@@ -170,9 +225,13 @@ private struct MapGlyph: View {
         GeometryReader { geo in
             let s = geo.size.width / 24
             ZStack {
-                Path { p in p.move(to: CGPoint(x: 6.5 * s, y: 18 * s)); p.addLine(to: CGPoint(x: 15.5 * s, y: 7 * s)) }
-                    .stroke(color, style: StrokeStyle(lineWidth: 2.6 * s, lineCap: .round))
-                Circle().fill(color).frame(width: 5.4 * s, height: 5.4 * s).position(x: 16.8 * s, y: 5.6 * s)
+                Path { p in
+                    p.move(to: CGPoint(x: 12 * s, y: 3 * s))
+                    p.addCurve(to: CGPoint(x: 12 * s, y: 21 * s), control1: CGPoint(x: 6 * s, y: 5 * s), control2: CGPoint(x: 6 * s, y: 15 * s))
+                    p.addCurve(to: CGPoint(x: 12 * s, y: 3 * s), control1: CGPoint(x: 18 * s, y: 15 * s), control2: CGPoint(x: 18 * s, y: 5 * s))
+                }
+                .stroke(color, style: StrokeStyle(lineWidth: 2.4 * s, lineCap: .round, lineJoin: .round))
+                Circle().fill(color).frame(width: 4.6 * s, height: 4.6 * s).position(x: 12 * s, y: 9.3 * s)
             }
         }
     }
@@ -184,9 +243,21 @@ private struct NotificationsGlyph: View {
         GeometryReader { geo in
             let s = geo.size.width / 24
             ZStack {
-                Circle().fill(color).frame(width: 4.2 * s, height: 4.2 * s).position(x: 12 * s, y: 16.5 * s)
-                Path { p in p.addArc(center: CGPoint(x: 12 * s, y: 16.5 * s), radius: 6.6 * s, startAngle: .degrees(200), endAngle: .degrees(340), clockwise: false) }
-                    .stroke(color, style: StrokeStyle(lineWidth: 2.6 * s, lineCap: .round))
+                Path { p in
+                    p.move(to: CGPoint(x: 7 * s, y: 13.1 * s))
+                    p.addLine(to: CGPoint(x: 7 * s, y: 8.5 * s))
+                    p.addCurve(to: CGPoint(x: 12 * s, y: 3.5 * s), control1: CGPoint(x: 7 * s, y: 5.7 * s), control2: CGPoint(x: 9.2 * s, y: 3.5 * s))
+                    p.addCurve(to: CGPoint(x: 17 * s, y: 8.5 * s), control1: CGPoint(x: 14.8 * s, y: 3.5 * s), control2: CGPoint(x: 17 * s, y: 5.7 * s))
+                    p.addLine(to: CGPoint(x: 17 * s, y: 13.1 * s))
+                    p.addLine(to: CGPoint(x: 18.7 * s, y: 16.3 * s))
+                    p.addCurve(to: CGPoint(x: 18 * s, y: 17.4 * s), control1: CGPoint(x: 19 * s, y: 16.9 * s), control2: CGPoint(x: 18.6 * s, y: 17.4 * s))
+                    p.addLine(to: CGPoint(x: 6 * s, y: 17.4 * s))
+                    p.addCurve(to: CGPoint(x: 5.3 * s, y: 16.3 * s), control1: CGPoint(x: 5.4 * s, y: 17.4 * s), control2: CGPoint(x: 5 * s, y: 16.9 * s))
+                    p.closeSubpath()
+                }
+                .fill(color)
+                Path { p in p.addArc(center: CGPoint(x: 12 * s, y: 18.6 * s), radius: 2.4 * s, startAngle: .degrees(0), endAngle: .degrees(180), clockwise: false) }
+                    .stroke(color, style: StrokeStyle(lineWidth: 2 * s, lineCap: .round))
             }
         }
     }
@@ -198,13 +269,16 @@ private struct InboxGlyph: View {
         GeometryReader { geo in
             let s = geo.size.width / 24
             ZStack {
-                Circle().fill(color).frame(width: 4.8 * s, height: 4.8 * s).position(x: 7 * s, y: 9 * s)
-                Circle().fill(color).frame(width: 4.8 * s, height: 4.8 * s).position(x: 17 * s, y: 15 * s)
+                RoundedRectangle(cornerRadius: 2.4 * s, style: .continuous)
+                    .stroke(color, lineWidth: 2.4 * s)
+                    .frame(width: 15 * s, height: 11 * s)
+                    .position(x: 12 * s, y: 12.5 * s)
                 Path { p in
-                    p.move(to: CGPoint(x: 9.3 * s, y: 10.8 * s))
-                    p.addQuadCurve(to: CGPoint(x: 14.7 * s, y: 13.2 * s), control: CGPoint(x: 13 * s, y: 12 * s))
+                    p.move(to: CGPoint(x: 5.5 * s, y: 8.2 * s))
+                    p.addLine(to: CGPoint(x: 12 * s, y: 13.5 * s))
+                    p.addLine(to: CGPoint(x: 18.5 * s, y: 8.2 * s))
                 }
-                .stroke(color, style: StrokeStyle(lineWidth: 2.4 * s, lineCap: .round))
+                .stroke(color, style: StrokeStyle(lineWidth: 2.2 * s, lineCap: .round, lineJoin: .round))
             }
         }
     }

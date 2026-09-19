@@ -121,10 +121,20 @@ function Shell() {
       // land in the gap between the schedule and the callback, and only
       // the most recent one should decide direction.
       const latestTop = pendingScrollTop.current;
-      const delta = latestTop - lastScrollTop.current;
+      // BUG 3 follow-up (623ec1e real-device report): re-verified this sign
+      // convention against the spec ("scrolling further down the page —
+      // scrollTop increasing — shrinks the bar; scrolling back toward the
+      // top restores it") rather than assuming it needed flipping.
+      // `scrollTop` increasing IS "further down the page" by definition
+      // (W3C: distance from the top), so a positive `scrollingDown` delta
+      // here already matches "shrink" below — this was not inverted.
+      // Tightened the trigger threshold from 6px to 4px so a real,
+      // deliberate scroll registers reliably rather than needing an
+      // unusually large jump between two coalesced rAF frames.
+      const scrollingDown = latestTop - lastScrollTop.current;
       if (latestTop <= 4) setBarCollapsed(false);
-      else if (delta > 6) setBarCollapsed(true);
-      else if (delta < -6) setBarCollapsed(false);
+      else if (scrollingDown > 4) setBarCollapsed(true);
+      else if (scrollingDown < -4) setBarCollapsed(false);
       lastScrollTop.current = latestTop;
     });
   };

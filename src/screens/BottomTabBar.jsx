@@ -2,30 +2,35 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { ink, alert, barGlass } from '../theme.js';
 
-// BUG 2 follow-up (64f2719 real-device report): each glyph dropped to at
-// most 2-3 path elements (Notifications lost its faint secondary arc) and
-// is drawn bigger relative to its own 24-unit box, so it reads at a glance
-// instead of needing a second look. Same ring/diagonal-stroke/dot
-// vocabulary as before (public/banbe-mark.png), not a new direction — see
-// 06-design-tokens.md's "Bottom tab bar" section for the original rationale.
+// FEATURE follow-up (623ec1e real-device report): Map/Notifications/Inbox
+// were still hard to tell apart at a glance despite 64f2719's stroke-count
+// trim, so these three moved to unambiguous, differently-shaped silhouettes
+// — a pin/marker for Map, a bell for Notifications, an envelope for Inbox —
+// instead of iterating further on the shared ring/diagonal-stroke/dot
+// vocabulary those three used before (that vocabulary is what made them
+// hard to distinguish: they all read as "a ring plus a stroke"). Account
+// is deliberately UNCHANGED (user confirmed it already reads fine) and the
+// new three match its stroke weight (2.4-2.6) and rounded joins/caps so the
+// set still reads as one family. See 06-design-tokens.md for the fuller
+// rationale and why this isn't a copy of any IG/FB/Twitter glyph (none of
+// the three use a map pin, a bell, or a flap-top envelope for these slots).
 const ICONS = {
   map: (c) => (
     <svg viewBox="0 0 24 24" width="100%" height="100%">
-      <path d="M6.5 18 L15.5 7" stroke={c} strokeWidth="2.6" strokeLinecap="round" fill="none" />
-      <circle cx="16.8" cy="5.6" r="2.7" fill={c} />
+      <path d="M12 3c-3.3 0-6 2.6-6 6.1C6 13.4 12 21 12 21s6-7.6 6-11.9C18 5.6 15.3 3 12 3z" fill="none" stroke={c} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx="12" cy="9.3" r="2.3" fill={c} />
     </svg>
   ),
   notifications: (c) => (
     <svg viewBox="0 0 24 24" width="100%" height="100%">
-      <circle cx="12" cy="16.5" r="2.1" fill={c} />
-      <path d="M7.3 12a6.6 6.6 0 0 1 9.4 0" fill="none" stroke={c} strokeWidth="2.6" strokeLinecap="round" />
+      <path d="M12 3.5c-2.8 0-5 2.2-5 5v4.6l-1.6 2.7c-.3.5.1 1.2.7 1.2h11.8c.6 0 1-.7.7-1.2L17 13.1V8.5c0-2.8-2.2-5-5-5z" fill={c} />
+      <path d="M9.6 18.6a2.4 2.4 0 0 0 4.8 0" stroke={c} strokeWidth="2" strokeLinecap="round" fill="none" />
     </svg>
   ),
   inbox: (c) => (
     <svg viewBox="0 0 24 24" width="100%" height="100%">
-      <circle cx="7" cy="9" r="2.4" fill={c} />
-      <circle cx="17" cy="15" r="2.4" fill={c} />
-      <path d="M9.3 10.8 Q13 12 14.7 13.2" stroke={c} strokeWidth="2.4" strokeLinecap="round" fill="none" />
+      <rect x="4.5" y="7" width="15" height="11" rx="2.4" fill="none" stroke={c} strokeWidth="2.4" />
+      <path d="M5.5 8.2 L12 13.5 L18.5 8.2" fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
   profile: (c) => (
@@ -46,12 +51,17 @@ export function showsBottomBar(screen) {
   return BAR_SCREENS.has(screen);
 }
 
-// BUG 2: bumped from 22/19 (expanded/collapsed) to one fixed, bigger size —
-// the shrink-on-scroll effect is now a uniform CSS `transform: scale()` on
-// the whole bar (see the outer style below), not a per-icon size change, so
-// the icons themselves stay crisp at every scale factor.
-const BAR_HEIGHT = 64;
-const ICON_SIZE = 27;
+// BUG 2 (64f2719) / BUG 3 (623ec1e) follow-ups: bumped from 22/19
+// (expanded/collapsed) to one fixed, bigger size, then bumped again for
+// BUG 3's "make the resting bar a bit bigger" ask. The shrink-on-scroll
+// effect is a uniform CSS `transform: scale()` on the whole bar (see the
+// outer style below), not a per-icon size change, so the icons themselves
+// stay crisp at every scale factor.
+const BAR_HEIGHT = 72;
+const ICON_SIZE = 30;
+// BUG 3: sits a little closer to the bottom edge than 64f2719/623ec1e's
+// 18px — "shift its resting position lower."
+const BAR_BOTTOM_OFFSET = 10;
 
 export default function BottomTabBar({ collapsed }) {
   const { state, T, goProfile, goInbox, goNotifications, goMapExplore } = useGoc();
@@ -98,6 +108,24 @@ export default function BottomTabBar({ collapsed }) {
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   }, [items.length]);
+
+  // BUG 1 fix (623ec1e real-device report): the highlight used to be purely
+  // a drag-transient effect — shown only while `draggingRef` was true, and
+  // explicitly hidden (opacity 0) the instant the pointer lifted. It needs
+  // to sit behind whichever tab is ACTIVE at rest too: after a tap, after a
+  // drag release, and on first paint/navigation-from-elsewhere (e.g. a deep
+  // link, or a "View details" button that lands on `notifications` without
+  // ever touching this bar). This resyncs it to `state.screen` any time
+  // that changes, as long as a drag isn't already driving it live.
+  useEffect(() => {
+    if (draggingRef.current) return;
+    const idx = items.findIndex((it) => it.key === s.screen);
+    activeIndexRef.current = idx === -1 ? null : idx;
+    setActiveIndex(idx === -1 ? null : idx);
+    if (idx !== -1) placeHighlight(idx, true);
+    else if (highlightRef.current) highlightRef.current.style.opacity = '0';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.screen, items]);
 
   // Imperative, ref-driven — deliberately NOT React state on every pixel of
   // drag (that's exactly Bug 1's mistake, applied here it would make the
@@ -149,14 +177,17 @@ export default function BottomTabBar({ collapsed }) {
     }
   };
 
+  // BUG 1 fix: no longer hides the highlight on release — it stays exactly
+  // where the drag landed (the tab being navigated to), so it reads as
+  // "this is now the active tab" instead of flashing away. If the tapped
+  // tab is already the current screen, `state.screen` won't change and the
+  // effect above won't refire, which is fine: the highlight is already
+  // sitting in the right place from the drag/tap itself.
   const endDrag = () => {
     if (!draggingRef.current) return;
     draggingRef.current = false;
     const idx = activeIndexRef.current;
     if (idx != null && items[idx]) items[idx].onClick();
-    if (highlightRef.current) highlightRef.current.style.opacity = '0';
-    activeIndexRef.current = null;
-    setActiveIndex(null);
   };
 
   return (
@@ -164,9 +195,22 @@ export default function BottomTabBar({ collapsed }) {
       data-testid="bottom-tab-bar"
       style={{
         ...barGlass({}),
-        position: 'absolute', left: '50%', bottom: 18,
+        position: 'absolute', left: '50%', bottom: BAR_BOTTOM_OFFSET,
         width: 'calc(100% - 56px)', maxWidth: 320,
-        borderRadius: 999, zIndex: 20,
+        borderRadius: 999,
+        // BUG 2 follow-up (623ec1e real-device report): the bar was already
+        // meant to paint above MapExplore's own content by plain document
+        // order (BottomTabBar is a later sibling of the screen container in
+        // Shell — see App.jsx), and MapExplore's own floating pills/sheet
+        // never go above zIndex 3, so 20 already had headroom on paper. It
+        // was still getting hidden on a real device — MapLibre's WebGL
+        // canvas is the one part of this screen whose compositing isn't
+        // guaranteed to respect ordinary DOM z-index the way plain HTML
+        // layers do. Bumped to 25: comfortably clear of anything MapExplore
+        // itself uses, but deliberately still under Notifications.jsx's own
+        // full-screen action-sheet scrim (`zIndex: 30`) so that scrim still
+        // dims the bar along with everything else while it's open.
+        zIndex: 25,
         height: BAR_HEIGHT, boxShadow: '0 8px 24px rgba(27,25,22,0.18)',
         // BUG 1 follow-up: the shrink-on-scroll effect used to change
         // `height` and each icon's own `width`/`height` directly — layout

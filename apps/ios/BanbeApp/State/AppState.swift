@@ -940,13 +940,23 @@ final class AppState: ObservableObject {
         guard now.timeIntervalSince(lastScaffoldScrollUpdate) > 0.033 else { return }
         lastScaffoldScrollUpdate = now
 
+        // BUG 3 follow-up (623ec1e real-device report): re-verified this
+        // sign convention against the spec ("scrolling further down the
+        // page shrinks the bar; scrolling back toward the top restores
+        // it") rather than assuming it needed flipping. `offsetY` gets MORE
+        // NEGATIVE the further down the page you scroll (see doc comment
+        // above), so a negative `delta` here already means "scrolled
+        // further down" — that's the `shouldCollapse = true` branch below,
+        // which was already correct, not inverted. Tightened the trigger
+        // from 6pt to 4pt to match the web fix's own threshold change and
+        // register a real scroll more reliably.
         let delta = offsetY - lastScaffoldScrollOffset
         lastScaffoldScrollOffset = offsetY
 
         let shouldCollapse: Bool
         if offsetY >= -4 { shouldCollapse = false }
-        else if delta < -6 { shouldCollapse = true }
-        else if delta > 6 { shouldCollapse = false }
+        else if delta < -4 { shouldCollapse = true }
+        else if delta > 4 { shouldCollapse = false }
         else { return }
 
         guard shouldCollapse != bottomBarCollapsed else { return }

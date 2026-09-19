@@ -189,3 +189,93 @@ Three issues found after 64f2719 shipped, fixed in the same tab bar files
   is code-level (confirmed the exact synchronous-state-write / unanimated-
   mutation root causes by reading the pre-fix code, then removed them) plus
   clean builds on both platforms, not a measured before/after FPS number.
+
+## Follow-up 2 (real-device report on 623ec1e): persistent highlight, Map z-order, icon redesign, scroll direction
+
+- **BUG 1 root cause, confirmed by reading**: `activeIndex`/`activeID` were
+  set to `null`/`nil` explicitly whenever a drag ended (web:
+  `endDrag()`; iOS: `scrubGesture.onEnded`), and there was no code path that
+  ever set them back except another drag. So the highlight was, by
+  construction, a drag-only visual — it could never be showing at rest, on
+  first paint, or after navigating to a tab some other way (a deep link, a
+  "View details" button landing on `notifications`, etc.). Fix on both
+  platforms: the highlighted tab is now driven by two sources instead of
+  one — a live source during an active drag, and a resting source
+  (`state.screen` / `app.screen`) the rest of the time. Web: a `useEffect`
+  keyed on `s.screen` re-syncs `activeIndex` and calls `placeHighlight()`
+  whenever not dragging (`draggingRef.current` guards it); `endDrag()` no
+  longer clears the highlight, it just stops driving it live.
+  iOS: a new `isDragging` flag gates `syncActiveToScreen()`, called from
+  `.onAppear`, `.onChange(of: app.screen)`, and no longer reset to `nil` in
+  `scrubGesture`'s `onEnded`.
+- **BUG 2 root cause — NOT a code-level gating bug.** Both `BAR_SCREENS`
+  (web) and `BottomTabBar.visibleScreens` (iOS) already included
+  `mapExplore`/`.mapExplore` before this pass; `showsBottomBar('mapExplore')`
+  was already `true` and the iOS `ZStack` already declared `BottomTabBar()`
+  after `screenView(for: app.screen)`, which SwiftUI normally paints on top
+  of with no z-index needed. The bar was genuinely being rendered — it was
+  being visually covered. Root cause per platform: web's MapExplore renders
+  MapLibre's WebGL canvas, and iOS's `MapExploreView` wraps MapKit's `Map`
+  (backed by a UIViewRepresentable-hosted `MKMapView`) — both are cases
+  where a GPU-composited or UIKit-interop layer is not guaranteed to
+  respect a SwiftUI ZStack's declared child order or a plain CSS z-index
+  the way ordinary DOM/SwiftUI content does. Fix: web's bar z-index went
+  from 20 to 25 (comfortably clear of MapExplore's own highest z-index, 3,
+  but deliberately kept under `Notifications.jsx`'s full-screen action-sheet
+  scrim at `zIndex: 30`, so that scrim still dims the bar correctly when
+  open); iOS's `BottomTabBar` got an explicit `.zIndex(10)`, which does not
+  depend on declaration order at all.
+- **BUG 3 sign convention — verified already correct, NOT inverted.**
+  Traced both `App.jsx`'s `handleScroll` and `AppState.noteScaffoldScroll`
+  against the literal spec ("scrollTop increasing / content scrolling
+  further down the page = shrink; scrolling back toward the top = restore")
+  and both already implemented it exactly that way from 64f2719 onward —
+  `delta > 6` on web (scrollTop increasing) and `delta < -6` on iOS
+  (`offsetY` becoming more negative, which is what "further down" means in
+  that coordinate space, per its own doc comment) both already mapped to
+  `shouldCollapse/setBarCollapsed(true)`. No sign was flipped, since doing
+  so would have made it actually backwards. What DID change: the trigger
+  threshold on both platforms was tightened from 6 to 4 (px/pt) for a more
+  reliably-registering scroll, and the resting bar got bigger + repositioned
+  per the rest of BUG 3's ask (below). If a real inverted-feeling case is
+  found again, it's more likely to be this session's BUG 2 (bar invisible
+  on Map, which could easily read as "nothing about the bar's behavior is
+  working" during a quick real-device pass) than an actual sign error —
+  worth ruling that out first before re-flipping anything here.
+- **Resting size/position** (BUG 3's other two asks): `BAR_HEIGHT`
+  64→72, `ICON_SIZE` 27→30 (web `BottomTabBar.jsx`; iOS
+  `BottomTabBar.swift`'s matching `barHeight`/`iconSize`), bottom offset
+  reduced (web `BAR_BOTTOM_OFFSET` 18→10; iOS bottom padding 8→2) — the bar
+  now sits a bit larger and a bit closer to the screen's bottom edge. The
+  shrink-on-scroll mechanism itself is untouched (still the compositor-only
+  `transform: scale()` / `.scaleEffect()` from the prior pass).
+- **Icon redesign (Map/Notifications/Inbox only, Account/Profile
+  unchanged per the user's own confirmation)**: replaced the shared
+  ring/diagonal-stroke/dot vocabulary those three used (post-64f2719) with
+  three distinct, unrelated silhouettes — a teardrop map pin (stroke
+  outline + filled dot), a bell (filled dome/body + stroke clapper arc),
+  and a flap-top envelope (stroke rounded-rect + stroke V-fold) — because
+  that shared vocabulary was itself *why* they were hard to tell apart (all
+  three read as "a ring plus a stroke" at a glance). Implemented shape-for-
+  shape identically on both platforms (SVG path family on web, SwiftUI
+  `Path`/`addCurve` on iOS) at the same stroke weight (2-2.6) as the
+  unchanged Profile/Account icon, so the 4-icon set still reads as one
+  family. None of the three shapes (map pin, bell, flap envelope) match
+  Instagram/Facebook/Twitter's own icon set for these slots.
+- File:line — web: `src/screens/BottomTabBar.jsx` (icons at the top of the
+  file, BUG 1 fix at the `useEffect` synced to `s.screen` + `endDrag()`,
+  BUG 2/3 constants and the outer style block). iOS:
+  `apps/ios/BanbeApp/Views/BottomTabBar.swift` (icons at the bottom of the
+  file, BUG 1 fix via `isDragging`/`syncActiveToScreen()`, BUG 2's
+  `.zIndex(10)` and BUG 3's `iconSize`/`barHeight`/bottom padding all in the
+  `body` modifier chain). Scroll-sign verification (no change in direction,
+  threshold tightened 6→4): `src/App.jsx`'s `handleScroll`,
+  `apps/ios/BanbeApp/State/AppState.swift`'s `noteScaffoldScroll`.
+- Verification: `npx vite build` clean; `xcodegen generate` + `xcodebuild
+  -scheme BanbeApp -destination 'platform=iOS Simulator,...' build` →
+  **BUILD SUCCEEDED**. As with the prior pass, no on-device visual/GPU-
+  compositing behavior was directly observed (no real device or Instruments
+  access in this sandbox) — the z-index fix is a defensive, standards-based
+  fix for a documented class of real-device-only bug (WebGL canvas / UIKit-
+  interop layers not always respecting declared stacking order), not one
+  reproduced and confirmed fixed in this environment.
