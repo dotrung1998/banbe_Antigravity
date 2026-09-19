@@ -218,6 +218,7 @@ extension AppState {
             orgRegName = ""
             notifications = []
             toasts = []
+            unreadMessages = 0
             stopNotificationPolling()
             booking = nil
             holdDeadline = nil
@@ -756,6 +757,7 @@ extension AppState {
                 } catch {
                     print("Notification poll failed:", error)
                 }
+                await self.refreshUnreadMessageCount()
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
             }
         }
@@ -764,6 +766,51 @@ extension AppState {
     func stopNotificationPolling() {
         notificationPollTask?.cancel()
         notificationPollTask = nil
+    }
+
+    /// Inbox tab badge (BottomTabBar.swift) — count of messages where
+    /// `read_at IS NULL` and `sender_id` isn't me, across every thread I'm a
+    /// participant in either as the guest (`threads.guest_id`) or as the
+    /// organizer (`threads.organizer_id` owned by me) — the exact same
+    /// thread-scoping loadInboxThreads() already uses, reused rather than
+    /// invented fresh. Piggybacks on startNotificationPolling()'s existing
+    /// 5s loop rather than its own timer, since this app has no realtime
+    /// subscription anywhere to hook into instead (03-dispute-chat.md).
+    func refreshUnreadMessageCount() async {
+        guard let uid = userID else { unreadMessages = 0; return }
+        do {
+            let asGuest: [UUIDRow] = try await SupabaseService.client
+                .from("threads").select("id")
+                .eq("guest_id", value: uid)
+                .execute().value
+
+            let myOrgs: [IDRow] = try await SupabaseService.client
+                .from("organizers").select("id")
+                .or("owner_id.eq.\(uid.uuidString),user_id.eq.\(uid.uuidString)")
+                .execute().value
+
+            var asHost: [UUIDRow] = []
+            if !myOrgs.isEmpty {
+                asHost = try await SupabaseService.client
+                    .from("threads").select("id")
+                    .in("organizer_id", values: myOrgs.map(\.id))
+                    .execute().value
+            }
+
+            let threadIDs = Array(Set((asGuest + asHost).map(\.id)))
+            guard !threadIDs.isEmpty else { unreadMessages = 0; return }
+
+            let response: PostgrestResponse<[IDRow]> = try await SupabaseService.client
+                .from("messages")
+                .select("id", count: .exact)
+                .in("thread_id", values: threadIDs.map(\.uuidString))
+                .is("read_at", value: nil)
+                .neq("sender_id", value: uid.uuidString)
+                .execute()
+            unreadMessages = response.count ?? 0
+        } catch {
+            print("refreshUnreadMessageCount failed:", error)
+        }
     }
 
     /// Marks one notification read — never all at once, and never merely

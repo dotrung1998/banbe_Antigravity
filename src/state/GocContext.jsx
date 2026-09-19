@@ -236,6 +236,11 @@ const initialState = {
   editNameSaving: false,
   notifications: [],
   unreadNotifications: 0,
+  // Inbox tab badge (BottomTabBar.jsx) — count of messages where
+  // read_at IS NULL and sender_id isn't me, across every thread I'm a
+  // participant in (guest or organizer side). Refreshed by its own poll —
+  // see the effect near loadInboxThreads.
+  unreadMessages: 0,
   // Batch-fetched by loadNotifications() alongside `notifications` itself —
   // avatarSourceFor() (src/lib/notifications.js) reads these three lookup
   // tables instead of a join per row. Keyed by id, not by notification —
@@ -699,6 +704,18 @@ export function GocProvider({ children }) {
     }, 280);
   }, [set]);
 
+  // "Tắt tất cả" (ToastStack.jsx) — clears the whole local toast queue at
+  // once. Same local-only contract as dismissToast: this NEVER touches
+  // `notifications`/`read_at` — the bell inbox's unread state (and its
+  // badge count) is a completely separate, server-backed concept that a
+  // toast is only ever an ephemeral, client-side echo of.
+  const dismissAllToasts = useCallback(() => {
+    set(prev => ({ toasts: prev.toasts.map(t => ({ ...t, leaving: true })) }));
+    setTimeout(() => {
+      set(prev => ({ toasts: prev.toasts.filter(t => !t.leaving) }));
+    }, 280);
+  }, [set]);
+
   // Real event assignment for the signed-in account: which of the catalogue
   // events they're attending (from actual bookings) and which they organize
   // (from owning the organizer row events.organizer_id points at). The
@@ -900,6 +917,43 @@ export function GocProvider({ children }) {
     }).sort((a, b) => new Date(b.lastAt || 0) - new Date(a.lastAt || 0));
 
     set({ inboxThreads: rows });
+  }, [set, s.user?.id]);
+
+  // Inbox tab badge (BottomTabBar.jsx) — mirrors unreadNotifications' own
+  // poll (this app has no realtime subscription anywhere to hook into
+  // instead, see 03-dispute-chat.md), reusing loadInboxThreads' exact
+  // thread-scoping (guest_id = me, or organizer_id owned by me) rather than
+  // inventing a new join. Counts, not fetches, so it stays cheap even with
+  // a large thread list.
+  useEffect(() => {
+    const uid = s.user?.id;
+    if (!uid) { set({ unreadMessages: 0 }); return; }
+    let active = true;
+    const poll = async () => {
+      const [{ data: asGuest }, { data: myOrgs }] = await Promise.all([
+        supabase.from('threads').select('id').eq('guest_id', uid),
+        supabase.from('organizers').select('id').or(`owner_id.eq.${uid},user_id.eq.${uid}`),
+      ]);
+      const orgIds = (myOrgs || []).map(o => o.id);
+      let asHost = [];
+      if (orgIds.length) {
+        const { data } = await supabase.from('threads').select('id').in('organizer_id', orgIds);
+        asHost = data || [];
+      }
+      const threadIds = [...new Set([...(asGuest || []), ...asHost].map(t => t.id))];
+      if (!active) return;
+      if (!threadIds.length) { set({ unreadMessages: 0 }); return; }
+      const { count } = await supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .in('thread_id', threadIds)
+        .is('read_at', null)
+        .neq('sender_id', uid);
+      if (active) set({ unreadMessages: count || 0 });
+    };
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => { active = false; clearInterval(interval); };
   }, [set, s.user?.id]);
 
   const splashTimer = useRef(null);
@@ -3480,7 +3534,7 @@ export function GocProvider({ children }) {
     openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, openNotification, clearChatHighlight, dismissToast,
+    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
@@ -3509,7 +3563,7 @@ export function GocProvider({ children }) {
     openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, openNotification, clearChatHighlight, dismissToast,
+    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,

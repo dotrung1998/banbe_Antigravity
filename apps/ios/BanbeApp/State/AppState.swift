@@ -263,6 +263,15 @@ final class AppState: ObservableObject {
     @Published var chatMessages: [ChatMessage] = []
     @Published var chatDraft = ""
     @Published var inboxThreads: [InboxThread] = []
+    // Unread message count for the Inbox tab badge (BottomTabBar.swift) —
+    // mirrors unreadNotifications below, but there's no client-loaded
+    // `messages` array to derive it from client-side (inboxThreads only
+    // carries each thread's latest message, not every unread one), so this
+    // is refreshed by its own query — see refreshUnreadMessageCount() in
+    // AppState+Data.swift, piggybacked on the same 5s poll loop
+    // startNotificationPolling() already runs (there's no realtime
+    // subscription anywhere in this app to hook into instead).
+    @Published var unreadMessages: Int = 0
 
     // MARK: Notifications
     @Published var notifications: [AppNotification] = []
@@ -312,6 +321,15 @@ final class AppState: ObservableObject {
     /// Tapping a toast shouldn't sit around for its own auto-dismiss timer.
     func dismissToast(_ id: UUID) {
         toasts.removeAll { $0.id == id }
+    }
+
+    /// "Tắt tất cả" (ToastOverlay.swift) — clears the whole local toast
+    /// queue at once. Same local-only contract as dismissToast: this NEVER
+    /// touches `notifications`/`read_at` on the server — the bell inbox's
+    /// unread state and badge count are untouched by clearing this ephemeral
+    /// queue. See .claude/notes/07-notifications.md.
+    func dismissAllToasts() {
+        toasts.removeAll()
     }
 
     // MARK: Display name

@@ -87,18 +87,17 @@ export default function BottomTabBar({ collapsed }) {
   const { state, T, goHome, goProfile, goInbox, goNotifications, goMapExplore } = useGoc();
   const s = state;
 
-  // Inbox/messages has no unread-tracking concept anywhere in the schema
-  // (no read_at on `messages`, no per-thread unread flag) — confirmed via
-  // grep before writing this, so no badge is fabricated for it. Only
-  // Notifications has a real unread count (s.unreadNotifications, already
-  // used by the old header bell).
+  // Notifications' badge is s.unreadNotifications (bell inbox, per-account
+  // read_at). Inbox's badge is s.unreadMessages — messages.read_at IS NULL
+  // and sender_id isn't me, across every thread I'm a participant in; see
+  // the poll effect near loadInboxThreads in GocContext.jsx.
   const items = useMemo(() => [
     { key: 'home', icon: 'home', onClick: goHome, label: T('Trang chính', 'Home'), testId: 'tab-home', badge: 0 },
     { key: 'mapExplore', icon: 'map', onClick: goMapExplore, label: T('Bản đồ', 'Map'), testId: 'tab-map', badge: 0 },
     { key: 'notifications', icon: 'notifications', onClick: goNotifications, label: T('Thông báo', 'Notifications'), testId: 'tab-notifications', badge: s.unreadNotifications || 0 },
-    { key: 'inbox', icon: 'inbox', onClick: goInbox, label: T('Tin nhắn', 'Messages'), testId: 'tab-inbox', badge: 0 },
+    { key: 'inbox', icon: 'inbox', onClick: goInbox, label: T('Tin nhắn', 'Messages'), testId: 'tab-inbox', badge: s.unreadMessages || 0 },
     { key: 'profile', icon: 'profile', onClick: goProfile, label: T('Tài khoản', 'Account'), testId: 'tab-profile', badge: 0 },
-  ], [goHome, goMapExplore, goNotifications, goInbox, goProfile, T, s.unreadNotifications]);
+  ], [goHome, goMapExplore, goNotifications, goInbox, goProfile, T, s.unreadNotifications, s.unreadMessages]);
 
   // FEATURE — scrub-to-select: press anywhere on the bar and drag; a soft
   // highlight blob follows the finger in real time and lands on whichever

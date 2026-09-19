@@ -58,11 +58,11 @@ struct BottomTabBar: View {
             Item(id: "home", icon: { AnyView(HomeGlyph(color: $0)) }, label: app.T("Trang chính", "Home"), action: { app.goHome() }, badge: 0),
             Item(id: "map", icon: { AnyView(MapGlyph(color: $0)) }, label: app.T("Bản đồ", "Map"), action: { app.goMapExplore() }, badge: 0),
             Item(id: "notifications", icon: { AnyView(NotificationsGlyph(color: $0)) }, label: app.T("Thông báo", "Notifications"), action: { app.goNotifications() }, badge: app.unreadNotifications),
-            // No badge here: unlike Notifications, nothing in the schema
-            // tracks a per-thread/message read state (no `read_at` on
-            // `messages`, confirmed by grep before writing this), so there
-            // is no real unread count to show — matching the web bar.
-            Item(id: "inbox", icon: { AnyView(InboxGlyph(color: $0)) }, label: app.T("Tin nhắn", "Messages"), action: { app.goInbox() }, badge: 0),
+            // Unread count: messages.read_at IS NULL and sender_id isn't me,
+            // across every thread I participate in (guest or organizer side)
+            // — see refreshUnreadMessageCount() (AppState+Data.swift),
+            // refreshed on the same 5s poll as unreadNotifications.
+            Item(id: "inbox", icon: { AnyView(InboxGlyph(color: $0)) }, label: app.T("Tin nhắn", "Messages"), action: { app.goInbox() }, badge: app.unreadMessages),
             Item(id: "profile", icon: { AnyView(ProfileGlyph(color: $0)) }, label: app.T("Tài khoản", "Account"), action: { app.goProfile() }, badge: 0),
         ]
     }
