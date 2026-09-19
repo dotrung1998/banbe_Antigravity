@@ -372,3 +372,86 @@ mechanics, not shared-logic bugs — nothing on the web side changed.
   doesn't hold up on a real device, that's the next thing to re-verify
   before reaching for a bigger fix (e.g. the overlay-UIWindow fallback
   above for BUG 3).
+
+## Follow-up 4 (real-device report on 80c1ac3): the bar still lost to the map's filter/list sheet specifically
+
+Confirmed the ticket's own "strong lead" before doing anything else, per
+its own instruction: `MapExploreView.swift:442-513` presents the filter/
+list sheet via a real `.sheet(isPresented: $sheetPresented)` with
+`.presentationDetents`, `.presentationBackgroundInteraction(.enabled)`, and
+`.interactiveDismissDisabled()` — a genuine UIKit modal presentation, not a
+plain SwiftUI view. `web`'s `MapExplore.jsx` sheet, by contrast, is a plain
+`<div ref={sheetRef}>` positioned `absolute` inside the same DOM tree as
+everything else on that screen (`MapExplore.jsx` — no browser-native
+`<dialog>`/modal API involved at all). This asymmetry is the actual root
+cause: a `.sheet()` is layered by UIKit above the ENTIRE presenting view
+controller's content, in a separate presentation layer — it isn't a ZStack
+sibling, so no `.zIndex()` inside RootView's ZStack (including
+BottomTabBar's own, correctly-placed-per-80c1ac3 one) could ever appear
+above it. This is a fundamentally different bug from the MapKit-`Map()`
+ordering issue 80c1ac3 fixed, not a leftover of it.
+
+- **Path chosen: option 2 (always-on-top overlay `UIWindow`), not option 1
+  (rebuild the sheet in-hierarchy).** Checked the actual disruption
+  cost of option 1 before picking, per the ticket's own instruction — and
+  it's worse than "invasive," it's already-tried-and-reverted:
+  `MapExploreView.swift:483-506`'s own comment documents a PRIOR pass that
+  built a custom drag handle for just the resize gesture, which broke on a
+  real device (dragging the filter row resized the sheet instead of
+  scrolling it) and was reverted back to the system's own drag indicator.
+  The same file's top-of-struct comment also states outright: "no custom
+  gesture code needed here, unlike the web build of the same screen" — a
+  deliberate architectural choice, not an oversight. On top of the resize
+  gesture specifically, the screen also depends on
+  `.presentationBackgroundInteraction(.enabled)` (lets you pan/zoom the map
+  while the sheet is up) and three `.presentationDetents` snap fractions
+  with free system drag-to-resize physics — neither has a small, safe
+  custom replacement. Rebuilding all of this to match the web architecture
+  was judged too invasive and too likely to regress in the same way the
+  drag-handle attempt already did once.
+- **Implementation**: `BottomTabBarOverlay.swift` (new) — a
+  `BottomTabBarOverlay.shared` singleton that creates a second, transparent
+  `UIWindow` (`PassthroughWindow`, `windowLevel: .normal + 1`) attached to
+  the app's existing `UIWindowScene`, hosting a `UIHostingController`
+  wrapping `BottomTabBarOverlayRoot` (mirrors RootView's own
+  `BottomTabBar.visibleScreens.contains(app.screen)` gate, with its own
+  injected `.environmentObject(appState)` since a second UIWindow is a
+  separate SwiftUI environment). `PassthroughWindow` overrides `hitTest` to
+  return `nil` whenever a touch resolves to its own bare root view (empty/
+  transparent space), letting the touch fall through to the app's real main
+  window underneath; anything more specific (the bar's own material
+  background, an icon, the scrub gesture's hit area) is let through to
+  the overlay normally. `RootView.swift` no longer renders `BottomTabBar()`
+  in its ZStack at all — attaches the overlay once via `.onAppear`
+  (idempotent) and nothing else; the bar now has exactly one live instance,
+  in the overlay, for every screen it was already showing on, not a special
+  case for MapExplore.
+- **Known trade-off, accepted rather than engineered around**: the overlay
+  doesn't know about `isPeeking` (a plain `@State` local to `RootView`), so
+  the bar stays tappable for the brief moment an edge-swipe-back gesture is
+  peeking at the previous screen — previously `.allowsHitTesting(!isPeeking)`
+  suppressed this. Narrow edge case (requires tapping the bar mid-swipe,
+  a fraction-of-a-second window), not something worth threading a new
+  `@Published` property across two separate UIWindow hierarchies for in
+  this pass.
+- File:line — new file `apps/ios/BanbeApp/Views/BottomTabBarOverlay.swift`
+  (`BottomTabBarOverlay`, `BottomTabBarOverlayRoot`, `PassthroughWindow`);
+  wired via `.onAppear` in `apps/ios/BanbeApp/Views/RootView.swift`
+  (immediately after `.preferredColorScheme`); old in-ZStack
+  `BottomTabBar()` block and its `.zIndex(10)`/`.zIndex(0)` pair (added in
+  the previous pass) removed from the same file.
+- Verification: `xcodegen generate` + `xcodebuild` → **BUILD SUCCEEDED**.
+  Additionally, this pass actually installed and launched the built app on
+  the iOS Simulator (`xcrun simctl install`/`launch` on the booted iPhone
+  17 sim) and screenshotted it (`xcrun simctl io screenshot`) — confirmed
+  the app launches without crashing with the new overlay window in place,
+  and the bar renders correctly (visible, correctly positioned, unread
+  badge showing) over the Home screen. Could NOT navigate to MapExplore and
+  screenshot the sheet-open state specifically — this sandbox has no tap/
+  UI-automation tool available (`idb`, `cliclick`, and Simulator.app
+  AppleScript control were all checked and are unavailable here), so the
+  one thing this ticket most wants confirmed — the bar staying visible
+  with the filter/list sheet actually open — was NOT visually verified,
+  only reasoned through from Apple's documented behavior of `UIWindow`
+  `windowLevel` ordering versus in-window modal presentations. Flagging
+  this explicitly rather than claiming a confirmation that didn't happen.

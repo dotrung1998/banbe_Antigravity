@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Top-level screen switch and sheet host — the iOS equivalent of the
 /// SCREENS map and sheet layer in src/App.jsx. One screen shows at a time,
@@ -183,11 +184,6 @@ struct RootView: View {
             // what actually keeps the two gestures from arbitrating over the
             // same touch in the first place.
             .scrollDisabled(isDragTracking || isCommittingBack)
-            // BUG 3 follow-up (4d137235 real-device report): explicit,
-            // paired with BottomTabBar's own explicit zIndex below — see
-            // that call site's comment for why "explicit on one side only"
-            // wasn't reliable.
-            .zIndex(0)
 
             // The swipe-back gesture itself, confined to a thin strip along
             // the leading edge rather than attached to the whole screen —
@@ -221,40 +217,24 @@ struct RootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
 
-            // Relocated from HomeView's top-right header (and mirrored,
-            // pre-this-change, in every other primary screen's own header)
-            // — one persistent floating bar instead, shown only on
-            // top-level/primary screens. Flow screens that own the bottom
-            // of their own viewport for a CTA (ReserveView's "Giữ chỗ",
-            // HostIntroView's "Tạo sự kiện đầu tiên") are deliberately not
-            // in BottomTabBar.visibleScreens.
-            if BottomTabBar.visibleScreens.contains(app.screen) {
-                // BUG 3 follow-up (4d137235 real-device report): 4d137235
-                // put `.zIndex(10)` INSIDE BottomTabBar's own `body` — which
-                // sets the z-ordering of things WITHIN BottomTabBar's own
-                // internal view tree, not BottomTabBar's position among
-                // ITS OWN siblings in THIS ZStack. A `.zIndex()` only
-                // affects sibling ordering when it's the modifier applied
-                // at the point a view is placed into a `ZStack`'s
-                // `ViewBuilder` — one layer of custom-View composition
-                // between the modifier and the ZStack is enough to make it
-                // a no-op for that purpose. That's why the bar still lost
-                // to MapExploreView's `Map()` despite the earlier fix
-                // looking correct on inspection. Moved here instead — this
-                // IS the direct ZStack child position — and given an
-                // explicit value on `screenView(for: app.screen)` above too
-                // (`.zIndex(0)`), since mixing one explicit zIndex with the
-                // other side left at the implicit default has previously
-                // been unreliable specifically around SwiftUI's native
-                // `Map()` view (still true even though it's Apple's own
-                // MapKit view, not a hand-rolled `UIViewRepresentable` —
-                // confirmed by reading MapExploreView.swift, which uses
-                // `Map(position:)` directly, no custom UIKit wrapping).
-                BottomTabBar()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .allowsHitTesting(!isPeeking)
-                    .zIndex(10)
-            }
+            // BUG 3 follow-up (this session's real-device report on
+            // 80c1ac3): BottomTabBar used to render HERE, as a ZStack
+            // sibling with an explicit `.zIndex(10)` — correctly ordered
+            // against MapExploreView's native `Map()` view (a real ZStack
+            // sibling), but with zero effect against MapExploreView's
+            // filter/list sheet, which is a genuine `.sheet()` presentation
+            // layered by UIKit above this ENTIRE ZStack's content, not a
+            // ZStack sibling at all. See BottomTabBarOverlay.swift's own
+            // doc comment for the full investigation and why the fix is a
+            // separate always-on-top UIWindow instead — attached below via
+            // `.onAppear`, rendering the bar independently of this ZStack
+            // (and therefore independently of whatever's presented modally
+            // over it) for every screen in `BottomTabBar.visibleScreens`.
+            // One known trade-off: the overlay doesn't know about
+            // `isPeeking` (a plain `@State` local to this view), so unlike
+            // before, the bar stays tappable for the brief moment an
+            // edge-swipe-back is peeking at the previous screen — a narrow
+            // edge case, not the one this fix targets.
 
             // Face ID app-lock sits above everything — see FaceIDLockView.
             // Task 2: splash must show BEFORE the Face ID prompt, not
@@ -306,6 +286,17 @@ struct RootView: View {
             }
         }
         .preferredColorScheme(app.theme == "dark" ? .dark : .light)
+        // BottomTabBarOverlay.swift: the bar now lives in its own always-
+        // on-top UIWindow instead of this ZStack — attach it once a
+        // UIWindowScene actually exists. Idempotent (guards on `window ==
+        // nil` internally), so re-running this on every appearance of
+        // RootView (there's only ever one, but harmless either way) is fine.
+        .onAppear {
+            if let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene
+                ?? UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                BottomTabBarOverlay.shared.attach(to: scene, appState: app)
+            }
+        }
         .fullScreenCover(isPresented: $app.scanningQr) { QRScannerView() }
         // The session is owned by AuthViewModel (it also drives the Face ID
         // lock); AppState mirrors it into the profile/bookings/notifications
