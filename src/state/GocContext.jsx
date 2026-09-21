@@ -2351,6 +2351,48 @@ export function GocProvider({ children }) {
     }
   }, [s.storyCreatePreview, s.myOrganizerIds, s.user, loadHomeStories]);
 
+  // Task 2.3a (2026-09-22 follow-up) — "Post to Story" from the chat photo
+  // viewer. Reuses the SAME stories schema/storage/RLS/24h-lifecycle
+  // publishStory() already writes to (Task 4 of this ticket requires this
+  // be the identical Story type, not a parallel one) — the only real
+  // difference is the source bytes come from an already-uploaded chat
+  // attachment's signed URL instead of a freshly-picked local file.
+  // `postToStoryConfirm` gates an explicit review step (ticket: "must open
+  // a review step before publish; do not immediately publish by accidental
+  // tap") and `storyCreateBusy` doubles as the double-tap guard here too —
+  // a second tap while the first upload/insert is still in flight is a
+  // no-op, not a second Story row.
+  const openPostToStoryConfirm = useCallback(() => set(prev => ({ chatPhotoViewer: prev.chatPhotoViewer ? { ...prev.chatPhotoViewer, postToStoryConfirm: true } : null })), [set]);
+  const closePostToStoryConfirm = useCallback(() => set(prev => ({ chatPhotoViewer: prev.chatPhotoViewer ? { ...prev.chatPhotoViewer, postToStoryConfirm: false } : null })), [set]);
+  const postChatPhotoToStory = useCallback(async () => {
+    const item = s.chatPhotoViewer;
+    const orgId = s.myOrganizerIds[0];
+    if (!item?.url || !orgId || !s.user || s.storyCreateBusy) return { success: false };
+    set({ storyCreateBusy: true });
+    try {
+      const res = await fetch(item.url);
+      if (!res.ok) throw new Error('fetch failed');
+      const blob = await res.blob();
+      const ext = (item.attachmentPath || '').split('.').pop() || 'jpg';
+      const contentType = blob.type || 'image/jpeg';
+      const path = `${orgId}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('stories').upload(path, blob, { contentType });
+      if (upErr) throw upErr;
+      const { error } = await supabase.from('stories').insert({
+        organizer_id: orgId, author_id: s.user.id, media_path: path, media_type: contentType,
+        width: item.width || null, height: item.height || null,
+      });
+      if (error) throw error;
+      set(prev => ({ storyCreateBusy: false, chatPhotoViewer: prev.chatPhotoViewer ? { ...prev.chatPhotoViewer, postToStoryConfirm: false } : null }));
+      loadHomeStories();
+      return { success: true };
+    } catch (e) {
+      console.warn('postChatPhotoToStory failed:', e);
+      set({ storyCreateBusy: false });
+      return { success: false };
+    }
+  }, [s.chatPhotoViewer, s.myOrganizerIds, s.user, s.storyCreateBusy, loadHomeStories]);
+
   const curArea = AREAS.find(a => a.key === s.area) || AREAS[0];
 
   // ---- organizer mode ----
@@ -3362,7 +3404,7 @@ export function GocProvider({ children }) {
   const loadChatMessages = useCallback(async (threadId, computeDivider) => {
     const { data, error } = await supabase
       .from('messages')
-      .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height')
+      .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id')
       .eq('thread_id', threadId)
       .order('created_at', { ascending: true });
     if (error) return;
@@ -3443,6 +3485,26 @@ export function GocProvider({ children }) {
     // notify_new_message trigger) is the only notification a new message
     // gets; tapping it now takes you straight to the thread.
   }, [set, s.chatDraft, s.chatThreadId, s.user]);
+  // Task 3 (2026-09-22 follow-up) — the chat-photo viewer's own bottom
+  // composer (text reply / quick emoji reaction). A separate function from
+  // `chatSend` rather than threading a `replyTo` param through it: this
+  // viewer has its own LOCAL text state (not `s.chatDraft`, which belongs
+  // to the main Chat screen's composer and shouldn't be touched by
+  // something typed from inside a fullscreen photo viewer), and always
+  // sets `reply_to_message_id` — migration 067, the smallest explicit
+  // reference rather than encoding "replying to X" in the body text.
+  const sendChatViewerReply = useCallback(async (text, replyToMessageId) => {
+    const trimmed = (text || '').trim();
+    if (!trimmed || !s.chatThreadId || !s.user) return { success: false };
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({ thread_id: s.chatThreadId, sender_id: s.user.id, body: trimmed, kind: 'text', reply_to_message_id: replyToMessageId || null })
+      .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id')
+      .maybeSingle();
+    if (error) { console.warn('sendChatViewerReply failed:', error); return { success: false }; }
+    set(prev => ({ chatMessages: [...prev.chatMessages, data] }));
+    return { success: true };
+  }, [set, s.chatThreadId, s.user]);
   // Task 4 (2026-09-21 follow-up) — the composer's "+" attach flow.
   // Reuses normalizeProofFile() (src/lib/proofUpload.js, already built for
   // this exact problem on the payment-proof/receipt upload paths: HEIC/oversized
@@ -3452,7 +3514,7 @@ export function GocProvider({ children }) {
   // empty (NOT NULL) so an attachment-only message gets a short placeholder
   // that still reads sensibly anywhere body is shown without attachment
   // awareness (Inbox snippet, notification preview).
-  const sendChatAttachment = useCallback(async (file) => {
+  const sendChatAttachment = useCallback(async (file, replyToMessageId) => {
     if (!file || !s.chatThreadId || !s.user) return { success: false };
     try {
       const { blob, ext, contentType, width, height } = await normalizeProofFile(file);
@@ -3466,8 +3528,9 @@ export function GocProvider({ children }) {
           body: contentType === 'application/pdf' ? T('Đã gửi một tệp', 'Sent a file') : T('Đã gửi một ảnh', 'Sent a photo'),
           attachment_path: path, attachment_type: contentType,
           attachment_width: width || null, attachment_height: height || null,
+          reply_to_message_id: replyToMessageId || null,
         })
-        .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height')
+        .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id')
         .maybeSingle();
       if (error) throw error;
       set(prev => ({ chatMessages: [...prev.chatMessages, data] }));
@@ -4092,7 +4155,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
@@ -4121,7 +4184,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,

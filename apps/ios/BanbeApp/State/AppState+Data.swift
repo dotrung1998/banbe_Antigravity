@@ -71,6 +71,7 @@ struct NewAttachmentMessage: Encodable {
     let attachmentType: String
     let attachmentWidth: Int?
     let attachmentHeight: Int?
+    let replyToMessageId: UUID?
     enum CodingKeys: String, CodingKey {
         case threadId = "thread_id"
         case senderId = "sender_id"
@@ -79,6 +80,23 @@ struct NewAttachmentMessage: Encodable {
         case attachmentType = "attachment_type"
         case attachmentWidth = "attachment_width"
         case attachmentHeight = "attachment_height"
+        case replyToMessageId = "reply_to_message_id"
+    }
+}
+
+/// Task 3 (2026-09-22 follow-up) — a plain text reply/reaction sent from
+/// the chat-photo viewer's own composer.
+struct NewTextReply: Encodable {
+    let threadId: UUID
+    let senderId: UUID
+    let body: String
+    let kind: String
+    let replyToMessageId: UUID
+    enum CodingKeys: String, CodingKey {
+        case threadId = "thread_id"
+        case senderId = "sender_id"
+        case body, kind
+        case replyToMessageId = "reply_to_message_id"
     }
 }
 
@@ -1509,7 +1527,7 @@ extension AppState {
         do {
             let rows: [ChatMessage] = try await SupabaseService.client
                 .from("messages")
-                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height")
+                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id")
                 .eq("thread_id", value: threadID)
                 .order("created_at", ascending: true)
                 .execute().value
@@ -1569,7 +1587,7 @@ extension AppState {
     /// one for the payment-proof upload path; otherwise uploads the image
     /// data as-is (the 'chat-attachments' bucket itself still enforces a
     /// 20MB cap / allowed MIME types server-side either way).
-    func sendChatAttachment(data: Data, contentType: String, fileExtension: String, width: Int? = nil, height: Int? = nil) async -> Bool {
+    func sendChatAttachment(data: Data, contentType: String, fileExtension: String, width: Int? = nil, height: Int? = nil, replyToMessageId: UUID? = nil) async -> Bool {
         guard let threadID = chatThreadID, let uid = userID else { return false }
         do {
             // Lowercased: Postgres's own uuid-to-text cast is always
@@ -1582,14 +1600,37 @@ extension AppState {
             let body = contentType == "application/pdf" ? T("Đã gửi một tệp", "Sent a file") : T("Đã gửi một ảnh", "Sent a photo")
             let sent: [ChatMessage] = try await SupabaseService.client
                 .from("messages")
-                .insert(NewAttachmentMessage(threadId: threadID, senderId: uid, body: body, kind: "text", attachmentPath: path, attachmentType: contentType, attachmentWidth: width, attachmentHeight: height))
-                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height")
+                .insert(NewAttachmentMessage(threadId: threadID, senderId: uid, body: body, kind: "text", attachmentPath: path, attachmentType: contentType, attachmentWidth: width, attachmentHeight: height, replyToMessageId: replyToMessageId))
+                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id")
                 .execute().value
             if let message = sent.first { chatMessages.append(message) }
             await signChatAttachmentUrls([path])
             return true
         } catch {
             print("sendChatAttachment failed:", error)
+            return false
+        }
+    }
+
+    /// Task 3 (2026-09-22 follow-up) — the chat-photo viewer's own reply/
+    /// reaction composer. A separate function from `chatSend()` (Views
+    /// aren't shown here but mirror ChatView's own `chatSend` on web's
+    /// GocContext.jsx) since this viewer has its own local `@State` draft,
+    /// not `AppState.chatDraft`, and always sets `reply_to_message_id`
+    /// (migration 067) rather than encoding "replying to X" in body text.
+    func sendChatViewerReply(text: String, replyToMessageId: UUID) async -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let threadID = chatThreadID, let uid = userID else { return false }
+        do {
+            let sent: [ChatMessage] = try await SupabaseService.client
+                .from("messages")
+                .insert(NewTextReply(threadId: threadID, senderId: uid, body: trimmed, kind: "text", replyToMessageId: replyToMessageId))
+                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id")
+                .execute().value
+            if let message = sent.first { chatMessages.append(message) }
+            return true
+        } catch {
+            print("sendChatViewerReply failed:", error)
             return false
         }
     }
@@ -1655,12 +1696,45 @@ extension AppState {
             _ = try await SupabaseService.client.storage.from("chat-attachments")
                 .upload(newPath, data: data, options: FileOptions(contentType: contentType))
             _ = try await SupabaseService.client.from("messages").insert(
-                NewAttachmentMessage(threadId: targetThreadId, senderId: uid, body: T("Đã chuyển tiếp một ảnh", "Forwarded a photo"), kind: "text", attachmentPath: newPath, attachmentType: contentType, attachmentWidth: item.width, attachmentHeight: item.height)
+                NewAttachmentMessage(threadId: targetThreadId, senderId: uid, body: T("Đã chuyển tiếp một ảnh", "Forwarded a photo"), kind: "text", attachmentPath: newPath, attachmentType: contentType, attachmentWidth: item.width, attachmentHeight: item.height, replyToMessageId: nil)
             ).execute()
             closeChatForward()
             return true
         } catch {
             print("forwardChatPhoto failed:", error)
+            return false
+        }
+    }
+
+    /// Task 2.3a (2026-09-22 follow-up) — "Post to Story" from the chat
+    /// photo viewer. Writes the SAME `stories` schema/storage/RLS
+    /// `publishStory()` already uses (Task 4 of this ticket requires this
+    /// be the identical Story type) — only the source bytes differ (an
+    /// already-uploaded chat attachment's signed URL, not a freshly-picked
+    /// local file). `storyCreateBusy` doubles as the double-tap guard: a
+    /// second call while the first is still in flight is a no-op, not a
+    /// second Story row.
+    func postChatPhotoToStory() async -> Bool {
+        guard let item = chatPhotoViewer, !storyCreateBusy else { return false }
+        let orgIds = await currentOrganizerIds()
+        guard let orgId = orgIds.first, let uid = userID else { return false }
+        storyCreateBusy = true
+        defer { storyCreateBusy = false }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: item.url)
+            let ext = (item.attachmentPath as NSString).pathExtension.isEmpty ? "jpg" : (item.attachmentPath as NSString).pathExtension
+            let contentType = response.mimeType ?? "image/jpeg"
+            let path = "\(orgId)/\(Int(Date().timeIntervalSince1970 * 1000)).\(ext)"
+            _ = try await SupabaseService.client.storage.from("stories")
+                .upload(path, data: data, options: FileOptions(contentType: contentType))
+            _ = try await SupabaseService.client.from("stories").insert(
+                NewStory(organizerId: orgId, authorId: uid, mediaPath: path, mediaType: contentType, width: item.width, height: item.height)
+            ).execute()
+            closePostToStoryConfirm()
+            await loadHomeStories()
+            return true
+        } catch {
+            print("postChatPhotoToStory failed:", error)
             return false
         }
     }

@@ -36,6 +36,10 @@ struct ChatMessage: Codable, Identifiable, Hashable {
     // a pre-migration-066 row or a non-image attachment.
     var attachmentWidth: Int?
     var attachmentHeight: Int?
+    // Task 3 (2026-09-22 follow-up, migration 067) — set only by a reply
+    // sent from the chat-photo viewer's own composer; nil for every
+    // ordinary message.
+    var replyToMessageId: UUID?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -49,6 +53,7 @@ struct ChatMessage: Codable, Identifiable, Hashable {
         case attachmentType = "attachment_type"
         case attachmentWidth = "attachment_width"
         case attachmentHeight = "attachment_height"
+        case replyToMessageId = "reply_to_message_id"
     }
 }
 

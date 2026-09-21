@@ -115,6 +115,9 @@ struct ChatPhotoViewerItem: Equatable {
     let height: Int?
     let senderLabel: String
     var forwardOpen: Bool = false
+    // Task 2.3a (2026-09-22 follow-up) — a real review step before
+    // "Post to Story" actually publishes.
+    var postToStoryConfirm: Bool = false
 }
 
 /// One host's active-story progression state while the story viewer is open.
@@ -1223,6 +1226,8 @@ final class AppState: ObservableObject {
     func closeChatPhoto() { chatPhotoViewer = nil }
     func openChatForward() { chatPhotoViewer?.forwardOpen = true }
     func closeChatForward() { chatPhotoViewer?.forwardOpen = false }
+    func openPostToStoryConfirm() { chatPhotoViewer?.postToStoryConfirm = true }
+    func closePostToStoryConfirm() { chatPhotoViewer?.postToStoryConfirm = false }
 
     // Task 3 (07-notifications.md) — story viewer open/close/progression.
     func openStoryViewer(_ organizerId: String) {

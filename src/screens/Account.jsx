@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
+import { AttachMenuIcon } from './Chat.jsx';
 
 export default function Account() {
   const {
@@ -11,6 +12,11 @@ export default function Account() {
   const s = state;
   const storyFileRef = useRef(null);
   const storyCameraRef = useRef(null);
+  // Task 1 (2026-09-21 real-device follow-up) — "Post Story" is now a real
+  // two-option menu (Photo library / Camera), matching Chat.jsx's own
+  // attach-menu convention (same icon set, same popup shape) instead of a
+  // single link that only ever opened the library picker.
+  const [storyMenuOpen, setStoryMenuOpen] = useState(false);
 
   // Task 3.3 (07-notifications.md) — loads active stories (mine + followed
   // hosts') so the ring below reflects real data even when Account is
@@ -74,9 +80,36 @@ export default function Account() {
           <span style={{ fontSize: 11, letterSpacing: '0.06em', color: ink }}>{profileSub}</span>
           {/* Task 3.2 — story creation entry point, hosts only. */}
           {isOrganizer && (
-            <span onClick={() => storyFileRef.current?.click()} data-testid="account-post-story" style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer' }}>
-              {T('▪︎ Đăng story', '▪︎ Post story')}
-            </span>
+            <div style={{ position: 'relative' }}>
+              <span onClick={() => setStoryMenuOpen(v => !v)} data-testid="account-post-story" style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer' }}>
+                {T('▪︎ Đăng story', '▪︎ Post story')}
+              </span>
+              {storyMenuOpen && (
+                <div onClick={() => setStoryMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 35 }}>
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ ...cardGlass({ position: 'absolute', top: 20, left: 0, minWidth: 200 }), padding: 6, display: 'flex', flexDirection: 'column' }}
+                  >
+                    <div
+                      onClick={() => { setStoryMenuOpen(false); storyFileRef.current?.click(); }}
+                      data-testid="account-post-story-library"
+                      style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
+                    >
+                      <AttachMenuIcon name="library" />
+                      {T('Thư viện ảnh', 'Photo library')}
+                    </div>
+                    <div
+                      onClick={() => { setStoryMenuOpen(false); storyCameraRef.current?.click(); }}
+                      data-testid="account-post-story-camera"
+                      style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
+                    >
+                      <AttachMenuIcon name="camera" />
+                      {T('Camera', 'Camera')}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
         <input ref={storyFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPickStoryFile} data-testid="story-file-input" />

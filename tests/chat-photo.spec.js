@@ -162,3 +162,51 @@ test.describe('Chat photo — aspect ratio + fullscreen viewer (Task 1/2, 07-not
     expect(srcAfter).toBe(srcBefore);
   });
 });
+
+test.describe('Chat photo viewer — chrome toggle + reply composer (Task 2/3, 2026-09-22 real-device follow-up)', () => {
+  test('a tap on the backdrop toggles chrome and does NOT dismiss; only the close button does', async ({ page }, testInfo) => {
+    await openChatWithPhong302(page);
+    const w = 307, h = 307;
+    const file = makePng(testInfo.outputDir, 'chrome-toggle.png', w, h);
+    await page.click('[data-testid="chat-attach-toggle"]');
+    await page.click('[data-testid="chat-attach-file"]');
+    await page.setInputFiles('[data-testid="chat-file-input"]', file);
+    const index = await findAttachmentIndex(page, w, h);
+    await page.locator('[data-testid="chat-attachment"]').nth(index).click();
+    await expect(page.locator('[data-screen-label="Chat photo viewer"]')).toBeVisible();
+
+    const viewer = page.locator('[data-screen-label="Chat photo viewer"]');
+    await expect(viewer).toHaveAttribute('data-chrome', 'visible');
+    // A tap on the stage (the backdrop area, not a drag) — chrome hides,
+    // viewer stays open.
+    await page.locator('[data-testid="chat-photo-stage"]').click({ position: { x: 20, y: 20 } });
+    await expect(viewer).toHaveAttribute('data-chrome', 'hidden');
+    await expect(page.locator('[data-screen-label="Chat photo viewer"]')).toBeVisible();
+    // A second tap reveals it again — still open.
+    await page.locator('[data-testid="chat-photo-stage"]').click({ position: { x: 20, y: 20 } });
+    await expect(viewer).toHaveAttribute('data-chrome', 'visible');
+    await expect(page.locator('[data-screen-label="Chat photo viewer"]')).toBeVisible();
+
+    // Only the close button actually dismisses.
+    await page.click('[data-testid="chat-photo-close"]');
+    await expect(page.locator('[data-screen-label="Chat"]')).toBeVisible();
+  });
+
+  test('a quick reaction sent from the viewer lands in the thread with a visible reply-to-photo reference', async ({ page }, testInfo) => {
+    await openChatWithPhong302(page);
+    const w = 309, h = 309;
+    const file = makePng(testInfo.outputDir, 'reply-target.png', w, h);
+    await page.click('[data-testid="chat-attach-toggle"]');
+    await page.click('[data-testid="chat-attach-file"]');
+    await page.setInputFiles('[data-testid="chat-file-input"]', file);
+    const index = await findAttachmentIndex(page, w, h);
+    await page.locator('[data-testid="chat-attachment"]').nth(index).click();
+    await expect(page.locator('[data-screen-label="Chat photo viewer"]')).toBeVisible();
+
+    const referenceCountBefore = await page.locator('[data-testid="chat-reply-reference"]').count();
+    await page.locator('[data-testid="chat-photo-quick-reaction"]').first().click();
+    await page.click('[data-testid="chat-photo-close"]');
+    await expect(page.locator('[data-screen-label="Chat"]')).toBeVisible();
+    await expect(page.locator('[data-testid="chat-reply-reference"]')).toHaveCount(referenceCountBefore + 1, { timeout: 10000 });
+  });
+});

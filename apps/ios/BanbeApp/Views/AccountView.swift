@@ -9,6 +9,19 @@ struct AccountView: View {
     // Task 3 (07-notifications.md) — story creation, hosts only.
     @State private var storyPhotoItem: PhotosPickerItem?
     @State private var storyCameraOpen = false
+    // 2026-09-21 follow-up (real-device report) — `PhotosPicker` nested
+    // DIRECTLY as a Menu row's content is a known SwiftUI/real-device
+    // reliability gap: `Menu` wraps each row as its own button and can
+    // swallow the tap before PhotosPicker's own internal presentation
+    // trigger ever fires — it can look fine in Xcode Previews/Simulator and
+    // still silently do nothing on a real device (confirmed against this
+    // exact symptom report). Fixed by moving the picker's PRESENTATION
+    // (not the picker itself — still real `PhotosPicker`/`.photosPicker`,
+    // not a replacement API) out of the Menu: a plain `Button` inside the
+    // Menu just flips this flag, and `.photosPicker(isPresented:...)`
+    // below is attached to the screen itself, same as `storyCameraOpen`'s
+    // own `.fullScreenCover` already was.
+    @State private var storyLibraryPickerOpen = false
 
     private var myStoryGroup: StoryGroup? {
         app.homeStories.first { g in app.myOrganizerIdsCache.contains(g.organizerId) }
@@ -72,10 +85,19 @@ struct AccountView: View {
                         // Task 3.2 — story creation entry point, hosts only.
                         if app.canHost {
                             Menu {
-                                PhotosPicker(selection: $storyPhotoItem, matching: .images) {
-                                    Text(app.T("Thư viện ảnh", "Photo library"))
+                                // Task 1 — icons on each row, matching the
+                                // chat composer's "+" menu exactly (same SF
+                                // Symbols) so the two read as one family.
+                                Button {
+                                    storyLibraryPickerOpen = true
+                                } label: {
+                                    Label(app.T("Thư viện ảnh", "Photo library"), systemImage: "photo.on.rectangle")
                                 }
-                                Button(app.T("Camera", "Camera")) { storyCameraOpen = true }
+                                Button {
+                                    storyCameraOpen = true
+                                } label: {
+                                    Label(app.T("Camera", "Camera"), systemImage: "camera")
+                                }
                             } label: {
                                 Text(app.T("▪︎ Đăng story", "▪︎ Post story"))
                                     .font(.system(size: 11.5))
@@ -258,6 +280,7 @@ struct AccountView: View {
             .padding(.top, 16)
         }
         .task { if app.userID != nil { await app.loadHomeStories() } }
+        .photosPicker(isPresented: $storyLibraryPickerOpen, selection: $storyPhotoItem, matching: .images)
         .onChange(of: storyPhotoItem) { _, item in
             Task {
                 guard let item, let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
@@ -276,6 +299,23 @@ struct AccountView: View {
         .fullScreenCover(isPresented: Binding(get: { app.storyCreatePreviewImage != nil }, set: { if !$0 { app.storyCreatePreviewImage = nil } })) {
             storyCreatePreview
         }
+        // Task 1.3 (real-device report) — BottomTabBarOverlay is a SEPARATE,
+        // always-on-top UIWindow (see that file's own doc comment) that sits
+        // above ANY main-window content, including a `.photosPicker`/
+        // `.fullScreenCover` presentation — `.profile` staying in
+        // `visibleScreens` throughout means it was never hidden for any of
+        // these three presentations, silently covering Retake/Use Photo.
+        // Reuses the exact `setForcedHidden(_:)` mechanism InboxView already
+        // established for its own settings sheet, ORing in all three
+        // triggers here instead of inventing a second mechanism.
+        .onChange(of: storyLibraryPickerOpen) { _, _ in syncDockHidden() }
+        .onChange(of: storyCameraOpen) { _, _ in syncDockHidden() }
+        .onChange(of: app.storyCreatePreviewImage != nil) { _, _ in syncDockHidden() }
+        .onDisappear { BottomTabBarOverlay.shared.setForcedHidden(false) }
+    }
+
+    private func syncDockHidden() {
+        BottomTabBarOverlay.shared.setForcedHidden(storyLibraryPickerOpen || storyCameraOpen || app.storyCreatePreviewImage != nil)
     }
 
     private var storyCreatePreview: some View {

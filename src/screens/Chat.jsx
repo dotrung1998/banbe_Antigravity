@@ -2,6 +2,24 @@ import { useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass } from '../theme.js';
 
+// Task 1 (2026-09-21 real-device follow-up) — small stroke-only glyphs for
+// the attach menu (this file) and the Account "Post Story" menu, matching
+// BottomTabBar.jsx's own icon vocabulary (2.2-2.4 stroke weight, round
+// caps/joins, 24x24 viewBox) rather than borrowing Messenger/IG artwork.
+export function AttachMenuIcon({ name }) {
+  const common = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  if (name === 'library') {
+    return <svg {...common}><rect x="3.5" y="4.5" width="17" height="15" rx="2.2" /><circle cx="8.7" cy="9.3" r="1.6" /><path d="M4.2 17.3 9 12.2l3.3 3.3L16 11.8l4.2 4.6" /></svg>;
+  }
+  if (name === 'camera') {
+    return <svg {...common}><path d="M9 5.5 8 7.5H5.5A2 2 0 0 0 3.5 9.5v8A2 2 0 0 0 5.5 19.5h13a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2H16l-1-2z" /><circle cx="12" cy="13" r="3.3" /></svg>;
+  }
+  if (name === 'document') {
+    return <svg {...common}><path d="M7 3.5h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z" /><path d="M14 3.5v4h4" /></svg>;
+  }
+  return null;
+}
+
 // Task 1 (2026-09-21 stories/chat-photo follow-up) — an aspect-ratio-correct
 // bubble box for a chat image, computed from its stored intrinsic
 // width/height (messages.attachment_width/height, migration 066). Clamped
@@ -89,8 +107,13 @@ export default function Chat() {
   };
 
   const thread = s.chatMessages.length
-    ? s.chatMessages.map(m => ({ id: m.id, who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body, kind: m.kind, createdAt: m.created_at, attachmentPath: m.attachment_path, attachmentType: m.attachment_type, attachmentWidth: m.attachment_width, attachmentHeight: m.attachment_height }))
+    ? s.chatMessages.map(m => ({ id: m.id, who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body, kind: m.kind, createdAt: m.created_at, attachmentPath: m.attachment_path, attachmentType: m.attachment_type, attachmentWidth: m.attachment_width, attachmentHeight: m.attachment_height, replyToMessageId: m.reply_to_message_id }))
     : [{ who: 'host', text: ev.greeting }];
+  // Task 3 (2026-09-22 follow-up) — the chat-photo viewer's reply composer
+  // sets `reply_to_message_id` (migration 067); resolved client-side
+  // against the same already-loaded `chatMessages` rather than a second
+  // query, since a reply's target is always a message in this same thread.
+  const messageById = Object.fromEntries(s.chatMessages.map(m => [m.id, m]));
   const chatBackLabel = s.chatBack === 'inbox' ? T('Tin nhắn', 'Messages')
     : s.chatBack === 'notifications' ? T('Thông báo', 'Notifications')
     : ev.orgName;
@@ -161,10 +184,22 @@ export default function Chat() {
           const senderLabel = m.who === 'me' ? T('Bạn', 'You') : headerTitle;
           const attachmentUrl = m.attachmentPath ? s.chatAttachmentUrls[m.attachmentPath] : null;
           const isImageAttachment = m.attachmentType?.startsWith('image/');
+          // Task 3 (2026-09-22 follow-up) — a small reply-to-media
+          // reference above the bubble, so a reply sent from the photo
+          // viewer's own composer visibly points at the exact image it
+          // answers, instead of reading as an unrelated new message.
+          const repliedTo = m.replyToMessageId ? messageById[m.replyToMessageId] : null;
+          const repliedToUrl = repliedTo?.attachment_path ? s.chatAttachmentUrls[repliedTo.attachment_path] : null;
           rows.push(
             <div key={m.id ?? i} style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: m.who === 'me' ? 'flex-end' : 'flex-start' }}>
               {m.createdAt && (
                 <span style={{ fontSize: 10, color: ink, opacity: 0.5, padding: '0 4px' }}>{senderLabel} · {formatTime(m.createdAt)}</span>
+              )}
+              {repliedTo && (
+                <div data-testid="chat-reply-reference" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderLeft: `2px solid ${rule}`, opacity: 0.7 }}>
+                  {repliedToUrl && <img src={repliedToUrl} alt="" style={{ width: 22, height: 22, objectFit: 'cover', borderRadius: 5 }} />}
+                  <span style={{ fontSize: 10.5, color: ink }}>{T('Trả lời ảnh', 'Replying to a photo')}</span>
+                </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: m.who === 'me' ? 'flex-end' : 'flex-start' }}>
                 {/* A real, permanent delete (messages_delete_own RLS, migration
@@ -250,15 +285,17 @@ export default function Chat() {
               <div
                 onClick={() => { setMenuOpen(false); fileInputRef.current?.click(); }}
                 data-testid="chat-attach-file"
-                style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8 }}
+                style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
               >
+                <AttachMenuIcon name="library" />
                 {T('Thêm ảnh hoặc tài liệu', 'Add photo or document')}
               </div>
               <div
                 onClick={() => { setMenuOpen(false); cameraInputRef.current?.click(); }}
                 data-testid="chat-attach-camera"
-                style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8 }}
+                style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
               >
+                <AttachMenuIcon name="camera" />
                 {T('Máy ảnh', 'Camera')}
               </div>
             </div>

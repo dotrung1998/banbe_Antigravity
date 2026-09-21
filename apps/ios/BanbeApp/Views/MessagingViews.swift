@@ -465,6 +465,16 @@ struct ChatView: View {
             }
             .ignoresSafeArea()
         }
+        // Task 1.3 (07-notifications.md real-device follow-up) — same
+        // BottomTabBarOverlay-covers-any-main-window-presentation issue
+        // fixed for AccountView's story flow; `.chat` isn't in
+        // `BottomTabBar.visibleScreens` so the dock is normally already
+        // hidden here, but this guards the edge case of returning from the
+        // camera/file picker to a screen where it WOULD show, and keeps
+        // both attach flows behaving identically per this ticket's ask.
+        .onChange(of: cameraOpen) { _, _ in BottomTabBarOverlay.shared.setForcedHidden(cameraOpen || fileImporterOpen) }
+        .onChange(of: fileImporterOpen) { _, _ in BottomTabBarOverlay.shared.setForcedHidden(cameraOpen || fileImporterOpen) }
+        .onDisappear { BottomTabBarOverlay.shared.setForcedHidden(false) }
     }
 
     // Task 1 (07-notifications.md) — mirrors web's attachmentBoxSize()
@@ -560,7 +570,8 @@ struct ChatView: View {
                                 senderLabel: message.senderId == app.userID ? app.T("Bạn", "You") : headerTitle,
                                 createdAt: message.createdAt,
                                 attachmentPath: message.attachmentPath, attachmentType: message.attachmentType,
-                                attachmentWidth: message.attachmentWidth, attachmentHeight: message.attachmentHeight
+                                attachmentWidth: message.attachmentWidth, attachmentHeight: message.attachmentHeight,
+                                replyToMessageId: message.replyToMessageId
                             )
                             .id(message.id)
                         }
@@ -641,13 +652,35 @@ struct ChatView: View {
     // Task 3c — each bubble shows its own sender + timestamp, not just a
     // bare bubble. `createdAt` is nil only for the static greeting
     // placeholder (no real row to time-stamp).
-    private func bubble(text: String, mine: Bool, messageID: UUID?, senderLabel: String, createdAt: Date?, attachmentPath: String?, attachmentType: String?, attachmentWidth: Int? = nil, attachmentHeight: Int? = nil) -> some View {
+    private func bubble(text: String, mine: Bool, messageID: UUID?, senderLabel: String, createdAt: Date?, attachmentPath: String?, attachmentType: String?, attachmentWidth: Int? = nil, attachmentHeight: Int? = nil, replyToMessageId: UUID? = nil) -> some View {
         VStack(alignment: mine ? .trailing : .leading, spacing: 3) {
             if let createdAt {
                 Text("\(senderLabel) · \(formattedTime(createdAt))")
                     .font(.system(size: 10))
                     .foregroundStyle(app.palette.ink.opacity(0.5))
                     .padding(.horizontal, 4)
+            }
+            // Task 3 (2026-09-22 follow-up) — a small reply-to-media
+            // reference above the bubble, so a reply sent from the chat
+            // photo viewer's own composer visibly points at the exact
+            // image it answers. Resolved against the already-loaded
+            // `app.chatMessages` — a reply's target is always in this same
+            // thread, no second query needed.
+            if let replyToMessageId, let replied = app.chatMessages.first(where: { $0.id == replyToMessageId }) {
+                HStack(spacing: 6) {
+                    if let path = replied.attachmentPath, let url = app.chatAttachmentUrls[path] {
+                        AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
+                            .frame(width: 22, height: 22)
+                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    }
+                    Text(app.T("Trả lời ảnh", "Replying to a photo"))
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(app.palette.ink)
+                }
+                .opacity(0.7)
+                .padding(.horizontal, 8)
+                .overlay(Rectangle().fill(app.palette.rule).frame(width: 2), alignment: .leading)
+                .accessibilityIdentifier("chat.replyReference")
             }
             HStack {
                 if mine { Spacer(minLength: 40) }
