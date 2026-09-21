@@ -206,9 +206,28 @@ struct MapExploreView: View {
             // uses above — see the non-restored branch's own comment for
             // why this can no longer be left to `onMapCameraChange`'s first
             // callback.
+            //
+            // Task 7 fix (2026-09-21 follow-up) — EXCEPT for
+            // `singleEventFocus` (the "Open in Map" entry point):
+            // `cameraSpanLat`/`cameraSpanLng` there is a deliberately tight
+            // 0.01° single-pin view, meant only for the visual camera. Using
+            // that same tight span for the DATA-LOADING bounds meant the
+            // very first freshness poll (`loadMapEvents(bounds:)`) silently
+            // replaced `app.mapEvents` — the full loaded dataset — with just
+            // the one or two events near that tiny box, so every other pin
+            // vanished a few seconds after opening, independent of any
+            // filter tap (a filter tap merely made the already-collapsed
+            // dataset's narrowing visible). Seeds a wide span instead — the
+            // SAME 0.12° default `centerOnDensityHotspot()` uses for a
+            // fresh, non-restored open — so the map still visually zooms in
+            // tight on the pin (`cameraPosition`, unchanged above) while the
+            // underlying query still covers the whole city.
+            let queryRegionSpan = restored.singleEventFocus
+                ? MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12)
+                : MKCoordinateSpan(latitudeDelta: restored.cameraSpanLat, longitudeDelta: restored.cameraSpanLng)
             _lastQueriedRegion = State(initialValue: MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: restored.cameraCenterLat, longitude: restored.cameraCenterLng),
-                span: MKCoordinateSpan(latitudeDelta: restored.cameraSpanLat, longitudeDelta: restored.cameraSpanLng)
+                span: queryRegionSpan
             ))
             _pendingScrollToRestoredSelection = State(initialValue: restored.selectedId != nil)
         } else {
@@ -786,6 +805,16 @@ struct MapExploreView: View {
         guard let lat = ev.lat, let lng = ev.lng else { return }
         let isNewSelection = selectedId != ev.id
         selectedId = ev.id
+
+        // Task 6 (2026-09-21 follow-up) — selecting an event at the tallest
+        // detent (0.72 = the sheet itself occupies 72% of the screen, the
+        // least visible map) used to leave it there, squeezing the map
+        // into a sliver right when its own pin/info card most needs room
+        // to be seen. Drops to mid (0.45) only from tall; already being at
+        // mid/peek (more map visible than tall) is left alone.
+        if sheetDetent == .fraction(0.72) {
+            withAnimation { sheetDetent = .fraction(0.45) }
+        }
 
         let zoomSpan = 0.01
         let visibleFraction = 1 - sheetFraction

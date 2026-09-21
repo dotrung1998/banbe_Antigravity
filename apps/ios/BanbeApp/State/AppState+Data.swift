@@ -1492,7 +1492,13 @@ extension AppState {
                 chatUnreadDividerID = rows.first { $0.readAt == nil && $0.senderId != uid }?.id
                 await markThreadMessagesRead(threadID)
             }
-            await signChatAttachmentUrls(rows.compactMap(\.attachmentPath))
+            // BUG FIX (2026-09-21 follow-up): only sign paths this thread
+            // doesn't already have a URL for — see signChatAttachmentUrls's
+            // own doc comment for why re-signing an already-signed path on
+            // every 4s poll caused the reported "thumbnail
+            // appears/disappears repeatedly" loop.
+            let newPaths = rows.compactMap(\.attachmentPath).filter { chatAttachmentUrls[$0] == nil }
+            if !newPaths.isEmpty { await signChatAttachmentUrls(newPaths) }
         } catch {
             print("Failed to load messages:", error)
         }
@@ -1501,15 +1507,29 @@ extension AppState {
     /// Task 4 (2026-09-21 follow-up) — signs every given 'chat-attachments'
     /// path in one batched call, same pattern this app already uses for the
     /// private payment-proof bucket.
+    ///
+    /// BUG FIX: `loadChatMessages` used to call this with EVERY attachment
+    /// path on every invocation, including the 4s poll while a thread stays
+    /// open — re-signing an already-signed path produces a brand-new URL
+    /// (same file, different token/expiry) every time, and since the
+    /// `AsyncImage` in `MessagingViews.swift`'s bubble reads straight off
+    /// `chatAttachmentUrls[path]`, a changing URL value makes SwiftUI tear
+    /// down and re-fetch the image from scratch every ~4s — the reported
+    /// loop. Same root-cause SHAPE as the signed-URL churn already
+    /// diagnosed for payment receipts (08-payment-documents.md), not a
+    /// loading-state wiring bug. Fixed on two levels: `loadChatMessages`
+    /// above now only passes genuinely new paths, and this function itself
+    /// never overwrites an already-signed one either, so it's safe even if
+    /// called with a stale path some other way.
     func signChatAttachmentUrls(_ paths: [String]) async {
-        let wanted = Array(Set(paths)).filter { !$0.isEmpty }
+        let wanted = Array(Set(paths)).filter { !$0.isEmpty && chatAttachmentUrls[$0] == nil }
         guard !wanted.isEmpty else { return }
         do {
             let results = try await SupabaseService.client.storage
                 .from("chat-attachments")
                 .createSignedURLs(paths: wanted, expiresIn: 600)
             for result in results {
-                if case let .success(path, signedURL) = result {
+                if case let .success(path, signedURL) = result, chatAttachmentUrls[path] == nil {
                     chatAttachmentUrls[path] = signedURL
                 }
             }

@@ -10,20 +10,23 @@ import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChi
 // (isGoing's status set from note 04, isSaved's favorites, e.soldOut's
 // static catalogue flag) rather than recomputing any of them.
 //
-// 2026-09-21 follow-up (07-notifications.md) — extended with notSaved/
-// notAttending/notConfirmed (inverses/refinements of the original three,
-// now that isGoing is scoped to genuinely-confirmed — see GocContext.jsx's
-// own comment on isGoing) plus upcoming/ended, which round out the set
-// using the same live-status data the "Sự kiện của bạn" strip's real 48h
-// expiry now needs anyway (homeLiveEvents) — not a separate concept.
+// 2026-09-21 follow-up (07-notifications.md) — extended with notConfirmed
+// (a refinement of the original three, now that isGoing is scoped to
+// genuinely-confirmed — see GocContext.jsx's own comment on isGoing) plus
+// upcoming/ended, using the same live-status data the "Sự kiện của bạn"
+// strip's real 48h expiry now needs anyway (homeLiveEvents) — not a
+// separate concept.
+//
+// Second follow-up (same day): notAttending/notSaved removed entirely per
+// this ticket's own instruction (redundant inverses that cluttered the
+// row without earning their keep) — Upcoming/Saved/Attending reordered to
+// lead, Ended kept last.
 const HOME_EXTRA_FILTERS = [
-  { key: 'attending', vi: 'Đang tham gia', en: 'Attending' },
-  { key: 'notAttending', vi: 'Chưa tham gia', en: 'Not attending' },
-  { key: 'notConfirmed', vi: 'Chưa xác nhận', en: 'Not confirmed' },
-  { key: 'saved', vi: 'Đã lưu', en: 'Saved' },
-  { key: 'notSaved', vi: 'Chưa lưu', en: 'Not saved' },
-  { key: 'soldOut', vi: 'Hết chỗ', en: 'Sold out' },
   { key: 'upcoming', vi: 'Sắp diễn ra', en: 'Upcoming' },
+  { key: 'saved', vi: 'Đã lưu', en: 'Saved' },
+  { key: 'attending', vi: 'Đang tham gia', en: 'Attending' },
+  { key: 'notConfirmed', vi: 'Chưa xác nhận', en: 'Not confirmed' },
+  { key: 'soldOut', vi: 'Hết chỗ', en: 'Sold out' },
   { key: 'ended', vi: 'Đã kết thúc', en: 'Ended' },
 ];
 
@@ -119,10 +122,8 @@ export default function Home() {
     .map(withLive)
     .filter(e => !e.inviteOnly && (s.filter === 'all' || e.catKey === s.filter || e.cat2Key === s.filter) && curArea.match(e))
     .filter(e => !s.filterAttending || isGoing(e.key))
-    .filter(e => !s.filterNotAttending || !isGoing(e.key))
     .filter(e => !s.filterNotConfirmed || isAwaitingConfirmation(e.key))
     .filter(e => !s.filterSaved || isSaved(e.key))
-    .filter(e => !s.filterNotSaved || !isSaved(e.key))
     .filter(e => !s.filterSoldOut || e.soldOut)
     .filter(e => !s.filterUpcoming || (!e.cancelled && e.endedHoursAgo == null))
     .filter(e => !s.filterEnded || e.endedHoursAgo != null)
@@ -143,7 +144,7 @@ export default function Home() {
         goingLabel: trStatus('Đang tham gia' + ((s.tickets[e.key] || 1) > 1 ? ' ▪︎ ' + s.tickets[e.key] + ' vé' : '')),
         saveLabel: saved ? T('Đã lưu', 'Saved') : T('Lưu', 'Save'),
       };
-    }), [s.filter, s.filterAttending, s.filterNotAttending, s.filterNotConfirmed, s.filterSaved, s.filterNotSaved, s.filterSoldOut, s.filterUpcoming, s.filterEnded, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, isAwaitingConfirmation, trStatus, stripKm, T]);
+    }), [s.filter, s.filterAttending, s.filterNotConfirmed, s.filterSaved, s.filterSoldOut, s.filterUpcoming, s.filterEnded, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, isAwaitingConfirmation, trStatus, stripKm, T]);
 
   const heldKey = heldEv ? heldEv.key : null;
   const savedKeys = [...new Set([...s.favorites, ...s.attending, ...s.invited, ...(heldKey ? [heldKey] : [])])];
@@ -197,7 +198,11 @@ export default function Home() {
               new divider style. Wired to the SAME `toggleTheme` Preferences.jsx
               already uses — no parallel theme state. */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-            <span onClick={toggleLang} style={{ fontSize: 11, color: ink, cursor: 'pointer', letterSpacing: '0.06em' }}>{T('English', 'Tiếng Việt')}</span>
+            {/* Task 1 (2026-09-21 follow-up) — bumped 11px -> 13px, just
+                enough to read/tap more easily without unbalancing the rest
+                of the header row (area/appearance stay at their existing
+                size). */}
+            <span onClick={toggleLang} style={{ fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer', letterSpacing: '0.06em' }}>{T('English', 'Tiếng Việt')}</span>
             <span style={{ fontSize: 9, color: ink, opacity: 0.4 }}>▪</span>
             <span onClick={openArea} style={{ fontSize: 11, color: ink, cursor: 'pointer' }}>banbe ▪︎ {curArea.key === 'all' ? 'Sài Gòn' : curArea.label} ▾</span>
             <span style={{ fontSize: 9, color: ink, opacity: 0.4 }}>▪</span>
@@ -276,11 +281,15 @@ export default function Home() {
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, padding: '0 20px 14px', overflowX: 'auto' }}>
+      {/* Task 2 (2026-09-21 follow-up) — `flexWrap: 'wrap'` + no
+          `overflowX` instead of a horizontally-scrolling single row: every
+          chip is now always visible (wraps to a second line if it doesn't
+          fit), no swipe needed to see the rest. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '0 20px 14px' }}>
         {HOME_EXTRA_FILTERS.map(f => {
           // Every filter key maps to its state field by simple
-          // capitalization (attending -> filterAttending, notSaved ->
-          // filterNotSaved, ...) — see GocContext.jsx's HOME_FILTER_STATE_KEY.
+          // capitalization (attending -> filterAttending, notConfirmed ->
+          // filterNotConfirmed, ...) — see GocContext.jsx's HOME_FILTER_STATE_KEY.
           const active = s['filter' + f.key[0].toUpperCase() + f.key.slice(1)];
           return (
             <span
@@ -296,7 +305,7 @@ export default function Home() {
       </div>
 
       {feed.map(ev => (
-        <div key={ev.key} onClick={() => goEvent(ev.key)} style={{ cursor: 'pointer', paddingBottom: 6 }}>
+        <div key={ev.key} data-testid={`home-event-${ev.key}`} onClick={() => goEvent(ev.key)} style={{ cursor: 'pointer', paddingBottom: 6 }}>
           <div style={{ position: 'relative' }}>
             <div style={bg(ev.img, { width: 'calc(100% - 40px)', height: 272, margin: '0 20px', borderRadius: '14px 14px 0 0' })} />
             <div style={{ position: 'absolute', left: 20, right: 20, bottom: 0, height: 58, background: `linear-gradient(to bottom, rgba(247,244,236,0) 0%, rgba(247,244,236,0.3) 62%, ${paper} 100%)`, pointerEvents: 'none' }} />

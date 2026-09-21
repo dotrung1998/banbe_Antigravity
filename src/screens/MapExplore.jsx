@@ -87,7 +87,14 @@ export default function MapExplore() {
   const [catFilter, setCatFilter] = useState(() => restored?.catFilter ?? 'all');
   const [openNowOnly, setOpenNowOnly] = useState(() => restored?.openNowOnly ?? false);
   const [sortByDistance, setSortByDistance] = useState(() => restored?.sortByDistance ?? false);
-  const [sheetSnap, setSheetSnap] = useState(() => restored?.sheetSnap ?? 'tall');
+  // Task 6 (2026-09-21 follow-up) — "Open in Map"'s own snapshot
+  // (GocContext.jsx's openEventOnMap) never sets `sheetSnap` (only
+  // camera/selectedId), so a genuine MapExplore-to-MapExplore restore
+  // (which DOES carry a real `sheetSnap`) is untouched; only the "arrives
+  // with a card already selected, no restored sheet position of its own"
+  // case defaults to 'mid' instead of 'tall', same reasoning as
+  // `selectEvent`'s own snap-down below.
+  const [sheetSnap, setSheetSnap] = useState(() => restored?.sheetSnap ?? (restored?.selectedId ? 'mid' : 'tall'));
   const [boundsChanged, setBoundsChanged] = useState(false);
   const [page, setPage] = useState(0);
   const lastQueriedBounds = useRef(null);
@@ -201,6 +208,13 @@ export default function MapExplore() {
   // selecting is just remembering an id, never a second query.
   const selectEvent = useCallback((ev) => {
     setSelectedId(ev.id);
+    // Task 6 (2026-09-21 follow-up) — selecting an event at the tallest
+    // sheet snap ('tall' = 0.30 map-strip fraction, the least visible map)
+    // used to leave the sheet right there, squeezing the map into a sliver
+    // right when its own pin/info card most needs room to be seen. Drops
+    // to 'mid' only from 'tall'; already being at 'mid'/'peek' (more map
+    // visible than 'tall') is left alone.
+    setSheetSnap(prev => (prev === 'tall' ? 'mid' : prev));
     const map = mapRef.current;
     if (!map) return;
     // Padding keeps the selected pin above BOTH the bottom sheet and the
@@ -291,7 +305,21 @@ export default function MapExplore() {
       // This is a genuine click, not `moveend`, so it can never be confused
       // with "Search here" (that's tied only to the explicit button).
       map.on('click', () => setSelectedId(null));
-      lastQueriedBounds.current = map.getBounds();
+      // Task 7 fix (2026-09-21 follow-up) — `restored.singleEventFocus`
+      // ("Open in Map", GocContext.jsx's openEventOnMap) sets `cameraZoom:
+      // 15.5`, a deliberately tight single-pin view meant only for the
+      // VISUAL camera. Seeding `lastQueriedBounds` from `map.getBounds()`
+      // at that same tight zoom meant the very first freshness poll
+      // (below) silently replaced the full loaded `events` set with just
+      // the one or two events inside that tiny box — every other pin
+      // vanished a few seconds after opening, independent of any filter
+      // tap (a filter tap merely made the already-collapsed dataset's
+      // narrowing visible). A wide box around the same center — matching
+      // the density-hotspot default's own city-wide feel — keeps the data
+      // query broad while the map still visually zooms in tight on the pin.
+      lastQueriedBounds.current = restored?.singleEventFocus
+        ? { getNorth: () => center.lat + 0.06, getSouth: () => center.lat - 0.06, getEast: () => center.lng + 0.06, getWest: () => center.lng - 0.06 }
+        : map.getBounds();
       mapRef.current = map;
       // Test-only hook (Task 2b, 11-realtime-map.md follow-up) — there's no
       // other way for Playwright to read the live map's own center/zoom

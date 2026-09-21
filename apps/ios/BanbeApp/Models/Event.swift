@@ -93,4 +93,10 @@ struct MapExploreState {
     var openNowOnly: Bool
     var sortByDistance: Bool
     var selectedId: String?
+    /// Task 7 (2026-09-21 follow-up, 11-realtime-map.md) — true only for
+    /// `AppState.openEventOnMap(_:)`'s own from-scratch snapshot, whose
+    /// `cameraSpanLat`/`cameraSpanLng` (0.01°, a tight single-pin view) are
+    /// meant ONLY for the visual camera, never for the data-loading query
+    /// bounds — see `MapExploreView.init(restored:)`'s own use of this flag.
+    var singleEventFocus: Bool = false
 }

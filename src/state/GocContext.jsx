@@ -108,9 +108,9 @@ const initialState = {
   filterSaved: false,
   filterSoldOut: false,
   // 2026-09-21 follow-up — rounds out the chip set (07-notifications.md).
-  filterNotAttending: false,
+  // notAttending/notSaved existed briefly then were removed the same day
+  // per a follow-up ticket (redundant inverses cluttering the row).
   filterNotConfirmed: false,
-  filterNotSaved: false,
   filterUpcoming: false,
   filterEnded: false,
   // Reserve.jsx's Name field, ONLY used for the empty-display_name case
@@ -418,8 +418,8 @@ const initialState = {
 // 07-notifications.md's 2026-09-21 follow-up) — module scope since it's
 // static, not recreated every render.
 const HOME_FILTER_STATE_KEY = {
-  attending: 'filterAttending', notAttending: 'filterNotAttending', notConfirmed: 'filterNotConfirmed',
-  saved: 'filterSaved', notSaved: 'filterNotSaved',
+  attending: 'filterAttending', notConfirmed: 'filterNotConfirmed',
+  saved: 'filterSaved',
   soldOut: 'filterSoldOut', upcoming: 'filterUpcoming', ended: 'filterEnded',
 };
 
@@ -2235,7 +2235,11 @@ export function GocProvider({ children }) {
   // this event" code path. `0.01`-ish zoom feel matches `selectEvent`'s own
   // `zoomSpan`-equivalent (zoom 15.5) for a focused single-pin view.
   const openEventOnMap = useCallback((ev) => {
-    setMapExploreState({ cameraCenter: { lat: ev.lat, lng: ev.lng }, cameraZoom: 15.5, selectedId: ev.key });
+    // `singleEventFocus: true` — MapExplore.jsx's own doc comment on this
+    // flag (Task 7, 2026-09-21 follow-up): the tight `cameraZoom: 15.5`
+    // here is only meant for the visual camera, never for the bounds the
+    // freshness poll loads `events` from.
+    setMapExploreState({ cameraCenter: { lat: ev.lat, lng: ev.lng }, cameraZoom: 15.5, selectedId: ev.key, singleEventFocus: true });
     set({ screen: 'mapExplore' });
   }, [set, setMapExploreState]);
   const goProfile = useCallback(() => set({ screen: 'profile' }), [set]);
@@ -2626,14 +2630,11 @@ export function GocProvider({ children }) {
   const clearFilters = useCallback(() => set({
     filter: 'all', area: 'all',
     filterAttending: false, filterSaved: false, filterSoldOut: false,
-    filterNotAttending: false, filterNotConfirmed: false, filterNotSaved: false, filterUpcoming: false, filterEnded: false,
+    filterNotConfirmed: false, filterUpcoming: false, filterEnded: false,
   }), [set]);
   // Home's second chip row (12-home-filters.md, extended 2026-09-21) — each
   // independent, AND-combined with `filter`/`area` and with each other, not
-  // mutually exclusive (toggling e.g. both "attending" and "notAttending"
-  // together is allowed and simply yields an empty feed, same as any other
-  // contradictory combination in this AND-combined chip pattern — "Xem tất
-  // cả" already recovers from that).
+  // mutually exclusive.
   const toggleHomeFilter = useCallback((key) => set(prev => {
     const stateKey = HOME_FILTER_STATE_KEY[key];
     return stateKey ? { [stateKey]: !prev[stateKey] } : {};
@@ -3163,6 +3164,21 @@ export function GocProvider({ children }) {
   // divider while the thread stays open (07-notifications.md).
   // Task 4 (2026-09-21 follow-up) — signs every given 'chat-attachments'
   // path in one batched call, same pattern as signProofUrls/`proofUrls`.
+  //
+  // BUG FIX: `loadChatMessages` (below) calls this on EVERY invocation,
+  // including the 4s poll while a thread stays open — re-signing a path
+  // that was already signed produces a brand-new signed URL STRING every
+  // time (same file, different token/expiry), and since `<img src>` in
+  // Chat.jsx reads straight off `chatAttachmentUrls[path]`, a changing src
+  // string makes the browser tear down and re-fetch the image from
+  // scratch every ~4s — the reported "thumbnail appears/disappears
+  // repeatedly, never tappable/savable" loop. Same root-cause SHAPE as the
+  // signed-URL churn already diagnosed for payment receipts
+  // (08-payment-documents.md) — not a loading-state wiring bug, a genuinely
+  // unstable URL being fed to `src`. Fixed by never overwriting an
+  // already-signed path — `acc` starts from the PREVIOUS
+  // `chatAttachmentUrls`, so `!acc[row.path]` is true only for a path this
+  // thread hasn't signed yet (a newly-arrived attachment).
   const signChatAttachmentUrls = useCallback(async (paths) => {
     const wanted = [...new Set((paths || []).filter(Boolean))];
     if (!wanted.length) return;
@@ -3170,7 +3186,7 @@ export function GocProvider({ children }) {
     if (error) { console.warn('signChatAttachmentUrls failed:', error); return; }
     set(prev => ({
       chatAttachmentUrls: (data || []).reduce((acc, row) => {
-        if (row.path && row.signedUrl && !row.error) acc[row.path] = row.signedUrl;
+        if (row.path && row.signedUrl && !row.error && !acc[row.path]) acc[row.path] = row.signedUrl;
         return acc;
       }, { ...prev.chatAttachmentUrls }),
     }));
@@ -3191,7 +3207,16 @@ export function GocProvider({ children }) {
     } else {
       set({ chatMessages: rows });
     }
-    signChatAttachmentUrls(rows.map(m => m.attachment_path));
+    // Efficiency half of the fix above: skip re-requesting a signed URL
+    // this thread already has, not just skip overwriting it once the
+    // (otherwise wasted) network round trip comes back — reads
+    // `s.chatAttachmentUrls` via closure rather than adding it to this
+    // callback's own deps, so the 4s poll's `setInterval` (which holds a
+    // reference to this same function) doesn't get torn down and rebuilt
+    // every time a new attachment gets signed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const newPaths = rows.map(m => m.attachment_path).filter(p => p && !s.chatAttachmentUrls[p]);
+    if (newPaths.length) signChatAttachmentUrls(newPaths);
   }, [set, s.user?.id, markThreadMessagesRead, signChatAttachmentUrls]);
   // Get-or-create the one thread between the signed-in guest and this
   // event's organizer. Never called for the organizer's own side of a

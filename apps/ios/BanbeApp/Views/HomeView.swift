@@ -24,7 +24,14 @@ struct HomeView: View {
     }
 
     var body: some View {
-        ScreenScaffold(tracksBottomBarScroll: true) {
+        // Task 3 (2026-09-21 follow-up) — `scrollPositionID` restores the
+        // feed to roughly where the user left it on returning from Event
+        // Detail (see `ScreenScaffold`'s own doc comment for why this is
+        // id-based, not a raw pixel offset). Only the event cards below
+        // get a stable `.id(...)` — the header/banners/chips are always a
+        // small, fixed offset near the top and aren't meaningful restore
+        // targets the way "which event card was on screen" is.
+        ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.homeScrollAnchorID) {
             // Lazy, so only the cards actually on screen fetch their photo —
             // the eager VStack kicked off all ~21 hero downloads at launch
             // and they all fought for the same bandwidth.
@@ -44,6 +51,7 @@ struct HomeView: View {
                 } else {
                     ForEach(app.feed) { event in
                         EventCard(event: event)
+                            .id(event.key)
                     }
                     footer
                 }
@@ -161,8 +169,12 @@ struct HomeView: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
                 HStack(spacing: 8) {
+                    // Task 1 (2026-09-21 follow-up) — bumped 11pt -> 13pt,
+                    // just enough to read/tap more easily without
+                    // unbalancing the rest of the header row (area/
+                    // appearance stay at their existing size).
                     Button(app.T("English", "Tiếng Việt")) { app.toggleLang() }
-                        .font(.system(size: 11))
+                        .font(.system(size: 13, weight: .semibold))
                         .accessibilityIdentifier("header.lang")
                     Text("▪").font(.system(size: 9)).opacity(0.4)
                     Button("banbe ▪︎ \(app.currentArea.key == "all" ? "Sài Gòn" : app.currentArea.label) ▾") {
@@ -287,36 +299,39 @@ struct HomeView: View {
     // (isGoing's status set from note 04, isSaved's favorites, .soldOut's
     // static catalogue flag) rather than recomputing any of them.
     //
-    // 2026-09-21 follow-up — extended with notAttending/notConfirmed/
-    // notSaved/upcoming/ended (mirrors src/screens/Home.jsx's
-    // HOME_EXTRA_FILTERS exactly).
+    // 2026-09-21 follow-up — extended with notConfirmed/upcoming/ended
+    // (mirrors src/screens/Home.jsx's HOME_EXTRA_FILTERS exactly).
+    //
+    // Second follow-up (same day): notAttending/notSaved removed entirely
+    // per this ticket's own instruction; Upcoming/Saved/Attending reordered
+    // to lead, Ended kept last. Also switched from a horizontally-scrolling
+    // `ScrollView` to `FlowLayout` (MapExploreView.swift's own reusable
+    // wrapping layout, already used for Map Explore's category row) — every
+    // chip is now always visible, wrapping to a second line instead of
+    // requiring a swipe to see the rest.
     private var homeExtraFilterChips: some View {
         let chips: [(key: String, vi: String, en: String, active: Bool)] = [
-            ("attending", "Đang tham gia", "Attending", app.filterAttending),
-            ("notAttending", "Chưa tham gia", "Not attending", app.filterNotAttending),
-            ("notConfirmed", "Chưa xác nhận", "Not confirmed", app.filterNotConfirmed),
-            ("saved", "Đã lưu", "Saved", app.filterSaved),
-            ("notSaved", "Chưa lưu", "Not saved", app.filterNotSaved),
-            ("soldOut", "Hết chỗ", "Sold out", app.filterSoldOut),
             ("upcoming", "Sắp diễn ra", "Upcoming", app.filterUpcoming),
+            ("saved", "Đã lưu", "Saved", app.filterSaved),
+            ("attending", "Đang tham gia", "Attending", app.filterAttending),
+            ("notConfirmed", "Chưa xác nhận", "Not confirmed", app.filterNotConfirmed),
+            ("soldOut", "Hết chỗ", "Sold out", app.filterSoldOut),
             ("ended", "Đã kết thúc", "Ended", app.filterEnded),
         ]
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(chips, id: \.key) { chip in
-                    Button { app.toggleHomeFilter(chip.key) } label: {
-                        Text(app.T(chip.vi, chip.en))
-                            .font(.system(size: 12, weight: chip.active ? .bold : .regular))
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(.thinMaterial, in: Capsule())
-                            .overlay(Capsule().stroke(chip.active ? app.palette.ink : .clear, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("filter.\(chip.key.lowercased())")
+        return FlowLayout(spacing: 8, lineSpacing: 8) {
+            ForEach(chips, id: \.key) { chip in
+                Button { app.toggleHomeFilter(chip.key) } label: {
+                    Text(app.T(chip.vi, chip.en))
+                        .font(.system(size: 12, weight: chip.active ? .bold : .regular))
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(.thinMaterial, in: Capsule())
+                        .overlay(Capsule().stroke(chip.active ? app.palette.ink : .clear, lineWidth: 1))
                 }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("filter.\(chip.key.lowercased())")
             }
-            .padding(.horizontal, 20)
         }
+        .padding(.horizontal, 20)
         .foregroundStyle(app.palette.ink)
         .padding(.bottom, 14)
     }

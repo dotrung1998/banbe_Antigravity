@@ -257,6 +257,21 @@ struct ScreenScaffold<Content: View>: View {
     // drives AppState.bottomBarCollapsed, mirroring src/App.jsx's Shell
     // (which reads the same signal off its own scroll listener).
     var tracksBottomBarScroll = false
+    // Home task 3 (2026-09-21 follow-up) — web's App.jsx Shell has one
+    // generic, per-screen scroll-position map (`scrollPositions`, keyed by
+    // `state.screen`) that every screen gets for free. SwiftUI has no
+    // equivalent built in, and no raw pixel-offset restore API at this
+    // project's iOS 17 deployment target (`ScrollPosition`/`.scrollPosition(_:)`
+    // for an arbitrary Y offset is iOS 18+) — but `.scrollPosition(id:)`
+    // (iOS 17) DOES exist for a `.scrollTargetLayout()` container, and is
+    // bidirectional: it both reports which id is at the top as the user
+    // scrolls AND scrolls TO that id once the view (re)appears with a
+    // non-nil binding already set. A caller passes a `@Published` id
+    // binding from `AppState` (so it survives the view being torn down and
+    // recreated on screen navigation, the same way `mapExploreState` does
+    // for Map Explore) and gives each scrollable child a stable `.id(...)`
+    // — see `HomeView`'s own use of this for its feed cards.
+    var scrollPositionID: Binding<String?>? = nil
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -267,17 +282,39 @@ struct ScreenScaffold<Content: View>: View {
                     // maxWidth pins the content to the viewport — without it
                     // any wide child (a photo, a long meta line) makes the
                     // whole page pan sideways.
-                    content()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            tracksBottomBarScroll
-                                ? AnyView(ScaffoldScrollProbe { app.noteScaffoldScroll($0) })
-                                : AnyView(EmptyView())
-                        )
+                    Group {
+                        if scrollPositionID != nil {
+                            content()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .scrollTargetLayout()
+                        } else {
+                            content()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .background(
+                        tracksBottomBarScroll
+                            ? AnyView(ScaffoldScrollProbe { app.noteScaffoldScroll($0) })
+                            : AnyView(EmptyView())
+                    )
                 }
+                .modifier(ScrollPositionIDModifier(id: scrollPositionID))
             } else {
                 content().frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+    }
+}
+
+/// Applies `.scrollPosition(id:)` only when a binding was actually passed —
+/// `ScrollView` itself has no "no-op" form of that modifier to fall back to.
+private struct ScrollPositionIDModifier: ViewModifier {
+    let id: Binding<String?>?
+    func body(content: Content) -> some View {
+        if let id {
+            content.scrollPosition(id: id)
+        } else {
+            content
         }
     }
 }

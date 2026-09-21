@@ -10,7 +10,13 @@ import { setupToHome } from './helpers.js';
 
 async function openMapWithAPin(page) {
   await setupToHome(page);
-  await page.click('[data-testid="open-map-explore"]');
+  // `open-map-explore` (a dedicated Home-header icon) was replaced by the
+  // bottom tab bar's own "Map" tab (`tab-map`) in a2fd823's Home-tab/
+  // bottom-dock redesign — this suite's own selector was never updated
+  // alongside that change until now (found while verifying Task 7 below;
+  // every other test in this file was failing on the stale selector,
+  // unrelated to this pass's own fixes).
+  await page.click('[data-testid="tab-map"]');
   await page.waitForSelector('[data-screen-label="MapExplore"]');
   // Give the initial fetchLiveEvents()/map init a moment, then wait for at
   // least one pin to actually render.
@@ -685,5 +691,55 @@ test.describe('Map Explore — selection/filter decoupling (design change follow
     // The list must match the LAST tapped filter ("Tất cả" — everything),
     // not some intermediate one from mid-race.
     await expect(page.locator('[data-testid^="map-list-item-"]').first()).toBeVisible();
+  });
+});
+
+// Task 7 (2026-09-21 follow-up) — real regression repro/fix verification,
+// per this ticket's own explicit "confirm against a real Open in Map flow
+// followed by a category filter tap" ask. Root cause: "Open in Map"
+// (GocContext.jsx's openEventOnMap) constructs the map at a deliberately
+// tight zoom (15.5, a focused single-pin view) — `lastQueriedBounds` used
+// to be seeded from that same tight viewport, so the 5s freshness poll
+// silently replaced the full loaded `events` set with just the one or two
+// events inside that tiny box a few seconds after opening, independent of
+// any filter tap (the filter tap only made the already-collapsed dataset's
+// narrowing visible). Fixed via `restored.singleEventFocus` — the query
+// bounds now stay wide (city-scale) while the camera still visually zooms
+// in tight on the selected pin.
+test.describe('Map Explore — Task 7 (Open in Map + category filter regression)', () => {
+  test('opening an event via "Open in Map", waiting past a poll cycle, then tapping a category filter still shows the full dataset, not just the selected event', async ({ page }) => {
+    await setupToHome(page);
+    // A real supper-club event, reached the same way a real user would —
+    // via a Home card, not a synthetic navigation call.
+    await page.locator('[data-testid^="home-event-"]').first().click();
+    await page.waitForSelector('[data-screen-label="Event"]');
+    await page.locator('[data-testid="event-open-in-map"]').click();
+    await page.waitForSelector('[data-screen-label="MapExplore"]');
+
+    // The selected event's own card should show immediately.
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    const initialCount = await page.locator('[data-testid^="map-list-item-"]').count();
+    expect(initialCount).toBeGreaterThan(1);
+
+    // Wait past at least one 5s freshness poll cycle — this is exactly
+    // where the bug fired (the poll re-queried using the too-tight bounds
+    // and silently collapsed `events` to almost nothing), independent of
+    // any filter tap.
+    await page.waitForTimeout(5500);
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    expect(await page.locator('[data-testid^="map-list-item-"]').count()).toBeGreaterThan(1);
+
+    // Now the actual reported trigger: a category filter tap. The card and
+    // the list must both still reflect the FULL dataset, filtered — not
+    // narrowed down to just the originally-selected event.
+    await page.click('[data-testid="map-cat-supper"]');
+    await page.waitForTimeout(300);
+    await expect(page.locator('[data-testid="map-selected-card"]')).toBeVisible();
+    const supperCount = await page.locator('[data-testid^="map-list-item-"]').count();
+    expect(supperCount).toBeGreaterThan(1);
+
+    await page.click('[data-testid="map-cat-all"]');
+    await page.waitForTimeout(300);
+    expect(await page.locator('[data-testid^="map-list-item-"]').count()).toBeGreaterThanOrEqual(supperCount);
   });
 });

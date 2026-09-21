@@ -228,9 +228,9 @@ final class AppState: ObservableObject {
     @Published var filterSaved = false
     @Published var filterSoldOut = false
     // 2026-09-21 follow-up — rounds out the chip set (07-notifications.md).
-    @Published var filterNotAttending = false
+    // notAttending/notSaved existed briefly then were removed the same day
+    // per a follow-up ticket (redundant inverses cluttering the row).
     @Published var filterNotConfirmed = false
-    @Published var filterNotSaved = false
     @Published var filterUpcoming = false
     @Published var filterEnded = false
 
@@ -565,6 +565,14 @@ final class AppState: ObservableObject {
     /// fresh rather than silently resuming an unrelated past session.
     @Published var mapExploreState: MapExploreState?
 
+    /// Home task 3 (2026-09-21 follow-up) — the feed event id nearest the
+    /// top of Home's scroll view; survives HomeView being torn down and
+    /// recreated on navigating to Event Detail and back (the same reason
+    /// `mapExploreState` isn't a plain `@State` either), via
+    /// `ScreenScaffold`'s `.scrollPosition(id:)` binding. `nil` means "no
+    /// scroll to restore" — top of the feed.
+    @Published var homeScrollAnchorID: String?
+
     /// Task 1 (11-realtime-map.md follow-up): mirrors `RootView`'s own
     /// edge-swipe-back gesture progress (0 at rest, 1 at full commit) so
     /// `MapExploreView`'s sheet can track the Map-Explore-closing-to-Home
@@ -816,11 +824,9 @@ final class AppState: ObservableObject {
             .filter { currentArea.match($0) }
         let attendance = categoryAndArea
             .filter { !filterAttending || isGoing($0.key) }
-            .filter { !filterNotAttending || !isGoing($0.key) }
             .filter { !filterNotConfirmed || isAwaitingConfirmation($0.key) }
         let savedAndStatus = attendance
             .filter { !filterSaved || isSaved($0.key) }
-            .filter { !filterNotSaved || !isSaved($0.key) }
             .filter { !filterSoldOut || $0.soldOut }
             .filter { !filterUpcoming || (!$0.cancelled && $0.endedHoursAgo == nil) }
             .filter { !filterEnded || $0.endedHoursAgo != nil }
@@ -1147,8 +1153,13 @@ final class AppState: ObservableObject {
         mapExploreState = MapExploreState(
             cameraCenterLat: event.lat, cameraCenterLng: event.lng,
             cameraSpanLat: 0.01, cameraSpanLng: 0.01,
-            sheetFraction: 0.72, catFilter: "all", openNowOnly: false, sortByDistance: false,
-            selectedId: event.key
+            // Task 6 (2026-09-21 follow-up): mid (0.45), not tall (0.72) —
+            // this arrives with an event already selected/its card
+            // showing, same reasoning as `selectEvent`'s own snap-down:
+            // don't squeeze the map into a sliver right when the card most
+            // needs room to be seen.
+            sheetFraction: 0.45, catFilter: "all", openNowOnly: false, sortByDistance: false,
+            selectedId: event.key, singleEventFocus: true
         )
         screen = .mapExplore
     }
@@ -1307,7 +1318,17 @@ final class AppState: ObservableObject {
     func goBack() {
         switch screen {
         case .profile: goHome()
-        case .inbox: backFromInbox()
+        // Bug 5 (2026-09-21 follow-up) — Archived (`inboxView == .archived`)
+        // isn't a separate `Screen`, just a sub-state of `.inbox` (opened
+        // from Inbox's own settings menu, 1c62d4c) — the edge-swipe used to
+        // ignore that entirely and always run `backFromInbox()` (exiting
+        // all the way to Home/Profile), skipping the "return to the
+        // regular Inbox list first" step its own on-screen "‹ Quay lại Tin
+        // nhắn" link already does correctly. Same
+        // documentBack/verificationsBack-style back-target convention this
+        // app already uses elsewhere — just one level, since Archived has
+        // nowhere further to fall back to but Inbox itself.
+        case .inbox: if inboxView == .archived { inboxView = .active } else { backFromInbox() }
         case .eventList: backFromEventList()
         case .event: backFromEvent()
         case .organizer, .reserve: backToEvent()
@@ -1340,7 +1361,11 @@ final class AppState: ObservableObject {
     var backTargetScreen: Screen {
         switch screen {
         case .profile: return .home
-        case .inbox: return inboxBack
+        // Bug 5 (2026-09-21 follow-up) — matches `goBack()`'s own case
+        // above: from Archived, swiping back stays on `.inbox` itself
+        // (just drops back to the active list), never jumps straight to
+        // `inboxBack`.
+        case .inbox: return inboxView == .archived ? .inbox : inboxBack
         case .eventList: return .profile
         case .event: return eventBackScreen
         case .organizer, .reserve: return .event
@@ -1379,7 +1404,7 @@ final class AppState: ObservableObject {
     func clearFilters() {
         filter = "all"; area = "all"
         filterAttending = false; filterSaved = false; filterSoldOut = false
-        filterNotAttending = false; filterNotConfirmed = false; filterNotSaved = false
+        filterNotConfirmed = false
         filterUpcoming = false; filterEnded = false
     }
 
@@ -1389,10 +1414,8 @@ final class AppState: ObservableObject {
     func toggleHomeFilter(_ key: String) {
         switch key {
         case "attending": filterAttending.toggle()
-        case "notAttending": filterNotAttending.toggle()
         case "notConfirmed": filterNotConfirmed.toggle()
         case "saved": filterSaved.toggle()
-        case "notSaved": filterNotSaved.toggle()
         case "soldOut": filterSoldOut.toggle()
         case "upcoming": filterUpcoming.toggle()
         case "ended": filterEnded.toggle()

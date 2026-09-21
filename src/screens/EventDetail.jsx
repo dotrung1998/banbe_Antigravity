@@ -100,7 +100,7 @@ export default function EventDetail() {
             renders for a pin/list tap — appears automatically once there,
             since `openEventOnMap` sets `selectedId` the same way. */}
         {cameFromHome && (
-          <div onClick={() => openEventOnMap(ev)} style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer', marginBottom: 10 }}>{T('▪︎ Xem trên bản đồ', '▪︎ Open in map')}</div>
+          <div data-testid="event-open-in-map" onClick={() => openEventOnMap(ev)} style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer', marginBottom: 10 }}>{T('▪︎ Xem trên bản đồ', '▪︎ Open in map')}</div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11.5, color: ink }}>{evCat}</span>

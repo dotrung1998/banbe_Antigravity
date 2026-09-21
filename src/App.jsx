@@ -90,10 +90,40 @@ function Shell() {
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = scrollPositions.current[state.screen] || 0;
-    lastScrollTop.current = scrollPositions.current[state.screen] || 0;
+    const target = scrollPositions.current[state.screen] || 0;
+    if (el) el.scrollTop = target;
+    lastScrollTop.current = target;
     if (scrollRaf.current) { cancelAnimationFrame(scrollRaf.current); scrollRaf.current = null; }
     setBarCollapsed(false);
+
+    // Home task 3 (2026-09-21 follow-up) — this synchronous restore alone
+    // wasn't enough for Home specifically: `loadHomeLiveEvents()`
+    // (GocContext.jsx, added 1c62d4c) fetches asynchronously and can
+    // shrink/reorder `feed`/`savedList` a beat AFTER this effect already
+    // ran, silently pulling the restored position back toward the top
+    // once the page's total scrollable height changes underneath it —
+    // exactly the reported "Event Detail round trip resets Home to the
+    // top" symptom. Fixed generically (not Home-specific): watch the
+    // scroll container's own height for changes and re-apply the SAME
+    // saved target for as long as the user hasn't scrolled again
+    // themselves in the meantime (a real scroll flips `userScrolled`,
+    // which stops this from fighting a deliberate manual scroll) — this
+    // reuses the exact same `scrollPositions`/`state.screen` keying
+    // already established, just makes it resilient to late-arriving
+    // async content on any screen, not only Home.
+    if (!el || target === 0) return undefined;
+    let userScrolled = false;
+    const onScroll = () => { userScrolled = true; };
+    el.addEventListener('scroll', onScroll, { once: true });
+    const ro = new ResizeObserver(() => {
+      if (!userScrolled && el) el.scrollTop = target;
+    });
+    ro.observe(el);
+    // Generous settle window for a real network fetch to resolve and
+    // reflow — stops watching after that so this can't fight the user
+    // forever on a screen with legitimately dynamic content.
+    const settleTimeout = setTimeout(() => ro.disconnect(), 2000);
+    return () => { ro.disconnect(); clearTimeout(settleTimeout); el.removeEventListener('scroll', onScroll); };
   }, [state.screen]);
 
   // Mirrors iOS 26's onScrollDown minimize behavior: scrolling down shrinks
