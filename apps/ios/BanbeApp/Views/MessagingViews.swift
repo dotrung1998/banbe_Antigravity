@@ -18,6 +18,14 @@ struct InboxView: View {
     @State private var query = ""
     @State private var settingsOpen = false
     @State private var feedbackOpen = false
+    // Bug 1c (2026-09-21 follow-up) — brings up the keyboard the instant
+    // the search field appears, no extra tap needed first.
+    @FocusState private var searchFieldFocused: Bool
+
+    // Bug 1b/1c (2026-09-21 follow-up) — ONE shared, noticeably slower
+    // spring for both the settings sheet's entrance and the search field's
+    // reveal, instead of two different speeds for two different controls.
+    private static let sheetAnimation = Animation.spring(response: 0.6, dampingFraction: 0.85)
 
     private var visibleThreads: [InboxThread] {
         let byView = app.inboxThreads.filter { t in
@@ -69,8 +77,13 @@ struct InboxView: View {
                                     Button {
                                         Task { await app.toggleThreadStar(thread.id) }
                                     } label: {
+                                        // Bug 1a (2026-09-21 follow-up) — was
+                                        // hardcoded "Star" regardless of
+                                        // state; the icon already flipped
+                                        // star/star.fill but the label
+                                        // never followed.
                                         let starred = app.inboxThreadPrefs[thread.id]?.starred ?? false
-                                        Label(app.T("Gắn sao", "Star"), systemImage: starred ? "star.fill" : "star")
+                                        Label(starred ? app.T("Bỏ đánh dấu", "Unstar") : app.T("Gắn sao", "Star"), systemImage: starred ? "star.fill" : "star")
                                     }
                                     .tint(BanbeTheme.alert)
                                 }
@@ -101,12 +114,12 @@ struct InboxView: View {
         .onDisappear { BottomTabBarOverlay.shared.setForcedHidden(false) }
     }
 
-    // Bug 2b — a proper spring (not an un-animated snap), the SAME
-    // response/dampingFraction the tab bar's own scroll-collapse animation
-    // already uses (AppState.noteScaffoldScroll), for consistency with the
-    // app's other smooth transitions.
-    private func openSettings() { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { settingsOpen = true } }
-    private func closeSettings() { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { settingsOpen = false } }
+    // Bug 1b (2026-09-21 follow-up) — the 0.3-response spring from the
+    // previous pass (matched to the tab bar's own quick scroll-collapse)
+    // read as too fast for a full sheet slide; now uses the shared, slower
+    // `sheetAnimation` instead.
+    private func openSettings() { withAnimation(Self.sheetAnimation) { settingsOpen = true } }
+    private func closeSettings() { withAnimation(Self.sheetAnimation) { settingsOpen = false } }
 
     // Task 1 — "Done" replaced with search + settings icons. Task 5 — each
     // icon-only control gets a small label underneath.
@@ -118,15 +131,22 @@ struct InboxView: View {
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(app.palette.field, in: Capsule())
                     .foregroundStyle(app.palette.ink)
+                    .focused($searchFieldFocused)
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
             } else {
                 Text(app.inboxView == .archived ? app.T("Đã lưu trữ", "Archived") : app.T("Tin nhắn", "Messages"))
                     .font(BanbeTheme.display(27))
             }
             Spacer()
             HStack(spacing: 14) {
+                // Bug 1c (2026-09-21 follow-up) — the SAME shared
+                // `sheetAnimation` timing as the settings sheet, and
+                // `searchFieldFocused` set true right alongside it so the
+                // keyboard comes up immediately, not on a second tap.
                 iconButton(searchOpen ? "xmark" : "magnifyingglass", label: searchOpen ? app.T("Đóng", "Close") : app.T("Tìm", "Search")) {
                     if searchOpen { query = "" }
-                    searchOpen.toggle()
+                    withAnimation(Self.sheetAnimation) { searchOpen.toggle() }
+                    searchFieldFocused = searchOpen
                 }
                 if app.inboxView == .active {
                     iconButton("gearshape", label: app.T("Cài đặt", "Settings")) { openSettings() }
@@ -174,6 +194,12 @@ struct InboxView: View {
                         .buttonStyle(.plain)
                 }
                 .padding(.bottom, 12)
+                // Bug 1b (2026-09-21 follow-up) — row padding bumped
+                // 13pt -> 22pt: the background now extends through the
+                // safe area (Bug 2c), which left a dead gap below these
+                // two rows since the content itself stayed the same size;
+                // taller tap targets fill that space properly instead of
+                // padding it out with more empty margin.
                 Button {
                     closeSettings()
                     app.inboxView = .archived
@@ -181,7 +207,7 @@ struct InboxView: View {
                     Text(app.T("Đã lưu trữ", "Archived")).font(.system(size: 14.5)).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
-                .padding(.vertical, 13)
+                .padding(.vertical, 22)
                 .overlay(Rectangle().fill(app.palette.rule).frame(height: 1), alignment: .top)
                 Button {
                     closeSettings()
@@ -190,8 +216,9 @@ struct InboxView: View {
                     Text(app.T("Gửi phản hồi", "Give feedback")).font(.system(size: 14.5)).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
-                .padding(.vertical, 13)
+                .padding(.vertical, 22)
                 .overlay(Rectangle().fill(app.palette.rule).frame(height: 1), alignment: .top)
+                .overlay(Rectangle().fill(app.palette.rule).frame(height: 1), alignment: .bottom)
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 22).padding(.top, 18).padding(.bottom, 34)

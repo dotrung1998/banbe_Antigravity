@@ -227,6 +227,12 @@ final class AppState: ObservableObject {
     @Published var filterAttending = false
     @Published var filterSaved = false
     @Published var filterSoldOut = false
+    // 2026-09-21 follow-up — rounds out the chip set (07-notifications.md).
+    @Published var filterNotAttending = false
+    @Published var filterNotConfirmed = false
+    @Published var filterNotSaved = false
+    @Published var filterUpcoming = false
+    @Published var filterEnded = false
 
     // MARK: Session
     @Published var user: Profile?
@@ -267,6 +273,14 @@ final class AppState: ObservableObject {
     // open — see `applyingLiveStatus`/`loadLiveEventStatus`. Unlike
     // `booking`, this is fetched regardless of sign-in.
     @Published var liveEventStatus: LiveEventStatus?
+    // 2026-09-21 follow-up — batched across every catalogue key Home might
+    // show, keyed by catalogue key (== events.slug). Fixes a real bug:
+    // `CatalogEvent.endedHoursAgo` (generated from src/data/events.js's own
+    // hardcoded STATUS map) is baked in at build time and never increases
+    // as real time passes — `savedStrip`'s "Clears after 48h" caption was
+    // checking against that frozen number, so an event could sit at, say,
+    // "10 hours ago" forever and never actually clear.
+    @Published var homeLiveEvents: [String: LiveEventStatus] = [:]
     @Published var now = Date()
     @Published var reserveError = ""
     @Published var loading = false
@@ -758,19 +772,59 @@ final class AppState: ObservableObject {
     }
 
     func isSaved(_ key: String) -> Bool { favorites.contains(key) }
-    func isGoing(_ key: String) -> Bool { attending.contains(key) }
+    // 2026-09-21 follow-up (Home filters, see 07-notifications.md) —
+    // narrowed from `attending.contains(key)` (any booking that merely
+    // HOLDS A SEAT: status pending/confirmed/attended, the canonical
+    // "Going" set 12-home-filters.md deliberately chose for seat-holding
+    // purposes) to genuinely PAID/confirmed only (`paymentState ==
+    // .confirmed`, which a free/instant-confirm booking also gets
+    // immediately). Requested explicitly this pass so the new
+    // "notConfirmed" filter is meaningful against "attending" — otherwise
+    // the two would overlap. `isGoing` has exactly two consumers
+    // (HomeView.swift, this file's own `feed`) confirmed by repo-wide grep
+    // before narrowing — `attending` itself (Account/EventList's own
+    // "Going" counts) is UNCHANGED, still seat-holding, out of scope here.
+    func isGoing(_ key: String) -> Bool {
+        paymentBookings.contains { $0.eventKey == key && $0.paymentState == .confirmed }
+    }
+    /// The new "notConfirmed" filter's own predicate — has an active
+    /// booking for this event that ISN'T confirmed yet (still holding, or
+    /// awaiting the organizer's verification). Reuses `paymentBookings`
+    /// Home already loads — no new query.
+    func isAwaitingConfirmation(_ key: String) -> Bool {
+        paymentBookings.contains {
+            $0.eventKey == key && ["pending", "confirmed", "attended"].contains($0.status)
+                && ($0.paymentState == .holding || $0.paymentState == .pendingVerification)
+        }
+    }
+
+    /// Merges a real DB row's live status onto a static catalogue event —
+    /// the batched counterpart of `curEvent`'s own single-event
+    /// `applyingLiveStatus` call, applied to every event Home might list.
+    private func withLive(_ e: CatalogEvent) -> CatalogEvent { e.applyingLiveStatus(homeLiveEvents[e.key]) }
 
     /// The home feed — same filter and ordering as src/screens/Home.jsx:
     /// invite-only events never appear, and cancelled ones sink to the end.
     var feed: [CatalogEvent] {
-        EventCatalog.all
+        // Split into intermediate steps — Swift's type-checker couldn't
+        // resolve the original single chained expression (this many
+        // `.filter` closures in one statement) in reasonable time.
+        let categoryAndArea = EventCatalog.all
+            .map(withLive)
             .filter { !$0.inviteOnly }
             .filter { filter == "all" || $0.catKey == filter || $0.cat2Key == filter }
             .filter { currentArea.match($0) }
+        let attendance = categoryAndArea
             .filter { !filterAttending || isGoing($0.key) }
+            .filter { !filterNotAttending || !isGoing($0.key) }
+            .filter { !filterNotConfirmed || isAwaitingConfirmation($0.key) }
+        let savedAndStatus = attendance
             .filter { !filterSaved || isSaved($0.key) }
+            .filter { !filterNotSaved || !isSaved($0.key) }
             .filter { !filterSoldOut || $0.soldOut }
-            .sorted { a, b in demoted(a) < demoted(b) }
+            .filter { !filterUpcoming || (!$0.cancelled && $0.endedHoursAgo == nil) }
+            .filter { !filterEnded || $0.endedHoursAgo != nil }
+        return savedAndStatus.sorted { a, b in demoted(a) < demoted(b) }
     }
 
     private func demoted(_ e: CatalogEvent) -> Int {
@@ -778,12 +832,23 @@ final class AppState: ObservableObject {
     }
 
     /// The "Your events" strip: saved + attending + invited + held, minus
-    /// anything that ended more than 48h ago.
+    /// anything that ENDED more than 48h ago (never an upcoming/ongoing
+    /// event — `endedHoursAgo` is only ever non-nil once `withLive` sees a
+    /// real `status == "ended"` row, see `applyingLiveStatus`/
+    /// `Countdown.liveEventOverrides`).
+    ///
+    /// 2026-09-21 follow-up: `withLive` added here — `CatalogEvent.
+    /// endedHoursAgo` on its own is the STATIC catalogue's baked-in-at-
+    /// build-time number (Tools/generate-catalog.mjs, from src/data/
+    /// events.js's own hardcoded STATUS map) and never increases as real
+    /// time passes, so this filter previously never actually cleared
+    /// anything once true.
     var savedStrip: [CatalogEvent] {
         var keys: [String] = []
         for key in favorites + attending where !keys.contains(key) { keys.append(key) }
         if let heldKey = heldEvent?.key, !keys.contains(heldKey) { keys.append(heldKey) }
         return keys.compactMap { key in EventCatalog.all.first { $0.key == key } }
+            .map(withLive)
             .filter { ($0.endedHoursAgo ?? 0) <= 48 }
     }
 
@@ -1314,15 +1379,23 @@ final class AppState: ObservableObject {
     func clearFilters() {
         filter = "all"; area = "all"
         filterAttending = false; filterSaved = false; filterSoldOut = false
+        filterNotAttending = false; filterNotConfirmed = false; filterNotSaved = false
+        filterUpcoming = false; filterEnded = false
     }
 
-    /// Home's second chip row (12-home-filters.md) — each independent,
-    /// AND-combined with `filter`/`area` and with each other.
+    /// Home's second chip row (12-home-filters.md, extended 2026-09-21) —
+    /// each independent, AND-combined with `filter`/`area` and with each
+    /// other, not mutually exclusive.
     func toggleHomeFilter(_ key: String) {
         switch key {
         case "attending": filterAttending.toggle()
+        case "notAttending": filterNotAttending.toggle()
+        case "notConfirmed": filterNotConfirmed.toggle()
         case "saved": filterSaved.toggle()
+        case "notSaved": filterNotSaved.toggle()
         case "soldOut": filterSoldOut.toggle()
+        case "upcoming": filterUpcoming.toggle()
+        case "ended": filterEnded.toggle()
         default: break
         }
     }

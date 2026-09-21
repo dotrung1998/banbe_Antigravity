@@ -139,6 +139,19 @@ private struct AttendanceBooking: Decodable {
         case proofPath = "proof_path"
     }
 }
+/// loadHomeLiveEvents()'s own row shape — `LiveEventStatus` plus the
+/// catalogue key each row belongs to, decoded in one query then split back
+/// into a `[key: LiveEventStatus]` dictionary.
+private struct KeyedLiveEventStatus: Decodable {
+    let slug: String
+    let status: LiveEventStatus
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        slug = try container.decode(String.self, forKey: .slug)
+        status = try LiveEventStatus(from: decoder)
+    }
+    enum CodingKeys: String, CodingKey { case slug }
+}
 private struct MessageThreadIDRow: Decodable {
     let threadId: UUID
     enum CodingKeys: String, CodingKey { case threadId = "thread_id" }
@@ -459,6 +472,24 @@ extension AppState {
             liveEventStatus = rows.first
         } catch {
             liveEventStatus = nil
+        }
+    }
+
+    /// 2026-09-21 follow-up — the batched counterpart of
+    /// `loadLiveEventStatus()` above, for Home's "Sự kiện của bạn" strip
+    /// (real 48h-after-ended expiry — `savedStrip`'s own doc comment) and
+    /// its new "Sắp diễn ra"/"Đã kết thúc" filters. Public info, same as the
+    /// single-event fetch — no signed-in gate.
+    func loadHomeLiveEvents() async {
+        do {
+            let rows: [KeyedLiveEventStatus] = try await SupabaseService.client
+                .from("events")
+                .select("slug, status, starts_at, cancelled_at, cancel_reason")
+                .in("slug", values: EventCatalog.all.map(\.key))
+                .execute().value
+            homeLiveEvents = Dictionary(uniqueKeysWithValues: rows.map { ($0.slug, $0.status) })
+        } catch {
+            print("loadHomeLiveEvents failed:", error)
         }
     }
 

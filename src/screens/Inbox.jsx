@@ -7,11 +7,16 @@ import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass } fr
 const ACTION_WIDTH = 72;
 const REVEAL_WIDTH = ACTION_WIDTH * 2;
 
+// Bug 1b/1c (2026-09-21 follow-up) — ONE shared, noticeably slower timing
+// for both the settings sheet's entrance and the search field's reveal,
+// instead of two different speeds for two different controls.
+const SHEET_ANIM_MS = 600;
+
 // One row, with its own swipe-to-reveal drag state — kept per-row (not one
 // shared offset on the list) so opening one row's actions doesn't affect
 // any other row, and scrolling the list vertically isn't fought by a
 // horizontal drag started elsewhere.
-function InboxRow({ c, onOpen, onStar, onArchive }) {
+function InboxRow({ c, onOpen, onStar, onArchive, T }) {
   const [offset, setOffset] = useState(0);
   const dragRef = useRef({ active: false, startX: 0, startOffset: 0, moved: false });
 
@@ -52,7 +57,10 @@ function InboxRow({ c, onOpen, onStar, onArchive }) {
           style={{ width: ACTION_WIDTH, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, background: alert, color: '#fff', cursor: 'pointer' }}
         >
           <span style={{ fontSize: 18, lineHeight: 1 }}>{c.starred ? '★' : '☆'}</span>
-          <span style={{ fontSize: 10, fontWeight: 600 }}>Star</span>
+          {/* Bug 1a (2026-09-21 follow-up) — was hardcoded "Star" text
+              regardless of state; the icon already flips ★/☆ but the label
+              never followed. */}
+          <span style={{ fontSize: 10, fontWeight: 600 }}>{c.starred ? T('Bỏ đánh dấu', 'Unstar') : T('Đánh dấu', 'Star')}</span>
         </div>
         <div
           onClick={(e) => { e.stopPropagation(); onArchive(); setOffset(0); }}
@@ -60,7 +68,7 @@ function InboxRow({ c, onOpen, onStar, onArchive }) {
           style={{ width: ACTION_WIDTH, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, background: ink, color: paper, cursor: 'pointer' }}
         >
           <span style={{ fontSize: 16, lineHeight: 1 }}>{c.archived ? '📤' : '🗄'}</span>
-          <span style={{ fontSize: 10, fontWeight: 600 }}>{c.archived ? 'Unarchive' : 'Archive'}</span>
+          <span style={{ fontSize: 10, fontWeight: 600 }}>{c.archived ? T('Bỏ lưu trữ', 'Unarchive') : T('Lưu trữ', 'Archive')}</span>
         </div>
       </div>
       <div
@@ -243,7 +251,11 @@ export default function Inbox() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder={T('Tìm cuộc trò chuyện…', 'Search conversations…')}
             data-testid="inbox-search-input"
-            style={{ ...fieldGlass({ flex: 1, padding: '10px 14px', borderRadius: 999, border: 'none', marginRight: 10 }), fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }}
+            style={{
+              ...fieldGlass({ flex: 1, padding: '10px 14px', borderRadius: 999, border: 'none', marginRight: 10 }),
+              fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none',
+              animation: `gocIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both`,
+            }}
           />
         ) : (
           <span style={{ ...display(27) }}>{s.inboxView === 'archived' ? T('Đã lưu trữ', 'Archived') : T('Tin nhắn', 'Messages')}</span>
@@ -286,6 +298,7 @@ export default function Inbox() {
             <InboxRow
               key={c.threadId}
               c={c}
+              T={T}
               onOpen={() => openThread(c.threadId, c.eventKey, 'inbox', c.name)}
               onStar={() => toggleThreadStar(c.threadId)}
               onArchive={() => (c.archived ? unarchiveThread(c.threadId) : archiveThread(c.threadId))}
@@ -306,7 +319,12 @@ export default function Inbox() {
 
       {settingsOpen && (
         <div onClick={() => setSettingsOpen(false)} style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'gocFade 0.2s ease both' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ ...cardGlass({ borderRadius: '18px 18px 0 0' }), padding: '18px 22px 34px', display: 'flex', flexDirection: 'column', animation: 'gocSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+          {/* Bug 1b (2026-09-21 follow-up): the entrance was 0.32s — bumped
+              to the SAME slower SHEET_ANIM_MS the search reveal now also
+              uses. Row height/padding increased (13px -> 22px vertical) so
+              the two options actually fill the sheet instead of leaving a
+              dead gap below them. */}
+          <div onClick={(e) => e.stopPropagation()} style={{ ...cardGlass({ borderRadius: '18px 18px 0 0' }), padding: '18px 22px 34px', display: 'flex', flexDirection: 'column', animation: `gocSheetIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <span style={{ ...display(18) }}>{T('Cài đặt tin nhắn', 'Messaging settings')}</span>
               <span onClick={() => setSettingsOpen(false)} style={{ fontSize: 18, color: ink, cursor: 'pointer' }}>✕</span>
@@ -314,14 +332,14 @@ export default function Inbox() {
             <div
               onClick={() => { setSettingsOpen(false); setInboxView('archived'); }}
               data-testid="inbox-menu-archived"
-              style={{ padding: '13px 2px', borderTop: `1px solid ${rule}`, fontSize: 14.5, color: ink, cursor: 'pointer' }}
+              style={{ padding: '22px 2px', borderTop: `1px solid ${rule}`, fontSize: 14.5, color: ink, cursor: 'pointer' }}
             >
               {T('Đã lưu trữ', 'Archived')}
             </div>
             <div
               onClick={() => { setSettingsOpen(false); setFeedbackOpen(true); }}
               data-testid="inbox-menu-feedback"
-              style={{ padding: '13px 2px', borderTop: `1px solid ${rule}`, fontSize: 14.5, color: ink, cursor: 'pointer' }}
+              style={{ padding: '22px 2px', borderTop: `1px solid ${rule}`, borderBottom: `1px solid ${rule}`, fontSize: 14.5, color: ink, cursor: 'pointer' }}
             >
               {T('Gửi phản hồi', 'Give feedback')}
             </div>

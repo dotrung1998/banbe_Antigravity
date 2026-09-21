@@ -107,6 +107,12 @@ const initialState = {
   filterAttending: false,
   filterSaved: false,
   filterSoldOut: false,
+  // 2026-09-21 follow-up — rounds out the chip set (07-notifications.md).
+  filterNotAttending: false,
+  filterNotConfirmed: false,
+  filterNotSaved: false,
+  filterUpcoming: false,
+  filterEnded: false,
   // Reserve.jsx's Name field, ONLY used for the empty-display_name case
   // (08-payment-documents.md/01-hold-payment.md's 2026-09-17 follow-up #6):
   // once a real profiles.display_name exists it's shown read-only from
@@ -395,6 +401,26 @@ const initialState = {
   // layer a live ended/cancelled read on top without ever inventing cosmetic
   // fields (photos, description, …) the row doesn't have.
   liveEvent: null,
+  // 2026-09-21 follow-up (see 07-notifications.md) — same idea as
+  // `liveEvent` above, but BATCHED across every catalogue key Home might
+  // show at once (its own "Sự kiện của bạn" strip + the new "Sắp diễn ra"/
+  // "Đã kết thúc" filters), rather than one row for whichever single event
+  // is currently open. Keyed by catalogue key (== events.slug). Fixes a
+  // real bug: `EVENTS`' own `endedHoursAgo` (src/data/events.js) is a
+  // hardcoded number baked in at module-load time (e.g. `phokhuya: {
+  // endedHoursAgo: 10 }`) that never increases as real time passes — the
+  // "Clears after 48h" caption was checking against that frozen number, so
+  // an event could sit at "10 hours ago" forever and never actually clear.
+  homeLiveEvents: {},
+};
+
+// toggleHomeFilter()'s key -> state-field map (Home.jsx's HOME_EXTRA_FILTERS,
+// 07-notifications.md's 2026-09-21 follow-up) — module scope since it's
+// static, not recreated every render.
+const HOME_FILTER_STATE_KEY = {
+  attending: 'filterAttending', notAttending: 'filterNotAttending', notConfirmed: 'filterNotConfirmed',
+  saved: 'filterSaved', notSaved: 'filterNotSaved',
+  soldOut: 'filterSoldOut', upcoming: 'filterUpcoming', ended: 'filterEnded',
 };
 
 export const AREAS = [
@@ -700,6 +726,20 @@ export function GocProvider({ children }) {
     })();
     return () => { active = false; };
   }, [set, s.eventKey]);
+
+  // 2026-09-21 follow-up — the batched counterpart of the single-event
+  // fetch just above, for Home's "Sự kiện của bạn" strip (real 48h-after-
+  // ended expiry, see `homeLiveEvents`'s own doc comment) and its new
+  // "Sắp diễn ra"/"Đã kết thúc" filter chips. Public information, same as
+  // the single-event fetch — runs for every visitor, no `s.user?.id` gate.
+  const loadHomeLiveEvents = useCallback(async () => {
+    const { data } = await supabase.from('events')
+      .select('slug, status, starts_at, cancelled_at, cancel_reason')
+      .in('slug', EVENTS.map(e => e.key));
+    const map = {};
+    for (const row of data || []) map[row.slug] = row;
+    set({ homeLiveEvents: map });
+  }, [set]);
 
   // A toast auto-dismisses in two steps: `leaving: true` swaps it to the
   // exit animation (gocToastOut, index.css), then a second timeout actually
@@ -2117,7 +2157,29 @@ export function GocProvider({ children }) {
   const palette = curEvent.palette;
 
   const isSaved = useCallback((k) => s.favorites.includes(k), [s.favorites]);
-  const isGoing = useCallback((k) => s.attending.includes(k), [s.attending]);
+  // 2026-09-21 follow-up (Home filters, see 07-notifications.md) —
+  // narrowed from `s.attending.includes(k)` (any booking that merely HOLDS
+  // A SEAT: status IN pending/confirmed/attended — the canonical "Going"
+  // set note 04/12-home-filters.md deliberately chose for seat-holding
+  // purposes) to genuinely PAID/confirmed only (`payment_state ===
+  // 'confirmed'`, which a free/instant-confirm booking also gets
+  // immediately — 053_hold_seats_guest_notification.sql). Requested
+  // explicitly this pass so the new "Chưa xác nhận" filter (still holding
+  // a seat but NOT yet confirmed) is meaningful against "Attending" —
+  // otherwise the two would overlap. `isGoing` has exactly one consumer
+  // (Home.jsx) confirmed by repo-wide grep before narrowing it, so this
+  // doesn't ripple into Account.jsx's/EventList.jsx's own "Going" count,
+  // which read `s.attending` directly and are UNCHANGED (still seat-
+  // holding, not payment-scoped — out of this ticket's scope).
+  const isGoing = useCallback((k) => s.paymentBookings.some(b => b.event_id === k && b.payment_state === 'confirmed'), [s.paymentBookings]);
+  // The new "Chưa xác nhận" filter's own predicate — has an active
+  // (non-cancelled/expired) booking for this event that ISN'T confirmed
+  // yet: still `holding` (paid nothing so far) or `pending_verification`
+  // (proof submitted, awaiting the organizer). Reuses the same
+  // `s.paymentBookings` Home already loads — no new query.
+  const isAwaitingConfirmation = useCallback((k) => s.paymentBookings.some(b =>
+    b.event_id === k && ['pending', 'confirmed', 'attended'].includes(b.status) && ['holding', 'pending_verification'].includes(b.payment_state)
+  ), [s.paymentBookings]);
   const toggleFav = useCallback((k) => set(prev => ({ favorites: prev.favorites.includes(k) ? prev.favorites.filter(x => x !== k) : [...prev.favorites, k] })), [set]);
   const toggleFollow = useCallback((k) => set(prev => ({ following: prev.following.includes(k) ? prev.following.filter(x => x !== k) : [...prev.following, k] })), [set]);
 
@@ -2562,15 +2624,19 @@ export function GocProvider({ children }) {
   // ---- filter ----
   const pickFilter = useCallback((key) => set({ filter: key }), [set]);
   const clearFilters = useCallback(() => set({
-    filter: 'all', area: 'all', filterAttending: false, filterSaved: false, filterSoldOut: false,
+    filter: 'all', area: 'all',
+    filterAttending: false, filterSaved: false, filterSoldOut: false,
+    filterNotAttending: false, filterNotConfirmed: false, filterNotSaved: false, filterUpcoming: false, filterEnded: false,
   }), [set]);
-  // Home's second chip row (12-home-filters.md) — each independent, AND-combined
-  // with `filter`/`area` and with each other, not mutually exclusive.
+  // Home's second chip row (12-home-filters.md, extended 2026-09-21) — each
+  // independent, AND-combined with `filter`/`area` and with each other, not
+  // mutually exclusive (toggling e.g. both "attending" and "notAttending"
+  // together is allowed and simply yields an empty feed, same as any other
+  // contradictory combination in this AND-combined chip pattern — "Xem tất
+  // cả" already recovers from that).
   const toggleHomeFilter = useCallback((key) => set(prev => {
-    if (key === 'attending') return { filterAttending: !prev.filterAttending };
-    if (key === 'saved') return { filterSaved: !prev.filterSaved };
-    if (key === 'soldOut') return { filterSoldOut: !prev.filterSoldOut };
-    return {};
+    const stateKey = HOME_FILTER_STATE_KEY[key];
+    return stateKey ? { [stateKey]: !prev[stateKey] } : {};
   }), [set]);
 
   // ---- share ----
@@ -3713,7 +3779,7 @@ export function GocProvider({ children }) {
 
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
-    isSaved, isGoing, toggleFav, toggleFollow,
+    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
@@ -3742,7 +3808,7 @@ export function GocProvider({ children }) {
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
-    isSaved, isGoing, toggleFav, toggleFollow,
+    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,

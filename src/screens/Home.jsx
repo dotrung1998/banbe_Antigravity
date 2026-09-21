@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg } from '../data/events.js';
-import { formatCountdown, msUntil, pickSoonest, useTicking } from '../lib/countdown.js';
+import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert } from '../theme.js';
 
 // Second, independent chip row (12-home-filters.md) — multi-select,
@@ -9,10 +9,22 @@ import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChi
 // third incompatible filter system: each reuses an existing definition
 // (isGoing's status set from note 04, isSaved's favorites, e.soldOut's
 // static catalogue flag) rather than recomputing any of them.
+//
+// 2026-09-21 follow-up (07-notifications.md) — extended with notSaved/
+// notAttending/notConfirmed (inverses/refinements of the original three,
+// now that isGoing is scoped to genuinely-confirmed — see GocContext.jsx's
+// own comment on isGoing) plus upcoming/ended, which round out the set
+// using the same live-status data the "Sự kiện của bạn" strip's real 48h
+// expiry now needs anyway (homeLiveEvents) — not a separate concept.
 const HOME_EXTRA_FILTERS = [
   { key: 'attending', vi: 'Đang tham gia', en: 'Attending' },
+  { key: 'notAttending', vi: 'Chưa tham gia', en: 'Not attending' },
+  { key: 'notConfirmed', vi: 'Chưa xác nhận', en: 'Not confirmed' },
   { key: 'saved', vi: 'Đã lưu', en: 'Saved' },
+  { key: 'notSaved', vi: 'Chưa lưu', en: 'Not saved' },
   { key: 'soldOut', vi: 'Hết chỗ', en: 'Sold out' },
+  { key: 'upcoming', vi: 'Sắp diễn ra', en: 'Upcoming' },
+  { key: 'ended', vi: 'Đã kết thúc', en: 'Ended' },
 ];
 
 export const FILTER_DEFS = [
@@ -25,10 +37,10 @@ export const FILTER_DEFS = [
 
 export default function Home() {
   const {
-    state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, toggleFav,
-    goEvent, openArea, toggleLang, pickFilter, clearFilters, toggleHomeFilter,
+    state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, isAwaitingConfirmation, toggleFav,
+    goEvent, openArea, toggleLang, toggleTheme, pickFilter, clearFilters, toggleHomeFilter,
     becomeHost, switchToHost,
-    canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary,
+    canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary, loadHomeLiveEvents,
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
   } = useGoc();
 
@@ -50,6 +62,18 @@ export default function Home() {
       loadOrganizerHoldingSummary();
     }
   }, [s.user?.id, canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary]);
+
+  // 2026-09-21 follow-up — real (not baked-in) ended/cancelled status for
+  // every catalogue event Home might show, public info so this runs for
+  // every visitor (see GocContext.jsx's own comment on loadHomeLiveEvents).
+  useEffect(() => { loadHomeLiveEvents(); }, [loadHomeLiveEvents]);
+  // Merges a real DB row's live status onto a static catalogue event —
+  // same idea as curEvent's own single-event version (GocContext.jsx), just
+  // applied to every event this screen might list instead of one.
+  const withLive = (e) => {
+    const overrides = liveEventOverrides(s.homeLiveEvents[e.key], e);
+    return overrides ? { ...e, ...overrides } : e;
+  };
 
   const myHolding = pickSoonest(s.paymentBookings, 'holding', 'hold_expires_at');
   const myPendingVerification = (s.paymentBookings || [])
@@ -92,10 +116,16 @@ export default function Home() {
 
   const demoted = e => (e.cancelled && (e.cancelledHoursAgo == null || e.cancelledHoursAgo >= 2)) ? 1 : 0;
   const feed = useMemo(() => EVENTS
+    .map(withLive)
     .filter(e => !e.inviteOnly && (s.filter === 'all' || e.catKey === s.filter || e.cat2Key === s.filter) && curArea.match(e))
     .filter(e => !s.filterAttending || isGoing(e.key))
+    .filter(e => !s.filterNotAttending || !isGoing(e.key))
+    .filter(e => !s.filterNotConfirmed || isAwaitingConfirmation(e.key))
     .filter(e => !s.filterSaved || isSaved(e.key))
+    .filter(e => !s.filterNotSaved || !isSaved(e.key))
     .filter(e => !s.filterSoldOut || e.soldOut)
+    .filter(e => !s.filterUpcoming || (!e.cancelled && e.endedHoursAgo == null))
+    .filter(e => !s.filterEnded || e.endedHoursAgo != null)
     .sort((a, b) => demoted(a) - demoted(b))
     .map(e => {
       let seats = e.seats;
@@ -113,12 +143,20 @@ export default function Home() {
         goingLabel: trStatus('Đang tham gia' + ((s.tickets[e.key] || 1) > 1 ? ' ▪︎ ' + s.tickets[e.key] + ' vé' : '')),
         saveLabel: saved ? T('Đã lưu', 'Saved') : T('Lưu', 'Save'),
       };
-    }), [s.filter, s.filterAttending, s.filterSaved, s.filterSoldOut, s.tickets, curArea, isSaved, isGoing, trStatus, stripKm, T]);
+    }), [s.filter, s.filterAttending, s.filterNotAttending, s.filterNotConfirmed, s.filterSaved, s.filterNotSaved, s.filterSoldOut, s.filterUpcoming, s.filterEnded, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, isAwaitingConfirmation, trStatus, stripKm, T]);
 
   const heldKey = heldEv ? heldEv.key : null;
   const savedKeys = [...new Set([...s.favorites, ...s.attending, ...s.invited, ...(heldKey ? [heldKey] : [])])];
+  // Task 2a (2026-09-21 follow-up) — real 48h-after-ENDED expiry: `withLive`
+  // merges the actual DB row's status/starts_at (homeLiveEvents) so
+  // `endedHoursAgo` is a genuinely ticking value instead of the static
+  // catalogue's baked-in-forever number — an upcoming/ongoing event's
+  // `endedHoursAgo` stays `null` (liveEventOverrides only sets it once
+  // `status === 'ended'`), so this clause never fires for anything that
+  // hasn't actually finished yet.
   const savedList = savedKeys
     .map(k => EVENTS.find(e => e.key === k)).filter(Boolean)
+    .map(withLive)
     .filter(e => !(e.endedHoursAgo != null && e.endedHoursAgo > 48))
     .map(e => {
       const nTix = s.tickets[e.key] || 1;
@@ -152,9 +190,18 @@ export default function Home() {
       <div style={{ padding: '70px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 126, height: 'auto', display: 'block', margin: '0 0 2px' }} />
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
+          {/* Task 2c (2026-09-21 follow-up) — a quick Appearance (light/dark)
+              toggle next to the existing language/area switchers, separated
+              by this app's own "▪" glyph (already used throughout its copy,
+              e.g. event captions like "Th 5, 09.07 ▪ 21:00") rather than a
+              new divider style. Wired to the SAME `toggleTheme` Preferences.jsx
+              already uses — no parallel theme state. */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
             <span onClick={toggleLang} style={{ fontSize: 11, color: ink, cursor: 'pointer', letterSpacing: '0.06em' }}>{T('English', 'Tiếng Việt')}</span>
+            <span style={{ fontSize: 9, color: ink, opacity: 0.4 }}>▪</span>
             <span onClick={openArea} style={{ fontSize: 11, color: ink, cursor: 'pointer' }}>banbe ▪︎ {curArea.key === 'all' ? 'Sài Gòn' : curArea.label} ▾</span>
+            <span style={{ fontSize: 9, color: ink, opacity: 0.4 }}>▪</span>
+            <span onClick={toggleTheme} data-testid="home-theme-toggle" style={{ fontSize: 11, color: ink, cursor: 'pointer' }}>{s.theme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}</span>
           </div>
         </div>
       </div>
@@ -203,7 +250,7 @@ export default function Home() {
         <div style={{ padding: '16px 20px 4px', borderBottom: `1px solid ${rule}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
             <span style={{ ...display(15) }}>{T('Sự kiện của bạn', 'Your events')}</span>
-            <span style={{ fontSize: 11.5, color: ink }}>{T('Tự xóa sau 48 giờ', 'Clears after 48h')}</span>
+            <span style={{ fontSize: 11.5, color: ink }}>{T('Sự kiện đã qua sẽ ẩn sau 48h', 'Past events clear after 48h')}</span>
           </div>
           <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6 }}>
             {savedList.map(sv => (
@@ -231,7 +278,10 @@ export default function Home() {
 
       <div style={{ display: 'flex', gap: 8, padding: '0 20px 14px', overflowX: 'auto' }}>
         {HOME_EXTRA_FILTERS.map(f => {
-          const active = f.key === 'attending' ? s.filterAttending : f.key === 'saved' ? s.filterSaved : s.filterSoldOut;
+          // Every filter key maps to its state field by simple
+          // capitalization (attending -> filterAttending, notSaved ->
+          // filterNotSaved, ...) — see GocContext.jsx's HOME_FILTER_STATE_KEY.
+          const active = s['filter' + f.key[0].toUpperCase() + f.key.slice(1)];
           return (
             <span
               key={f.key}

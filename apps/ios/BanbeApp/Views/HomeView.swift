@@ -65,6 +65,11 @@ struct HomeView: View {
             // chance to start.
             startTickingIfNeeded()
         }
+        // 2026-09-21 follow-up — real ended/cancelled status for every
+        // catalogue event this screen might show, public info so this runs
+        // for every visitor (no `userID` gate), same as `loadLiveEventStatus`
+        // does for a single open event.
+        .task { await app.loadHomeLiveEvents() }
         .onAppear { startTickingIfNeeded() }
         .onDisappear { tickTask?.cancel() }
     }
@@ -144,20 +149,38 @@ struct HomeView: View {
 
     // MARK: Header
 
+    // Task 2c (2026-09-21 follow-up) — a quick Appearance (light/dark)
+    // toggle next to the existing language/area switchers, separated by
+    // this app's own "▪" glyph (already used throughout its copy, e.g.
+    // event captions like "Th 5, 09.07 ▪ 21:00") rather than a new divider
+    // style. Wired to the SAME `toggleTheme` Preferences already uses — no
+    // parallel theme state.
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             BanbeLogo(kind: .wordmark, width: 126)
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Button(app.T("English", "Tiếng Việt")) { app.toggleLang() }
                         .font(.system(size: 11))
                         .accessibilityIdentifier("header.lang")
+                    Text("▪").font(.system(size: 9)).opacity(0.4)
                     Button("banbe ▪︎ \(app.currentArea.key == "all" ? "Sài Gòn" : app.currentArea.label) ▾") {
                         app.openArea()
                     }
                     .font(.system(size: 11))
                     .accessibilityIdentifier("header.area")
+                    Text("▪").font(.system(size: 9)).opacity(0.4)
+                    // No `toggleTheme()` exists on iOS — Preferences.swift's
+                    // own theme picker already uses `pickTheme(_:)` directly
+                    // (the exact write path, incl. persistence); this just
+                    // calls the same function with the flipped value rather
+                    // than adding a parallel toggle.
+                    Button(app.theme == "dark" ? app.T("Sáng", "Light") : app.T("Tối", "Dark")) {
+                        app.pickTheme(app.theme == "dark" ? "light" : "dark")
+                    }
+                    .font(.system(size: 11))
+                    .accessibilityIdentifier("header.theme")
                 }
             }
         }
@@ -178,7 +201,7 @@ struct HomeView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(app.T("Sự kiện của bạn", "Your events")).font(BanbeTheme.display(15))
                 Spacer()
-                Text(app.T("Tự xóa sau 48 giờ", "Clears after 48h")).font(.system(size: 11.5))
+                Text(app.T("Sự kiện đã qua sẽ ẩn sau 48h", "Past events clear after 48h")).font(.system(size: 11.5))
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 10) {
@@ -263,11 +286,20 @@ struct HomeView: View {
     // third incompatible filter system: each reuses an existing definition
     // (isGoing's status set from note 04, isSaved's favorites, .soldOut's
     // static catalogue flag) rather than recomputing any of them.
+    //
+    // 2026-09-21 follow-up — extended with notAttending/notConfirmed/
+    // notSaved/upcoming/ended (mirrors src/screens/Home.jsx's
+    // HOME_EXTRA_FILTERS exactly).
     private var homeExtraFilterChips: some View {
         let chips: [(key: String, vi: String, en: String, active: Bool)] = [
             ("attending", "Đang tham gia", "Attending", app.filterAttending),
+            ("notAttending", "Chưa tham gia", "Not attending", app.filterNotAttending),
+            ("notConfirmed", "Chưa xác nhận", "Not confirmed", app.filterNotConfirmed),
             ("saved", "Đã lưu", "Saved", app.filterSaved),
+            ("notSaved", "Chưa lưu", "Not saved", app.filterNotSaved),
             ("soldOut", "Hết chỗ", "Sold out", app.filterSoldOut),
+            ("upcoming", "Sắp diễn ra", "Upcoming", app.filterUpcoming),
+            ("ended", "Đã kết thúc", "Ended", app.filterEnded),
         ]
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
