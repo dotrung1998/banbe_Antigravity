@@ -579,6 +579,26 @@ Both `vite build` and `xcodebuild` succeed.
 
 New migration reassigns each of the 21 demo event ids (same fixed id list as `020`) a fresh `starts_at` (`event_date`/`event_time` updated to match) with a realistic spread — 35% clearly past (1-45 days ago), 30% very soon/this week (0-6 days out), 35% further out (1-9 weeks out) — and sets `status` from it (`'ended'` if past, `'live'` if not), leaving any `'cancelled'`/`'draft'` row (e.g. `bandai`) untouched per its own intentional status. Idempotent/safe to re-run (fixed id list, no seed/insert side effects) but does re-randomize on every apply, which is fine — nothing downstream is keyed to a specific prior random date.
 
-**Not yet applied to production**: this session's sandbox denied the `supabase db push` for this migration specifically (classified as a production deploy needing explicit user approval) — migration file is written and correct, but the remote database still has the old frozen 2026-07-08..07-15 week and stale `status` values until it's pushed. Every other change in this pass (toast controls, Inbox badge) needed no migration and is live in code as of this commit.
+**Applied to production** in the follow-up below (2026-09-21), once authorized — confirmed via `migration list` (`20260921000063` now shows matching local/remote).
 
 `vite build` clean; iOS `xcodegen generate` + `xcodebuild -destination 'generic/platform=iOS Simulator'` BUILD SUCCEEDED.
+
+## 2026-09-21 follow-up — real message read-tracking, thread-count Inbox badge, unread divider, Inbox/Chat redesign
+
+**Root cause confirmed** (matches the user's own report of a badge stuck at "9+"): grep for any code path writing `messages.read_at` returned zero hits before this pass — the badge added in the prior entry above counted rows that could never leave the unread state, so it only ever grew.
+
+**Task 1a — real read-tracking**: new `markThreadMessagesRead(threadId)` (`GocContext.jsx`, right before `loadChatMessages`) / `markThreadMessagesRead(_:)` (`AppState+Data.swift`, right after `loadChatMessages`) — updates `read_at` to now on rows in that thread where `read_at IS NULL AND sender_id != me`. **Required a new migration**: `messages` had SELECT/INSERT RLS (003) and a sender-scoped DELETE policy (054) but **no UPDATE policy at all** (same class of gap as 054 found for DELETE) — an update would have silently affected zero rows under RLS's default-deny. New migration `20260921000064_064_messages_update_read_by_participant.sql` adds `messages_update_participant`, scoped to the same thread-participant check `messages_select_thread_participant` already uses. Applied via `supabase db push`, confirmed via `migration list`.
+
+**Task 1b/c — thread-count badge, no cap**: the Inbox badge's poll now fetches `{thread_id}` rows (not a head/count query) and counts distinct thread ids — a 5-message thread counts once. `BottomTabBar.jsx`/`BottomTabBar.swift`'s badge render gained a per-item `badgeCapped` flag (true only for Notifications) so the Inbox badge shows the real number uncapped, while the bell's own "9+" convention is untouched.
+
+**Task 2 — unread divider**: `loadChatMessages` gained a `computeDivider` flag (only true on `openThread`/`openChatFor`'s initial load, never the 4s poll) — captures the id of the first unread message at that exact moment, then immediately marks it/those rows read. The Chat screen inserts a "— Chưa đọc —" row above the matching message. Since the poll never recomputes it and the rows are marked read at open time, a second visit has nothing left to mark the boundary at, so it doesn't reappear.
+
+**Task 3a — merged Inbox avatar**: `loadInboxThreads()` now also fetches each thread's organizer owner/user profile and batches one more profiles query for avatar_url, storing the OTHER participant's avatar per row (host's when I'm the guest, guest's when I'm the organizer — organizers itself has no avatar column). Rendered as a small badge circle overlapping the event photo's corner, falling back to an initial-letter circle rather than a broken image.
+
+**Task 3b — Chat header**: new per-open "other participant name" state, set from the already-correct Inbox row name or from the event's organizer name for a guest-initiated chat; falls back to the old hostShort-only behavior for the one caller that doesn't know it (a new_message notification tap). Header now shows that name as the title, the event's date + name as a subtitle, and a "Chi tiết"/"Details" link to Event Detail.
+
+**Task 3c — per-message sender/timestamp**: each bubble now renders a small "{sender} · {HH:mm}" line above it.
+
+**Task 3d — payment-status system-message cards**: `messages.kind` only has 'text'/'system' with no per-lifecycle-event kind, so per this ticket's own instruction this classifies by the exact body prefix each RPC already writes today (confirm_payment, reject_pending_guest, cancel_booking) in the UI layer only, no schema change — rendered as a bordered card with a status label and a "Xem chi tiết" link instead of a plain bubble.
+
+`vite build` clean; iOS `xcodegen generate` + `xcodebuild -destination 'generic/platform=iOS Simulator'` BUILD SUCCEEDED. Migration 064 applied to production, confirmed via `migration list`.

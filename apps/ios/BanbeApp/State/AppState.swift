@@ -141,6 +141,11 @@ struct InboxThread: Identifiable, Equatable {
     let eventKey: String
     let name: String
     let img: String
+    // Task 3a (07-notifications.md, 2026-09-21) — the OTHER participant's
+    // own profiles.avatar_url (host's when I'm the guest, guest's when I'm
+    // the organizer), for InboxView's merged-avatar badge. nil falls back
+    // to an initial-letter circle, never a broken image URL.
+    let otherAvatarURL: String?
     let snippet: String
     let lastAt: Date?
 }
@@ -262,6 +267,15 @@ final class AppState: ObservableObject {
     @Published var chatThreadID: UUID?
     @Published var chatMessages: [ChatMessage] = []
     @Published var chatDraft = ""
+    // The other participant's own name for ChatView's header (host name for
+    // a guest, guest name for an organizer) — set once per openThread()/
+    // openChat(for:) call, mirrors src/screens/Chat.jsx's chatOtherName.
+    @Published var chatOtherName = ""
+    // Id of the first unread message at the moment this thread was opened —
+    // drives ChatView's "— Chưa đọc —" divider. Captured once by
+    // loadChatMessages(_:computeDivider:) and never recomputed by the 4s
+    // poll, so it doesn't move while the thread stays open.
+    @Published var chatUnreadDividerID: UUID?
     @Published var inboxThreads: [InboxThread] = []
     // Unread message count for the Inbox tab badge (BottomTabBar.swift) —
     // mirrors unreadNotifications below, but there's no client-loaded

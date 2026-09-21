@@ -51,15 +51,21 @@ struct BottomTabBar: View {
         let label: String
         let action: () -> Void
         let badge: Int
+        // Notifications' badge (per-account read_at) caps at "9+" — this
+        // app's existing convention. Inbox's badge counts CONVERSATIONS
+        // with an unread message, not raw messages (refreshUnreadMessageCount(),
+        // AppState+Data.swift), which naturally stays small enough that a
+        // cap would just hide real information — shown uncapped per this
+        // ticket's own ask.
+        var badgeCapped: Bool = false
     }
 
     private var items: [Item] {
         [
             Item(id: "home", icon: { AnyView(HomeGlyph(color: $0)) }, label: app.T("Trang chính", "Home"), action: { app.goHome() }, badge: 0),
             Item(id: "map", icon: { AnyView(MapGlyph(color: $0)) }, label: app.T("Bản đồ", "Map"), action: { app.goMapExplore() }, badge: 0),
-            Item(id: "notifications", icon: { AnyView(NotificationsGlyph(color: $0)) }, label: app.T("Thông báo", "Notifications"), action: { app.goNotifications() }, badge: app.unreadNotifications),
-            // Unread count: messages.read_at IS NULL and sender_id isn't me,
-            // across every thread I participate in (guest or organizer side)
+            Item(id: "notifications", icon: { AnyView(NotificationsGlyph(color: $0)) }, label: app.T("Thông báo", "Notifications"), action: { app.goNotifications() }, badge: app.unreadNotifications, badgeCapped: true),
+            // Unread count: number of conversations with an unread message
             // — see refreshUnreadMessageCount() (AppState+Data.swift),
             // refreshed on the same 5s poll as unreadNotifications.
             Item(id: "inbox", icon: { AnyView(InboxGlyph(color: $0)) }, label: app.T("Tin nhắn", "Messages"), action: { app.goInbox() }, badge: app.unreadMessages),
@@ -153,7 +159,7 @@ struct BottomTabBar: View {
                             .opacity(activeID == item.id ? 1 : 0.86)
                             .frame(maxWidth: .infinity, minHeight: barHeight)
                         if item.badge > 0 {
-                            Text(item.badge > 9 ? "9+" : "\(item.badge)")
+                            Text(item.badgeCapped && item.badge > 9 ? "9+" : "\(item.badge)")
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 4)

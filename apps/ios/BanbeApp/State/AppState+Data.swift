@@ -64,6 +64,12 @@ struct NotificationReadUpdate: Encodable {
     let readAt: String
     enum CodingKeys: String, CodingKey { case readAt = "read_at" }
 }
+/// markThreadMessagesRead()'s own write — same shape as NotificationReadUpdate
+/// but stamps `now()` itself so every caller doesn't have to format one.
+struct MessageReadUpdate: Encodable {
+    let readAt: String = ISO8601DateFormatter().string(from: Date())
+    enum CodingKeys: String, CodingKey { case readAt = "read_at" }
+}
 /// The "•••" menu's "Đánh dấu chưa đọc" action (BUG 4) — the exact reverse
 /// of NotificationReadUpdate. A synthesized Encodable would SKIP an
 /// Optional<String> field entirely when nil (encodeIfPresent semantics),
@@ -116,12 +122,41 @@ private struct AttendanceBooking: Decodable {
         case proofPath = "proof_path"
     }
 }
+private struct MessageThreadIDRow: Decodable {
+    let threadId: UUID
+    enum CodingKeys: String, CodingKey { case threadId = "thread_id" }
+}
 private struct ProfileName: Decodable {
     let id: UUID
     let displayName: String?
     enum CodingKeys: String, CodingKey {
         case id
         case displayName = "display_name"
+    }
+}
+/// loadInboxThreads()'s own row shape — display_name AND avatar_url in one
+/// query, backing both the row title and the merged-avatar badge (Task 3a).
+private struct ProfileNameAvatar: Decodable {
+    let id: UUID
+    let displayName: String?
+    let avatarUrl: String?
+    enum CodingKeys: String, CodingKey {
+        case id
+        case displayName = "display_name"
+        case avatarUrl = "avatar_url"
+    }
+}
+/// loadInboxThreads()'s own organizer lookup — which profile owns a given
+/// organizer row, for the host-side avatar (organizers itself has no avatar
+/// column).
+private struct OrganizerOwnerRow: Decodable {
+    let id: String
+    let ownerId: UUID?
+    let userId: UUID?
+    enum CodingKeys: String, CodingKey {
+        case id
+        case ownerId = "owner_id"
+        case userId = "user_id"
     }
 }
 /// Row shapes for loadNotificationAvatarMaps()'s batch joins — notifications
@@ -768,14 +803,20 @@ extension AppState {
         notificationPollTask = nil
     }
 
-    /// Inbox tab badge (BottomTabBar.swift) — count of messages where
-    /// `read_at IS NULL` and `sender_id` isn't me, across every thread I'm a
-    /// participant in either as the guest (`threads.guest_id`) or as the
-    /// organizer (`threads.organizer_id` owned by me) — the exact same
-    /// thread-scoping loadInboxThreads() already uses, reused rather than
-    /// invented fresh. Piggybacks on startNotificationPolling()'s existing
-    /// 5s loop rather than its own timer, since this app has no realtime
-    /// subscription anywhere to hook into instead (03-dispute-chat.md).
+    /// Inbox tab badge (BottomTabBar.swift) — number of CONVERSATIONS with
+    /// at least one unread message (`read_at IS NULL`, `sender_id` isn't
+    /// me), across every thread I'm a participant in either as the guest
+    /// (`threads.guest_id`) or as the organizer (`threads.organizer_id`
+    /// owned by me) — the exact same thread-scoping loadInboxThreads()
+    /// already uses, reused rather than invented fresh. Piggybacks on
+    /// startNotificationPolling()'s existing 5s loop rather than its own
+    /// timer, since this app has no realtime subscription anywhere to hook
+    /// into instead (03-dispute-chat.md).
+    ///
+    /// 2026-09-21 follow-up: counts distinct threads, not raw unread
+    /// message rows — a thread with 5 unread messages counts once, matching
+    /// most messaging apps' own convention and BottomTabBar.swift's new
+    /// uncapped display for this badge (see its own comment).
     func refreshUnreadMessageCount() async {
         guard let uid = userID else { unreadMessages = 0; return }
         do {
@@ -800,14 +841,14 @@ extension AppState {
             let threadIDs = Array(Set((asGuest + asHost).map(\.id)))
             guard !threadIDs.isEmpty else { unreadMessages = 0; return }
 
-            let response: PostgrestResponse<[IDRow]> = try await SupabaseService.client
+            let unreadRows: [MessageThreadIDRow] = try await SupabaseService.client
                 .from("messages")
-                .select("id", count: .exact)
+                .select("thread_id")
                 .in("thread_id", values: threadIDs.map(\.uuidString))
                 .is("read_at", value: nil)
                 .neq("sender_id", value: uid.uuidString)
-                .execute()
-            unreadMessages = response.count ?? 0
+                .execute().value
+            unreadMessages = Set(unreadRows.map(\.threadId)).count
         } catch {
             print("refreshUnreadMessageCount failed:", error)
         }
@@ -1323,6 +1364,8 @@ extension AppState {
         chatBack = back
         chatThreadID = nil
         chatMessages = []
+        chatOtherName = EventCatalog.find(key)?.orgName ?? ""
+        chatUnreadDividerID = nil
         screen = .chat
 
         do {
@@ -1334,7 +1377,7 @@ extension AppState {
                 .execute().value
             if let found = existing.first {
                 chatThreadID = found.id
-                await loadChatMessages(found.id)
+                await loadChatMessages(found.id, computeDivider: true)
                 return
             }
             let events: [OrganizerRef] = try await SupabaseService.client
@@ -1350,32 +1393,66 @@ extension AppState {
                 .execute().value
             if let thread = created.first {
                 chatThreadID = thread.id
-                await loadChatMessages(thread.id)
+                await loadChatMessages(thread.id, computeDivider: true)
             }
         } catch {
             print("Could not open conversation:", error)
         }
     }
 
-    func openThread(id: UUID, eventKey: String, back: Screen) {
+    func openThread(id: UUID, eventKey: String, back: Screen, otherName: String = "") {
         self.eventKey = eventKey
         chatBack = back
         chatThreadID = id
         chatMessages = []
+        chatOtherName = otherName
+        chatUnreadDividerID = nil
         screen = .chat
-        Task { await loadChatMessages(id) }
+        Task { await loadChatMessages(id, computeDivider: true) }
     }
 
-    func loadChatMessages(_ threadID: UUID) async {
+    /// `computeDivider`: true only for the FIRST load of a thread-open (see
+    /// openThread/openChat(for:) above) — captures chatUnreadDividerID once
+    /// from whatever's unread at that moment, then immediately marks those
+    /// rows read. ChatView's own 4s poll calls this again with
+    /// computeDivider left false, so it only ever refreshes `chatMessages`
+    /// and never moves the divider while the thread stays open
+    /// (07-notifications.md).
+    func loadChatMessages(_ threadID: UUID, computeDivider: Bool = false) async {
         do {
-            chatMessages = try await SupabaseService.client
+            let rows: [ChatMessage] = try await SupabaseService.client
                 .from("messages")
                 .select("id, thread_id, sender_id, body, kind, created_at, read_at")
                 .eq("thread_id", value: threadID)
                 .order("created_at", ascending: true)
                 .execute().value
+            chatMessages = rows
+            if computeDivider {
+                let uid = userID
+                chatUnreadDividerID = rows.first { $0.readAt == nil && $0.senderId != uid }?.id
+                await markThreadMessagesRead(threadID)
+            }
         } catch {
             print("Failed to load messages:", error)
+        }
+    }
+
+    /// Task 1a — real read-tracking: messages.read_at was never written by
+    /// any code path in this app before this pass (confirmed by grep).
+    /// Scoped to "not sent by me" so a guest opening their own thread can
+    /// never mark their own outgoing messages read.
+    func markThreadMessagesRead(_ threadID: UUID) async {
+        guard let uid = userID else { return }
+        do {
+            try await SupabaseService.client
+                .from("messages")
+                .update(MessageReadUpdate())
+                .eq("thread_id", value: threadID)
+                .is("read_at", value: nil)
+                .neq("sender_id", value: uid.uuidString)
+                .execute()
+        } catch {
+            print("Failed to mark thread read:", error)
         }
     }
 
@@ -1455,14 +1532,34 @@ extension AppState {
                 lastByThread[message.threadId] = message
             }
 
-            let guestIDs = Array(Set(threads.compactMap { $0.guestId != uid ? $0.guestId : nil }))
-            var guestNames: [UUID: String] = [:]
-            if !guestIDs.isEmpty {
-                let profiles: [ProfileName] = try await SupabaseService.client
-                    .from("profiles").select("id, display_name")
-                    .in("id", values: guestIDs.map(\.uuidString))
+            // Task 3a (07-notifications.md, 2026-09-21) — the OTHER
+            // participant's own avatar for InboxView's merged-avatar badge:
+            // the guest's profiles.avatar_url when I'm the organizer, or the
+            // organizer's owner/user profile avatar_url when I'm the guest.
+            // organizers itself has no avatar column, hence the extra lookup.
+            let orgIDs = Array(Set(threads.map(\.organizerId)))
+            var orgOwnerByOrgID: [String: UUID] = [:]
+            if !orgIDs.isEmpty {
+                let orgRows: [OrganizerOwnerRow] = try await SupabaseService.client
+                    .from("organizers").select("id, owner_id, user_id")
+                    .in("id", values: orgIDs)
                     .execute().value
-                for profile in profiles { guestNames[profile.id] = profile.displayName }
+                for row in orgRows { orgOwnerByOrgID[row.id] = row.ownerId ?? row.userId }
+            }
+
+            let guestIDs = Array(Set(threads.compactMap { $0.guestId != uid ? $0.guestId : nil }))
+            let avatarUserIDs = Array(Set(guestIDs + orgOwnerByOrgID.values))
+            var guestNames: [UUID: String] = [:]
+            var avatarByUserID: [UUID: String] = [:]
+            if !avatarUserIDs.isEmpty {
+                let profiles: [ProfileNameAvatar] = try await SupabaseService.client
+                    .from("profiles").select("id, display_name, avatar_url")
+                    .in("id", values: avatarUserIDs.map(\.uuidString))
+                    .execute().value
+                for profile in profiles {
+                    guestNames[profile.id] = profile.displayName
+                    if let avatarUrl = profile.avatarUrl { avatarByUserID[profile.id] = avatarUrl }
+                }
             }
 
             inboxThreads = threads.compactMap { thread -> InboxThread? in
@@ -1477,11 +1574,13 @@ extension AppState {
                     name = guestName.isEmpty ? "Khách" : guestName
                 }
                 let prefix = last?.senderId == uid ? "Bạn: " : ""
+                let otherAvatarURL = iAmGuest ? orgOwnerByOrgID[thread.organizerId].flatMap { avatarByUserID[$0] } : avatarByUserID[thread.guestId ?? UUID()]
                 return InboxThread(
                     id: thread.id,
                     eventKey: thread.eventId,
                     name: name,
                     img: event.img,
+                    otherAvatarURL: otherAvatarURL,
                     snippet: last.map { prefix + $0.body } ?? "",
                     lastAt: last?.createdAt
                 )

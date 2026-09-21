@@ -28,9 +28,31 @@ struct InboxView: View {
                     .padding(.vertical, 80)
                 } else {
                     ForEach(app.inboxThreads) { thread in
-                        Button { app.openThread(id: thread.id, eventKey: thread.eventKey, back: .inbox) } label: {
+                        Button { app.openThread(id: thread.id, eventKey: thread.eventKey, back: .inbox, otherName: thread.name) } label: {
                             HStack(spacing: 16) {
-                                CatalogPhoto(path: thread.img, height: 56, width: 56, cornerRadius: 28)
+                                // Task 3a — merged avatar: a small badge
+                                // circle for the OTHER participant's own
+                                // photo, overlapping the event photo's
+                                // corner — mirrors src/screens/Inbox.jsx.
+                                ZStack(alignment: .bottomTrailing) {
+                                    CatalogPhoto(path: thread.img, height: 56, width: 56, cornerRadius: 28)
+                                    Group {
+                                        if let url = thread.otherAvatarURL, let imageURL = URL(string: url) {
+                                            AsyncImage(url: imageURL) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
+                                                .frame(width: 24, height: 24)
+                                                .clipShape(Circle())
+                                        } else {
+                                            Circle().fill(app.palette.ink)
+                                                .overlay(
+                                                    Text(String(thread.name.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
+                                                        .font(.system(size: 11, weight: .bold))
+                                                        .foregroundStyle(app.palette.paper)
+                                                )
+                                                .frame(width: 24, height: 24)
+                                        }
+                                    }
+                                    .overlay(Circle().stroke(app.palette.paper, lineWidth: 2))
+                                }
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(thread.name).font(BanbeTheme.display(18))
                                     Text(thread.snippet).font(.system(size: 13)).lineLimit(1)
@@ -84,6 +106,13 @@ struct ChatView: View {
         .onDisappear { pollTask?.cancel() }
     }
 
+    // Task 3b — the OTHER participant's own name (host name for a guest,
+    // guest name for an organizer), set once at openThread()/openChat(for:)
+    // time since it depends on which side of the thread I'm on, not just
+    // the event. Falls back to event.hostShort for the one caller that
+    // doesn't know it yet (a 'new_message' notification tap).
+    private var headerTitle: String { app.chatOtherName.isEmpty ? event.hostShort : app.chatOtherName }
+
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 1) {
@@ -92,13 +121,20 @@ struct ChatView: View {
                 }
                 .font(.system(size: 11))
                 .buttonStyle(.plain)
-                Text(event.hostShort).font(BanbeTheme.display(18))
+                .accessibilityIdentifier("chat.back")
+                Text(headerTitle).font(BanbeTheme.display(18))
+                // Task 3b — event date + name subtitle directly under the title.
+                Text("\(event.when) · \(event.name)")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(app.palette.ink.opacity(0.65))
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(app.T("Trả lời trong ngày", "Replies within a day")).font(.system(size: 10.5))
-                Text(app.userEmail ?? "").font(.system(size: 10))
-            }
+            Button(app.T("Chi tiết", "Details")) { app.goEvent(event.key) }
+                .font(.system(size: 11.5, weight: .semibold))
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(app.palette.field, in: Capsule())
+                .accessibilityIdentifier("chat.details")
         }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 22)
@@ -111,11 +147,30 @@ struct ChatView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
                     if app.chatMessages.isEmpty {
-                        bubble(text: event.greeting, mine: false, messageID: nil)
+                        bubble(text: event.greeting, mine: false, messageID: nil, senderLabel: headerTitle, createdAt: nil)
                     }
                     ForEach(app.chatMessages) { message in
-                        bubble(text: message.body, mine: message.senderId == app.userID, messageID: message.id)
+                        // Task 2 — unread divider: rendered once, right
+                        // above the first message that was unread at the
+                        // moment this thread was opened
+                        // (app.chatUnreadDividerID, captured once by
+                        // loadChatMessages(_:computeDivider:)). Naturally
+                        // disappears on the next open since those rows are
+                        // marked read immediately.
+                        if message.id == app.chatUnreadDividerID {
+                            unreadDivider
+                        }
+                        if message.kind == "system", let card = classifySystemMessage(message.body) {
+                            systemCard(card, messageID: message.id)
+                        } else {
+                            bubble(
+                                text: message.body, mine: message.senderId == app.userID,
+                                messageID: message.id,
+                                senderLabel: message.senderId == app.userID ? app.T("Bạn", "You") : headerTitle,
+                                createdAt: message.createdAt
+                            )
                             .id(message.id)
+                        }
                     }
                 }
                 .padding(.horizontal, 22)
@@ -129,37 +184,109 @@ struct ChatView: View {
         }
     }
 
-    private func bubble(text: String, mine: Bool, messageID: UUID?) -> some View {
-        HStack {
-            if mine { Spacer(minLength: 40) }
-            // Own messages only — messageID is nil for the static greeting
-            // placeholder, and a system note is never `mine` (senderId nil
-            // can't equal app.userID), so neither ever gets this.
-            if mine, let messageID {
-                Button {
-                    Task { await app.deleteMessage(messageID) }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(app.palette.ink.opacity(0.35))
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("chat.message.delete")
+    private var unreadDivider: some View {
+        HStack(spacing: 10) {
+            Rectangle().fill(app.palette.rule).frame(height: 1)
+            Text("— \(app.T("Chưa đọc", "Unread")) —")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(BanbeTheme.alert)
+            Rectangle().fill(app.palette.rule).frame(height: 1)
+        }
+        .opacity(0.55)
+        .padding(.vertical, 4)
+        .accessibilityIdentifier("chat.unreadDivider")
+    }
+
+    // Task 3d — payment-status system messages as a distinct inline card
+    // (reference: "Confirmed ... Show details"), not a plain text bubble.
+    // messages.kind only has 'text'/'system' (schema-confirmed) — no
+    // dedicated kind per lifecycle event — so this classifies by the exact
+    // body prefix each RPC already writes today: confirm_payment()
+    // (060:83), reject_pending_guest() (059:151), cancel_booking()
+    // (022:167). Content-based, in the UI layer only, mirrors
+    // src/screens/Chat.jsx's classifySystemMessage() exactly.
+    private func classifySystemMessage(_ body: String) -> (status: String, label: String)? {
+        if body.hasPrefix("Host marked payment received via") {
+            return ("confirmed", app.T("Đã xác nhận thanh toán", "Payment confirmed"))
+        }
+        if body.hasPrefix("Người tổ chức không nhận yêu cầu đặt chỗ này") || body.hasPrefix("Booking cancelled.") {
+            return ("declined", app.T("Đặt chỗ đã bị huỷ", "Booking cancelled"))
+        }
+        return nil
+    }
+
+    private func systemCard(_ card: (status: String, label: String), messageID: UUID) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(card.label)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(card.status == "confirmed" ? app.palette.ink : BanbeTheme.alert)
+            if let message = app.chatMessages.first(where: { $0.id == messageID }) {
+                Text(message.body)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(app.palette.ink.opacity(0.75))
             }
-            Text(text)
-                .font(.system(size: 13.5))
-                .lineSpacing(3)
-                .foregroundStyle(mine ? app.palette.paper : app.palette.ink)
-                .padding(.horizontal, 14).padding(.vertical, 11)
-                .background(
-                    mine ? app.palette.ink : app.palette.paper,
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(mine ? .clear : app.palette.rule, lineWidth: 1)
-                )
-            if !mine { Spacer(minLength: 40) }
+            Button(app.T("Xem chi tiết", "Show details")) { app.goEvent(event.key) }
+                .font(.system(size: 11.5, weight: .semibold))
+                .underline()
+                .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+        .foregroundStyle(app.palette.ink)
+        .accessibilityIdentifier("chat.systemCard")
+    }
+
+    private func formattedTime(_ date: Date?) -> String {
+        guard let date else { return "" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+
+    // Task 3c — each bubble shows its own sender + timestamp, not just a
+    // bare bubble. `createdAt` is nil only for the static greeting
+    // placeholder (no real row to time-stamp).
+    private func bubble(text: String, mine: Bool, messageID: UUID?, senderLabel: String, createdAt: Date?) -> some View {
+        VStack(alignment: mine ? .trailing : .leading, spacing: 3) {
+            if let createdAt {
+                Text("\(senderLabel) · \(formattedTime(createdAt))")
+                    .font(.system(size: 10))
+                    .foregroundStyle(app.palette.ink.opacity(0.5))
+                    .padding(.horizontal, 4)
+            }
+            HStack {
+                if mine { Spacer(minLength: 40) }
+                // Own messages only — messageID is nil for the static greeting
+                // placeholder, and a system note is never `mine` (senderId nil
+                // can't equal app.userID), so neither ever gets this.
+                if mine, let messageID {
+                    Button {
+                        Task { await app.deleteMessage(messageID) }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(app.palette.ink.opacity(0.35))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("chat.message.delete")
+                }
+                Text(text)
+                    .font(.system(size: 13.5))
+                    .lineSpacing(3)
+                    .foregroundStyle(mine ? app.palette.paper : app.palette.ink)
+                    .padding(.horizontal, 14).padding(.vertical, 11)
+                    .background(
+                        mine ? app.palette.ink : app.palette.paper,
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(mine ? .clear : app.palette.rule, lineWidth: 1)
+                    )
+                if !mine { Spacer(minLength: 40) }
+            }
         }
         .frame(maxWidth: .infinity, alignment: mine ? .trailing : .leading)
     }

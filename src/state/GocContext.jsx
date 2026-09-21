@@ -358,6 +358,17 @@ const initialState = {
   reasonPromptError: '',
   chatThreadId: null,
   chatMessages: [],
+  // The other participant's display name for the Chat header (host name
+  // when a guest is viewing, guest name when the organizer is viewing) —
+  // set once per openThread()/openChatFor() call, since it depends on which
+  // side of the thread the signed-in account is on, not just the event.
+  chatOtherName: '',
+  // Id of the first unread (read_at IS NULL, not sent by me) message at the
+  // moment this thread was opened — drives the "— Chưa đọc —" divider in
+  // Chat.jsx. Computed once per open (see loadChatMessages's `computeDivider`
+  // option) and never recomputed by the 4s poll, so it doesn't chase newly-
+  // read messages around while the thread stays open.
+  chatUnreadDividerId: null,
   inboxThreads: [],
   calAdded: false,
   // Bug 3 (15-organizer-checkin.md follow-up): the event key the calendar
@@ -894,11 +905,27 @@ export function GocProvider({ children }) {
     const lastByThread = {};
     for (const m of msgs || []) if (!lastByThread[m.thread_id]) lastByThread[m.thread_id] = m;
 
+    // Merged-avatar badge (Inbox.jsx): the OTHER participant's own photo —
+    // the guest's profiles.avatar_url when I'm the organizer, or the
+    // organizer's owner/user profile avatar_url when I'm the guest. Reuses
+    // the notification redesign's own `profiles.avatar_url` source (no new
+    // column), joined through `organizers.owner_id`/`user_id` for the host
+    // side since `organizers` itself has no avatar column.
+    const orgIds2 = [...new Set(allThreads.map(t => t.organizer_id).filter(Boolean))];
+    let orgOwnerByOrgId = {};
+    if (orgIds2.length) {
+      const { data: orgRows } = await supabase.from('organizers').select('id, owner_id, user_id').in('id', orgIds2);
+      orgOwnerByOrgId = Object.fromEntries((orgRows || []).map(o => [o.id, o.owner_id || o.user_id]));
+    }
+
     const guestIds = [...new Set(allThreads.filter(t => t.guest_id !== uid).map(t => t.guest_id).filter(Boolean))];
+    const avatarUserIds = [...new Set([...guestIds, ...Object.values(orgOwnerByOrgId).filter(Boolean)])];
     let guestNames = {};
-    if (guestIds.length) {
-      const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', guestIds);
+    let avatarByUserId = {};
+    if (avatarUserIds.length) {
+      const { data: profiles } = await supabase.from('profiles').select('id, display_name, avatar_url').in('id', avatarUserIds);
       guestNames = Object.fromEntries((profiles || []).map(p => [p.id, p.display_name]));
+      avatarByUserId = Object.fromEntries((profiles || []).filter(p => p.avatar_url).map(p => [p.id, p.avatar_url]));
     }
 
     const rows = allThreads.map(t => {
@@ -906,11 +933,13 @@ export function GocProvider({ children }) {
       const last = lastByThread[t.id];
       const iAmGuest = t.guest_id === uid;
       const name = iAmGuest ? ev.orgName : ((guestNames[t.guest_id] || '').trim() || 'Khách');
+      const otherAvatarUrl = iAmGuest ? avatarByUserId[orgOwnerByOrgId[t.organizer_id]] : avatarByUserId[t.guest_id];
       return {
         threadId: t.id,
         eventKey: t.event_id,
         name,
         img: ev.img,
+        otherAvatarUrl: otherAvatarUrl || null,
         snippet: last ? ((last.sender_id === uid ? 'Bạn: ' : '') + last.body) : '',
         lastAt: last?.created_at || null,
       };
@@ -923,8 +952,13 @@ export function GocProvider({ children }) {
   // poll (this app has no realtime subscription anywhere to hook into
   // instead, see 03-dispute-chat.md), reusing loadInboxThreads' exact
   // thread-scoping (guest_id = me, or organizer_id owned by me) rather than
-  // inventing a new join. Counts, not fetches, so it stays cheap even with
-  // a large thread list.
+  // inventing a new join.
+  //
+  // 2026-09-21 follow-up: counts CONVERSATIONS with at least one unread
+  // message, not raw unread message count — matches how most messaging apps
+  // show an unread badge (a 5-message thread counts once), and keeps this
+  // badge meaningfully small enough that BottomTabBar.jsx no longer caps it
+  // at "9+" the way the Notifications bell does.
   useEffect(() => {
     const uid = s.user?.id;
     if (!uid) { set({ unreadMessages: 0 }); return; }
@@ -943,13 +977,13 @@ export function GocProvider({ children }) {
       const threadIds = [...new Set([...(asGuest || []), ...asHost].map(t => t.id))];
       if (!active) return;
       if (!threadIds.length) { set({ unreadMessages: 0 }); return; }
-      const { count } = await supabase
+      const { data: unreadRows } = await supabase
         .from('messages')
-        .select('id', { count: 'exact', head: true })
+        .select('thread_id')
         .in('thread_id', threadIds)
         .is('read_at', null)
         .neq('sender_id', uid);
-      if (active) set({ unreadMessages: count || 0 });
+      if (active) set({ unreadMessages: new Set((unreadRows || []).map(r => r.thread_id)).size });
     };
     poll();
     const interval = setInterval(poll, 5000);
@@ -2962,24 +2996,49 @@ export function GocProvider({ children }) {
   // Real threads/messages (supabase/migrations/003_social_chat.sql) — this
   // used to be pure local state (`chats`) with no server backing at all.
   const chatOnType = useCallback((e) => set({ chatDraft: e.target.value }), [set]);
-  const loadChatMessages = useCallback(async (threadId) => {
+  // Task 1a — real read-tracking: messages.read_at was never written by any
+  // code path in this app before this pass (confirmed by grep). Scoped to
+  // "not sent by me" so a guest opening their own thread can never mark
+  // their own outgoing messages read.
+  const markThreadMessagesRead = useCallback(async (threadId) => {
+    const uid = s.user?.id;
+    if (!uid) return;
+    await supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('thread_id', threadId).is('read_at', null).neq('sender_id', uid);
+  }, [s.user?.id]);
+  // `computeDivider`: only true for the FIRST load of a thread-open (see
+  // openThread/openChatFor below) — captures chatUnreadDividerId once, from
+  // whatever's unread at that moment, then immediately marks those rows
+  // read. The 4s poll below calls this again with computeDivider left
+  // false, so it only ever refreshes `chatMessages` and never moves the
+  // divider while the thread stays open (07-notifications.md).
+  const loadChatMessages = useCallback(async (threadId, computeDivider) => {
     const { data, error } = await supabase
       .from('messages')
-      .select('id, sender_id, body, created_at')
+      .select('id, sender_id, body, kind, created_at, read_at')
       .eq('thread_id', threadId)
       .order('created_at', { ascending: true });
-    if (!error) set({ chatMessages: data || [] });
-  }, [set]);
+    if (error) return;
+    const rows = data || [];
+    const uid = s.user?.id;
+    if (computeDivider) {
+      const firstUnread = rows.find(m => !m.read_at && m.sender_id !== uid);
+      set({ chatMessages: rows, chatUnreadDividerId: firstUnread ? firstUnread.id : null });
+      markThreadMessagesRead(threadId);
+    } else {
+      set({ chatMessages: rows });
+    }
+  }, [set, s.user?.id, markThreadMessagesRead]);
   // Get-or-create the one thread between the signed-in guest and this
   // event's organizer. Never called for the organizer's own side of a
   // conversation — that always opens a specific, already-known thread
   // (see openThread, used from Inbox).
   const openChatFor = useCallback(async (key, back) => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'chat', authBackScreen: 'organizer' });
-    set({ screen: 'chat', eventKey: key, chatBack: back || 'organizer', chatThreadId: null, chatMessages: [] });
+    const otherName = findEvent(key)?.orgName || '';
+    set({ screen: 'chat', eventKey: key, chatBack: back || 'organizer', chatThreadId: null, chatMessages: [], chatOtherName: otherName, chatUnreadDividerId: null });
 
     const { data: existing } = await supabase.from('threads').select('id').eq('event_id', key).eq('guest_id', s.user.id).maybeSingle();
-    if (existing?.id) { set({ chatThreadId: existing.id }); loadChatMessages(existing.id); return; }
+    if (existing?.id) { set({ chatThreadId: existing.id }); loadChatMessages(existing.id, true); return; }
 
     const { data: event } = await supabase.from('events').select('organizer_id').eq('id', key).maybeSingle();
     if (!event?.organizer_id) return; // no real DB row for this event yet — nothing to open
@@ -2991,19 +3050,19 @@ export function GocProvider({ children }) {
     if (error) {
       // Another tab/request created it first — fetch what's there now.
       const { data: retry } = await supabase.from('threads').select('id').eq('event_id', key).eq('guest_id', s.user.id).maybeSingle();
-      if (retry?.id) { set({ chatThreadId: retry.id }); loadChatMessages(retry.id); }
+      if (retry?.id) { set({ chatThreadId: retry.id }); loadChatMessages(retry.id, true); }
       return;
     }
-    if (created?.id) { set({ chatThreadId: created.id }); loadChatMessages(created.id); }
+    if (created?.id) { set({ chatThreadId: created.id }); loadChatMessages(created.id, true); }
   }, [set, s.user, loadChatMessages]);
   // "Message the host" from an event/organizer/refund screen — always about
   // whichever event is currently open.
   const goChat = useCallback(() => openChatFor(s.eventKey, 'organizer'), [openChatFor, s.eventKey]);
   // Opens a specific, already-known thread — used from Inbox, on either side
   // (guest continuing a conversation, or organizer replying to a guest).
-  const openThread = useCallback((threadId, eventKey, back) => {
-    set({ screen: 'chat', eventKey, chatBack: back || 'inbox', chatThreadId: threadId, chatMessages: [] });
-    loadChatMessages(threadId);
+  const openThread = useCallback((threadId, eventKey, back, otherName) => {
+    set({ screen: 'chat', eventKey, chatBack: back || 'inbox', chatThreadId: threadId, chatMessages: [], chatOtherName: otherName || '', chatUnreadDividerId: null });
+    loadChatMessages(threadId, true);
   }, [set, loadChatMessages]);
   // openNotification is defined further down (after openAttendance exists to
   // route 'booking_requested' taps to it) — see the notifications section.

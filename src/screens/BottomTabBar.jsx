@@ -88,15 +88,18 @@ export default function BottomTabBar({ collapsed }) {
   const s = state;
 
   // Notifications' badge is s.unreadNotifications (bell inbox, per-account
-  // read_at). Inbox's badge is s.unreadMessages — messages.read_at IS NULL
-  // and sender_id isn't me, across every thread I'm a participant in; see
-  // the poll effect near loadInboxThreads in GocContext.jsx.
+  // read_at), capped at "9+" — this app's existing convention. Inbox's
+  // badge is s.unreadMessages — number of CONVERSATIONS with an unread
+  // message (not raw message count, see the poll effect near
+  // loadInboxThreads in GocContext.jsx), shown uncapped per this ticket's
+  // own ask: unlike a raw message count, a conversation count naturally
+  // stays small enough that "9+" would just be hiding real information.
   const items = useMemo(() => [
-    { key: 'home', icon: 'home', onClick: goHome, label: T('Trang chính', 'Home'), testId: 'tab-home', badge: 0 },
-    { key: 'mapExplore', icon: 'map', onClick: goMapExplore, label: T('Bản đồ', 'Map'), testId: 'tab-map', badge: 0 },
-    { key: 'notifications', icon: 'notifications', onClick: goNotifications, label: T('Thông báo', 'Notifications'), testId: 'tab-notifications', badge: s.unreadNotifications || 0 },
-    { key: 'inbox', icon: 'inbox', onClick: goInbox, label: T('Tin nhắn', 'Messages'), testId: 'tab-inbox', badge: s.unreadMessages || 0 },
-    { key: 'profile', icon: 'profile', onClick: goProfile, label: T('Tài khoản', 'Account'), testId: 'tab-profile', badge: 0 },
+    { key: 'home', icon: 'home', onClick: goHome, label: T('Trang chính', 'Home'), testId: 'tab-home', badge: 0, badgeCapped: false },
+    { key: 'mapExplore', icon: 'map', onClick: goMapExplore, label: T('Bản đồ', 'Map'), testId: 'tab-map', badge: 0, badgeCapped: false },
+    { key: 'notifications', icon: 'notifications', onClick: goNotifications, label: T('Thông báo', 'Notifications'), testId: 'tab-notifications', badge: s.unreadNotifications || 0, badgeCapped: true },
+    { key: 'inbox', icon: 'inbox', onClick: goInbox, label: T('Tin nhắn', 'Messages'), testId: 'tab-inbox', badge: s.unreadMessages || 0, badgeCapped: false },
+    { key: 'profile', icon: 'profile', onClick: goProfile, label: T('Tài khoản', 'Account'), testId: 'tab-profile', badge: 0, badgeCapped: false },
   ], [goHome, goMapExplore, goNotifications, goInbox, goProfile, T, s.unreadNotifications, s.unreadMessages]);
 
   // FEATURE — scrub-to-select: press anywhere on the bar and drag; a soft
@@ -283,7 +286,7 @@ export default function BottomTabBar({ collapsed }) {
                   lineHeight: '14px', textAlign: 'center',
                 }}
               >
-                {item.badge > 9 ? '9+' : item.badge}
+                {item.badgeCapped && item.badge > 9 ? '9+' : item.badge}
               </span>
             )}
           </div>

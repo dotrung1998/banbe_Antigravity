@@ -15,8 +15,24 @@ export default function Inbox() {
       {s.inboxThreads.length > 0 ? (
         <div style={{ padding: '14px 24px 40px' }}>
           {s.inboxThreads.map(c => (
-            <div key={c.threadId} onClick={() => openThread(c.threadId, c.eventKey, 'inbox')} style={{ display: 'flex', gap: 16, alignItems: 'center', padding: '16px 0', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-              <div style={bg(c.img, { flex: 'none', width: 56, height: 56, borderRadius: '50%' })} />
+            <div key={c.threadId} onClick={() => openThread(c.threadId, c.eventKey, 'inbox', c.name)} style={{ display: 'flex', gap: 16, alignItems: 'center', padding: '16px 0', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+              <div style={{ position: 'relative', flex: 'none', width: 56, height: 56 }}>
+                <div style={bg(c.img, { width: 56, height: 56, borderRadius: '50%' })} />
+                {/* Task 3a — merged avatar: a small badge circle for the
+                    OTHER participant's own photo (host when I'm the guest,
+                    guest when I'm the organizer), overlapping the event
+                    photo's corner — mirrors the reference screenshot's
+                    property-photo + person-photo pattern. Falls back to an
+                    initial-letter circle rather than nothing when that
+                    person has no avatar_url on file. */}
+                {c.otherAvatarUrl ? (
+                  <div style={{ ...bg(c.otherAvatarUrl, { width: 24, height: 24, borderRadius: '50%' }), position: 'absolute', right: -2, bottom: -2, border: `2px solid ${paper}` }} />
+                ) : (
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', position: 'absolute', right: -2, bottom: -2, border: `2px solid ${paper}`, background: ink, color: paper, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {(c.name || '?').trim().charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
                 <span style={{ ...display(18, { lineHeight: 1.15 }) }}>{c.name}</span>
                 <span style={{ fontSize: 13, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.snippet}</span>
