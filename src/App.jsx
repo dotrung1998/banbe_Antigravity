@@ -88,7 +88,12 @@ function Shell() {
   const scrollRaf = useRef(null);
   const pendingScrollTop = useRef(0);
   const [barCollapsed, setBarCollapsed] = useState(false);
-  const showBar = showsBottomBar(state.screen);
+  // Task 1 (2026-09-22 follow-up, 07-notifications.md) — a fullscreen
+  // StoryViewer session must suppress the dock entirely, not just visually
+  // (it fully unmounts here, so there's nothing left to intercept taps —
+  // the same "hidden, not merely lower z-index" bar this ticket asks for
+  // on iOS's separate-UIWindow overlay).
+  const showBar = showsBottomBar(state.screen) && !state.storyViewer;
 
   useLayoutEffect(() => {
     const el = scrollRef.current;

@@ -205,6 +205,11 @@ final class AppState: ObservableObject {
     private var lastScaffoldScrollOffset: CGFloat = 0
     @Published var eventKey: String = "bepnho"
     @Published var eventBackScreen: Screen = .home
+    // Task 4C (2026-09-22 follow-up, 07-notifications.md) — set only by
+    // goEventFromStory(), holds the exact StoryViewer position to restore
+    // when backFromEvent() returns from an event opened via a story's own
+    // card/CTA.
+    @Published var storyReturnSnapshot: StoryViewerState?
     @Published var authReturnScreen: Screen = .home
     @Published var authBackScreen: Screen = .home
     /// True only when Login was reached by force (the mandatory post-
@@ -1149,6 +1154,25 @@ final class AppState: ObservableObject {
         if screen != .event && screen != .organizer { eventBackScreen = screen }
         eventKey = key
         screen = .event
+        // A fresh, non-story-originated event open invalidates any pending
+        // story-return snapshot — see goEventFromStory()'s own comment.
+        storyReturnSnapshot = nil
+        Task { await loadBookingForCurrentEvent() }
+        Task { await loadLiveEventStatus() }
+    }
+    /// Task 4C (2026-09-22 follow-up) — tapping an event-share story's
+    /// card/CTA. `screen` was never changed while the story overlay was up
+    /// (StoryViewerView renders independently of `screen`, see RootView),
+    /// so the current `screen` here is already whichever screen the story
+    /// was opened from (Home/Profile) — exactly what `eventBackScreen`
+    /// already wants, reused verbatim rather than a second back-target
+    /// concept.
+    func goEventFromStory(_ key: String) {
+        if screen != .event && screen != .organizer { eventBackScreen = screen }
+        storyReturnSnapshot = storyViewer
+        storyViewer = nil
+        eventKey = key
+        screen = .event
         Task { await loadBookingForCurrentEvent() }
         Task { await loadLiveEventStatus() }
     }
@@ -1164,6 +1188,10 @@ final class AppState: ObservableObject {
             returnToMapExplore()
         } else {
             screen = eventBackScreen
+        }
+        if let snapshot = storyReturnSnapshot {
+            storyViewer = snapshot
+            storyReturnSnapshot = nil
         }
     }
 

@@ -394,6 +394,10 @@ const initialState = {
   // progression viewer is open. A separate concept from chatPhotoViewer/
   // photoViewer (14-photo-viewer.md) — its own dismiss/back semantics.
   storyViewer: null,
+  // Task 4C (2026-09-22 follow-up) — set only by goEventFromStory(), holds
+  // the exact StoryViewer position to restore when backFromEvent() returns
+  // from an event opened via a story's own card/CTA.
+  storyReturnSnapshot: null,
   // { file, url } while the "create a story" camera/picker preview
   // (Retake / Use Photo) is open, from Account.
   storyCreatePreview: null,
@@ -2237,7 +2241,7 @@ export function GocProvider({ children }) {
     if (!s.user) return set({ homeStories: [] });
     const { data: rows, error } = await supabase
       .from('stories')
-      .select('id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at')
+      .select('id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at, kind, event_id')
       .order('created_at', { ascending: true });
     if (error || !rows?.length) return set({ homeStories: [] });
 
@@ -2248,7 +2252,14 @@ export function GocProvider({ children }) {
     const { data: viewRows } = await supabase.from('story_views').select('story_id').eq('viewer_id', s.user.id).in('story_id', rows.map(r => r.id));
     const viewedSet = new Set([...(viewRows || []).map(v => v.story_id), ...s.storyViewedIds]);
 
-    const { data: signed } = await supabase.storage.from('stories').createSignedUrls(rows.map(r => r.media_path), 600);
+    // Task 4 (2026-09-22 follow-up) — an event_share story's `media_path`
+    // is deliberately empty (it renders as an event card, not a photo — see
+    // migration 068's own comment), so only real media rows are worth a
+    // signed-URL round trip.
+    const mediaPaths = rows.filter(r => r.kind !== 'event_share' && r.media_path).map(r => r.media_path);
+    const { data: signed } = mediaPaths.length
+      ? await supabase.storage.from('stories').createSignedUrls(mediaPaths, 600)
+      : { data: [] };
     const urlByPath = Object.fromEntries((signed || []).filter(r => r.signedUrl && !r.error).map(r => [r.path, r.signedUrl]));
 
     const byOrg = {};
@@ -2256,9 +2267,17 @@ export function GocProvider({ children }) {
       const org = orgById[r.organizer_id];
       if (!org) continue;
       if (!byOrg[r.organizer_id]) byOrg[r.organizer_id] = { organizerId: r.organizer_id, orgName: org.name, stories: [] };
+      const isEventShare = r.kind === 'event_share';
+      // The static demo catalogue (src/data/events.js), not a second query —
+      // same static-catalogue-vs-real-DB duality 11-realtime-map.md already
+      // documents; a real DB event's own key still resolves through
+      // findEvent() for every seeded/real event this app actually shows.
+      const ev = isEventShare ? findEvent(r.event_id) : null;
       byOrg[r.organizer_id].stories.push({
         id: r.id, mediaPath: r.media_path, url: urlByPath[r.media_path] || null,
         width: r.width, height: r.height, createdAt: r.created_at, viewed: viewedSet.has(r.id),
+        kind: r.kind || 'media',
+        eventSnapshot: isEventShare && ev ? { eventKey: ev.key, img: ev.img, name: ev.name, dayLong: ev.dayLong, time: ev.time, area: ev.area } : null,
       });
     }
     const groups = Object.values(byOrg).map(g => ({ ...g, allViewed: g.stories.every(st => st.viewed) }));
@@ -2393,6 +2412,30 @@ export function GocProvider({ children }) {
     }
   }, [s.chatPhotoViewer, s.myOrganizerIds, s.user, s.storyCreateBusy, loadHomeStories]);
 
+  // Task 4 (2026-09-22 follow-up) — "Share event to Story", Event Detail.
+  // The ownership check is NOT done here — `create_event_share_story()`
+  // (migration 068, SECURITY DEFINER) re-verifies the real
+  // event -> organizer -> owner_id/user_id relationship server-side before
+  // writing anything, exactly per this ticket's "do not trust an event id
+  // passed from the client" instruction; `s.myOrgEventKeys` gating the
+  // button's visibility (EventDetail.jsx) is a UI nicety, not the security
+  // boundary.
+  const createEventShareStory = useCallback(async (eventKey) => {
+    if (!eventKey || s.storyCreateBusy) return { success: false };
+    set({ storyCreateBusy: true });
+    try {
+      const { error } = await supabase.rpc('create_event_share_story', { p_event_id: eventKey });
+      if (error) throw error;
+      set({ storyCreateBusy: false });
+      loadHomeStories();
+      return { success: true };
+    } catch (e) {
+      console.warn('createEventShareStory failed:', e);
+      set({ storyCreateBusy: false });
+      return { success: false };
+    }
+  }, [s.storyCreateBusy, loadHomeStories]);
+
   const curArea = AREAS.find(a => a.key === s.area) || AREAS[0];
 
   // ---- organizer mode ----
@@ -2484,8 +2527,31 @@ export function GocProvider({ children }) {
     eventBackScreen: (prev.screen === 'event' || prev.screen === 'organizer')
       ? prev.eventBackScreen
       : prev.screen,
+    // A fresh, non-story-originated event open invalidates any pending
+    // story-return snapshot — see goEventFromStory()'s own comment.
+    storyReturnSnapshot: null,
   })), [set]);
-  const backFromEvent = useCallback(() => set(prev => ({ screen: prev.eventBackScreen || 'home' })), [set]);
+  const backFromEvent = useCallback(() => set(prev => (
+    prev.storyReturnSnapshot
+      ? { screen: prev.eventBackScreen || 'home', storyViewer: prev.storyReturnSnapshot, storyReturnSnapshot: null }
+      : { screen: prev.eventBackScreen || 'home' }
+  )), [set]);
+  // Task 4C (2026-09-22 follow-up) — tapping an event-share story's card/CTA.
+  // `screen` was never changed while the story overlay was up (it renders
+  // independently of `screen` — see App.jsx), so `prev.screen` here is
+  // already whichever screen the story was opened from (Home/Profile),
+  // exactly the value goEvent()'s own eventBackScreen logic already wants —
+  // reused verbatim rather than inventing a second back-target concept.
+  // `storyReturnSnapshot` remembers the exact viewer position so
+  // backFromEvent() above can reopen it, per this ticket's "back to
+  // StoryViewer if feasible" instruction.
+  const goEventFromStory = useCallback((key) => set(prev => ({
+    screen: 'event',
+    eventKey: key,
+    eventBackScreen: (prev.screen === 'event' || prev.screen === 'organizer') ? prev.eventBackScreen : prev.screen,
+    storyReturnSnapshot: prev.storyViewer,
+    storyViewer: null,
+  })), [set]);
   const goOrganizer = useCallback(() => set({ screen: 'organizer' }), [set]);
   const goReserve = useCallback(() => set(s.user ? { screen: 'reserve' } : { screen: 'login', authMode: 'login', authReturnScreen: 'reserve', authBackScreen: 'event' }), [set, s.user]);
   const backToEvent = useCallback(() => set({ screen: 'event' }), [set]);
@@ -4155,7 +4221,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
@@ -4184,7 +4250,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,

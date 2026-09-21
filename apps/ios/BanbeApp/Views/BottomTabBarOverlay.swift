@@ -120,6 +120,14 @@ final class BottomTabBarOverlay {
     // second mechanism, this reuses the exact same `isHidden`-sync idea
     // a5fd823 established, with one more input ORed in.
     private var forcedHidden = false
+    // Task 1 (2026-09-22 follow-up, 07-notifications.md) — a fullscreen
+    // StoryViewer session must hide this overlay window too, on every
+    // screen it can be reached from (Home, Profile, and any future
+    // entry point) — a SEPARATE flag from `forcedHidden` (not folded into
+    // the same bool) so RootView's own global `app.storyViewer` check and
+    // InboxView's screen-local sheet check can never stomp on each other's
+    // intent by racing a single shared setter.
+    private var storyViewerOpen = false
 
     // Tracks BottomTabBar's own layout constants directly (barWidth/
     // barHeight/bottomOffset there) rather than an independently-chosen,
@@ -179,8 +187,17 @@ final class BottomTabBarOverlay {
         applyVisibility()
     }
 
+    /// Task 1 (2026-09-22 follow-up) — called from RootView's
+    /// `.onChange(of: app.storyViewer)`, independent of any screen change
+    /// (Home/Profile stay the same `Screen` the whole time a story is
+    /// open, so `updateVisibility(for:)` alone would never see this).
+    func setStoryViewerOpen(_ open: Bool) {
+        storyViewerOpen = open
+        applyVisibility()
+    }
+
     private func applyVisibility() {
-        window?.isHidden = forcedHidden || !BottomTabBar.visibleScreens.contains(currentScreen)
+        window?.isHidden = forcedHidden || storyViewerOpen || !BottomTabBar.visibleScreens.contains(currentScreen)
     }
 }
 

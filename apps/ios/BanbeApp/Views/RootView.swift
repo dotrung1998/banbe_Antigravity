@@ -334,6 +334,15 @@ struct RootView: View {
             // show on.
             BottomTabBarOverlay.shared.updateVisibility(for: newScreen)
         }
+        // Task 1 (2026-09-22 follow-up, 07-notifications.md) — StoryViewer
+        // opens over Home/Profile WITHOUT a `Screen` change (it's an
+        // overlay, not a navigation), so the `.onChange(of: app.screen)`
+        // above never sees it. A separate, dedicated flag on the overlay
+        // (not folded into `forcedHidden`) so this and InboxView's own
+        // screen-local sheet check can't stomp on each other.
+        .onChange(of: app.storyViewer) { _, viewer in
+            BottomTabBarOverlay.shared.setStoryViewerOpen(viewer != nil)
+        }
     }
 
     /// The SCREENS map, factored out so both the current screen and the

@@ -1,10 +1,17 @@
+import { useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { bg, mapsUrl } from '../data/events.js';
 import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 
 export default function EventDetail() {
-  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory } = useGoc();
   const s = state;
+  const [shareStoryMsg, setShareStoryMsg] = useState('');
+  const doShareEventToStory = async () => {
+    const r = await createEventShareStory(ev.key);
+    setShareStoryMsg(r?.success ? T('Đã đăng lên story', 'Posted to Story') : T('Không đăng được', "Couldn't post"));
+    setTimeout(() => setShareStoryMsg(''), 2400);
+  };
 
   // Event Detail is reached from several different places (the home feed, an
   // organizer's dashboard, an organizer profile, the create-event preview),
@@ -101,6 +108,25 @@ export default function EventDetail() {
             since `openEventOnMap` sets `selectedId` the same way. */}
         {cameFromHome && (
           <div data-testid="event-open-in-map" onClick={() => openEventOnMap(ev)} style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer', marginBottom: 10 }}>{T('▪︎ Xem trên bản đồ', '▪︎ Open in map')}</div>
+        )}
+        {/* Task 4B (2026-09-22 follow-up) — only when the signed-in
+            account actually owns/manages this exact event's organizer
+            (s.myOrgEventKeys, loaded at sign-in from the real
+            event -> organizer -> owner_id/user_id relationship) — never
+            for a goer, no matter how they reached this event. This is a
+            UI nicety only; create_event_share_story() (migration 068)
+            re-checks ownership server-side regardless. */}
+        {s.myOrgEventKeys.includes(ev.key) && (
+          <div
+            data-testid="event-share-to-story"
+            onClick={s.storyCreateBusy ? undefined : doShareEventToStory}
+            style={{ fontSize: 11.5, color: ink, opacity: s.storyCreateBusy ? 0.4 : 0.65, cursor: s.storyCreateBusy ? 'default' : 'pointer', marginBottom: 10 }}
+          >
+            {s.storyCreateBusy ? T('Đang đăng…', 'Posting…') : T('▪︎ Chia sẻ lên Story', '▪︎ Share to Story')}
+          </div>
+        )}
+        {shareStoryMsg && (
+          <div style={{ fontSize: 11, color: ink, opacity: 0.7, marginBottom: 10 }}>{shareStoryMsg}</div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11.5, color: ink }}>{evCat}</span>

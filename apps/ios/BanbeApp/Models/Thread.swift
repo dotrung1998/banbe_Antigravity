@@ -68,6 +68,10 @@ struct Story: Codable, Identifiable, Hashable {
     var height: Int?
     var createdAt: Date
     var expiresAt: Date
+    // Task 4 (2026-09-22 follow-up, migration 068) — "media" (default) or
+    // "event_share"; eventId is only ever set for the latter.
+    var kind: String = "media"
+    var eventId: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -78,7 +82,21 @@ struct Story: Codable, Identifiable, Hashable {
         case width, height
         case createdAt = "created_at"
         case expiresAt = "expires_at"
+        case kind
+        case eventId = "event_id"
     }
+}
+
+/// A denormalized snapshot of the shared event's own catalogue fields, so
+/// an event-share story's card still renders correctly even if the event
+/// later changes — built client-side from `EventCatalog.find(_:)`, the
+/// same static-catalogue-vs-real-DB duality 11-realtime-map.md documents.
+struct StoryEventSnapshot: Equatable, Hashable {
+    let eventKey: String
+    let img: String
+    let name: String
+    let when: String
+    let location: String
 }
 
 /// A resolved, ready-to-render story with its signed URL and whether this
@@ -92,6 +110,8 @@ struct StoryItem: Identifiable, Hashable {
     let height: Int?
     let createdAt: Date
     var viewed: Bool
+    var kind: String = "media"
+    var eventSnapshot: StoryEventSnapshot?
 }
 
 /// One host's set of active stories, grouped for the ring/row UI.

@@ -1749,7 +1749,7 @@ extension AppState {
         do {
             let rows: [Story] = try await SupabaseService.client
                 .from("stories")
-                .select("id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at")
+                .select("id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at, kind, event_id")
                 .order("created_at", ascending: true)
                 .execute().value
             guard !rows.isEmpty else { homeStories = []; return }
@@ -1766,9 +1766,14 @@ extension AppState {
                 .in("story_id", values: rows.map(\.id.uuidString)).execute().value
             let viewedSet = Set(viewRows.map(\.storyId)).union(storyViewedIds)
 
+            // Task 4 (2026-09-22 follow-up) — an event_share story's own
+            // media_path is deliberately empty (migration 068's own
+            // comment), so only real media rows are worth a signed-URL
+            // round trip.
+            let mediaPaths = rows.filter { $0.kind != "event_share" && !$0.mediaPath.isEmpty }.map(\.mediaPath)
             var urlByPath: [String: URL] = [:]
-            if let signed = try? await SupabaseService.client.storage.from("stories")
-                .createSignedURLs(paths: rows.map(\.mediaPath), expiresIn: 600) {
+            if !mediaPaths.isEmpty, let signed = try? await SupabaseService.client.storage.from("stories")
+                .createSignedURLs(paths: mediaPaths, expiresIn: 600) {
                 for result in signed {
                     if case let .success(path, url) = result { urlByPath[path] = url }
                 }
@@ -1777,7 +1782,12 @@ extension AppState {
             var byOrg: [String: StoryGroup] = [:]
             for r in rows {
                 guard let name = orgById[r.organizerId] else { continue }
-                let item = StoryItem(id: r.id, mediaPath: r.mediaPath, url: urlByPath[r.mediaPath], width: r.width, height: r.height, createdAt: r.createdAt, viewed: viewedSet.contains(r.id))
+                let isEventShare = r.kind == "event_share"
+                let snapshot: StoryEventSnapshot? = {
+                    guard isEventShare, let eventId = r.eventId, let ev = EventCatalog.find(eventId) else { return nil }
+                    return StoryEventSnapshot(eventKey: ev.key, img: ev.img, name: ev.name, when: ev.when, location: ev.where)
+                }()
+                let item = StoryItem(id: r.id, mediaPath: r.mediaPath, url: urlByPath[r.mediaPath], width: r.width, height: r.height, createdAt: r.createdAt, viewed: viewedSet.contains(r.id), kind: r.kind, eventSnapshot: snapshot)
                 if byOrg[r.organizerId] != nil { byOrg[r.organizerId]!.stories.append(item) }
                 else { byOrg[r.organizerId] = StoryGroup(organizerId: r.organizerId, orgName: name, stories: [item]) }
             }
@@ -1844,6 +1854,31 @@ extension AppState {
             return true
         } catch {
             print("publishStory failed:", error)
+            return false
+        }
+    }
+
+    /// Task 4 (2026-09-22 follow-up) — "Share event to Story", Event
+    /// Detail. Ownership is NOT checked here — `create_event_share_story()`
+    /// (migration 068, SECURITY DEFINER) re-verifies the real
+    /// event -> organizer -> owner_id/user_id relationship server-side
+    /// before writing anything; `app.myOrgEventKeys` gating the button's
+    /// visibility (EventDetailView.swift) is a UI nicety, not the security
+    /// boundary.
+    func createEventShareStory(eventKey: String) async -> Bool {
+        guard !storyCreateBusy else { return false }
+        storyCreateBusy = true
+        defer { storyCreateBusy = false }
+        do {
+            struct Params: Encodable { let pEventId: String
+                enum CodingKeys: String, CodingKey { case pEventId = "p_event_id" } }
+            _ = try await SupabaseService.client
+                .rpc("create_event_share_story", params: Params(pEventId: eventKey))
+                .execute()
+            await loadHomeStories()
+            return true
+        } catch {
+            print("createEventShareStory failed:", error)
             return false
         }
     }

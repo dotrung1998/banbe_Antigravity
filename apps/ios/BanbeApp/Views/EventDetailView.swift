@@ -6,6 +6,7 @@ import SwiftUI
 struct EventDetailView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.openURL) private var openURL
+    @State private var shareStoryMessage: String?
 
     private var event: CatalogEvent { app.currentEvent }
 
@@ -132,6 +133,36 @@ struct EventDetailView: View {
                     .buttonStyle(.plain)
                     .padding(.bottom, 10)
                     .accessibilityIdentifier("event.openInMap")
+            }
+            // Task 4B (2026-09-22 follow-up) — only when the signed-in
+            // account actually owns/manages this exact event's organizer
+            // (app.myOrgEventKeys, loaded at sign-in from the real
+            // event -> organizer -> owner_id/user_id relationship) — never
+            // for a goer. UI nicety only; createEventShareStory() re-checks
+            // ownership server-side regardless.
+            if app.myOrgEventKeys.contains(event.key) {
+                Button {
+                    Task {
+                        let ok = await app.createEventShareStory(eventKey: event.key)
+                        shareStoryMessage = ok ? app.T("Đã đăng lên story", "Posted to Story") : app.T("Không đăng được", "Couldn't post")
+                        try? await Task.sleep(nanoseconds: 2_400_000_000)
+                        shareStoryMessage = nil
+                    }
+                } label: {
+                    Text(app.storyCreateBusy ? app.T("Đang đăng…", "Posting…") : app.T("▪︎ Chia sẻ lên Story", "▪︎ Share to Story"))
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(app.palette.ink.opacity(app.storyCreateBusy ? 0.4 : 0.65))
+                }
+                .buttonStyle(.plain)
+                .disabled(app.storyCreateBusy)
+                .padding(.bottom, 10)
+                .accessibilityIdentifier("event.shareToStory")
+            }
+            if let shareStoryMessage {
+                Text(shareStoryMessage)
+                    .font(.system(size: 11))
+                    .foregroundStyle(app.palette.ink.opacity(0.7))
+                    .padding(.bottom, 10)
             }
 
             HStack(spacing: 8) {
