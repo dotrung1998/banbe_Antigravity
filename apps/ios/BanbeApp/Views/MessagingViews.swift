@@ -452,14 +452,34 @@ struct ChatView: View {
             CameraPicker { image in
                 cameraOpen = false
                 guard let data = ProofImage.jpegDataUnderLimit(from: image) else { return }
+                // Task 1 (07-notifications.md) — the RE-ENCODED data's own
+                // pixel size, not `image.size` (points, pre-downscale) —
+                // decoding what actually got uploaded is what the bubble
+                // needs to match exactly.
+                let dims = UIImage(data: data)?.size
                 Task {
                     sendingAttachment = true
-                    _ = await app.sendChatAttachment(data: data, contentType: "image/jpeg", fileExtension: "jpg")
+                    _ = await app.sendChatAttachment(data: data, contentType: "image/jpeg", fileExtension: "jpg", width: dims.map { Int($0.width) }, height: dims.map { Int($0.height) })
                     sendingAttachment = false
                 }
             }
             .ignoresSafeArea()
         }
+    }
+
+    // Task 1 (07-notifications.md) — mirrors web's attachmentBoxSize()
+    // (Chat.jsx) exactly: a box whose OWN ratio matches the source image's
+    // true ratio, clamped inside a sensible chat max/min, so
+    // `.scaledToFill()` never has to crop or letterbox.
+    static func attachmentBoxSize(width: Int?, height: Int?) -> CGSize {
+        guard let w = width, let h = height, w > 0, h > 0 else { return CGSize(width: 220, height: 220) }
+        let maxW: CGFloat = 240, maxH: CGFloat = 320, minW: CGFloat = 120
+        let ratio = CGFloat(w) / CGFloat(h)
+        var boxW = min(maxW, CGFloat(w))
+        var boxH = boxW / ratio
+        if boxH > maxH { boxH = maxH; boxW = boxH * ratio }
+        if boxW < minW { boxW = minW; boxH = boxW / ratio }
+        return CGSize(width: boxW.rounded(), height: boxH.rounded())
     }
 
     private func sendPickedFile(_ url: URL) async {
@@ -471,7 +491,8 @@ struct ChatView: View {
         if isPDF {
             _ = await app.sendChatAttachment(data: data, contentType: "application/pdf", fileExtension: "pdf")
         } else if let image = UIImage(data: data), let jpeg = ProofImage.jpegDataUnderLimit(from: image) {
-            _ = await app.sendChatAttachment(data: jpeg, contentType: "image/jpeg", fileExtension: "jpg")
+            let dims = UIImage(data: jpeg)?.size
+            _ = await app.sendChatAttachment(data: jpeg, contentType: "image/jpeg", fileExtension: "jpg", width: dims.map { Int($0.width) }, height: dims.map { Int($0.height) })
         }
         sendingAttachment = false
     }
@@ -538,7 +559,8 @@ struct ChatView: View {
                                 messageID: message.id,
                                 senderLabel: message.senderId == app.userID ? app.T("Bạn", "You") : headerTitle,
                                 createdAt: message.createdAt,
-                                attachmentPath: message.attachmentPath, attachmentType: message.attachmentType
+                                attachmentPath: message.attachmentPath, attachmentType: message.attachmentType,
+                                attachmentWidth: message.attachmentWidth, attachmentHeight: message.attachmentHeight
                             )
                             .id(message.id)
                         }
@@ -619,7 +641,7 @@ struct ChatView: View {
     // Task 3c — each bubble shows its own sender + timestamp, not just a
     // bare bubble. `createdAt` is nil only for the static greeting
     // placeholder (no real row to time-stamp).
-    private func bubble(text: String, mine: Bool, messageID: UUID?, senderLabel: String, createdAt: Date?, attachmentPath: String?, attachmentType: String?) -> some View {
+    private func bubble(text: String, mine: Bool, messageID: UUID?, senderLabel: String, createdAt: Date?, attachmentPath: String?, attachmentType: String?, attachmentWidth: Int? = nil, attachmentHeight: Int? = nil) -> some View {
         VStack(alignment: mine ? .trailing : .leading, spacing: 3) {
             if let createdAt {
                 Text("\(senderLabel) · \(formattedTime(createdAt))")
@@ -651,11 +673,24 @@ struct ChatView: View {
                 if let attachmentPath {
                     let url = app.chatAttachmentUrls[attachmentPath]
                     if attachmentType?.hasPrefix("image/") == true, let url {
-                        AsyncImage(url: url) { $0.resizable().scaledToFit() } placeholder: { app.palette.field }
-                            .frame(maxWidth: 220, maxHeight: 220)
+                        // Task 1 (07-notifications.md) — an aspect-ratio-
+                        // correct box computed from the stored intrinsic
+                        // width/height (was a fixed 220x220 `.scaledToFit()`
+                        // frame — the white-rail/letterbox bug: `.fit`
+                        // inside a box whose ratio doesn't match the source
+                        // image leaves empty space on two sides). The frame
+                        // itself now has the image's OWN ratio, so `.fill`
+                        // inside it never crops — it's simply filling a
+                        // correctly-shaped box.
+                        let box = Self.attachmentBoxSize(width: attachmentWidth, height: attachmentHeight)
+                        AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
+                            .frame(width: box.width, height: box.height)
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
                             .accessibilityIdentifier("chat.attachment")
+                            .onTapGesture {
+                                app.openChatPhoto(messageId: messageID, attachmentPath: attachmentPath, url: url, width: attachmentWidth, height: attachmentHeight, senderLabel: senderLabel)
+                            }
                     } else {
                         Link(destination: url ?? URL(string: "about:blank")!) {
                             HStack(spacing: 8) {

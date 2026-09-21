@@ -2,6 +2,7 @@ import Foundation
 import Supabase
 import EventKit
 import UIKit
+import Photos
 
 /// Row payloads for the writes this app makes. PostgREST needs `Encodable`
 /// values, so each write gets a small explicit struct rather than an
@@ -68,13 +69,39 @@ struct NewAttachmentMessage: Encodable {
     let kind: String
     let attachmentPath: String
     let attachmentType: String
+    let attachmentWidth: Int?
+    let attachmentHeight: Int?
     enum CodingKeys: String, CodingKey {
         case threadId = "thread_id"
         case senderId = "sender_id"
         case body, kind
         case attachmentPath = "attachment_path"
         case attachmentType = "attachment_type"
+        case attachmentWidth = "attachment_width"
+        case attachmentHeight = "attachment_height"
     }
+}
+
+/// Task 3 (07-notifications.md) — a new story's INSERT row.
+struct NewStory: Encodable {
+    let organizerId: String
+    let authorId: UUID
+    let mediaPath: String
+    let mediaType: String
+    let width: Int?
+    let height: Int?
+    enum CodingKeys: String, CodingKey {
+        case organizerId = "organizer_id"
+        case authorId = "author_id"
+        case mediaPath = "media_path"
+        case mediaType = "media_type"
+        case width, height
+    }
+}
+struct NewStoryView: Encodable {
+    let storyId: UUID
+    let viewerId: UUID
+    enum CodingKeys: String, CodingKey { case storyId = "story_id"; case viewerId = "viewer_id" }
 }
 
 struct NotificationReadUpdate: Encodable {
@@ -1482,7 +1509,7 @@ extension AppState {
         do {
             let rows: [ChatMessage] = try await SupabaseService.client
                 .from("messages")
-                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type")
+                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height")
                 .eq("thread_id", value: threadID)
                 .order("created_at", ascending: true)
                 .execute().value
@@ -1542,7 +1569,7 @@ extension AppState {
     /// one for the payment-proof upload path; otherwise uploads the image
     /// data as-is (the 'chat-attachments' bucket itself still enforces a
     /// 20MB cap / allowed MIME types server-side either way).
-    func sendChatAttachment(data: Data, contentType: String, fileExtension: String) async -> Bool {
+    func sendChatAttachment(data: Data, contentType: String, fileExtension: String, width: Int? = nil, height: Int? = nil) async -> Bool {
         guard let threadID = chatThreadID, let uid = userID else { return false }
         do {
             // Lowercased: Postgres's own uuid-to-text cast is always
@@ -1555,14 +1582,194 @@ extension AppState {
             let body = contentType == "application/pdf" ? T("Đã gửi một tệp", "Sent a file") : T("Đã gửi một ảnh", "Sent a photo")
             let sent: [ChatMessage] = try await SupabaseService.client
                 .from("messages")
-                .insert(NewAttachmentMessage(threadId: threadID, senderId: uid, body: body, kind: "text", attachmentPath: path, attachmentType: contentType))
-                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type")
+                .insert(NewAttachmentMessage(threadId: threadID, senderId: uid, body: body, kind: "text", attachmentPath: path, attachmentType: contentType, attachmentWidth: width, attachmentHeight: height))
+                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height")
                 .execute().value
             if let message = sent.first { chatMessages.append(message) }
             await signChatAttachmentUrls([path])
             return true
         } catch {
             print("sendChatAttachment failed:", error)
+            return false
+        }
+    }
+
+    /// See toggleFollow()'s own comment — resolves the event's real
+    /// organizer_id (same events-table lookup openChat(for:) already does)
+    /// and upserts/deletes the matching `follows` row.
+    func persistFollowToggle(eventKey: String, uid: UUID, wasFollowing: Bool) async {
+        struct EventOrg: Decodable { let organizerId: String?
+            enum CodingKeys: String, CodingKey { case organizerId = "organizer_id" } }
+        struct FollowRow: Encodable { let userId: UUID; let organizerId: String
+            enum CodingKeys: String, CodingKey { case userId = "user_id"; case organizerId = "organizer_id" } }
+        do {
+            let rows: [EventOrg] = try await SupabaseService.client
+                .from("events").select("organizer_id").eq("id", value: eventKey).execute().value
+            guard let orgId = rows.first?.organizerId else { return } // demo-catalogue event, local toggle only
+            if wasFollowing {
+                try await SupabaseService.client.from("follows")
+                    .delete().eq("user_id", value: uid).eq("organizer_id", value: orgId).execute()
+            } else {
+                try await SupabaseService.client.from("follows")
+                    .upsert(FollowRow(userId: uid, organizerId: orgId), onConflict: "user_id,organizer_id").execute()
+            }
+        } catch {
+            print("persistFollowToggle failed:", error)
+        }
+    }
+
+    // ============ Chat photo viewer actions (Task 2, 07-notifications.md) ============
+
+    /// Save/Download — writes the REAL original bytes (fetched from the
+    /// same authorized signed URL already shown inline, never a public
+    /// one) to the user's Photos library via the proper permission flow.
+    func downloadChatPhoto() async -> Bool {
+        guard let item = chatPhotoViewer else { return false }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: item.url)
+            guard let image = UIImage(data: data) else { return false }
+            let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard status == .authorized || status == .limited else { return false }
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }
+            return true
+        } catch {
+            print("downloadChatPhoto failed:", error)
+            return false
+        }
+    }
+
+    /// Forward — re-uploads the same original bytes under the TARGET
+    /// thread's own path (chat_attachments_participant_read RLS grants
+    /// read by the object's OWN path prefix, not by the message row, so a
+    /// forwarded message can't just reference the source thread's copy —
+    /// same reasoning as the web fix, GocContext.jsx's forwardChatPhoto).
+    func forwardChatPhoto(to targetThreadId: UUID) async -> Bool {
+        guard let item = chatPhotoViewer, let uid = userID else { return false }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: item.url)
+            let ext = (item.attachmentPath as NSString).pathExtension.isEmpty ? "jpg" : (item.attachmentPath as NSString).pathExtension
+            let contentType = response.mimeType ?? "image/jpeg"
+            let newPath = "\(targetThreadId.uuidString.lowercased())/\(Int(Date().timeIntervalSince1970 * 1000)).\(ext)"
+            _ = try await SupabaseService.client.storage.from("chat-attachments")
+                .upload(newPath, data: data, options: FileOptions(contentType: contentType))
+            _ = try await SupabaseService.client.from("messages").insert(
+                NewAttachmentMessage(threadId: targetThreadId, senderId: uid, body: T("Đã chuyển tiếp một ảnh", "Forwarded a photo"), kind: "text", attachmentPath: newPath, attachmentType: contentType, attachmentWidth: item.width, attachmentHeight: item.height)
+            ).execute()
+            closeChatForward()
+            return true
+        } catch {
+            print("forwardChatPhoto failed:", error)
+            return false
+        }
+    }
+
+    // ============ Stories (Task 3, 07-notifications.md) ============
+    // RLS (migration 066) already does every access check that matters —
+    // an unfiltered SELECT on `stories` only ever returns active rows this
+    // account is actually permitted to see.
+
+    func loadHomeStories() async {
+        guard let uid = userID else { homeStories = []; return }
+        do {
+            let rows: [Story] = try await SupabaseService.client
+                .from("stories")
+                .select("id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at")
+                .order("created_at", ascending: true)
+                .execute().value
+            guard !rows.isEmpty else { homeStories = []; return }
+
+            let orgIds = Array(Set(rows.map(\.organizerId)))
+            let orgRows: [OrganizerRow] = try await SupabaseService.client
+                .from("organizers").select("id, name").in("id", values: orgIds).execute().value
+            let orgById = Dictionary(uniqueKeysWithValues: orgRows.map { ($0.id, $0.name) })
+
+            struct StoryViewIDRow: Decodable { let storyId: UUID
+                enum CodingKeys: String, CodingKey { case storyId = "story_id" } }
+            let viewRows: [StoryViewIDRow] = try await SupabaseService.client
+                .from("story_views").select("story_id").eq("viewer_id", value: uid)
+                .in("story_id", values: rows.map(\.id.uuidString)).execute().value
+            let viewedSet = Set(viewRows.map(\.storyId)).union(storyViewedIds)
+
+            var urlByPath: [String: URL] = [:]
+            if let signed = try? await SupabaseService.client.storage.from("stories")
+                .createSignedURLs(paths: rows.map(\.mediaPath), expiresIn: 600) {
+                for result in signed {
+                    if case let .success(path, url) = result { urlByPath[path] = url }
+                }
+            }
+
+            var byOrg: [String: StoryGroup] = [:]
+            for r in rows {
+                guard let name = orgById[r.organizerId] else { continue }
+                let item = StoryItem(id: r.id, mediaPath: r.mediaPath, url: urlByPath[r.mediaPath], width: r.width, height: r.height, createdAt: r.createdAt, viewed: viewedSet.contains(r.id))
+                if byOrg[r.organizerId] != nil { byOrg[r.organizerId]!.stories.append(item) }
+                else { byOrg[r.organizerId] = StoryGroup(organizerId: r.organizerId, orgName: name, stories: [item]) }
+            }
+            // The signed-in account's own active story appears first.
+            let myOrgIds = await currentOrganizerIds()
+            myOrganizerIdsCache = myOrgIds
+            homeStories = byOrg.values.sorted { a, b in
+                let aMine = myOrgIds.contains(a.organizerId) ? 0 : 1
+                let bMine = myOrgIds.contains(b.organizerId) ? 0 : 1
+                return aMine != bMine ? aMine < bMine : a.orgName < b.orgName
+            }
+        } catch {
+            print("loadHomeStories failed:", error)
+            homeStories = []
+        }
+    }
+
+    /// Organizer ids the signed-in account owns/co-owns — iOS has no cached
+    /// `myOrganizerIds` (unlike web's GocContext.jsx), so this mirrors the
+    /// same on-demand `organizers` lookup `refreshUnreadMessageCount()`/
+    /// `loadDocuments()` already use.
+    func currentOrganizerIds() async -> [String] {
+        guard let uid = userID else { return [] }
+        let rows: [IDRow] = (try? await SupabaseService.client
+            .from("organizers").select("id")
+            .or("owner_id.eq.\(uid.uuidString),user_id.eq.\(uid.uuidString)")
+            .execute().value) ?? []
+        return rows.map(\.id)
+    }
+
+    /// Idempotent (PK on story_id+viewer_id) — records a real view and
+    /// updates local state immediately so the ring subdues without waiting
+    /// on a re-fetch.
+    func viewStoryTick(_ storyId: UUID) async {
+        guard let uid = userID else { return }
+        storyViewedIds.insert(storyId)
+        do {
+            try await SupabaseService.client.from("story_views")
+                .upsert(NewStoryView(storyId: storyId, viewerId: uid), onConflict: "story_id,viewer_id").execute()
+        } catch {
+            print("viewStoryTick failed:", error)
+        }
+    }
+
+    /// Publishes the currently-previewed image as a new 24h story for the
+    /// signed-in host's (first) organizer.
+    func publishStory() async -> Bool {
+        guard let image = storyCreatePreviewImage, let uid = userID else { return false }
+        let orgIds = await currentOrganizerIds()
+        guard let orgId = orgIds.first else { return false }
+        guard let data = ProofImage.jpegDataUnderLimit(from: image) else { return false }
+        let dims = UIImage(data: data)?.size
+        storyCreateBusy = true
+        defer { storyCreateBusy = false }
+        do {
+            let path = "\(orgId)/\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
+            _ = try await SupabaseService.client.storage.from("stories")
+                .upload(path, data: data, options: FileOptions(contentType: "image/jpeg"))
+            _ = try await SupabaseService.client.from("stories").insert(
+                NewStory(organizerId: orgId, authorId: uid, mediaPath: path, mediaType: "image/jpeg", width: dims.map { Int($0.width) }, height: dims.map { Int($0.height) })
+            ).execute()
+            storyCreatePreviewImage = nil
+            await loadHomeStories()
+            return true
+        } catch {
+            print("publishStory failed:", error)
             return false
         }
     }

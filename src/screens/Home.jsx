@@ -45,6 +45,7 @@ export default function Home() {
     becomeHost, switchToHost,
     canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary, loadHomeLiveEvents,
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
+    loadHomeStories, openStoryViewer,
   } = useGoc();
 
   const s = state;
@@ -70,6 +71,8 @@ export default function Home() {
   // every catalogue event Home might show, public info so this runs for
   // every visitor (see GocContext.jsx's own comment on loadHomeLiveEvents).
   useEffect(() => { loadHomeLiveEvents(); }, [loadHomeLiveEvents]);
+  // Task 3.3 (07-notifications.md) — active stories row.
+  useEffect(() => { if (s.user?.id) loadHomeStories(); }, [s.user?.id, loadHomeStories]);
   // Merges a real DB row's live status onto a static catalogue event —
   // same idea as curEvent's own single-event version (GocContext.jsx), just
   // applied to every event this screen might list instead of one.
@@ -272,6 +275,27 @@ export default function Home() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Task 3.3 (07-notifications.md) — active-story row, between "Your
+          events" and the main event list, per this ticket's own placement. */}
+      {s.homeStories.length > 0 && (
+        <div style={{ display: 'flex', gap: 14, overflowX: 'auto', padding: '14px 20px', borderBottom: `1px solid ${rule}` }}>
+          {s.homeStories.map(g => (
+            <div key={g.organizerId} onClick={() => openStoryViewer(g.organizerId)} data-testid="home-story-avatar" data-story-state={g.allViewed ? 'viewed' : 'unviewed'} style={{ flex: 'none', width: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+              <div style={{
+                width: 56, height: 56, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: `2.5px solid ${g.allViewed ? 'transparent' : alert}`,
+                boxShadow: g.allViewed ? `inset 0 0 0 2.5px ${rule}` : 'none',
+              }}>
+                <div style={{ ...fieldGlass({ width: 48, height: 48, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }), fontSize: 16, fontWeight: 700 }}>
+                  {(g.orgName || '?').charAt(0).toUpperCase()}
+                </div>
+              </div>
+              <span style={{ fontSize: 9.5, color: ink, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 60 }}>{g.orgName}</span>
+            </div>
+          ))}
         </div>
       )}
 

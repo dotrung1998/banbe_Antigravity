@@ -75,7 +75,7 @@ export default function Organizer() {
         </div>
       </div>
       </div>
-      <div onClick={goChat} style={{ ...inkButton({ flex: 'none', margin: '0 20px 22px', padding: '15px 0' }) }}>
+      <div onClick={goChat} data-testid="organizer-message" style={{ ...inkButton({ flex: 'none', margin: '0 20px 22px', padding: '15px 0' }) }}>
         {T('Nhắn cho', 'Message')} {ev.hostShort}
       </div>
     </div>

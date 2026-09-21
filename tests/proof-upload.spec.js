@@ -35,22 +35,29 @@ test('an oversized PNG (allowed type, over the 5MB bucket cap) is downscaled to 
 // Image/createImageBitmap/<canvas>) — the re-encode path itself is covered
 // by the app build + manual verification, since it needs a real browser.
 test.describe('normalizeProofFile — pass-through branches', () => {
+  // 07-notifications.md follow-up (chat-image aspect ratio) — normalizeProofFile
+  // now also returns width/height, probed via decodeToPaintable() even on
+  // this pass-through path. A plain mock object (not a real decodable
+  // Blob/File) can't actually be decoded, so probeImageDimensions()'s own
+  // catch branch returns null/null here — width/height are only ever
+  // non-null against a real image in a real browser (see Chat.jsx's own
+  // manual verification, not exercised by this Node-side mock).
   test('an already-allowed image type passes through unchanged', async () => {
     const file = { type: 'image/png', name: 'receipt.png', size: 1024 };
     const result = await normalizeProofFile(file);
-    expect(result).toEqual({ blob: file, ext: 'png', contentType: 'image/png' });
+    expect(result).toEqual({ blob: file, ext: 'png', contentType: 'image/png', width: null, height: null });
   });
 
   test('a PDF by MIME type passes through unchanged', async () => {
     const file = { type: 'application/pdf', name: 'receipt.pdf' };
     const result = await normalizeProofFile(file);
-    expect(result).toEqual({ blob: file, ext: 'pdf', contentType: 'application/pdf' });
+    expect(result).toEqual({ blob: file, ext: 'pdf', contentType: 'application/pdf', width: null, height: null });
   });
 
   test('a PDF with a generic/blank MIME type is still recognized by extension', async () => {
     const file = { type: '', name: 'Scanned Receipt.PDF' };
     const result = await normalizeProofFile(file);
-    expect(result).toEqual({ blob: file, ext: 'pdf', contentType: 'application/pdf' });
+    expect(result).toEqual({ blob: file, ext: 'pdf', contentType: 'application/pdf', width: null, height: null });
   });
 
   test('the allowlist matches the pay-proof bucket exactly', () => {

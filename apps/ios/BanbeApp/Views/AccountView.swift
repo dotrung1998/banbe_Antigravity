@@ -1,10 +1,18 @@
 import SwiftUI
+import PhotosUI
 
 /// Port of src/screens/Account.jsx — profile header with rename, the
 /// going/saved counters, links to messages and preferences, the organizer
 /// mode switch, and sign in/out.
 struct AccountView: View {
     @EnvironmentObject var app: AppState
+    // Task 3 (07-notifications.md) — story creation, hosts only.
+    @State private var storyPhotoItem: PhotosPickerItem?
+    @State private var storyCameraOpen = false
+
+    private var myStoryGroup: StoryGroup? {
+        app.homeStories.first { g in app.myOrganizerIdsCache.contains(g.organizerId) }
+    }
 
     private var subtitle: String {
         if app.accountType == "admin" { return app.T("Quản trị viên", "Admin") }
@@ -23,10 +31,33 @@ struct AccountView: View {
                 }
 
                 HStack(spacing: 14) {
-                    Text(String(app.displayName.prefix(1)).uppercased())
-                        .font(BanbeTheme.display(22))
-                        .frame(width: 56, height: 56)
-                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    // Task 3.3 (07-notifications.md) — story ring: bright
+                    // while an active, not-fully-viewed story exists;
+                    // subdued once every active story has been viewed; no
+                    // ring with no active story. Tap opens the viewer only
+                    // when there's something to view.
+                    Button {
+                        if let g = myStoryGroup { app.openStoryViewer(g.organizerId) }
+                    } label: {
+                        ZStack {
+                            if let g = myStoryGroup {
+                                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                    .strokeBorder(g.allViewed ? Color.clear : BanbeTheme.alert, lineWidth: 2.5)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                            .strokeBorder(g.allViewed ? app.palette.rule : .clear, lineWidth: 2.5)
+                                    )
+                                    .frame(width: 64, height: 64)
+                            }
+                            Text(String(app.displayName.prefix(1)).uppercased())
+                                .font(BanbeTheme.display(22))
+                                .frame(width: 56, height: 56)
+                                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(myStoryGroup == nil)
+                    .accessibilityIdentifier("account.storyRing")
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text(app.displayName).font(BanbeTheme.display(22)).lineLimit(1)
@@ -38,6 +69,20 @@ struct AccountView: View {
                             }
                         }
                         Text(subtitle).font(.system(size: 11)).kerning(0.6)
+                        // Task 3.2 — story creation entry point, hosts only.
+                        if app.canHost {
+                            Menu {
+                                PhotosPicker(selection: $storyPhotoItem, matching: .images) {
+                                    Text(app.T("Thư viện ảnh", "Photo library"))
+                                }
+                                Button(app.T("Camera", "Camera")) { storyCameraOpen = true }
+                            } label: {
+                                Text(app.T("▪︎ Đăng story", "▪︎ Post story"))
+                                    .font(.system(size: 11.5))
+                                    .foregroundStyle(app.palette.ink.opacity(0.65))
+                            }
+                            .accessibilityIdentifier("account.postStory")
+                        }
                     }
                     Spacer(minLength: 0)
                 }
@@ -211,6 +256,65 @@ struct AccountView: View {
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 20)
             .padding(.top, 16)
+        }
+        .task { if app.userID != nil { await app.loadHomeStories() } }
+        .onChange(of: storyPhotoItem) { _, item in
+            Task {
+                guard let item, let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
+                await MainActor.run { app.storyCreatePreviewImage = image }
+                storyPhotoItem = nil
+            }
+        }
+        .fullScreenCover(isPresented: $storyCameraOpen) {
+            CameraPicker { image in
+                storyCameraOpen = false
+                app.storyCreatePreviewImage = image
+            }
+            .ignoresSafeArea()
+        }
+        // Task 3.2 — Retake / Use Photo preview before actually publishing.
+        .fullScreenCover(isPresented: Binding(get: { app.storyCreatePreviewImage != nil }, set: { if !$0 { app.storyCreatePreviewImage = nil } })) {
+            storyCreatePreview
+        }
+    }
+
+    private var storyCreatePreview: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 0) {
+                if let image = app.storyCreatePreviewImage {
+                    Image(uiImage: image).resizable().scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                HStack(spacing: 10) {
+                    Button {
+                        app.storyCreatePreviewImage = nil
+                        storyCameraOpen = true
+                    } label: {
+                        Text(app.T("Chụp lại", "Retake"))
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .foregroundStyle(.white)
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.35)))
+                    }
+                    .accessibilityIdentifier("story.retake")
+                    Button {
+                        Task { _ = await app.publishStory() }
+                    } label: {
+                        Text(app.storyCreateBusy ? app.T("Đang đăng…", "Posting…") : app.T("Dùng ảnh", "Use photo"))
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .foregroundStyle(.black)
+                            .background(Color.white, in: RoundedRectangle(cornerRadius: 12))
+                            .opacity(app.storyCreateBusy ? 0.6 : 1)
+                    }
+                    .disabled(app.storyCreateBusy)
+                    .accessibilityIdentifier("story.usePhoto")
+                }
+                .padding(.horizontal, 22).padding(.top, 16).padding(.bottom, 34)
+            }
         }
     }
 

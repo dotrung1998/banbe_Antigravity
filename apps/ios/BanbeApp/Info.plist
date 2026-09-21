@@ -39,6 +39,8 @@
 	<string>banbe uses Face ID to unlock the app for a returning signed-in user.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>banbe uses your location to show how far events are and to filter the area picker.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>banbe saves a chat photo to your library when you tap Save.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

@@ -379,6 +379,30 @@ const initialState = {
   // pattern as `proofUrls`/signProofUrls (chat-attachments is a private
   // bucket, see supabase/migrations/065).
   chatAttachmentUrls: {},
+  // { messageId, attachmentPath, url, width, height, senderLabel, originRect,
+  //   forwardOpen } while a chat photo is open in its own dedicated
+  // fullscreen viewer (07-notifications.md follow-up) — deliberately a
+  // SEPARATE piece of state from `photoViewer` above, per this ticket's own
+  // instruction not to confuse a chat attachment with an event-gallery
+  // photo (different action set: Save/Share/Forward, not Like/Save event).
+  chatPhotoViewer: null,
+  // Active (unexpired) stories, grouped by organizer, loaded by
+  // loadHomeStories() — [{ organizerId, orgName, orgImg, storyIds: [...],
+  // stories: [{id, mediaPath, url, width, height, createdAt}], allViewed }].
+  homeStories: [],
+  // { organizerId, index, stories: [...] } while the fullscreen story
+  // progression viewer is open. A separate concept from chatPhotoViewer/
+  // photoViewer (14-photo-viewer.md) — its own dismiss/back semantics.
+  storyViewer: null,
+  // { file, url } while the "create a story" camera/picker preview
+  // (Retake / Use Photo) is open, from Account.
+  storyCreatePreview: null,
+  storyCreateBusy: false,
+  // Ids of stories this account has already recorded a view for THIS
+  // SESSION — local optimism so the ring subdues immediately on close,
+  // without waiting for a re-fetch. Reconciled against real story_views
+  // rows on every loadHomeStories() anyway.
+  storyViewedIds: [],
   inboxThreads: [],
   // Per-participant star/archive state for a thread (thread_preferences,
   // migration 065) — keyed by threadId: { starred, archived }. NOT stored
@@ -2181,7 +2205,151 @@ export function GocProvider({ children }) {
     b.event_id === k && ['pending', 'confirmed', 'attended'].includes(b.status) && ['holding', 'pending_verification'].includes(b.payment_state)
   ), [s.paymentBookings]);
   const toggleFav = useCallback((k) => set(prev => ({ favorites: prev.favorites.includes(k) ? prev.favorites.filter(x => x !== k) : [...prev.favorites, k] })), [set]);
-  const toggleFollow = useCallback((k) => set(prev => ({ following: prev.following.includes(k) ? prev.following.filter(x => x !== k) : [...prev.following, k] })), [set]);
+  // 2026-09-21 follow-up (stories, 07-notifications.md) — REAL bug found
+  // while wiring stories' audience: this was local-only React state, keyed
+  // by event key, never written to the real `follows(user_id, organizer_id)`
+  // table (003_social_chat.sql) at all. Local `following` (by event key)
+  // stays as the optimistic UI toggle Organizer.jsx already reads — no
+  // visual change requested — but now ALSO persists to `follows`, resolved
+  // via the event's real organizer_id (same events-table lookup
+  // openChatFor() already does), best-effort: a demo-catalogue event with
+  // no real DB row silently only updates local state, same as before.
+  const toggleFollow = useCallback(async (k) => {
+    const wasFollowing = s.following.includes(k);
+    set(prev => ({ following: wasFollowing ? prev.following.filter(x => x !== k) : [...prev.following, k] }));
+    if (!s.user) return;
+    const { data: event } = await supabase.from('events').select('organizer_id').eq('id', k).maybeSingle();
+    if (!event?.organizer_id) return; // demo-catalogue event, no real DB row — local toggle only
+    if (wasFollowing) {
+      await supabase.from('follows').delete().eq('user_id', s.user.id).eq('organizer_id', event.organizer_id);
+    } else {
+      await supabase.from('follows').upsert({ user_id: s.user.id, organizer_id: event.organizer_id }, { onConflict: 'user_id,organizer_id' });
+    }
+  }, [set, s.following, s.user]);
+
+  // ============ Stories (Task 3, 07-notifications.md) ============
+  // RLS (migration 066) already does every access check that matters here —
+  // an unfiltered SELECT on `stories` only ever returns active rows the
+  // signed-in account is actually permitted to see (own, co-owned organizer,
+  // or a followed organizer) — so this just groups+signs what comes back,
+  // no client-side re-filtering.
+  const loadHomeStories = useCallback(async () => {
+    if (!s.user) return set({ homeStories: [] });
+    const { data: rows, error } = await supabase
+      .from('stories')
+      .select('id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at')
+      .order('created_at', { ascending: true });
+    if (error || !rows?.length) return set({ homeStories: [] });
+
+    const orgIds = [...new Set(rows.map(r => r.organizer_id))];
+    const { data: orgRows } = await supabase.from('organizers').select('id, name, owner_id, user_id').in('id', orgIds);
+    const orgById = Object.fromEntries((orgRows || []).map(o => [o.id, o]));
+
+    const { data: viewRows } = await supabase.from('story_views').select('story_id').eq('viewer_id', s.user.id).in('story_id', rows.map(r => r.id));
+    const viewedSet = new Set([...(viewRows || []).map(v => v.story_id), ...s.storyViewedIds]);
+
+    const { data: signed } = await supabase.storage.from('stories').createSignedUrls(rows.map(r => r.media_path), 600);
+    const urlByPath = Object.fromEntries((signed || []).filter(r => r.signedUrl && !r.error).map(r => [r.path, r.signedUrl]));
+
+    const byOrg = {};
+    for (const r of rows) {
+      const org = orgById[r.organizer_id];
+      if (!org) continue;
+      if (!byOrg[r.organizer_id]) byOrg[r.organizer_id] = { organizerId: r.organizer_id, orgName: org.name, stories: [] };
+      byOrg[r.organizer_id].stories.push({
+        id: r.id, mediaPath: r.media_path, url: urlByPath[r.media_path] || null,
+        width: r.width, height: r.height, createdAt: r.created_at, viewed: viewedSet.has(r.id),
+      });
+    }
+    const groups = Object.values(byOrg).map(g => ({ ...g, allViewed: g.stories.every(st => st.viewed) }));
+    // The signed-in account's own active story appears first, per this
+    // ticket's own instruction.
+    groups.sort((a, b) => {
+      const aMine = s.myOrganizerIds.includes(a.organizerId) ? 0 : 1;
+      const bMine = s.myOrganizerIds.includes(b.organizerId) ? 0 : 1;
+      return aMine - bMine;
+    });
+    set({ homeStories: groups });
+  }, [set, s.user, s.myOrganizerIds, s.storyViewedIds]);
+
+  // Records a real story_views row (idempotent — PK on story_id+viewer_id,
+  // an upsert never duplicates a re-view) and updates local state
+  // immediately so the ring subdues without waiting on a re-fetch.
+  const viewStoryTick = useCallback((storyId) => {
+    if (!storyId || !s.user) return;
+    set(prev => ({ storyViewedIds: prev.storyViewedIds.includes(storyId) ? prev.storyViewedIds : [...prev.storyViewedIds, storyId] }));
+    supabase.from('story_views').upsert({ story_id: storyId, viewer_id: s.user.id }, { onConflict: 'story_id,viewer_id' })
+      .then(({ error }) => { if (error) console.warn('viewStoryTick failed:', error); });
+  }, [set, s.user]);
+
+  const openStoryViewer = useCallback((organizerId) => {
+    const group = s.homeStories.find(g => g.organizerId === organizerId);
+    if (!group || !group.stories.length) return;
+    set({ storyViewer: { organizerId, index: 0, stories: group.stories } });
+    viewStoryTick(group.stories[0].id);
+  }, [s.homeStories, set, viewStoryTick]);
+  const closeStoryViewer = useCallback(() => set({ storyViewer: null }), [set]);
+  // Progression through the SAME author's active stories only — this is a
+  // story viewer, not the chat/gallery viewers (14-photo-viewer.md), so
+  // reaching the end just closes rather than looping into another author's
+  // stories (no "next author" concept requested).
+  const storyNext = useCallback(() => {
+    set(prev => {
+      if (!prev.storyViewer) return {};
+      const next = prev.storyViewer.index + 1;
+      if (next >= prev.storyViewer.stories.length) return { storyViewer: null };
+      return { storyViewer: { ...prev.storyViewer, index: next } };
+    });
+  }, [set]);
+  const storyPrev = useCallback(() => {
+    set(prev => {
+      if (!prev.storyViewer || prev.storyViewer.index === 0) return {};
+      return { storyViewer: { ...prev.storyViewer, index: prev.storyViewer.index - 1 } };
+    });
+  }, [set]);
+  // Called by StoryViewerSheet whenever the shown index changes (including
+  // the very first one) — marks that specific story viewed, separate from
+  // openStoryViewer's own initial call so storyNext/storyPrev don't need to
+  // duplicate the same view-recording logic.
+  const markStoryViewedAt = useCallback((index) => {
+    const story = s.storyViewer?.stories?.[index];
+    if (story) viewStoryTick(story.id);
+  }, [s.storyViewer, viewStoryTick]);
+
+  // Creation — reuses the same camera/picker + Retake/Use Photo preview
+  // flow Chat.jsx's attach menu already established (Task 4).
+  const pickStoryFile = useCallback((file) => {
+    if (!file) return;
+    set({ storyCreatePreview: { file, url: URL.createObjectURL(file) } });
+  }, [set]);
+  const cancelStoryCreate = useCallback(() => {
+    set(prev => { if (prev.storyCreatePreview) URL.revokeObjectURL(prev.storyCreatePreview.url); return { storyCreatePreview: null }; });
+  }, [set]);
+  const publishStory = useCallback(async () => {
+    const preview = s.storyCreatePreview;
+    const orgId = s.myOrganizerIds[0];
+    if (!preview || !orgId || !s.user) return { success: false };
+    set({ storyCreateBusy: true });
+    try {
+      const { blob, ext, contentType, width, height } = await normalizeProofFile(preview.file);
+      const path = `${orgId}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('stories').upload(path, blob, { contentType });
+      if (upErr) throw upErr;
+      const { error } = await supabase.from('stories').insert({
+        organizer_id: orgId, author_id: s.user.id, media_path: path, media_type: contentType,
+        width: width || null, height: height || null,
+      });
+      if (error) throw error;
+      URL.revokeObjectURL(preview.url);
+      set({ storyCreatePreview: null, storyCreateBusy: false });
+      loadHomeStories();
+      return { success: true };
+    } catch (e) {
+      console.warn('publishStory failed:', e);
+      set({ storyCreateBusy: false });
+      return { success: false };
+    }
+  }, [s.storyCreatePreview, s.myOrganizerIds, s.user, loadHomeStories]);
 
   const curArea = AREAS.find(a => a.key === s.area) || AREAS[0];
 
@@ -3194,7 +3362,7 @@ export function GocProvider({ children }) {
   const loadChatMessages = useCallback(async (threadId, computeDivider) => {
     const { data, error } = await supabase
       .from('messages')
-      .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type')
+      .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height')
       .eq('thread_id', threadId)
       .order('created_at', { ascending: true });
     if (error) return;
@@ -3287,7 +3455,7 @@ export function GocProvider({ children }) {
   const sendChatAttachment = useCallback(async (file) => {
     if (!file || !s.chatThreadId || !s.user) return { success: false };
     try {
-      const { blob, ext, contentType } = await normalizeProofFile(file);
+      const { blob, ext, contentType, width, height } = await normalizeProofFile(file);
       const path = `${s.chatThreadId}/${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage.from('chat-attachments').upload(path, blob, { contentType });
       if (upErr) throw upErr;
@@ -3297,8 +3465,9 @@ export function GocProvider({ children }) {
           thread_id: s.chatThreadId, sender_id: s.user.id, kind: 'text',
           body: contentType === 'application/pdf' ? T('Đã gửi một tệp', 'Sent a file') : T('Đã gửi một ảnh', 'Sent a photo'),
           attachment_path: path, attachment_type: contentType,
+          attachment_width: width || null, attachment_height: height || null,
         })
-        .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type')
+        .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height')
         .maybeSingle();
       if (error) throw error;
       set(prev => ({ chatMessages: [...prev.chatMessages, data] }));
@@ -3309,6 +3478,103 @@ export function GocProvider({ children }) {
       return { success: false };
     }
   }, [set, s.chatThreadId, s.user, T, signChatAttachmentUrls]);
+
+  // 2026-09-21 follow-up — chat photo fullscreen viewer (Task 2,
+  // 07-notifications.md / 14-photo-viewer.md). A SEPARATE state slice from
+  // `photoViewer` (event-gallery photos) — see the field's own comment.
+  const openChatPhoto = useCallback((item, originRect) => {
+    set({ chatPhotoViewer: { ...item, originRect: originRect ? { top: originRect.top, left: originRect.left, width: originRect.width, height: originRect.height } : null, forwardOpen: false } });
+  }, [set]);
+  const closeChatPhoto = useCallback(() => set({ chatPhotoViewer: null }), [set]);
+
+  // Save/Download — fetches the SAME authorized signed URL already shown
+  // inline (never a public/permanent URL, per this ticket's own security
+  // instruction) and downloads the real bytes, not a screenshot of the UI.
+  const downloadChatPhoto = useCallback(async () => {
+    const item = s.chatPhotoViewer;
+    if (!item?.url) return;
+    try {
+      const res = await fetch(item.url);
+      if (!res.ok) throw new Error('fetch failed');
+      const blob = await res.blob();
+      const ext = (item.attachmentPath || '').split('.').pop() || 'jpg';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `banbe-photo-${item.messageId || Date.now()}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+      return { success: true };
+    } catch (e) {
+      console.warn('downloadChatPhoto failed:', e);
+      return { success: false };
+    }
+  }, [s.chatPhotoViewer]);
+
+  // Share — Web Share API (with the real file, where the browser supports
+  // sharing files) falling back to the same download path above.
+  const shareChatPhoto = useCallback(async () => {
+    const item = s.chatPhotoViewer;
+    if (!item?.url) return { success: false };
+    try {
+      const res = await fetch(item.url);
+      const blob = await res.blob();
+      const ext = (item.attachmentPath || '').split('.').pop() || 'jpg';
+      const file = new File([blob], `banbe-photo.${ext}`, { type: blob.type || 'image/jpeg' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] });
+        return { success: true };
+      }
+    } catch (e) {
+      // A user-cancelled share() rejects too — not a real failure, just no-op.
+      if (e?.name === 'AbortError') return { success: false };
+      console.warn('shareChatPhoto failed, falling back to download:', e);
+    }
+    return downloadChatPhoto();
+  }, [s.chatPhotoViewer, downloadChatPhoto]);
+
+  const openChatForward = useCallback(() => set(prev => ({ chatPhotoViewer: prev.chatPhotoViewer ? { ...prev.chatPhotoViewer, forwardOpen: true } : null })), [set]);
+  const closeChatForward = useCallback(() => set(prev => ({ chatPhotoViewer: prev.chatPhotoViewer ? { ...prev.chatPhotoViewer, forwardOpen: false } : null })), [set]);
+
+  // Forward — `chat_attachments_participant_read` (migration 065) grants
+  // read access by the OBJECT'S OWN path prefix (the thread id it lives
+  // under), not by the message row that references it — so a forwarded
+  // message can't just point at the SOURCE thread's copy of the path,
+  // or the target thread's other participant (who isn't in the source
+  // thread) would get a permission-denied signing the URL. Copies the real
+  // bytes (same authorized original — fetched via the same signed URL
+  // already shown, never a public one) into a new object under the TARGET
+  // thread's own path, so its normal RLS grants it there like any other
+  // attachment. Only thread ids the sender is actually a participant of
+  // are ever offered (s.inboxThreads).
+  const forwardChatPhoto = useCallback(async (targetThreadId) => {
+    const item = s.chatPhotoViewer;
+    if (!item?.attachmentPath || !item?.url || !s.user || !targetThreadId) return { success: false };
+    try {
+      const res = await fetch(item.url);
+      if (!res.ok) throw new Error('fetch failed');
+      const blob = await res.blob();
+      const ext = item.attachmentPath.split('.').pop() || 'jpg';
+      const attachmentType = blob.type || (ext === 'pdf' ? 'application/pdf' : 'image/jpeg');
+      const newPath = `${targetThreadId}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('chat-attachments').upload(newPath, blob, { contentType: attachmentType });
+      if (upErr) throw upErr;
+      const { error } = await supabase.from('messages').insert({
+        thread_id: targetThreadId, sender_id: s.user.id, kind: 'text',
+        body: T('Đã chuyển tiếp một ảnh', 'Forwarded a photo'),
+        attachment_path: newPath, attachment_type: attachmentType,
+        attachment_width: item.width || null, attachment_height: item.height || null,
+      });
+      if (error) throw error;
+      closeChatForward();
+      return { success: true };
+    } catch (e) {
+      console.warn('forwardChatPhoto failed:', e);
+      return { success: false };
+    }
+  }, [s.chatPhotoViewer, s.user, T, closeChatForward]);
+
   const chatOnKey = useCallback((e) => { if (e.key === 'Enter') chatSend(); }, [chatSend]);
   const chatBackFn = useCallback(() => set(prev => ({ screen: prev.chatBack === 'inbox' || prev.chatBack === 'notifications' ? prev.chatBack : 'organizer' })), [set]);
 
@@ -3826,7 +4092,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
@@ -3855,7 +4121,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,

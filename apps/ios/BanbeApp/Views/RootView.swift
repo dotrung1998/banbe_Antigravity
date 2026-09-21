@@ -210,6 +210,8 @@ struct RootView: View {
             if app.askingLocation { LocationSheetView() }
             if app.reasonPrompt != nil { ReasonSheetView() }
             if let photo = app.photoViewer { PhotoViewerView(item: photo) }
+            if app.chatPhotoViewer != nil { ChatPhotoViewerView() }
+            if app.storyViewer != nil { StoryViewerView() }
             if app.loading { loadingOverlay }
 
             if !app.toasts.isEmpty {

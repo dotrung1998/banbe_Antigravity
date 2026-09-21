@@ -44,6 +44,7 @@ struct HomeView: View {
                 // tagging the "Your events" strip further down.
                 paymentBanners
                 if !app.savedStrip.isEmpty { savedStrip }
+                if !app.homeStories.isEmpty { storyRow }
                 filterTabs
                 homeExtraFilterChips
                 if app.feed.isEmpty {
@@ -78,6 +79,8 @@ struct HomeView: View {
         // for every visitor (no `userID` gate), same as `loadLiveEventStatus`
         // does for a single open event.
         .task { await app.loadHomeLiveEvents() }
+        // Task 3.3 (07-notifications.md) — active-story row.
+        .task { if app.userID != nil { await app.loadHomeStories() } }
         .onAppear { startTickingIfNeeded() }
         .onDisappear { tickTask?.cancel() }
     }
@@ -242,6 +245,45 @@ struct HomeView: View {
         .padding(.horizontal, 20)
         .padding(.top, 16)
         .padding(.bottom, 12)
+        .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
+    }
+
+    // MARK: Story row (Task 3.3, 07-notifications.md) — between "Your
+    // events" and the main event list, per this ticket's own placement.
+    private var storyRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 14) {
+                ForEach(app.homeStories) { group in
+                    Button { app.openStoryViewer(group.organizerId) } label: {
+                        VStack(spacing: 5) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                    .strokeBorder(group.allViewed ? Color.clear : BanbeTheme.alert, lineWidth: 2.5)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                            .strokeBorder(group.allViewed ? app.palette.rule : .clear, lineWidth: 2.5)
+                                    )
+                                    .frame(width: 56, height: 56)
+                                Text(String(group.orgName.prefix(1)).uppercased())
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(app.palette.ink)
+                                    .frame(width: 48, height: 48)
+                                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                            }
+                            Text(group.orgName)
+                                .font(.system(size: 9.5))
+                                .foregroundStyle(app.palette.ink)
+                                .lineLimit(1)
+                                .frame(width: 60)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("home.storyAvatar")
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+        .padding(.vertical, 14)
         .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
     }
 

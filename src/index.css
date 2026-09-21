@@ -84,6 +84,12 @@ input::placeholder {
   to { opacity: 1; }
 }
 
+/* Story viewer progress bar fill (StoryViewer.jsx) — 07-notifications.md Task 3.4. */
+@keyframes gocStoryFill {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
 @keyframes gocTumble {
   0% { transform: rotate(0deg); }
   22% { transform: rotate(180deg); }

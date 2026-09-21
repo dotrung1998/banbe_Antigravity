@@ -2,6 +2,25 @@ import { useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass } from '../theme.js';
 
+// Task 1 (2026-09-21 stories/chat-photo follow-up) — an aspect-ratio-correct
+// bubble box for a chat image, computed from its stored intrinsic
+// width/height (messages.attachment_width/height, migration 066). Clamped
+// inside a sensible chat max, but the box's OWN ratio always matches the
+// source image's ratio, so `objectFit: 'cover'` never has to crop/letterbox
+// anything — it's filling a frame that's already the right shape.
+const ATTACHMENT_MAX_W = 240;
+const ATTACHMENT_MAX_H = 320;
+const ATTACHMENT_MIN_W = 120;
+function attachmentBoxSize(w, h) {
+  if (!w || !h) return { width: 220, height: 220 }; // pre-066 row or a probe failure — same fixed box as before
+  const ratio = w / h;
+  let boxW = Math.min(ATTACHMENT_MAX_W, w);
+  let boxH = boxW / ratio;
+  if (boxH > ATTACHMENT_MAX_H) { boxH = ATTACHMENT_MAX_H; boxW = boxH * ratio; }
+  if (boxW < ATTACHMENT_MIN_W) { boxW = ATTACHMENT_MIN_W; boxH = boxW / ratio; }
+  return { width: Math.round(boxW), height: Math.round(boxH) };
+}
+
 // Task 3d — payment-status system messages as a distinct inline card
 // (reference: "Confirmed ... Show details"), not a plain text bubble.
 // `messages.kind` only has 'text'/'system' (schema-confirmed, see
@@ -27,7 +46,7 @@ function formatTime(iso) {
 }
 
 export default function Chat() {
-  const { state, T, curEvent: ev, chatBackFn, chatOnType, chatOnKey, chatSend, deleteMessage, goEvent, sendChatAttachment } = useGoc();
+  const { state, T, curEvent: ev, chatBackFn, chatOnType, chatOnKey, chatSend, deleteMessage, goEvent, sendChatAttachment, openChatPhoto } = useGoc();
   const s = state;
 
   // Task 4 (2026-09-21 follow-up) — "+" attach flow. `pickerFile` is the
@@ -70,7 +89,7 @@ export default function Chat() {
   };
 
   const thread = s.chatMessages.length
-    ? s.chatMessages.map(m => ({ id: m.id, who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body, kind: m.kind, createdAt: m.created_at, attachmentPath: m.attachment_path, attachmentType: m.attachment_type }))
+    ? s.chatMessages.map(m => ({ id: m.id, who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body, kind: m.kind, createdAt: m.created_at, attachmentPath: m.attachment_path, attachmentType: m.attachment_type, attachmentWidth: m.attachment_width, attachmentHeight: m.attachment_height }))
     : [{ who: 'host', text: ev.greeting }];
   const chatBackLabel = s.chatBack === 'inbox' ? T('Tin nhắn', 'Messages')
     : s.chatBack === 'notifications' ? T('Thông báo', 'Notifications')
@@ -166,17 +185,31 @@ export default function Chat() {
                     `attachmentUrl` comes from signChatAttachmentUrls()
                     (GocContext.jsx), the same batched-signed-URL pattern
                     proofUrls already uses for the private payment-proof
-                    bucket. */}
+                    bucket.
+                    2026-09-21 follow-up (14-photo-viewer.md) — an image tap
+                    now opens the dedicated ChatPhotoViewer (source: 'chat')
+                    instead of a plain `<a target="_blank">`; the box is
+                    sized to the stored intrinsic aspect ratio
+                    (attachmentBoxSize) so no white side-rails/letterboxing. */}
                 {m.attachmentPath ? (
-                  <a href={attachmentUrl || undefined} target="_blank" rel="noreferrer" data-testid="chat-attachment" style={{ display: 'block', textDecoration: 'none' }}>
-                    {isImageAttachment && attachmentUrl ? (
-                      <img src={attachmentUrl} alt="" style={{ maxWidth: 220, maxHeight: 220, borderRadius: 14, display: 'block', border: `1px solid ${rule}` }} />
-                    ) : (
+                  isImageAttachment && attachmentUrl ? (
+                    <img
+                      src={attachmentUrl}
+                      alt=""
+                      data-testid="chat-attachment"
+                      onClick={(e) => openChatPhoto({
+                        messageId: m.id, attachmentPath: m.attachmentPath, url: attachmentUrl,
+                        width: m.attachmentWidth, height: m.attachmentHeight, senderLabel,
+                      }, e.currentTarget.getBoundingClientRect())}
+                      style={{ ...attachmentBoxSize(m.attachmentWidth, m.attachmentHeight), objectFit: 'cover', borderRadius: 14, display: 'block', border: `1px solid ${rule}`, cursor: 'pointer' }}
+                    />
+                  ) : (
+                    <a href={attachmentUrl || undefined} target="_blank" rel="noreferrer" data-testid="chat-attachment" style={{ display: 'block', textDecoration: 'none' }}>
                       <div style={{ ...fieldGlass({ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }), fontSize: 12.5, color: ink }}>
                         📎 {m.text}
                       </div>
-                    )}
-                  </a>
+                    </a>
+                  )
                 ) : (
                   <div style={{
                     maxWidth: '78%', padding: '11px 14px', fontSize: 13.5, lineHeight: 1.5,

@@ -26,6 +26,8 @@ import LocationSheet from './screens/sheets/LocationSheet.jsx';
 import QrScanSheet from './screens/sheets/QrScanSheet.jsx';
 import ReasonSheet from './screens/sheets/ReasonSheet.jsx';
 import PhotoViewer from './screens/sheets/PhotoViewer.jsx';
+import ChatPhotoViewer from './screens/sheets/ChatPhotoViewer.jsx';
+import StoryViewer from './screens/sheets/StoryViewer.jsx';
 import Preferences from './screens/Preferences.jsx';
 import EditName from './screens/EditName.jsx';
 import Notifications from './screens/Notifications.jsx';
@@ -183,6 +185,8 @@ function Shell() {
         {state.askingLocation && <LocationSheet />}
         {state.scanningQr && <QrScanSheet />}
         {state.photoViewer && <PhotoViewer />}
+        {state.chatPhotoViewer && <ChatPhotoViewer />}
+        {state.storyViewer && <StoryViewer />}
         {state.reasonPrompt && <ReasonSheet />}
         {state.loading && <Loading label={T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>

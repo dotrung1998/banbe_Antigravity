@@ -103,6 +103,27 @@ struct PhotoViewerItem: Equatable {
     var path: String { gallery[index] }
 }
 
+/// A chat photo opened in ITS OWN fullscreen viewer (07-notifications.md /
+/// 14-photo-viewer.md) — deliberately a separate type/state from
+/// PhotoViewerItem above (different action set: Save/Share/Forward, not
+/// Like/Save-event; must never be confused with an Event Detail photo).
+struct ChatPhotoViewerItem: Equatable {
+    let messageId: UUID?
+    let attachmentPath: String
+    let url: URL
+    let width: Int?
+    let height: Int?
+    let senderLabel: String
+    var forwardOpen: Bool = false
+}
+
+/// One host's active-story progression state while the story viewer is open.
+struct StoryViewerState: Equatable {
+    let organizerId: String
+    var index: Int
+    let stories: [StoryItem]
+}
+
 struct AttendanceGuest: Identifiable, Equatable {
     let id: UUID
     let name: String
@@ -308,6 +329,22 @@ final class AppState: ObservableObject {
     // 2026-09-21 follow-up) — mirrors `proofUrls`'s own pattern for the
     // private payment-proof bucket.
     @Published var chatAttachmentUrls: [String: URL] = [:]
+    // Task 2 (07-notifications.md) — a chat photo open in its own fullscreen
+    // viewer. Separate from `photoViewer` above — see ChatPhotoViewerItem.
+    @Published var chatPhotoViewer: ChatPhotoViewerItem?
+    // Task 3 (07-notifications.md) — active stories, grouped by organizer,
+    // from loadHomeStories(). Own progression viewer state, own creation
+    // preview state — kept separate from photoViewer/chatPhotoViewer.
+    @Published var homeStories: [StoryGroup] = []
+    @Published var storyViewer: StoryViewerState?
+    @Published var storyCreatePreviewImage: UIImage?
+    @Published var storyCreateBusy = false
+    @Published var storyViewedIds: Set<UUID> = []
+    // Cached by loadHomeStories()/currentOrganizerIds() — iOS has no
+    // upfront-loaded organizer-id list the way web's GocContext.jsx does,
+    // so AccountView's story ring reads this instead of awaiting an async
+    // call from inside a computed `View` property.
+    @Published var myOrganizerIdsCache: [String] = []
     @Published var inboxThreads: [InboxThread] = []
     // Keyed by thread id — Task 2 (2026-09-21 follow-up).
     @Published var inboxThreadPrefs: [UUID: ThreadPreference] = [:]
@@ -1177,6 +1214,33 @@ final class AppState: ObservableObject {
         photoViewer = PhotoViewerItem(gallery: gallery, index: index, organizer: organizer, eventKey: eventKey, originRect: originRect)
     }
     func closePhoto() { photoViewer = nil }
+
+    // Task 2 (07-notifications.md) — chat photo viewer open/close, a
+    // separate state slice from photoViewer above (see ChatPhotoViewerItem).
+    func openChatPhoto(messageId: UUID?, attachmentPath: String, url: URL, width: Int?, height: Int?, senderLabel: String) {
+        chatPhotoViewer = ChatPhotoViewerItem(messageId: messageId, attachmentPath: attachmentPath, url: url, width: width, height: height, senderLabel: senderLabel)
+    }
+    func closeChatPhoto() { chatPhotoViewer = nil }
+    func openChatForward() { chatPhotoViewer?.forwardOpen = true }
+    func closeChatForward() { chatPhotoViewer?.forwardOpen = false }
+
+    // Task 3 (07-notifications.md) — story viewer open/close/progression.
+    func openStoryViewer(_ organizerId: String) {
+        guard let group = homeStories.first(where: { $0.organizerId == organizerId }), !group.stories.isEmpty else { return }
+        storyViewer = StoryViewerState(organizerId: organizerId, index: 0, stories: group.stories)
+    }
+    func closeStoryViewer() { storyViewer = nil }
+    func storyNext() {
+        guard var v = storyViewer else { return }
+        v.index += 1
+        if v.index >= v.stories.count { storyViewer = nil; return }
+        storyViewer = v
+    }
+    func storyPrev() {
+        guard var v = storyViewer, v.index > 0 else { return }
+        v.index -= 1
+        storyViewer = v
+    }
     func showPhoto(at index: Int) {
         guard var item = photoViewer else { return }
         item.index = max(0, min(index, item.gallery.count - 1))
@@ -1396,8 +1460,19 @@ final class AppState: ObservableObject {
         if let index = favorites.firstIndex(of: key) { favorites.remove(at: index) } else { favorites.append(key) }
     }
 
+    // 2026-09-21 follow-up (stories, 07-notifications.md) — REAL bug found
+    // while wiring stories' audience, mirrors the same fix on web
+    // (GocContext.jsx): this was local-only, never persisted to the real
+    // `follows(user_id, organizer_id)` table (003_social_chat.sql). Local
+    // `following` (by event key) stays as the optimistic UI toggle
+    // OrganizerView.swift already reads — now ALSO persists, resolved via
+    // the event's real organizer_id, best-effort (a demo-catalogue event
+    // with no real DB row only updates local state, same as before).
     func toggleFollow(_ key: String) {
+        let wasFollowing = following.contains(key)
         if let index = following.firstIndex(of: key) { following.remove(at: index) } else { following.append(key) }
+        guard let uid = userID else { return }
+        Task { await persistFollowToggle(eventKey: key, uid: uid, wasFollowing: wasFollowing) }
     }
 
     func pickFilter(_ key: String) { filter = key }

@@ -100,12 +100,17 @@ async function reencodeUnderLimit(source, width, height) {
  */
 export async function normalizeProofFile(file) {
   if (ALLOWED_PROOF_TYPES.has(file.type) && file.size <= MAX_PROOF_BYTES) {
-    return { blob: file, ext: EXT_BY_TYPE[file.type], contentType: file.type };
+    if (file.type === 'application/pdf') return { blob: file, ext: 'pdf', contentType: 'application/pdf', width: null, height: null };
+    // Chat attachments (07-notifications.md) need the true intrinsic
+    // width/height to render an aspect-ratio-correct bubble — probe it even
+    // on the pass-through path (no re-encode needed, just a decode).
+    const { width, height } = await probeImageDimensions(file);
+    return { blob: file, ext: EXT_BY_TYPE[file.type], contentType: file.type, width, height };
   }
   if (looksLikePdf(file)) {
     // Canvas can't re-encode a PDF — nothing to do but pass it through and
     // let the real error (oversized/rejected) surface from Storage.
-    return { blob: file, ext: 'pdf', contentType: 'application/pdf' };
+    return { blob: file, ext: 'pdf', contentType: 'application/pdf', width: null, height: null };
   }
 
   let source;
@@ -118,5 +123,17 @@ export async function normalizeProofFile(file) {
   const height = source.height || source.naturalHeight;
   const blob = await reencodeUnderLimit(source, width, height);
   if (source.close) source.close(); // release an ImageBitmap's backing memory
-  return { blob, ext: 'jpg', contentType: 'image/jpeg' };
+  return { blob, ext: 'jpg', contentType: 'image/jpeg', width, height };
+}
+
+async function probeImageDimensions(file) {
+  try {
+    const source = await decodeToPaintable(file);
+    const width = source.width || source.naturalWidth;
+    const height = source.height || source.naturalHeight;
+    if (source.close) source.close();
+    return { width: width || null, height: height || null };
+  } catch {
+    return { width: null, height: null }; // not fatal — caller falls back to a default box
+  }
 }

@@ -1,10 +1,31 @@
+import { useEffect, useRef } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
 
 export default function Account() {
-  const { state, T, goHome, goInbox, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, openSecurity, openDocuments, openPayout, openVerifications, openDisputes, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral } = useGoc();
+  const {
+    state, T, goHome, goInbox, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, openSecurity, openDocuments, openPayout, openVerifications, openDisputes, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
+    loadHomeStories, openStoryViewer, pickStoryFile, cancelStoryCreate, publishStory,
+  } = useGoc();
   const s = state;
+  const storyFileRef = useRef(null);
+  const storyCameraRef = useRef(null);
+
+  // Task 3.3 (07-notifications.md) — loads active stories (mine + followed
+  // hosts') so the ring below reflects real data even when Account is
+  // opened directly, without having visited Home first this session.
+  useEffect(() => { if (s.user) loadHomeStories(); }, [s.user, loadHomeStories]);
+  const myStoryGroup = s.myOrganizerIds.length ? s.homeStories.find(g => s.myOrganizerIds.includes(g.organizerId)) : null;
+  const hasActiveStory = !!myStoryGroup;
+  const storyUnviewed = hasActiveStory && !myStoryGroup.allViewed;
+
+  const onPickStoryFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) pickStoryFile(file);
+  };
+  const doPublishStory = async () => { await publishStory(); };
   const completedCount = [...new Set([...(s.favorites || []), ...s.attending])]
     .map(k => EVENTS.find(e => e.key === k))
     .filter(e => e && e.endedHoursAgo != null).length;
@@ -20,22 +41,72 @@ export default function Account() {
   const profileOrgName = (s.orgRegName && s.orgRegName.trim()) || 'Bếp Nhỏ';
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Account">
+    <div style={{ position: 'relative', animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Account">
       <div style={{ padding: '66px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ ...display(27) }}>{T('Tài khoản', 'Account')}</span>
         <span onClick={goHome} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>Xong</span>
       </div>
 
       <div style={{ padding: '22px 20px 0', display: 'flex', gap: 14, alignItems: 'center' }}>
-        <div style={{ ...fieldGlass({ flex: 'none', width: 56, height: 56, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }), ...display(22) }}>G</div>
+        {/* Task 3.3 (07-notifications.md) — story ring: a bright outline
+            while this host has an active, not-fully-viewed story; a
+            subdued one once every active story has been viewed; no ring
+            at all when there's no active story. Tapping the avatar opens
+            the viewer only when there's something to view. */}
+        <div
+          onClick={hasActiveStory ? () => openStoryViewer(myStoryGroup.organizerId) : undefined}
+          data-testid="account-story-ring"
+          data-story-state={hasActiveStory ? (storyUnviewed ? 'unviewed' : 'viewed') : 'none'}
+          style={{
+            flex: 'none', width: 64, height: 64, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: hasActiveStory ? `2.5px solid ${storyUnviewed ? alert : 'transparent'}` : '2.5px solid transparent',
+            boxShadow: hasActiveStory && !storyUnviewed ? `inset 0 0 0 2.5px ${rule}` : 'none',
+            cursor: hasActiveStory ? 'pointer' : 'default',
+          }}
+        >
+          <div style={{ ...fieldGlass({ width: 56, height: 56, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }), ...display(22) }}>G</div>
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
             <span style={{ ...display(22, { lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{profileName}</span>
             {s.user && <span onClick={goEditName} style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer', flex: 'none' }}>{T('Đổi tên', 'Rename')}</span>}
           </div>
           <span style={{ fontSize: 11, letterSpacing: '0.06em', color: ink }}>{profileSub}</span>
+          {/* Task 3.2 — story creation entry point, hosts only. */}
+          {isOrganizer && (
+            <span onClick={() => storyFileRef.current?.click()} data-testid="account-post-story" style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer' }}>
+              {T('▪︎ Đăng story', '▪︎ Post story')}
+            </span>
+          )}
         </div>
+        <input ref={storyFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPickStoryFile} data-testid="story-file-input" />
+        <input ref={storyCameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onPickStoryFile} data-testid="story-camera-input" />
       </div>
+
+      {/* Task 3.2 — Retake / Use Photo preview before actually publishing. */}
+      {s.storyCreatePreview && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 50, background: '#000', display: 'flex', flexDirection: 'column' }} data-testid="story-create-preview">
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            <img src={s.storyCreatePreview.url} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+          </div>
+          <div style={{ padding: '16px 22px 34px', display: 'flex', gap: 10 }}>
+            <div
+              onClick={s.storyCreateBusy ? undefined : () => { cancelStoryCreate(); storyCameraRef.current?.click(); }}
+              data-testid="story-retake"
+              style={{ flex: 1, textAlign: 'center', padding: '13px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.35)', color: '#fff', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}
+            >
+              {T('Chụp lại', 'Retake')}
+            </div>
+            <div
+              onClick={s.storyCreateBusy ? undefined : doPublishStory}
+              data-testid="story-use-photo"
+              style={{ flex: 1, textAlign: 'center', padding: '13px', borderRadius: 12, background: '#fff', color: '#000', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', opacity: s.storyCreateBusy ? 0.6 : 1 }}
+            >
+              {s.storyCreateBusy ? T('Đang đăng…', 'Posting…') : T('Dùng ảnh', 'Use photo')}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 10, padding: '22px 20px 0' }}>
         {/* data-attending-raw-count is the unfiltered s.attending.length — not

@@ -77,6 +77,7 @@ targets:
         NSCameraUsageDescription: "banbe uses your camera to scan a guest's ticket QR code at check-in, and to attach a photo to a chat message."
         NSFaceIDUsageDescription: "banbe uses Face ID to unlock the app for a returning signed-in user."
         NSCalendarsFullAccessUsageDescription: "banbe adds an event to your calendar when you tap \"Add to Calendar\" on a ticket."
+        NSPhotoLibraryAddUsageDescription: "banbe saves a chat photo to your library when you tap Save."
         # Opens a shared photo's organizer link straight in the app —
         # banbe://organizer/<eventKey>. A plain https:// link can only do
         # this through Universal Links, which need an Associated Domains
