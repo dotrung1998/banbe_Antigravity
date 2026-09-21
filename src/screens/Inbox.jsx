@@ -92,17 +92,26 @@ function InboxRow({ c, onOpen, onStar, onArchive }) {
               {(c.name || '?').trim().charAt(0).toUpperCase()}
             </div>
           )}
-          {c.starred && (
-            <span style={{ position: 'absolute', left: -2, bottom: -2, fontSize: 13, color: alert, background: paper, borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>★</span>
-          )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {unread && <span data-testid="inbox-row-unread-dot" style={{ width: 7, height: 7, borderRadius: '50%', background: alert, flex: 'none' }} />}
-            <span style={{ ...display(18, { lineHeight: 1.15, fontWeight: unread ? 700 : 600 }) }}>{c.name}</span>
+            {/* Bug 3 (2026-09-21 follow-up) — a fully-read row's name stays
+                bold (still reads as the row's title, and never drops below
+                the preview line's own weight beneath it) but is de-emphasized
+                via opacity/color rather than a lighter font-weight, so it
+                reads clearly lighter than an unread row's name without
+                losing its title-vs-preview hierarchy. */}
+            <span style={{ ...display(18, { lineHeight: 1.15, fontWeight: 700, opacity: unread ? 1 : 0.62 }) }}>{c.name}</span>
           </div>
           <span style={{ fontSize: 13, color: ink, opacity: unread ? 1 : 0.72, fontWeight: unread ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.snippet}</span>
         </div>
+        {/* Bug 1 (2026-09-21 follow-up) — moved off the avatar (where it
+            could collide with the merged-avatar badge) to the row's own
+            far trailing edge instead. */}
+        {c.starred && (
+          <span data-testid="inbox-row-star-badge" style={{ fontSize: 15, color: alert, flex: 'none' }}>★</span>
+        )}
       </div>
     </div>
   );

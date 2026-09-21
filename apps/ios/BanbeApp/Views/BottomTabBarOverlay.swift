@@ -108,6 +108,18 @@ import UIKit
 final class BottomTabBarOverlay {
     static let shared = BottomTabBarOverlay()
     private var window: UIWindow?
+    private var currentScreen: Screen = .home
+    // Inbox.jsx bug 2 fix (2026-09-21 follow-up): the Inbox settings sheet
+    // (and its "Give feedback" flow) are hand-rolled SwiftUI content INSIDE
+    // the main window's own view hierarchy — this window's own doc comment
+    // above already establishes that ANY content in the main window,
+    // including a real `.sheet()`/`.fullScreenCover()`, sits below this
+    // separate always-on-top window regardless of screen. `.inbox` staying
+    // in `visibleScreens` the whole time means `updateVisibility(for:)`
+    // alone never hides it for a same-screen sheet. Rather than inventing a
+    // second mechanism, this reuses the exact same `isHidden`-sync idea
+    // a5fd823 established, with one more input ORed in.
+    private var forcedHidden = false
 
     // Tracks BottomTabBar's own layout constants directly (barWidth/
     // barHeight/bottomOffset there) rather than an independently-chosen,
@@ -154,7 +166,21 @@ final class BottomTabBarOverlay {
     /// — a hidden `UIWindow` is removed from `UIApplication`'s hit-testing
     /// pass entirely, not merely told to ignore touches once reached.
     func updateVisibility(for screen: Screen) {
-        window?.isHidden = !BottomTabBar.visibleScreens.contains(screen)
+        currentScreen = screen
+        applyVisibility()
+    }
+
+    /// Inbox.jsx bug 2 fix (2026-09-21 follow-up) — a screen-local view
+    /// (InboxView) calls this directly around its own settings-sheet/
+    /// feedback-flow presentation, since neither one is a `Screen` change
+    /// `updateVisibility(for:)` would otherwise see.
+    func setForcedHidden(_ hidden: Bool) {
+        forcedHidden = hidden
+        applyVisibility()
+    }
+
+    private func applyVisibility() {
+        window?.isHidden = forcedHidden || !BottomTabBar.visibleScreens.contains(currentScreen)
     }
 }
 

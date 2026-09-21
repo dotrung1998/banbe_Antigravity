@@ -83,9 +83,30 @@ struct InboxView: View {
             }
         }
         .task { await app.loadInboxThreads() }
-        .overlay { if settingsOpen { settingsSheet } }
+        .overlay {
+            if settingsOpen { settingsSheet }
+        }
         .fullScreenCover(isPresented: $feedbackOpen) { FeedbackFlowView() }
+        // Bug 2a (2026-09-21 follow-up) — the settings sheet and the
+        // feedback flow are both hand-rolled/`.fullScreenCover` content
+        // INSIDE the main window, but BottomTabBarOverlay is a genuinely
+        // separate, always-on-top `UIWindow` (see that file's own doc
+        // comment) that `.inbox` staying in `visibleScreens` never hides on
+        // its own for a same-screen presentation. Reuses the exact
+        // `isHidden`-sync mechanism 4d549f9 already established for
+        // Event Detail (`updateVisibility(for:)`), via the new
+        // `setForcedHidden(_:)` this pass adds right alongside it.
+        .onChange(of: settingsOpen) { _, open in BottomTabBarOverlay.shared.setForcedHidden(open || feedbackOpen) }
+        .onChange(of: feedbackOpen) { _, open in BottomTabBarOverlay.shared.setForcedHidden(open || settingsOpen) }
+        .onDisappear { BottomTabBarOverlay.shared.setForcedHidden(false) }
     }
+
+    // Bug 2b — a proper spring (not an un-animated snap), the SAME
+    // response/dampingFraction the tab bar's own scroll-collapse animation
+    // already uses (AppState.noteScaffoldScroll), for consistency with the
+    // app's other smooth transitions.
+    private func openSettings() { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { settingsOpen = true } }
+    private func closeSettings() { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { settingsOpen = false } }
 
     // Task 1 — "Done" replaced with search + settings icons. Task 5 — each
     // icon-only control gets a small label underneath.
@@ -108,7 +129,7 @@ struct InboxView: View {
                     searchOpen.toggle()
                 }
                 if app.inboxView == .active {
-                    iconButton("gearshape", label: app.T("Cài đặt", "Settings")) { settingsOpen = true }
+                    iconButton("gearshape", label: app.T("Cài đặt", "Settings")) { openSettings() }
                 }
             }
         }
@@ -132,20 +153,29 @@ struct InboxView: View {
         .foregroundStyle(app.palette.ink)
     }
 
+    // Bug 2c — a true full-height bottom sheet: the PAPER BACKGROUND
+    // extends through the bottom safe area (home indicator strip) via
+    // `.ignoresSafeArea` scoped to just that background layer, so there's
+    // no exposed corner/gap below the sheet's rounded top corners, while
+    // the row CONTENT itself stays padded comfortably above the home
+    // indicator through ordinary (non-ignoring) layout.
     private var settingsSheet: some View {
         ZStack(alignment: .bottom) {
-            Color.black.opacity(0.55).ignoresSafeArea()
-                .onTapGesture { settingsOpen = false }
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
+                .onTapGesture { closeSettings() }
+                .transition(.opacity)
+
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Text(app.T("Cài đặt tin nhắn", "Messaging settings")).font(BanbeTheme.display(18))
                     Spacer()
-                    Button { settingsOpen = false } label: { Image(systemName: "xmark") }
+                    Button { closeSettings() } label: { Image(systemName: "xmark") }
                         .buttonStyle(.plain)
                 }
                 .padding(.bottom, 12)
                 Button {
-                    settingsOpen = false
+                    closeSettings()
                     app.inboxView = .archived
                 } label: {
                     Text(app.T("Đã lưu trữ", "Archived")).font(.system(size: 14.5)).frame(maxWidth: .infinity, alignment: .leading)
@@ -154,7 +184,7 @@ struct InboxView: View {
                 .padding(.vertical, 13)
                 .overlay(Rectangle().fill(app.palette.rule).frame(height: 1), alignment: .top)
                 Button {
-                    settingsOpen = false
+                    closeSettings()
                     feedbackOpen = true
                 } label: {
                     Text(app.T("Gửi phản hồi", "Give feedback")).font(.system(size: 14.5)).frame(maxWidth: .infinity, alignment: .leading)
@@ -165,9 +195,14 @@ struct InboxView: View {
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 22).padding(.top, 18).padding(.bottom, 34)
-            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                app.palette.paper
+                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: 18, topTrailingRadius: 18, style: .continuous))
+                    .ignoresSafeArea(edges: .bottom)
+            )
+            .transition(.move(edge: .bottom))
         }
-        .transition(.opacity)
     }
 }
 
@@ -205,19 +240,19 @@ private struct InboxRow: View {
                         }
                     }
                     .overlay(Circle().stroke(app.palette.paper, lineWidth: 2))
-                    if starred {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 10))
-                            .foregroundStyle(BanbeTheme.alert)
-                            .padding(3)
-                            .background(app.palette.paper, in: Circle())
-                            .offset(x: -2, y: 2)
-                    }
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         if unread { Circle().fill(BanbeTheme.alert).frame(width: 7, height: 7) }
-                        Text(thread.name).font(BanbeTheme.display(18)).fontWeight(unread ? .bold : .semibold)
+                        // Bug 3 (2026-09-21 follow-up) — a fully-read row's
+                        // name stays bold (still reads as the row's title)
+                        // but lighter-contrast than an unread row's, via
+                        // opacity rather than dropping below the preview
+                        // line's own weight underneath it.
+                        Text(thread.name)
+                            .font(BanbeTheme.display(18))
+                            .fontWeight(.semibold)
+                            .foregroundStyle(app.palette.ink.opacity(unread ? 1 : 0.6))
                     }
                     Text(thread.snippet)
                         .font(.system(size: 13, weight: unread ? .semibold : .regular))
@@ -225,6 +260,14 @@ private struct InboxRow: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
+                // Bug 1 (2026-09-21 follow-up) — moved off the avatar
+                // (where it collided with the merged-avatar badge) to the
+                // row's own far trailing edge instead.
+                if starred {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(BanbeTheme.alert)
+                }
             }
             .padding(.vertical, 14)
             .contentShape(Rectangle())
