@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass } from '../theme.js';
 
@@ -26,11 +27,50 @@ function formatTime(iso) {
 }
 
 export default function Chat() {
-  const { state, T, curEvent: ev, chatBackFn, chatOnType, chatOnKey, chatSend, deleteMessage, goEvent } = useGoc();
+  const { state, T, curEvent: ev, chatBackFn, chatOnType, chatOnKey, chatSend, deleteMessage, goEvent, sendChatAttachment } = useGoc();
   const s = state;
 
+  // Task 4 (2026-09-21 follow-up) — "+" attach flow. `pickerFile` is the
+  // file already chosen via the "Add photo or document" picker (attaches
+  // immediately, matching how an OS file picker already shows its own
+  // preview/confirm step). `cameraFile` goes through its OWN Retake/Use
+  // Photo review step, per this ticket's own instruction, before sending.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [cameraPreview, setCameraPreview] = useState(null); // { file, url }
+  const [sendingAttachment, setSendingAttachment] = useState(false);
+  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+
+  const onPickFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setSendingAttachment(true);
+    await sendChatAttachment(file);
+    setSendingAttachment(false);
+  };
+  const onPickCamera = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setCameraPreview({ file, url: URL.createObjectURL(file) });
+  };
+  const retakePhoto = () => {
+    if (cameraPreview) URL.revokeObjectURL(cameraPreview.url);
+    setCameraPreview(null);
+    cameraInputRef.current?.click();
+  };
+  const usePhoto = async () => {
+    if (!cameraPreview) return;
+    setSendingAttachment(true);
+    await sendChatAttachment(cameraPreview.file);
+    setSendingAttachment(false);
+    URL.revokeObjectURL(cameraPreview.url);
+    setCameraPreview(null);
+  };
+
   const thread = s.chatMessages.length
-    ? s.chatMessages.map(m => ({ id: m.id, who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body, kind: m.kind, createdAt: m.created_at }))
+    ? s.chatMessages.map(m => ({ id: m.id, who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body, kind: m.kind, createdAt: m.created_at, attachmentPath: m.attachment_path, attachmentType: m.attachment_type }))
     : [{ who: 'host', text: ev.greeting }];
   const chatBackLabel = s.chatBack === 'inbox' ? T('Tin nhắn', 'Messages')
     : s.chatBack === 'notifications' ? T('Thông báo', 'Notifications')
@@ -43,7 +83,7 @@ export default function Chat() {
   const headerTitle = s.chatOtherName || ev.hostShort;
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Chat">
+    <div style={{ position: 'relative', animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Chat">
       <div style={{ padding: '66px 22px 14px', borderBottom: `1px solid ${rule}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
           <span onClick={chatBackFn} data-testid="chat-back" style={{ fontSize: 11, color: ink, cursor: 'pointer' }}>‹ {chatBackLabel}</span>
@@ -100,6 +140,8 @@ export default function Chat() {
 
           // Task 3c — per-message sender + timestamp, not a bare bubble.
           const senderLabel = m.who === 'me' ? T('Bạn', 'You') : headerTitle;
+          const attachmentUrl = m.attachmentPath ? s.chatAttachmentUrls[m.attachmentPath] : null;
+          const isImageAttachment = m.attachmentType?.startsWith('image/');
           rows.push(
             <div key={m.id ?? i} style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: m.who === 'me' ? 'flex-end' : 'flex-start' }}>
               {m.createdAt && (
@@ -119,20 +161,79 @@ export default function Chat() {
                     ×
                   </span>
                 )}
-                <div style={{
-                  maxWidth: '78%', padding: '11px 14px', fontSize: 13.5, lineHeight: 1.5,
-                  borderRadius: m.who === 'me' ? '16px 16px 5px 16px' : '16px 16px 16px 5px',
-                  background: m.who === 'me' ? ink : paper,
-                  color: m.who === 'me' ? paper : ink,
-                  border: m.who === 'me' ? 'none' : `1px solid ${rule}`,
-                }}>{m.text}</div>
+                {/* Task 4 — attachment rendering: an inline image for an
+                    image/* attachment, a small document chip otherwise.
+                    `attachmentUrl` comes from signChatAttachmentUrls()
+                    (GocContext.jsx), the same batched-signed-URL pattern
+                    proofUrls already uses for the private payment-proof
+                    bucket. */}
+                {m.attachmentPath ? (
+                  <a href={attachmentUrl || undefined} target="_blank" rel="noreferrer" data-testid="chat-attachment" style={{ display: 'block', textDecoration: 'none' }}>
+                    {isImageAttachment && attachmentUrl ? (
+                      <img src={attachmentUrl} alt="" style={{ maxWidth: 220, maxHeight: 220, borderRadius: 14, display: 'block', border: `1px solid ${rule}` }} />
+                    ) : (
+                      <div style={{ ...fieldGlass({ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }), fontSize: 12.5, color: ink }}>
+                        📎 {m.text}
+                      </div>
+                    )}
+                  </a>
+                ) : (
+                  <div style={{
+                    maxWidth: '78%', padding: '11px 14px', fontSize: 13.5, lineHeight: 1.5,
+                    borderRadius: m.who === 'me' ? '16px 16px 5px 16px' : '16px 16px 16px 5px',
+                    background: m.who === 'me' ? ink : paper,
+                    color: m.who === 'me' ? paper : ink,
+                    border: m.who === 'me' ? 'none' : `1px solid ${rule}`,
+                  }}>{m.text}</div>
+                )}
               </div>
             </div>
           );
           return rows;
         })}
       </div>
-      <div style={{ padding: '12px 18px 30px', borderTop: `1px solid ${rule}`, display: 'flex', gap: 8 }}>
+      <div style={{ padding: '12px 18px 30px', borderTop: `1px solid ${rule}`, display: 'flex', gap: 8, alignItems: 'center', position: 'relative' }}>
+        {/* Task 4 — "+" attach button + its two-option menu. */}
+        <div
+          onClick={() => s.chatThreadId && setMenuOpen(v => !v)}
+          data-testid="chat-attach-toggle"
+          style={{
+            width: 40, height: 40, borderRadius: '50%', flex: 'none',
+            ...fieldGlass({}), display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 20, color: ink, cursor: s.chatThreadId ? 'pointer' : 'default', opacity: s.chatThreadId ? 1 : 0.5,
+          }}
+        >
+          +
+        </div>
+        {menuOpen && (
+          <div
+            onClick={() => setMenuOpen(false)}
+            style={{ position: 'fixed', inset: 0, zIndex: 35 }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ ...cardGlass({ position: 'absolute', bottom: 76, left: 18, minWidth: 220 }), padding: 6, display: 'flex', flexDirection: 'column' }}
+            >
+              <div
+                onClick={() => { setMenuOpen(false); fileInputRef.current?.click(); }}
+                data-testid="chat-attach-file"
+                style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8 }}
+              >
+                {T('Thêm ảnh hoặc tài liệu', 'Add photo or document')}
+              </div>
+              <div
+                onClick={() => { setMenuOpen(false); cameraInputRef.current?.click(); }}
+                data-testid="chat-attach-camera"
+                style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8 }}
+              >
+                {T('Máy ảnh', 'Camera')}
+              </div>
+            </div>
+          </div>
+        )}
+        <input ref={fileInputRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={onPickFile} data-testid="chat-file-input" />
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onPickCamera} data-testid="chat-camera-input" />
+
         <input
           value={s.chatDraft} onChange={chatOnType} onKeyDown={chatOnKey}
           placeholder={s.chatThreadId ? ('Viết cho ' + headerTitle + '…') : T('Đang mở cuộc trò chuyện…', 'Opening conversation…')}
@@ -141,6 +242,32 @@ export default function Chat() {
         />
         <div onClick={s.chatThreadId ? chatSend : undefined} style={{ ...inkButton({ borderRadius: 999, padding: '12px 20px', display: 'flex', alignItems: 'center', flex: 'none' }), opacity: s.chatThreadId ? 1 : 0.5, cursor: s.chatThreadId ? 'pointer' : 'default' }}>Gửi</div>
       </div>
+
+      {/* Task 4 — camera review step: Retake / Use Photo, before actually
+          attaching/sending it, per this ticket's own instruction. */}
+      {cameraPreview && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 50, background: '#000', display: 'flex', flexDirection: 'column' }} data-testid="chat-camera-preview">
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            <img src={cameraPreview.url} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+          </div>
+          <div style={{ padding: '16px 22px 34px', display: 'flex', gap: 10 }}>
+            <div
+              onClick={sendingAttachment ? undefined : retakePhoto}
+              data-testid="chat-camera-retake"
+              style={{ flex: 1, textAlign: 'center', padding: '13px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.35)', color: '#fff', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}
+            >
+              {T('Chụp lại', 'Retake')}
+            </div>
+            <div
+              onClick={sendingAttachment ? undefined : usePhoto}
+              data-testid="chat-camera-use"
+              style={{ flex: 1, textAlign: 'center', padding: '13px', borderRadius: 12, background: '#fff', color: '#000', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', opacity: sendingAttachment ? 0.6 : 1 }}
+            >
+              {sendingAttachment ? T('Đang gửi…', 'Sending…') : T('Dùng ảnh này', 'Use Photo')}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

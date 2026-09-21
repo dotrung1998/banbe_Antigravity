@@ -38,17 +38,29 @@ struct BottomTabBar: View {
     // hosting window's band FROM these values directly instead of an
     // independently-chosen guess — see that type's own doc comment for
     // why keeping the two in lockstep is the actual point this time.
-    static let barHeight: CGFloat = 54
+    // Task 5 (2026-09-21 follow-up): bumped 54→64 and icon size trimmed
+    // 24→20 to make room for a small label under each icon (was icon-only,
+    // no on-screen text telling a first-time user what any of the five do)
+    // while keeping the same slim-pill proportions — mirrors the exact same
+    // change on `src/screens/BottomTabBar.jsx`. `BottomTabBarOverlay` reads
+    // `Self.barHeight` directly for its own hosting window's hit-testable
+    // band, so it stays in lockstep automatically.
+    static let barHeight: CGFloat = 64
     static let barWidth: CGFloat = 380
     static let barHorizontalPadding: CGFloat = 20
     static let bottomOffset: CGFloat = 2
-    private let iconSize: CGFloat = 24
+    private let iconSize: CGFloat = 20
     private var barHeight: CGFloat { Self.barHeight }
 
     private struct Item: Identifiable {
         let id: String
         let icon: (Color) -> AnyView
         let label: String
+        // Task 5 (2026-09-21 follow-up): a SHORT (one-word) form of `label`
+        // for the on-dock text — "Trang chính"/"Home" is fine as an
+        // accessibility label but too long to sit under a 20px icon
+        // without wrapping/overflowing.
+        let dockLabel: String
         let action: () -> Void
         let badge: Int
         // Notifications' badge (per-account read_at) caps at "9+" — this
@@ -62,14 +74,14 @@ struct BottomTabBar: View {
 
     private var items: [Item] {
         [
-            Item(id: "home", icon: { AnyView(HomeGlyph(color: $0)) }, label: app.T("Trang chính", "Home"), action: { app.goHome() }, badge: 0),
-            Item(id: "map", icon: { AnyView(MapGlyph(color: $0)) }, label: app.T("Bản đồ", "Map"), action: { app.goMapExplore() }, badge: 0),
-            Item(id: "notifications", icon: { AnyView(NotificationsGlyph(color: $0)) }, label: app.T("Thông báo", "Notifications"), action: { app.goNotifications() }, badge: app.unreadNotifications, badgeCapped: true),
+            Item(id: "home", icon: { AnyView(HomeGlyph(color: $0)) }, label: app.T("Trang chính", "Home"), dockLabel: app.T("Trang chủ", "Home"), action: { app.goHome() }, badge: 0),
+            Item(id: "map", icon: { AnyView(MapGlyph(color: $0)) }, label: app.T("Bản đồ", "Map"), dockLabel: app.T("Bản đồ", "Map"), action: { app.goMapExplore() }, badge: 0),
+            Item(id: "notifications", icon: { AnyView(NotificationsGlyph(color: $0)) }, label: app.T("Thông báo", "Notifications"), dockLabel: app.T("Thông báo", "Alerts"), action: { app.goNotifications() }, badge: app.unreadNotifications, badgeCapped: true),
             // Unread count: number of conversations with an unread message
             // — see refreshUnreadMessageCount() (AppState+Data.swift),
             // refreshed on the same 5s poll as unreadNotifications.
-            Item(id: "inbox", icon: { AnyView(InboxGlyph(color: $0)) }, label: app.T("Tin nhắn", "Messages"), action: { app.goInbox() }, badge: app.unreadMessages),
-            Item(id: "profile", icon: { AnyView(ProfileGlyph(color: $0)) }, label: app.T("Tài khoản", "Account"), action: { app.goProfile() }, badge: 0),
+            Item(id: "inbox", icon: { AnyView(InboxGlyph(color: $0)) }, label: app.T("Tin nhắn", "Messages"), dockLabel: app.T("Tin nhắn", "Inbox"), action: { app.goInbox() }, badge: app.unreadMessages),
+            Item(id: "profile", icon: { AnyView(ProfileGlyph(color: $0)) }, label: app.T("Tài khoản", "Account"), dockLabel: app.T("Tài khoản", "Account"), action: { app.goProfile() }, badge: 0),
         ]
     }
 
@@ -153,21 +165,28 @@ struct BottomTabBar: View {
 
             HStack(spacing: 0) {
                 ForEach(items) { item in
-                    ZStack(alignment: .topTrailing) {
-                        item.icon(app.palette.ink)
-                            .frame(width: iconSize, height: iconSize)
-                            .opacity(activeID == item.id ? 1 : 0.86)
-                            .frame(maxWidth: .infinity, minHeight: barHeight)
-                        if item.badge > 0 {
-                            Text(item.badgeCapped && item.badge > 9 ? "9+" : "\(item.badge)")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 4)
-                                .frame(minWidth: 14, minHeight: 14)
-                                .background(BanbeTheme.alert, in: Capsule())
-                                .offset(x: -6, y: 8)
+                    VStack(spacing: 3) {
+                        ZStack(alignment: .topTrailing) {
+                            item.icon(app.palette.ink)
+                                .frame(width: iconSize, height: iconSize)
+                                .opacity(activeID == item.id ? 1 : 0.86)
+                            if item.badge > 0 {
+                                Text(item.badgeCapped && item.badge > 9 ? "9+" : "\(item.badge)")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 4)
+                                    .frame(minWidth: 14, minHeight: 14)
+                                    .background(BanbeTheme.alert, in: Capsule())
+                                    .offset(x: 7, y: -5)
+                            }
                         }
+                        // Task 5 (2026-09-21 follow-up) — a small label
+                        // under each icon so it's not icon-only.
+                        Text(item.dockLabel)
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(app.palette.ink.opacity(activeID == item.id ? 1 : 0.72))
                     }
+                    .frame(maxWidth: .infinity, minHeight: barHeight)
                     .accessibilityIdentifier("tab.\(item.id)")
                     .accessibilityLabel(item.label)
                     .anchorPreference(key: TabItemFrameKey.self, value: .bounds) { [item.id: $0] }

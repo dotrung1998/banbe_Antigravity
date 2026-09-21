@@ -148,7 +148,21 @@ struct InboxThread: Identifiable, Equatable {
     let otherAvatarURL: String?
     let snippet: String
     let lastAt: Date?
+    // Task 3 (2026-09-21 follow-up) — same unread signal the dock badge's
+    // own poll uses, reused here per-row so InboxView can bold an unread row
+    // instead of a second computation.
+    var unread: Bool = false
 }
+
+/// Per-participant star/archive state for one thread (thread_preferences,
+/// migration 065) — NOT on `threads` itself, since a guest and the
+/// organizer on the same thread need independent state.
+struct ThreadPreference: Equatable {
+    var starred: Bool = false
+    var archived: Bool = false
+}
+
+enum InboxViewMode { case active, archived }
 
 /// The whole app's state and behaviour — the iOS counterpart of
 /// src/state/GocContext.jsx. Deliberately one object, like the web app, so
@@ -276,7 +290,15 @@ final class AppState: ObservableObject {
     // loadChatMessages(_:computeDivider:) and never recomputed by the 4s
     // poll, so it doesn't move while the thread stays open.
     @Published var chatUnreadDividerID: UUID?
+    // path -> signed URL (10min), for chat message attachments (Task 4,
+    // 2026-09-21 follow-up) — mirrors `proofUrls`'s own pattern for the
+    // private payment-proof bucket.
+    @Published var chatAttachmentUrls: [String: URL] = [:]
     @Published var inboxThreads: [InboxThread] = []
+    // Keyed by thread id — Task 2 (2026-09-21 follow-up).
+    @Published var inboxThreadPrefs: [UUID: ThreadPreference] = [:]
+    // Which InboxView is currently showing — Task 1b.
+    @Published var inboxView: InboxViewMode = .active
     // Unread message count for the Inbox tab badge (BottomTabBar.swift) —
     // mirrors unreadNotifications below, but there's no client-loaded
     // `messages` array to derive it from client-side (inboxThreads only

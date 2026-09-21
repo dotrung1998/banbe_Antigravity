@@ -60,6 +60,23 @@ struct NewMessage: Encodable {
     }
 }
 
+/// Task 4 (2026-09-21 follow-up) — the composer's "+" attach flow.
+struct NewAttachmentMessage: Encodable {
+    let threadId: UUID
+    let senderId: UUID
+    let body: String
+    let kind: String
+    let attachmentPath: String
+    let attachmentType: String
+    enum CodingKeys: String, CodingKey {
+        case threadId = "thread_id"
+        case senderId = "sender_id"
+        case body, kind
+        case attachmentPath = "attachment_path"
+        case attachmentType = "attachment_type"
+    }
+}
+
 struct NotificationReadUpdate: Encodable {
     let readAt: String
     enum CodingKeys: String, CodingKey { case readAt = "read_at" }
@@ -217,11 +234,23 @@ private struct MessageBrief: Decodable {
     let body: String
     let senderId: UUID?
     let createdAt: Date
+    let readAt: Date?
     enum CodingKeys: String, CodingKey {
         case threadId = "thread_id"
         case body
         case senderId = "sender_id"
         case createdAt = "created_at"
+        case readAt = "read_at"
+    }
+}
+/// loadInboxThreads()'s own thread_preferences row shape (migration 065).
+private struct ThreadPreferenceRow: Decodable {
+    let threadId: UUID
+    let starred: Bool
+    let archived: Bool
+    enum CodingKeys: String, CodingKey {
+        case threadId = "thread_id"
+        case starred, archived
     }
 }
 /// What the SECURITY DEFINER RPCs return — every one of them answers with
@@ -1422,7 +1451,7 @@ extension AppState {
         do {
             let rows: [ChatMessage] = try await SupabaseService.client
                 .from("messages")
-                .select("id, thread_id, sender_id, body, kind, created_at, read_at")
+                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type")
                 .eq("thread_id", value: threadID)
                 .order("created_at", ascending: true)
                 .execute().value
@@ -1432,8 +1461,58 @@ extension AppState {
                 chatUnreadDividerID = rows.first { $0.readAt == nil && $0.senderId != uid }?.id
                 await markThreadMessagesRead(threadID)
             }
+            await signChatAttachmentUrls(rows.compactMap(\.attachmentPath))
         } catch {
             print("Failed to load messages:", error)
+        }
+    }
+
+    /// Task 4 (2026-09-21 follow-up) — signs every given 'chat-attachments'
+    /// path in one batched call, same pattern this app already uses for the
+    /// private payment-proof bucket.
+    func signChatAttachmentUrls(_ paths: [String]) async {
+        let wanted = Array(Set(paths)).filter { !$0.isEmpty }
+        guard !wanted.isEmpty else { return }
+        do {
+            let results = try await SupabaseService.client.storage
+                .from("chat-attachments")
+                .createSignedURLs(paths: wanted, expiresIn: 600)
+            for result in results {
+                if case let .success(path, signedURL) = result {
+                    chatAttachmentUrls[path] = signedURL
+                }
+            }
+        } catch {
+            print("signChatAttachmentUrls failed:", error)
+        }
+    }
+
+    /// Reuses ProofImageProcessor-style downscaling if this app already has
+    /// one for the payment-proof upload path; otherwise uploads the image
+    /// data as-is (the 'chat-attachments' bucket itself still enforces a
+    /// 20MB cap / allowed MIME types server-side either way).
+    func sendChatAttachment(data: Data, contentType: String, fileExtension: String) async -> Bool {
+        guard let threadID = chatThreadID, let uid = userID else { return false }
+        do {
+            // Lowercased: Postgres's own uuid-to-text cast is always
+            // lowercase, unlike Foundation's UUID.uuidString — matches the
+            // same fix `submitPaymentProof`'s own path already needed
+            // (AppState+Payments.swift) for its RLS policy's string match.
+            let path = "\(threadID.uuidString.lowercased())/\(Int(Date().timeIntervalSince1970 * 1000)).\(fileExtension)"
+            _ = try await SupabaseService.client.storage.from("chat-attachments")
+                .upload(path, data: data, options: FileOptions(contentType: contentType))
+            let body = contentType == "application/pdf" ? T("Đã gửi một tệp", "Sent a file") : T("Đã gửi một ảnh", "Sent a photo")
+            let sent: [ChatMessage] = try await SupabaseService.client
+                .from("messages")
+                .insert(NewAttachmentMessage(threadId: threadID, senderId: uid, body: body, kind: "text", attachmentPath: path, attachmentType: contentType))
+                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type")
+                .execute().value
+            if let message = sent.first { chatMessages.append(message) }
+            await signChatAttachmentUrls([path])
+            return true
+        } catch {
+            print("sendChatAttachment failed:", error)
+            return false
         }
     }
 
@@ -1523,14 +1602,29 @@ extension AppState {
             guard !threads.isEmpty else { inboxThreads = []; return }
 
             let messages: [MessageBrief] = try await SupabaseService.client
-                .from("messages").select("thread_id, body, sender_id, created_at")
+                .from("messages").select("thread_id, body, sender_id, created_at, read_at")
                 .in("thread_id", values: threads.map(\.id))
                 .order("created_at", ascending: false)
                 .execute().value
             var lastByThread: [UUID: MessageBrief] = [:]
-            for message in messages where lastByThread[message.threadId] == nil {
-                lastByThread[message.threadId] = message
+            // Task 3 (2026-09-21 follow-up) — same unread signal the dock
+            // badge's own poll uses (read_at IS NULL, not sent by me),
+            // reused here per-row instead of a second computation.
+            var unreadThreadIDs = Set<UUID>()
+            for message in messages {
+                if lastByThread[message.threadId] == nil { lastByThread[message.threadId] = message }
+                if message.readAt == nil, message.senderId != uid { unreadThreadIDs.insert(message.threadId) }
             }
+
+            // Task 2 (2026-09-21 follow-up) — per-participant star/archive.
+            let prefRows: [ThreadPreferenceRow] = try await SupabaseService.client
+                .from("thread_preferences").select("thread_id, starred, archived")
+                .eq("user_id", value: uid)
+                .in("thread_id", values: threads.map(\.id))
+                .execute().value
+            var prefsByThread: [UUID: ThreadPreference] = [:]
+            for row in prefRows { prefsByThread[row.threadId] = ThreadPreference(starred: row.starred, archived: row.archived) }
+            inboxThreadPrefs = prefsByThread
 
             // Task 3a (07-notifications.md, 2026-09-21) — the OTHER
             // participant's own avatar for InboxView's merged-avatar badge:
@@ -1582,11 +1676,88 @@ extension AppState {
                     img: event.img,
                     otherAvatarURL: otherAvatarURL,
                     snippet: last.map { prefix + $0.body } ?? "",
-                    lastAt: last?.createdAt
+                    lastAt: last?.createdAt,
+                    unread: unreadThreadIDs.contains(thread.id)
                 )
             }.sorted { ($0.lastAt ?? .distantPast) > ($1.lastAt ?? .distantPast) }
         } catch {
             print("Failed to load conversations:", error)
+        }
+    }
+
+    /// Task 2 (2026-09-21 follow-up) — swipe-left "Star"/"Archive" actions.
+    /// Upserts into thread_preferences (migration 065), RLS-scoped to
+    /// `user_id = auth.uid()` so a guest and the organizer on the same
+    /// thread always get independent state.
+    func toggleThreadStar(_ threadID: UUID) async {
+        var pref = inboxThreadPrefs[threadID] ?? ThreadPreference()
+        pref.starred.toggle()
+        let previous = inboxThreadPrefs[threadID]
+        inboxThreadPrefs[threadID] = pref
+        await upsertThreadPreference(threadID, pref) { self.inboxThreadPrefs[threadID] = previous }
+    }
+
+    func archiveThread(_ threadID: UUID) async {
+        var pref = inboxThreadPrefs[threadID] ?? ThreadPreference()
+        pref.archived = true
+        let previous = inboxThreadPrefs[threadID]
+        inboxThreadPrefs[threadID] = pref
+        await upsertThreadPreference(threadID, pref) { self.inboxThreadPrefs[threadID] = previous }
+    }
+
+    func unarchiveThread(_ threadID: UUID) async {
+        var pref = inboxThreadPrefs[threadID] ?? ThreadPreference()
+        pref.archived = false
+        let previous = inboxThreadPrefs[threadID]
+        inboxThreadPrefs[threadID] = pref
+        await upsertThreadPreference(threadID, pref) { self.inboxThreadPrefs[threadID] = previous }
+    }
+
+    private func upsertThreadPreference(_ threadID: UUID, _ pref: ThreadPreference, onFailure: @escaping () -> Void) async {
+        guard let uid = userID else { return }
+        struct Upsert: Encodable {
+            let threadId: UUID
+            let userId: UUID
+            let starred: Bool
+            let archived: Bool
+            enum CodingKeys: String, CodingKey {
+                case threadId = "thread_id"
+                case userId = "user_id"
+                case starred, archived
+            }
+        }
+        do {
+            try await SupabaseService.client.from("thread_preferences")
+                .upsert(Upsert(threadId: threadID, userId: uid, starred: pref.starred, archived: pref.archived))
+                .execute()
+        } catch {
+            print("thread_preferences upsert failed:", error)
+            onFailure()
+        }
+    }
+
+    /// Task 1b — "Give feedback" (app_feedback, migration 065). No existing
+    /// generic feedback table (confirmed via grep before adding this one).
+    func submitFeedback(_ body: String, isBugReport: Bool) async -> Bool {
+        guard let uid = userID else { return false }
+        struct FeedbackInsert: Encodable {
+            let userId: UUID
+            let body: String
+            let isBugReport: Bool
+            enum CodingKeys: String, CodingKey {
+                case userId = "user_id"
+                case body
+                case isBugReport = "is_bug_report"
+            }
+        }
+        do {
+            try await SupabaseService.client.from("app_feedback")
+                .insert(FeedbackInsert(userId: uid, body: body.trimmingCharacters(in: .whitespacesAndNewlines), isBugReport: isBugReport))
+                .execute()
+            return true
+        } catch {
+            print("submitFeedback failed:", error)
+            return false
         }
     }
 

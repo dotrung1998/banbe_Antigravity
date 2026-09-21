@@ -26,6 +26,10 @@ struct ChatMessage: Codable, Identifiable, Hashable {
     var kind: String
     var createdAt: Date
     var readAt: Date?
+    // Task 4 (07-notifications.md, 2026-09-21) — the composer's "+" attach
+    // flow; nil for an ordinary text message.
+    var attachmentPath: String?
+    var attachmentType: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -35,5 +39,7 @@ struct ChatMessage: Codable, Identifiable, Hashable {
         case kind
         case createdAt = "created_at"
         case readAt = "read_at"
+        case attachmentPath = "attachment_path"
+        case attachmentType = "attachment_type"
     }
 }

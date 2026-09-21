@@ -369,7 +369,19 @@ const initialState = {
   // option) and never recomputed by the 4s poll, so it doesn't chase newly-
   // read messages around while the thread stays open.
   chatUnreadDividerId: null,
+  // path -> signed URL (10min), for chat message attachments — same
+  // pattern as `proofUrls`/signProofUrls (chat-attachments is a private
+  // bucket, see supabase/migrations/065).
+  chatAttachmentUrls: {},
   inboxThreads: [],
+  // Per-participant star/archive state for a thread (thread_preferences,
+  // migration 065) — keyed by threadId: { starred, archived }. NOT stored
+  // on `threads` itself since a guest and the organizer on the same thread
+  // need independent state (one side archiving shouldn't hide it from the
+  // other). Loaded alongside inboxThreads.
+  inboxThreadPrefs: {},
+  // 'active' | 'archived' — which Inbox.jsx is currently showing (Task 1b).
+  inboxView: 'active',
   calAdded: false,
   // Bug 3 (15-organizer-checkin.md follow-up): the event key the calendar
   // picker sheet is currently open for, or null when closed.
@@ -899,11 +911,26 @@ export function GocProvider({ children }) {
     const threadIds = allThreads.map(t => t.id);
     const { data: msgs } = await supabase
       .from('messages')
-      .select('thread_id, body, sender_id, created_at')
+      .select('thread_id, body, sender_id, created_at, read_at')
       .in('thread_id', threadIds)
       .order('created_at', { ascending: false });
     const lastByThread = {};
-    for (const m of msgs || []) if (!lastByThread[m.thread_id]) lastByThread[m.thread_id] = m;
+    // Task 3 (2026-09-21 follow-up) — same unread signal the dock badge's
+    // own poll uses (read_at IS NULL, not sent by me), reused here per-row
+    // instead of a second computation, so Inbox.jsx can bold an unread row.
+    const unreadThreadIds = new Set();
+    for (const m of msgs || []) {
+      if (!lastByThread[m.thread_id]) lastByThread[m.thread_id] = m;
+      if (!m.read_at && m.sender_id !== uid) unreadThreadIds.add(m.thread_id);
+    }
+
+    // Task 2 (2026-09-21 follow-up) — per-participant star/archive state.
+    const { data: prefRows } = await supabase
+      .from('thread_preferences')
+      .select('thread_id, starred, archived')
+      .eq('user_id', uid)
+      .in('thread_id', threadIds);
+    const prefsByThread = Object.fromEntries((prefRows || []).map(p => [p.thread_id, { starred: p.starred, archived: p.archived }]));
 
     // Merged-avatar badge (Inbox.jsx): the OTHER participant's own photo —
     // the guest's profiles.avatar_url when I'm the organizer, or the
@@ -942,11 +969,68 @@ export function GocProvider({ children }) {
         otherAvatarUrl: otherAvatarUrl || null,
         snippet: last ? ((last.sender_id === uid ? 'Bạn: ' : '') + last.body) : '',
         lastAt: last?.created_at || null,
+        unread: unreadThreadIds.has(t.id),
       };
     }).sort((a, b) => new Date(b.lastAt || 0) - new Date(a.lastAt || 0));
 
-    set({ inboxThreads: rows });
+    set({ inboxThreads: rows, inboxThreadPrefs: prefsByThread });
   }, [set, s.user?.id]);
+
+  // Task 2 (2026-09-21 follow-up) — swipe-left "Star"/"Archive" actions.
+  // Upserts into thread_preferences (migration 065), scoped by RLS to
+  // `user_id = auth.uid()` so a guest and the organizer on the same thread
+  // always get independent state — one side archiving a thread never
+  // changes what the other side's own Inbox shows for it.
+  const toggleThreadStar = useCallback(async (threadId) => {
+    const uid = s.user?.id;
+    if (!uid) return;
+    const current = s.inboxThreadPrefs[threadId] || { starred: false, archived: false };
+    const next = { ...current, starred: !current.starred };
+    set(prev => ({ inboxThreadPrefs: { ...prev.inboxThreadPrefs, [threadId]: next } }));
+    const { error } = await supabase.from('thread_preferences').upsert({ thread_id: threadId, user_id: uid, ...next });
+    if (error) {
+      console.warn('toggleThreadStar failed:', error);
+      set(prev => ({ inboxThreadPrefs: { ...prev.inboxThreadPrefs, [threadId]: current } }));
+    }
+  }, [set, s.user?.id, s.inboxThreadPrefs]);
+  const archiveThread = useCallback(async (threadId) => {
+    const uid = s.user?.id;
+    if (!uid) return;
+    const current = s.inboxThreadPrefs[threadId] || { starred: false, archived: false };
+    const next = { ...current, archived: true };
+    set(prev => ({ inboxThreadPrefs: { ...prev.inboxThreadPrefs, [threadId]: next } }));
+    const { error } = await supabase.from('thread_preferences').upsert({ thread_id: threadId, user_id: uid, ...next });
+    if (error) {
+      console.warn('archiveThread failed:', error);
+      set(prev => ({ inboxThreadPrefs: { ...prev.inboxThreadPrefs, [threadId]: current } }));
+    }
+  }, [set, s.user?.id, s.inboxThreadPrefs]);
+  const unarchiveThread = useCallback(async (threadId) => {
+    const uid = s.user?.id;
+    if (!uid) return;
+    const current = s.inboxThreadPrefs[threadId] || { starred: false, archived: false };
+    const next = { ...current, archived: false };
+    set(prev => ({ inboxThreadPrefs: { ...prev.inboxThreadPrefs, [threadId]: next } }));
+    const { error } = await supabase.from('thread_preferences').upsert({ thread_id: threadId, user_id: uid, ...next });
+    if (error) {
+      console.warn('unarchiveThread failed:', error);
+      set(prev => ({ inboxThreadPrefs: { ...prev.inboxThreadPrefs, [threadId]: current } }));
+    }
+  }, [set, s.user?.id, s.inboxThreadPrefs]);
+  const setInboxView = useCallback((view) => set({ inboxView: view }), [set]);
+
+  // Task 1b — "Give feedback" (app_feedback, migration 065). No existing
+  // generic feedback table (confirmed via grep before adding this one).
+  const submitFeedback = useCallback(async (body, isBugReport) => {
+    const uid = s.user?.id;
+    if (!uid) return { success: false };
+    const { error } = await supabase.from('app_feedback').insert({ user_id: uid, body: body.trim(), is_bug_report: !!isBugReport });
+    if (error) {
+      console.warn('submitFeedback failed:', error);
+      return { success: false };
+    }
+    return { success: true };
+  }, [s.user?.id]);
 
   // Inbox tab badge (BottomTabBar.jsx) — mirrors unreadNotifications' own
   // poll (this app has no realtime subscription anywhere to hook into
@@ -2098,7 +2182,7 @@ export function GocProvider({ children }) {
     // Reached from both Home (message icon) and Account ("Messages" row) —
     // remember whichever it was so the way back matches the way in, instead
     // of always landing on Home regardless of where the tap came from.
-    set(prev => ({ screen: 'inbox', inboxBack: prev.screen === 'profile' ? 'profile' : 'home' }));
+    set(prev => ({ screen: 'inbox', inboxBack: prev.screen === 'profile' ? 'profile' : 'home', inboxView: 'active' }));
     loadInboxThreads();
   }, [set, s.user, loadInboxThreads]);
   const backFromInbox = useCallback(() => set(prev => ({ screen: prev.inboxBack || 'home' })), [set]);
@@ -3011,10 +3095,24 @@ export function GocProvider({ children }) {
   // read. The 4s poll below calls this again with computeDivider left
   // false, so it only ever refreshes `chatMessages` and never moves the
   // divider while the thread stays open (07-notifications.md).
+  // Task 4 (2026-09-21 follow-up) — signs every given 'chat-attachments'
+  // path in one batched call, same pattern as signProofUrls/`proofUrls`.
+  const signChatAttachmentUrls = useCallback(async (paths) => {
+    const wanted = [...new Set((paths || []).filter(Boolean))];
+    if (!wanted.length) return;
+    const { data, error } = await supabase.storage.from('chat-attachments').createSignedUrls(wanted, 600);
+    if (error) { console.warn('signChatAttachmentUrls failed:', error); return; }
+    set(prev => ({
+      chatAttachmentUrls: (data || []).reduce((acc, row) => {
+        if (row.path && row.signedUrl && !row.error) acc[row.path] = row.signedUrl;
+        return acc;
+      }, { ...prev.chatAttachmentUrls }),
+    }));
+  }, [set]);
   const loadChatMessages = useCallback(async (threadId, computeDivider) => {
     const { data, error } = await supabase
       .from('messages')
-      .select('id, sender_id, body, kind, created_at, read_at')
+      .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type')
       .eq('thread_id', threadId)
       .order('created_at', { ascending: true });
     if (error) return;
@@ -3027,7 +3125,8 @@ export function GocProvider({ children }) {
     } else {
       set({ chatMessages: rows });
     }
-  }, [set, s.user?.id, markThreadMessagesRead]);
+    signChatAttachmentUrls(rows.map(m => m.attachment_path));
+  }, [set, s.user?.id, markThreadMessagesRead, signChatAttachmentUrls]);
   // Get-or-create the one thread between the signed-in guest and this
   // event's organizer. Never called for the organizer's own side of a
   // conversation — that always opens a specific, already-known thread
@@ -3085,6 +3184,40 @@ export function GocProvider({ children }) {
     // notify_new_message trigger) is the only notification a new message
     // gets; tapping it now takes you straight to the thread.
   }, [set, s.chatDraft, s.chatThreadId, s.user]);
+  // Task 4 (2026-09-21 follow-up) — the composer's "+" attach flow.
+  // Reuses normalizeProofFile() (src/lib/proofUpload.js, already built for
+  // this exact problem on the payment-proof/receipt upload paths: HEIC/oversized
+  // photos re-encoded to a JPEG that fits) rather than writing a second
+  // resize pipeline — its 5MB cap is more conservative than the
+  // 'chat-attachments' bucket's own 20MB, which is fine. `body` can't be
+  // empty (NOT NULL) so an attachment-only message gets a short placeholder
+  // that still reads sensibly anywhere body is shown without attachment
+  // awareness (Inbox snippet, notification preview).
+  const sendChatAttachment = useCallback(async (file) => {
+    if (!file || !s.chatThreadId || !s.user) return { success: false };
+    try {
+      const { blob, ext, contentType } = await normalizeProofFile(file);
+      const path = `${s.chatThreadId}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('chat-attachments').upload(path, blob, { contentType });
+      if (upErr) throw upErr;
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          thread_id: s.chatThreadId, sender_id: s.user.id, kind: 'text',
+          body: contentType === 'application/pdf' ? T('Đã gửi một tệp', 'Sent a file') : T('Đã gửi một ảnh', 'Sent a photo'),
+          attachment_path: path, attachment_type: contentType,
+        })
+        .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type')
+        .maybeSingle();
+      if (error) throw error;
+      set(prev => ({ chatMessages: [...prev.chatMessages, data] }));
+      signChatAttachmentUrls([path]);
+      return { success: true };
+    } catch (e) {
+      console.warn('sendChatAttachment failed:', e);
+      return { success: false };
+    }
+  }, [set, s.chatThreadId, s.user, T, signChatAttachmentUrls]);
   const chatOnKey = useCallback((e) => { if (e.key === 'Enter') chatSend(); }, [chatSend]);
   const chatBackFn = useCallback(() => set(prev => ({ screen: prev.chatBack === 'inbox' || prev.chatBack === 'notifications' ? prev.chatBack : 'organizer' })), [set]);
 
@@ -3602,7 +3735,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
@@ -3631,7 +3764,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,

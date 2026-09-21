@@ -34,19 +34,13 @@
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>banbe adds an event to your calendar when you tap "Add to Calendar" on a ticket.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>banbe uses your camera to scan a guest's ticket QR code at check-in.</string>
+	<string>banbe uses your camera to scan a guest's ticket QR code at check-in, and to attach a photo to a chat message.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>banbe uses Face ID to unlock the app for a returning signed-in user.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>banbe uses your location to show how far events are and to filter the area picker.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
-	<!-- Task 1 (this session): portrait-only, no rotation. Nothing in
-	     AppState/RootView/any view controller overrides
-	     `supportedInterfaceOrientations` (confirmed by grep — none of
-	     this app's own screens ever set it), so this Info.plist key is
-	     the ONLY place orientation support is actually declared for this
-	     app; no other override needed to match it. -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

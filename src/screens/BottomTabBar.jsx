@@ -77,8 +77,14 @@ export function showsBottomBar(screen) {
 // at its tallest detent (matches the iOS side's identical change; web has
 // no separate-window hit-testing concern the way iOS's
 // BottomTabBarOverlay does, so only the visual dimensions moved here).
-const BAR_HEIGHT = 54;
-const ICON_SIZE = 24;
+// Task 5 (2026-09-21 follow-up): bumped 54→64 and icon size trimmed 24→20
+// to make room for a small label under each icon (was icon-only, no
+// on-screen text telling a first-time user what any of the five do) while
+// keeping the same slim-pill proportions — the bar reads taller but not
+// noticeably wider/heavier since the label text is small (9px) and the
+// icon shrink offsets most of the added height visually.
+const BAR_HEIGHT = 64;
+const ICON_SIZE = 20;
 // BUG 3: sits a little closer to the bottom edge than 64f2719/623ec1e's
 // 18px — "shift its resting position lower."
 const BAR_BOTTOM_OFFSET = 10;
@@ -94,12 +100,17 @@ export default function BottomTabBar({ collapsed }) {
   // loadInboxThreads in GocContext.jsx), shown uncapped per this ticket's
   // own ask: unlike a raw message count, a conversation count naturally
   // stays small enough that "9+" would just be hiding real information.
+  // Task 5 (2026-09-21 follow-up): `dockLabel` is a SHORT (one-word) form
+  // of the same destination `label` already carries for aria-label —
+  // "Trang chính"/"Home" is fine as a screen-reader label but too long to
+  // sit under a 20px icon in a 400px-wide bar without wrapping or
+  // overflowing; "Trang chủ" is the ordinary short Vietnamese form.
   const items = useMemo(() => [
-    { key: 'home', icon: 'home', onClick: goHome, label: T('Trang chính', 'Home'), testId: 'tab-home', badge: 0, badgeCapped: false },
-    { key: 'mapExplore', icon: 'map', onClick: goMapExplore, label: T('Bản đồ', 'Map'), testId: 'tab-map', badge: 0, badgeCapped: false },
-    { key: 'notifications', icon: 'notifications', onClick: goNotifications, label: T('Thông báo', 'Notifications'), testId: 'tab-notifications', badge: s.unreadNotifications || 0, badgeCapped: true },
-    { key: 'inbox', icon: 'inbox', onClick: goInbox, label: T('Tin nhắn', 'Messages'), testId: 'tab-inbox', badge: s.unreadMessages || 0, badgeCapped: false },
-    { key: 'profile', icon: 'profile', onClick: goProfile, label: T('Tài khoản', 'Account'), testId: 'tab-profile', badge: 0, badgeCapped: false },
+    { key: 'home', icon: 'home', onClick: goHome, label: T('Trang chính', 'Home'), dockLabel: T('Trang chủ', 'Home'), testId: 'tab-home', badge: 0, badgeCapped: false },
+    { key: 'mapExplore', icon: 'map', onClick: goMapExplore, label: T('Bản đồ', 'Map'), dockLabel: T('Bản đồ', 'Map'), testId: 'tab-map', badge: 0, badgeCapped: false },
+    { key: 'notifications', icon: 'notifications', onClick: goNotifications, label: T('Thông báo', 'Notifications'), dockLabel: T('Thông báo', 'Alerts'), testId: 'tab-notifications', badge: s.unreadNotifications || 0, badgeCapped: true },
+    { key: 'inbox', icon: 'inbox', onClick: goInbox, label: T('Tin nhắn', 'Messages'), dockLabel: T('Tin nhắn', 'Inbox'), testId: 'tab-inbox', badge: s.unreadMessages || 0, badgeCapped: false },
+    { key: 'profile', icon: 'profile', onClick: goProfile, label: T('Tài khoản', 'Account'), dockLabel: T('Tài khoản', 'Account'), testId: 'tab-profile', badge: 0, badgeCapped: false },
   ], [goHome, goMapExplore, goNotifications, goInbox, goProfile, T, s.unreadNotifications, s.unreadMessages]);
 
   // FEATURE — scrub-to-select: press anywhere on the bar and drag; a soft
@@ -273,22 +284,29 @@ export default function BottomTabBar({ collapsed }) {
             ref={(el) => { itemRefs.current[i] = el; }}
             data-testid={item.testId}
             aria-label={item.label}
-            style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 44, height: '100%', zIndex: 1 }}
+            style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, width: 60, height: '100%', zIndex: 1 }}
           >
-            <div style={{ width: ICON_SIZE, height: ICON_SIZE, opacity: activeIndex === i ? 1 : 0.86 }}>
+            <div style={{ position: 'relative', width: ICON_SIZE, height: ICON_SIZE, opacity: activeIndex === i ? 1 : 0.86 }}>
               {ICONS[item.icon](ink)}
+              {item.badge > 0 && (
+                <span
+                  style={{
+                    position: 'absolute', top: -5, right: -7, minWidth: 14, height: 14, padding: '0 3px',
+                    borderRadius: 7, background: alert, color: '#fff', fontSize: 9, fontWeight: 700,
+                    lineHeight: '14px', textAlign: 'center',
+                  }}
+                >
+                  {item.badgeCapped && item.badge > 9 ? '9+' : item.badge}
+                </span>
+              )}
             </div>
-            {item.badge > 0 && (
-              <span
-                style={{
-                  position: 'absolute', top: 4, right: 2, minWidth: 14, height: 14, padding: '0 3px',
-                  borderRadius: 7, background: alert, color: '#fff', fontSize: 9, fontWeight: 700,
-                  lineHeight: '14px', textAlign: 'center',
-                }}
-              >
-                {item.badgeCapped && item.badge > 9 ? '9+' : item.badge}
-              </span>
-            )}
+            {/* Task 5 (2026-09-21 follow-up) — a small label under each
+                icon so it's not icon-only; reuses `item.label`, already
+                computed for `aria-label` above, rather than a second
+                string. */}
+            <span style={{ fontSize: 8, fontWeight: 600, color: ink, opacity: activeIndex === i ? 1 : 0.72, whiteSpace: 'nowrap' }}>
+              {item.dockLabel}
+            </span>
           </div>
         ))}
       </div>
