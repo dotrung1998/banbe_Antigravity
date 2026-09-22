@@ -205,11 +205,15 @@ export default function Home() {
                 enough to read/tap more easily without unbalancing the rest
                 of the header row (area/appearance stay at their existing
                 size). */}
-            <span onClick={toggleLang} style={{ fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer', letterSpacing: '0.06em' }}>{T('English', 'Tiếng Việt')}</span>
+            <span onClick={toggleLang} style={{ fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer', letterSpacing: '0.06em', padding: '4px 2px' }}>{T('English', 'Tiếng Việt')}</span>
             <span style={{ fontSize: 9, color: ink, opacity: 0.4 }}>▪</span>
-            <span onClick={openArea} style={{ fontSize: 11, color: ink, cursor: 'pointer' }}>banbe ▪︎ {curArea.key === 'all' ? 'Sài Gòn' : curArea.label} ▾</span>
+            {/* Task 3 (2026-09-22 twelfth follow-up) — area/appearance bumped to
+                match the language toggle's size/weight/hit-area (13px/600,
+                4px vertical padding) instead of the smaller 11px/400 they'd
+                been left at when the language toggle was enlarged. */}
+            <span onClick={openArea} style={{ fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer', padding: '4px 2px' }}>banbe ▪︎ {curArea.key === 'all' ? 'Sài Gòn' : curArea.label} ▾</span>
             <span style={{ fontSize: 9, color: ink, opacity: 0.4 }}>▪</span>
-            <span onClick={toggleTheme} data-testid="home-theme-toggle" style={{ fontSize: 11, color: ink, cursor: 'pointer' }}>{s.theme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}</span>
+            <span onClick={toggleTheme} data-testid="home-theme-toggle" style={{ fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer', padding: '4px 2px' }}>{s.theme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}</span>
           </div>
         </div>
       </div>
@@ -283,7 +287,17 @@ export default function Home() {
       {s.homeStories.length > 0 && (
         <div style={{ display: 'flex', gap: 14, overflowX: 'auto', padding: '14px 20px', borderBottom: `1px solid ${rule}` }}>
           {s.homeStories.map(g => (
-            <div key={g.organizerId} onClick={() => openStoryViewer(g.organizerId)} data-testid="home-story-avatar" data-story-state={g.allViewed ? 'viewed' : 'unviewed'} style={{ flex: 'none', width: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+            <div
+              key={g.organizerId}
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                openStoryViewer(g.organizerId, { top: r.top, left: r.left, width: r.width, height: r.height });
+              }}
+              data-testid="home-story-avatar"
+              data-org-id={g.organizerId}
+              data-story-state={g.allViewed ? 'viewed' : 'unviewed'}
+              style={{ flex: 'none', width: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer' }}
+            >
               <div style={{
                 width: 56, height: 56, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 border: `2.5px solid ${g.allViewed ? 'transparent' : alert}`,

@@ -130,6 +130,14 @@ struct StoryViewerState: Equatable {
     let groups: [StoryGroup]
     var groupIndex: Int
     var storyIndex: Int
+    // Task 1 (2026-09-22 twelfth follow-up) — the tapped ring's own global
+    // frame (HomeView.swift's storyRow, via StoryRingFramePreferenceKey),
+    // for StoryViewerView's expand-from-ring entrance. Carried through
+    // every storyNext/storyPrev/storyNextHost/storyPrevHost update below
+    // (each passes `originRect: v.originRect` along) exactly like web's
+    // GocContext.jsx spreads `...v` — see openStoryViewer()'s own comment
+    // for why dismissing toward a ring is a SEPARATE live lookup, not this.
+    var originRect: CGRect?
 }
 
 struct AttendanceGuest: Identifiable, Equatable {
@@ -348,11 +356,29 @@ final class AppState: ObservableObject {
     // Task 2 (07-notifications.md) — a chat photo open in its own fullscreen
     // viewer. Separate from `photoViewer` above — see ChatPhotoViewerItem.
     @Published var chatPhotoViewer: ChatPhotoViewerItem?
+    // Task 5 (2026-09-22 twelfth follow-up) — set by sendChatViewerReply()/
+    // sendChatAttachment(replyToMessageId:) right when a reply/reaction sent
+    // FROM ChatPhotoViewerView lands, so ChatView (already there underneath
+    // — the viewer is a ZStack overlay, not a separate `screen`) can scroll
+    // that message into view and clear the flag; chatFocusComposer only
+    // true for a typed reply, never a one-tap quick reaction. Mirrors web's
+    // GocContext.jsx chatScrollToMessageId/chatFocusComposer exactly.
+    @Published var chatScrollToMessageID: UUID?
+    @Published var chatFocusComposer = false
     // Task 3 (07-notifications.md) — active stories, grouped by organizer,
     // from loadHomeStories(). Own progression viewer state, own creation
     // preview state — kept separate from photoViewer/chatPhotoViewer.
     @Published var homeStories: [StoryGroup] = []
     @Published var storyViewer: StoryViewerState?
+    // Task 1 (2026-09-22 twelfth follow-up) — HomeView's story row publishes
+    // each ring's own global frame here (StoryRingFramePreferenceKey, via
+    // .onPreferenceChange) so StoryViewerView can do a LIVE lookup by
+    // organizerId at dismiss time (the currently active host's ring may
+    // differ from whichever one was tapped to open — see openStoryViewer()'s
+    // own comment). Home stays mounted underneath StoryViewerView the whole
+    // time (RootView.swift's ZStack), so this dictionary keeps updating even
+    // while visually covered.
+    @Published var storyRingFrames: [String: CGRect] = [:]
     @Published var storyCreatePreviewImage: UIImage?
     @Published var storyCreateBusy = false
     @Published var storyViewedIds: Set<UUID> = []
@@ -1324,10 +1350,10 @@ final class AppState: ObservableObject {
     /// zero stories up front so storyNext()/storyPrev() never have to
     /// special-case an empty one mid-navigation (ticket's own "skip it
     /// safely" requirement).
-    func openStoryViewer(_ organizerId: String) {
+    func openStoryViewer(_ organizerId: String, originRect: CGRect? = nil) {
         let groups = homeStories.filter { !$0.stories.isEmpty }
         guard let groupIndex = groups.firstIndex(where: { $0.organizerId == organizerId }) else { return }
-        storyViewer = StoryViewerState(groups: groups, groupIndex: groupIndex, storyIndex: 0)
+        storyViewer = StoryViewerState(groups: groups, groupIndex: groupIndex, storyIndex: 0, originRect: originRect)
         Task { await viewStoryTick(groups[groupIndex].stories[0].id) }
     }
     func closeStoryViewer() { storyViewer = nil }
@@ -1338,11 +1364,11 @@ final class AppState: ObservableObject {
         guard let v = storyViewer else { return }
         let group = v.groups[v.groupIndex]
         if v.storyIndex + 1 < group.stories.count {
-            storyViewer = StoryViewerState(groups: v.groups, groupIndex: v.groupIndex, storyIndex: v.storyIndex + 1)
+            storyViewer = StoryViewerState(groups: v.groups, groupIndex: v.groupIndex, storyIndex: v.storyIndex + 1, originRect: v.originRect)
             return
         }
         for gi in (v.groupIndex + 1)..<v.groups.count where !v.groups[gi].stories.isEmpty {
-            storyViewer = StoryViewerState(groups: v.groups, groupIndex: gi, storyIndex: 0)
+            storyViewer = StoryViewerState(groups: v.groups, groupIndex: gi, storyIndex: 0, originRect: v.originRect)
             return
         }
         storyViewer = nil
@@ -1353,13 +1379,13 @@ final class AppState: ObservableObject {
     func storyPrev() {
         guard let v = storyViewer else { return }
         if v.storyIndex > 0 {
-            storyViewer = StoryViewerState(groups: v.groups, groupIndex: v.groupIndex, storyIndex: v.storyIndex - 1)
+            storyViewer = StoryViewerState(groups: v.groups, groupIndex: v.groupIndex, storyIndex: v.storyIndex - 1, originRect: v.originRect)
             return
         }
         var gi = v.groupIndex - 1
         while gi >= 0 {
             if !v.groups[gi].stories.isEmpty {
-                storyViewer = StoryViewerState(groups: v.groups, groupIndex: gi, storyIndex: v.groups[gi].stories.count - 1)
+                storyViewer = StoryViewerState(groups: v.groups, groupIndex: gi, storyIndex: v.groups[gi].stories.count - 1, originRect: v.originRect)
                 return
             }
             gi -= 1
@@ -1379,7 +1405,7 @@ final class AppState: ObservableObject {
         guard let v = storyViewer else { return }
         for gi in (v.groupIndex + 1)..<v.groups.count where !v.groups[gi].stories.isEmpty {
             let idx = v.groups[gi].stories.firstIndex(where: { !$0.viewed }) ?? 0
-            storyViewer = StoryViewerState(groups: v.groups, groupIndex: gi, storyIndex: idx)
+            storyViewer = StoryViewerState(groups: v.groups, groupIndex: gi, storyIndex: idx, originRect: v.originRect)
             return
         }
         // No next host — StoryViewerView's own gesture handler decides
@@ -1398,7 +1424,7 @@ final class AppState: ObservableObject {
             let g = v.groups[gi]
             if !g.stories.isEmpty {
                 let lastViewed = g.stories.lastIndex(where: { $0.viewed })
-                storyViewer = StoryViewerState(groups: v.groups, groupIndex: gi, storyIndex: lastViewed ?? (g.stories.count - 1))
+                storyViewer = StoryViewerState(groups: v.groups, groupIndex: gi, storyIndex: lastViewed ?? (g.stories.count - 1), originRect: v.originRect)
                 return
             }
             gi -= 1

@@ -209,4 +209,40 @@ test.describe('Chat photo viewer — chrome toggle + reply composer (Task 2/3, 2
     await expect(page.locator('[data-screen-label="Chat"]')).toBeVisible();
     await expect(page.locator('[data-testid="chat-reply-reference"]')).toHaveCount(referenceCountBefore + 1, { timeout: 10000 });
   });
+
+  // Task 5 (2026-09-22 twelfth follow-up) — a successful send now closes
+  // the viewer and scrolls to the new message ON ITS OWN, with no separate
+  // close tap needed (unlike the test above, which taps close explicitly
+  // and would still pass either way — this one asserts the auto-close/
+  // auto-scroll handoff itself, driven by sendChatViewerReply's own
+  // chatPhotoViewer:null + chatScrollToMessageId state writes).
+  test('a typed reply sent from the viewer auto-closes it and scrolls the new message into view, without a separate close tap', async ({ page }, testInfo) => {
+    await openChatWithPhong302(page);
+    const w = 311, h = 311;
+    const file = makePng(testInfo.outputDir, 'auto-close-reply.png', w, h);
+    await page.click('[data-testid="chat-attach-toggle"]');
+    await page.click('[data-testid="chat-attach-file"]');
+    await page.setInputFiles('[data-testid="chat-file-input"]', file);
+    const index = await findAttachmentIndex(page, w, h);
+    await page.locator('[data-testid="chat-attachment"]').nth(index).click();
+    await expect(page.locator('[data-screen-label="Chat photo viewer"]')).toBeVisible();
+
+    const uniqueText = 'auto-close-reply-' + Date.now();
+    await page.fill('[data-testid="chat-photo-reply-input"]', uniqueText);
+    await page.click('[data-testid="chat-photo-reply-send"]');
+
+    // No close tap — the viewer must disappear on its own once the send
+    // resolves, landing back on the underlying Chat screen (never a
+    // separate screen transition, since the viewer is an overlay).
+    await expect(page.locator('[data-screen-label="Chat photo viewer"]')).toHaveCount(0, { timeout: 10000 });
+    await expect(page.locator('[data-screen-label="Chat"]')).toBeVisible();
+
+    const newMessage = page.locator(`text=${uniqueText}`).first();
+    await expect(newMessage).toBeVisible({ timeout: 5000 });
+    const box = await newMessage.boundingBox();
+    const viewport = page.viewportSize();
+    // "Scrolled into view" — the message sits within the visible viewport,
+    // not somewhere below the fold requiring a manual scroll to reach.
+    expect(box && viewport && box.y >= 0 && box.y <= viewport.height).toBe(true);
+  });
 });

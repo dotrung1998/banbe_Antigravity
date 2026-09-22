@@ -1605,6 +1605,15 @@ extension AppState {
                 .execute().value
             if let message = sent.first { chatMessages.append(message) }
             await signChatAttachmentUrls([path])
+            // Task 5 (2026-09-22 twelfth follow-up) — only when this send
+            // actually came from ChatPhotoViewerView's own reply-attach flow
+            // (replyToMessageId is never set by ChatView's own composer/
+            // camera attach paths).
+            if let message = sent.first, replyToMessageId != nil {
+                chatPhotoViewer = nil
+                chatScrollToMessageID = message.id
+                chatFocusComposer = false
+            }
             return true
         } catch {
             print("sendChatAttachment failed:", error)
@@ -1618,7 +1627,10 @@ extension AppState {
     /// GocContext.jsx) since this viewer has its own local `@State` draft,
     /// not `AppState.chatDraft`, and always sets `reply_to_message_id`
     /// (migration 067) rather than encoding "replying to X" in body text.
-    func sendChatViewerReply(text: String, replyToMessageId: UUID) async -> Bool {
+    /// `isTypedReply` distinguishes a typed reply (the composer's own Send
+    /// button) from a one-tap quick reaction — only the former should ever
+    /// focus the chat composer's keyboard on return.
+    func sendChatViewerReply(text: String, replyToMessageId: UUID, isTypedReply: Bool = false) async -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let threadID = chatThreadID, let uid = userID else { return false }
         do {
@@ -1627,7 +1639,15 @@ extension AppState {
                 .insert(NewTextReply(threadId: threadID, senderId: uid, body: trimmed, kind: "text", replyToMessageId: replyToMessageId))
                 .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id")
                 .execute().value
-            if let message = sent.first { chatMessages.append(message) }
+            if let message = sent.first {
+                chatMessages.append(message)
+                // Task 5 (2026-09-22 twelfth follow-up) — close the viewer
+                // and hand off to ChatView, mirroring web's own
+                // sendChatViewerReply exactly.
+                chatPhotoViewer = nil
+                chatScrollToMessageID = message.id
+                chatFocusComposer = isTypedReply
+            }
             return true
         } catch {
             print("sendChatViewerReply failed:", error)
@@ -1934,6 +1954,18 @@ extension AppState {
                 .execute()
         } catch {
             print("Failed to mark thread read:", error)
+            return
+        }
+        // Task 6 (2026-09-22 twelfth follow-up) — mirrors web's same fix in
+        // GocContext.jsx's markThreadMessagesRead: `chatBackAction()` returns
+        // straight to `.inbox` without re-calling `loadInboxThreads()`, so
+        // the row's local `unread` flag (and the dock's `unreadMessages`
+        // count) stayed stale — bold/dotted — until Inbox was re-entered
+        // from OUTSIDE via a fresh `goInbox()`. Patch both local snapshots
+        // right here, the one place every read-marking path goes through.
+        if let idx = inboxThreads.firstIndex(where: { $0.id == threadID }), inboxThreads[idx].unread {
+            inboxThreads[idx].unread = false
+            unreadMessages = max(0, unreadMessages - 1)
         }
     }
 

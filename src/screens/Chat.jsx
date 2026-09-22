@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass } from '../theme.js';
 
@@ -64,8 +64,25 @@ function formatTime(iso) {
 }
 
 export default function Chat() {
-  const { state, T, curEvent: ev, chatBackFn, chatOnType, chatOnKey, chatSend, deleteMessage, goEvent, sendChatAttachment, openChatPhoto } = useGoc();
+  const { state, set, T, curEvent: ev, chatBackFn, chatOnType, chatOnKey, chatSend, deleteMessage, goEvent, sendChatAttachment, openChatPhoto } = useGoc();
   const s = state;
+  const composerInputRef = useRef(null);
+  const messagesListRef = useRef(null);
+
+  // Task 5 (2026-09-22 twelfth follow-up) — a reply/reaction sent from
+  // ChatPhotoViewer (an overlay, not a screen change — Chat itself never
+  // unmounts) sets chatScrollToMessageId/chatFocusComposer on success; this
+  // is the one place that actually acts on the handoff, then clears it so
+  // it never fires again on an unrelated re-render.
+  useEffect(() => {
+    if (!s.chatScrollToMessageId) return;
+    const id = s.chatScrollToMessageId;
+    const focusComposer = s.chatFocusComposer;
+    const el = messagesListRef.current?.querySelector(`[data-message-id="${id}"]`);
+    el?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    if (focusComposer) composerInputRef.current?.focus();
+    set({ chatScrollToMessageId: null, chatFocusComposer: false });
+  }, [s.chatScrollToMessageId, s.chatFocusComposer, set]);
 
   // Task 4 (2026-09-21 follow-up) — "+" attach flow. `pickerFile` is the
   // file already chosen via the "Add photo or document" picker (attaches
@@ -141,7 +158,7 @@ export default function Chat() {
           {T('Chi tiết', 'Details')}
         </div>
       </div>
-      <div style={{ flex: 1, overflow: 'auto', padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div ref={messagesListRef} style={{ flex: 1, overflow: 'auto', padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {thread.map((m, i) => {
           const rows = [];
           // Task 2 — unread divider: rendered once, right above the first
@@ -191,7 +208,7 @@ export default function Chat() {
           const repliedTo = m.replyToMessageId ? messageById[m.replyToMessageId] : null;
           const repliedToUrl = repliedTo?.attachment_path ? s.chatAttachmentUrls[repliedTo.attachment_path] : null;
           rows.push(
-            <div key={m.id ?? i} style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: m.who === 'me' ? 'flex-end' : 'flex-start' }}>
+            <div key={m.id ?? i} data-message-id={m.id ?? undefined} style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: m.who === 'me' ? 'flex-end' : 'flex-start' }}>
               {m.createdAt && (
                 <span style={{ fontSize: 10, color: ink, opacity: 0.5, padding: '0 4px' }}>{senderLabel} · {formatTime(m.createdAt)}</span>
               )}
@@ -305,6 +322,7 @@ export default function Chat() {
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onPickCamera} data-testid="chat-camera-input" />
 
         <input
+          ref={composerInputRef}
           value={s.chatDraft} onChange={chatOnType} onKeyDown={chatOnKey}
           placeholder={s.chatThreadId ? ('Viết cho ' + headerTitle + '…') : T('Đang mở cuộc trò chuyện…', 'Opening conversation…')}
           disabled={!s.chatThreadId}

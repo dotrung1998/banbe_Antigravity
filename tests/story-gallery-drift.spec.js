@@ -134,6 +134,13 @@ test.describe('StoryViewer — host-only horizontal swipe + final-deck reveal (2
     await expect(avatars.first()).toBeVisible({ timeout: 8000 });
     await avatars.first().click();
     await expect(page.locator('[data-screen-label="Story viewer"]')).toBeVisible();
+    // Task 1 (2026-09-22 twelfth follow-up) — the viewer now opens with an
+    // expand-from-ring animation (~DISMISS_MS/260ms); slowDrag()'s own
+    // stage.boundingBox() is captured ONCE up front, so starting a drag
+    // before that settles would compute coordinates against a still-
+    // shrinking/offset box — not realistic anyway (no real finger drags
+    // within an opening animation's own first ~300ms).
+    await page.waitForTimeout(320);
 
     const stage = page.locator('[data-testid="story-viewer-stage"]');
 
@@ -164,6 +171,9 @@ test.describe('StoryViewer — host-only horizontal swipe + final-deck reveal (2
     await expect(avatars.first()).toBeVisible({ timeout: 8000 });
     await avatars.first().click();
     await expect(page.locator('[data-screen-label="Story viewer"]')).toBeVisible();
+    // Task 1 (2026-09-22 twelfth follow-up) — see the other test's own
+    // comment on this same wait, just above.
+    await page.waitForTimeout(320);
 
     const stage = page.locator('[data-testid="story-viewer-stage"]');
 

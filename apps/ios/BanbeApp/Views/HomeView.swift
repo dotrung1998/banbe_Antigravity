@@ -83,6 +83,11 @@ struct HomeView: View {
         .task { if app.userID != nil { await app.loadHomeStories() } }
         .onAppear { startTickingIfNeeded() }
         .onDisappear { tickTask?.cancel() }
+        // Task 1 (2026-09-22 twelfth follow-up) — collects every visible
+        // story ring's own global frame for StoryViewerView's expand/
+        // shrink-toward-ring transition (see AppState.swift's own comment
+        // on storyRingFrames).
+        .onPreferenceChange(StoryRingFramePreferenceKey.self) { app.storyRingFrames = $0 }
     }
 
     private func startTickingIfNeeded() {
@@ -174,16 +179,20 @@ struct HomeView: View {
                 HStack(spacing: 8) {
                     // Task 1 (2026-09-21 follow-up) — bumped 11pt -> 13pt,
                     // just enough to read/tap more easily without
-                    // unbalancing the rest of the header row (area/
-                    // appearance stay at their existing size).
+                    // unbalancing the rest of the header row.
+                    // Task 3 (2026-09-22 twelfth follow-up) — area/appearance
+                    // brought up to the SAME 13pt/semibold + padded hit-area
+                    // as language, matching web's Home.jsx parity fix.
                     Button(app.T("English", "Tiếng Việt")) { app.toggleLang() }
                         .font(.system(size: 13, weight: .semibold))
+                        .padding(.vertical, 4)
                         .accessibilityIdentifier("header.lang")
                     Text("▪").font(.system(size: 9)).opacity(0.4)
                     Button("banbe ▪︎ \(app.currentArea.key == "all" ? "Sài Gòn" : app.currentArea.label) ▾") {
                         app.openArea()
                     }
-                    .font(.system(size: 11))
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.vertical, 4)
                     .accessibilityIdentifier("header.area")
                     Text("▪").font(.system(size: 9)).opacity(0.4)
                     // No `toggleTheme()` exists on iOS — Preferences.swift's
@@ -194,7 +203,8 @@ struct HomeView: View {
                     Button(app.theme == "dark" ? app.T("Sáng", "Light") : app.T("Tối", "Dark")) {
                         app.pickTheme(app.theme == "dark" ? "light" : "dark")
                     }
-                    .font(.system(size: 11))
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.vertical, 4)
                     .accessibilityIdentifier("header.theme")
                 }
             }
@@ -254,7 +264,7 @@ struct HomeView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 14) {
                 ForEach(app.homeStories) { group in
-                    Button { app.openStoryViewer(group.organizerId) } label: {
+                    Button { app.openStoryViewer(group.organizerId, originRect: app.storyRingFrames[group.organizerId]) } label: {
                         VStack(spacing: 5) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 15, style: .continuous)
@@ -276,6 +286,17 @@ struct HomeView: View {
                                 .lineLimit(1)
                                 .frame(width: 60)
                         }
+                        // Task 1 — reports this ring's own global frame
+                        // (the 56x56 ZStack above, not the label/text) via
+                        // StoryRingFramePreferenceKey.
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear.preference(
+                                    key: StoryRingFramePreferenceKey.self,
+                                    value: [group.organizerId: geo.frame(in: .global)]
+                                )
+                            }
+                        )
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("home.storyAvatar")
@@ -527,5 +548,17 @@ private struct PhaseBanner: View {
             .padding(.top, 10)
         }
         .buttonStyle(.plain)
+    }
+}
+
+// Task 1 (2026-09-22 twelfth follow-up) — see AppState.swift's own comment
+// on storyRingFrames for why this exists (StoryViewerView's expand/shrink-
+// toward-ring transition). Internal (not `private`) — StoryViewerView.swift
+// only reads `app.storyRingFrames` itself, never this key directly, but the
+// `.onPreferenceChange` call above needs it visible from HomeView's body.
+struct StoryRingFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
     }
 }

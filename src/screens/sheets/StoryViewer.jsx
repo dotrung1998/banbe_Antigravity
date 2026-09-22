@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useGoc } from '../../state/GocContext.jsx';
 import { paper, ink, display, cardGlass } from '../../theme.js';
 import { bg, distanceLabel } from '../../data/events.js';
@@ -92,6 +92,12 @@ export default function StoryViewer() {
   // browser for preloading this viewer session, so re-renders (every
   // story tick, every drag frame) never re-request the same image twice.
   const preloadedUrlsRef = useRef(new Set());
+  // Task 1 (2026-09-22 twelfth follow-up) — true once the expand-from-ring
+  // entrance has already played for this open session, so the effect below
+  // (which re-runs on every groupIndex/storyIndex change too, since
+  // `viewer` is a new object each time) never replays it on ordinary
+  // story/host navigation, only on a genuine fresh open.
+  const enteredEntryRef = useRef(false);
 
   // ---- Task 3: smooth, elapsed-time-driven progress (not a React-state
   // countdown) — a single rAF loop imperatively sets the fill bar's
@@ -238,12 +244,93 @@ export default function StoryViewer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewer?.groupIndex, viewer?.groups]);
 
+  // Task 1 (2026-09-22 twelfth follow-up) — the ring-window's own inset
+  // clip-path, from the given rect's screen position/size to a rounded
+  // window, expressed against the viewport (the container is
+  // `position: absolute; inset: 0`). `clip-path` (not `transform: scale`,
+  // tried first) is what makes this safe: a CSS transform changes what
+  // `getBoundingClientRect()` reports for every descendant for as long as
+  // it's mid-animation — the gesture stage's own drag-coordinate math, AND
+  // several existing tests that read a child's real rendered size right
+  // after open, both read wildly wrong (tiny/offset) values during that
+  // window, confirmed by real regressions when this was tried as a
+  // transform. `clip-path` only affects what's PAINTED — every descendant's
+  // actual layout box/rect stays its true, final full-screen size the
+  // entire time, so dragging or measuring content works correctly even
+  // mid-animation; it also already excludes pointer events outside the
+  // clipped region by itself, no separate `pointer-events` gating needed.
+  const ringClipPath = (rect) => {
+    if (typeof window === 'undefined') return null;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const top = Math.max(0, rect.top);
+    const left = Math.max(0, rect.left);
+    const right = Math.max(0, vw - (rect.left + rect.width));
+    const bottom = Math.max(0, vh - (rect.top + rect.height));
+    return `inset(${top}px ${right}px ${bottom}px ${left}px round 15px)`;
+  };
+
+  // Task 1 — expand-from-ring entrance: starts the container's visible
+  // window clipped down to the tapped ring's own rect, transition disabled
+  // for that first frame, then flips to the full-screen clip (identity)
+  // with a transition one/two rAFs later so the browser actually has a
+  // "before" frame to interpolate from — same double-rAF reasoning
+  // PhotoViewer.jsx's own doc comment on `entered` describes for why a
+  // same-tick animation+transition swap doesn't animate. `useLayoutEffect`
+  // (not `useEffect`) so this first, un-clipped-to-ring frame paints BEFORE
+  // the browser shows anything, avoiding a full-size flash before the
+  // window starts small.
+  useLayoutEffect(() => {
+    if (!viewer) { enteredEntryRef.current = false; return; }
+    if (enteredEntryRef.current || REDUCED_MOTION) return;
+    enteredEntryRef.current = true;
+    const el = containerRef.current;
+    const rect = viewer.originRect;
+    const clip = rect && ringClipPath(rect);
+    if (!el || !clip) return;
+    el.style.transition = 'none';
+    el.style.clipPath = clip;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!el.isConnected) return;
+        el.style.transition = `clip-path ${DISMISS_MS}ms ${DISMISS_EASING}`;
+        el.style.clipPath = 'inset(0px 0px 0px 0px round 0px)';
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewer]);
+
+  // Task 1 — dismiss shrink-back target: a LIVE DOM lookup of the
+  // CURRENTLY active host's own ring (never the stored `originRect`, which
+  // only ever reflects whichever host was ORIGINALLY tapped) — satisfies
+  // "if the user drifted from Host A to Host B before dismissing, shrink
+  // toward Host B's ring." Home is always mounted underneath (see
+  // App.jsx's Shell — Screen renders before StoryViewer as siblings,
+  // `state.screen` never changes while browsing stories), so its story
+  // row's ring elements are real, live DOM nodes at dismiss time even
+  // though they're visually covered. No rect found (ring scrolled out of
+  // Home's own row, or this session's Home never rendered one for this
+  // host) falls back to a plain opacity fade — never animates toward a
+  // stale/guessed frame, per this ticket's own instruction.
+  const shrinkToRing = (organizerId, ms = DISMISS_MS) => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.style.transition = REDUCED_MOTION ? `opacity ${ms}ms ease` : `clip-path ${ms}ms ${DISMISS_EASING}, opacity ${ms}ms ease`;
+    if (!REDUCED_MOTION && typeof document !== 'undefined' && organizerId) {
+      const ringEl = document.querySelector(`[data-testid="home-story-avatar"][data-org-id="${organizerId}"]`);
+      const rect = ringEl ? ringEl.getBoundingClientRect() : null;
+      const clip = rect && rect.width > 0 && rect.height > 0 ? ringClipPath(rect) : null;
+      if (clip) el.style.clipPath = clip;
+    }
+    el.style.opacity = '0';
+  };
+
   if (!viewer || !group || !story) return null;
 
   const dismiss = () => {
     if (closing) return;
     pause();
     setClosing(true);
+    shrinkToRing(group.organizerId);
     setTimeout(closeStoryViewer, DISMISS_MS);
   };
 
@@ -430,10 +517,11 @@ export default function StoryViewer() {
       if ((goingNext && !hasNextHost) || (!goingNext && !hasPrevHost)) {
         const beyondThreshold = Math.abs(dx) > HSWIPE_THRESHOLD || Math.abs(g.velocity || 0) > HSWIPE_VELOCITY;
         if (beyondThreshold) {
-          if (containerRef.current) {
-            containerRef.current.style.transition = `opacity ${HSWIPE_SETTLE_MS}ms ${DISMISS_EASING}`;
-            containerRef.current.style.opacity = '0';
-          }
+          // Task 1 (2026-09-22 twelfth follow-up) — this edge-of-deck
+          // reveal-into-Home dismiss now shrinks toward the CURRENT host's
+          // ring too, same as dismiss()/the vertical drag-down path, not
+          // just a plain opacity fade.
+          shrinkToRing(group.organizerId, HSWIPE_SETTLE_MS);
           if (photoRef.current) {
             photoRef.current.style.transition = `transform ${HSWIPE_SETTLE_MS}ms ${DISMISS_EASING}`;
             photoRef.current.style.transform = `translateX(${goingNext ? -width : width}px)`;
@@ -492,7 +580,14 @@ export default function StoryViewer() {
     <div
       ref={containerRef}
       data-screen-label="Story viewer"
-      style={{ position: 'absolute', inset: 0, zIndex: 27, background: '#000', overflow: 'hidden', opacity: closing ? 0 : 1, transition: `opacity ${DISMISS_MS}ms ease` }}
+      // Task 1 (2026-09-22 twelfth follow-up) — opacity/transform/
+      // transition/borderRadius are now ALL imperative-ref-driven (entry
+      // effect, shrinkToRing, resetReveal, the drag-reveal branch in
+      // onStagePointerMove), never declared here — same reasoning as every
+      // other ref in this file (photoRef/dimRef/etc.): a declared style key
+      // here would get reset by React on every re-render (e.g. `closing`
+      // flipping true), fighting the imperative CSS transition mid-flight.
+      style={{ position: 'absolute', inset: 0, zIndex: 27, background: '#000', overflow: 'hidden' }}
     >
       <div ref={dimRef} aria-hidden style={{ position: 'absolute', inset: 0, background: '#000' }} />
 

@@ -39,15 +39,23 @@ struct ChatPhotoViewerView: View {
     var body: some View {
         if let item {
             ZStack {
-                Color.black.ignoresSafeArea()
-                    .opacity(Double(1 - dragProgress * 0.7))
-
-                AsyncImage(url: item.url) { $0.resizable().scaledToFit() } placeholder: { ProgressView().tint(.white) }
-                    .frame(maxWidth: UIScreen.main.bounds.width * 0.92, maxHeight: UIScreen.main.bounds.height * 0.7)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .offset(y: dragOffsetY)
-                    .scaleEffect(1 - dragProgress * 0.08)
-                    .accessibilityIdentifier("chat.photoViewer.image")
+                // TASK 4 (2026-09-22 twelfth follow-up) — root-caused, real
+                // bug: `stageGesture` used to sit on THIS OUTER ZStack, which
+                // also contains `topBar`/`bottomComposer` as full-screen
+                // overlay children. A `DragGesture(minimumDistance: 0)`
+                // attached via `.gesture()` to a container competes with —
+                // and, empirically on device, wins against — its own child
+                // Buttons' tap recognizers for the SAME touch, since it
+                // starts tracking on touch-down with zero movement required.
+                // Every tap anywhere, including squarely on a toolbar
+                // button, was resolving as `stageGesture`'s own "plain tap"
+                // branch (toggle chrome) instead of ever reaching the
+                // Button's `action`. Scoping the gesture to ONLY the
+                // backdrop+photo layer below (never wrapping topBar/
+                // bottomComposer/moreMenu) is the actual fix — mirrors web's
+                // ChatPhotoViewer.jsx, where the stage is already a
+                // dedicated sibling layer, never an ancestor of the toolbar.
+                stage
 
                 topBar
                 bottomComposer
@@ -64,8 +72,6 @@ struct ChatPhotoViewerView: View {
 
                 if menuOpen { moreMenu }
             }
-            .contentShape(Rectangle())
-            .gesture(stageGesture)
             .sheet(isPresented: Binding(get: { item.forwardOpen }, set: { if !$0 { app.closeChatForward() } })) {
                 forwardSheet
             }
@@ -89,6 +95,25 @@ struct ChatPhotoViewerView: View {
             .zIndex(26)
             .onChange(of: item.messageId) { _, _ in chromeHidden = false; dragOffsetY = 0; draft = "" }
         }
+    }
+
+    // MARK: - Stage (backdrop + photo ONLY — see body's own comment on why
+    // `stageGesture` must never wrap topBar/bottomComposer/moreMenu)
+
+    private var stage: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+                .opacity(Double(1 - dragProgress * 0.7))
+
+            AsyncImage(url: item?.url) { $0.resizable().scaledToFit() } placeholder: { ProgressView().tint(.white) }
+                .frame(maxWidth: UIScreen.main.bounds.width * 0.92, maxHeight: UIScreen.main.bounds.height * 0.7)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .offset(y: dragOffsetY)
+                .scaleEffect(1 - dragProgress * 0.08)
+                .accessibilityIdentifier("chat.photoViewer.image")
+        }
+        .contentShape(Rectangle())
+        .gesture(stageGesture)
     }
 
     // MARK: - Gesture (chrome toggle vs drag-to-dismiss)
@@ -122,29 +147,40 @@ struct ChatPhotoViewerView: View {
             }
     }
 
+    // TASK 4 (2026-09-22 twelfth follow-up) — every toolbar button bumped to
+    // a real 44x44pt hit region via `.frame` + `.contentShape(Rectangle())`
+    // (platform-standard minimum) while keeping the same small glyph, and
+    // negative margins compensate so the enlarged hit area doesn't visually
+    // widen the row's spacing/alignment.
     private var topBar: some View {
         HStack {
             Button { dismiss() } label: {
                 Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .accessibilityIdentifier("chat.photoViewer.close")
+            .padding(.leading, -10)
             Spacer()
-            HStack(spacing: 18) {
+            HStack(spacing: 4) {
                 if app.canHost {
                     Button { app.openPostToStoryConfirm() } label: {
                         Image(systemName: "plus.circle").font(.system(size: 18)).foregroundStyle(.white)
+                            .frame(width: 44, height: 44).contentShape(Rectangle())
                     }
                     .accessibilityIdentifier("chat.photoViewer.postToStory")
                 }
                 Button { Task { await saveTapped() } } label: {
                     Image(systemName: "arrow.down.circle").font(.system(size: 18)).foregroundStyle(.white)
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
                 }
                 .accessibilityIdentifier("chat.photoViewer.save")
                 Button { menuOpen.toggle() } label: {
                     Image(systemName: "ellipsis").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
                 }
                 .accessibilityIdentifier("chat.photoViewer.menu")
             }
+            .padding(.trailing, -10)
         }
         .padding(.horizontal, 18).padding(.top, 56)
         .frame(maxHeight: .infinity, alignment: .top)
@@ -262,15 +298,27 @@ struct ChatPhotoViewerView: View {
     private func quickReaction(_ emoji: String) async {
         guard let messageId = item?.messageId, !sending else { return }
         sending = true
-        _ = await app.sendChatViewerReply(text: emoji, replyToMessageId: messageId)
+        let ok = await app.sendChatViewerReply(text: emoji, replyToMessageId: messageId, isTypedReply: false)
         sending = false
+        if !ok { showSendError() }
     }
     private func sendReply() async {
         guard let messageId = item?.messageId, !sending, !draft.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         sending = true
-        _ = await app.sendChatViewerReply(text: draft, replyToMessageId: messageId)
-        draft = ""
+        let ok = await app.sendChatViewerReply(text: draft, replyToMessageId: messageId, isTypedReply: true)
         sending = false
+        // On success the viewer is already gone (app.chatPhotoViewer set to
+        // nil by sendChatViewerReply itself) — only clear `draft` here on
+        // failure, where the viewer stays open and the user's typed text
+        // should stay put for them to retry, not silently vanish either way.
+        if ok { draft = "" } else { showSendError() }
+    }
+    private func showSendError() {
+        actionMessage = app.T("Không gửi được", "Couldn't send")
+        Task {
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            actionMessage = nil
+        }
     }
 
     // MARK: - Actions

@@ -375,6 +375,14 @@ const initialState = {
   // option) and never recomputed by the 4s poll, so it doesn't chase newly-
   // read messages around while the thread stays open.
   chatUnreadDividerId: null,
+  // Task 5 (2026-09-22 twelfth follow-up) — set by sendChatViewerReply()
+  // right when a reply/reaction sent FROM ChatPhotoViewer lands, so Chat.jsx
+  // (already mounted underneath — the viewer is an overlay, not a separate
+  // screen) can scroll that exact message into view and clear the flag;
+  // chatFocusComposer only true for a typed reply (not a one-tap quick
+  // reaction), so a reaction never force-opens the keyboard.
+  chatScrollToMessageId: null,
+  chatFocusComposer: false,
   // path -> signed URL (10min), for chat message attachments — same
   // pattern as `proofUrls`/signProofUrls (chat-attachments is a private
   // bucket, see supabase/migrations/065).
@@ -2386,11 +2394,21 @@ export function GocProvider({ children }) {
   // deck," not a single organizer's stories in isolation. Groups with zero
   // stories are filtered out up front so storyNext/storyPrev never have to
   // special-case an empty one mid-navigation.
-  const openStoryViewer = useCallback((organizerId) => {
+  // Task 1 (2026-09-22 twelfth follow-up) — `originRect` is the tapped
+  // ring's own screen rect (Home.jsx's onClick, `getBoundingClientRect()`),
+  // stored on `storyViewer` itself so it rides along through every
+  // storyNext/storyPrev/storyNextHost/storyPrevHost update below (all of
+  // them spread `...v`, never touching this field) — StoryViewer.jsx reads
+  // it once, on open, for the expand-from-ring entrance. Dismissing back
+  // toward a ring is a SEPARATE live DOM lookup at dismiss time (see that
+  // file's shrinkToRing()), not this stored value, since PRODUCT CHANGE 3
+  // lets the user drift to a different host before dismissing — this only
+  // ever needs to capture where the OPEN animation started from.
+  const openStoryViewer = useCallback((organizerId, originRect) => {
     const groups = s.homeStories.filter(g => g.stories.length > 0);
     const groupIndex = groups.findIndex(g => g.organizerId === organizerId);
     if (groupIndex === -1) return;
-    set({ storyViewer: { groups, groupIndex, storyIndex: 0 } });
+    set({ storyViewer: { groups, groupIndex, storyIndex: 0, originRect: originRect || null } });
     viewStoryTick(groups[groupIndex].stories[0].id);
   }, [s.homeStories, set, viewStoryTick]);
   const closeStoryViewer = useCallback(() => set({ storyViewer: null }), [set]);
@@ -3604,8 +3622,27 @@ export function GocProvider({ children }) {
   const markThreadMessagesRead = useCallback(async (threadId) => {
     const uid = s.user?.id;
     if (!uid) return;
-    await supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('thread_id', threadId).is('read_at', null).neq('sender_id', uid);
-  }, [s.user?.id]);
+    const { error } = await supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('thread_id', threadId).is('read_at', null).neq('sender_id', uid);
+    if (error) return;
+    // Task 6 (2026-09-22 twelfth follow-up) — one shared unread definition
+    // (read_at IS NULL AND sender_id != me) already backs loadInboxThreads'
+    // own `unread` flag and the dock badge's 5s poll (`unreadMessages`),
+    // but neither of those local snapshots was ever patched when a thread
+    // got marked read here — `chatBackFn` returns straight to 'inbox'
+    // without re-calling `loadInboxThreads()`, so the Inbox row stayed
+    // bold/dotted until Inbox was re-entered from OUTSIDE (a fresh
+    // `goInbox()`), and the dock count only caught up on its own next
+    // 5s tick. Patching both state slices here, right where read_at
+    // actually gets written, is the one place every path that marks a
+    // thread read (only this function does) can never skip it.
+    set(prev => {
+      const wasUnread = prev.inboxThreads.find(t => t.threadId === threadId)?.unread;
+      return {
+        inboxThreads: prev.inboxThreads.map(t => (t.threadId === threadId ? { ...t, unread: false } : t)),
+        unreadMessages: wasUnread ? Math.max(0, prev.unreadMessages - 1) : prev.unreadMessages,
+      };
+    });
+  }, [s.user?.id, set]);
   // `computeDivider`: only true for the FIRST load of a thread-open (see
   // openThread/openChatFor below) — captures chatUnreadDividerId once, from
   // whatever's unread at that moment, then immediately marks those rows
@@ -3733,7 +3770,11 @@ export function GocProvider({ children }) {
   // something typed from inside a fullscreen photo viewer), and always
   // sets `reply_to_message_id` — migration 067, the smallest explicit
   // reference rather than encoding "replying to X" in the body text.
-  const sendChatViewerReply = useCallback(async (text, replyToMessageId) => {
+  // Task 5 (2026-09-22 twelfth follow-up) — `isTypedReply` distinguishes a
+  // typed reply (draft's `doSendReply`/`sendReply`) from a one-tap quick
+  // reaction (`doQuickReaction`/`quickReaction`) — only the former should
+  // ever force the chat composer's keyboard open on return.
+  const sendChatViewerReply = useCallback(async (text, replyToMessageId, isTypedReply) => {
     const trimmed = (text || '').trim();
     if (!trimmed || !s.chatThreadId || !s.user) return { success: false };
     const { data, error } = await supabase
@@ -3741,8 +3782,18 @@ export function GocProvider({ children }) {
       .insert({ thread_id: s.chatThreadId, sender_id: s.user.id, body: trimmed, kind: 'text', reply_to_message_id: replyToMessageId || null })
       .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id')
       .maybeSingle();
+    // On failure, ChatPhotoViewer.jsx's own caller keeps the viewer open and
+    // shows its existing error messaging — nothing here navigates away.
     if (error) { console.warn('sendChatViewerReply failed:', error); return { success: false }; }
-    set(prev => ({ chatMessages: [...prev.chatMessages, data] }));
+    // Success — close the viewer and return straight to the (already-
+    // mounted-underneath, since the viewer is an overlay not a separate
+    // screen) source thread, scrolled to this new message.
+    set(prev => ({
+      chatMessages: [...prev.chatMessages, data],
+      chatPhotoViewer: null,
+      chatScrollToMessageId: data.id,
+      chatFocusComposer: !!isTypedReply,
+    }));
     return { success: true };
   }, [set, s.chatThreadId, s.user]);
   // Task 4 (2026-09-21 follow-up) — the composer's "+" attach flow.
@@ -3773,7 +3824,14 @@ export function GocProvider({ children }) {
         .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id')
         .maybeSingle();
       if (error) throw error;
-      set(prev => ({ chatMessages: [...prev.chatMessages, data] }));
+      // Task 5 (2026-09-22 twelfth follow-up) — same close/scroll handoff as
+      // sendChatViewerReply, only when this send actually came from the
+      // photo viewer's own reply-attach flow (replyToMessageId is never set
+      // by Chat.jsx's own composer/camera attach paths).
+      set(prev => ({
+        chatMessages: [...prev.chatMessages, data],
+        ...(replyToMessageId ? { chatPhotoViewer: null, chatScrollToMessageId: data.id, chatFocusComposer: false } : {}),
+      }));
       signChatAttachmentUrls([path]);
       return { success: true };
     } catch (e) {

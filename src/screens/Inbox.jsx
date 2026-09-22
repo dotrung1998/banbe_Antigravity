@@ -78,6 +78,8 @@ function InboxRow({ c, onOpen, onStar, onArchive, T }) {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         data-testid="inbox-row"
+        data-thread-id={c.threadId}
+        data-unread={unread ? 'true' : 'false'}
         style={{
           display: 'flex', gap: 16, alignItems: 'center', padding: '16px 0', cursor: 'pointer',
           background: paper, transform: `translateX(${offset}px)`, transition: dragRef.current.active ? 'none' : 'transform 0.2s ease',

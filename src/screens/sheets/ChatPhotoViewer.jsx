@@ -37,6 +37,7 @@ export default function ChatPhotoViewer() {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [copySupported, setCopySupported] = useState(false);
+  const [replyError, setReplyError] = useState('');
 
   const photoRef = useRef(null);
   const topBarRef = useRef(null);
@@ -46,7 +47,7 @@ export default function ChatPhotoViewer() {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    setClosing(false); setMenuOpen(false); setActionMsg(''); setChromeHidden(false); setDraft('');
+    setClosing(false); setMenuOpen(false); setActionMsg(''); setChromeHidden(false); setDraft(''); setReplyError('');
   }, [item?.messageId]);
 
   useEffect(() => {
@@ -126,26 +127,33 @@ export default function ChatPhotoViewer() {
     setTimeout(() => setActionMsg(''), 2200);
   };
 
+  // Task 5 (2026-09-22 twelfth follow-up) — on success, sendChatViewerReply
+  // itself closes the viewer (chatPhotoViewer: null) and sets
+  // chatScrollToMessageId/chatFocusComposer for Chat.jsx to pick up; on
+  // failure it returns { success: false } and leaves the viewer open, so
+  // the only thing left to do here is surface a clear error.
   const doQuickReaction = async (emoji) => {
     if (sending) return;
     setSending(true);
-    await sendChatViewerReply(emoji, item.messageId);
+    const r = await sendChatViewerReply(emoji, item.messageId, false);
     setSending(false);
+    if (!r?.success) { setReplyError(T('Không gửi được', "Couldn't send")); setTimeout(() => setReplyError(''), 2200); }
   };
   const doSendReply = async () => {
     if (!draft.trim() || sending) return;
     setSending(true);
-    await sendChatViewerReply(draft, item.messageId);
-    setDraft('');
+    const r = await sendChatViewerReply(draft, item.messageId, true);
     setSending(false);
+    if (r?.success) { setDraft(''); } else { setReplyError(T('Không gửi được', "Couldn't send")); setTimeout(() => setReplyError(''), 2200); }
   };
   const onPickReplyFile = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || sending) return;
     setSending(true);
-    await sendChatAttachment(file, item.messageId);
+    const r = await sendChatAttachment(file, item.messageId);
     setSending(false);
+    if (!r?.success) { setReplyError(T('Không gửi được', "Couldn't send")); setTimeout(() => setReplyError(''), 2200); }
   };
 
   const eligibleThreads = (s.inboxThreads || []).filter(t => t.threadId !== s.chatThreadId);
@@ -289,6 +297,9 @@ export default function ChatPhotoViewer() {
           opacity: chromeHidden ? 0 : 1, pointerEvents: chromeHidden ? 'none' : 'auto', transition: `opacity ${DISMISS_MS}ms ease`,
         }}
       >
+        {replyError && (
+          <div data-testid="chat-photo-reply-error" style={{ fontSize: 11.5, color: '#ff8a8a', marginBottom: 6 }}>{replyError}</div>
+        )}
         <div style={{ display: 'flex', gap: 6, marginBottom: 8, overflowX: 'auto' }}>
           {QUICK_EMOJI.map(e => (
             <span key={e} onClick={() => doQuickReaction(e)} data-testid="chat-photo-quick-reaction" style={{ fontSize: 20, cursor: 'pointer', padding: '2px 4px' }}>{e}</span>

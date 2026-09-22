@@ -419,6 +419,10 @@ struct ChatView: View {
     @State private var fileImporterOpen = false
     @State private var cameraOpen = false
     @State private var sendingAttachment = false
+    // Task 5 (2026-09-22 twelfth follow-up) — driven by app.chatFocusComposer
+    // (set true only for a typed reply sent from ChatPhotoViewerView, never
+    // a one-tap quick reaction — see AppState+Data.swift's own comment).
+    @FocusState private var composerFocused: Bool
 
     private var event: CatalogEvent { app.currentEvent }
 
@@ -475,6 +479,11 @@ struct ChatView: View {
         .onChange(of: cameraOpen) { _, _ in BottomTabBarOverlay.shared.setForcedHidden(cameraOpen || fileImporterOpen) }
         .onChange(of: fileImporterOpen) { _, _ in BottomTabBarOverlay.shared.setForcedHidden(cameraOpen || fileImporterOpen) }
         .onDisappear { BottomTabBarOverlay.shared.setForcedHidden(false) }
+        .onChange(of: app.chatFocusComposer) { _, focus in
+            guard focus else { return }
+            composerFocused = true
+            app.chatFocusComposer = false
+        }
     }
 
     // Task 1 (07-notifications.md) — mirrors web's attachmentBoxSize()
@@ -796,6 +805,7 @@ struct ChatView: View {
                 .padding(.horizontal, 14).padding(.vertical, 12)
                 .background(app.palette.field, in: Capsule())
                 .disabled(app.chatThreadID == nil)
+                .focused($composerFocused)
                 .onSubmit { Task { await app.chatSend() } }
 
                 Button(app.T("Gửi", "Send")) { Task { await app.chatSend() } }

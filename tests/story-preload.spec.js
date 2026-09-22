@@ -68,6 +68,14 @@ test.describe('StoryViewer — background preload of adjacent host media (2026-0
     await expect(avatars.first()).toBeVisible({ timeout: 8000 });
     await avatars.first().click();
     await expect(page.locator('[data-screen-label="Story viewer"]')).toBeVisible();
+    // Task 1 (2026-09-22 twelfth follow-up) — the viewer now opens with an
+    // expand-from-ring clip-path animation (~DISMISS_MS/260ms); content
+    // outside the still-growing clipped window isn't interactive yet (by
+    // design — see StoryViewer.jsx's own comment on ringClipPath), so a
+    // drag starting before it settles would target coordinates the browser
+    // doesn't consider "on" the stage yet. Not a real UX loss — no finger
+    // drags within an opening animation's own first ~300ms anyway.
+    await page.waitForTimeout(320);
 
     // Both events' cover photos must have been REQUESTED (preloaded) by
     // the browser almost immediately, well before any drag — the whole

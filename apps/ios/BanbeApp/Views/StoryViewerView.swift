@@ -73,6 +73,16 @@ struct StoryViewerView: View {
     // the "final story of the final host, swipe forward" case, instead of
     // a gray/empty companion. 1 = fully opaque (normal), 0 = fully revealed.
     @State private var revealOpacity: Double = 1
+    // Task 1 (2026-09-22 twelfth follow-up) — expand-from-ring open /
+    // shrink-toward-ring dismiss, mirroring web's StoryViewer.jsx exactly
+    // (identity = 1/1/0/0/0, matching the ring's rect = the tapped/current
+    // host's own frame). See shrinkToward()'s own comment for the dismiss
+    // side, and .onAppear below for the open side.
+    @State private var entryScaleX: CGFloat = 1
+    @State private var entryScaleY: CGFloat = 1
+    @State private var entryOffsetX: CGFloat = 0
+    @State private var entryOffsetY: CGFloat = 0
+    @State private var entryCornerRadius: CGFloat = 0
 
     private var dragProgress: CGFloat { min(1, max(0, dragOffsetY) / dragRevealDistance) }
     private var stageWidth: CGFloat { UIScreen.main.bounds.width }
@@ -149,6 +159,9 @@ struct StoryViewerView: View {
                 chrome(group: group, storyIndex: viewer.storyIndex)
             }
             .opacity(closing ? 0 : revealOpacity)
+            .scaleEffect(x: entryScaleX, y: entryScaleY)
+            .offset(x: entryOffsetX, y: entryOffsetY)
+            .cornerRadius(entryCornerRadius)
             .contentShape(Rectangle())
             .gesture(stageGesture, including: isSuspended ? .none : .all)
             .allowsHitTesting(!isSuspended)
@@ -161,6 +174,23 @@ struct StoryViewerView: View {
             .onAppear {
                 tickCurrentStory()
                 if !isSuspended { resetProgress() }
+                // Task 1 — expand-from-ring: start at the tapped ring's own
+                // frame with no animation, then animate to identity — same
+                // "set-then-animate" shape as PhotoViewer.jsx's own
+                // `entered` pattern this ports from web.
+                if !reduceMotion, let rect = viewer.originRect {
+                    let screen = UIScreen.main.bounds
+                    entryScaleX = rect.width / screen.width
+                    entryScaleY = rect.height / screen.height
+                    entryOffsetX = rect.midX - screen.midX
+                    entryOffsetY = rect.midY - screen.midY
+                    entryCornerRadius = 15
+                    withAnimation(.easeOut(duration: dismissMs)) {
+                        entryScaleX = 1; entryScaleY = 1
+                        entryOffsetX = 0; entryOffsetY = 0
+                        entryCornerRadius = 0
+                    }
+                }
             }
             .onDisappear { advanceTask?.cancel() }
             // BUG 3 (2026-09-22 eleventh follow-up) — background preload,
@@ -469,8 +499,31 @@ struct StoryViewerView: View {
     private func dismiss() {
         guard !closing else { return }
         pauseProgress()
-        withAnimation(.easeOut(duration: dismissMs)) { closing = true; dragOffsetY = UIScreen.main.bounds.height }
+        withAnimation(.easeOut(duration: dismissMs)) { closing = true }
+        shrinkToward(organizerId: app.storyViewer?.groups[safe: app.storyViewer?.groupIndex ?? -1]?.organizerId, duration: dismissMs)
         DispatchQueue.main.asyncAfter(deadline: .now() + dismissMs) { app.closeStoryViewer() }
+    }
+
+    /// Task 1 (2026-09-22 twelfth follow-up) — shrinks the WHOLE viewer
+    /// toward the CURRENTLY active host's own ring, a LIVE lookup in
+    /// `app.storyRingFrames` (never a value captured at open time — the
+    /// user may have drifted from Host A to Host B before dismissing, see
+    /// AppState.swift's own comment on `originRect` vs this). HomeView
+    /// stays mounted underneath the whole time (RootView's ZStack), so its
+    /// `.onPreferenceChange` keeps `storyRingFrames` current even while
+    /// visually covered. No matching frame (ring scrolled out of Home's own
+    /// row, or reduceMotion) leaves the plain opacity fade as the only
+    /// effect — never animates toward a stale/guessed frame.
+    private func shrinkToward(organizerId: String?, duration: Double) {
+        guard !reduceMotion, let organizerId, let rect = app.storyRingFrames[organizerId] else { return }
+        let screen = UIScreen.main.bounds
+        withAnimation(.easeOut(duration: duration)) {
+            entryScaleX = rect.width / screen.width
+            entryScaleY = rect.height / screen.height
+            entryOffsetX = rect.midX - screen.midX
+            entryOffsetY = rect.midY - screen.midY
+            entryCornerRadius = 15
+        }
     }
 
     // MARK: - Progress (Task 3 — elapsed real time, not discrete ticks)

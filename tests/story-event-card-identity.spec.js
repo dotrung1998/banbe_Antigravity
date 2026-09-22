@@ -67,6 +67,14 @@ test.describe('StoryViewer — event-share card identity across a host-to-host s
     await expect(avatars.first()).toBeVisible({ timeout: 8000 });
     await avatars.first().click();
     await expect(page.locator('[data-screen-label="Story viewer"]')).toBeVisible();
+    // Task 1 (2026-09-22 twelfth follow-up) — the viewer now opens with an
+    // expand-from-ring clip-path animation (~DISMISS_MS/260ms); content
+    // outside the still-growing clipped window isn't interactive yet (by
+    // design — see StoryViewer.jsx's own comment on ringClipPath), so a
+    // drag starting before it settles would target coordinates the browser
+    // doesn't consider "on" the stage yet. Not a real UX loss — no finger
+    // drags within an opening animation's own first ~300ms anyway.
+    await page.waitForTimeout(320);
 
     const stage = page.locator('[data-testid="story-viewer-stage"]');
     const card = page.locator('[data-testid="story-event-card"]');
