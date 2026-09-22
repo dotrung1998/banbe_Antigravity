@@ -164,12 +164,21 @@ enum EventLabels {
 /// Distance in km between the user and an event — the same haversine the
 /// web app uses to swap the catalogue's placeholder distance for a real one.
 func haversineKm(from coords: Coordinates?, to event: CatalogEvent) -> Double? {
-    guard let coords else { return nil }
+    haversineKm(from: coords, toCoords: Coordinates(lat: event.lat, lng: event.lng))
+}
+
+/// BUG 2 (2026-09-22 tenth follow-up) — the actual coordinate-pair
+/// primitive, factored out of `haversineKm(from:to:)` above so a caller
+/// that only has a bare lat/lng (StoryViewerView's `StoryEventSnapshot`,
+/// which isn't a full `CatalogEvent`) can compute the exact same live
+/// distance instead of a second, hand-rolled copy of this formula.
+func haversineKm(from coords: Coordinates?, toCoords other: Coordinates?) -> Double? {
+    guard let coords, let other else { return nil }
     let radius = 6371.0
-    let dLat = (event.lat - coords.lat) * .pi / 180
-    let dLng = (event.lng - coords.lng) * .pi / 180
+    let dLat = (other.lat - coords.lat) * .pi / 180
+    let dLng = (other.lng - coords.lng) * .pi / 180
     let lat1 = coords.lat * .pi / 180
-    let lat2 = event.lat * .pi / 180
+    let lat2 = other.lat * .pi / 180
     let h = pow(sin(dLat / 2), 2) + cos(lat1) * cos(lat2) * pow(sin(dLng / 2), 2)
     return radius * 2 * atan2(sqrt(h), sqrt(1 - h))
 }

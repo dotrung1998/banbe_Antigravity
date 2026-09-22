@@ -107,6 +107,12 @@ struct StoryEventSnapshot: Equatable, Hashable {
     let name: String
     let when: String
     let location: String
+    // BUG 2 (2026-09-22 tenth follow-up) — the event's own coordinates, so
+    // the story card can show a live distance via the SAME canonical
+    // `haversineKm`/`stripKm` primitive MapExplore/Event Detail already
+    // use, instead of showing no distance at all (its previous state).
+    let lat: Double?
+    let lng: Double?
 }
 
 /// A resolved, ready-to-render story with its signed URL and whether this

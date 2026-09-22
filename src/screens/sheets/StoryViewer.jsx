@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../../state/GocContext.jsx';
 import { paper, ink, display, cardGlass } from '../../theme.js';
-import { bg } from '../../data/events.js';
+import { bg, distanceLabel } from '../../data/events.js';
 
 // Task 3.4 (07-notifications.md) — the story progression viewer. A
 // deliberately SEPARATE component/state from PhotoViewer.jsx and
@@ -40,10 +40,18 @@ const REDUCED_MOTION = typeof window !== 'undefined' && window.matchMedia
   : false;
 
 export default function StoryViewer() {
-  const { state: s, T, closeStoryViewer, storyNext, storyPrev, markStoryViewedAt } = useGoc();
+  const { state: s, T, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, markStoryViewedAt } = useGoc();
   const viewer = s.storyViewer;
   const group = viewer?.groups?.[viewer.groupIndex];
   const story = group?.stories?.[viewer?.storyIndex];
+  // PRODUCT CHANGE 3 (2026-09-22 tenth follow-up) — whether a horizontal
+  // swipe in each direction actually has another HOST to land on. Read by
+  // both the gesture handlers (to decide companion-peek vs BUG 4's
+  // reveal-underneath treatment) and the render below (so the companion
+  // only ever represents a REAL adjacent host, never a placeholder for one
+  // that doesn't exist).
+  const hasNextHost = !!viewer?.groups?.slice(viewer.groupIndex + 1).some(g => g.stories.length > 0);
+  const hasPrevHost = !!viewer?.groups?.slice(0, viewer.groupIndex).some(g => g.stories.length > 0);
 
   const [closing, setClosing] = useState(false);
   const [chromeHidden, setChromeHidden] = useState(false); // during a hold
@@ -52,6 +60,12 @@ export default function StoryViewer() {
   const dimRef = useRef(null);
   const chromeRef = useRef(null);
   const stageRef = useRef(null);
+  // The whole viewer's own outer container — faded during BUG 4's
+  // "final story of the final host, swipe forward" case to progressively
+  // reveal whatever real screen (Home/Account) is already mounted
+  // underneath, instead of the companion card (which only ever stands in
+  // for a REAL adjacent host — see `hasNextHost`/`hasPrevHost` above).
+  const containerRef = useRef(null);
   // The incoming neighbor's soft glass "peek" card (gallery-drift, Feature 3).
   const companionRef = useRef(null);
 
@@ -123,6 +137,16 @@ export default function StoryViewer() {
     companionRef.current.style.transform = 'scale(0.86)';
     if (!animate) companionRef.current.style.display = 'none';
   };
+  // BUG 4 (2026-09-22 tenth follow-up) — the "reveal Home underneath"
+  // treatment for the final story of the final host (forward swipe) /
+  // the very first story of the deck (backward swipe, spring-back only,
+  // never actually needs to reveal anything but shares the reset). Same
+  // imperative-ref convention as everything else here — no React state.
+  const resetReveal = (animate) => {
+    if (!containerRef.current) return;
+    containerRef.current.style.transition = animate ? `opacity ${HSWIPE_SETTLE_MS}ms ${DISMISS_EASING}` : 'none';
+    containerRef.current.style.opacity = '1';
+  };
 
   useEffect(() => {
     if (viewer) markStoryViewedAt();
@@ -135,6 +159,7 @@ export default function StoryViewer() {
     // story should never inherit a leftover drag transform.
     if (photoRef.current) { photoRef.current.style.transition = 'none'; photoRef.current.style.transform = ''; }
     resetCompanion(false);
+    resetReveal(false);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewer?.groupIndex, viewer?.storyIndex]);
@@ -200,13 +225,38 @@ export default function StoryViewer() {
       g.lastDx = dx;
       g.lastMoveAt = now;
       const width = stageRef.current?.getBoundingClientRect().width || window.innerWidth;
+      const goingNext = dx < 0;
+      // PRODUCT CHANGE 3 (2026-09-22 tenth follow-up) — the drag only ever
+      // targets the adjacent HOST, never the current host's own next/prev
+      // post (that's `storyNext`/`storyPrev`'s job — the timer and tap
+      // zones, untouched). `hasNextHost`/`hasPrevHost` decide which of two
+      // very different visual treatments this same drag gets:
+      //   - a real adjacent host exists → the abstract glass "companion"
+      //     card (now representing that HOST, not an individual post);
+      //   - no adjacent host in that direction → BUG 4's fix: reveal
+      //     whatever real screen is already mounted underneath (Home/
+      //     Account) progressively, exactly like the vertical dismiss
+      //     already reveals it, instead of a gray/empty companion card.
+      const revealingUnderneath = (goingNext && !hasNextHost) || (!goingNext && !hasPrevHost);
       if (photoRef.current) {
         photoRef.current.style.transition = 'none';
         photoRef.current.style.transform = REDUCED_MOTION
           ? `translateX(${dx}px)`
           : `translateX(${dx}px) scale(${1 - Math.min(1, Math.abs(dx) / width) * 0.06})`;
       }
-      applyCompanionTransform(dx, width);
+      if (revealingUnderneath) {
+        if (goingNext && containerRef.current) {
+          // Only the FORWARD case actually reveals anything (BUG 4) — the
+          // backward "no previous host" case has nothing real to reveal
+          // (there's no logical prior context before the deck's very
+          // first host), so it just rubber-bands the current card via
+          // `photoRef` above and always springs back on release below.
+          containerRef.current.style.transition = 'none';
+          containerRef.current.style.opacity = String(1 - Math.min(1, Math.abs(dx) / width));
+        }
+      } else {
+        applyCompanionTransform(dx, width);
+      }
     }
   };
   const onStagePointerUp = (e) => {
@@ -227,15 +277,21 @@ export default function StoryViewer() {
     if (g.dragging === 'horizontal') {
       const dx = g.lastDx || 0;
       const width = stageRef.current?.getBoundingClientRect().width || window.innerWidth;
-      const committed = Math.abs(dx) > HSWIPE_THRESHOLD || Math.abs(g.velocity || 0) > HSWIPE_VELOCITY;
+      const goingNext = dx < 0;
+      // PRODUCT CHANGE 3 — a backward swipe past the beginning of the
+      // WHOLE deck (no previous host at all) never commits to anything;
+      // it only ever springs back, regardless of distance/velocity — "no
+      // logical prior context" per BUG 4's own symmetry requirement.
+      const canCommit = goingNext ? hasNextHost : hasPrevHost;
+      const committed = canCommit && (Math.abs(dx) > HSWIPE_THRESHOLD || Math.abs(g.velocity || 0) > HSWIPE_VELOCITY);
       if (committed) {
         // Settle: finish the drift the rest of the way out, THEN advance —
-        // storyNext/storyPrev change groupIndex/storyIndex, which remounts
-        // fresh content via the effect below; finishing the outward motion
-        // first is what makes it read as one continuous drift instead of a
-        // snap-then-jump. No progress/mark-viewed side effect happens here
-        // — that's still solely the effect keyed on groupIndex/storyIndex.
-        const goingNext = dx < 0;
+        // storyNextHost/storyPrevHost change groupIndex/storyIndex, which
+        // remounts fresh content via the effect below; finishing the
+        // outward motion first is what makes it read as one continuous
+        // drift instead of a snap-then-jump. No progress/mark-viewed side
+        // effect happens here — that's still solely the effect keyed on
+        // groupIndex/storyIndex.
         if (photoRef.current) {
           photoRef.current.style.transition = `transform ${HSWIPE_SETTLE_MS}ms ${DISMISS_EASING}`;
           photoRef.current.style.transform = `translateX(${goingNext ? -width : width}px)`;
@@ -248,14 +304,38 @@ export default function StoryViewer() {
         setTimeout(() => {
           if (photoRef.current) { photoRef.current.style.transition = 'none'; photoRef.current.style.transform = ''; }
           resetCompanion(false);
-          (goingNext ? storyNext : storyPrev)();
+          (goingNext ? storyNextHost : storyPrevHost)();
         }, HSWIPE_SETTLE_MS);
         return;
       }
-      // Short of threshold/velocity — spring the current card back and
-      // fade the companion out, then resume progress where it was.
+      // BUG 4 — the final story of the final host, swipe forward, PAST the
+      // commit threshold: complete the reveal into Home/Account instead of
+      // springing back. Dock visibility only restores once `closeStoryViewer()`
+      // actually runs (Shell's own `showBar = ... && !state.storyViewer`
+      // already gates on that), i.e. only after the settle finishes.
+      if (goingNext && !hasNextHost) {
+        const beyondThreshold = Math.abs(dx) > HSWIPE_THRESHOLD || Math.abs(g.velocity || 0) > HSWIPE_VELOCITY;
+        if (beyondThreshold) {
+          if (containerRef.current) {
+            containerRef.current.style.transition = `opacity ${HSWIPE_SETTLE_MS}ms ${DISMISS_EASING}`;
+            containerRef.current.style.opacity = '0';
+          }
+          if (photoRef.current) {
+            photoRef.current.style.transition = `transform ${HSWIPE_SETTLE_MS}ms ${DISMISS_EASING}`;
+            photoRef.current.style.transform = `translateX(${-width}px)`;
+          }
+          setTimeout(() => { closeStoryViewer(); }, HSWIPE_SETTLE_MS);
+          return;
+        }
+      }
+      // Short of threshold/velocity (or no adjacent host to land on) —
+      // spring the current card back, fade the companion out, undo any
+      // reveal-underneath progress, then resume where it was. Explicitly
+      // does NOT reset story position/progress — same "no state reset"
+      // contract as every other cancelled gesture here.
       if (photoRef.current) { photoRef.current.style.transition = `transform ${HSWIPE_SETTLE_MS}ms ${DISMISS_EASING}`; photoRef.current.style.transform = ''; }
       resetCompanion(true);
+      resetReveal(true);
       resume();
       return;
     }
@@ -274,6 +354,7 @@ export default function StoryViewer() {
 
   return (
     <div
+      ref={containerRef}
       data-screen-label="Story viewer"
       style={{ position: 'absolute', inset: 0, zIndex: 27, background: '#000', overflow: 'hidden', opacity: closing ? 0 : 1, transition: `opacity ${DISMISS_MS}ms ease` }}
     >
@@ -282,6 +363,9 @@ export default function StoryViewer() {
       <div
         ref={stageRef}
         data-testid="story-viewer-stage"
+        data-org-id={group.organizerId}
+        data-story-count={group.stories.length}
+        data-story-index={viewer.storyIndex}
         onPointerDown={onStagePointerDown}
         onPointerMove={onStagePointerMove}
         onPointerUp={onStagePointerUp}
@@ -349,7 +433,7 @@ export default function StoryViewer() {
 // (denormalized at load time — see GocContext.jsx's own comment on why) so
 // the card still renders correctly even if the event later changes.
 function EventShareCard({ story, T }) {
-  const { goEventFromStory } = useGoc();
+  const { state: s, goEventFromStory } = useGoc();
   const snap = story.eventSnapshot;
   if (!snap) {
     return (
@@ -358,6 +442,14 @@ function EventShareCard({ story, T }) {
       </div>
     );
   }
+  // BUG 2 (2026-09-22 tenth follow-up) — the same canonical `distanceLabel()`
+  // helper Event Detail/MapExplore use, recomputed on EVERY render from
+  // the CURRENT `s.userCoords`/`s.located` (both live GocContext state) —
+  // never cached at the moment the story was opened, so it updates live if
+  // location resolves/changes while the card is on screen, and shows
+  // nothing at all (never a static/wrong number) whenever a real distance
+  // genuinely isn't available yet.
+  const dist = distanceLabel(s.userCoords, s.located === true, snap);
   return (
     <div
       data-testid="story-event-card"
@@ -370,7 +462,9 @@ function EventShareCard({ story, T }) {
       <div style={bg(snap.img, { width: '100%', aspectRatio: '4 / 5', borderRadius: 0 })} />
       <div style={{ padding: '16px 18px 18px' }}>
         <div style={{ ...display(18, { color: ink }) }}>{snap.name}</div>
-        <div style={{ fontSize: 12, color: ink, opacity: 0.7, marginTop: 4 }}>{snap.when}</div>
+        <div style={{ fontSize: 12, color: ink, opacity: 0.7, marginTop: 4 }} data-testid="story-event-distance">
+          {snap.when}{dist ? ` ▪︎ ${dist}` : ''}
+        </div>
         <div
           data-testid="story-event-cta"
           onClick={(e) => { e.stopPropagation(); goEventFromStory(snap.eventKey); }}

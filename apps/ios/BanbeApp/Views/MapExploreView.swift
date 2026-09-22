@@ -1025,14 +1025,14 @@ struct MapExploreView: View {
         return list
     }
 
+    // BUG 2 (2026-09-22 tenth follow-up) — was its own hand-duplicated
+    // haversine copy; now delegates to the ONE shared coordinate-pair
+    // primitive (`CatalogEvent.swift`) the story card and `CatalogEvent`'s
+    // own `haversineKm(from:to:)` both use, so this list row's km can
+    // never numerically drift from either of those.
     private func distanceKm(_ from: Coordinates, _ ev: MapEventRow) -> Double? {
         guard let lat = ev.lat, let lng = ev.lng else { return nil }
-        let dLat = (lat - from.lat) * .pi / 180
-        let dLng = (lng - from.lng) * .pi / 180
-        let lat1 = from.lat * .pi / 180
-        let lat2 = lat * .pi / 180
-        let h = pow(sin(dLat / 2), 2) + cos(lat1) * cos(lat2) * pow(sin(dLng / 2), 2)
-        return 6371 * 2 * atan2(sqrt(h), sqrt(1 - h))
+        return haversineKm(from: from, toCoords: Coordinates(lat: lat, lng: lng))
     }
 
     /// Bug 4 follow-up (category filter mismatch audit): mirrors web's own

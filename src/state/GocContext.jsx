@@ -2331,7 +2331,11 @@ export function GocProvider({ children }) {
         id: r.id, mediaPath: r.media_path, url: urlByPath[r.media_path] || null,
         width: r.width, height: r.height, createdAt: r.created_at, viewed: viewedSet.has(r.id),
         kind: r.kind || 'media',
-        eventSnapshot: isEventShare && ev ? { eventKey: ev.key, img: ev.img, name: ev.name, when: ev.when, where: ev.where } : null,
+        // BUG 2 (2026-09-22 tenth follow-up) — `lat`/`lng` added so the
+        // event-share card can show a live distance via the SAME canonical
+        // `distanceLabel()`/`haversineKm()` MapExplore and Event Detail
+        // already use, instead of showing none at all (its previous state).
+        eventSnapshot: isEventShare && ev ? { eventKey: ev.key, img: ev.img, name: ev.name, when: ev.when, where: ev.where, lat: ev.lat, lng: ev.lng } : null,
       });
     }
     const groups = Object.values(byOrg).map(g => ({ ...g, allViewed: g.stories.every(st => st.viewed) }));
@@ -2418,6 +2422,53 @@ export function GocProvider({ children }) {
       for (let gi = v.groupIndex - 1; gi >= 0; gi--) {
         if (v.groups[gi].stories.length > 0) return { storyViewer: { ...v, groupIndex: gi, storyIndex: v.groups[gi].stories.length - 1 } };
       }
+      return {};
+    });
+  }, [set]);
+  // PRODUCT CHANGE 3 (2026-09-22 tenth follow-up) — the horizontal
+  // DRAG/swipe gesture must move between HOST GROUPS only, never between
+  // individual posts of the SAME host (that's still exclusively the
+  // timer's/tap-zones' job, via `storyNext`/`storyPrev` above, unchanged).
+  // `storyNextHost`/`storyPrevHost` are a SEPARATE pair of functions, only
+  // ever called from StoryViewer.jsx's horizontal-drag commit branch — a
+  // deliberate split, not a parameterized single function, so the two
+  // gestures' semantics can never accidentally re-merge.
+  //
+  // "next host's current/first UNSEEN story" — resumes at whichever story
+  // in that host hasn't been watched yet, or its first story if none have.
+  const storyNextHost = useCallback(() => {
+    set(prev => {
+      const v = prev.storyViewer;
+      if (!v) return {};
+      for (let gi = v.groupIndex + 1; gi < v.groups.length; gi++) {
+        if (v.groups[gi].stories.length === 0) continue;
+        const idx = v.groups[gi].stories.findIndex(st => !st.viewed);
+        return { storyViewer: { ...v, groupIndex: gi, storyIndex: idx === -1 ? 0 : idx } };
+      }
+      // No next host — StoryViewer.jsx's own gesture handler is what
+      // decides what happens here (BUG 4: reveal Home instead of
+      // advancing), so this is intentionally a no-op, not a dismiss.
+      return {};
+    });
+  }, [set]);
+  // "previous host's appropriate current/last-viewed story" — resumes at
+  // the LAST story in that host the viewer had already reached (so
+  // swiping back lands where they left off, not at the start again); if
+  // none were viewed yet, its final story (mirrors `storyPrev`'s own
+  // "enter a host from its last story" convention above).
+  const storyPrevHost = useCallback(() => {
+    set(prev => {
+      const v = prev.storyViewer;
+      if (!v) return {};
+      for (let gi = v.groupIndex - 1; gi >= 0; gi--) {
+        const g = v.groups[gi];
+        if (g.stories.length === 0) continue;
+        let lastViewed = -1;
+        g.stories.forEach((st, i) => { if (st.viewed) lastViewed = i; });
+        return { storyViewer: { ...v, groupIndex: gi, storyIndex: lastViewed !== -1 ? lastViewed : g.stories.length - 1 } };
+      }
+      // No previous host — nothing to do; the gesture always springs back
+      // in this case (see BUG 4's own "beginning of the deck" symmetry).
       return {};
     });
   }, [set]);
@@ -4344,7 +4395,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
@@ -4373,7 +4424,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,

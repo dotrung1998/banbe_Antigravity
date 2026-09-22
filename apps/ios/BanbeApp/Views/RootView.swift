@@ -120,6 +120,16 @@ struct RootView: View {
 
     private var isPeeking: Bool { isDragTracking || isCommittingBack }
 
+    /// BUG 1 fix (2026-09-22 tenth follow-up) — true whenever the
+    /// currently-showing screen is an Event Detail reached FROM a story
+    /// (`app.eventBackIsStory`, set/cleared by
+    /// `goEventFromStory()`/`backFromEvent()`/`goEvent()` — see
+    /// AppState.swift). While true, the retained `app.storyViewer` (no
+    /// longer nulled out on this path — see `goEventFromStory()`'s own
+    /// comment) is the genuine underlay to reveal during an edge-swipe,
+    /// not the generic `backTargetScreen` preview copy.
+    private var storyUnderlaysEvent: Bool { app.screen == .event && app.eventBackIsStory }
+
     /// A sliver of parallax on the revealed screen — it drifts in from
     /// slightly off-frame rather than sitting flush at 0, the same subtle
     /// depth cue UIKit's pop transition gives the view underneath.
@@ -156,10 +166,20 @@ struct RootView: View {
                 // `app.mapExploreState` already hold, a static visual
                 // backdrop (`.allowsHitTesting(false)` below already makes
                 // it non-interactive).
-                screenView(for: app.backTargetScreen, isPreview: true)
-                    .offset(x: peekOffset)
-                    .overlay(Color.black.opacity((1 - dragProgress) * 0.1))
-                    .allowsHitTesting(false)
+                // BUG 1 fix (2026-09-22 tenth follow-up) — when the screen
+                // underneath is an Event Detail opened FROM a story, the
+                // genuine underlay is the retained `app.storyViewer`
+                // (rendered separately below, at full opacity/zIndex
+                // during a peek), not a throwaway preview of
+                // `backTargetScreen` (Home) — showing both would be
+                // visually redundant, and the whole point of this fix is
+                // that Home must never be what appears here at all.
+                if !storyUnderlaysEvent {
+                    screenView(for: app.backTargetScreen, isPreview: true)
+                        .offset(x: peekOffset)
+                        .overlay(Color.black.opacity((1 - dragProgress) * 0.1))
+                        .allowsHitTesting(false)
+                }
             }
 
             screenView(for: app.screen)
@@ -211,7 +231,30 @@ struct RootView: View {
             if app.reasonPrompt != nil { ReasonSheetView() }
             if let photo = app.photoViewer { PhotoViewerView(item: photo) }
             if app.chatPhotoViewer != nil { ChatPhotoViewerView() }
-            if app.storyViewer != nil { StoryViewerView() }
+            // BUG 1 fix (2026-09-22 tenth follow-up) — `app.storyViewer`
+            // now stays retained (non-nil) the whole time Event Detail is
+            // showing after being opened FROM a story (see
+            // AppState.goEventFromStory()'s own comment), so this can no
+            // longer be a plain `if app.storyViewer != nil { StoryViewerView() }`
+            // — that would render it ON TOP of Event Detail at rest, not
+            // just during the edge-swipe peek. `isSuspended` pauses its
+            // internal timer/gesture and drops it BELOW Event Detail in
+            // z-order and out of hit-testing while `storyUnderlaysEvent`
+            // and not peeking; the moment a peek starts (or the swipe
+            // fully completes and `screen` leaves `.event`), it's exactly
+            // the same single retained instance becoming visible again —
+            // never a second `StoryViewerView` instance.
+            if app.storyViewer != nil {
+                // `isSuspended` pauses the story's own timer/progress for
+                // the WHOLE time Event Detail is the nominal top screen —
+                // including while peeking (a cancelled peek must not have
+                // silently burned through story time the user only ever
+                // glanced at); the zIndex/hit-testing below are the
+                // separate VISUAL concern of when it's actually revealed.
+                StoryViewerView(isSuspended: storyUnderlaysEvent)
+                    .zIndex(storyUnderlaysEvent && !isPeeking ? -1 : 27)
+                    .allowsHitTesting(!storyUnderlaysEvent)
+            }
             if app.loading { loadingOverlay }
 
             if !app.toasts.isEmpty {
@@ -314,12 +357,36 @@ struct RootView: View {
         // targeted fixes (finishOnboarding, dismissSplash, signOut) don't
         // — e.g. goHome()'s plain `screen = .home`, callable from
         // anywhere, has no auth check of its own.
-        .onChange(of: app.screen) { _, newScreen in
+        .onChange(of: app.screen) { oldScreen, newScreen in
             if !app.isSignedIn && !AppState.guestAllowedScreens.contains(newScreen) {
                 app.authMandatory = true
                 app.authReturnScreen = newScreen
                 app.authBackScreen = newScreen
                 app.screen = .login
+            }
+            // BUG 1 fix (2026-09-22 tenth follow-up) — `app.storyViewer`
+            // now stays retained across an Event Detail opened from a
+            // story (see AppState.goEventFromStory()'s own comment)
+            // instead of being cleared up front, so any OTHER way the
+            // screen leaves `.event` — a "Reserve"/"other events" tap,
+            // anything that isn't `backFromEvent()`'s own sanctioned
+            // return-to-story path — must explicitly discard it here, or
+            // it would linger and pop back up (full zIndex/interactive)
+            // over whatever screen this navigation actually lands on.
+            // `backFromEvent()`/`goEvent()` already clear
+            // `eventBackIsStory` THEMSELVES as part of the very same
+            // state update that changes `screen` — so by the time this
+            // fires, `eventBackIsStory` being STILL true is exactly the
+            // signal that this wasn't that sanctioned path.
+            // `.organizer` is explicitly exempted — `backToEvent()`
+            // returns straight to `.event` from there, and
+            // `eventBackScreen` itself already treats `.organizer` as
+            // "still within this event's own neighborhood" (see
+            // `goEvent()`'s own condition) — an Organizer round-trip must
+            // not lose the story context either.
+            if oldScreen == .event, newScreen != .event, newScreen != .organizer, app.eventBackIsStory {
+                app.eventBackIsStory = false
+                app.closeStoryViewer()
             }
             // Every screen change starts the bottom tab bar back at full
             // size, matching src/App.jsx Shell's own per-screen reset.

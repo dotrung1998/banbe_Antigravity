@@ -1807,7 +1807,7 @@ extension AppState {
                 let snapshot: StoryEventSnapshot? = {
                     guard isEventShare, let eventId = r.eventId,
                           let ev = EventCatalog.all.first(where: { $0.key == eventId }) else { return nil }
-                    return StoryEventSnapshot(eventKey: ev.key, img: ev.img, name: ev.name, when: ev.when, location: ev.where)
+                    return StoryEventSnapshot(eventKey: ev.key, img: ev.img, name: ev.name, when: ev.when, location: ev.where, lat: ev.lat, lng: ev.lng)
                 }()
                 let item = StoryItem(id: r.id, mediaPath: r.mediaPath, url: urlByPath[r.mediaPath], width: r.width, height: r.height, createdAt: r.createdAt, viewed: viewedSet.contains(r.id), kind: r.kind, eventSnapshot: snapshot)
                 if byOrg[r.organizerId] != nil { byOrg[r.organizerId]!.stories.append(item) }

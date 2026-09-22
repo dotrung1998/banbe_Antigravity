@@ -210,11 +210,6 @@ final class AppState: ObservableObject {
     private var lastScaffoldScrollOffset: CGFloat = 0
     @Published var eventKey: String = "bepnho"
     @Published var eventBackScreen: Screen = .home
-    // Task 4C (2026-09-22 follow-up, 07-notifications.md) — set only by
-    // goEventFromStory(), holds the exact StoryViewer position to restore
-    // when backFromEvent() returns from an event opened via a story's own
-    // card/CTA.
-    @Published var storyReturnSnapshot: StoryViewerState?
     // BUG 3 fix (2026-09-22 follow-up) — true only while the currently-open
     // Event Detail was reached via goEventFromStory(); the single source of
     // truth EventDetailView's back-label override and backFromEvent()'s own
@@ -1176,15 +1171,21 @@ final class AppState: ObservableObject {
     // whichever row of its "Current events" list is tapped, including the
     // event you arrived from (that list contains it too).
     func goEvent(_ key: String) {
+        // A fresh, non-story-originated event open discards any RETAINED
+        // story viewer (BUG 1, 2026-09-22 tenth follow-up: `storyViewer`
+        // now stays live/retained across an event opened FROM a story —
+        // see goEventFromStory()'s own comment — so a later, unrelated
+        // event open must explicitly close it out, or it would linger and
+        // pop back up over whatever screen this new event later returns
+        // to) — before `eventBackIsStory` is even checked, so this also
+        // covers the (rare) case of opening a second event directly from
+        // Event Detail's own "other events" list while the first one was
+        // itself story-suspended.
+        if eventBackIsStory { closeStoryViewer() }
         if screen != .event && screen != .organizer { eventBackScreen = screen }
         eventKey = key
         screen = .event
-        // A fresh, non-story-originated event open invalidates any pending
-        // story-return snapshot/back-label — see goEventFromStory()'s own
-        // comment. BUG 3 fix (2026-09-22 follow-up): also clears
-        // `eventBackIsStory` for the same reason.
         eventBackIsStory = false
-        storyReturnSnapshot = nil
         storyReturnHostName = nil
         Task { await loadBookingForCurrentEvent() }
         Task { await loadLiveEventStatus() }
@@ -1202,16 +1203,31 @@ final class AppState: ObservableObject {
     /// snapshot happens to be present (the real bug this ticket reported:
     /// the label said "banbe"/Home while the tap actually reopened the
     /// story).
+    ///
+    /// BUG 1 fix (2026-09-22 tenth follow-up) — real regression, confirmed
+    /// by reading: this used to null out `storyViewer` and stash a
+    /// SEPARATE `storyReturnSnapshot` to reconstruct it later. That
+    /// supports a COMPLETED back action fine, but not an INTERACTIVE one —
+    /// during a slow edge-swipe, `RootView`'s peek renders
+    /// `screenView(for: app.backTargetScreen, isPreview: true)`, and
+    /// StoryViewer isn't a `Screen` at all (it's a separate overlay, see
+    /// RootView's own `if app.storyViewer != nil` block) — so the peek
+    /// could only ever show `eventBackScreen` itself (Home), never
+    /// StoryViewer, no matter what. Fixed at the state-model level:
+    /// `storyViewer` is no longer cleared here — it stays the SAME live,
+    /// retained instance the whole time Event Detail is showing (paused,
+    /// not visibly on top — see RootView's own `storyUnderlaysEvent`
+    /// handling), so an interactive peek has a genuine live view to
+    /// reveal, not a throwaway reconstruction. `storyReturnSnapshot` is
+    /// gone entirely — nothing to snapshot when the original is retained.
     func goEventFromStory(_ key: String) {
         if screen != .event && screen != .organizer { eventBackScreen = screen }
         eventBackIsStory = true
-        storyReturnSnapshot = storyViewer
         if let v = storyViewer, v.groups.indices.contains(v.groupIndex) {
             storyReturnHostName = v.groups[v.groupIndex].orgName
         } else {
             storyReturnHostName = nil
         }
-        storyViewer = nil
         eventKey = key
         screen = .event
         Task { await loadBookingForCurrentEvent() }
@@ -1224,17 +1240,20 @@ final class AppState: ObservableObject {
     /// requirement. It only special-cases the destination screen actually
     /// being `.mapExplore`; every other `eventBackScreen` target is an
     /// ordinary screen switch, unchanged from before.
+    ///
+    /// BUG 1 fix (2026-09-22 tenth follow-up) — `storyViewer` was never
+    /// cleared by `goEventFromStory()` above, so there's nothing to
+    /// restore here any more; it's already sitting there, exactly where it
+    /// was, and simply becomes the top-most visible overlay again the
+    /// moment `screen` stops being `.event` (RootView's own
+    /// `storyUnderlaysEvent` check).
     func backFromEvent() {
         if eventBackScreen == .mapExplore {
             returnToMapExplore()
         } else {
             screen = eventBackScreen
         }
-        if eventBackIsStory, let snapshot = storyReturnSnapshot {
-            storyViewer = snapshot
-        }
         eventBackIsStory = false
-        storyReturnSnapshot = nil
         storyReturnHostName = nil
     }
 
@@ -1345,6 +1364,47 @@ final class AppState: ObservableObject {
             }
             gi -= 1
         }
+    }
+    /// PRODUCT CHANGE 3 (2026-09-22 tenth follow-up) — the horizontal
+    /// DRAG/swipe gesture must move between HOST GROUPS only, never
+    /// between individual posts of the SAME host (that's still exclusively
+    /// the timer's/tap-zones' job, via `storyNext()`/`storyPrev()` above,
+    /// unchanged). A separate pair of functions — only ever called from
+    /// `StoryViewerView.swift`'s horizontal-drag commit branch — so the
+    /// two gestures' semantics can never accidentally re-merge.
+    ///
+    /// "next host's current/first UNSEEN story" — resumes at whichever
+    /// story in that host hasn't been watched yet, or its first if none have.
+    func storyNextHost() {
+        guard let v = storyViewer else { return }
+        for gi in (v.groupIndex + 1)..<v.groups.count where !v.groups[gi].stories.isEmpty {
+            let idx = v.groups[gi].stories.firstIndex(where: { !$0.viewed }) ?? 0
+            storyViewer = StoryViewerState(groups: v.groups, groupIndex: gi, storyIndex: idx)
+            return
+        }
+        // No next host — StoryViewerView's own gesture handler decides
+        // what happens here (BUG 4: reveal Home instead of advancing), so
+        // this is intentionally a no-op, not a dismiss.
+    }
+    /// "previous host's appropriate current/last-viewed story" — resumes
+    /// at the LAST story in that host the viewer had already reached (so
+    /// swiping back lands where they left off, not at the start again); if
+    /// none were viewed yet, its final story (mirrors `storyPrev()`'s own
+    /// "enter a host from its last story" convention above).
+    func storyPrevHost() {
+        guard let v = storyViewer else { return }
+        var gi = v.groupIndex - 1
+        while gi >= 0 {
+            let g = v.groups[gi]
+            if !g.stories.isEmpty {
+                let lastViewed = g.stories.lastIndex(where: { $0.viewed })
+                storyViewer = StoryViewerState(groups: v.groups, groupIndex: gi, storyIndex: lastViewed ?? (g.stories.count - 1))
+                return
+            }
+            gi -= 1
+        }
+        // No previous host — nothing to do; the gesture always springs
+        // back in this case (see BUG 4's own "beginning of the deck" symmetry).
     }
     func showPhoto(at index: Int) {
         guard var item = photoViewer else { return }

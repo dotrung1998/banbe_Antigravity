@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { supabase } from '../lib/supabase.js';
-import { findEvent, haversineKm } from '../data/events.js';
+import { findEvent, haversineKm, distanceLabel } from '../data/events.js';
 import { densityHotspot } from '../lib/densityHotspot.js';
 import { FILTER_DEFS } from './Home.jsx';
 import { paper, ink, rule, alert, photoPill, fieldGlass, cardGlass, inkButton } from '../theme.js';
@@ -880,7 +880,15 @@ export default function MapExplore() {
                       of "Gần bạn" — that chip still only controls
                       SORTING/filtering by distance, unchanged; this is
                       purely about whether the km figure is DISPLAYED. */}
-                  {(sortByDistance || locPermission === 'granted') && s.userCoords && haversineKm(s.userCoords, ev) != null ? ` ▪︎ ${haversineKm(s.userCoords, ev).toFixed(1)} km` : ''}
+                  {/* BUG 2 (2026-09-22 tenth follow-up) — now built on the
+                      SAME canonical `distanceLabel()` helper EventDetail's
+                      `stripKm()` and the story card use, instead of its own
+                      separate `.toFixed(1)` (which also silently used a
+                      dot decimal, "2.3 km", instead of this app's
+                      Vietnamese comma convention every other km display
+                      uses — a real, if minor, formatting divergence this
+                      also fixes). */}
+                  {(() => { const d = (sortByDistance || locPermission === 'granted') ? distanceLabel(s.userCoords, true, ev) : null; return d ? ` ▪︎ ${d}` : ''; })()}
                 </div>
               </div>
               {ev.price && <div style={{ fontSize: 12, color: ink, whiteSpace: 'nowrap' }}>{ev.price}</div>}

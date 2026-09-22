@@ -150,6 +150,22 @@ export function haversineKm(a, b) {
   return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
+// BUG 2 (2026-09-22 tenth follow-up) — the ONE canonical "give me a live
+// km string or nothing" helper, built on the exact same `haversineKm`
+// primitive `stripKm()` (GocContext.jsx) and MapExplore's own list-row
+// distance already use — so the event-share story card (which had NO
+// distance line at all before this pass) shows a number that can never
+// diverge from either of those. Never returns a static/cached/placeholder
+// value: `null`/`''` whenever `located` is false or a live coordinate for
+// either side isn't available yet, by construction (both callers just
+// render nothing in that case, same contract as `stripKm`'s own).
+export function distanceLabel(userCoords, located, ev) {
+  if (!located) return null;
+  const km = haversineKm(userCoords, ev);
+  if (km == null) return null;
+  return `${km.toFixed(1).replace('.', ',')} km`;
+}
+
 export function mapsUrl(ev) {
   if (ev.lat == null || ev.lng == null) return null;
   return 'https://www.google.com/maps/search/?api=1&query=' + ev.lat + ',' + ev.lng;
