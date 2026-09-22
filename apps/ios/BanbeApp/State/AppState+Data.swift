@@ -953,12 +953,21 @@ extension AppState {
             guard myGeneration == unreadCountGeneration else { return }
             guard !threadIDs.isEmpty else { unreadMessages = 0; return }
 
+            // BUG (2026-09-22 sixteenth follow-up) — real root cause,
+            // confirmed against real production data: `.neq("sender_id",
+            // ...)` compiles to SQL `sender_id <> uid`, which is NULL-unsafe
+            // — a system message row (sender_id IS NULL, e.g. "Dispute
+            // resolved"/"Confirmation email sent") is silently EXCLUDED by
+            // that predicate, not included. Using `.or(...)` so a NULL
+            // sender_id (system message) counts as unread here too, exactly
+            // like `sender_id != uid` already does client-side (Swift's
+            // `Optional != T` is NULL-safe, unlike SQL's `<>`).
             let unreadRows: [MessageThreadIDRow] = try await SupabaseService.client
                 .from("messages")
                 .select("thread_id")
                 .in("thread_id", values: threadIDs.map(\.uuidString))
                 .is("read_at", value: nil)
-                .neq("sender_id", value: uid.uuidString)
+                .or("sender_id.is.null,sender_id.neq.\(uid.uuidString)")
                 .execute().value
             guard myGeneration == unreadCountGeneration, requestStartedAt >= lastReadWriteAt else { return }
             unreadMessages = Set(unreadRows.map(\.threadId)).count
@@ -1964,12 +1973,26 @@ extension AppState {
     func markThreadMessagesRead(_ threadID: UUID) async {
         guard let uid = userID else { return }
         do {
+            // BUG (2026-09-22 sixteenth follow-up) — real root cause,
+            // confirmed against real production data (dotrung1998@gmail.com,
+            // system rows like "Dispute resolved"/"Confirmation email
+            // sent" with sender_id IS NULL and read_at IS NULL): the old
+            // `.neq("sender_id", ...)` compiles to `sender_id <> uid`, which
+            // SQL's NULL semantics silently exclude from the WHERE clause —
+            // a system message's read_at was NEVER actually written, so
+            // every later refetch (loadInboxThreads(), the dock poll) saw
+            // that same never-cleared row and correctly (per its own client-
+            // side, NULL-safe `sender_id != uid` check) reported the thread
+            // unread again — the "reads, then reverts" bug. `.or(...)`
+            // updates a message when it's a system row (sender_id IS NULL)
+            // OR a genuine incoming message from someone else — never a
+            // message this user authored themselves.
             try await SupabaseService.client
                 .from("messages")
                 .update(MessageReadUpdate())
                 .eq("thread_id", value: threadID)
                 .is("read_at", value: nil)
-                .neq("sender_id", value: uid.uuidString)
+                .or("sender_id.is.null,sender_id.neq.\(uid.uuidString)")
                 .execute()
         } catch {
             if error is CancellationError || Task.isCancelled { return }

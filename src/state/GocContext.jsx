@@ -1189,12 +1189,15 @@ export function GocProvider({ children }) {
       const threadIds = [...new Set([...(asGuest || []), ...asHost].map(t => t.id))];
       if (!active || requestStartedAt < lastReadWriteAtRef.current) return;
       if (!threadIds.length) { set({ unreadMessages: 0 }); return; }
+      // BUG (2026-09-22 sixteenth follow-up) — same NULL-unsafe `.neq()`
+      // fix as markThreadMessagesRead() above, so a system message
+      // (sender_id IS NULL) counts toward this badge too.
       const { data: unreadRows } = await supabase
         .from('messages')
         .select('thread_id')
         .in('thread_id', threadIds)
         .is('read_at', null)
-        .neq('sender_id', uid);
+        .or(`sender_id.is.null,sender_id.neq.${uid}`);
       if (active && requestStartedAt >= lastReadWriteAtRef.current) {
         set({ unreadMessages: new Set((unreadRows || []).map(r => r.thread_id)).size });
       }
@@ -3647,7 +3650,19 @@ export function GocProvider({ children }) {
   const markThreadMessagesRead = useCallback(async (threadId) => {
     const uid = s.user?.id;
     if (!uid) return;
-    const { error } = await supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('thread_id', threadId).is('read_at', null).neq('sender_id', uid);
+    // BUG (2026-09-22 sixteenth follow-up) — real root cause, confirmed
+    // against real production data (dotrung1998@gmail.com, system rows like
+    // "Dispute resolved"/"Confirmation email sent" with sender_id IS NULL
+    // and read_at IS NULL): `.neq('sender_id', uid)` compiles to SQL
+    // `sender_id <> uid`, which NULL semantics silently exclude from the
+    // WHERE clause — a system message's read_at was NEVER actually
+    // written, so every later refetch (loadInboxThreads, the dock poll
+    // below) saw that same never-cleared row and correctly (per its own
+    // client-side, NULL-safe `sender_id !== uid` check) reported the thread
+    // unread again — the "reads, then reverts" bug. `.or(...)` updates a
+    // message when it's a system row (sender_id IS NULL) OR a genuine
+    // incoming message from someone else — never one this user authored.
+    const { error } = await supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('thread_id', threadId).is('read_at', null).or(`sender_id.is.null,sender_id.neq.${uid}`);
     if (error) return;
     // BUG 1 (2026-09-22 fourteenth follow-up) — real bug, confirmed by
     // reading: this write succeeds and the optimistic patch below runs
