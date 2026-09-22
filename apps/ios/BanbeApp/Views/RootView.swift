@@ -128,7 +128,41 @@ struct RootView: View {
     /// longer nulled out on this path — see `goEventFromStory()`'s own
     /// comment) is the genuine underlay to reveal during an edge-swipe,
     /// not the generic `backTargetScreen` preview copy.
-    private var storyUnderlaysEvent: Bool { app.screen == .event && app.eventBackIsStory }
+    /// BUG 3 fix (2026-09-22 fifteenth follow-up) — real bug, confirmed by
+    /// reading: `goOrganizer()` (AppState.swift) is a plain `screen =
+    /// .organizer`, and never touches `eventBackIsStory` — correct, since
+    /// Organizer's own back (`backToEvent()`) unconditionally returns to
+    /// `.event` regardless of how Event Detail itself was reached, so
+    /// there's no NEW back-target state needed here (matches this ticket's
+    /// own "use existing back-target/patterns" instruction). But this
+    /// computed property used to check ONLY `screen == .event`, so the
+    /// instant Organizer opened (`screen` becomes `.organizer`,
+    /// `eventBackIsStory` stays true — it's never cleared going into
+    /// Organizer), it evaluated false — flipping the retained StoryViewer
+    /// back to full zIndex/hit-testing/`isSuspended: false` (RESUMING its
+    /// timer) directly on top of Organizer, exactly the reported "tapping
+    /// Organizer/Visit makes StoryViewer appear instead." Widened to also
+    /// cover `.organizer` reached from that same story-originated Event
+    /// Detail — StoryViewer now stays suspended/hidden underneath BOTH
+    /// screens, only resurfacing once `backFromEvent()` actually clears
+    /// `eventBackIsStory` and leaves the `.event`/`.organizer` cluster
+    /// entirely.
+    private var storyUnderlaysEvent: Bool {
+        (app.screen == .event || app.screen == .organizer) && app.eventBackIsStory
+    }
+    /// BUG 3 fix (2026-09-22 fifteenth follow-up) — narrower than
+    /// `storyUnderlaysEvent` above ON PURPOSE: this ONLY gates the generic
+    /// `backTargetScreen` peek block below, which must still fire normally
+    /// for an Organizer -> Event Detail edge-swipe (backTargetScreen for
+    /// `.organizer` is `.event`, a real screen worth peeking at — see
+    /// AppState.swift's own `backTargetScreen`). Widening `storyUnderlaysEvent`
+    /// itself to include `.organizer` would have also suppressed THAT peek
+    /// (since it's gated on `!storyUnderlaysEvent`), leaving an
+    /// Organizer-edge-swipe reveal nothing at all instead of Event Detail.
+    /// Only `.event`'s OWN backTargetScreen (`eventBackScreen`, typically
+    /// Home) is actually redundant/wrong to peek at when the real underlay
+    /// is the retained story.
+    private var eventDetailFromStory: Bool { app.screen == .event && app.eventBackIsStory }
 
     /// A sliver of parallax on the revealed screen — it drifts in from
     /// slightly off-frame rather than sitting flush at 0, the same subtle
@@ -189,7 +223,11 @@ struct RootView: View {
                 // `backTargetScreen` (Home) — showing both would be
                 // visually redundant, and the whole point of this fix is
                 // that Home must never be what appears here at all.
-                if !storyUnderlaysEvent {
+                // BUG 3 fix (2026-09-22 fifteenth follow-up) — `eventDetailFromStory`
+                // (narrower than `storyUnderlaysEvent`, see its own comment)
+                // so an Organizer -> Event Detail edge-swipe still peeks at
+                // real Event Detail content here, not nothing.
+                if !eventDetailFromStory {
                     screenView(for: app.backTargetScreen, isPreview: true)
                         .offset(x: peekOffset)
                         .overlay(Color.black.opacity((1 - dragProgress) * 0.1))
@@ -283,7 +321,21 @@ struct RootView: View {
                 // leaves `.event` (which naturally flips `storyUnderlaysEvent`
                 // false once `goBack()` fires in the `isCommittingBack`
                 // handler below).
+                // BUG 2 fix (2026-09-22 fifteenth follow-up) — StoryViewerView's
+                // own root already calls `.ignoresSafeArea()` on its black
+                // backdrop, but that alone doesn't guarantee THIS instance
+                // (embedded as a RootView ZStack sibling) is ever actually
+                // PROPOSED the full device bounds rather than the safe-area-
+                // reduced layout bounds every other ZStack sibling here
+                // implicitly works within — the reported "gaps at top/
+                // bottom, a sliver of Home visible behind it" is exactly
+                // that shortfall. Forcing it here, at the outermost point
+                // this view is placed into RootView's layout, is the same
+                // pattern the root `app.palette.paper` background above
+                // already uses and removes any ambiguity about what's
+                // proposing what size to it.
                 StoryViewerView(isSuspended: storyUnderlaysEvent)
+                    .ignoresSafeArea()
                     .zIndex(storyUnderlaysEvent ? -1 : 27)
                     .allowsHitTesting(!storyUnderlaysEvent)
             }

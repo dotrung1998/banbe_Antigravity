@@ -51,6 +51,19 @@ export default function EventDetail() {
     ? (s.storyReturnHostName ? T('Tin của ' + s.storyReturnHostName, s.storyReturnHostName + '’s story') : T('Story', 'Story'))
     : (BACK_LABELS[s.eventBackScreen] || 'banbe');
   const cameFromHome = !s.eventBackIsStory && (s.eventBackScreen || 'home') === 'home';
+  // BUG 3 fix (2026-09-22 fifteenth follow-up, iOS parity) — a SEPARATE,
+  // narrower condition just for the Map link: the `!s.eventBackIsStory`
+  // exclusion baked into `cameFromHome` above used to hide "Xem trên bản
+  // đồ" entirely whenever Event Detail was reached from a story, even
+  // though `goEventFromStory()` sets `eventBackScreen` to whichever screen
+  // the story was opened over (Home, in the common case) — the exact same
+  // value a Home-origin open would have. Not an intentional "no map from
+  // story" decision, an origin-visibility bug — this event's own
+  // coordinates are just as valid either way. Kept separate from
+  // `cameFromHome` itself so the unrelated "▪︎ Về trang chính" shortcut
+  // above (which SHOULD keep showing for a story origin, same as before)
+  // stays untouched.
+  const showOpenInMap = (s.eventBackScreen || 'home') === 'home';
 
   const evCat = trStatus(ev.cat);
   const evWhere = trStatus(stripKm(ev.where, ev));
@@ -121,7 +134,7 @@ export default function EventDetail() {
             pin — the same `selectedEvent` card `MapExplore.jsx` already
             renders for a pin/list tap — appears automatically once there,
             since `openEventOnMap` sets `selectedId` the same way. */}
-        {cameFromHome && (
+        {showOpenInMap && (
           <div data-testid="event-open-in-map" onClick={() => openEventOnMap(ev)} style={{ fontSize: 11.5, color: ink, opacity: 0.65, cursor: 'pointer', marginBottom: 10 }}>{T('▪︎ Xem trên bản đồ', '▪︎ Open in map')}</div>
         )}
         {/* Task 4B (2026-09-22 follow-up) — only when the signed-in

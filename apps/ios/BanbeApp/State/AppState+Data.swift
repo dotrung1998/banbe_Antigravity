@@ -924,9 +924,12 @@ extension AppState {
     /// uncapped display for this badge (see its own comment).
     func refreshUnreadMessageCount() async {
         guard let uid = userID else { unreadMessages = 0; return }
-        // BUG 1 (2026-09-22 fourteenth follow-up) — see AppState.swift's own
-        // comment on lastReadWriteAt.
+        // BUG 1 (2026-09-22 fourteenth/fifteenth follow-up) — see
+        // AppState.swift's own comments on lastReadWriteAt/
+        // unreadCountGeneration.
         let requestStartedAt = Date()
+        unreadCountGeneration += 1
+        let myGeneration = unreadCountGeneration
         do {
             let asGuest: [UUIDRow] = try await SupabaseService.client
                 .from("threads").select("id")
@@ -947,6 +950,7 @@ extension AppState {
             }
 
             let threadIDs = Array(Set((asGuest + asHost).map(\.id)))
+            guard myGeneration == unreadCountGeneration else { return }
             guard !threadIDs.isEmpty else { unreadMessages = 0; return }
 
             let unreadRows: [MessageThreadIDRow] = try await SupabaseService.client
@@ -956,9 +960,10 @@ extension AppState {
                 .is("read_at", value: nil)
                 .neq("sender_id", value: uid.uuidString)
                 .execute().value
-            guard requestStartedAt >= lastReadWriteAt else { return }
+            guard myGeneration == unreadCountGeneration, requestStartedAt >= lastReadWriteAt else { return }
             unreadMessages = Set(unreadRows.map(\.threadId)).count
         } catch {
+            if error is CancellationError || Task.isCancelled { return }
             print("refreshUnreadMessageCount failed:", error)
         }
     }
@@ -1528,6 +1533,14 @@ extension AppState {
     /// and never moves the divider while the thread stays open
     /// (07-notifications.md).
     func loadChatMessages(_ threadID: UUID, computeDivider: Bool = false) async {
+        // BUG 1 (2026-09-22 fifteenth follow-up) — see AppState.swift's own
+        // comment on chatMessagesGeneration. ChatView's 4s poll (`pollTask`
+        // in MessagingViews.swift) is routinely cancelled by SwiftUI itself
+        // when the view disappears mid-request — a normal lifecycle event,
+        // not a failure — which is what actually produced the
+        // "Failed to load messages: CancellationError()" log.
+        chatMessagesGeneration += 1
+        let myGeneration = chatMessagesGeneration
         do {
             let rows: [ChatMessage] = try await SupabaseService.client
                 .from("messages")
@@ -1535,6 +1548,7 @@ extension AppState {
                 .eq("thread_id", value: threadID)
                 .order("created_at", ascending: true)
                 .execute().value
+            guard myGeneration == chatMessagesGeneration else { return }
             chatMessages = rows
             if computeDivider {
                 let uid = userID
@@ -1549,6 +1563,7 @@ extension AppState {
             let newPaths = rows.compactMap(\.attachmentPath).filter { chatAttachmentUrls[$0] == nil }
             if !newPaths.isEmpty { await signChatAttachmentUrls(newPaths) }
         } catch {
+            if error is CancellationError || Task.isCancelled { return }
             print("Failed to load messages:", error)
         }
     }
@@ -1957,6 +1972,7 @@ extension AppState {
                 .neq("sender_id", value: uid.uuidString)
                 .execute()
         } catch {
+            if error is CancellationError || Task.isCancelled { return }
             print("Failed to mark thread read:", error)
             return
         }
@@ -2019,9 +2035,16 @@ extension AppState {
     /// threads belonging to an organizer this account owns.
     func loadInboxThreads() async {
         guard let uid = userID else { inboxThreads = []; return }
-        // BUG 1 (2026-09-22 fourteenth follow-up) — see AppState.swift's own
-        // comment on lastReadWriteAt.
+        // BUG 1 (2026-09-22 fourteenth/fifteenth follow-up) — see
+        // AppState.swift's own comments on lastReadWriteAt/
+        // inboxThreadsGeneration. InboxView's `.task` (MessagingViews.swift)
+        // is cancelled by SwiftUI itself whenever the view disappears
+        // mid-request — a normal lifecycle event, not a failure — which is
+        // what actually produced the "Failed to load conversations:
+        // CancellationError()" log.
         let requestStartedAt = Date()
+        inboxThreadsGeneration += 1
+        let myGeneration = inboxThreadsGeneration
         do {
             let asGuest: [ThreadRow] = try await SupabaseService.client
                 .from("threads").select("id, event_id, guest_id, organizer_id")
@@ -2043,6 +2066,7 @@ extension AppState {
 
             var seen = Set<UUID>()
             let threads = (asGuest + asHost).filter { seen.insert($0.id).inserted }
+            guard myGeneration == inboxThreadsGeneration else { return }
             guard !threads.isEmpty else { inboxThreads = []; return }
 
             let messages: [MessageBrief] = try await SupabaseService.client
@@ -2100,7 +2124,7 @@ extension AppState {
                 }
             }
 
-            guard requestStartedAt >= lastReadWriteAt else { return }
+            guard myGeneration == inboxThreadsGeneration, requestStartedAt >= lastReadWriteAt else { return }
             inboxThreads = threads.compactMap { thread -> InboxThread? in
                 guard let event = EventCatalog.find(thread.eventId) else { return nil }
                 let last = lastByThread[thread.id]
@@ -2126,6 +2150,7 @@ extension AppState {
                 )
             }.sorted { ($0.lastAt ?? .distantPast) > ($1.lastAt ?? .distantPast) }
         } catch {
+            if error is CancellationError || Task.isCancelled { return }
             print("Failed to load conversations:", error)
         }
     }

@@ -412,6 +412,20 @@ final class AppState: ObservableObject {
     // the dock badge back to unread a few seconds after it was genuinely
     // marked read. Not `@Published` — nothing renders from this directly.
     var lastReadWriteAt: Date = .distantPast
+    // BUG 1 (2026-09-22 fifteenth follow-up) — the timestamp guard above
+    // covers "a response older than the last mark-read," but not "a
+    // response older than a NEWER request for the same resource" (e.g. two
+    // overlapping loadInboxThreads() calls from InboxView's `.task`
+    // restarting) — a generation token per resource, incremented at the
+    // START of each request; a request only ever commits its result if its
+    // OWN generation still matches the current one when it resolves. Also
+    // the mechanism that makes a cancelled request's result inert without
+    // needing to inspect the error at all: cancelling-and-superseding a
+    // request bumps the generation, so even a cancelled request that
+    // somehow still returned a stale value would be rejected here anyway.
+    var inboxThreadsGeneration = 0
+    var chatMessagesGeneration = 0
+    var unreadCountGeneration = 0
 
     // MARK: Notifications
     @Published var notifications: [AppNotification] = []

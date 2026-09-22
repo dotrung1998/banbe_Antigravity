@@ -179,7 +179,19 @@ struct EventDetailView: View {
             // home). `openEventOnMap` reuses MapExploreView's own restored-
             // snapshot mechanism, so the same info card that view already
             // renders for a selected pin/list row appears automatically.
-            if app.eventBackScreen == .home && !app.eventBackIsStory {
+            //
+            // BUG 3 fix (2026-09-22 fifteenth follow-up) — the extra
+            // `&& !app.eventBackIsStory` used to hide this action entirely
+            // whenever Event Detail was reached from a story, even though
+            // `goEventFromStory()` sets `eventBackScreen` to whichever
+            // screen the story was opened over (Home, in the common case)
+            // — the exact same value a Home-origin open would have. This
+            // was an origin-visibility bug, not an intentional "no map from
+            // story" product decision (nothing about a story origin makes
+            // the event's own coordinates less valid) — removed so a
+            // story-originated Event Detail shows the same Map action a
+            // Home-originated one does, whenever `eventBackScreen == .home`.
+            if app.eventBackScreen == .home {
                 Button(app.T("▪︎ Xem trên bản đồ", "▪︎ Open in map")) { app.openEventOnMap(event) }
                     .font(.system(size: 11.5))
                     .foregroundStyle(app.palette.ink.opacity(0.65))
