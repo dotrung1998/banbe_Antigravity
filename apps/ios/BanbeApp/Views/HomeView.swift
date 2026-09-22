@@ -7,6 +7,12 @@ struct HomeView: View {
     @EnvironmentObject var app: AppState
     @State private var tickTask: Task<Void, Never>?
     @State private var tick = Date()
+    // TASK 4 (2026-09-22 nineteenth follow-up) — one-shot guard so the
+    // retry below (see its own comment) only ever fires once per Home
+    // mount, never repeatedly fighting the user's own subsequent scrolling
+    // (which keeps updating `app.homeScrollAnchorID` live via
+    // `.scrollPosition(id:)`'s own two-way binding — see requirement 4).
+    @State private var didAttemptScrollRestore = false
 
     private let filters: [(key: String, vi: String, en: String)] = [
         ("all", "Tất cả", "All"),
@@ -81,13 +87,49 @@ struct HomeView: View {
         .task { await app.loadHomeLiveEvents() }
         // Task 3.3 (07-notifications.md) — active-story row.
         .task { if app.userID != nil { await app.loadHomeStories() } }
-        .onAppear { startTickingIfNeeded() }
+        .onAppear {
+            startTickingIfNeeded()
+            retryScrollRestoreIfNeeded()
+        }
         .onDisappear { tickTask?.cancel() }
         // Task 1 (2026-09-22 twelfth follow-up) — collects every visible
         // story ring's own global frame for StoryViewerView's expand/
         // shrink-toward-ring transition (see AppState.swift's own comment
         // on storyRingFrames).
         .onPreferenceChange(StoryRingFramePreferenceKey.self) { app.storyRingFrames = $0 }
+    }
+
+    /// TASK 4 (2026-09-22 nineteenth follow-up) — real root cause,
+    /// confirmed by reading `ScreenScaffold` (Components.swift): its
+    /// `.scrollPosition(id:)` restoration only works for an `.id(...)`
+    /// that's already materialized in the `LazyVStack`'s own view
+    /// hierarchy — a well-known SwiftUI limitation (this exact class of
+    /// bug is already documented once in this file's own `ScaffoldScrollProbe`
+    /// comment, for a different symptom). Returning to Home after scrolling
+    /// PAST the first screenful means the target event card's row was
+    /// never instantiated in this fresh `HomeView` instance's `LazyVStack`
+    /// at the moment `.scrollPosition(id:)` first tries to restore it, so
+    /// the restore silently no-ops. Switching away from `LazyVStack` (would
+    /// reintroduce the ~21-simultaneous-photo-download regression this file
+    /// already fixed once) or restructuring `ScreenScaffold` into a `List`
+    /// (touches Inbox/Notifications/Account too) are both too large for
+    /// this pass. Instead: re-drive the SAME binding a moment after this
+    /// view actually appears — by then `app.feed`'s async dependencies
+    /// (`loadHomeLiveEvents`, etc.) have generally settled and SwiftUI's
+    /// own layout pass has had a real chance to instantiate more of the
+    /// LazyVStack, giving the retry a real shot at finding the target id
+    /// that the very first, too-early attempt didn't. Toggled through nil
+    /// first since re-assigning a Binding<String?> to its OWN current value
+    /// wouldn't produce a change for `.scrollPosition(id:)` to react to.
+    private func retryScrollRestoreIfNeeded() {
+        guard !didAttemptScrollRestore, let target = app.homeScrollAnchorID else { return }
+        didAttemptScrollRestore = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            app.homeScrollAnchorID = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                app.homeScrollAnchorID = target
+            }
+        }
     }
 
     private func startTickingIfNeeded() {

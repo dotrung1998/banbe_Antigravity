@@ -712,11 +712,18 @@ extension AppState {
             var staleIDs: [UUID] = []
             let liveRows = filtered.filter { n in
                 switch n.kind {
-                case "payment_document_uploaded", "payment_document_replaced":
+                case "payment_document_uploaded", "payment_document_replaced", "payment_document_expiring_1d":
                     guard let docID = n.data["document_id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return true }
                     if maps.liveDocumentIds.contains(docID) { return true }
                     staleIDs.append(n.id); return false
-                case "payment_confirmed", "hold_created", "dispute_message", "receipt_requested":
+                case "payment_confirmed", "hold_created", "dispute_message", "receipt_requested",
+                     "checked_in", "checkin_undone", "dispute_resolved", "payment_disputed", "payment_needs_info":
+                    // TASK 1 (2026-09-22 nineteenth follow-up) — the full
+                    // kind -> outcome table (07-notifications.md has the
+                    // authoritative version): every kind here references
+                    // booking_id and has no destination of its own beyond
+                    // an already-loaded screen, so the SAME existence check
+                    // covers all of them.
                     // BUG 1 (2026-09-22 eighteenth follow-up) — real device
                     // report directed extending this to receipt_requested
                     // too, overriding the prior pass's own "deliberately
@@ -827,8 +834,11 @@ extension AppState {
             // _replaced notification whose target row is genuinely gone
             // (the purge cron, or a manual cleanup) without a second round
             // trip on top of this one.
-            let documentIDs = Set(rows.filter { $0.kind == "payment_document_uploaded" || $0.kind == "payment_document_replaced" }
-                .compactMap { $0.data["document_id"]?.stringValue.flatMap(UUID.init(uuidString:)) })
+            // TASK 1 (2026-09-22 nineteenth follow-up) — payment_document_expiring_1d
+            // also references document_id; same batched existence check.
+            let documentIDs = Set(rows.filter {
+                $0.kind == "payment_document_uploaded" || $0.kind == "payment_document_replaced" || $0.kind == "payment_document_expiring_1d"
+            }.compactMap { $0.data["document_id"]?.stringValue.flatMap(UUID.init(uuidString:)) })
             if !documentIDs.isEmpty {
                 let docs: [UUIDRow] = try await SupabaseService.client
                     .from("payment_documents").select("id")
@@ -1090,18 +1100,16 @@ extension AppState {
             if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key) {
                 openAttendance(key, back: .notifications)
             }
-        case "hold_created":
-            // 01-hold-payment.md follow-up: the guest's own mirror of
-            // "booking_requested" above (hold_seats(), migration 053) —
-            // takes the guest straight back to their own timer/QR/payment
-            // screen for this exact hold, the same way "dispute_message"
-            // already does for its own guest-facing case below.
-            // TASK 1 (2026-09-22 seventeenth follow-up) — same notFound-
-            // means-genuinely-gone existence check payment_confirmed/
-            // payment_document_* already do, extended here since this
-            // wasn't previously verified before navigating (requirement 6:
-            // must not silently no-op on a target that went stale between
-            // load and tap).
+        case "hold_created", "payment_needs_info", "checked_in", "checkin_undone":
+            // 01-hold-payment.md follow-up: hold_created is the guest's own
+            // mirror of "booking_requested" (hold_seats(), migration 053)
+            // — straight back to their own timer/QR/payment screen.
+            // TASK 1 (2026-09-22 nineteenth follow-up) — payment_needs_info
+            // (organizer asking the guest for more proof/info) and
+            // checked_in/checkin_undone (a check-in status change on an
+            // already-confirmed booking) all land on that same screen —
+            // it already reflects current status live, no separate
+            // "checked in" screen exists.
             if let bookingIDString = notification.data["booking_id"]?.stringValue,
                let bookingID = UUID(uuidString: bookingIDString) {
                 Task {
@@ -1110,13 +1118,15 @@ extension AppState {
                     openPaymentDetails(bookingID, back: .notifications)
                 }
             }
-        case "payment_awaiting_verification":
+        case "payment_awaiting_verification", "payment_verification_nudge":
             // 01-hold-payment.md follow-up: fired by submit_payment_proof()
             // (031:317) when a guest reports having transferred — the
             // organizer side of BUG 3, previously never wired at all. Same
             // destination as "booking_requested" (the very next step in the
             // same request's lifecycle, still shown/actioned from
             // VerificationsView, not AttendanceView's check-in list).
+            // TASK 1 (2026-09-22 nineteenth follow-up) — payment_verification_nudge
+            // is the SLA-reminder twin of the same event, same destination.
             if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key) {
                 openVerifications(back: .notifications)
             }
@@ -1134,15 +1144,16 @@ extension AppState {
                     if found == false { reportStaleNotification(notification) }
                 }
             }
-        case "dispute_message":
-            // Only the guest and organizer ever receive this kind
-            // (migrations 048/050 — admin is deliberately excluded), so
-            // accountType alone decides which screen has this booking's
-            // chat panel. message_id may be absent on a row from before
-            // migration 050 — DisputeChatPanel.swift falls back to
-            // scrolling to the bottom instead.
-            // TASK 1 (2026-09-22 seventeenth follow-up) — same existence
-            // check as "hold_created" above; see that case's own comment.
+        case "dispute_message", "dispute_resolved", "payment_disputed":
+            // Only the guest and organizer ever receive these (migrations
+            // 048/050 — admin is deliberately excluded), so accountType
+            // alone decides which screen has this booking's chat panel.
+            // message_id may be absent on a row from before migration 050
+            // — DisputeChatPanel.swift falls back to scrolling to the
+            // bottom instead.
+            // TASK 1 (2026-09-22 nineteenth follow-up) — dispute_resolved/
+            // payment_disputed extended onto the same destination; same
+            // existence check as "hold_created" above.
             if let bookingIDString = notification.data["booking_id"]?.stringValue,
                let bookingID = UUID(uuidString: bookingIDString) {
                 let messageID = notification.data["message_id"]?.stringValue.flatMap(UUID.init(uuidString:))
@@ -1153,14 +1164,16 @@ extension AppState {
                     if accountType == "organizer" { openVerifications(back: .notifications) } else { openPaymentDetails(bookingID, back: .notifications) }
                 }
             }
-        case "payment_document_uploaded", "payment_document_replaced":
+        case "payment_document_uploaded", "payment_document_replaced", "payment_document_expiring_1d":
             if let documentIDString = notification.data["document_id"]?.stringValue,
                let documentID = UUID(uuidString: documentIDString) {
                 // 2026-09-19 follow-up (the CONFIRMED real repro: a bulk
                 // payment_documents cleanup this session directly deleted
                 // every row, orphaning any notification of this kind
                 // created before it) — see openDocumentFromNotification()'s
-                // own comment and reportStaleNotification().
+                // own comment and reportStaleNotification(). TASK 1
+                // (2026-09-22 nineteenth follow-up) — payment_document_expiring_1d
+                // is just a heads-up straight to the same still-live document.
                 Task {
                     let found = await openDocumentFromNotification(documentID, backTo: .notifications)
                     if found == false { reportStaleNotification(notification) }
@@ -1185,6 +1198,18 @@ extension AppState {
                     openAttendance(key, back: .notifications)
                 }
             }
+        case "booking_cancelled", "booking_declined", "hold_expired":
+            // TASK 1 (2026-09-22 nineteenth follow-up) — the booking/hold
+            // itself is gone (rejected/cancelled/expired) — never a hard-
+            // deleted `events` row anywhere in this schema, so no existence
+            // check needed. The event itself is still the one meaningful
+            // place to land: "you can look at it again."
+            if let key = notification.data["event_id"]?.stringValue {
+                goEvent(key)
+            }
+        // "guest_renamed": category B, informational only, no destination
+        // by design — falls to default. markNotificationRead() above is
+        // the whole "action."
         default:
             break
         }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { agoLabel, bg } from '../data/events.js';
 import { avatarSourceFor, notificationAgeBucket, groupNotificationsByDay, collapseDayGroups } from '../lib/notifications.js';
-import { paper, ink, rule, alert, display } from '../theme.js';
+import { paper, ink, rule, alert, display, fieldGlass } from '../theme.js';
 
 // Redesigned to read like Instagram/Facebook's own notification list
 // (07-notifications.md's 2026-09-18 follow-up): a left avatar per row
@@ -30,6 +30,13 @@ export default function Notifications() {
   // BUG 4: the "•••" action menu, open for at most one row's notification
   // at a time.
   const [menuFor, setMenuFor] = useState(null);
+  // TASK 2 (2026-09-22 nineteenth follow-up) — search, matching Inbox's own
+  // search icon+label control exactly (Inbox.jsx). Filters title/body
+  // client-side against already-loaded s.notifications, same plain-
+  // substring convention Inbox's own search already uses (no other text-
+  // search backend exists in this app to call into).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState('');
   // TASK 2 (2026-09-22 seventeenth follow-up) — selection/edit mode: a
   // plain local Set of ids, like `expandedSections` above — nothing here
   // needs a new query, and "Select all" must only ever apply to whatever's
@@ -84,12 +91,22 @@ export default function Notifications() {
     ago: trStatus(agoLabel(Math.max(1, Math.round((Date.now() - new Date(n.created_at).getTime()) / 3600000)))),
   });
 
+  // TASK 2 (2026-09-22 nineteenth follow-up) — search filters the SOURCE
+  // list before grouping, not the rendered sections — so a matching
+  // notification still lands in its own frozen section (sectionMembership
+  // above is keyed by id and untouched by this), just hidden when it
+  // doesn't match rather than re-bucketed.
+  const q = query.trim().toLowerCase();
+  const searchFiltered = q
+    ? s.notifications.filter(n => (n.title || '').toLowerCase().includes(q) || (n.body || '').toLowerCase().includes(q))
+    : s.notifications;
+
   // Exactly one bucket per key, regardless of how many unread items are
   // interleaved with read ones in s.notifications — grouping by a frozen,
   // pre-computed membership id can never split "Mới" into two blocks the
   // way a live re-scan keyed on read_at (recomputed mid-list) could.
   const grouped = { new: [], today: [], week: [], older: [] };
-  for (const n of s.notifications) {
+  for (const n of searchFiltered) {
     const key = sectionMembership[n.id] ?? classifyAtLoad(n, Date.now());
     grouped[key].push(n);
   }
@@ -112,22 +129,56 @@ export default function Notifications() {
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Notifications">
-      <div style={{ padding: '70px 24px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <span style={{ ...display(27) }}>{T('Thông báo', 'Notifications')}</span>
-        {/* TASK 2 (2026-09-22 seventeenth follow-up) — "Chọn"/"Select" enters
-            selection mode; in that mode this same corner becomes "Huỷ"/
-            "Cancel" instead of "Xong"/"Done", per this ticket's own "keep
-            current row tap/menu behavior in normal mode" requirement — no
-            reason to lose the way back to Home while just cancelling a
-            selection. */}
-        {selectionMode ? (
-          <span onClick={exitSelectionMode} data-testid="notifications-selection-cancel" style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('Huỷ', 'Cancel')}</span>
+      <div style={{ padding: '70px 24px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        {/* TASK 2 (2026-09-22 nineteenth follow-up) — "Done" removed
+            entirely from normal mode (this screen is reached from the
+            dock's own Notifications tab, same as Inbox — no separate
+            "done" affordance needed there either). Search input replaces
+            the title, exactly mirroring Inbox.jsx's own search-open state. */}
+        {searchOpen ? (
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={T('Tìm thông báo…', 'Search notifications…')}
+            data-testid="notifications-search-input"
+            style={{
+              ...fieldGlass({ flex: 1, padding: '10px 14px', borderRadius: 999, border: 'none', marginRight: 10 }),
+              fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none',
+            }}
+          />
+        ) : selectionMode ? (
+          <span style={{ ...display(27) }}>{T('Đang chọn', 'Selecting')}</span>
         ) : (
-          <div style={{ display: 'flex', gap: 14, alignItems: 'baseline' }}>
+          <span style={{ ...display(27) }}>{T('Thông báo', 'Notifications')}</span>
+        )}
+        {selectionMode ? (
+          <span onClick={exitSelectionMode} data-testid="notifications-selection-cancel" style={{ fontSize: 12, color: ink, cursor: 'pointer', flex: 'none' }}>{T('Huỷ', 'Cancel')}</span>
+        ) : (
+          <div style={{ display: 'flex', gap: 14, flex: 'none' }}>
+            {/* TASK 2 — icon+label controls, same visual language/sizing as
+                Inbox's own search/settings buttons (34px glass circle +
+                9.5px label underneath), not plain header text. */}
+            <div
+              onClick={() => { if (searchOpen) setQuery(''); setSearchOpen(v => !v); }}
+              data-testid="notifications-search-toggle"
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}
+            >
+              <span style={{ width: 34, height: 34, borderRadius: '50%', ...fieldGlass({}), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: ink }}>
+                {searchOpen ? '✕' : '🔍'}
+              </span>
+              <span style={{ fontSize: 9.5, color: ink, opacity: 0.7 }}>{searchOpen ? T('Đóng', 'Close') : T('Tìm', 'Search')}</span>
+            </div>
             {s.notifications.length > 0 && (
-              <span onClick={() => setSelectionMode(true)} data-testid="notifications-select-mode" style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('Chọn', 'Select')}</span>
+              <div
+                onClick={() => setSelectionMode(true)}
+                data-testid="notifications-select-mode"
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}
+              >
+                <span style={{ width: 34, height: 34, borderRadius: '50%', ...fieldGlass({}), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: ink }}>☑</span>
+                <span style={{ fontSize: 9.5, color: ink, opacity: 0.7 }}>{T('Chọn', 'Select')}</span>
+              </div>
             )}
-            <span onClick={goHome} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('Xong', 'Done')}</span>
           </div>
         )}
       </div>

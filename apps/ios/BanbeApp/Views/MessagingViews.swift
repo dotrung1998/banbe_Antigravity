@@ -295,6 +295,17 @@ private struct InboxRow: View {
                         .font(.system(size: 13))
                         .foregroundStyle(BanbeTheme.alert)
                 }
+                // TASK 3 (2026-09-22 nineteenth follow-up) — a subtle
+                // swipe-left affordance, web parity (Inbox.jsx). Purely
+                // visual (no gesture/tap of its own — the real
+                // `.swipeActions` lives on the List row itself, above),
+                // slim/low-opacity so it never competes with the unread
+                // dot/timestamp/avatar/star badge, fading further on an
+                // already-read row.
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(app.palette.ink.opacity(unread ? 0.32 : 0.2))
+                    .accessibilityHidden(true)
             }
             .padding(.vertical, 14)
             .contentShape(Rectangle())
@@ -862,6 +873,13 @@ struct NotificationsView: View {
     // markNotificationRead() OR that unrelated poll tick re-rendered this
     // screen — which is what "reading moves it" actually was.
     @State private var sectionMembership: [UUID: String] = [:]
+    // TASK 2 (2026-09-22 nineteenth follow-up) — search, matching
+    // InboxView's own search icon+field exactly (see that view's `header`/
+    // `iconButton`). Filters title/body client-side, same plain-substring
+    // convention InboxView's own search already uses.
+    @State private var searchOpen = false
+    @State private var query = ""
+    @FocusState private var searchFieldFocused: Bool
 
     private struct NotificationSection: Identifiable {
         let id: String
@@ -876,6 +894,24 @@ struct NotificationsView: View {
     private func exitSelectionMode() {
         app.notificationSelectionMode = false
         app.selectedNotificationIDs = []
+    }
+
+    // TASK 2 (2026-09-22 nineteenth follow-up) — same shape as InboxView's
+    // own private `iconButton(_:label:action:)` (MessagingViews.swift) —
+    // not reused directly since that one's `private` to InboxView, but
+    // identical sizing/styling for visual parity.
+    private func iconButton(_ systemImage: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 14))
+                    .frame(width: 34, height: 34)
+                    .background(app.palette.field, in: Circle())
+                Text(label).font(.system(size: 9.5)).opacity(0.7)
+            }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(app.palette.ink)
     }
 
     private func classifyAtLoad(_ n: AppNotification, now: Date) -> String {
@@ -904,10 +940,19 @@ struct NotificationsView: View {
     // frozen, pre-computed membership id can never split "Mới" into two
     // blocks the way a live re-scan keyed on readAt (recomputed mid-list)
     // could.
+    // TASK 2 (2026-09-22 nineteenth follow-up) — filters the SOURCE list
+    // before grouping, not the rendered sections, so a matching
+    // notification still lands in its own frozen section.
+    private var searchFiltered: [AppNotification] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return app.notifications }
+        return app.notifications.filter { $0.title.lowercased().contains(q) || $0.body.lowercased().contains(q) }
+    }
+
     private var sections: [NotificationSection] {
         var grouped: [String: [AppNotification]] = ["new": [], "today": [], "week": [], "older": []]
         let now = Date()
-        for n in app.notifications {
+        for n in searchFiltered {
             let key = sectionMembership[n.id] ?? classifyAtLoad(n, now: now)
             grouped[key, default: []].append(n)
         }
@@ -923,27 +968,49 @@ struct NotificationsView: View {
         ZStack {
             ScreenScaffold(tracksBottomBarScroll: true) {
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(app.T("Thông báo", "Notifications")).font(BanbeTheme.display(27))
+                    HStack(alignment: .center) {
+                        // TASK 2 (2026-09-22 nineteenth follow-up) — "Done"
+                        // removed entirely from normal mode (this screen is
+                        // reached from the dock's own Notifications tab,
+                        // same as InboxView — no separate "done" affordance
+                        // needed there either). Search input replaces the
+                        // title exactly mirroring InboxView's own
+                        // search-open state.
+                        if searchOpen {
+                            TextField(app.T("Tìm thông báo…", "Search notifications…"), text: $query)
+                                .font(.system(size: 13.5))
+                                .padding(.horizontal, 14).padding(.vertical, 10)
+                                .background(app.palette.field, in: Capsule())
+                                .foregroundStyle(app.palette.ink)
+                                .focused($searchFieldFocused)
+                        } else if selectionMode {
+                            Text(app.T("Đang chọn", "Selecting")).font(BanbeTheme.display(27))
+                        } else {
+                            Text(app.T("Thông báo", "Notifications")).font(BanbeTheme.display(27))
+                        }
                         Spacer()
-                        // TASK 2 (2026-09-22 eighteenth follow-up) — "Chọn"/
-                        // "Select" enters selection mode; in that mode this
-                        // same corner becomes "Huỷ"/"Cancel" instead of
-                        // "Xong"/"Done" — no reason to lose the way back to
-                        // Home while just cancelling a selection.
+                        // "Chọn"/"Select" enters selection mode; in that
+                        // mode this same corner becomes "Huỷ"/"Cancel" —
+                        // no reason to lose the way to cancel a selection.
                         if selectionMode {
                             Button(app.T("Huỷ", "Cancel")) { exitSelectionMode() }
                                 .font(.system(size: 12)).buttonStyle(.plain)
                                 .accessibilityIdentifier("notifications.selection.cancel")
                         } else {
                             HStack(spacing: 14) {
+                                // TASK 2 — icon+label controls, same visual
+                                // language/sizing as InboxView's own
+                                // search/settings buttons, not plain text.
+                                iconButton(searchOpen ? "xmark" : "magnifyingglass", label: searchOpen ? app.T("Đóng", "Close") : app.T("Tìm", "Search")) {
+                                    if searchOpen { query = "" }
+                                    searchOpen.toggle()
+                                    searchFieldFocused = searchOpen
+                                }
+                                .accessibilityIdentifier("notifications.searchToggle")
                                 if !app.notifications.isEmpty {
-                                    Button(app.T("Chọn", "Select")) { app.notificationSelectionMode = true }
-                                        .font(.system(size: 12)).buttonStyle(.plain)
+                                    iconButton("checkmark.circle", label: app.T("Chọn", "Select")) { app.notificationSelectionMode = true }
                                         .accessibilityIdentifier("notifications.selectMode")
                                 }
-                                Button(app.T("Xong", "Done")) { app.goHome() }
-                                    .font(.system(size: 12)).buttonStyle(.plain)
                             }
                         }
                     }

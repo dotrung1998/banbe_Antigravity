@@ -122,6 +122,18 @@ function InboxRow({ c, onOpen, onStar, onArchive, T }) {
         {c.starred && (
           <span data-testid="inbox-row-star-badge" style={{ fontSize: 15, color: alert, flex: 'none' }}>★</span>
         )}
+        {/* TASK 3 (2026-09-22 nineteenth follow-up) — a subtle swipe-left
+            affordance: nothing in this row previously hinted that Star/
+            Archive live behind a swipe at all. Purely visual (no tap
+            behavior of its own — requirement 2), slim/low-opacity so it
+            never competes with the unread dot/timestamp/avatar/star badge,
+            and fades further on an already-read row (requirement 3) since
+            there's less reason to keep teaching the gesture there. Sits at
+            the row's own trailing edge, self-aligned toward the bottom, so
+            it doesn't interfere with the vertically-centered content above
+            it (requirement 4 — this is a sibling of the row's own
+            onClick/swipe handlers, not layered over them). */}
+        <span aria-hidden data-testid="inbox-row-swipe-hint" style={{ fontSize: 13, color: ink, opacity: unread ? 0.32 : 0.2, flex: 'none', alignSelf: 'flex-end', paddingBottom: 1 }}>‹</span>
       </div>
     </div>
   );

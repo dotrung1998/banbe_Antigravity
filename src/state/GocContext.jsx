@@ -524,6 +524,53 @@ function postAuthDestination(prev) {
   };
 }
 
+// TASK 1 (2026-09-22 nineteenth follow-up) — ONE canonical kind -> required-
+// target mapping, consulted by BOTH loadNotifications()'s proactive prune
+// AND openNotification()'s reactive tap handling (via targetIsGone() below)
+// instead of two independently-drifting ad-hoc checks. Every kind that
+// references a single real row it can't function without gets an entry
+// here; a kind with NO entry either navigates to a LIST (missing one row
+// just means it doesn't show up there, not "tap does nothing" —
+// booking_requested/payment_awaiting_verification/payment_verification_nudge),
+// targets an EVENT (never hard-deleted anywhere in this schema —
+// booking_cancelled/booking_declined/hold_expired), or is purely
+// informational with no destination by design (guest_renamed; new_message,
+// since no code path anywhere deletes a `threads` row itself). See
+// 07-notifications.md for the full kind -> outcome table this mirrors.
+// `payment_confirmed`/`payment_document_uploaded`/`_replaced` are
+// DELIBERATELY excluded — their own openBookingConfirmed()/
+// openDocumentFromNotification() calls already fetch the FULL target row
+// (not just its existence) since the destination screen needs that data
+// too, so a second, redundant existence-only check here would be N+1.
+const NOTIFICATION_TARGET_FIELD = {
+  hold_created: { field: 'booking_id', table: 'bookings' },
+  dispute_message: { field: 'booking_id', table: 'bookings' },
+  receipt_requested: { field: 'booking_id', table: 'bookings' },
+  checked_in: { field: 'booking_id', table: 'bookings' },
+  checkin_undone: { field: 'booking_id', table: 'bookings' },
+  dispute_resolved: { field: 'booking_id', table: 'bookings' },
+  payment_disputed: { field: 'booking_id', table: 'bookings' },
+  payment_needs_info: { field: 'booking_id', table: 'bookings' },
+  payment_document_expiring_1d: { field: 'document_id', table: 'documents' },
+};
+const NOTIFICATION_TABLE_NAME = { bookings: 'bookings', documents: 'payment_documents' };
+
+// RLS safety (both call sites below): `bookings`/`payment_documents` both
+// scope their guest-facing SELECT to `auth.uid() = user_id`, and an
+// organizer-recipient kind's booking is on their OWN event — the same
+// reasoning already established for dispute_message/receipt_requested's
+// organizer branches. The notification's recipient is that same owning
+// user by construction (the RPC that inserts the notification is the one
+// that set ownership on the target row), so RLS can never spuriously deny
+// an existing row to its own recipient — an empty result is unambiguous.
+async function targetIsGone(n) {
+  const spec = NOTIFICATION_TARGET_FIELD[n.kind];
+  const targetId = spec && n.data?.[spec.field];
+  if (!spec || !targetId) return false;
+  const { data } = await supabase.from(NOTIFICATION_TABLE_NAME[spec.table]).select('id').eq('id', targetId).maybeSingle();
+  return !data;
+}
+
 export function GocProvider({ children }) {
   const [state, setStateRaw] = useState(() => {
     try {
@@ -2942,15 +2989,21 @@ export function GocProvider({ children }) {
       avatarByUserId = Object.fromEntries((profiles || []).filter(p => p.avatar_url).map(p => [p.id, p.avatar_url]));
     }
 
-    // 2026-09-19 follow-up: proactively prune notifications whose target
-    // has genuinely been deleted — the same check openNotification() does
-    // reactively on tap, run once here so a stale row never has to be
-    // tapped at all to disappear. `bookingById` above is already fetched
-    // for avatars, reused here for free; `payment_documents` wasn't
-    // previously fetched at all for this batch, so a small new query is
-    // added just for its ids (existence only, no need for the full row).
+    // TASK 1 (2026-09-22 nineteenth follow-up) — proactively prune
+    // notifications whose target has genuinely been deleted, using the SAME
+    // NOTIFICATION_TARGET_FIELD table targetIsGone() consults reactively on
+    // tap (openNotification() below) — one shared definition instead of two
+    // independently-drifting lists. `bookingById` above already covers
+    // every kind referencing `booking_id` for free (fetched for avatars,
+    // regardless of kind); `payment_documents` wasn't previously fetched at
+    // all for this batch, so one small new query covers every kind
+    // referencing `document_id` (existence only, no need for the full row —
+    // payment_confirmed/payment_document_uploaded/_replaced still do their
+    // own richer fetch inline in openNotification(), see that table's own
+    // comment for why they're excluded from it).
     const documentIds = [...new Set(
-      rows.filter(n => n.kind === 'payment_document_uploaded' || n.kind === 'payment_document_replaced')
+      rows.filter(n => n.kind === 'payment_document_uploaded' || n.kind === 'payment_document_replaced'
+        || NOTIFICATION_TARGET_FIELD[n.kind]?.table === 'documents')
         .map(n => n.data?.document_id).filter(Boolean)
     )];
     let liveDocumentIds = new Set();
@@ -2958,43 +3011,11 @@ export function GocProvider({ children }) {
       const { data: docs } = await supabase.from('payment_documents').select('id').in('id', documentIds);
       liveDocumentIds = new Set((docs || []).map(d => d.id));
     }
-    // Only these kinds get a MUST-HAVE-A-LIVE-TARGET check — each one's own
-    // RLS (auth.uid() = user_id on the target row, the recipient by
-    // construction) can't spuriously deny it to its own notification's
-    // recipient, so a genuine miss always means real deletion, never a
-    // permissions false-positive. Every other kind is either a list-level
-    // navigation (booking_requested/payment_awaiting_verification/
-    // receipt_requested → an event's Attendance/Verifications list, where a
-    // missing single booking just means it doesn't show up, not "tap does
-    // nothing") or has no cheap, reliable existence check available
-    // (new_message/hold_created/dispute_message's guest branch — see
-    // 07-notifications.md for the specific reasoning per skipped kind).
-    // TASK 1 (2026-09-22 seventeenth follow-up) — hold_created/dispute_message
-    // extended onto the SAME check payment_confirmed already used: both
-    // reference booking_id, and `bookingById` above already fetches every
-    // notification's booking_id in this batch regardless of kind, so this
-    // is free — no extra query. RLS safety: a guest is always their own
-    // booking's recipient (bookings_select_guest, auth.uid() = user_id); an
-    // organizer-recipient dispute_message references a booking on their OWN
-    // event, which this same batched query already successfully resolves
-    // for the avatar feature today — a genuine miss means the row is really
-    // gone, not an RLS false negative.
-    // BUG 1 (2026-09-22 eighteenth follow-up) — real device report directed
-    // extending this to `receipt_requested` too, overriding the prior
-    // pass's own "deliberately skipped, routes to a list, soft-degrades
-    // fine" reasoning (07-notifications.md, 2026-09-19 follow-up). Free to
-    // add: `receipt_requested`'s `booking_id` is already in `bookingById`
-    // above (collected from EVERY notification's booking_id regardless of
-    // kind), and this kind's recipient is the ORGANIZER of the booking's
-    // own event — the same organizer-can-see-their-own-event's-booking RLS
-    // reasoning already relied on for `dispute_message`'s organizer branch.
     const staleTargetKinds = {
       payment_document_uploaded: 'document_id',
       payment_document_replaced: 'document_id',
       payment_confirmed: 'booking_id',
-      hold_created: 'booking_id',
-      dispute_message: 'booking_id',
-      receipt_requested: 'booking_id',
+      ...Object.fromEntries(Object.entries(NOTIFICATION_TARGET_FIELD).map(([kind, spec]) => [kind, spec.field])),
     };
     const staleIds = [];
     const liveRows = rows.filter(n => {
@@ -4318,88 +4339,142 @@ export function GocProvider({ children }) {
     // from the navigation itself, not just left looking at buttons that
     // silently no-op under RLS.
     const iOrganize = (eventId) => s.myOrgEventKeys.includes(eventId);
+    // TASK 1 (2026-09-22 nineteenth follow-up) — the ONE shared existence
+    // check (NOTIFICATION_TARGET_FIELD/targetIsGone, module scope above),
+    // run BEFORE the switch so every kind it covers gets pruned identically
+    // without repeating the same query per branch. payment_confirmed/
+    // payment_document_uploaded/_replaced aren't in that table (see its own
+    // comment) — they do their own richer existence+fetch inline below.
+    if (await targetIsGone(n)) { reportStaleNotification(n); return; }
     // Every branch below passes 'notifications' as its destination's own
     // back-target (attendanceBack/verificationsBack/paymentBack/
     // confirmedBack/documentBack/chatBack — same field/default-param
     // pattern documentBack/paymentDetailsBackTarget already established) —
     // a screen reached from the bell always returns to the bell specifically,
     // not Home or wherever else (07-notifications.md's 2026-09-18 follow-up).
-    if (n.kind === 'new_message' && n.data?.thread_id) {
-      openThread(n.data.thread_id, n.data.event_id, 'notifications');
-    } else if (n.kind === 'booking_requested' && n.data?.event_id && iOrganize(n.data.event_id)) {
-      // The organizer's side: straight to the check-in list for that event,
-      // where "mark as paid" already lives (see Attendance.jsx).
-      openAttendance(n.data.event_id, 'notifications');
-    } else if (n.kind === 'hold_created' && n.data?.booking_id) {
-      // 01-hold-payment.md follow-up: the guest's own mirror of
-      // 'booking_requested' above (hold_seats(), migration 053) — takes
-      // the guest straight back to their own timer/QR/payment screen for
-      // this exact hold, the same way `dispute_message` already does for
-      // its own guest-facing case below.
-      // TASK 1 (2026-09-22 seventeenth follow-up) — same notFound-means-
-      // genuinely-gone existence check payment_confirmed/payment_document_*
-      // already do, added here since this wasn't previously verified
-      // before navigating (requirement 6: must not silently no-op on a
-      // target that went stale between load and tap).
-      const { data: holdBooking } = await supabase.from('bookings').select('id').eq('id', n.data.booking_id).maybeSingle();
-      if (!holdBooking) { reportStaleNotification(n); return; }
-      openPaymentDetails(n.data.booking_id, 'notifications');
-    } else if (n.kind === 'payment_awaiting_verification' && n.data?.event_id && iOrganize(n.data.event_id)) {
-      // 01-hold-payment.md follow-up: fired by submit_payment_proof()
-      // (031:317) when a guest reports having transferred — the organizer
-      // side of BUG 3, previously never wired at all. Same destination as
-      // 'booking_requested' (this is the very next step in the same
-      // request's lifecycle, still shown/actioned from Verifications —
-      // "Money received"/"Can't find it" — not Attendance's check-in list,
-      // so `openVerifications()` here, not `openAttendance()`).
-      openVerifications('notifications');
-    } else if (n.kind === 'payment_confirmed' && n.data?.booking_id) {
-      // 2026-09-19 follow-up: bookings.id under this kind's own RLS
-      // (auth.uid() = user_id, the recipient by construction) can't
-      // spuriously come back empty — a genuine miss means the booking row
-      // itself is gone, not an access issue. See reportStaleNotification().
-      const result = await openBookingConfirmed(n.data.booking_id, n.data.event_id, 'notifications');
-      if (result?.notFound) reportStaleNotification(n);
-    } else if (n.kind === 'dispute_message' && n.data?.booking_id) {
-      // Only the guest and organizer ever receive this kind (migration
-      // 048/050 — admin is deliberately excluded), so accountType alone
-      // decides which screen has this booking's chat panel.
-      // message_id may be absent on a row created before migration 050 —
-      // DisputeChatPanel.jsx falls back to scrolling to the bottom instead.
-      // TASK 1 (2026-09-22 seventeenth follow-up) — same existence check as
-      // 'hold_created' above; see that branch's own comment.
-      const { data: disputeBooking } = await supabase.from('bookings').select('id').eq('id', n.data.booking_id).maybeSingle();
-      if (!disputeBooking) { reportStaleNotification(n); return; }
-      set({ chatHighlight: { bookingId: n.data.booking_id, messageId: n.data.message_id || null } });
-      if (s.accountType === 'organizer') openVerifications('notifications');
-      else openPaymentDetails(n.data.booking_id, 'notifications');
-    } else if ((n.kind === 'payment_document_uploaded' || n.kind === 'payment_document_replaced') && n.data?.document_id) {
-      // 2026-09-19 follow-up (the CONFIRMED real repro: a bulk
-      // payment_documents cleanup this session directly deleted every row,
-      // orphaning any notification of this kind created before it) — same
-      // RLS reasoning as payment_confirmed above; see
-      // openDocumentFromNotification()'s own comment and
-      // reportStaleNotification().
-      const result = await openDocumentFromNotification(n.data.document_id, 'notifications');
-      if (result?.notFound) reportStaleNotification(n);
-    } else if (n.kind === 'receipt_requested' && n.data?.event_id && iOrganize(n.data.event_id)) {
-      // The guest's own "Xem Receipt" (Confirmed.jsx) asked for one that
-      // doesn't exist yet — straight to Check-in, same per-event ownership
-      // guard as every other organizer-bound kind above, with the specific
-      // booking's own "Upload receipt" control auto-highlighted (see
-      // Attendance.jsx's attendanceHighlightBookingId effect) so the
-      // organizer doesn't have to hunt for it in a long list.
-      // BUG 1 (2026-09-22 eighteenth follow-up) — same existence check as
-      // 'hold_created'/'dispute_message' above; see those branches' own
-      // comments.
-      if (n.data.booking_id) {
-        const { data: receiptBooking } = await supabase.from('bookings').select('id').eq('id', n.data.booking_id).maybeSingle();
-        if (!receiptBooking) { reportStaleNotification(n); return; }
+    //
+    // TASK 1 (2026-09-22 nineteenth follow-up) — full routing contract for
+    // every "confirmed active production" kind (07-notifications.md has the
+    // authoritative table). Three outcomes per kind, per this ticket's own
+    // A/B/C framework:
+    //  A. real actionable target -> route to it (every case below except
+    //     the final one).
+    //  B. informational only, no destination by design -> the
+    //     markNotificationRead() at the top of this function is the whole
+    //     "action" (it visibly un-bolds the row) — falls to `default`.
+    //  C. required target confirmed gone -> handled uniformly by the
+    //     targetIsGone() guard above, before this switch even runs.
+    switch (n.kind) {
+      case 'new_message':
+        if (n.data?.thread_id) openThread(n.data.thread_id, n.data.event_id, 'notifications');
+        break;
+      case 'booking_requested':
+        // The organizer's side: straight to the check-in list for that
+        // event, where "mark as paid" already lives (see Attendance.jsx).
+        if (n.data?.event_id && iOrganize(n.data.event_id)) openAttendance(n.data.event_id, 'notifications');
+        break;
+      case 'payment_awaiting_verification':
+      case 'payment_verification_nudge':
+        // 01-hold-payment.md follow-up: fired by submit_payment_proof()
+        // (031:317) when a guest reports having transferred — the
+        // organizer side, still shown/actioned from Verifications ("Money
+        // received"/"Can't find it"), not Attendance's check-in list.
+        // payment_verification_nudge is the SLA-reminder twin of the same
+        // event, same destination.
+        if (n.data?.event_id && iOrganize(n.data.event_id)) openVerifications('notifications');
+        break;
+      case 'hold_created':
+      case 'payment_needs_info':
+        // 01-hold-payment.md follow-up: hold_created is the guest's own
+        // mirror of 'booking_requested' (hold_seats(), migration 053) —
+        // straight back to their own timer/QR/payment screen. payment_needs_info
+        // is the organizer asking the guest for more proof/info on that
+        // same booking — same destination, the guest's own payment screen
+        // is where they'd respond.
+        if (n.data?.booking_id) openPaymentDetails(n.data.booking_id, 'notifications');
+        break;
+      case 'payment_confirmed': {
+        // 2026-09-19 follow-up: bookings.id under this kind's own RLS
+        // (auth.uid() = user_id, the recipient by construction) can't
+        // spuriously come back empty — a genuine miss means the booking
+        // row itself is gone, not an access issue.
+        if (n.data?.booking_id) {
+          const result = await openBookingConfirmed(n.data.booking_id, n.data.event_id, 'notifications');
+          if (result?.notFound) reportStaleNotification(n);
+        }
+        break;
       }
-      set({ attendanceHighlightBookingId: n.data.booking_id });
-      openAttendance(n.data.event_id, 'notifications');
+      case 'checked_in':
+      case 'checkin_undone':
+        // Both are check-in-status changes on an already-confirmed
+        // booking — the guest's own payment/ticket screen already reflects
+        // current status live, no separate "checked in" screen exists.
+        if (n.data?.booking_id) openPaymentDetails(n.data.booking_id, 'notifications');
+        break;
+      case 'dispute_message':
+      case 'dispute_resolved':
+      case 'payment_disputed':
+        // Only the guest and organizer ever receive these (migration
+        // 048/050 — admin is deliberately excluded), so accountType alone
+        // decides which screen has this booking's chat panel.
+        // message_id may be absent on a row from before migration 050 —
+        // DisputeChatPanel.jsx falls back to scrolling to the bottom.
+        if (n.data?.booking_id) {
+          set({ chatHighlight: { bookingId: n.data.booking_id, messageId: n.data.message_id || null } });
+          if (s.accountType === 'organizer') openVerifications('notifications');
+          else openPaymentDetails(n.data.booking_id, 'notifications');
+        }
+        break;
+      case 'payment_document_uploaded':
+      case 'payment_document_replaced': {
+        // 2026-09-19 follow-up (the CONFIRMED real repro: a bulk
+        // payment_documents cleanup this session directly deleted every
+        // row, orphaning any notification of this kind created before it)
+        // — same RLS reasoning as payment_confirmed above.
+        if (n.data?.document_id) {
+          const result = await openDocumentFromNotification(n.data.document_id, 'notifications');
+          if (result?.notFound) reportStaleNotification(n);
+        }
+        break;
+      }
+      case 'payment_document_expiring_1d':
+        // Already covered by the shared targetIsGone() guard above
+        // (document_id, 'documents' table) — if we reach here the document
+        // is still live, so this is just a heads-up straight to it.
+        if (n.data?.document_id) {
+          const result = await openDocumentFromNotification(n.data.document_id, 'notifications');
+          if (result?.notFound) reportStaleNotification(n);
+        }
+        break;
+      case 'receipt_requested':
+        // The guest's own "Xem Receipt" (Confirmed.jsx) asked for one that
+        // doesn't exist yet — straight to Check-in, same per-event
+        // ownership guard as every other organizer-bound kind above, with
+        // the specific booking's own "Upload receipt" control
+        // auto-highlighted (Attendance.jsx's attendanceHighlightBookingId)
+        // so the organizer doesn't have to hunt for it in a long list.
+        if (n.data?.event_id && iOrganize(n.data.event_id)) {
+          set({ attendanceHighlightBookingId: n.data.booking_id });
+          openAttendance(n.data.event_id, 'notifications');
+        }
+        break;
+      case 'booking_cancelled':
+      case 'booking_declined':
+      case 'hold_expired':
+        // The booking/hold itself is gone (rejected/cancelled/expired) —
+        // never a hard-deleted `events` row anywhere in this schema, so no
+        // existence check needed. The event itself is still the one
+        // meaningful place to land: "you can look at it again," same as
+        // this app's own event-cancellation UX language elsewhere.
+        if (n.data?.event_id) goEvent(n.data.event_id);
+        break;
+      // 'guest_renamed': category B, informational only, no destination by
+      // design — falls to default. markNotificationRead() above is the
+      // whole "action."
+      default:
+        break;
     }
-  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, openVerifications, openPaymentDetails, openDocumentFromNotification, reportStaleNotification]);
+  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, openVerifications, openPaymentDetails, openDocumentFromNotification, reportStaleNotification, goEvent]);
   /**
    * The organizer's "mark as paid". confirm_payment issues the receipt in
    * the same transaction (migration 024) and notifies the guest, which is
