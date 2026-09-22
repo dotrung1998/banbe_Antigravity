@@ -38,6 +38,22 @@ const HSWIPE_SETTLE_MS = 190; // banbe's own "gallery drift" settle duration, no
 const REDUCED_MOTION = typeof window !== 'undefined' && window.matchMedia
   ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
   : false;
+// A deck this size or smaller preloads in full on open; a larger one only
+// preloads the current host + the immediately adjacent hosts (BUG 3,
+// 2026-09-22 eleventh follow-up) — bounded so a very active account
+// doesn't kick off dozens of simultaneous downloads for a deck it may
+// never fully scroll through.
+const PRELOAD_FULL_DECK_STORY_LIMIT = 20;
+
+// The actual renderable image URL for a story — a real media story's own
+// signed `url`, or an event-share story's cover path (the same one `bg()`
+// renders as a CSS background elsewhere in this file). Module-scope pure
+// function (no component state), shared by the preload effect and the
+// companion's own low-detail backdrop below.
+function coverUrlFor(st) {
+  if (!st) return null;
+  return st.kind === 'event_share' ? (st.eventSnapshot?.img || null) : st.url;
+}
 
 export default function StoryViewer() {
   const { state: s, T, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, markStoryViewedAt } = useGoc();
@@ -68,6 +84,14 @@ export default function StoryViewer() {
   const containerRef = useRef(null);
   // The incoming neighbor's soft glass "peek" card (gallery-drift, Feature 3).
   const companionRef = useRef(null);
+  // The companion's own low-detail backdrop image (BUG 3) — a separate
+  // inner layer so its `background-image` never has to fight `cardGlass()`'s
+  // own `background` shorthand on the SAME element.
+  const companionBackdropRef = useRef(null);
+  // BUG 3 (2026-09-22 eleventh follow-up) — URLs already handed to the
+  // browser for preloading this viewer session, so re-renders (every
+  // story tick, every drag frame) never re-request the same image twice.
+  const preloadedUrlsRef = useRef(new Set());
 
   // ---- Task 3: smooth, elapsed-time-driven progress (not a React-state
   // countdown) — a single rAF loop imperatively sets the fill bar's
@@ -129,6 +153,18 @@ export default function StoryViewer() {
     companionRef.current.style.transition = 'none';
     companionRef.current.style.transform = `translateX(${x}px) scale(${0.86 + progress * 0.14})`;
     companionRef.current.style.opacity = String(Math.min(0.92, progress * 1.15));
+    // BUG 3 (2026-09-22 eleventh follow-up) — the companion now shows the
+    // adjacent host's own (preloaded) cover as a blurred, low-detail
+    // backdrop behind the glass, rather than a blank/gray panel — a
+    // deliberate branded placeholder look (blur + the same glass tint
+    // every other companion state already used), not raw empty gray, and
+    // instant either way since the URL was already warmed by the preload
+    // effect above by the time a drag can physically begin.
+    const neighborGroup = fromRight ? viewer?.groups?.[viewer.groupIndex + 1] : viewer?.groups?.[viewer.groupIndex - 1];
+    const coverUrl = coverUrlFor(neighborGroup?.stories?.[0]);
+    if (companionBackdropRef.current) {
+      companionBackdropRef.current.style.backgroundImage = coverUrl ? `url("${coverUrl}")` : 'none';
+    }
   };
   const resetCompanion = (animate) => {
     if (!companionRef.current) return;
@@ -164,6 +200,44 @@ export default function StoryViewer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewer?.groupIndex, viewer?.storyIndex]);
 
+  // BUG 3 (2026-09-22 eleventh follow-up) — preload story media in the
+  // background so a host-to-host swipe never shows a loading gap. Signed
+  // URLs for the WHOLE deck are already resolved up front by
+  // `loadHomeStories()` (one batched `createSignedUrls` call, not
+  // per-story) — the only thing actually missing by the time this viewer
+  // opens is the browser having fetched/decoded the image BYTES, which is
+  // what this warms. `new Image()` lets the browser's own HTTP cache and
+  // connection-pool limits provide bounded concurrency for free — no
+  // custom scheduler needed — and `preloadedUrlsRef` stops the same URL
+  // from ever being requested twice. Runs once per `groupIndex` change
+  // (not per `storyIndex`, since the target set — current host in full,
+  // adjacent hosts' first story — only actually changes when the host
+  // does), and immediately on open (this effect fires on mount too, same
+  // as any other), never blocking the current story from rendering first
+  // — this is a background side effect, not something the initial render
+  // waits on.
+  useEffect(() => {
+    if (!viewer) return;
+    const totalStories = viewer.groups.reduce((n, g) => n + g.stories.length, 0);
+    const targetGroups = totalStories <= PRELOAD_FULL_DECK_STORY_LIMIT
+      ? viewer.groups
+      : [viewer.groups[viewer.groupIndex - 1], viewer.groups[viewer.groupIndex], viewer.groups[viewer.groupIndex + 1]].filter(Boolean);
+    for (const g of targetGroups) {
+      // The current host's own full set; an adjacent host's just its
+      // FIRST story (the one a swipe would actually land on first) —
+      // matches this ticket's own "at minimum" preload scope.
+      const stories = g === viewer.groups[viewer.groupIndex] ? g.stories : g.stories.slice(0, 1);
+      for (const st of stories) {
+        const url = coverUrlFor(st);
+        if (!url || preloadedUrlsRef.current.has(url)) continue;
+        preloadedUrlsRef.current.add(url);
+        const img = new Image();
+        img.src = url;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewer?.groupIndex, viewer?.groups]);
+
   if (!viewer || !group || !story) return null;
 
   const dismiss = () => {
@@ -192,7 +266,22 @@ export default function StoryViewer() {
       pause();
       setChromeHidden(true);
     }, HOLD_MS);
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+    // BUG (2026-09-22 eleventh follow-up, found while reproducing BUG 1's
+    // own live repro) — real bug, confirmed live: capturing the pointer
+    // HERE, on every touch-down (including a plain tap that never moves),
+    // silently swallowed the browser's own synthetic `click` event for
+    // ANY interactive child underneath the touch — the event-share card's
+    // `onClick`/its CTA's `onClick` NEVER fired at all, confirmed via a
+    // raw `addEventListener('click', ...)` that never ran even with no
+    // drag involved. `click`'s target is resolved from where the
+    // mousedown/mouseup compat events actually landed while capture was
+    // held — releasing capture again afterward (tried first) does NOT
+    // undo that once it's already happened. The real fix: only capture
+    // once a gesture has actually been classified as a DRAG (below,
+    // mirroring `onStagePointerUp`'s own reasoning for why `dragKind`
+    // classification exists at all) — a plain tap never moves enough to
+    // reach this classification, so it never captures the pointer, and
+    // the browser resolves its own click normally.
   };
   const onStagePointerMove = (e) => {
     const g = gesture.current;
@@ -205,10 +294,12 @@ export default function StoryViewer() {
         clearTimeout(g.holdTimer);
         pause();
         setChromeHidden(false); // a drag reveals its own progressive fade below, not the hold's instant hide
+        e.currentTarget.setPointerCapture?.(e.pointerId);
       } else if (Math.abs(dx) > 6 && Math.abs(dx) > Math.abs(dy)) {
         g.dragging = 'horizontal';
         clearTimeout(g.holdTimer);
         pause();
+        e.currentTarget.setPointerCapture?.(e.pointerId);
       } else {
         return;
       }
@@ -233,10 +324,16 @@ export default function StoryViewer() {
       // very different visual treatments this same drag gets:
       //   - a real adjacent host exists → the abstract glass "companion"
       //     card (now representing that HOST, not an individual post);
-      //   - no adjacent host in that direction → BUG 4's fix: reveal
+      //   - no adjacent host in that direction → BUG 4/BUG 2 fix: reveal
       //     whatever real screen is already mounted underneath (Home/
       //     Account) progressively, exactly like the vertical dismiss
       //     already reveals it, instead of a gray/empty companion card.
+      // BUG 2 (2026-09-22 eleventh follow-up) — this used to only reveal
+      // for the FORWARD/no-next-host edge; the BACKWARD/no-prev-host edge
+      // (first story of the first host, swiping right) just rubber-banded
+      // with nothing shown underneath, an asymmetry this ticket explicitly
+      // calls out. Both edges of the whole deck now reveal identically —
+      // there's no reason Home is only a valid destination from one end.
       const revealingUnderneath = (goingNext && !hasNextHost) || (!goingNext && !hasPrevHost);
       if (photoRef.current) {
         photoRef.current.style.transition = 'none';
@@ -245,12 +342,7 @@ export default function StoryViewer() {
           : `translateX(${dx}px) scale(${1 - Math.min(1, Math.abs(dx) / width) * 0.06})`;
       }
       if (revealingUnderneath) {
-        if (goingNext && containerRef.current) {
-          // Only the FORWARD case actually reveals anything (BUG 4) — the
-          // backward "no previous host" case has nothing real to reveal
-          // (there's no logical prior context before the deck's very
-          // first host), so it just rubber-bands the current card via
-          // `photoRef` above and always springs back on release below.
+        if (containerRef.current) {
           containerRef.current.style.transition = 'none';
           containerRef.current.style.opacity = String(1 - Math.min(1, Math.abs(dx) / width));
         }
@@ -264,6 +356,23 @@ export default function StoryViewer() {
     if (!g) return;
     clearTimeout(g.holdTimer);
     gesture.current = null;
+    // BUG (2026-09-22 eleventh follow-up, found while reproducing BUG 1's
+    // own live repro) — real bug, confirmed live: `setPointerCapture` in
+    // `onStagePointerDown` keeps this pointer's events targeted at the
+    // STAGE for the rest of the gesture, which is what dragging off-stage
+    // needs — but Chromium also redirects the COMPATIBILITY mouse events
+    // synthesized from this same pointer (`mouseup`/`click`) to the
+    // capturing element for as long as capture is held. Left captured
+    // through the end of this handler, that meant the browser's own
+    // `click` event for a plain tap NEVER reached the event-share card's
+    // `onClick`/its CTA's `onClick` at all — confirmed by adding a raw
+    // `addEventListener('click', ...)` on the CTA directly, which never
+    // fired, even without any drag or the `elementFromPoint` guard above
+    // in the picture. Releasing capture here, once the gesture is
+    // genuinely over, lets the browser resolve the subsequent click
+    // normally — it doesn't affect drag tracking, since the drag is
+    // already finished by the time `onStagePointerUp` runs.
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
     if (g.dragging === 'vertical') {
       const dy = g.lastDy || 0;
       if (dy > DRAG_THRESHOLD) { dismiss(); return; }
@@ -278,10 +387,10 @@ export default function StoryViewer() {
       const dx = g.lastDx || 0;
       const width = stageRef.current?.getBoundingClientRect().width || window.innerWidth;
       const goingNext = dx < 0;
-      // PRODUCT CHANGE 3 — a backward swipe past the beginning of the
-      // WHOLE deck (no previous host at all) never commits to anything;
-      // it only ever springs back, regardless of distance/velocity — "no
-      // logical prior context" per BUG 4's own symmetry requirement.
+      // PRODUCT CHANGE 3 — a swipe past either edge of the WHOLE deck (no
+      // next/previous host to land on) never commits to a HOST change via
+      // storyNextHost/storyPrevHost — that edge case is handled entirely
+      // by the reveal-Home branch below instead (BUG 2/BUG 4).
       const canCommit = goingNext ? hasNextHost : hasPrevHost;
       const committed = canCommit && (Math.abs(dx) > HSWIPE_THRESHOLD || Math.abs(g.velocity || 0) > HSWIPE_VELOCITY);
       if (committed) {
@@ -308,12 +417,17 @@ export default function StoryViewer() {
         }, HSWIPE_SETTLE_MS);
         return;
       }
-      // BUG 4 — the final story of the final host, swipe forward, PAST the
-      // commit threshold: complete the reveal into Home/Account instead of
-      // springing back. Dock visibility only restores once `closeStoryViewer()`
-      // actually runs (Shell's own `showBar = ... && !state.storyViewer`
-      // already gates on that), i.e. only after the settle finishes.
-      if (goingNext && !hasNextHost) {
+      // BUG 4 / BUG 2 (2026-09-22 tenth/eleventh follow-up) — at EITHER
+      // edge of the whole deck (final story of the final host, swipe
+      // forward; OR first story of the first host, swipe backward), past
+      // the commit threshold: complete the reveal into Home/Account
+      // instead of springing back. Both edges now behave identically —
+      // BUG 2's own fix removes the asymmetry the previous pass left
+      // (only the forward edge revealed anything). Dock visibility only
+      // restores once `closeStoryViewer()` actually runs (Shell's own
+      // `showBar = ... && !state.storyViewer` already gates on that),
+      // i.e. only after the settle finishes.
+      if ((goingNext && !hasNextHost) || (!goingNext && !hasPrevHost)) {
         const beyondThreshold = Math.abs(dx) > HSWIPE_THRESHOLD || Math.abs(g.velocity || 0) > HSWIPE_VELOCITY;
         if (beyondThreshold) {
           if (containerRef.current) {
@@ -322,7 +436,7 @@ export default function StoryViewer() {
           }
           if (photoRef.current) {
             photoRef.current.style.transition = `transform ${HSWIPE_SETTLE_MS}ms ${DISMISS_EASING}`;
-            photoRef.current.style.transform = `translateX(${-width}px)`;
+            photoRef.current.style.transform = `translateX(${goingNext ? -width : width}px)`;
           }
           setTimeout(() => { closeStoryViewer(); }, HSWIPE_SETTLE_MS);
           return;
@@ -344,6 +458,28 @@ export default function StoryViewer() {
       setChromeHidden(false);
       return; // a hold-and-release never navigates
     }
+    // BUG (2026-09-22 eleventh follow-up, found while reproducing BUG 1's
+    // own live repro) — real bug, confirmed live: a tap that lands on the
+    // event-share card/CTA fires `pointerdown`/`pointerup` here TOO (they
+    // bubble up from the card before its own `onClick` even runs) —
+    // `e.stopPropagation()` in the card's `onClick` only stops the
+    // synthetic CLICK from bubbling, not the pointer events this stage
+    // handler is listening for. Without this check, tapping the card
+    // ALSO ran `storyPrev()`/`storyNext()` from the very same tap —
+    // sometimes DISMISSING the whole viewer (the deck's last story) and
+    // unmounting the card before `goEventFromStory()`'s own click handler
+    // ever got to run. `e.target` can't be used here — `onStagePointerDown`
+    // calls `setPointerCapture`, which per spec RETARGETS every subsequent
+    // pointer event's `target` to the CAPTURING element (this stage div
+    // itself), so `e.target.closest(...)` would always resolve to the
+    // stage, never the card underneath, regardless of where the finger
+    // actually was. `elementFromPoint` does real hit-testing at the
+    // pointer's coordinates instead, bypassing that retargeting. Checked
+    // here (not by stopping the pointer events at the card itself) so a
+    // genuine DRAG that merely starts or ends over the card's large hit
+    // area still reaches the stage normally — only a true, un-dragged TAP
+    // that lands on the card defers entirely to the card's own onClick.
+    if (document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-testid="story-event-card"]')) return;
     // A plain tap — which half of the screen.
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -374,16 +510,25 @@ export default function StoryViewer() {
         {/* Gallery-drift companion (Feature 3) — a soft glass panel standing
             in for the incoming neighbor, purely transform/opacity driven,
             hidden (display:none) whenever not mid-drag so it costs nothing
-            at rest. */}
+            at rest. BUG 3 (2026-09-22 eleventh follow-up): now shows the
+            adjacent host's own preloaded cover as a blurred, low-detail
+            backdrop underneath the glass tint — a deliberate branded
+            placeholder, never a blank gray panel — instead of nothing. */}
         <div
           ref={companionRef}
           aria-hidden
           style={{
             display: 'none', position: 'absolute', inset: '8%', borderRadius: 28,
-            ...cardGlass({}), boxShadow: '0 18px 50px rgba(0,0,0,0.45)',
+            overflow: 'hidden', boxShadow: '0 18px 50px rgba(0,0,0,0.45)',
             opacity: 0, transform: 'scale(0.86)', pointerEvents: 'none',
           }}
-        />
+        >
+          <div
+            ref={companionBackdropRef}
+            style={{ position: 'absolute', inset: -20, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'blur(18px) saturate(0.85)', transform: 'scale(1.15)' }}
+          />
+          <div style={{ position: 'absolute', inset: 0, ...cardGlass({ borderRadius: 28 }) }} />
+        </div>
         <div ref={photoRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
           {isEventShare ? (
             <EventShareCard story={story} T={T} />

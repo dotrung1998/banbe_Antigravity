@@ -103,8 +103,34 @@ struct RemoteImage: View {
                 Color.clear
             }
         }
+        // BUG 1 (2026-09-22 eleventh follow-up) — real bug, confirmed by
+        // reading: `@State private var image` is only seeded from `init`'s
+        // `State(initialValue:)` the FIRST time this view is created at a
+        // given position in the tree — a caller that swaps `path` while
+        // this SAME `RemoteImage` instance stays mounted (e.g.
+        // `CatalogPhoto` inside `StoryViewerView`'s `EventShareCard`,
+        // whose view identity is preserved across a horizontal host-swipe
+        // since it's the same struct at the same tree position) does NOT
+        // get a fresh `init()` call, so `image` keeps holding the
+        // PREVIOUS path's picture. `.task(id: path)` correctly restarts
+        // when `path` changes, but its old `guard image == nil else {
+        // return }` treated "already have some image" as "already have
+        // THIS path's image" — so it silently skipped loading the new
+        // path entirely, leaving the stale photo on screen indefinitely.
+        // This is the actual root cause of "swiping to Host B's story
+        // updates the host name but keeps showing Host A's cover/card" —
+        // not React/SwiftUI state-identity reuse in the abstract, but this
+        // ONE concrete stale-guard bug in this shared, widely-used loader.
+        // Fixed: check the SYNCHRONOUS cache for the NEW path specifically
+        // (paints instantly if it's already warm, e.g. from BUG 3's own
+        // preloading) and otherwise clear the stale image immediately
+        // (never show the wrong photo) before awaiting a fresh load.
         .task(id: path) {
-            guard image == nil else { return }
+            if let cached = PhotoLoader.cached(path: path, maxPixel: maxPixel) {
+                image = cached
+                return
+            }
+            image = nil
             let loaded = await PhotoLoader.load(path: path, maxPixel: maxPixel)
             guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.2)) { image = loaded }

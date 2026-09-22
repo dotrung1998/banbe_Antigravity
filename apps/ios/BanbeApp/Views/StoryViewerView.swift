@@ -20,6 +20,11 @@ private let holdThresholdMs: Int = 180 // a plain tap stays a tap
 private let hswipeThreshold: CGFloat = 60 // pt of horizontal travel that commits to prev/next
 private let hswipeVelocity: CGFloat = 0.6 // pt/ms — a fast flick commits even under the distance threshold
 private let hswipeSettleMs: Double = 0.19 // banbe's own "gallery drift" settle duration, not Instagram's
+// A deck this size or smaller preloads in full when the viewer opens; a
+// larger one only preloads the current host + its immediate neighbors
+// (BUG 3, 2026-09-22 eleventh follow-up) — bounded so a very active
+// account doesn't kick off dozens of simultaneous downloads at once.
+private let preloadFullDeckStoryLimit = 20
 
 struct StoryViewerView: View {
     @EnvironmentObject var app: AppState
@@ -76,6 +81,28 @@ struct StoryViewerView: View {
     // decides companion-peek vs BUG 4's reveal-underneath treatment.
     private func hasNextHost(_ v: StoryViewerState) -> Bool { v.groups[(v.groupIndex + 1)...].contains { !$0.stories.isEmpty } }
     private func hasPrevHost(_ v: StoryViewerState) -> Bool { v.groups[..<v.groupIndex].contains { !$0.stories.isEmpty } }
+    // BUG 3 (2026-09-22 eleventh follow-up) — which neighbor the companion
+    // currently represents, purely derived from the live drag direction
+    // (no separate imperative state needed — `dragOffsetX` is already
+    // `@State`, so this recomputes on the same render pass that moves it).
+    private var companionNeighborStory: StoryItem? {
+        guard let v = app.storyViewer else { return nil }
+        let goingNext = dragOffsetX < 0
+        let neighborGroup = goingNext ? v.groups[safe: v.groupIndex + 1] : v.groups[safe: v.groupIndex - 1]
+        return neighborGroup?.stories.first
+    }
+    @ViewBuilder private func companionBackdrop(for story: StoryItem) -> some View {
+        Group {
+            if story.kind == "event_share", let path = story.eventSnapshot?.img {
+                CatalogPhoto(path: path, cornerRadius: 0)
+            } else if let url = story.url {
+                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
+            }
+        }
+        .scaleEffect(1.15)
+        .blur(radius: 18)
+        .saturation(0.85)
+    }
 
     var body: some View {
         if let viewer = app.storyViewer, let group = viewer.groups[safe: viewer.groupIndex], let story = group.stories[safe: viewer.storyIndex] {
@@ -87,15 +114,25 @@ struct StoryViewerView: View {
                 // in from whichever edge the swipe is headed toward. Only
                 // ever represents a REAL adjacent host (see
                 // `hasNextHost`/`hasPrevHost`) — BUG 4's reveal-underneath
-                // case never shows this at all.
+                // case never shows this at all. BUG 3 (2026-09-22 eleventh
+                // follow-up): now shows that adjacent host's own preloaded
+                // cover as a blurred, low-detail backdrop underneath the
+                // glass tint — a deliberate branded placeholder, never a
+                // blank gray panel.
                 if !reduceMotion {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
-                        .padding(EdgeInsets(top: 60, leading: 28, bottom: 60, trailing: 28))
-                        .scaleEffect(companionScale)
-                        .opacity(companionOpacity)
-                        .allowsHitTesting(false)
+                    ZStack {
+                        if let neighbor = companionNeighborStory {
+                            companionBackdrop(for: neighbor)
+                        }
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(.white.opacity(0.12), lineWidth: 1))
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .padding(EdgeInsets(top: 60, leading: 28, bottom: 60, trailing: 28))
+                    .scaleEffect(companionScale)
+                    .opacity(companionOpacity)
+                    .allowsHitTesting(false)
                 }
 
                 Group {
@@ -126,6 +163,59 @@ struct StoryViewerView: View {
                 if !isSuspended { resetProgress() }
             }
             .onDisappear { advanceTask?.cancel() }
+            // BUG 3 (2026-09-22 eleventh follow-up) — background preload,
+            // keyed on `groupIndex` (the target set only actually changes
+            // when the host does, not per-post). `.task(id:)` is SwiftUI's
+            // own structured-concurrency cancellation: switching hosts (a
+            // new id) or this view disappearing entirely (StoryViewer
+            // closing) both automatically cancel whatever preload was
+            // still in flight — no separate cancellation bookkeeping
+            // needed. Runs as a background side effect alongside the
+            // current story's own render, never blocking it.
+            .task(id: viewer.groupIndex) {
+                await preloadAdjacent(viewer)
+            }
+        }
+    }
+
+    /// Preloads the actual renderable media (not just signed URLs, which
+    /// iOS's own `loadHomeStories()` already resolves for the WHOLE deck up
+    /// front in one batch) for the current host's stories in full, plus
+    /// the immediately adjacent hosts' first story/cover — so a host-to-
+    /// host swipe never hits a loading gap. Event-share covers go through
+    /// `PhotoLoader` (the SAME cache `CatalogPhoto` itself reads from —
+    /// see its own `RemoteImage` fix above — so a later `CatalogPhoto`
+    /// render for this exact path paints instantly from cache); real
+    /// media stories go through a plain prefetch into `URLCache.shared`,
+    /// which `AsyncImage`'s own `URLSession.shared`-backed loading also
+    /// reads from.
+    private func preloadAdjacent(_ viewer: StoryViewerState) async {
+        let totalStories = viewer.groups.reduce(0) { $0 + $1.stories.count }
+        let targetGroups: [StoryGroup]
+        if totalStories <= preloadFullDeckStoryLimit {
+            targetGroups = viewer.groups
+        } else {
+            targetGroups = [viewer.groupIndex - 1, viewer.groupIndex, viewer.groupIndex + 1].compactMap { viewer.groups[safe: $0] }
+        }
+        let currentOrgId = viewer.groups[safe: viewer.groupIndex]?.organizerId
+        await withTaskGroup(of: Void.self) { group in
+            for g in targetGroups {
+                // The current host's own full set; an adjacent host's just
+                // its FIRST story (the one a swipe would actually land on
+                // first) — matches this ticket's own "at minimum" scope.
+                let stories = g.organizerId == currentOrgId ? g.stories : Array(g.stories.prefix(1))
+                for st in stories {
+                    group.addTask { await Self.preloadStory(st) }
+                }
+            }
+        }
+    }
+    private static func preloadStory(_ st: StoryItem) async {
+        if st.kind == "event_share" {
+            guard let path = st.eventSnapshot?.img else { return }
+            _ = await PhotoLoader.load(path: path, maxPixel: 340 * UIScreen.main.scale)
+        } else if let url = st.url {
+            _ = try? await URLSession.shared.data(from: url)
         }
     }
 
@@ -242,13 +332,15 @@ struct StoryViewerView: View {
                         let goingNext = dx < 0
                         let revealingUnderneath = goingNext ? !hasNextHost(v) : !hasPrevHost(v)
                         if revealingUnderneath {
-                            // Only the FORWARD case actually reveals
-                            // anything (BUG 4) — backward "no previous
-                            // host" has nothing real to reveal (nothing
-                            // logically precedes the deck's very first
-                            // host), so it just rubber-bands the current
-                            // card and always springs back on release.
-                            if goingNext { revealOpacity = 1 - min(1, abs(dx) / stageWidth) }
+                            // BUG 2 (2026-09-22 eleventh follow-up) — both
+                            // edges of the whole deck now reveal Home
+                            // identically; this used to only apply to the
+                            // FORWARD/no-next-host case, leaving the
+                            // BACKWARD/no-prev-host edge (first story,
+                            // swipe right) rubber-banding with nothing
+                            // shown underneath — an asymmetry this ticket
+                            // explicitly calls out.
+                            revealOpacity = 1 - min(1, abs(dx) / stageWidth)
                         } else if !reduceMotion {
                             let progress = min(1, abs(dx) / max(1, stageWidth))
                             companionOpacity = min(0.92, progress * 1.15)
@@ -301,15 +393,17 @@ struct StoryViewerView: View {
                             companionScale = 0.86
                             if goingNext { app.storyNextHost() } else { app.storyPrevHost() }
                         }
-                    } else if goingNext, let v, !hasNextHost(v), beyondThreshold {
-                        // BUG 4 — the final story of the final host, swipe
-                        // forward, PAST the commit threshold: complete the
-                        // reveal into Home/Account instead of springing
+                    } else if let v, (goingNext ? !hasNextHost(v) : !hasPrevHost(v)), beyondThreshold {
+                        // BUG 4 / BUG 2 — EITHER edge of the whole deck
+                        // (final story of the final host, swipe forward;
+                        // OR first story of the first host, swipe
+                        // backward), past the commit threshold: complete
+                        // the reveal into Home/Account instead of springing
                         // back. Dock visibility only restores once
                         // `closeStoryViewer()` actually runs.
                         withAnimation(.easeOut(duration: hswipeSettleMs)) {
                             revealOpacity = 0
-                            dragOffsetX = -stageWidth
+                            dragOffsetX = goingNext ? -stageWidth : stageWidth
                         }
                         DispatchQueue.main.asyncAfter(deadline: .now() + hswipeSettleMs) {
                             app.closeStoryViewer()

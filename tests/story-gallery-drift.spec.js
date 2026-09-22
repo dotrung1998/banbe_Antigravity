@@ -153,4 +153,34 @@ test.describe('StoryViewer — host-only horizontal swipe + final-deck reveal (2
     // Restore the follow for other tests/afterAll cleanup expectations.
     await admin.from('follows').upsert({ user_id: uid, organizer_id: ORG_B }, { onConflict: 'user_id,organizer_id' });
   });
+
+  test('BUG 2: first story of the first host: a BACKWARD drag past threshold also reveals Home progressively and dismisses; short of threshold springs back', async ({ page }) => {
+    // Isolate to a single host so "first/only host" is unambiguous.
+    await admin.from('follows').delete().eq('user_id', uid).eq('organizer_id', ORG_B);
+
+    await page.goto('/');
+    await page.waitForSelector('[data-screen-label="Home"]', { timeout: 10000 });
+    const avatars = page.locator('[data-testid="home-story-avatar"]');
+    await expect(avatars.first()).toBeVisible({ timeout: 8000 });
+    await avatars.first().click();
+    await expect(page.locator('[data-screen-label="Story viewer"]')).toBeVisible();
+
+    const stage = page.locator('[data-testid="story-viewer-stage"]');
+
+    // SHORT backward drag (under threshold) — must spring back, no dismissal.
+    await slowDrag(page, stage, 30);
+    await page.waitForTimeout(400);
+    await expect(page.locator('[data-screen-label="Story viewer"]')).toBeVisible();
+    // Still the same first story — no state reset from the cancelled drag.
+    await expect(stage).toHaveAttribute('data-story-index', '0');
+
+    // FULL commit-threshold BACKWARD drag — must ALSO reveal Home and
+    // dismiss (previously only the forward/final-host edge did this).
+    await slowDrag(page, stage, 160);
+    await expect(page.locator('[data-screen-label="Story viewer"]')).toHaveCount(0, { timeout: 3000 });
+    await expect(page.locator('[data-screen-label="Home"]')).toBeVisible();
+    await expect(page.locator('[data-testid="bottom-tab-bar"]')).toBeVisible();
+
+    await admin.from('follows').upsert({ user_id: uid, organizer_id: ORG_B }, { onConflict: 'user_id,organizer_id' });
+  });
 });
