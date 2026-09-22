@@ -121,13 +121,36 @@ struct HomeView: View {
     /// that the very first, too-early attempt didn't. Toggled through nil
     /// first since re-assigning a Binding<String?> to its OWN current value
     /// wouldn't produce a change for `.scrollPosition(id:)` to react to.
+    /// TASK 3 (2026-09-22 twentieth follow-up) — real root cause of the
+    /// late/janky restore during an interactive edge-swipe back: RootView's
+    /// peek (`screenView(for: app.backTargetScreen, isPreview: true)`, see
+    /// RootView.swift) constructs a brand-new `HomeView` the instant the
+    /// user's finger moves — its `.home` case ignores `isPreview` entirely,
+    /// so this is the SAME view/onAppear path as any other Home mount. The
+    /// flat 400ms delay below was tuned for the genuine FIRST-load case,
+    /// where `app.feed` is still empty and the async loaders in `.task`
+    /// above haven't populated it yet. But on a return-from-Event-Detail
+    /// peek, `app.feed` is already populated (it's never cleared on screen
+    /// navigation — only this View struct is torn down and recreated), so
+    /// waiting 400ms here is exactly what let Home reveal at the top first
+    /// and only jump into place afterward, instead of already being correct
+    /// before the peek reveals anything. Skipping the wait whenever the
+    /// data needed to restore is already in hand fixes that without
+    /// stacking another retry on top of this one.
     private func retryScrollRestoreIfNeeded() {
         guard !didAttemptScrollRestore, let target = app.homeScrollAnchorID else { return }
         didAttemptScrollRestore = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+        if !app.feed.isEmpty {
             app.homeScrollAnchorID = nil
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            DispatchQueue.main.async {
                 app.homeScrollAnchorID = target
+            }
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                app.homeScrollAnchorID = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    app.homeScrollAnchorID = target
+                }
             }
         }
     }

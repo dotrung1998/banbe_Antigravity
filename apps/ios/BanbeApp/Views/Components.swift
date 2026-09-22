@@ -338,7 +338,12 @@ private struct ScrollPositionIDModifier: ViewModifier {
     let id: Binding<String?>?
     func body(content: Content) -> some View {
         if let id {
-            content.scrollPosition(id: id)
+            // TASK 3 (2026-09-22 twentieth follow-up) — the ticket's own
+            // preferred fallback is the originating card centered in the
+            // revealed viewport, not top-aligned (this modifier's only
+            // current caller is HomeView, so this is safe to make the
+            // default rather than threading a new parameter through).
+            content.scrollPosition(id: id, anchor: .center)
         } else {
             content
         }

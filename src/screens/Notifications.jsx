@@ -11,6 +11,11 @@ import { paper, ink, rule, alert, display, fieldGlass } from '../theme.js';
 // the top regardless of age. Same fonts/colors as everywhere else in the
 // app (theme.js's paper/ink/display) — no new design system.
 const COLLAPSE_AT = 20;
+// TASK 1 (2026-09-22 twentieth follow-up) — must match Inbox.jsx's own
+// SHEET_ANIM_MS exactly (not a separate arbitrary speed): the prior pass
+// left this screen's search input with no `animation` at all, so it
+// snapped open/closed instantly instead of the 600ms fade Inbox uses.
+const SHEET_ANIM_MS = 600;
 
 function classifyAtLoad(n, now) {
   return !n.read_at ? 'new' : notificationAgeBucket(n.created_at, now);
@@ -145,6 +150,7 @@ export default function Notifications() {
             style={{
               ...fieldGlass({ flex: 1, padding: '10px 14px', borderRadius: 999, border: 'none', marginRight: 10 }),
               fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none',
+              animation: `gocIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both`,
             }}
           />
         ) : selectionMode ? (
@@ -152,39 +158,63 @@ export default function Notifications() {
         ) : (
           <span style={{ ...display(27) }}>{T('Thông báo', 'Notifications')}</span>
         )}
-        {selectionMode ? (
-          <span onClick={exitSelectionMode} data-testid="notifications-selection-cancel" style={{ fontSize: 12, color: ink, cursor: 'pointer', flex: 'none' }}>{T('Huỷ', 'Cancel')}</span>
-        ) : (
-          <div style={{ display: 'flex', gap: 14, flex: 'none' }}>
-            {/* TASK 2 — icon+label controls, same visual language/sizing as
-                Inbox's own search/settings buttons (34px glass circle +
-                9.5px label underneath), not plain header text. */}
+        {/* TASK 2 (2026-09-22 twentieth follow-up) — the two right-side
+            header slots morph in place (same two fixed positions, content
+            crossfades via key+gocFade) into Select all + Cancel rather than
+            being replaced by a single plain-text "Huỷ" elsewhere in the
+            header — same icon-above-label sizing as the normal Search/Select
+            controls, Cancel in the shared `alert` destructive color. */}
+        <div style={{ display: 'flex', gap: 14, flex: 'none' }}>
+          {selectionMode ? (
             <div
+              key="select-all"
+              onClick={selectAll}
+              data-testid="notifications-select-all"
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
+            >
+              <span style={{ width: 34, height: 34, borderRadius: '50%', ...fieldGlass({}), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: ink }}>☑</span>
+              <span style={{ fontSize: 9.5, color: ink, opacity: 0.7 }}>{T('Chọn tất cả', 'Select all')}</span>
+            </div>
+          ) : (
+            <div
+              key="search"
               onClick={() => { if (searchOpen) setQuery(''); setSearchOpen(v => !v); }}
               data-testid="notifications-search-toggle"
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
             >
               <span style={{ width: 34, height: 34, borderRadius: '50%', ...fieldGlass({}), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: ink }}>
                 {searchOpen ? '✕' : '🔍'}
               </span>
               <span style={{ fontSize: 9.5, color: ink, opacity: 0.7 }}>{searchOpen ? T('Đóng', 'Close') : T('Tìm', 'Search')}</span>
             </div>
-            {s.notifications.length > 0 && (
+          )}
+          {selectionMode ? (
+            <div
+              key="cancel"
+              onClick={exitSelectionMode}
+              data-testid="notifications-selection-cancel"
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
+            >
+              <span style={{ width: 34, height: 34, borderRadius: '50%', ...fieldGlass({}), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: alert }}>✕</span>
+              <span style={{ fontSize: 9.5, color: alert, opacity: 0.85 }}>{T('Huỷ', 'Cancel')}</span>
+            </div>
+          ) : (
+            s.notifications.length > 0 && (
               <div
+                key="select"
                 onClick={() => setSelectionMode(true)}
                 data-testid="notifications-select-mode"
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
               >
                 <span style={{ width: 34, height: 34, borderRadius: '50%', ...fieldGlass({}), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: ink }}>☑</span>
                 <span style={{ fontSize: 9.5, color: ink, opacity: 0.7 }}>{T('Chọn', 'Select')}</span>
               </div>
-            )}
-          </div>
-        )}
+            )
+          )}
+        </div>
       </div>
       {selectionMode && (
-        <div style={{ padding: '0 24px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span onClick={selectAll} data-testid="notifications-select-all" style={{ fontSize: 12.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Chọn tất cả', 'Select all')}</span>
+        <div style={{ padding: '0 24px 12px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
           {selectedIds.size > 0 && (
             <span onClick={deleteSelected} data-testid="notifications-delete-selected" style={{ fontSize: 12.5, fontWeight: 600, color: alert, cursor: 'pointer' }}>
               {T(`Xoá (${selectedIds.size})`, `Delete (${selectedIds.size})`)}

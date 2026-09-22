@@ -881,6 +881,14 @@ struct NotificationsView: View {
     @State private var query = ""
     @FocusState private var searchFieldFocused: Bool
 
+    // TASK 1 (2026-09-22 twentieth follow-up) — real root cause of the
+    // search reveal feeling faster than Inbox's: this screen's search
+    // toggle never used `withAnimation` at all (an instant, unsprung state
+    // flip), while InboxView's identical control wraps the same toggle in
+    // its own `sheetAnimation`. Reusing the EXACT same spring params here
+    // rather than inventing a new speed, per this ticket's own instruction.
+    private static let sheetAnimation = Animation.spring(response: 0.6, dampingFraction: 0.85)
+
     private struct NotificationSection: Identifiable {
         let id: String
         let title: String
@@ -900,7 +908,10 @@ struct NotificationsView: View {
     // own private `iconButton(_:label:action:)` (MessagingViews.swift) —
     // not reused directly since that one's `private` to InboxView, but
     // identical sizing/styling for visual parity.
-    private func iconButton(_ systemImage: String, label: String, action: @escaping () -> Void) -> some View {
+    // TASK 2 (2026-09-22 twentieth follow-up) — `tint` added so the
+    // selection-mode "Cancel" control can render in the shared destructive
+    // `alert` color, matching web's Notifications.jsx.
+    private func iconButton(_ systemImage: String, label: String, tint: Color? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 2) {
                 Image(systemName: systemImage)
@@ -911,7 +922,7 @@ struct NotificationsView: View {
             }
         }
         .buttonStyle(.plain)
-        .foregroundStyle(app.palette.ink)
+        .foregroundStyle(tint ?? app.palette.ink)
     }
 
     private func classifyAtLoad(_ n: AppNotification, now: Date) -> String {
@@ -983,60 +994,75 @@ struct NotificationsView: View {
                                 .background(app.palette.field, in: Capsule())
                                 .foregroundStyle(app.palette.ink)
                                 .focused($searchFieldFocused)
+                                // TASK 1 (2026-09-22 twentieth follow-up) —
+                                // same transition InboxView's own search
+                                // field uses, not a bespoke one.
+                                .transition(.opacity.combined(with: .move(edge: .trailing)))
                         } else if selectionMode {
                             Text(app.T("Đang chọn", "Selecting")).font(BanbeTheme.display(27))
                         } else {
                             Text(app.T("Thông báo", "Notifications")).font(BanbeTheme.display(27))
                         }
                         Spacer()
-                        // "Chọn"/"Select" enters selection mode; in that
-                        // mode this same corner becomes "Huỷ"/"Cancel" —
-                        // no reason to lose the way to cancel a selection.
-                        if selectionMode {
-                            Button(app.T("Huỷ", "Cancel")) { exitSelectionMode() }
-                                .font(.system(size: 12)).buttonStyle(.plain)
-                                .accessibilityIdentifier("notifications.selection.cancel")
-                        } else {
-                            HStack(spacing: 14) {
-                                // TASK 2 — icon+label controls, same visual
-                                // language/sizing as InboxView's own
-                                // search/settings buttons, not plain text.
+                        // TASK 2 (2026-09-22 twentieth follow-up) — the two
+                        // right-side slots persist across selection mode
+                        // (never removed/reinserted at a different spot in
+                        // the header) and their CONTENT crossfades via
+                        // `.id` + `.transition(.opacity)` under the shared
+                        // spring, so Search/Select morph into Select
+                        // all/Cancel in place instead of jumping the layout.
+                        HStack(spacing: 14) {
+                            if selectionMode {
+                                iconButton("checklist", label: app.T("Chọn tất cả", "Select all")) {
+                                    app.selectedNotificationIDs = Set(app.notifications.map(\.id))
+                                }
+                                .id("select-all")
+                                .accessibilityIdentifier("notifications.selectAll")
+                                .transition(.opacity)
+                            } else {
                                 iconButton(searchOpen ? "xmark" : "magnifyingglass", label: searchOpen ? app.T("Đóng", "Close") : app.T("Tìm", "Search")) {
                                     if searchOpen { query = "" }
-                                    searchOpen.toggle()
+                                    withAnimation(Self.sheetAnimation) { searchOpen.toggle() }
                                     searchFieldFocused = searchOpen
                                 }
+                                .id("search")
                                 .accessibilityIdentifier("notifications.searchToggle")
-                                if !app.notifications.isEmpty {
-                                    iconButton("checkmark.circle", label: app.T("Chọn", "Select")) { app.notificationSelectionMode = true }
-                                        .accessibilityIdentifier("notifications.selectMode")
+                                .transition(.opacity)
+                            }
+                            if selectionMode {
+                                iconButton("xmark", label: app.T("Huỷ", "Cancel"), tint: BanbeTheme.alert) {
+                                    withAnimation(Self.sheetAnimation) { exitSelectionMode() }
                                 }
+                                .id("cancel")
+                                .accessibilityIdentifier("notifications.selection.cancel")
+                                .transition(.opacity)
+                            } else if !app.notifications.isEmpty {
+                                iconButton("checkmark.circle", label: app.T("Chọn", "Select")) {
+                                    withAnimation(Self.sheetAnimation) { app.notificationSelectionMode = true }
+                                }
+                                .id("select")
+                                .accessibilityIdentifier("notifications.selectMode")
+                                .transition(.opacity)
                             }
                         }
+                        .animation(Self.sheetAnimation, value: selectionMode)
                     }
                     .padding(.bottom, selectionMode ? 8 : 14)
 
-                    if selectionMode {
+                    if selectionMode, !app.selectedNotificationIDs.isEmpty {
                         HStack {
-                            Button(app.T("Chọn tất cả", "Select all")) {
-                                app.selectedNotificationIDs = Set(app.notifications.map(\.id))
-                            }
-                            .font(.system(size: 12.5, weight: .semibold)).buttonStyle(.plain)
-                            .accessibilityIdentifier("notifications.selectAll")
                             Spacer()
-                            if !app.selectedNotificationIDs.isEmpty {
-                                Button(app.T("Xoá (\(app.selectedNotificationIDs.count))", "Delete (\(app.selectedNotificationIDs.count))")) {
-                                    Task {
-                                        let ids = Array(app.selectedNotificationIDs)
-                                        exitSelectionMode()
-                                        await app.deleteNotifications(ids)
-                                    }
+                            Button(app.T("Xoá (\(app.selectedNotificationIDs.count))", "Delete (\(app.selectedNotificationIDs.count))")) {
+                                Task {
+                                    let ids = Array(app.selectedNotificationIDs)
+                                    exitSelectionMode()
+                                    await app.deleteNotifications(ids)
                                 }
-                                .font(.system(size: 12.5, weight: .semibold))
-                                .foregroundStyle(BanbeTheme.alert)
-                                .buttonStyle(.plain)
-                                .accessibilityIdentifier("notifications.deleteSelected")
                             }
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundStyle(BanbeTheme.alert)
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("notifications.deleteSelected")
                         }
                         .padding(.bottom, 12)
                     }
