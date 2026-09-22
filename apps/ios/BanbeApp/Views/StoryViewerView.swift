@@ -7,11 +7,17 @@ import SwiftUI
 // blurred-fullscreen visual language and, as of this pass, the same
 // live-drag-follow / hold-to-pause CONVENTIONS ChatPhotoViewerView
 // established (b75b884) — not its state, per that same instruction.
+//
+// BUG 5 fix (2026-09-22 follow-up) — `app.storyViewer` now stores the FULL
+// ordered deck (`groups`/`groupIndex`/`storyIndex`), not one organizer's
+// stories in isolation — see AppState.swift's own comment on
+// openStoryViewer()/storyNext()/storyPrev().
 private let storyDurationSeconds: Double = 5
 private let dismissMs: Double = 0.26
 private let dismissThreshold: CGFloat = 90
 private let dragRevealDistance: CGFloat = 220
 private let holdThresholdMs: Int = 180 // a plain tap stays a tap
+private let hswipeThreshold: CGFloat = 60 // pt of horizontal travel that commits to prev/next
 
 struct StoryViewerView: View {
     @EnvironmentObject var app: AppState
@@ -25,19 +31,20 @@ struct StoryViewerView: View {
     @State private var isPaused = false
     @State private var advanceTask: Task<Void, Never>?
 
-    // Drag-to-dismiss + hold-to-pause — one gesture, disambiguated by
-    // direction/duration, mirroring ChatPhotoViewerView's stage gesture.
+    // Drag-to-dismiss (vertical) + swipe-to-navigate (horizontal) +
+    // hold-to-pause — one gesture, disambiguated by direction/duration,
+    // mirroring ChatPhotoViewerView's stage gesture.
     @State private var dragOffsetY: CGFloat = 0
-    @State private var isDragging = false
+    private enum DragKind { case vertical, horizontal }
+    @State private var dragKind: DragKind?
     @State private var isHolding = false
     @State private var touchDown = false
-    @State private var gestureStart: CGPoint = .zero
     @State private var closing = false
 
     private var dragProgress: CGFloat { min(1, max(0, dragOffsetY) / dragRevealDistance) }
 
     var body: some View {
-        if let viewer = app.storyViewer, let story = viewer.stories[safe: viewer.index] {
+        if let viewer = app.storyViewer, let group = viewer.groups[safe: viewer.groupIndex], let story = group.stories[safe: viewer.storyIndex] {
             ZStack {
                 Color.black.ignoresSafeArea()
 
@@ -52,14 +59,15 @@ struct StoryViewerView: View {
                 .offset(y: dragOffsetY)
                 .scaleEffect(1 - dragProgress * 0.08)
 
-                chrome(viewer: viewer, index: viewer.index)
+                chrome(group: group, storyIndex: viewer.storyIndex)
             }
             .opacity(closing ? 0 : 1)
             .contentShape(Rectangle())
-            .gesture(stageGesture(viewer: viewer))
+            .gesture(stageGesture)
             .transition(.opacity)
             .zIndex(27)
-            .onChange(of: viewer.index) { _, _ in resetProgress() }
+            .onChange(of: viewer.groupIndex) { _, _ in resetProgress() }
+            .onChange(of: viewer.storyIndex) { _, _ in resetProgress() }
             .onAppear {
                 Task { await app.viewStoryTick(story.id) }
                 resetProgress()
@@ -68,20 +76,21 @@ struct StoryViewerView: View {
         }
     }
 
-    private func chrome(viewer: StoryViewerState, index: Int) -> some View {
+    private func chrome(group: StoryGroup, storyIndex: Int) -> some View {
         ZStack {
-            // Progress bars — smooth, elapsed-time-driven fill (Task 3),
-            // paused (no ticking) while held/dragged.
+            // Progress bars — one per story in the CURRENT host's own
+            // group (resets per host, standard deck behavior), smooth
+            // elapsed-time-driven fill (Task 3), paused while held/dragged.
             TimelineView(.animation(paused: isPaused)) { context in
                 let elapsed = pausedElapsed + (isPaused ? 0 : context.date.timeIntervalSince(startDate))
                 let progress = min(1, max(0, elapsed / storyDurationSeconds))
                 HStack(spacing: 4) {
-                    ForEach(Array(viewer.stories.enumerated()), id: \.offset) { i, _ in
+                    ForEach(Array(group.stories.enumerated()), id: \.offset) { i, _ in
                         GeometryReader { geo in
                             Capsule().fill(Color.white.opacity(0.35))
                                 .overlay(alignment: .leading) {
                                     Capsule().fill(Color.white)
-                                        .frame(width: geo.size.width * (i < index ? 1 : i == index ? progress : 0))
+                                        .frame(width: geo.size.width * (i < storyIndex ? 1 : i == storyIndex ? progress : 0))
                                 }
                         }
                         .frame(height: 2.5)
@@ -91,6 +100,12 @@ struct StoryViewerView: View {
             .padding(.horizontal, 12)
             .frame(maxHeight: .infinity, alignment: .top)
             .padding(.top, 54)
+
+            Text(group.orgName)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.top, 62).padding(.leading, 16)
 
             Button { dismiss() } label: {
                 Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
@@ -110,34 +125,54 @@ struct StoryViewerView: View {
         .animation(.easeInOut(duration: 0.15), value: isHolding)
     }
 
-    // MARK: - Gesture (tap zones / hold-to-pause / drag-to-dismiss)
+    // MARK: - Gesture (tap zones / hold-to-pause / vertical drag-dismiss /
+    // horizontal swipe-navigate — BUG 5's cross-host manual navigation)
 
-    private func stageGesture(viewer: StoryViewerState) -> some Gesture {
+    private var stageGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 if !touchDown {
                     touchDown = true
-                    gestureStart = value.startLocation
                     scheduleHoldDetection()
                 }
                 let dy = value.translation.height
                 let dx = value.translation.width
-                if !isDragging && !isHolding {
-                    guard dy > 6, dy > abs(dx) else { return }
-                    isDragging = true
-                    pauseProgress()
+                if dragKind == nil && !isHolding {
+                    // Direction is only classified once movement clears a
+                    // small threshold (never on the very first pixel), so
+                    // a vertical dismiss and a horizontal swipe can never
+                    // both fire for the same gesture.
+                    if dy > 6, dy > abs(dx) {
+                        dragKind = .vertical
+                        pauseProgress()
+                    } else if abs(dx) > 6, abs(dx) > abs(dy) {
+                        dragKind = .horizontal
+                        pauseProgress()
+                    } else {
+                        return
+                    }
                 }
-                if isDragging { dragOffsetY = dy }
+                if dragKind == .vertical { dragOffsetY = dy }
             }
             .onEnded { value in
                 touchDown = false
-                defer { isDragging = false }
-                if isDragging {
+                let kind = dragKind
+                dragKind = nil
+                if kind == .vertical {
                     if dragOffsetY > dismissThreshold {
                         dismiss()
                     } else {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { dragOffsetY = 0 }
                         resumeProgress()
+                    }
+                    return
+                }
+                if kind == .horizontal {
+                    let dx = value.translation.width
+                    if abs(dx) > hswipeThreshold {
+                        if dx < 0 { app.storyNext() } else { app.storyPrev() }
+                    } else {
+                        resumeProgress() // short of threshold — no navigation, just resume where it was
                     }
                     return
                 }
@@ -158,7 +193,7 @@ struct StoryViewerView: View {
     /// onChanged callbacks for a genuinely stationary finger.
     private func scheduleHoldDetection() {
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(holdThresholdMs)) {
-            guard touchDown, !isDragging, !isHolding else { return }
+            guard touchDown, dragKind == nil, !isHolding else { return }
             isHolding = true
             pauseProgress()
         }
@@ -213,9 +248,7 @@ private struct EventShareCard: View {
     var body: some View {
         if let snap = story.eventSnapshot {
             VStack(spacing: 0) {
-                AsyncImage(url: URL(string: snap.img)) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
-                    .frame(height: 340)
-                    .clipped()
+                CatalogPhoto(path: snap.img, height: 340, cornerRadius: 0)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(snap.name).font(BanbeTheme.display(18)).foregroundStyle(app.palette.ink)
                     Text("\(snap.when) · \(snap.location)")

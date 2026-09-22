@@ -93,6 +93,16 @@ struct Story: Codable, Identifiable, Hashable {
 /// same static-catalogue-vs-real-DB duality 11-realtime-map.md documents.
 struct StoryEventSnapshot: Equatable, Hashable {
     let eventKey: String
+    // BUG 2 fix (2026-09-22 follow-up) — kept as the catalogue's own
+    // web-relative path string (NOT resolved to a URL here) specifically
+    // so the viewer can render it via `CatalogPhoto` — the SAME robust
+    // cover-photo resolver Event Detail/Home/Map already use (its own
+    // WebP/downsampling/disk-cache loader), rather than a second, ad-hoc
+    // `AsyncImage(url:)` path that has to get URL-resolution right on its
+    // own. `img: String` was previously passed straight into
+    // `URL(string:)`, which "successfully" parses a scheme-less relative
+    // path into a URL with no host — `URLSession` then silently fails to
+    // load it, which is what produced the reported blank/white card.
     let img: String
     let name: String
     let when: String

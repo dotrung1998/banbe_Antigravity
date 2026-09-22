@@ -7,7 +7,14 @@ export default function EventDetail() {
   const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory } = useGoc();
   const s = state;
   const [shareStoryMsg, setShareStoryMsg] = useState('');
+  // BUG 4 fix (2026-09-22 follow-up) — "Chia sẻ lên Story" used to publish
+  // immediately on tap; per this ticket's own instruction, a real
+  // confirmation step now sits in between (Cancel writes nothing at all —
+  // no DB row, no storage object, no ring change — only the explicit
+  // confirm action calls createEventShareStory()).
+  const [shareConfirmOpen, setShareConfirmOpen] = useState(false);
   const doShareEventToStory = async () => {
+    setShareConfirmOpen(false);
     const r = await createEventShareStory(ev.key);
     setShareStoryMsg(r?.success ? T('Đã đăng lên story', 'Posted to Story') : T('Không đăng được', "Couldn't post"));
     setTimeout(() => setShareStoryMsg(''), 2400);
@@ -34,8 +41,16 @@ export default function EventDetail() {
     // default and *said* Home while *going* to the map.
     mapExplore: T('Bản đồ', 'Map'),
   };
-  const backLabel = BACK_LABELS[s.eventBackScreen] || 'banbe';
-  const cameFromHome = (s.eventBackScreen || 'home') === 'home';
+  // BUG 3 fix (2026-09-22 follow-up) — an event opened from a story has
+  // exactly one consistent origin: StoryViewer, not whichever screen
+  // happened to be showing underneath it. The back label now says so
+  // explicitly instead of falling through to BACK_LABELS[eventBackScreen]
+  // (which used to read "banbe"/"Home" while the tap actually reopened the
+  // story — this ticket's own bug report).
+  const backLabel = s.eventBackIsStory
+    ? (s.storyReturnHostName ? T('Tin của ' + s.storyReturnHostName, s.storyReturnHostName + '’s story') : T('Story', 'Story'))
+    : (BACK_LABELS[s.eventBackScreen] || 'banbe');
+  const cameFromHome = !s.eventBackIsStory && (s.eventBackScreen || 'home') === 'home';
 
   const evCat = trStatus(ev.cat);
   const evWhere = trStatus(stripKm(ev.where, ev));
@@ -119,7 +134,7 @@ export default function EventDetail() {
         {s.myOrgEventKeys.includes(ev.key) && (
           <div
             data-testid="event-share-to-story"
-            onClick={s.storyCreateBusy ? undefined : doShareEventToStory}
+            onClick={s.storyCreateBusy ? undefined : () => setShareConfirmOpen(true)}
             style={{ fontSize: 11.5, color: ink, opacity: s.storyCreateBusy ? 0.4 : 0.65, cursor: s.storyCreateBusy ? 'default' : 'pointer', marginBottom: 10 }}
           >
             {s.storyCreateBusy ? T('Đang đăng…', 'Posting…') : T('▪︎ Chia sẻ lên Story', '▪︎ Share to Story')}
@@ -127,6 +142,41 @@ export default function EventDetail() {
         )}
         {shareStoryMsg && (
           <div style={{ fontSize: 11, color: ink, opacity: 0.7, marginBottom: 10 }}>{shareStoryMsg}</div>
+        )}
+        {/* BUG 4 fix — a real confirm step, same bottom-sheet visual
+            convention ReasonSheet.jsx already established (dim overlay +
+            a paper panel sliding up). Cancel writes nothing at all. */}
+        {shareConfirmOpen && (
+          <div onClick={s.storyCreateBusy ? undefined : () => setShareConfirmOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'gocFade 0.2s ease both' }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ background: paper, padding: '20px 20px 30px', animation: 'gocSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <div style={bg(ev.img, { width: 64, height: 64, borderRadius: 12, flex: 'none' })} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ ...display(15, { lineHeight: 1.2 }) }}>{ev.name}</div>
+                  <div style={{ fontSize: 11.5, color: ink, opacity: 0.7, marginTop: 2 }}>{ev.when}</div>
+                </div>
+              </div>
+              <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '14px 0 0' }}>
+                {T('Sẽ hiển thị dưới dạng story trong 24 giờ.', 'This will be visible as a story for 24 hours.')}
+              </p>
+              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                <div
+                  onClick={() => setShareConfirmOpen(false)}
+                  data-testid="event-share-to-story-cancel"
+                  style={{ flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 600, padding: '11px 12px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${rule}`, color: ink }}
+                >
+                  {T('Hủy', 'Cancel')}
+                </div>
+                <div
+                  onClick={doShareEventToStory}
+                  data-testid="event-share-to-story-confirm"
+                  style={{ flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 600, padding: '11px 12px', borderRadius: 12, cursor: 'pointer', background: ink, color: paper }}
+                >
+                  {T('Đăng Story', 'Post Story')}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11.5, color: ink }}>{evCat}</span>

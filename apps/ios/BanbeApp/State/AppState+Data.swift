@@ -1783,8 +1783,30 @@ extension AppState {
             for r in rows {
                 guard let name = orgById[r.organizerId] else { continue }
                 let isEventShare = r.kind == "event_share"
+                // BUG 2 fix (2026-09-22 follow-up) — two real bugs, confirmed
+                // by reading:
+                // 1. `EventCatalog.find(_:)` falls back to `.all.first` for
+                //    ANY unmatched key ("mirrors findEvent() on the web
+                //    side" — its own doc comment says so) — a genuinely
+                //    bad/missing event_id silently showed a random WRONG
+                //    event instead of this card's own "not available" state.
+                //    Matched directly against `EventCatalog.all` instead (no
+                //    fallback), same fix already applied on web and to the
+                //    2026-09-18 notification-avatar bug for the identical
+                //    reason.
+                // 2. `ev.img` (the catalogue's own web-relative path) was
+                //    being passed straight to `AsyncImage`'s `URL(string:)`,
+                //    which "successfully" parses a scheme-less path into a
+                //    URL with no host — `URLSession` then silently fails to
+                //    load it, exactly the reported blank/white card. Fixed
+                //    by rendering it through `CatalogPhoto` instead (the
+                //    SAME robust cover-photo resolver Event Detail/Home/Map
+                //    already use) — see StoryViewerView.swift's
+                //    `EventShareCard`; the snapshot keeps the raw relative
+                //    path since that's what `CatalogPhoto` itself expects.
                 let snapshot: StoryEventSnapshot? = {
-                    guard isEventShare, let eventId = r.eventId, let ev = EventCatalog.find(eventId) else { return nil }
+                    guard isEventShare, let eventId = r.eventId,
+                          let ev = EventCatalog.all.first(where: { $0.key == eventId }) else { return nil }
                     return StoryEventSnapshot(eventKey: ev.key, img: ev.img, name: ev.name, when: ev.when, location: ev.where)
                 }()
                 let item = StoryItem(id: r.id, mediaPath: r.mediaPath, url: urlByPath[r.mediaPath], width: r.width, height: r.height, createdAt: r.createdAt, viewed: viewedSet.contains(r.id), kind: r.kind, eventSnapshot: snapshot)
@@ -1821,9 +1843,22 @@ extension AppState {
     /// Idempotent (PK on story_id+viewer_id) — records a real view and
     /// updates local state immediately so the ring subdues without waiting
     /// on a re-fetch.
+    /// BUG 1 fix (2026-09-22 follow-up) — real bug, confirmed by reading:
+    /// this used to update ONLY `storyViewedIds` (a flat Set nothing else
+    /// reads at render time) and left `homeStories`' own per-story
+    /// `viewed`/per-group `allViewed` untouched — those are what the ring
+    /// actually renders (HomeView's story row, AccountView's own avatar),
+    /// so a ring stayed bright until the next unrelated `loadHomeStories()`
+    /// call. Fixed by also updating the matching story/group in
+    /// `homeStories` in this same call, before the `story_views` upsert
+    /// even resolves.
     func viewStoryTick(_ storyId: UUID) async {
         guard let uid = userID else { return }
         storyViewedIds.insert(storyId)
+        for i in homeStories.indices {
+            guard let storyIdx = homeStories[i].stories.firstIndex(where: { $0.id == storyId }) else { continue }
+            homeStories[i].stories[storyIdx].viewed = true
+        }
         do {
             try await SupabaseService.client.from("story_views")
                 .upsert(NewStoryView(storyId: storyId, viewerId: uid), onConflict: "story_id,viewer_id").execute()

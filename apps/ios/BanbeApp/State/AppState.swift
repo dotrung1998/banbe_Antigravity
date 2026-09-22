@@ -120,11 +120,16 @@ struct ChatPhotoViewerItem: Equatable {
     var postToStoryConfirm: Bool = false
 }
 
-/// One host's active-story progression state while the story viewer is open.
+/// BUG 5 fix (2026-09-22 follow-up) — the FULL ordered global deck (the
+/// same array + order as HomeView's own story row / AccountView's own-
+/// story-first sort — `homeStories` itself, not a re-derived copy) plus
+/// `groupIndex` (which host) and `storyIndex` (which of that host's
+/// stories) — an "Instagram-style deck," not one organizer's stories in
+/// isolation (the previous `organizerId`/`index`/`stories` shape).
 struct StoryViewerState: Equatable {
-    let organizerId: String
-    var index: Int
-    let stories: [StoryItem]
+    let groups: [StoryGroup]
+    var groupIndex: Int
+    var storyIndex: Int
 }
 
 struct AttendanceGuest: Identifiable, Equatable {
@@ -210,6 +215,14 @@ final class AppState: ObservableObject {
     // when backFromEvent() returns from an event opened via a story's own
     // card/CTA.
     @Published var storyReturnSnapshot: StoryViewerState?
+    // BUG 3 fix (2026-09-22 follow-up) — true only while the currently-open
+    // Event Detail was reached via goEventFromStory(); the single source of
+    // truth EventDetailView's back-label override and backFromEvent()'s own
+    // routing both read.
+    @Published var eventBackIsStory = false
+    // The story's own host name at the moment goEventFromStory() was
+    // called — read by EventDetailView's back-label override.
+    @Published var storyReturnHostName: String?
     @Published var authReturnScreen: Screen = .home
     @Published var authBackScreen: Screen = .home
     /// True only when Login was reached by force (the mandatory post-
@@ -1155,21 +1168,37 @@ final class AppState: ObservableObject {
         eventKey = key
         screen = .event
         // A fresh, non-story-originated event open invalidates any pending
-        // story-return snapshot — see goEventFromStory()'s own comment.
+        // story-return snapshot/back-label — see goEventFromStory()'s own
+        // comment. BUG 3 fix (2026-09-22 follow-up): also clears
+        // `eventBackIsStory` for the same reason.
+        eventBackIsStory = false
         storyReturnSnapshot = nil
+        storyReturnHostName = nil
         Task { await loadBookingForCurrentEvent() }
         Task { await loadLiveEventStatus() }
     }
-    /// Task 4C (2026-09-22 follow-up) — tapping an event-share story's
-    /// card/CTA. `screen` was never changed while the story overlay was up
-    /// (StoryViewerView renders independently of `screen`, see RootView),
-    /// so the current `screen` here is already whichever screen the story
-    /// was opened from (Home/Profile) — exactly what `eventBackScreen`
-    /// already wants, reused verbatim rather than a second back-target
-    /// concept.
+    /// Task 4C / BUG 3 (2026-09-22 follow-up) — tapping an event-share
+    /// story's card/CTA. `screen` was never changed while the story
+    /// overlay was up (StoryViewerView renders independently of `screen`,
+    /// see RootView), so the current `screen` here is already whichever
+    /// screen the story was opened from (Home/Profile) — exactly what
+    /// `eventBackScreen` already wants, reused verbatim rather than a
+    /// second back-target concept. `eventBackIsStory` is the single source
+    /// of truth EventDetailView's own back-label override AND
+    /// backFromEvent()'s routing below both read, instead of each
+    /// independently inferring "did this come from a story" from whether a
+    /// snapshot happens to be present (the real bug this ticket reported:
+    /// the label said "banbe"/Home while the tap actually reopened the
+    /// story).
     func goEventFromStory(_ key: String) {
         if screen != .event && screen != .organizer { eventBackScreen = screen }
+        eventBackIsStory = true
         storyReturnSnapshot = storyViewer
+        if let v = storyViewer, v.groups.indices.contains(v.groupIndex) {
+            storyReturnHostName = v.groups[v.groupIndex].orgName
+        } else {
+            storyReturnHostName = nil
+        }
         storyViewer = nil
         eventKey = key
         screen = .event
@@ -1189,10 +1218,12 @@ final class AppState: ObservableObject {
         } else {
             screen = eventBackScreen
         }
-        if let snapshot = storyReturnSnapshot {
+        if eventBackIsStory, let snapshot = storyReturnSnapshot {
             storyViewer = snapshot
-            storyReturnSnapshot = nil
         }
+        eventBackIsStory = false
+        storyReturnSnapshot = nil
+        storyReturnHostName = nil
     }
 
     /// The one path both back mechanisms use to return to a retained Map
@@ -1258,21 +1289,50 @@ final class AppState: ObservableObject {
     func closePostToStoryConfirm() { chatPhotoViewer?.postToStoryConfirm = false }
 
     // Task 3 (07-notifications.md) — story viewer open/close/progression.
+    /// BUG 5 fix (2026-09-22 follow-up) — filters out any group left with
+    /// zero stories up front so storyNext()/storyPrev() never have to
+    /// special-case an empty one mid-navigation (ticket's own "skip it
+    /// safely" requirement).
     func openStoryViewer(_ organizerId: String) {
-        guard let group = homeStories.first(where: { $0.organizerId == organizerId }), !group.stories.isEmpty else { return }
-        storyViewer = StoryViewerState(organizerId: organizerId, index: 0, stories: group.stories)
+        let groups = homeStories.filter { !$0.stories.isEmpty }
+        guard let groupIndex = groups.firstIndex(where: { $0.organizerId == organizerId }) else { return }
+        storyViewer = StoryViewerState(groups: groups, groupIndex: groupIndex, storyIndex: 0)
+        Task { await viewStoryTick(groups[groupIndex].stories[0].id) }
     }
     func closeStoryViewer() { storyViewer = nil }
+    /// Auto-advance / manual "next": within the current host's stories
+    /// first; at that host's last story, the first story of the NEXT host
+    /// with any stories left; at the very last host's last story, dismiss.
     func storyNext() {
-        guard var v = storyViewer else { return }
-        v.index += 1
-        if v.index >= v.stories.count { storyViewer = nil; return }
-        storyViewer = v
+        guard let v = storyViewer else { return }
+        let group = v.groups[v.groupIndex]
+        if v.storyIndex + 1 < group.stories.count {
+            storyViewer = StoryViewerState(groups: v.groups, groupIndex: v.groupIndex, storyIndex: v.storyIndex + 1)
+            return
+        }
+        for gi in (v.groupIndex + 1)..<v.groups.count where !v.groups[gi].stories.isEmpty {
+            storyViewer = StoryViewerState(groups: v.groups, groupIndex: gi, storyIndex: 0)
+            return
+        }
+        storyViewer = nil
     }
+    /// Manual "previous": within the current host first; at that host's
+    /// FIRST story, the previous host's LAST story; at the very first
+    /// host's first story, a no-op.
     func storyPrev() {
-        guard var v = storyViewer, v.index > 0 else { return }
-        v.index -= 1
-        storyViewer = v
+        guard let v = storyViewer else { return }
+        if v.storyIndex > 0 {
+            storyViewer = StoryViewerState(groups: v.groups, groupIndex: v.groupIndex, storyIndex: v.storyIndex - 1)
+            return
+        }
+        var gi = v.groupIndex - 1
+        while gi >= 0 {
+            if !v.groups[gi].stories.isEmpty {
+                storyViewer = StoryViewerState(groups: v.groups, groupIndex: gi, storyIndex: v.groups[gi].stories.count - 1)
+                return
+            }
+            gi -= 1
+        }
     }
     func showPhoto(at index: Int) {
         guard var item = photoViewer else { return }

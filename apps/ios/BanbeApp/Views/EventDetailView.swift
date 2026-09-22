@@ -7,12 +7,24 @@ struct EventDetailView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.openURL) private var openURL
     @State private var shareStoryMessage: String?
+    @State private var shareConfirmOpen = false
 
     private var event: CatalogEvent { app.currentEvent }
 
     /// Reached from several places, so "back" returns to whichever one you
     /// actually came from, labelled accordingly.
     private var backLabel: String {
+        // BUG 3 fix (2026-09-22 follow-up) — an event opened from a story
+        // has exactly one consistent origin: StoryViewer, not whichever
+        // screen happened to be showing underneath it — the pill used to
+        // fall through to the plain `default: "banbe"` case below while
+        // `backFromEvent()` actually reopened the story, the same
+        // label-vs-behavior contradiction Follow-up bug 2 (just above)
+        // already fixed once for Map Explore.
+        if app.eventBackIsStory {
+            if let host = app.storyReturnHostName { return app.T("Tin của \(host)", "\(host)’s story") }
+            return app.T("Story", "Story")
+        }
         switch app.eventBackScreen {
         case .dashboard: return app.T("Trang của bạn", "Your dashboard")
         case .organizer: return app.T("Trang tổ chức", "Organizer page")
@@ -62,6 +74,47 @@ struct EventDetailView: View {
             // screen's own back/compass buttons already get.
             backShareRow
         }
+        .sheet(isPresented: $shareConfirmOpen) { shareConfirmSheet }
+    }
+
+    // BUG 4 fix (2026-09-22 follow-up) — event cover preview, title/date,
+    // and an explicit Cancel/Post choice before anything is written.
+    private var shareConfirmSheet: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                CatalogPhoto(path: event.img, height: 64, width: 64, cornerRadius: 12)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(event.name).font(BanbeTheme.display(15))
+                    Text(event.when).font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                }
+            }
+            Text(app.T("Sẽ hiển thị dưới dạng story trong 24 giờ.", "This will be visible as a story for 24 hours."))
+                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+            HStack(spacing: 8) {
+                Button(app.T("Hủy", "Cancel")) { shareConfirmOpen = false }
+                    .frame(maxWidth: .infinity).padding(.vertical, 13)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+                    .accessibilityIdentifier("event.shareToStory.cancel")
+                Button {
+                    Task {
+                        shareConfirmOpen = false
+                        let ok = await app.createEventShareStory(eventKey: event.key)
+                        shareStoryMessage = ok ? app.T("Đã đăng lên story", "Posted to Story") : app.T("Không đăng được", "Couldn't post")
+                        try? await Task.sleep(nanoseconds: 2_400_000_000)
+                        shareStoryMessage = nil
+                    }
+                } label: {
+                    Text(app.T("Đăng Story", "Post Story"))
+                        .frame(maxWidth: .infinity).padding(.vertical, 13)
+                        .foregroundStyle(app.palette.paper)
+                        .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12))
+                }
+                .accessibilityIdentifier("event.shareToStory.confirm")
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(20)
+        .presentationDetents([.height(220)])
     }
 
     private var backShareRow: some View {
@@ -126,7 +179,7 @@ struct EventDetailView: View {
             // home). `openEventOnMap` reuses MapExploreView's own restored-
             // snapshot mechanism, so the same info card that view already
             // renders for a selected pin/list row appears automatically.
-            if app.eventBackScreen == .home {
+            if app.eventBackScreen == .home && !app.eventBackIsStory {
                 Button(app.T("▪︎ Xem trên bản đồ", "▪︎ Open in map")) { app.openEventOnMap(event) }
                     .font(.system(size: 11.5))
                     .foregroundStyle(app.palette.ink.opacity(0.65))
@@ -141,13 +194,11 @@ struct EventDetailView: View {
             // for a goer. UI nicety only; createEventShareStory() re-checks
             // ownership server-side regardless.
             if app.myOrgEventKeys.contains(event.key) {
+                // BUG 4 fix (2026-09-22 follow-up) — opens a real confirm
+                // step instead of publishing immediately; Cancel writes
+                // nothing at all.
                 Button {
-                    Task {
-                        let ok = await app.createEventShareStory(eventKey: event.key)
-                        shareStoryMessage = ok ? app.T("Đã đăng lên story", "Posted to Story") : app.T("Không đăng được", "Couldn't post")
-                        try? await Task.sleep(nanoseconds: 2_400_000_000)
-                        shareStoryMessage = nil
-                    }
+                    shareConfirmOpen = true
                 } label: {
                     Text(app.storyCreateBusy ? app.T("Đang đăng…", "Posting…") : app.T("▪︎ Chia sẻ lên Story", "▪︎ Share to Story"))
                         .font(.system(size: 11.5))

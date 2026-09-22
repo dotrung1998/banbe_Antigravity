@@ -398,6 +398,14 @@ const initialState = {
   // the exact StoryViewer position to restore when backFromEvent() returns
   // from an event opened via a story's own card/CTA.
   storyReturnSnapshot: null,
+  // BUG 3 fix (2026-09-22 follow-up) — true only while the currently-open
+  // Event Detail was reached via goEventFromStory(); the single source of
+  // truth EventDetail.jsx's back-label override and backFromEvent()'s own
+  // routing both read, rather than each inferring it independently.
+  eventBackIsStory: false,
+  // The story's own host name at the moment goEventFromStory() was called
+  // — read by EventDetail.jsx's back-label override ("Tin của <host>").
+  storyReturnHostName: null,
   // { file, url } while the "create a story" camera/picker preview
   // (Retake / Use Photo) is open, from Account.
   storyCreatePreview: null,
@@ -2268,16 +2276,30 @@ export function GocProvider({ children }) {
       if (!org) continue;
       if (!byOrg[r.organizer_id]) byOrg[r.organizer_id] = { organizerId: r.organizer_id, orgName: org.name, stories: [] };
       const isEventShare = r.kind === 'event_share';
-      // The static demo catalogue (src/data/events.js), not a second query —
-      // same static-catalogue-vs-real-DB duality 11-realtime-map.md already
-      // documents; a real DB event's own key still resolves through
-      // findEvent() for every seeded/real event this app actually shows.
-      const ev = isEventShare ? findEvent(r.event_id) : null;
+      // BUG 2 fix (2026-09-22 follow-up) — two real bugs here, confirmed by
+      // reading:
+      // 1. `findEvent()` (src/data/events.js) falls back to `EVENTS[0]` for
+      //    ANY unmatched key, "so a screen always has something to render"
+      //    — exactly the wrong behavior here, since it means a genuinely
+      //    bad/missing event_id silently showed a random WRONG event
+      //    instead of the "no longer available" state this card already
+      //    has ready for that case. Matched directly against `EVENTS`
+      //    instead (no fallback), same fix 07-notifications.md's own
+      //    2026-09-18 notification-avatar entry already applied for the
+      //    identical reason.
+      // 2. The snapshot read `ev.dayLong`/`ev.time`/`ev.area` — none of
+      //    which exist on a catalogue event (confirmed against the actual
+      //    object literal in events.js: the real fields are `when`
+      //    (combined date+time) and `where`/`locationLabel`) — silently
+      //    rendering "undefined" text. The event's own cover image
+      //    (`ev.img`) was already correct and DID load; only the
+      //    date/time/location line was blank.
+      const ev = isEventShare ? EVENTS.find(e => e.key === r.event_id) : null;
       byOrg[r.organizer_id].stories.push({
         id: r.id, mediaPath: r.media_path, url: urlByPath[r.media_path] || null,
         width: r.width, height: r.height, createdAt: r.created_at, viewed: viewedSet.has(r.id),
         kind: r.kind || 'media',
-        eventSnapshot: isEventShare && ev ? { eventKey: ev.key, img: ev.img, name: ev.name, dayLong: ev.dayLong, time: ev.time, area: ev.area } : null,
+        eventSnapshot: isEventShare && ev ? { eventKey: ev.key, img: ev.img, name: ev.name, when: ev.when, where: ev.where } : null,
       });
     }
     const groups = Object.values(byOrg).map(g => ({ ...g, allViewed: g.stories.every(st => st.viewed) }));
@@ -2294,44 +2316,87 @@ export function GocProvider({ children }) {
   // Records a real story_views row (idempotent — PK on story_id+viewer_id,
   // an upsert never duplicates a re-view) and updates local state
   // immediately so the ring subdues without waiting on a re-fetch.
+  // BUG 1 fix (2026-09-22 follow-up) — real bug, confirmed by reading:
+  // this used to update ONLY `storyViewedIds` (a flat id list nothing else
+  // reads at render time) and left `s.homeStories`' own per-story `viewed`/
+  // per-group `allViewed` fields untouched — those are what the ring
+  // actually renders (Home's story row, Account's own avatar), and they
+  // were only ever recomputed on the NEXT full `loadHomeStories()` fetch.
+  // So a ring stayed bright after every story in a group had genuinely
+  // been watched, until an unrelated reload happened to run. Fixed by also
+  // updating the matching story/group in `homeStories` in this SAME
+  // optimistic write, before the `story_views` upsert even resolves —
+  // Home's row and Account's ring read the same `s.homeStories` array, so
+  // one recomputation fixes both surfaces at once.
   const viewStoryTick = useCallback((storyId) => {
     if (!storyId || !s.user) return;
-    set(prev => ({ storyViewedIds: prev.storyViewedIds.includes(storyId) ? prev.storyViewedIds : [...prev.storyViewedIds, storyId] }));
+    set(prev => ({
+      storyViewedIds: prev.storyViewedIds.includes(storyId) ? prev.storyViewedIds : [...prev.storyViewedIds, storyId],
+      homeStories: prev.homeStories.map(g => {
+        if (!g.stories.some(st => st.id === storyId)) return g;
+        const stories = g.stories.map(st => st.id === storyId ? { ...st, viewed: true } : st);
+        return { ...g, stories, allViewed: stories.every(st => st.viewed) };
+      }),
+    }));
     supabase.from('story_views').upsert({ story_id: storyId, viewer_id: s.user.id }, { onConflict: 'story_id,viewer_id' })
       .then(({ error }) => { if (error) console.warn('viewStoryTick failed:', error); });
   }, [set, s.user]);
 
+  // BUG 5 fix (2026-09-22 follow-up) — StoryViewer now stores the FULL
+  // ordered global deck (`groups`, the same array + order as Home's own
+  // story row / Account's own-story-first sort — `s.homeStories` itself,
+  // not a re-derived copy) plus a `groupIndex` (which host) and
+  // `storyIndex` (which of that host's stories) — an "Instagram-style
+  // deck," not a single organizer's stories in isolation. Groups with zero
+  // stories are filtered out up front so storyNext/storyPrev never have to
+  // special-case an empty one mid-navigation.
   const openStoryViewer = useCallback((organizerId) => {
-    const group = s.homeStories.find(g => g.organizerId === organizerId);
-    if (!group || !group.stories.length) return;
-    set({ storyViewer: { organizerId, index: 0, stories: group.stories } });
-    viewStoryTick(group.stories[0].id);
+    const groups = s.homeStories.filter(g => g.stories.length > 0);
+    const groupIndex = groups.findIndex(g => g.organizerId === organizerId);
+    if (groupIndex === -1) return;
+    set({ storyViewer: { groups, groupIndex, storyIndex: 0 } });
+    viewStoryTick(groups[groupIndex].stories[0].id);
   }, [s.homeStories, set, viewStoryTick]);
   const closeStoryViewer = useCallback(() => set({ storyViewer: null }), [set]);
-  // Progression through the SAME author's active stories only — this is a
-  // story viewer, not the chat/gallery viewers (14-photo-viewer.md), so
-  // reaching the end just closes rather than looping into another author's
-  // stories (no "next author" concept requested).
+  // Auto-advance / manual "next": within the current host's stories first;
+  // at that host's last story, the first active story of the NEXT host
+  // with any stories left; at the very last host's last story, dismiss.
   const storyNext = useCallback(() => {
     set(prev => {
-      if (!prev.storyViewer) return {};
-      const next = prev.storyViewer.index + 1;
-      if (next >= prev.storyViewer.stories.length) return { storyViewer: null };
-      return { storyViewer: { ...prev.storyViewer, index: next } };
+      const v = prev.storyViewer;
+      if (!v) return {};
+      const group = v.groups[v.groupIndex];
+      if (v.storyIndex + 1 < group.stories.length) {
+        return { storyViewer: { ...v, storyIndex: v.storyIndex + 1 } };
+      }
+      for (let gi = v.groupIndex + 1; gi < v.groups.length; gi++) {
+        if (v.groups[gi].stories.length > 0) return { storyViewer: { ...v, groupIndex: gi, storyIndex: 0 } };
+      }
+      return { storyViewer: null };
     });
   }, [set]);
+  // Manual "previous": within the current host first; at that host's FIRST
+  // story, the previous host's LAST story; at the very first host's first
+  // story, a no-op (nothing before the start of the deck).
   const storyPrev = useCallback(() => {
     set(prev => {
-      if (!prev.storyViewer || prev.storyViewer.index === 0) return {};
-      return { storyViewer: { ...prev.storyViewer, index: prev.storyViewer.index - 1 } };
+      const v = prev.storyViewer;
+      if (!v) return {};
+      if (v.storyIndex > 0) return { storyViewer: { ...v, storyIndex: v.storyIndex - 1 } };
+      for (let gi = v.groupIndex - 1; gi >= 0; gi--) {
+        if (v.groups[gi].stories.length > 0) return { storyViewer: { ...v, groupIndex: gi, storyIndex: v.groups[gi].stories.length - 1 } };
+      }
+      return {};
     });
   }, [set]);
-  // Called by StoryViewerSheet whenever the shown index changes (including
-  // the very first one) — marks that specific story viewed, separate from
-  // openStoryViewer's own initial call so storyNext/storyPrev don't need to
-  // duplicate the same view-recording logic.
-  const markStoryViewedAt = useCallback((index) => {
-    const story = s.storyViewer?.stories?.[index];
+  // Called by StoryViewer.jsx whenever the shown (groupIndex, storyIndex)
+  // pair changes, including the very first one — marks that specific story
+  // viewed, separate from openStoryViewer's own initial call so
+  // storyNext/storyPrev don't need to duplicate the same view-recording
+  // logic at every one of their several return points.
+  const markStoryViewedAt = useCallback(() => {
+    const v = s.storyViewer;
+    const story = v?.groups?.[v.groupIndex]?.stories?.[v.storyIndex];
     if (story) viewStoryTick(story.id);
   }, [s.storyViewer, viewStoryTick]);
 
@@ -2528,30 +2593,56 @@ export function GocProvider({ children }) {
       ? prev.eventBackScreen
       : prev.screen,
     // A fresh, non-story-originated event open invalidates any pending
-    // story-return snapshot — see goEventFromStory()'s own comment.
+    // story-return snapshot/back-label — see goEventFromStory()'s own
+    // comment. BUG 3 fix (2026-09-22 follow-up): also clears
+    // `eventBackIsStory` — without this, opening a SECOND, ordinary event
+    // (e.g. from Home) right after returning-but-not-yet-backing-out of a
+    // story-opened one would incorrectly keep labelling/routing "back" as
+    // if it still led to a story.
+    eventBackIsStory: false,
     storyReturnSnapshot: null,
+    storyReturnHostName: null,
   })), [set]);
+  // BUG 3 fix (2026-09-22 follow-up) — real bug, confirmed by reading: the
+  // back PILL always read `BACK_LABELS[eventBackScreen]` (EventDetail.jsx),
+  // which for a story-opened event resolves to "banbe"/"Home" (whatever
+  // `eventBackScreen` — really just "which screen was showing underneath
+  // the story overlay" — happened to be), while tapping it actually
+  // reopened StoryViewer (via the `storyReturnSnapshot` check below) —
+  // visibly contradictory, exactly this ticket's own bug report. Fixed
+  // with a dedicated `eventBackIsStory` flag (the "documentBack/
+  // paymentDetailsBackTarget style" this ticket asks for) that both the
+  // label AND the routing check below, so there's exactly one source of
+  // truth for "this Event Detail's back target is a story" instead of
+  // inferring it implicitly from whether a snapshot happens to be present.
   const backFromEvent = useCallback(() => set(prev => (
-    prev.storyReturnSnapshot
-      ? { screen: prev.eventBackScreen || 'home', storyViewer: prev.storyReturnSnapshot, storyReturnSnapshot: null }
-      : { screen: prev.eventBackScreen || 'home' }
+    prev.eventBackIsStory && prev.storyReturnSnapshot
+      ? { screen: prev.eventBackScreen || 'home', storyViewer: prev.storyReturnSnapshot, storyReturnSnapshot: null, eventBackIsStory: false, storyReturnHostName: null }
+      : { screen: prev.eventBackScreen || 'home', eventBackIsStory: false, storyReturnSnapshot: null, storyReturnHostName: null }
   )), [set]);
-  // Task 4C (2026-09-22 follow-up) — tapping an event-share story's card/CTA.
-  // `screen` was never changed while the story overlay was up (it renders
-  // independently of `screen` — see App.jsx), so `prev.screen` here is
-  // already whichever screen the story was opened from (Home/Profile),
-  // exactly the value goEvent()'s own eventBackScreen logic already wants —
-  // reused verbatim rather than inventing a second back-target concept.
-  // `storyReturnSnapshot` remembers the exact viewer position so
-  // backFromEvent() above can reopen it, per this ticket's "back to
-  // StoryViewer if feasible" instruction.
-  const goEventFromStory = useCallback((key) => set(prev => ({
-    screen: 'event',
-    eventKey: key,
-    eventBackScreen: (prev.screen === 'event' || prev.screen === 'organizer') ? prev.eventBackScreen : prev.screen,
-    storyReturnSnapshot: prev.storyViewer,
-    storyViewer: null,
-  })), [set]);
+  // Task 4C / BUG 3 (2026-09-22 follow-up) — tapping an event-share story's
+  // card/CTA. `screen` was never changed while the story overlay was up
+  // (it renders independently of `screen` — see App.jsx), so `prev.screen`
+  // here is already whichever screen the story was opened from
+  // (Home/Profile), exactly the value goEvent()'s own eventBackScreen
+  // logic already wants — reused verbatim rather than inventing a second
+  // back-target concept. `storyReturnSnapshot` remembers the exact viewer
+  // position (full deck + group/story index) so backFromEvent() above can
+  // reopen it exactly where it was, not restarted; `storyReturnHostName`
+  // is read by EventDetail.jsx's own back-label override so it can say
+  // "Story"/the host's name instead of "banbe"/"Home".
+  const goEventFromStory = useCallback((key) => set(prev => {
+    const currentGroup = prev.storyViewer?.groups?.[prev.storyViewer.groupIndex];
+    return {
+      screen: 'event',
+      eventKey: key,
+      eventBackScreen: (prev.screen === 'event' || prev.screen === 'organizer') ? prev.eventBackScreen : prev.screen,
+      eventBackIsStory: true,
+      storyReturnSnapshot: prev.storyViewer,
+      storyReturnHostName: currentGroup?.orgName || null,
+      storyViewer: null,
+    };
+  }), [set]);
   const goOrganizer = useCallback(() => set({ screen: 'organizer' }), [set]);
   const goReserve = useCallback(() => set(s.user ? { screen: 'reserve' } : { screen: 'login', authMode: 'login', authReturnScreen: 'reserve', authBackScreen: 'event' }), [set, s.user]);
   const backToEvent = useCallback(() => set({ screen: 'event' }), [set]);
