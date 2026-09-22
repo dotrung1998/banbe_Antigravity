@@ -139,7 +139,22 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
+            // BUG 2 fix (2026-09-22 fourteenth follow-up) — real root cause
+            // of the white-blank-instead-of-story reveal: this background
+            // had NO explicit zIndex, defaulting to 0 — the SAME implicit
+            // value as `screenView(for: app.screen)` below. The retained
+            // `StoryViewerView` below is intentionally kept at `.zIndex(-1)`
+            // while suspended (so Event Detail's own slide-away offset
+            // progressively reveals it, not a snap to front — see that
+            // zIndex's own comment). But -1 is LOWER than this background's
+            // implicit 0, so as Event Detail slid away, what actually got
+            // uncovered was this opaque paper/white background sitting
+            // ABOVE StoryViewerView, not StoryViewerView itself — the
+            // reported white blank. Pinning this explicitly below -1
+            // guarantees it can never again outrank a retained, suspended
+            // underlay that intentionally sits at a negative zIndex.
             app.palette.paper.ignoresSafeArea()
+                .zIndex(-2)
 
             // The screen a swipe-back would land on, revealed underneath as
             // it drags instead of leaving blank paper — this is what was

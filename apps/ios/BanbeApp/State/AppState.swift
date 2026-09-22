@@ -401,6 +401,17 @@ final class AppState: ObservableObject {
     // startNotificationPolling() already runs (there's no realtime
     // subscription anywhere in this app to hook into instead).
     @Published var unreadMessages: Int = 0
+    // BUG 1 (2026-09-22 fourteenth follow-up) — the timestamp of the most
+    // recent successful messages.read_at write, mirrors web's
+    // GocContext.jsx `lastReadWriteAtRef` exactly: markThreadMessagesRead()
+    // stamps this on success; loadInboxThreads()/refreshUnreadMessageCount()
+    // (AppState+Data.swift) each capture their OWN request's start time and
+    // discard their result if it started before this — a request whose
+    // query began before a mark-read committed can resolve AFTER it with a
+    // stale, pre-write unread snapshot, silently reverting a thread's row/
+    // the dock badge back to unread a few seconds after it was genuinely
+    // marked read. Not `@Published` — nothing renders from this directly.
+    var lastReadWriteAt: Date = .distantPast
 
     // MARK: Notifications
     @Published var notifications: [AppNotification] = []

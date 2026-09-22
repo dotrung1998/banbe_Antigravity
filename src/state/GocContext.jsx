@@ -560,6 +560,13 @@ export function GocProvider({ children }) {
   });
   const s = state;
   const prefsRef = useRef({ lang: state.lang, theme: state.theme });
+  // BUG 1 (2026-09-22 fourteenth follow-up) — see markThreadMessagesRead()'s
+  // own comment: the timestamp of the most recent successful
+  // messages.read_at write, read by loadInboxThreads() and the dock
+  // badge's own poll to discard a response whose REQUEST started before
+  // this write committed, instead of letting an out-of-order stale
+  // response silently revert a just-read thread back to unread.
+  const lastReadWriteAtRef = useRef(0);
   // BUG 1 fix (2026-09-22 follow-up) — real bug, confirmed by reading:
   // loadHomeStories() used to list `s.storyViewedIds` as a useCallback
   // dependency (to merge it into the freshly-fetched viewedSet), which
@@ -997,6 +1004,10 @@ export function GocProvider({ children }) {
   const loadInboxThreads = useCallback(async () => {
     const uid = s.user?.id;
     if (!uid) return set({ inboxThreads: [] });
+    // BUG 1 (2026-09-22 fourteenth follow-up) — stamped BEFORE any query
+    // below fires, so it reflects when this REQUEST started, not when it
+    // resolves — see lastReadWriteAtRef's own comment.
+    const requestStartedAt = Date.now();
 
     const [{ data: asGuest }, { data: myOrgs }] = await Promise.all([
       supabase.from('threads').select('id, event_id, guest_id, organizer_id').eq('guest_id', uid),
@@ -1078,6 +1089,14 @@ export function GocProvider({ children }) {
       };
     }).sort((a, b) => new Date(b.lastAt || 0) - new Date(a.lastAt || 0));
 
+    // BUG 1 (2026-09-22 fourteenth follow-up) — this request's own messages
+    // query (above) could have started before a mark-read committed and
+    // resolved after, in which case `unreadThreadIds` here reflects the
+    // stale, pre-write state; applying it would revert that thread's row
+    // back to unread. Discarding it here is safe: `markThreadMessagesRead()`
+    // already patched `inboxThreads` directly, and any genuinely NEW
+    // incoming message triggers its own later poll/open that isn't stale.
+    if (requestStartedAt < lastReadWriteAtRef.current) return;
     set({ inboxThreads: rows, inboxThreadPrefs: prefsByThread });
   }, [set, s.user?.id]);
 
@@ -1153,6 +1172,10 @@ export function GocProvider({ children }) {
     if (!uid) { set({ unreadMessages: 0 }); return; }
     let active = true;
     const poll = async () => {
+      // BUG 1 (2026-09-22 fourteenth follow-up) — stamped before any query
+      // below fires — see lastReadWriteAtRef's own comment, and
+      // loadInboxThreads()'s identical guard just above.
+      const requestStartedAt = Date.now();
       const [{ data: asGuest }, { data: myOrgs }] = await Promise.all([
         supabase.from('threads').select('id').eq('guest_id', uid),
         supabase.from('organizers').select('id').or(`owner_id.eq.${uid},user_id.eq.${uid}`),
@@ -1164,7 +1187,7 @@ export function GocProvider({ children }) {
         asHost = data || [];
       }
       const threadIds = [...new Set([...(asGuest || []), ...asHost].map(t => t.id))];
-      if (!active) return;
+      if (!active || requestStartedAt < lastReadWriteAtRef.current) return;
       if (!threadIds.length) { set({ unreadMessages: 0 }); return; }
       const { data: unreadRows } = await supabase
         .from('messages')
@@ -1172,7 +1195,9 @@ export function GocProvider({ children }) {
         .in('thread_id', threadIds)
         .is('read_at', null)
         .neq('sender_id', uid);
-      if (active) set({ unreadMessages: new Set((unreadRows || []).map(r => r.thread_id)).size });
+      if (active && requestStartedAt >= lastReadWriteAtRef.current) {
+        set({ unreadMessages: new Set((unreadRows || []).map(r => r.thread_id)).size });
+      }
     };
     poll();
     const interval = setInterval(poll, 5000);
@@ -3624,6 +3649,22 @@ export function GocProvider({ children }) {
     if (!uid) return;
     const { error } = await supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('thread_id', threadId).is('read_at', null).neq('sender_id', uid);
     if (error) return;
+    // BUG 1 (2026-09-22 fourteenth follow-up) — real bug, confirmed by
+    // reading: this write succeeds and the optimistic patch below runs
+    // fine, but `loadInboxThreads()`/the dock badge's own 5s poll
+    // (lastReadWriteAtRef's other call sites) can have a REQUEST already
+    // in flight from BEFORE this UPDATE committed — its response arrives
+    // AFTER this function's own optimistic patch and overwrites `unread:
+    // false`/the decremented count with the stale, pre-write snapshot it
+    // captured earlier. Not RLS (messages_update_participant, migration
+    // 064, already correctly allows this), not a wrong predicate — a
+    // genuine out-of-order response race. `lastReadWriteAtRef` records
+    // when the most recent successful mark-read committed; both
+    // `loadInboxThreads()` and the dock poll below stamp their own
+    // request's start time and discard their result if it predates this,
+    // letting the NEXT (guaranteed-later) fetch supply the authoritative
+    // value instead of overwriting a newer truth with an older one.
+    lastReadWriteAtRef.current = Date.now();
     // Task 6 (2026-09-22 twelfth follow-up) — one shared unread definition
     // (read_at IS NULL AND sender_id != me) already backs loadInboxThreads'
     // own `unread` flag and the dock badge's 5s poll (`unreadMessages`),

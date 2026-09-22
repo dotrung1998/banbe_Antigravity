@@ -924,6 +924,9 @@ extension AppState {
     /// uncapped display for this badge (see its own comment).
     func refreshUnreadMessageCount() async {
         guard let uid = userID else { unreadMessages = 0; return }
+        // BUG 1 (2026-09-22 fourteenth follow-up) — see AppState.swift's own
+        // comment on lastReadWriteAt.
+        let requestStartedAt = Date()
         do {
             let asGuest: [UUIDRow] = try await SupabaseService.client
                 .from("threads").select("id")
@@ -953,6 +956,7 @@ extension AppState {
                 .is("read_at", value: nil)
                 .neq("sender_id", value: uid.uuidString)
                 .execute().value
+            guard requestStartedAt >= lastReadWriteAt else { return }
             unreadMessages = Set(unreadRows.map(\.threadId)).count
         } catch {
             print("refreshUnreadMessageCount failed:", error)
@@ -1956,6 +1960,9 @@ extension AppState {
             print("Failed to mark thread read:", error)
             return
         }
+        // BUG 1 (2026-09-22 fourteenth follow-up) — see AppState.swift's own
+        // comment on lastReadWriteAt.
+        lastReadWriteAt = Date()
         // Task 6 (2026-09-22 twelfth follow-up) — mirrors web's same fix in
         // GocContext.jsx's markThreadMessagesRead: `chatBackAction()` returns
         // straight to `.inbox` without re-calling `loadInboxThreads()`, so
@@ -2012,6 +2019,9 @@ extension AppState {
     /// threads belonging to an organizer this account owns.
     func loadInboxThreads() async {
         guard let uid = userID else { inboxThreads = []; return }
+        // BUG 1 (2026-09-22 fourteenth follow-up) — see AppState.swift's own
+        // comment on lastReadWriteAt.
+        let requestStartedAt = Date()
         do {
             let asGuest: [ThreadRow] = try await SupabaseService.client
                 .from("threads").select("id, event_id, guest_id, organizer_id")
@@ -2090,6 +2100,7 @@ extension AppState {
                 }
             }
 
+            guard requestStartedAt >= lastReadWriteAt else { return }
             inboxThreads = threads.compactMap { thread -> InboxThread? in
                 guard let event = EventCatalog.find(thread.eventId) else { return nil }
                 let last = lastByThread[thread.id]
