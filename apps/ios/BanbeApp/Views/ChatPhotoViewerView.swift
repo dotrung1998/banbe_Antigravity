@@ -57,9 +57,6 @@ struct ChatPhotoViewerView: View {
                 // dedicated sibling layer, never an ancestor of the toolbar.
                 stage
 
-                topBar
-                bottomComposer
-
                 if let actionMessage {
                     Text(actionMessage)
                         .font(.system(size: 12, weight: .semibold))
@@ -72,6 +69,34 @@ struct ChatPhotoViewerView: View {
 
                 if menuOpen { moreMenu }
             }
+            // BUG 2 fix (2026-09-22 thirteenth follow-up) — `topBar`/
+            // `bottomComposer` used to be plain ZStack siblings of `stage`
+            // with `.frame(maxWidth: .infinity, maxHeight: .infinity,
+            // alignment: .top/.bottom)` applied BEFORE their own
+            // `.allowsHitTesting(!chromeHidden)`. In SwiftUI,
+            // `.allowsHitTesting` applied AFTER an expanding `.frame()`
+            // makes the view's ENTIRE expanded frame hit-testable, not just
+            // its visibly-drawn content — `bottomComposer`'s frame was
+            // literally the whole screen (`maxWidth: .infinity, maxHeight:
+            // .infinity`), so it silently sat ON TOP of `stage` (and
+            // `topBar`, listed before it) and swallowed every touch
+            // anywhere on screen: no drag-to-dismiss, no tap-to-toggle-
+            // chrome, no toolbar button taps. This was invisible before
+            // 82a469c because the drag gesture used to live on the ROOT
+            // ZStack — an ANCESTOR of everything, which wins gesture
+            // arbitration regardless of sibling hit-testing quirks below
+            // it. Once the gesture moved down to `stage` (a sibling, no
+            // ancestor priority), this pre-existing full-screen invisible
+            // catcher became the actual regression. Fixed by using
+            // `.overlay(alignment:)` for both instead of a shared ZStack +
+            // an expanding `.frame()` — `.overlay` positions its content at
+            // its own NATURAL size (topBar's real row height, bottomComposer's
+            // real composer-bar height), never inflating either one's
+            // hit-testable region beyond what's actually drawn, so every
+            // touch elsewhere on screen reaches `stage` underneath exactly
+            // as intended.
+            .overlay(alignment: .top) { topBar }
+            .overlay(alignment: .bottom) { bottomComposer }
             .sheet(isPresented: Binding(get: { item.forwardOpen }, set: { if !$0 { app.closeChatForward() } })) {
                 forwardSheet
             }
@@ -183,7 +208,6 @@ struct ChatPhotoViewerView: View {
             .padding(.trailing, -10)
         }
         .padding(.horizontal, 18).padding(.top, 56)
-        .frame(maxHeight: .infinity, alignment: .top)
         .opacity(chromeHidden ? 0 : Double(1 - dragProgress))
         .allowsHitTesting(!chromeHidden)
         .animation(.easeInOut(duration: 0.2), value: chromeHidden)
@@ -284,7 +308,7 @@ struct ChatPhotoViewerView: View {
             }
         }
         .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .frame(maxWidth: .infinity)
         .background(
             LinearGradient(colors: [.black.opacity(0), .black.opacity(0.75), .black.opacity(0.85)], startPoint: .top, endPoint: .bottom)
                 .frame(maxHeight: .infinity, alignment: .bottom)

@@ -251,8 +251,25 @@ struct RootView: View {
                 // silently burned through story time the user only ever
                 // glanced at); the zIndex/hit-testing below are the
                 // separate VISUAL concern of when it's actually revealed.
+                // BUG 1 fix (2026-09-22 thirteenth follow-up) — this used to
+                // read `storyUnderlaysEvent && !isPeeking`, flipping zIndex
+                // to 27 (ABOVE Event Detail) the instant a drag merely
+                // started (`isDragTracking` goes true almost immediately,
+                // `minimumDistance: 4`). That put StoryViewer on TOP of
+                // Event Detail at full opacity/position from the first
+                // pixel of travel — a snap, not a reveal — instead of
+                // letting Event Detail's own already-continuous
+                // `dragTranslation` offset (below, in `body`) progressively
+                // uncover it. StoryViewer must stay BEHIND (zIndex -1, same
+                // relative order as the generic `backTargetScreen` peek)
+                // for the WHOLE time `storyUnderlaysEvent` is true —
+                // through the drag AND through `isCommittingBack`'s slide-
+                // off — only rising to zIndex 27 once `app.screen` actually
+                // leaves `.event` (which naturally flips `storyUnderlaysEvent`
+                // false once `goBack()` fires in the `isCommittingBack`
+                // handler below).
                 StoryViewerView(isSuspended: storyUnderlaysEvent)
-                    .zIndex(storyUnderlaysEvent && !isPeeking ? -1 : 27)
+                    .zIndex(storyUnderlaysEvent ? -1 : 27)
                     .allowsHitTesting(!storyUnderlaysEvent)
             }
             if app.loading { loadingOverlay }
