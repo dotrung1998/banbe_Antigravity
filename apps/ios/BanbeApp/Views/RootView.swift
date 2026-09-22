@@ -537,7 +537,10 @@ struct RootView: View {
         case .mapExplore: MapExploreView(restored: app.mapExploreState, isPreview: isPreview)
         case .home: HomeView()
         case .profile: AccountView()
-        case .inbox: InboxView()
+        // TASK 2 (2026-09-22 twenty-first follow-up) — see InboxView's own
+        // `isPreview` doc comment (MessagingViews.swift): forces the peeked
+        // copy to the active thread list, never a duplicated Archived view.
+        case .inbox: InboxView(isPreview: isPreview)
         case .event: EventDetailView()
         case .organizer: OrganizerView()
         case .reserve: ReserveView()

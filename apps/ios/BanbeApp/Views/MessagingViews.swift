@@ -14,6 +14,21 @@ import UIKit
 /// gesture rather than reimplementing one by hand).
 struct InboxView: View {
     @EnvironmentObject var app: AppState
+    // TASK 2 (2026-09-22 twenty-first follow-up) — Archived isn't its own
+    // `Screen` case, it's `app.inboxView` (.active/.archived) toggled
+    // WITHIN this same `.inbox` screen (see AppState.swift's
+    // `InboxViewMode`). RootView's interactive edge-swipe peek renders
+    // `screenView(for: app.backTargetScreen, isPreview: true)` — for
+    // Archived, `backTargetScreen` correctly resolves to `.inbox`
+    // (AppState.swift ~line 1678), but that peek is a FRESH `InboxView()`
+    // reading the SAME live `app.inboxView`, which is still `.archived`
+    // (the peek is non-interactive and never changes it) — so the "back
+    // target" preview showed Archived again, duplicated, instead of the
+    // actual destination (active Inbox). `isPreview` forces the preview
+    // copy specifically to `.active`, since swiping back FROM Archived (or
+    // from anywhere else whose back target is Inbox) always means "the
+    // active thread list", never Archived itself.
+    var isPreview: Bool = false
     @State private var searchOpen = false
     @State private var query = ""
     @State private var settingsOpen = false
@@ -27,10 +42,12 @@ struct InboxView: View {
     // reveal, instead of two different speeds for two different controls.
     private static let sheetAnimation = Animation.spring(response: 0.6, dampingFraction: 0.85)
 
+    private var effectiveInboxView: InboxViewMode { isPreview ? .active : app.inboxView }
+
     private var visibleThreads: [InboxThread] {
         let byView = app.inboxThreads.filter { t in
             let archived = app.inboxThreadPrefs[t.id]?.archived ?? false
-            return app.inboxView == .archived ? archived : !archived
+            return effectiveInboxView == .archived ? archived : !archived
         }
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return byView }
@@ -42,14 +59,14 @@ struct InboxView: View {
             app.palette.paper.ignoresSafeArea()
             VStack(alignment: .leading, spacing: 0) {
                 header
-                if app.inboxView == .archived {
+                if effectiveInboxView == .archived {
                     Button("‹ " + app.T("Quay lại Tin nhắn", "Back to Messages")) { app.inboxView = .active }
                         .font(.system(size: 12.5)).buttonStyle(.plain)
                         .foregroundStyle(app.palette.ink.opacity(0.7))
                         .padding(.horizontal, 24).padding(.bottom, 6)
                 }
                 if visibleThreads.isEmpty {
-                    Text(app.inboxView == .archived
+                    Text(effectiveInboxView == .archived
                          ? app.T("Chưa có cuộc trò chuyện nào được lưu trữ.", "No archived conversations yet.")
                          : app.T("Chưa có cuộc trò chuyện nào. Nhắn cho người tổ chức từ trang sự kiện.", "No conversations yet. Message an organizer from an event page."))
                         .font(.system(size: 14))
@@ -134,7 +151,7 @@ struct InboxView: View {
                     .focused($searchFieldFocused)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             } else {
-                Text(app.inboxView == .archived ? app.T("Đã lưu trữ", "Archived") : app.T("Tin nhắn", "Messages"))
+                Text(effectiveInboxView == .archived ? app.T("Đã lưu trữ", "Archived") : app.T("Tin nhắn", "Messages"))
                     .font(BanbeTheme.display(27))
             }
             Spacer()
@@ -148,7 +165,7 @@ struct InboxView: View {
                     withAnimation(Self.sheetAnimation) { searchOpen.toggle() }
                     searchFieldFocused = searchOpen
                 }
-                if app.inboxView == .active {
+                if effectiveInboxView == .active {
                     iconButton("gearshape", label: app.T("Cài đặt", "Settings")) { openSettings() }
                 }
             }

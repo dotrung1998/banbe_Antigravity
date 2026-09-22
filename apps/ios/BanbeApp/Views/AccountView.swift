@@ -75,10 +75,15 @@ struct AccountView: View {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text(app.displayName).font(BanbeTheme.display(22)).lineLimit(1)
                             if app.isSignedIn {
-                                Button(app.T("Đổi tên", "Rename")) { app.goEditName() }
-                                    .font(.system(size: 11.5))
-                                    .foregroundStyle(app.palette.ink.opacity(0.65))
-                                    .buttonStyle(.plain)
+                                Button {
+                                    app.goEditName()
+                                } label: {
+                                    Label(app.T("Đổi tên", "Rename"), systemImage: "pencil")
+                                        .labelStyle(.titleAndIcon)
+                                }
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(app.palette.ink.opacity(0.65))
+                                .buttonStyle(.plain)
                             }
                         }
                         Text(subtitle).font(.system(size: 11)).kerning(0.6)
@@ -111,35 +116,41 @@ struct AccountView: View {
                 .padding(.top, 22)
 
                 HStack(spacing: 10) {
-                    counter(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going")) { app.goGoingList() }
-                    counter(value: app.favorites.count, label: app.T("Đã lưu", "Saved")) { app.goSavedList() }
+                    counter(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going"), icon: "calendar.badge.checkmark") { app.goGoingList() }
+                    counter(value: app.favorites.count, label: app.T("Đã lưu", "Saved"), icon: "bookmark") { app.goSavedList() }
                 }
                 .padding(.top, 22)
 
+                // TASK 3A (2026-09-22 twenty-first follow-up) — the
+                // "Tin nhắn"/Messages shortcut row removed entirely per this
+                // ticket's own ask; Inbox stays reachable exactly as before
+                // via the bottom dock (BottomTabBar.swift), untouched.
                 VStack(spacing: 0) {
-                    row(app.T("Tin nhắn", "Messages"), trailing: "›") { app.goInbox() }
+                    row(app.T("Sự kiện đã hoàn thành", "Completed events"), icon: "calendar.badge.checkmark", trailing: "\(app.completedEventsCount) ›") { app.goCompletedList() }
                     Divider().overlay(app.palette.rule)
-                    row(app.T("Sự kiện đã hoàn thành", "Completed events"), trailing: "\(app.completedEventsCount) ›") { app.goCompletedList() }
-                    Divider().overlay(app.palette.rule)
-                    row(app.T("Ngôn ngữ & hiển thị", "Language & appearance"),
-                        identifier: "account.preferences",
+                    // TASK 3B — broader, more accurate label: this screen
+                    // holds more than language/theme (see
+                    // PreferencesView.swift). Destination (`openPreferences`)
+                    // and the right-side summary are unchanged.
+                    row(app.T("Tùy chỉnh ứng dụng", "App preferences"),
+                        identifier: "account.preferences", icon: "slider.horizontal.3",
                         trailing: (app.lang == "en" ? "English" : "Tiếng Việt") + " ▪︎ "
                             + (app.theme == "dark" ? app.T("Tối", "Dark") : app.T("Sáng", "Light"))) {
                         app.openPreferences()
                     }
                     Divider().overlay(app.palette.rule)
                     row(app.T("Hoá đơn", "Invoices"),
-                        identifier: "account.invoices", trailing: "›") {
+                        identifier: "account.invoices", icon: "doc.text", trailing: "›") {
                         app.openDocuments(kind: "invoice", role: "guest")
                     }
                     Divider().overlay(app.palette.rule)
                     row(app.T("Biên nhận", "Receipts"),
-                        identifier: "account.receipts", trailing: "›") {
+                        identifier: "account.receipts", icon: "receipt", trailing: "›") {
                         app.openDocuments(kind: "receipt", role: "guest")
                     }
                     Divider().overlay(app.palette.rule)
                     row(app.T("Bảo mật", "Security"),
-                        identifier: "account.security",
+                        identifier: "account.security", icon: "lock.shield",
                         trailing: "›") {
                         app.openSecurity()
                     }
@@ -153,6 +164,10 @@ struct AccountView: View {
 
                 Button { app.toggleOrganizerMode() } label: {
                     HStack(spacing: 12) {
+                        Image(systemName: "person.2.badge.gearshape")
+                            .font(.system(size: 16, weight: .medium))
+                            .frame(width: 22, height: 22)
+                            .opacity(0.72)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(app.T("Chế độ tổ chức", "Organizer mode")).font(.system(size: 14))
                             Text(app.T("Bật để tạo và quản lý sự kiện. Tắt lúc nào cũng được.",
@@ -187,18 +202,18 @@ struct AccountView: View {
                 if app.canHost {
                     VStack(spacing: 0) {
                         row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"),
-                            identifier: "host.verifications", trailing: "›") { app.openVerifications() }
+                            identifier: "host.verifications", icon: "checklist", trailing: "›") { app.openVerifications() }
                         Divider().overlay(app.palette.rule)
                         row(app.T("Nhận thanh toán", "Getting paid"),
-                            identifier: "host.payout", trailing: "›") { app.openPayout() }
+                            identifier: "host.payout", icon: "banknote", trailing: "›") { app.openPayout() }
                         Divider().overlay(app.palette.rule)
                         row(app.T("Hoá đơn đã phát hành", "Invoices issued"),
-                            identifier: "host.invoices", trailing: "›") {
+                            identifier: "host.invoices", icon: "doc.text", trailing: "›") {
                             app.openDocuments(kind: "invoice", role: "host")
                         }
                         Divider().overlay(app.palette.rule)
                         row(app.T("Biên nhận đã phát hành", "Receipts issued"),
-                            identifier: "host.receipts", trailing: "›") {
+                            identifier: "host.receipts", icon: "receipt", trailing: "›") {
                             app.openDocuments(kind: "receipt", role: "host")
                         }
                     }
@@ -217,7 +232,7 @@ struct AccountView: View {
                         .padding(.top, 22)
                     VStack(spacing: 0) {
                         row(app.T("Bảng quản trị", "Admin Panel"),
-                            identifier: "admin.panel", trailing: "›") { app.openAdminDashboard() }
+                            identifier: "admin.panel", icon: "exclamationmark.shield", trailing: "›") { app.openAdminDashboard() }
                     }
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .padding(.top, 10)
@@ -226,6 +241,10 @@ struct AccountView: View {
                 if app.canHost {
                     Button { app.switchToHost(back: .profile) } label: {
                         HStack {
+                            Image(systemName: "person.2")
+                                .font(.system(size: 16, weight: .medium))
+                                .frame(width: 22, height: 22)
+                                .opacity(0.72)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(app.orgRegName.isEmpty ? "Bếp Nhỏ" : app.orgRegName)
                                     .font(BanbeTheme.display(17))
@@ -263,10 +282,16 @@ struct AccountView: View {
                     .padding(.top, 10)
                 }
 
-                Button(app.isSignedIn
-                       ? app.T("Đăng xuất", "Sign out")
-                       : app.T("Đăng nhập để lưu sự kiện và nhắn tin", "Sign in to save events and message hosts")) {
+                Button {
                     if app.isSignedIn { Task { await app.signOut() } } else { app.goLogin() }
+                } label: {
+                    Label(
+                        app.isSignedIn
+                            ? app.T("Đăng xuất", "Sign out")
+                            : app.T("Đăng nhập để lưu sự kiện và nhắn tin", "Sign in to save events and message hosts"),
+                        systemImage: app.isSignedIn ? "rectangle.portrait.and.arrow.right" : "arrow.right.to.line"
+                    )
+                    .labelStyle(.titleAndIcon)
                 }
                 .font(.system(size: 13))
                 .foregroundStyle(app.palette.ink)
@@ -358,9 +383,17 @@ struct AccountView: View {
         }
     }
 
-    private func counter(value: Int, label: String, action: @escaping () -> Void) -> some View {
+    // TASK 3C (2026-09-22 twenty-first follow-up) — leading icon on every
+    // Account action row/card, one coherent SF Symbols language (16pt
+    // medium weight, 22x22 container, 0.72 opacity — matches the ink/rule/
+    // paper tokens already in use here, no new colors).
+    private func counter(value: Int, label: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .medium))
+                    .frame(width: 20, height: 20)
+                    .opacity(0.72)
                 Text("\(value)").font(BanbeTheme.display(24))
                 Text(label).font(.system(size: 11))
             }
@@ -372,10 +405,14 @@ struct AccountView: View {
         .buttonStyle(.plain)
     }
 
-    private func row(_ title: String, identifier: String? = nil, trailing: String,
+    private func row(_ title: String, identifier: String? = nil, icon: String, trailing: String,
                      action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 22, height: 22)
+                    .opacity(0.72)
                 Text(title).font(.system(size: 14))
                 Spacer()
                 Text(trailing).font(.system(size: 13))

@@ -215,6 +215,14 @@ final class AppState: ObservableObject {
     // ScreenScaffold's own scroll-offset tracking via noteScaffoldScroll(),
     // and reset to false on every screen change (see RootView).
     @Published var bottomBarCollapsed: Bool = false
+    // TASK 1 (2026-09-22 twenty-first follow-up) — the single shared signal
+    // `BottomTabBarOverlay.applyVisibility()` (BottomTabBarOverlay.swift)
+    // drives for EVERY dock hide/show case (screen change, StoryViewer,
+    // modal action sheets, etc. — all already funnel through that one
+    // function). `BottomTabBarOverlayRoot` animates its offset/opacity off
+    // this single bool via `.animation(_:value:)`, instead of each call
+    // site owning its own transition flag.
+    @Published var dockVisible: Bool = true
     private var lastScaffoldScrollOffset: CGFloat = 0
     @Published var eventKey: String = "bepnho"
     @Published var eventBackScreen: Screen = .home

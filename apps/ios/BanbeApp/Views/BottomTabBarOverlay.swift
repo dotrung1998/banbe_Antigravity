@@ -138,6 +138,28 @@ final class BottomTabBarOverlay {
     // one flag between two independent callers would let either one's
     // "false" silently clobber the other's still-active "true".
     private var modalActionSheetPresented = false
+    // TASK 1 (2026-09-22 twenty-first follow-up) — this window's own
+    // `isHidden` used to be set synchronously, in lockstep with these
+    // flags, which is the actual root cause of the abrupt appear/disappear
+    // this ticket reports: `applyVisibility()` flipped `isHidden` the same
+    // frame the flags changed, with no transition at all — content either
+    // was or wasn't there, nothing animated. `lastShown`/`visibilityToken`
+    // let `applyVisibility()` instead animate `appState.dockVisible` first
+    // (SwiftUI's own `.animation(_:value:)` on `BottomTabBarOverlayRoot`
+    // handles the actual offset/opacity spring) and only touch the window's
+    // `isHidden`/`isUserInteractionEnabled` before/after that animation, per
+    // this ticket's own requirement 5. The token guards against a rapid
+    // show/hide/show flicker leaving a stale delayed callback fighting a
+    // newer one.
+    private weak var appState: AppState?
+    private var lastShown = true
+    private var visibilityToken = 0
+    private static let transitionDuration: TimeInterval = 0.32
+    // `fileprivate`, not `private` — `BottomTabBarOverlayRoot` (this same
+    // file, a different type) reads this too, so both the window-hide
+    // timing above and the content's own `.animation(_:value:)` use the
+    // exact same spring, not two independently-tuned speeds.
+    fileprivate static let transitionAnimation = Animation.spring(response: 0.38, dampingFraction: 0.82)
 
     // Tracks BottomTabBar's own layout constants directly (barWidth/
     // barHeight/bottomOffset there) rather than an independently-chosen,
@@ -153,6 +175,7 @@ final class BottomTabBarOverlay {
     /// shared `AppState` are both available. Idempotent — RootView can
     /// call this on every appearance without creating duplicate windows.
     func attach(to scene: UIWindowScene, appState: AppState) {
+        self.appState = appState
         guard window == nil else { return }
         let hosting = UIHostingController(rootView: BottomTabBarOverlayRoot().environmentObject(appState))
         hosting.view.backgroundColor = .clear
@@ -217,7 +240,38 @@ final class BottomTabBarOverlay {
     }
 
     private func applyVisibility() {
-        window?.isHidden = forcedHidden || storyViewerOpen || modalActionSheetPresented || !BottomTabBar.visibleScreens.contains(currentScreen)
+        let shouldShow = !(forcedHidden || storyViewerOpen || modalActionSheetPresented)
+            && BottomTabBar.visibleScreens.contains(currentScreen)
+        guard shouldShow != lastShown else { return }
+        lastShown = shouldShow
+        visibilityToken += 1
+        let token = visibilityToken
+
+        if shouldShow {
+            // Requirement 5 — unhide the window FIRST (content is already
+            // sitting in its off-screen/faded state from the last hide, or
+            // the fresh `dockVisible = true` default on first launch), then
+            // animate into place.
+            window?.isHidden = false
+            window?.isUserInteractionEnabled = false
+            withAnimation(Self.transitionAnimation) { appState?.dockVisible = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.transitionDuration) { [weak self] in
+                guard let self, self.visibilityToken == token else { return }
+                self.window?.isUserInteractionEnabled = true
+            }
+        } else {
+            // Requirement 5 — animate the content out first; only flip
+            // `isHidden` once that animation has actually finished, not
+            // before. `isUserInteractionEnabled = false` immediately so the
+            // exiting/already-hidden dock never swallows a touch meant for
+            // whatever's underneath while it's still fading out.
+            window?.isUserInteractionEnabled = false
+            withAnimation(Self.transitionAnimation) { appState?.dockVisible = false }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.transitionDuration) { [weak self] in
+                guard let self, self.visibilityToken == token else { return }
+                self.window?.isHidden = true
+            }
+        }
     }
 }
 
@@ -231,10 +285,20 @@ final class BottomTabBarOverlay {
 private struct BottomTabBarOverlayRoot: View {
     @EnvironmentObject var app: AppState
 
+    // TASK 1 (2026-09-22 twenty-first follow-up) — always mounted now (was
+    // a plain `if visibleScreens.contains(app.screen) { ... }`, which
+    // inserted/removed the bar with no transition at all — the actual root
+    // cause of the abrupt reappearance this ticket reports). The window
+    // itself is hidden/shown by `BottomTabBarOverlay.applyVisibility()`
+    // AFTER this offset/opacity animation completes (requirement 5), so
+    // keeping this content always present is what gives that animation
+    // something to animate between.
     var body: some View {
-        if BottomTabBar.visibleScreens.contains(app.screen) {
-            BottomTabBar()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        }
+        BottomTabBar()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .offset(y: app.dockVisible ? 0 : 40)
+            .opacity(app.dockVisible ? 1 : 0)
+            .allowsHitTesting(app.dockVisible)
+            .animation(BottomTabBarOverlay.transitionAnimation, value: app.dockVisible)
     }
 }
