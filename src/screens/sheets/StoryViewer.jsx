@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../../state/GocContext.jsx';
-import { paper, ink, display } from '../../theme.js';
+import { paper, ink, display, cardGlass } from '../../theme.js';
 import { bg } from '../../data/events.js';
 
 // Task 3.4 (07-notifications.md) — the story progression viewer. A
@@ -22,6 +22,22 @@ const DRAG_THRESHOLD = 90;
 const DRAG_REVEAL_DISTANCE = 220;
 const HOLD_MS = 180; // a press held longer than this pauses instead of counting as a tap
 const HSWIPE_THRESHOLD = 60; // px of horizontal travel that commits to prev/next
+const HSWIPE_VELOCITY = 0.6; // px/ms — a fast flick commits even under the distance threshold
+const HSWIPE_SETTLE_MS = 190; // banbe's own "gallery drift" settle duration, not Instagram's
+
+// FEATURE 3 (2026-09-22 follow-up) — a banbe-specific "gallery drift"
+// transition: the current story follows the finger, a softly rounded,
+// glass-token "companion" card drifts in alongside it from whichever edge
+// the swipe is headed toward, using only transform/opacity/filter (GPU-
+// friendly, no React state per pointer-move pixel — the same imperative-
+// ref convention Task 3's progress bar already established). Deliberately
+// NOT Instagram's extreme 3D side-card/header/icon look — a single flat
+// glass panel with depth from blur+shadow, not a rotated 3D card stack.
+// Read once at module load (a live prefers-reduced-motion change mid-
+// session is an edge case not worth a listener for a story viewer).
+const REDUCED_MOTION = typeof window !== 'undefined' && window.matchMedia
+  ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  : false;
 
 export default function StoryViewer() {
   const { state: s, T, closeStoryViewer, storyNext, storyPrev, markStoryViewedAt } = useGoc();
@@ -35,6 +51,9 @@ export default function StoryViewer() {
   const photoRef = useRef(null);
   const dimRef = useRef(null);
   const chromeRef = useRef(null);
+  const stageRef = useRef(null);
+  // The incoming neighbor's soft glass "peek" card (gallery-drift, Feature 3).
+  const companionRef = useRef(null);
 
   // ---- Task 3: smooth, elapsed-time-driven progress (not a React-state
   // countdown) — a single rAF loop imperatively sets the fill bar's
@@ -77,9 +96,45 @@ export default function StoryViewer() {
     rafRef.current = requestAnimationFrame(tick);
   };
 
+  // Gallery-drift companion transform (Feature 3) — pure function of drag
+  // progress/direction, imperative (no React state per pointer-move pixel).
+  // Defined ABOVE the early `if (!viewer...) return null` below (unlike
+  // dismiss()/the gesture handlers, which are only ever referenced from
+  // JSX that doesn't exist on that early-return path) because the
+  // `useEffect` right below calls `resetCompanion` on every render,
+  // including ones where the component returns null before ever reaching
+  // a same-named `const` declared further down — that would be a real
+  // temporal-dead-zone crash the very first time the viewer opens.
+  const applyCompanionTransform = (dx, width) => {
+    if (!companionRef.current || REDUCED_MOTION) return;
+    const progress = Math.min(1, Math.abs(dx) / Math.max(1, width));
+    const fromRight = dx < 0; // dragging left reveals the NEXT card from the right edge
+    const edgeOffset = (1 - progress) * (width * 0.5 + 40);
+    const x = fromRight ? edgeOffset : -edgeOffset;
+    companionRef.current.style.display = 'block';
+    companionRef.current.style.transition = 'none';
+    companionRef.current.style.transform = `translateX(${x}px) scale(${0.86 + progress * 0.14})`;
+    companionRef.current.style.opacity = String(Math.min(0.92, progress * 1.15));
+  };
+  const resetCompanion = (animate) => {
+    if (!companionRef.current) return;
+    companionRef.current.style.transition = animate ? `all ${HSWIPE_SETTLE_MS}ms ${DISMISS_EASING}` : 'none';
+    companionRef.current.style.opacity = '0';
+    companionRef.current.style.transform = 'scale(0.86)';
+    if (!animate) companionRef.current.style.display = 'none';
+  };
+
   useEffect(() => {
     if (viewer) markStoryViewedAt();
     startFresh();
+    // A settled gallery-drift transition already resets photoRef's own
+    // transform back to '' before calling storyNext/storyPrev (see
+    // onStagePointerUp above); this is just the defensive reset for every
+    // OTHER way groupIndex/storyIndex can change (tap-to-advance, auto-
+    // advance on timeout, manual storyPrev/storyNext elsewhere) — a fresh
+    // story should never inherit a leftover drag transform.
+    if (photoRef.current) { photoRef.current.style.transition = 'none'; photoRef.current.style.transform = ''; }
+    resetCompanion(false);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewer?.groupIndex, viewer?.storyIndex]);
@@ -140,7 +195,18 @@ export default function StoryViewer() {
       if (chromeRef.current) { chromeRef.current.style.transition = 'none'; chromeRef.current.style.opacity = String(1 - progress); }
       g.lastDy = dy;
     } else if (g.dragging === 'horizontal') {
+      const now = performance.now();
+      g.velocity = (dx - (g.lastDx || 0)) / Math.max(1, now - (g.lastMoveAt || g.downAt));
       g.lastDx = dx;
+      g.lastMoveAt = now;
+      const width = stageRef.current?.getBoundingClientRect().width || window.innerWidth;
+      if (photoRef.current) {
+        photoRef.current.style.transition = 'none';
+        photoRef.current.style.transform = REDUCED_MOTION
+          ? `translateX(${dx}px)`
+          : `translateX(${dx}px) scale(${1 - Math.min(1, Math.abs(dx) / width) * 0.06})`;
+      }
+      applyCompanionTransform(dx, width);
     }
   };
   const onStagePointerUp = (e) => {
@@ -160,8 +226,37 @@ export default function StoryViewer() {
     }
     if (g.dragging === 'horizontal') {
       const dx = g.lastDx || 0;
-      if (Math.abs(dx) > HSWIPE_THRESHOLD) { (dx < 0 ? storyNext : storyPrev)(); return; }
-      resume(); // short of threshold — no navigation, just resume where it was
+      const width = stageRef.current?.getBoundingClientRect().width || window.innerWidth;
+      const committed = Math.abs(dx) > HSWIPE_THRESHOLD || Math.abs(g.velocity || 0) > HSWIPE_VELOCITY;
+      if (committed) {
+        // Settle: finish the drift the rest of the way out, THEN advance —
+        // storyNext/storyPrev change groupIndex/storyIndex, which remounts
+        // fresh content via the effect below; finishing the outward motion
+        // first is what makes it read as one continuous drift instead of a
+        // snap-then-jump. No progress/mark-viewed side effect happens here
+        // — that's still solely the effect keyed on groupIndex/storyIndex.
+        const goingNext = dx < 0;
+        if (photoRef.current) {
+          photoRef.current.style.transition = `transform ${HSWIPE_SETTLE_MS}ms ${DISMISS_EASING}`;
+          photoRef.current.style.transform = `translateX(${goingNext ? -width : width}px)`;
+        }
+        if (companionRef.current && !REDUCED_MOTION) {
+          companionRef.current.style.transition = `all ${HSWIPE_SETTLE_MS}ms ${DISMISS_EASING}`;
+          companionRef.current.style.transform = 'translateX(0) scale(1)';
+          companionRef.current.style.opacity = '1';
+        }
+        setTimeout(() => {
+          if (photoRef.current) { photoRef.current.style.transition = 'none'; photoRef.current.style.transform = ''; }
+          resetCompanion(false);
+          (goingNext ? storyNext : storyPrev)();
+        }, HSWIPE_SETTLE_MS);
+        return;
+      }
+      // Short of threshold/velocity — spring the current card back and
+      // fade the companion out, then resume progress where it was.
+      if (photoRef.current) { photoRef.current.style.transition = `transform ${HSWIPE_SETTLE_MS}ms ${DISMISS_EASING}`; photoRef.current.style.transform = ''; }
+      resetCompanion(true);
+      resume();
       return;
     }
     if (g.holding) {
@@ -185,12 +280,26 @@ export default function StoryViewer() {
       <div ref={dimRef} aria-hidden style={{ position: 'absolute', inset: 0, background: '#000' }} />
 
       <div
+        ref={stageRef}
         data-testid="story-viewer-stage"
         onPointerDown={onStagePointerDown}
         onPointerMove={onStagePointerMove}
         onPointerUp={onStagePointerUp}
         style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none' }}
       >
+        {/* Gallery-drift companion (Feature 3) — a soft glass panel standing
+            in for the incoming neighbor, purely transform/opacity driven,
+            hidden (display:none) whenever not mid-drag so it costs nothing
+            at rest. */}
+        <div
+          ref={companionRef}
+          aria-hidden
+          style={{
+            display: 'none', position: 'absolute', inset: '8%', borderRadius: 28,
+            ...cardGlass({}), boxShadow: '0 18px 50px rgba(0,0,0,0.45)',
+            opacity: 0, transform: 'scale(0.86)', pointerEvents: 'none',
+          }}
+        />
         <div ref={photoRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
           {isEventShare ? (
             <EventShareCard story={story} T={T} />

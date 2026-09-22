@@ -188,3 +188,12 @@ The paragraph above is now out of date for `StoryViewer.jsx`/`StoryViewerView.sw
   real simulator tap the way Tasks 2/3's iOS fixes elsewhere in this
   session's notes were. Flagging this as the next thing to verify with a
   real tap if it's still reported as broken.
+
+## 2026-09-22 update — StoryViewer's iOS view-lifecycle bug (`.onAppear` fires once) + gallery-drift transition, full details in 07-notifications.md
+
+Two things worth cross-referencing here since they're general SwiftUI-view/gesture lessons that could recur in this file's own viewers (`PhotoViewerView`/`ChatPhotoViewerView`), not because either changed this file's own code this pass:
+
+1. **A real iOS regression, worth remembering for any future `TimelineView`/state-swap viewer**: `StoryViewerView.swift`'s `.onAppear` only ever fires the FIRST time a view enters the hierarchy — swapping which story/photo is showing by mutating `@Published` state that the SAME view instance re-renders from (not a fresh `NavigationLink`/sheet presentation) does NOT re-trigger `.onAppear`. `StoryViewerView` had a bug from exactly this: only the very first story in a deck ever got its "mark viewed" side effect, because that call lived solely in `.onAppear`. Fixed by also firing it from `.onChange(of:)` on whichever state value actually changes between items (`groupIndex`/`storyIndex`). `PhotoViewerView`/`ChatPhotoViewerView` don't have an equivalent per-item side effect today, but if one is ever added (e.g. a "mark opened" call, or per-photo analytics), it needs to be wired the same way — `.onAppear` alone is NOT enough for a multi-item swap within one persistent view instance.
+2. **Gallery-drift transition (Feature 3)** — StoryViewer's horizontal swipe-between-stories now has a live drag-follow + a soft glass "companion" card peeking in from the edge (web: `cardGlass()` token; iOS: `.ultraThinMaterial`), settling via a short animated drift rather than an instant cut, respecting `prefers-reduced-motion`/`accessibilityReduceMotion`. This is StoryViewer-specific (cross-host/cross-story navigation, not photo-viewer's own single-gallery paging), so `PhotoViewer.jsx`/`PhotoViewerView.swift` and `ChatPhotoViewer.jsx`/`ChatPhotoViewerView.swift` are unchanged — noted here only as a candidate visual pattern if either of THIS file's own viewers ever grows multi-item horizontal paging.
+
+Full root cause, fix, file:line, and test results for both items: `07-notifications.md`'s "2026-09-22 ninth follow-up" entry.

@@ -807,14 +807,26 @@ final class AppState: ObservableObject {
     /// removed entirely rather than showing the catalogue's placeholder as
     /// if it meant something; with permission it's replaced by the real
     /// computed distance.
+    ///
+    /// BUG 2 fix (2026-09-22 follow-up) — real bug, confirmed by reading:
+    /// the `guard let event, let km = ... else { return input }` branch
+    /// returned the RAW, UNMODIFIED input — meaning whenever `located` was
+    /// true but a real distance wasn't actually available yet (userCoords
+    /// still nil while CoreLocation's async fix is in flight, OS-level
+    /// denial after the app's own optimistic `located = true`, or an event
+    /// with no real coordinates), the catalogue's baked-in placeholder km
+    /// number stayed on screen looking exactly like a live value. Fixed:
+    /// the stripped-segment string is now the fallback in EVERY case where
+    /// a genuine live distance can't be computed, matching the `located ==
+    /// false` branch's own "no invented number" contract instead of only
+    /// applying it when permission was never granted at all.
     func stripKm(_ input: String, event: CatalogEvent? = nil) -> String {
-        guard located == true else {
-            return input.replacingOccurrences(
-                of: " ▪︎ \\d+[.,]\\d+ km( từ bạn| away)?",
-                with: "", options: [.regularExpression], range: nil
-            )
-        }
-        guard let event, let km = haversineKm(from: userCoords, to: event) else { return input }
+        let stripped = input.replacingOccurrences(
+            of: " ▪︎ \\d+[.,]\\d+ km( từ bạn| away)?",
+            with: "", options: [.regularExpression], range: nil
+        )
+        guard located == true else { return stripped }
+        guard let event, let km = haversineKm(from: userCoords, to: event) else { return stripped }
         let formatted = String(format: "%.1f", km).replacingOccurrences(of: ".", with: ",")
         return input.replacingOccurrences(
             of: "\\d+[.,]\\d+(?= km)", with: formatted, options: [.regularExpression], range: nil

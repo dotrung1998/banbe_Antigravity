@@ -552,6 +552,24 @@ export function GocProvider({ children }) {
   });
   const s = state;
   const prefsRef = useRef({ lang: state.lang, theme: state.theme });
+  // BUG 1 fix (2026-09-22 follow-up) — real bug, confirmed by reading:
+  // loadHomeStories() used to list `s.storyViewedIds` as a useCallback
+  // dependency (to merge it into the freshly-fetched viewedSet), which
+  // means its FUNCTION IDENTITY changed on every single viewStoryTick()
+  // call. Home.jsx's `useEffect(() => loadHomeStories(), [s.user?.id,
+  // loadHomeStories])` (and Account.jsx's own copy) re-fires on every
+  // identity change — so watching a 2nd/3rd story mid-viewer re-triggered
+  // a full server refetch WHILE the viewer was still open. Two overlapping
+  // refetches can resolve out of order: an OLDER one (closed over an
+  // OLDER, smaller storyViewedIds) resolving AFTER a NEWER one silently
+  // reverted the just-recorded story back to unviewed — the ring going
+  // bright again with no visible cause, worse under real network latency
+  // than on a fast local dev server (why this slipped past web Playwright
+  // runs but showed up on a real device). Fixed by reading storyViewedIds
+  // through a ref instead of a dependency, so loadHomeStories' identity
+  // stays stable across ordinary story-viewing and Home/Account's mount
+  // effect only actually re-runs for a real user change.
+  const storyViewedIdsRef = useRef(state.storyViewedIds);
 
   // Liked photos live on this device only — see the note on photoLikes.
   useEffect(() => {
@@ -563,6 +581,9 @@ export function GocProvider({ children }) {
   useEffect(() => {
     prefsRef.current = { lang: state.lang, theme: state.theme };
   }, [state.lang, state.theme]);
+  useEffect(() => {
+    storyViewedIdsRef.current = state.storyViewedIds;
+  }, [state.storyViewedIds]);
 
   const set = useCallback((partial) => {
     setStateRaw(prev => ({ ...prev, ...(typeof partial === 'function' ? partial(prev) : partial) }));
@@ -2178,10 +2199,21 @@ export function GocProvider({ children }) {
   // the user has shared their location, pass the event in too and its
   // baked-in placeholder distance is swapped for the real, computed one as
   // soon as a fresh position is available.
+  //
+  // BUG 2 fix (2026-09-22 follow-up) — real bug, confirmed by reading: the
+  // `km == null` branch used to `return str` UNCHANGED, meaning any time
+  // `located` was true but a real distance genuinely wasn't available yet
+  // (userCoords still null while `getCurrentPosition` is in flight or timed
+  // out, or an event with no lat/lng), the catalogue's baked-in placeholder
+  // km number stayed visible looking exactly like a live value — exactly
+  // the "invented/static fallback" this ticket says must never show. The
+  // stripped string is now the fallback in every case a live distance can't
+  // be computed, not only when permission was never granted at all.
   const stripKm = useCallback((str, ev) => {
-    if (!located) return str.replace(/ ▪︎ \d+[.,]\d+ km(?: từ bạn| away)?/g, '');
+    const stripped = str.replace(/ ▪︎ \d+[.,]\d+ km(?: từ bạn| away)?/g, '');
+    if (!located) return stripped;
     const km = ev ? haversineKm(s.userCoords, ev) : null;
-    if (km == null) return str;
+    if (km == null) return stripped;
     return str.replace(/\d+[.,]\d+(?= km)/, km.toFixed(1).replace('.', ','));
   }, [located, s.userCoords]);
 
@@ -2258,7 +2290,7 @@ export function GocProvider({ children }) {
     const orgById = Object.fromEntries((orgRows || []).map(o => [o.id, o]));
 
     const { data: viewRows } = await supabase.from('story_views').select('story_id').eq('viewer_id', s.user.id).in('story_id', rows.map(r => r.id));
-    const viewedSet = new Set([...(viewRows || []).map(v => v.story_id), ...s.storyViewedIds]);
+    const viewedSet = new Set([...(viewRows || []).map(v => v.story_id), ...storyViewedIdsRef.current]);
 
     // Task 4 (2026-09-22 follow-up) — an event_share story's `media_path`
     // is deliberately empty (it renders as an event card, not a photo — see
@@ -2311,7 +2343,7 @@ export function GocProvider({ children }) {
       return aMine - bMine;
     });
     set({ homeStories: groups });
-  }, [set, s.user, s.myOrganizerIds, s.storyViewedIds]);
+  }, [set, s.user, s.myOrganizerIds]);
 
   // Records a real story_views row (idempotent — PK on story_id+viewer_id,
   // an upsert never duplicates a re-view) and updates local state
