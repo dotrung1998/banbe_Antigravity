@@ -128,6 +128,16 @@ final class BottomTabBarOverlay {
     // InboxView's screen-local sheet check can never stomp on each other's
     // intent by racing a single shared setter.
     private var storyViewerOpen = false
+    // TASK 3 (2026-09-22 seventeenth follow-up) — a SEPARATE flag from
+    // `forcedHidden`, same reasoning as `storyViewerOpen` just above: a
+    // screen-local modal action sheet (starting with NotificationsView's
+    // own "•••" menu) is routed through `AppState.modalActionSheetPresented`
+    // → RootView's own `.onChange` → `setModalActionSheetPresented(_:)`
+    // below, independent of whatever InboxView's own `setForcedHidden(_:)`
+    // calls are doing for its unrelated settings/feedback sheet — sharing
+    // one flag between two independent callers would let either one's
+    // "false" silently clobber the other's still-active "true".
+    private var modalActionSheetPresented = false
 
     // Tracks BottomTabBar's own layout constants directly (barWidth/
     // barHeight/bottomOffset there) rather than an independently-chosen,
@@ -196,8 +206,18 @@ final class BottomTabBarOverlay {
         applyVisibility()
     }
 
+    /// TASK 3 (2026-09-22 seventeenth follow-up) — called from RootView's
+    /// `.onChange(of: app.modalActionSheetPresented)`. See that flag's own
+    /// doc comment (AppState.swift) and `modalActionSheetPresented`'s own
+    /// comment just above for why this is a dedicated flag, not a reuse of
+    /// `setForcedHidden`.
+    func setModalActionSheetPresented(_ presented: Bool) {
+        modalActionSheetPresented = presented
+        applyVisibility()
+    }
+
     private func applyVisibility() {
-        window?.isHidden = forcedHidden || storyViewerOpen || !BottomTabBar.visibleScreens.contains(currentScreen)
+        window?.isHidden = forcedHidden || storyViewerOpen || modalActionSheetPresented || !BottomTabBar.visibleScreens.contains(currentScreen)
     }
 }
 

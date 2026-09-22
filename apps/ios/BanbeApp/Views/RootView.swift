@@ -494,6 +494,26 @@ struct RootView: View {
         .onChange(of: app.storyViewer) { _, viewer in
             BottomTabBarOverlay.shared.setStoryViewerOpen(viewer != nil)
         }
+        // TASK 3 (2026-09-22 seventeenth follow-up) — same "separate
+        // UIWindow, isHidden not zIndex" reasoning as `setForcedHidden`'s
+        // own doc comment: a `.sheet()`/`.confirmationDialog()` presented
+        // from a screen-local view (e.g. NotificationsView's "•••" action
+        // sheet) sits INSIDE the main window's view hierarchy, which this
+        // overlay's separate always-on-top UIWindow still renders above
+        // regardless of any SwiftUI zIndex on the sheet's own content —
+        // only actually hiding the overlay window (`isHidden = true`) stops
+        // it from covering/intercepting taps meant for the sheet. A
+        // DEDICATED overlay flag (`setModalActionSheetPresented`, not a
+        // reuse of `setForcedHidden`) — see BottomTabBarOverlay.swift's own
+        // comment on `modalActionSheetPresented` for why sharing one flag
+        // between this and InboxView's unrelated settings-sheet calls would
+        // let either caller's "false" clobber the other's still-active
+        // "true". Routed through this single `app.modalActionSheetPresented`
+        // published flag so any screen-local modal (not just Notifications')
+        // can reuse it by toggling one bool, without its own RootView wiring.
+        .onChange(of: app.modalActionSheetPresented) { _, presented in
+            BottomTabBarOverlay.shared.setModalActionSheetPresented(presented)
+        }
     }
 
     /// The SCREENS map, factored out so both the current screen and the

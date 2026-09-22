@@ -18,7 +18,7 @@ function classifyAtLoad(n, now) {
 
 export default function Notifications() {
   const {
-    state, T, trStatus, goHome, openNotification, deleteNotification,
+    state, T, trStatus, goHome, openNotification, deleteNotification, deleteNotifications,
     markNotificationRead, markNotificationUnread, muteNotificationKind,
   } = useGoc();
   const s = state;
@@ -30,6 +30,25 @@ export default function Notifications() {
   // BUG 4: the "•••" action menu, open for at most one row's notification
   // at a time.
   const [menuFor, setMenuFor] = useState(null);
+  // TASK 2 (2026-09-22 seventeenth follow-up) — selection/edit mode: a
+  // plain local Set of ids, like `expandedSections` above — nothing here
+  // needs a new query, and "Select all" must only ever apply to whatever's
+  // actually loaded/rendered (`s.notifications`), never a hidden/paginated
+  // row the user never saw (this ticket's own explicit requirement).
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const toggleSelected = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const exitSelectionMode = () => { setSelectionMode(false); setSelectedIds(new Set()); };
+  const selectAll = () => setSelectedIds(new Set(s.notifications.map(n => n.id)));
+  const deleteSelected = async () => {
+    const ids = [...selectedIds];
+    exitSelectionMode();
+    await deleteNotifications(ids);
+  };
 
   // 2026-09-18 follow-up (BUG 3): a notification's SECTION is decided once
   // — the first time this screen sees it — and frozen from then on, keyed
@@ -95,8 +114,33 @@ export default function Notifications() {
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Notifications">
       <div style={{ padding: '70px 24px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <span style={{ ...display(27) }}>{T('Thông báo', 'Notifications')}</span>
-        <span onClick={goHome} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('Xong', 'Done')}</span>
+        {/* TASK 2 (2026-09-22 seventeenth follow-up) — "Chọn"/"Select" enters
+            selection mode; in that mode this same corner becomes "Huỷ"/
+            "Cancel" instead of "Xong"/"Done", per this ticket's own "keep
+            current row tap/menu behavior in normal mode" requirement — no
+            reason to lose the way back to Home while just cancelling a
+            selection. */}
+        {selectionMode ? (
+          <span onClick={exitSelectionMode} data-testid="notifications-selection-cancel" style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('Huỷ', 'Cancel')}</span>
+        ) : (
+          <div style={{ display: 'flex', gap: 14, alignItems: 'baseline' }}>
+            {s.notifications.length > 0 && (
+              <span onClick={() => setSelectionMode(true)} data-testid="notifications-select-mode" style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('Chọn', 'Select')}</span>
+            )}
+            <span onClick={goHome} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('Xong', 'Done')}</span>
+          </div>
+        )}
       </div>
+      {selectionMode && (
+        <div style={{ padding: '0 24px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span onClick={selectAll} data-testid="notifications-select-all" style={{ fontSize: 12.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Chọn tất cả', 'Select all')}</span>
+          {selectedIds.size > 0 && (
+            <span onClick={deleteSelected} data-testid="notifications-delete-selected" style={{ fontSize: 12.5, fontWeight: 600, color: alert, cursor: 'pointer' }}>
+              {T(`Xoá (${selectedIds.size})`, `Delete (${selectedIds.size})`)}
+            </span>
+          )}
+        </div>
+      )}
       {sections.length > 0 ? (
         <div style={{ padding: '14px 24px 40px' }}>
           {sections.map(sec => {
@@ -110,8 +154,14 @@ export default function Notifications() {
                 // place, per BUG 3, never which section it's in.
                 unread={!n.read_at}
                 avatar={avatarSourceFor(n, avatarMaps, s.accountType)}
-                onClick={() => openNotification(n)}
-                onOpenMenu={() => setMenuFor(n)}
+                // TASK 2 — in selection mode, a tap toggles the checkbox
+                // instead of navigating; the "•••" menu stays disabled
+                // there too (normal-mode-only behavior, per this ticket's
+                // own requirement 1).
+                onClick={selectionMode ? () => toggleSelected(n.id) : () => openNotification(n)}
+                onOpenMenu={selectionMode ? undefined : () => setMenuFor(n)}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(n.id)}
               />
             );
             if (!sec.dayGrouped) {
@@ -257,21 +307,39 @@ function AvatarFallback() {
   );
 }
 
-function Row({ n, unread, avatar, onClick, onOpenMenu }) {
+function Row({ n, unread, avatar, onClick, onOpenMenu, selectionMode, selected }) {
   return (
     <div
+      data-testid="notification-row"
+      data-selected={selectionMode ? (selected ? 'true' : 'false') : undefined}
+      onClick={onClick}
       style={{
-        display: 'flex', gap: 10, padding: '14px 0',
+        display: 'flex', gap: 10, padding: '14px 0', cursor: onClick ? 'pointer' : 'default',
         borderBottom: '1px solid rgba(27,25,22,0.16)',
         opacity: unread ? 1 : 0.6,
       }}
     >
+      {/* TASK 2 (2026-09-22 seventeenth follow-up) — a checkbox affordance
+          in place of the avatar's usual spot while selecting, existing
+          banbe tokens only (ink/alert/rule — no new colors). */}
+      {selectionMode && (
+        <span
+          data-testid="notification-row-checkbox"
+          style={{
+            flex: 'none', width: 22, height: 22, borderRadius: '50%', alignSelf: 'center',
+            border: `1.5px solid ${selected ? alert : rule}`, background: selected ? alert : 'transparent',
+            color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700,
+          }}
+        >
+          {selected ? '✓' : ''}
+        </span>
+      )}
       {avatar.type === 'image' ? (
         <div style={bg(avatar.url, { flex: 'none', width: 40, height: 40, borderRadius: '50%' })} />
       ) : (
         <AvatarFallback />
       )}
-      <div onClick={onClick} style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1, cursor: onClick ? 'pointer' : 'default' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           {/* BUG 3: bold only while unread — reading a notification unbolds
               it in place (fontWeight only), it never moves sections. */}
@@ -283,14 +351,18 @@ function Row({ n, unread, avatar, onClick, onOpenMenu }) {
         <span style={{ fontSize: 13, lineHeight: 1.4, color: ink, opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.body}</span>
       </div>
       {/* BUG 4: "•••" opens the action menu (delete / toggle read /
-          mute this kind) instead of deleting directly. */}
-      <span
-        onClick={(e) => { e.stopPropagation(); onOpenMenu(); }}
-        data-testid="notification-menu"
-        style={{ flex: 'none', fontSize: 15, color: ink, opacity: 0.4, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
-      >
-        •••
-      </span>
+          mute this kind) instead of deleting directly. TASK 2: hidden in
+          selection mode (onOpenMenu is undefined there) — normal-mode-only
+          per this ticket's own requirement 1. */}
+      {onOpenMenu && (
+        <span
+          onClick={(e) => { e.stopPropagation(); onOpenMenu(); }}
+          data-testid="notification-menu"
+          style={{ flex: 'none', fontSize: 15, color: ink, opacity: 0.4, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
+        >
+          •••
+        </span>
+      )}
     </div>
   );
 }

@@ -716,7 +716,20 @@ extension AppState {
                     guard let docID = n.data["document_id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return true }
                     if maps.liveDocumentIds.contains(docID) { return true }
                     staleIDs.append(n.id); return false
-                case "payment_confirmed":
+                case "payment_confirmed", "hold_created", "dispute_message":
+                    // TASK 1 (2026-09-22 seventeenth follow-up) — hold_created/
+                    // dispute_message extended onto the SAME check
+                    // payment_confirmed already used: both reference
+                    // booking_id, and `maps.bookingById` already fetches
+                    // every notification's booking_id in this batch
+                    // regardless of kind (loadNotificationAvatarMaps above),
+                    // so this is free — no extra query. RLS safety: a guest
+                    // is always their own booking's recipient (bookings_select_guest,
+                    // auth.uid() = user_id); an organizer-recipient dispute_message
+                    // references a booking on their OWN event, which this
+                    // same batched query already successfully resolves for
+                    // the avatar feature today — a genuine miss means the
+                    // row is really gone, not an RLS false negative.
                     guard let bookingID = n.data["booking_id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return true }
                     if maps.bookingById[bookingID] != nil { return true }
                     staleIDs.append(n.id); return false
@@ -1078,9 +1091,19 @@ extension AppState {
             // takes the guest straight back to their own timer/QR/payment
             // screen for this exact hold, the same way "dispute_message"
             // already does for its own guest-facing case below.
+            // TASK 1 (2026-09-22 seventeenth follow-up) — same notFound-
+            // means-genuinely-gone existence check payment_confirmed/
+            // payment_document_* already do, extended here since this
+            // wasn't previously verified before navigating (requirement 6:
+            // must not silently no-op on a target that went stale between
+            // load and tap).
             if let bookingIDString = notification.data["booking_id"]?.stringValue,
                let bookingID = UUID(uuidString: bookingIDString) {
-                openPaymentDetails(bookingID, back: .notifications)
+                Task {
+                    let exists = await bookingExists(bookingID)
+                    if !exists { reportStaleNotification(notification); return }
+                    openPaymentDetails(bookingID, back: .notifications)
+                }
             }
         case "payment_awaiting_verification":
             // 01-hold-payment.md follow-up: fired by submit_payment_proof()
@@ -1113,11 +1136,17 @@ extension AppState {
             // chat panel. message_id may be absent on a row from before
             // migration 050 — DisputeChatPanel.swift falls back to
             // scrolling to the bottom instead.
+            // TASK 1 (2026-09-22 seventeenth follow-up) — same existence
+            // check as "hold_created" above; see that case's own comment.
             if let bookingIDString = notification.data["booking_id"]?.stringValue,
                let bookingID = UUID(uuidString: bookingIDString) {
                 let messageID = notification.data["message_id"]?.stringValue.flatMap(UUID.init(uuidString:))
-                chatHighlight = (bookingID: bookingID, messageID: messageID)
-                if accountType == "organizer" { openVerifications(back: .notifications) } else { openPaymentDetails(bookingID, back: .notifications) }
+                Task {
+                    let exists = await bookingExists(bookingID)
+                    if !exists { reportStaleNotification(notification); return }
+                    chatHighlight = (bookingID: bookingID, messageID: messageID)
+                    if accountType == "organizer" { openVerifications(back: .notifications) } else { openPaymentDetails(bookingID, back: .notifications) }
+                }
             }
         case "payment_document_uploaded", "payment_document_replaced":
             if let documentIDString = notification.data["document_id"]?.stringValue,
@@ -1212,6 +1241,40 @@ extension AppState {
             print("Failed to delete notification:", error)
             notifications = previous // put it back — the delete didn't actually happen
         }
+    }
+
+    /// TASK 2 (2026-09-22 seventeenth follow-up) — bulk delete for a
+    /// selection-mode "Xoá (n)" action, web parity (GocContext.jsx's
+    /// deleteNotifications). Same RLS scoping as deleteNotification() above
+    /// (notifications_delete_own, migration 050 — caller's own rows only,
+    /// not a manual filter here); bounded to exactly the ids passed in
+    /// (whatever was visibly loaded/selected on screen), never a broader
+    /// delete-everything query. Only removes notification rows — never
+    /// touches bookings/messages/events/documents/receipts.
+    func deleteNotifications(_ ids: [UUID]) async {
+        guard !ids.isEmpty else { return }
+        let idSet = Set(ids)
+        let previous = notifications
+        notifications.removeAll { idSet.contains($0.id) }
+        do {
+            try await SupabaseService.client.from("notifications")
+                .delete().in("id", values: ids.map(\.uuidString)).execute()
+        } catch {
+            print("Failed to delete notifications:", error)
+            notifications = previous // put it back — the delete didn't actually happen
+        }
+    }
+
+    /// TASK 1 (2026-09-22 seventeenth follow-up) — the tap-time existence
+    /// check "hold_created"/"dispute_message" now do before navigating, see
+    /// openNotification()'s own comments. Existence-only (no full row),
+    /// same RLS reasoning as openBookingConfirmed()'s own query.
+    private func bookingExists(_ bookingID: UUID) async -> Bool {
+        let rows: [UUIDRow]? = try? await SupabaseService.client
+            .from("bookings").select("id")
+            .eq("id", value: bookingID.uuidString)
+            .execute().value
+        return !(rows ?? []).isEmpty
     }
 
     /// 2026-09-19 follow-up (07-notifications.md): openNotification() calls

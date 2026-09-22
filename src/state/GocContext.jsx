@@ -2969,10 +2969,22 @@ export function GocProvider({ children }) {
     // nothing") or has no cheap, reliable existence check available
     // (new_message/hold_created/dispute_message's guest branch — see
     // 07-notifications.md for the specific reasoning per skipped kind).
+    // TASK 1 (2026-09-22 seventeenth follow-up) — hold_created/dispute_message
+    // extended onto the SAME check payment_confirmed already used: both
+    // reference booking_id, and `bookingById` above already fetches every
+    // notification's booking_id in this batch regardless of kind, so this
+    // is free — no extra query. RLS safety: a guest is always their own
+    // booking's recipient (bookings_select_guest, auth.uid() = user_id); an
+    // organizer-recipient dispute_message references a booking on their OWN
+    // event, which this same batched query already successfully resolves
+    // for the avatar feature today — a genuine miss means the row is really
+    // gone, not an RLS false negative.
     const staleTargetKinds = {
       payment_document_uploaded: 'document_id',
       payment_document_replaced: 'document_id',
       payment_confirmed: 'booking_id',
+      hold_created: 'booking_id',
+      dispute_message: 'booking_id',
     };
     const staleIds = [];
     const liveRows = rows.filter(n => {
@@ -3060,6 +3072,29 @@ export function GocProvider({ children }) {
     if (error) {
       console.warn('Failed to delete notification:', error);
       set({ notifications: prevNotifications }); // put it back — the delete didn't actually happen
+    }
+  }, [set, s.notifications]);
+  // TASK 2 (2026-09-22 seventeenth follow-up) — bulk delete for
+  // Notifications' new selection mode. Same RLS-scoped
+  // `.delete().in('id', ids)` pattern as deleteNotification() above
+  // (notifications_delete_own already scopes DELETE to the caller's own
+  // rows — not a manual filter here); bounded to exactly the ids the
+  // caller passed (whatever was visibly loaded/selected on screen), never
+  // a broader delete-everything query. Only removes notification rows —
+  // never bookings/messages/events/documents/receipts.
+  const deleteNotifications = useCallback(async (ids) => {
+    if (!ids?.length) return;
+    const idSet = new Set(ids);
+    const prevNotifications = s.notifications;
+    const removedUnreadCount = prevNotifications.filter(n => idSet.has(n.id) && !n.read_at).length;
+    set(prev => ({
+      notifications: prev.notifications.filter(n => !idSet.has(n.id)),
+      unreadNotifications: Math.max(0, prev.unreadNotifications - removedUnreadCount),
+    }));
+    const { error } = await supabase.from('notifications').delete().in('id', ids);
+    if (error) {
+      console.warn('Failed to delete notifications:', error);
+      set({ notifications: prevNotifications, unreadNotifications: prevNotifications.filter(n => !n.read_at).length });
     }
   }, [set, s.notifications]);
 
@@ -4291,6 +4326,13 @@ export function GocProvider({ children }) {
       // the guest straight back to their own timer/QR/payment screen for
       // this exact hold, the same way `dispute_message` already does for
       // its own guest-facing case below.
+      // TASK 1 (2026-09-22 seventeenth follow-up) — same notFound-means-
+      // genuinely-gone existence check payment_confirmed/payment_document_*
+      // already do, added here since this wasn't previously verified
+      // before navigating (requirement 6: must not silently no-op on a
+      // target that went stale between load and tap).
+      const { data: holdBooking } = await supabase.from('bookings').select('id').eq('id', n.data.booking_id).maybeSingle();
+      if (!holdBooking) { reportStaleNotification(n); return; }
       openPaymentDetails(n.data.booking_id, 'notifications');
     } else if (n.kind === 'payment_awaiting_verification' && n.data?.event_id && iOrganize(n.data.event_id)) {
       // 01-hold-payment.md follow-up: fired by submit_payment_proof()
@@ -4314,6 +4356,10 @@ export function GocProvider({ children }) {
       // decides which screen has this booking's chat panel.
       // message_id may be absent on a row created before migration 050 —
       // DisputeChatPanel.jsx falls back to scrolling to the bottom instead.
+      // TASK 1 (2026-09-22 seventeenth follow-up) — same existence check as
+      // 'hold_created' above; see that branch's own comment.
+      const { data: disputeBooking } = await supabase.from('bookings').select('id').eq('id', n.data.booking_id).maybeSingle();
+      if (!disputeBooking) { reportStaleNotification(n); return; }
       set({ chatHighlight: { bookingId: n.data.booking_id, messageId: n.data.message_id || null } });
       if (s.accountType === 'organizer') openVerifications('notifications');
       else openPaymentDetails(n.data.booking_id, 'notifications');
@@ -4500,7 +4546,7 @@ export function GocProvider({ children }) {
     openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
+    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
@@ -4529,7 +4575,7 @@ export function GocProvider({ children }) {
     openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
+    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,

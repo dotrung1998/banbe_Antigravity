@@ -434,6 +434,28 @@ final class AppState: ObservableObject {
     // — avatarSource(for:maps:accountType:) (Lib/NotificationPresentation.swift)
     // reads this instead of a join per row.
     @Published var notificationAvatarMaps = NotificationAvatarMaps()
+    // TASK 2 (2026-09-22 seventeenth follow-up) — NotificationsView's
+    // selection/edit mode state, web parity (Notifications.jsx). Kept here
+    // (not view-local @State) only because deleteNotifications() itself
+    // needs to know which ids are selected when the bulk delete action
+    // fires; NotificationsView.swift (out of this pass's file scope) is
+    // where the actual checkbox/"Chọn"/"Xoá (n)" UI reads and mutates
+    // these. `selectedNotificationIDs` only ever holds ids currently
+    // present in `notifications` (whatever's actually loaded on screen) —
+    // "Select all" must populate it from that same array, never a
+    // hidden/paginated set the user never saw.
+    @Published var notificationSelectionMode = false
+    @Published var selectedNotificationIDs: Set<UUID> = []
+
+    // TASK 3 (2026-09-22 seventeenth follow-up) — true for the duration of
+    // ANY modal action sheet/menu presented over a screen that also needs
+    // the dock hidden underneath it (starting with NotificationsView's own
+    // "•••" action sheet — see BottomTabBarOverlay.swift's own comment on
+    // why its UIWindow needs an explicit signal, not just a SwiftUI zIndex
+    // change, to actually stop rendering above a sheet). Not scoped to
+    // Notifications specifically so any other screen's future modal sheet
+    // can reuse the same flag instead of inventing a parallel one.
+    @Published var modalActionSheetPresented = false
 
     // Ephemeral in-app toasts — mirrors src/screens/ToastStack.jsx on web.
     // Separate from `notifications` (the permanent, pull-based inbox): this
