@@ -842,6 +842,14 @@ struct NotificationsView: View {
     // BUG 4: the "•••" action menu, open for at most one row's
     // notification at a time.
     @State private var menuFor: AppNotification?
+    // TASK 2 (2026-09-22 eighteenth follow-up) — real root cause of "cannot
+    // reach selection mode": `app.notificationSelectionMode`/
+    // `app.selectedNotificationIDs` were added to AppState in a prior pass
+    // but never actually referenced anywhere in THIS view — the only place
+    // that renders Notifications at all. Reading directly off AppState
+    // (not view-local @State) since deleteNotifications() and any other
+    // future caller need the same source of truth.
+    private var selectionMode: Bool { app.notificationSelectionMode }
     // 2026-09-18 follow-up (BUG 3): a notification's SECTION is decided
     // once — the first time this screen sees it — and frozen from then on,
     // keyed by id. Reading it only flips its own readAt (handled live in
@@ -863,6 +871,11 @@ struct NotificationsView: View {
         // header underneath this section's own title; "new"/"today" stay
         // flat exactly as before, per this ticket's own ask.
         var dayGrouped: Bool = false
+    }
+
+    private func exitSelectionMode() {
+        app.notificationSelectionMode = false
+        app.selectedNotificationIDs = []
     }
 
     private func classifyAtLoad(_ n: AppNotification, now: Date) -> String {
@@ -913,10 +926,53 @@ struct NotificationsView: View {
                     HStack(alignment: .firstTextBaseline) {
                         Text(app.T("Thông báo", "Notifications")).font(BanbeTheme.display(27))
                         Spacer()
-                        Button(app.T("Xong", "Done")) { app.goHome() }
-                            .font(.system(size: 12)).buttonStyle(.plain)
+                        // TASK 2 (2026-09-22 eighteenth follow-up) — "Chọn"/
+                        // "Select" enters selection mode; in that mode this
+                        // same corner becomes "Huỷ"/"Cancel" instead of
+                        // "Xong"/"Done" — no reason to lose the way back to
+                        // Home while just cancelling a selection.
+                        if selectionMode {
+                            Button(app.T("Huỷ", "Cancel")) { exitSelectionMode() }
+                                .font(.system(size: 12)).buttonStyle(.plain)
+                                .accessibilityIdentifier("notifications.selection.cancel")
+                        } else {
+                            HStack(spacing: 14) {
+                                if !app.notifications.isEmpty {
+                                    Button(app.T("Chọn", "Select")) { app.notificationSelectionMode = true }
+                                        .font(.system(size: 12)).buttonStyle(.plain)
+                                        .accessibilityIdentifier("notifications.selectMode")
+                                }
+                                Button(app.T("Xong", "Done")) { app.goHome() }
+                                    .font(.system(size: 12)).buttonStyle(.plain)
+                            }
+                        }
                     }
-                    .padding(.bottom, 14)
+                    .padding(.bottom, selectionMode ? 8 : 14)
+
+                    if selectionMode {
+                        HStack {
+                            Button(app.T("Chọn tất cả", "Select all")) {
+                                app.selectedNotificationIDs = Set(app.notifications.map(\.id))
+                            }
+                            .font(.system(size: 12.5, weight: .semibold)).buttonStyle(.plain)
+                            .accessibilityIdentifier("notifications.selectAll")
+                            Spacer()
+                            if !app.selectedNotificationIDs.isEmpty {
+                                Button(app.T("Xoá (\(app.selectedNotificationIDs.count))", "Delete (\(app.selectedNotificationIDs.count))")) {
+                                    Task {
+                                        let ids = Array(app.selectedNotificationIDs)
+                                        exitSelectionMode()
+                                        await app.deleteNotifications(ids)
+                                    }
+                                }
+                                .font(.system(size: 12.5, weight: .semibold))
+                                .foregroundStyle(BanbeTheme.alert)
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("notifications.deleteSelected")
+                            }
+                        }
+                        .padding(.bottom, 12)
+                    }
 
                     let allSections = sections
                     if allSections.isEmpty {
@@ -940,6 +996,20 @@ struct NotificationsView: View {
                 syncSectionMembership()
             }
             .onChange(of: app.notifications) { _, _ in syncSectionMembership() }
+            // BUG 3 (2026-09-22 eighteenth follow-up) — real root cause:
+            // `app.modalActionSheetPresented` (BottomTabBarOverlay.swift's
+            // own dedicated suppression flag, wired to RootView's
+            // `.onChange` in a prior pass) was NEVER actually toggled by
+            // this exact "•••" sheet — `menuFor` drove the sheet's own
+            // presence but nothing told the overlay window about it.
+            // Mirroring `menuFor`'s presence here covers every terminal
+            // path uniformly (backdrop tap/BottomSheet's own onDismiss,
+            // AND every explicit action row below, which all set
+            // `menuFor = nil` themselves) without duplicating the flag
+            // toggle at each of those call sites individually.
+            .onChange(of: menuFor) { _, current in
+                app.modalActionSheetPresented = current != nil
+            }
 
             // BUG 4: replaces the old per-row "×" delete with a "•••" menu,
             // modeled on Facebook's own notification action sheet — but
@@ -1047,10 +1117,28 @@ struct NotificationsView: View {
         }
     }
 
+    private func toggleSelected(_ id: UUID) {
+        if app.selectedNotificationIDs.contains(id) { app.selectedNotificationIDs.remove(id) }
+        else { app.selectedNotificationIDs.insert(id) }
+    }
+
     private func row(_ item: AppNotification, unread: Bool) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Button { app.openNotification(item) } label: {
+        // TASK 2 (2026-09-22 eighteenth follow-up) — in selection mode a tap
+        // toggles the checkbox instead of navigating (requirement 3: "does
+        // not open it"), and the "•••" menu is hidden entirely (requirement
+        // 5: selection must not depend on the three-dot menu).
+        let selected = app.selectedNotificationIDs.contains(item.id)
+        return HStack(alignment: .top, spacing: 10) {
+            Button {
+                if selectionMode { toggleSelected(item.id) } else { app.openNotification(item) }
+            } label: {
                 HStack(alignment: .top, spacing: 10) {
+                    if selectionMode {
+                        Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 20))
+                            .foregroundStyle(selected ? BanbeTheme.alert : app.palette.rule)
+                            .accessibilityIdentifier("notification.row.checkbox")
+                    }
                     avatar(for: item)
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(alignment: .firstTextBaseline) {
@@ -1077,19 +1165,24 @@ struct NotificationsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("notification.row")
 
             // BUG 4: "•••" opens the action menu (delete / toggle read /
-            // mute this kind) instead of deleting directly.
-            Button {
-                menuFor = item
-            } label: {
-                Text("•••")
-                    .font(.system(size: 15))
-                    .foregroundStyle(app.palette.ink.opacity(0.4))
-                    .padding(6)
+            // mute this kind) instead of deleting directly. Hidden in
+            // selection mode — normal-mode-only per this ticket's own
+            // requirement 1.
+            if !selectionMode {
+                Button {
+                    menuFor = item
+                } label: {
+                    Text("•••")
+                        .font(.system(size: 15))
+                        .foregroundStyle(app.palette.ink.opacity(0.4))
+                        .padding(6)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("notification-menu")
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("notification-menu")
         }
         .opacity(unread ? 1 : 0.6)
         .padding(.vertical, 14)

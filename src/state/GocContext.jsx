@@ -2979,12 +2979,22 @@ export function GocProvider({ children }) {
     // event, which this same batched query already successfully resolves
     // for the avatar feature today — a genuine miss means the row is really
     // gone, not an RLS false negative.
+    // BUG 1 (2026-09-22 eighteenth follow-up) — real device report directed
+    // extending this to `receipt_requested` too, overriding the prior
+    // pass's own "deliberately skipped, routes to a list, soft-degrades
+    // fine" reasoning (07-notifications.md, 2026-09-19 follow-up). Free to
+    // add: `receipt_requested`'s `booking_id` is already in `bookingById`
+    // above (collected from EVERY notification's booking_id regardless of
+    // kind), and this kind's recipient is the ORGANIZER of the booking's
+    // own event — the same organizer-can-see-their-own-event's-booking RLS
+    // reasoning already relied on for `dispute_message`'s organizer branch.
     const staleTargetKinds = {
       payment_document_uploaded: 'document_id',
       payment_document_replaced: 'document_id',
       payment_confirmed: 'booking_id',
       hold_created: 'booking_id',
       dispute_message: 'booking_id',
+      receipt_requested: 'booking_id',
     };
     const staleIds = [];
     const liveRows = rows.filter(n => {
@@ -4379,6 +4389,13 @@ export function GocProvider({ children }) {
       // booking's own "Upload receipt" control auto-highlighted (see
       // Attendance.jsx's attendanceHighlightBookingId effect) so the
       // organizer doesn't have to hunt for it in a long list.
+      // BUG 1 (2026-09-22 eighteenth follow-up) — same existence check as
+      // 'hold_created'/'dispute_message' above; see those branches' own
+      // comments.
+      if (n.data.booking_id) {
+        const { data: receiptBooking } = await supabase.from('bookings').select('id').eq('id', n.data.booking_id).maybeSingle();
+        if (!receiptBooking) { reportStaleNotification(n); return; }
+      }
       set({ attendanceHighlightBookingId: n.data.booking_id });
       openAttendance(n.data.event_id, 'notifications');
     }

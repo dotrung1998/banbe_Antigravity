@@ -716,7 +716,12 @@ extension AppState {
                     guard let docID = n.data["document_id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return true }
                     if maps.liveDocumentIds.contains(docID) { return true }
                     staleIDs.append(n.id); return false
-                case "payment_confirmed", "hold_created", "dispute_message":
+                case "payment_confirmed", "hold_created", "dispute_message", "receipt_requested":
+                    // BUG 1 (2026-09-22 eighteenth follow-up) — real device
+                    // report directed extending this to receipt_requested
+                    // too, overriding the prior pass's own "deliberately
+                    // skipped, routes to a list" reasoning — see web
+                    // GocContext.jsx's own comment on this same extension.
                     // TASK 1 (2026-09-22 seventeenth follow-up) — hold_created/
                     // dispute_message extended onto the SAME check
                     // payment_confirmed already used: both reference
@@ -1168,11 +1173,17 @@ extension AppState {
             // "Upload receipt" control auto-highlighted (see
             // AttendanceView's attendanceHighlightBookingID) so the
             // organizer doesn't have to hunt for it in a long list.
+            // BUG 1 (2026-09-22 eighteenth follow-up) — same existence
+            // check as "hold_created"/"dispute_message" above.
             if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key),
                let bookingIDString = notification.data["booking_id"]?.stringValue,
                let bookingID = UUID(uuidString: bookingIDString) {
-                attendanceHighlightBookingID = bookingID
-                openAttendance(key, back: .notifications)
+                Task {
+                    let exists = await bookingExists(bookingID)
+                    if !exists { reportStaleNotification(notification); return }
+                    attendanceHighlightBookingID = bookingID
+                    openAttendance(key, back: .notifications)
+                }
             }
         default:
             break
