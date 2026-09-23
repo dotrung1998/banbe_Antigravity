@@ -7,7 +7,7 @@
     "description": "First launch mark/wordmark before onboarding starts.",
     "role": "goer",
     "testName": "testGroupA_OnboardingAuth()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "01-onboarding-auth",
@@ -17,7 +17,7 @@
     "description": "First onboarding step \u2014 Vietnamese/English.",
     "role": "goer",
     "testName": "testGroupA_OnboardingAuth()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "01-onboarding-auth",
@@ -27,7 +27,7 @@
     "description": "Second onboarding step \u2014 light/dark.",
     "role": "goer",
     "testName": "testGroupA_OnboardingAuth()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "01-onboarding-auth",
@@ -37,7 +37,7 @@
     "description": "First Account view right after onboarding/login completes.",
     "role": "goer",
     "testName": "testGroupA_OnboardingAuth()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "02-home-discovery",
@@ -47,7 +47,7 @@
     "description": "The event catalogue, default area/filter.",
     "role": "goer",
     "testName": "testGroupB_HomeDiscovery()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "02-home-discovery",
@@ -57,7 +57,7 @@
     "description": "Music-only filter narrowing the feed.",
     "role": "goer",
     "testName": "testGroupB_HomeDiscovery()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "02-home-discovery",
@@ -67,7 +67,7 @@
     "description": "Events the account is currently attending.",
     "role": "goer",
     "testName": "testGroupB_HomeDiscovery()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "02-home-discovery",
@@ -77,7 +77,7 @@
     "description": "Events the account has favorited.",
     "role": "goer",
     "testName": "testGroupB_HomeDiscovery()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "02-home-discovery",
@@ -87,7 +87,7 @@
     "description": "Events that have already ended.",
     "role": "goer",
     "testName": "testGroupB_HomeDiscovery()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "02-home-discovery",
@@ -97,7 +97,7 @@
     "description": "Reached from Home \u2014 includes the \"Open in map\" action.",
     "role": "goer",
     "testName": "testGroupB_HomeDiscovery()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "02-home-discovery",
@@ -107,7 +107,7 @@
     "description": "Landing on Map Explore centered on the event just viewed.",
     "role": "goer",
     "testName": "testGroupB_HomeDiscovery()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "02-home-discovery",
@@ -117,7 +117,7 @@
     "description": "The selected-pin info card/sheet.",
     "role": "goer",
     "testName": "testGroupB_HomeDiscovery()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "04-messaging",
@@ -127,7 +127,7 @@
     "description": "Conversation list \u2014 whatever mix of read/unread the account currently has.",
     "role": "goer",
     "testName": "testGroupD_Messaging()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "04-messaging",
@@ -137,7 +137,7 @@
     "description": "The archived-conversations view.",
     "role": "goer",
     "testName": "testGroupD_Messaging()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "04-messaging",
@@ -147,7 +147,7 @@
     "description": "An open conversation.",
     "role": "goer",
     "testName": "testGroupD_Messaging()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "04-messaging",
@@ -157,7 +157,7 @@
     "description": "A photo message inline in the thread.",
     "role": "goer",
     "testName": "testGroupD_Messaging()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "05-notifications",
@@ -167,7 +167,7 @@
     "description": "Whatever notifications currently exist for the account.",
     "role": "goer",
     "testName": "testGroupE_Notifications()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "05-notifications",
@@ -177,7 +177,7 @@
     "description": "The search field open, matching Inbox's own control.",
     "role": "goer",
     "testName": "testGroupE_Notifications()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "05-notifications",
@@ -187,7 +187,7 @@
     "description": "Select all / Cancel controls active.",
     "role": "goer",
     "testName": "testGroupE_Notifications()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "07-organizer",
@@ -197,7 +197,7 @@
     "description": "Bookings awaiting payment verification.",
     "role": "host",
     "testName": "testGroupG_Organizer()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "08-account-settings",
@@ -207,7 +207,7 @@
     "description": "Signed-in Account screen.",
     "role": "goer",
     "testName": "testGroupH_AccountSettings()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "08-account-settings",
@@ -217,7 +217,7 @@
     "description": "Language + theme, renamed from \"Language & appearance\".",
     "role": "goer",
     "testName": "testGroupH_AccountSettings()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "08-account-settings",
@@ -227,7 +227,7 @@
     "description": "The guest's own receipts.",
     "role": "goer",
     "testName": "testGroupH_AccountSettings()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   },
   {
     "group": "08-account-settings",
@@ -237,6 +237,6 @@
     "description": "Account security settings.",
     "role": "goer",
     "testName": "testGroupH_AccountSettings()",
-    "generatedAt": "2026-09-23T14:39:11Z"
+    "generatedAt": "2026-09-23T17:07:46Z"
   }
 ]
