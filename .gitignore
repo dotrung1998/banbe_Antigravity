@@ -46,3 +46,12 @@ dist-ssr
 # SweetPad's generated SourceKit-LSP build server config — machine-local
 # absolute paths, regenerated automatically per machine.
 /buildServer.json
+
+# iOS Screenshot Catalog (scripts/capture_ios_catalog.sh) — regenerate
+# locally with that script. The xcresult/export scratch space is always
+# ignored; only the PNGs under docs/demo-screenshots are ignored by
+# default — README.md/manifest.json stay tracked so a PR can be reviewed
+# without needing to regenerate images first. Ask before committing the
+# PNGs themselves.
+/output/ios-screenshot-catalog/
+/docs/demo-screenshots/**/*.png

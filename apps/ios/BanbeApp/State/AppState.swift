@@ -256,6 +256,24 @@ final class AppState: ObservableObject {
     /// RootView's guard redirects anything else to .login. The
     /// enforcement point for "no guest browsing of any screen" (Task 1).
     static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .login, .policy]
+
+    // MARK: - Screenshot Catalog (docs/demo-screenshots)
+    // Test-only launch flags for `scripts/capture_ios_catalog.sh` /
+    // `BanbeAppUITests/ScreenshotCatalogTests.swift`. Same `-key value` ->
+    // `UserDefaults.standard` convention `-banbe.onboarded` already uses
+    // above (`hasOnboarded`), not a new mechanism. `isUITesting` gates any
+    // live-timing behavior that would make a screenshot non-deterministic
+    // (the story auto-advance timer, Home's countdown tick) — it is never
+    // read outside a UI-testing launch. `demoRole`/`demoScenario` are
+    // accepted and stored for a future pass to consume; this pass has no
+    // demo/mock data model to switch on them (see that script's own
+    // comment on why "not captured yet" is used for backend-data-dependent
+    // flows instead of inventing one here).
+    static let isUITesting = UserDefaults.standard.bool(forKey: "uiTesting")
+    static let isScreenshotCatalog = UserDefaults.standard.bool(forKey: "screenshotCatalog")
+    static let demoRole = UserDefaults.standard.string(forKey: "demoRole")
+    static let demoScenario = UserDefaults.standard.string(forKey: "demoScenario")
+
     @Published var chatBack: Screen = .organizer
     @Published var mode: String = "goer"
     // Inbox and Dashboard are each reachable from more than one place (Home's

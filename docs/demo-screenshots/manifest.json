@@ -1,0 +1,242 @@
+[
+  {
+    "group": "01-onboarding-auth",
+    "order": 1,
+    "filename": "01-onboarding-auth/01-splash.png",
+    "title": "Splash",
+    "description": "First launch mark/wordmark before onboarding starts.",
+    "role": "goer",
+    "testName": "testGroupA_OnboardingAuth()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "01-onboarding-auth",
+    "order": 2,
+    "filename": "01-onboarding-auth/02-language-pick.png",
+    "title": "Language picker",
+    "description": "First onboarding step \u2014 Vietnamese/English.",
+    "role": "goer",
+    "testName": "testGroupA_OnboardingAuth()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "01-onboarding-auth",
+    "order": 3,
+    "filename": "01-onboarding-auth/03-theme-pick.png",
+    "title": "Theme picker",
+    "description": "Second onboarding step \u2014 light/dark.",
+    "role": "goer",
+    "testName": "testGroupA_OnboardingAuth()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "01-onboarding-auth",
+    "order": 5,
+    "filename": "01-onboarding-auth/05-account-after-onboarding.png",
+    "title": "Account, freshly signed in",
+    "description": "First Account view right after onboarding/login completes.",
+    "role": "goer",
+    "testName": "testGroupA_OnboardingAuth()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "02-home-discovery",
+    "order": 1,
+    "filename": "02-home-discovery/01-home-feed.png",
+    "title": "Home feed",
+    "description": "The event catalogue, default area/filter.",
+    "role": "goer",
+    "testName": "testGroupB_HomeDiscovery()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "02-home-discovery",
+    "order": 2,
+    "filename": "02-home-discovery/02-home-filters.png",
+    "title": "Home, category filter applied",
+    "description": "Music-only filter narrowing the feed.",
+    "role": "goer",
+    "testName": "testGroupB_HomeDiscovery()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "02-home-discovery",
+    "order": 3,
+    "filename": "02-home-discovery/03-going-list.png",
+    "title": "Going",
+    "description": "Events the account is currently attending.",
+    "role": "goer",
+    "testName": "testGroupB_HomeDiscovery()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "02-home-discovery",
+    "order": 4,
+    "filename": "02-home-discovery/04-saved-list.png",
+    "title": "Saved",
+    "description": "Events the account has favorited.",
+    "role": "goer",
+    "testName": "testGroupB_HomeDiscovery()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "02-home-discovery",
+    "order": 5,
+    "filename": "02-home-discovery/05-completed-list.png",
+    "title": "Completed events",
+    "description": "Events that have already ended.",
+    "role": "goer",
+    "testName": "testGroupB_HomeDiscovery()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "02-home-discovery",
+    "order": 6,
+    "filename": "02-home-discovery/06-event-detail.png",
+    "title": "Event Detail",
+    "description": "Reached from Home \u2014 includes the \"Open in map\" action.",
+    "role": "goer",
+    "testName": "testGroupB_HomeDiscovery()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "02-home-discovery",
+    "order": 7,
+    "filename": "02-home-discovery/07-event-detail-open-in-map.png",
+    "title": "Event Detail \u2192 Map Explore",
+    "description": "Landing on Map Explore centered on the event just viewed.",
+    "role": "goer",
+    "testName": "testGroupB_HomeDiscovery()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "02-home-discovery",
+    "order": 8,
+    "filename": "02-home-discovery/08-map-explore-event-sheet.png",
+    "title": "Map Explore, event card",
+    "description": "The selected-pin info card/sheet.",
+    "role": "goer",
+    "testName": "testGroupB_HomeDiscovery()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "04-messaging",
+    "order": 1,
+    "filename": "04-messaging/01-inbox.png",
+    "title": "Inbox",
+    "description": "Conversation list \u2014 whatever mix of read/unread the account currently has.",
+    "role": "goer",
+    "testName": "testGroupD_Messaging()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "04-messaging",
+    "order": 2,
+    "filename": "04-messaging/02-inbox-archived.png",
+    "title": "Inbox, Archived",
+    "description": "The archived-conversations view.",
+    "role": "goer",
+    "testName": "testGroupD_Messaging()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "04-messaging",
+    "order": 3,
+    "filename": "04-messaging/03-chat-thread.png",
+    "title": "Chat thread",
+    "description": "An open conversation.",
+    "role": "goer",
+    "testName": "testGroupD_Messaging()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "04-messaging",
+    "order": 6,
+    "filename": "04-messaging/06-chat-image-attachment.png",
+    "title": "Chat, image attachment",
+    "description": "A photo message inline in the thread.",
+    "role": "goer",
+    "testName": "testGroupD_Messaging()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "05-notifications",
+    "order": 1,
+    "filename": "05-notifications/01-list.png",
+    "title": "Notification list",
+    "description": "Whatever notifications currently exist for the account.",
+    "role": "goer",
+    "testName": "testGroupE_Notifications()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "05-notifications",
+    "order": 2,
+    "filename": "05-notifications/02-search.png",
+    "title": "Notifications, search",
+    "description": "The search field open, matching Inbox's own control.",
+    "role": "goer",
+    "testName": "testGroupE_Notifications()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "05-notifications",
+    "order": 3,
+    "filename": "05-notifications/03-selection-mode.png",
+    "title": "Notifications, selection mode",
+    "description": "Select all / Cancel controls active.",
+    "role": "goer",
+    "testName": "testGroupE_Notifications()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "07-organizer",
+    "order": 1,
+    "filename": "07-organizer/01-verification-queue.png",
+    "title": "Verification queue",
+    "description": "Bookings awaiting payment verification.",
+    "role": "host",
+    "testName": "testGroupG_Organizer()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "08-account-settings",
+    "order": 1,
+    "filename": "08-account-settings/01-account.png",
+    "title": "Account",
+    "description": "Signed-in Account screen.",
+    "role": "goer",
+    "testName": "testGroupH_AccountSettings()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "08-account-settings",
+    "order": 2,
+    "filename": "08-account-settings/02-app-preferences.png",
+    "title": "App preferences",
+    "description": "Language + theme, renamed from \"Language & appearance\".",
+    "role": "goer",
+    "testName": "testGroupH_AccountSettings()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "08-account-settings",
+    "order": 3,
+    "filename": "08-account-settings/03-documents-receipts.png",
+    "title": "Receipts",
+    "description": "The guest's own receipts.",
+    "role": "goer",
+    "testName": "testGroupH_AccountSettings()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  },
+  {
+    "group": "08-account-settings",
+    "order": 4,
+    "filename": "08-account-settings/04-security.png",
+    "title": "Security",
+    "description": "Account security settings.",
+    "role": "goer",
+    "testName": "testGroupH_AccountSettings()",
+    "generatedAt": "2026-09-23T14:39:11Z"
+  }
+]

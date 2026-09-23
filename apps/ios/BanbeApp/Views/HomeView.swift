@@ -157,7 +157,11 @@ struct HomeView: View {
 
     private func startTickingIfNeeded() {
         tickTask?.cancel()
-        guard anyCountdownVisible else { return }
+        // Screenshot Catalog (docs/demo-screenshots) — a live-ticking
+        // countdown is exactly the kind of non-deterministic, mid-capture
+        // change `scripts/capture_ios_catalog.sh` must avoid; this is the
+        // only source of one on Home.
+        guard !AppState.isUITesting, anyCountdownVisible else { return }
         tickTask = Task { @MainActor in
             while !Task.isCancelled {
                 tick = Date()

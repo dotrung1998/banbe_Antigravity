@@ -165,8 +165,10 @@ struct InboxView: View {
                     withAnimation(Self.sheetAnimation) { searchOpen.toggle() }
                     searchFieldFocused = searchOpen
                 }
+                .accessibilityIdentifier("inbox.searchToggle")
                 if effectiveInboxView == .active {
                     iconButton("gearshape", label: app.T("Cài đặt", "Settings")) { openSettings() }
+                        .accessibilityIdentifier("inbox.settingsToggle")
                 }
             }
         }
@@ -224,6 +226,7 @@ struct InboxView: View {
                     Text(app.T("Đã lưu trữ", "Archived")).font(.system(size: 14.5)).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("inbox.settings.archived")
                 .padding(.vertical, 22)
                 .overlay(Rectangle().fill(app.palette.rule).frame(height: 1), alignment: .top)
                 Button {
@@ -329,6 +332,17 @@ private struct InboxRow: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(app.palette.ink)
+        // Screenshot Catalog (docs/demo-screenshots) — not unique per row
+        // (every row shares it, matched via `.matching(identifier:)`), the
+        // same convention `chat.attachment` already uses (MessagingViews.swift)
+        // for "any one of these, whichever exists" lookups. "Unread thread
+        // appearance" is captured off the list itself (whatever mix of
+        // read/unread the account currently has), not a second identifier
+        // per read-state — nested SwiftUI accessibility ids on a row this
+        // deep have already proven unreliable to resolve precisely
+        // elsewhere in this suite (see EventDetailOpenInMapUITests' own
+        // comment on `map.selectedCard`).
+        .accessibilityIdentifier("inbox.threadRow")
     }
 }
 

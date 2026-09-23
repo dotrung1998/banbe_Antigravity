@@ -549,6 +549,12 @@ struct StoryViewerView: View {
     }
     private func scheduleAdvance(after seconds: TimeInterval) {
         advanceTask?.cancel()
+        // Screenshot Catalog (docs/demo-screenshots) — the auto-advance
+        // timer is exactly the "story timer auto-advancing while a
+        // screenshot is being captured" case that suite must avoid; a
+        // capture only needs the CURRENT story to stay on screen, never an
+        // actual multi-story playthrough.
+        guard !AppState.isUITesting else { return }
         let clamped = max(0, seconds)
         advanceTask = Task {
             try? await Task.sleep(nanoseconds: UInt64(clamped * 1_000_000_000))

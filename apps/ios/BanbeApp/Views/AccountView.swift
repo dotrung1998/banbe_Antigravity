@@ -116,8 +116,8 @@ struct AccountView: View {
                 .padding(.top, 22)
 
                 HStack(spacing: 10) {
-                    counter(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going"), icon: "calendar.badge.checkmark") { app.goGoingList() }
-                    counter(value: app.favorites.count, label: app.T("Đã lưu", "Saved"), icon: "bookmark") { app.goSavedList() }
+                    counter(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going"), icon: "calendar.badge.checkmark", identifier: "account.goingCard") { app.goGoingList() }
+                    counter(value: app.favorites.count, label: app.T("Đã lưu", "Saved"), icon: "bookmark", identifier: "account.savedCard") { app.goSavedList() }
                 }
                 .padding(.top, 22)
 
@@ -126,7 +126,7 @@ struct AccountView: View {
                 // ticket's own ask; Inbox stays reachable exactly as before
                 // via the bottom dock (BottomTabBar.swift), untouched.
                 VStack(spacing: 0) {
-                    row(app.T("Sự kiện đã hoàn thành", "Completed events"), icon: "calendar.badge.checkmark", trailing: "\(app.completedEventsCount) ›") { app.goCompletedList() }
+                    row(app.T("Sự kiện đã hoàn thành", "Completed events"), identifier: "account.completedList", icon: "calendar.badge.checkmark", trailing: "\(app.completedEventsCount) ›") { app.goCompletedList() }
                     Divider().overlay(app.palette.rule)
                     // TASK 3B — broader, more accurate label: this screen
                     // holds more than language/theme (see
@@ -190,6 +190,7 @@ struct AccountView: View {
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("account.organizerToggle")
                 .padding(.top, 10)
 
                 if !app.organizerModeError.isEmpty {
@@ -261,6 +262,7 @@ struct AccountView: View {
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("account.hostPageCard")
                     .padding(.top, 10)
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
@@ -387,7 +389,7 @@ struct AccountView: View {
     // Account action row/card, one coherent SF Symbols language (16pt
     // medium weight, 22x22 container, 0.72 opacity — matches the ink/rule/
     // paper tokens already in use here, no new colors).
-    private func counter(value: Int, label: String, icon: String, action: @escaping () -> Void) -> some View {
+    private func counter(value: Int, label: String, icon: String, identifier: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 3) {
                 Image(systemName: icon)
@@ -403,6 +405,7 @@ struct AccountView: View {
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier ?? label)
     }
 
     private func row(_ title: String, identifier: String? = nil, icon: String, trailing: String,
