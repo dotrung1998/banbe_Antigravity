@@ -946,6 +946,177 @@ extension AppState {
         }
     }
 
+    // MARK: Flow 2 — host refund -> guest confirmation
+
+    private struct RefundClaimBookingRow: Decodable {
+        let id: UUID
+        let userId: UUID?
+        let eventId: String?
+        enum CodingKeys: String, CodingKey { case id; case userId = "user_id"; case eventId = "event_id" }
+    }
+    private struct RefundClaimEventRow: Decodable {
+        let id: String
+        let name: String?
+        let organizerId: String?
+        enum CodingKeys: String, CodingKey { case id, name; case organizerId = "organizer_id" }
+    }
+    private struct RefundClaimProfileRow: Decodable {
+        let id: UUID
+        let displayName: String?
+        enum CodingKeys: String, CodingKey { case id; case displayName = "display_name" }
+    }
+
+    /// The organizer's own refund queue — the smallest addition to this
+    /// screen's existing surface, per this ticket's own ask, not a new
+    /// screen. Only flat `.in()` queries (mirrors
+    /// loadNotificationAvatarMaps()'s own batch-fetch shape) — no embedded-
+    /// resource FK hints, since this session has no live database to
+    /// verify the exact constraint names against.
+    func loadRefundQueue() async {
+        guard isAdmin || !myOrganizerIDs.isEmpty else { refundQueue = []; return }
+        refundQueueLoading = true
+        do {
+            let claims: [RefundClaim] = try await SupabaseService.client
+                .from("refund_claims").select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at")
+                .in("status", values: ["owed", "disputed"])
+                .order("created_at", ascending: true)
+                .execute().value
+            let bookingIDs = Set(claims.compactMap { $0.bookingId ?? $0.reservationId })
+            var bookingByID: [UUID: RefundClaimBookingRow] = [:]
+            if !bookingIDs.isEmpty {
+                let bookings: [RefundClaimBookingRow] = try await SupabaseService.client
+                    .from("bookings").select("id, user_id, event_id")
+                    .in("id", values: bookingIDs.map(\.uuidString))
+                    .execute().value
+                for b in bookings { bookingByID[b.id] = b }
+            }
+            let eventIDs = Set(bookingByID.values.compactMap(\.eventId))
+            var eventByID: [String: RefundClaimEventRow] = [:]
+            if !eventIDs.isEmpty {
+                let events: [RefundClaimEventRow] = try await SupabaseService.client
+                    .from("events").select("id, name, organizer_id")
+                    .in("id", values: Array(eventIDs))
+                    .execute().value
+                for e in events { eventByID[e.id] = e }
+            }
+            // Defense in depth, same reasoning as loadVerifications() above
+            // — RLS already scopes refund_claims_select_host to the
+            // caller's own organizer(s).
+            let scoped = isAdmin ? claims : claims.filter { c in
+                guard let b = bookingByID[c.bookingId ?? c.reservationId ?? UUID()],
+                      let eventID = b.eventId, let ev = eventByID[eventID],
+                      let organizerID = ev.organizerId else { return false }
+                return myOrganizerIDs.contains(organizerID)
+            }
+            let userIDs = Set(scoped.compactMap { bookingByID[$0.bookingId ?? $0.reservationId ?? UUID()]?.userId })
+            var nameByUserID: [UUID: String] = [:]
+            if !userIDs.isEmpty {
+                let profiles: [RefundClaimProfileRow] = try await SupabaseService.client
+                    .from("profiles").select("id, display_name")
+                    .in("id", values: userIDs.map(\.uuidString))
+                    .execute().value
+                for p in profiles { nameByUserID[p.id] = p.displayName ?? "" }
+            }
+            refundQueue = scoped.map { c in
+                var claim = c
+                if let b = bookingByID[c.bookingId ?? c.reservationId ?? UUID()] {
+                    claim.guestName = b.userId.flatMap { nameByUserID[$0] } ?? ""
+                    claim.eventName = b.eventId.flatMap { eventByID[$0]?.name } ?? ""
+                }
+                return claim
+            }
+        } catch {
+            print("loadRefundQueue failed:", error)
+            refundQueue = []
+        }
+        refundQueueLoading = false
+    }
+
+    /// Host's "Đã hoàn tiền" — owed -> host_marked_sent.
+    func markRefundSent(_ claimID: UUID, note: String = "") async {
+        refundActionBusy = claimID
+        defer { refundActionBusy = nil }
+        do {
+            _ = try await SupabaseService.client
+                .rpc("mark_refund_sent", params: ["p_claim_id": claimID.uuidString, "p_note": note])
+                .execute()
+        } catch {
+            print("markRefundSent failed:", error)
+        }
+        await loadRefundQueue()
+    }
+
+    /// Guest's "Đã nhận tiền" — host_marked_sent -> guest_confirmed.
+    /// Optimistic local patch first (this ticket's own explicit ask), then
+    /// reconciled by the real re-fetch below — never the other way around.
+    func confirmRefundReceived(_ claimID: UUID) async {
+        refundActionBusy = claimID
+        defer { refundActionBusy = nil }
+        if paymentRefundClaim?.id == claimID {
+            paymentRefundClaim?.status = "guest_confirmed"
+            paymentRefundClaim?.guestConfirmedAt = Date()
+        }
+        do {
+            _ = try await SupabaseService.client
+                .rpc("confirm_refund_received", params: ["p_claim_id": claimID.uuidString])
+                .execute()
+        } catch {
+            print("confirmRefundReceived failed:", error)
+        }
+        await loadPaymentRefundClaim(claimID: claimID)
+    }
+
+    /// Guest's "Chưa nhận được" — owed/host_marked_sent -> disputed.
+    func disputeRefund(_ claimID: UUID, reason: String = "") async {
+        refundActionBusy = claimID
+        defer { refundActionBusy = nil }
+        if paymentRefundClaim?.id == claimID {
+            paymentRefundClaim?.status = "disputed"
+        }
+        do {
+            _ = try await SupabaseService.client
+                .rpc("dispute_refund", params: ["p_claim_id": claimID.uuidString, "p_reason": reason])
+                .execute()
+        } catch {
+            print("disputeRefund failed:", error)
+        }
+        await loadPaymentRefundClaim(claimID: claimID)
+    }
+
+    /// The guest's own single refund claim for whatever booking
+    /// PaymentDetailsView is currently showing — fetched by booking id
+    /// (normal load) or re-fetched by its own claim id after an action
+    /// above (so a stale concurrent poll response, keyed by the OLD
+    /// booking id, can't overwrite a state change that already landed —
+    /// see this function's own guard below, the same stale-poll lesson
+    /// Flow 1 already learned).
+    func loadPaymentRefundClaim(bookingID: UUID) async {
+        do {
+            let claims: [RefundClaim] = try await SupabaseService.client
+                .from("refund_claims").select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at")
+                .or("booking_id.eq.\(bookingID.uuidString),reservation_id.eq.\(bookingID.uuidString)")
+                .order("created_at", ascending: false)
+                .limit(1)
+                .execute().value
+            if paymentBookingID == bookingID { paymentRefundClaim = claims.first }
+        } catch {
+            print("loadPaymentRefundClaim failed:", error)
+        }
+    }
+
+    func loadPaymentRefundClaim(claimID: UUID) async {
+        do {
+            let claims: [RefundClaim] = try await SupabaseService.client
+                .from("refund_claims").select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at")
+                .eq("id", value: claimID.uuidString)
+                .execute().value
+            guard let claim = claims.first else { return }
+            if paymentBookingID == (claim.bookingId ?? claim.reservationId) { paymentRefundClaim = claim }
+        } catch {
+            print("loadPaymentRefundClaim failed:", error)
+        }
+    }
+
     // MARK: Admin dashboard
 
     func openAdminDashboard() {
@@ -1195,6 +1366,38 @@ struct PendingVerification: Codable, Identifiable, Hashable {
         case overdue, escalated
         case proofPath = "proof_path"
         case disputeReason = "dispute_reason"
+    }
+}
+
+/// Flow 2 (host refund -> guest confirmation) — refund_claims' own columns
+/// plus two enrichment fields the organizer queue fills in client-side
+/// after its own batch fetch (guestName/eventName have no corresponding
+/// CodingKeys case, so the synthesized decoder leaves them at their
+/// default and never tries to decode them from the raw row — same pattern
+/// PendingVerification's own decoding relies on for its optional fields).
+struct RefundClaim: Codable, Identifiable, Equatable {
+    let id: UUID
+    var bookingId: UUID?
+    var reservationId: UUID?
+    var amountVnd: Int
+    var reason: String
+    var status: String
+    var hostMarkedAt: Date?
+    var guestConfirmedAt: Date?
+    var note: String?
+    var createdAt: Date?
+    var guestName: String = ""
+    var eventName: String = ""
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case bookingId = "booking_id"
+        case reservationId = "reservation_id"
+        case amountVnd = "amount_vnd"
+        case reason, status, note
+        case hostMarkedAt = "host_marked_at"
+        case guestConfirmedAt = "guest_confirmed_at"
+        case createdAt = "created_at"
     }
 }
 

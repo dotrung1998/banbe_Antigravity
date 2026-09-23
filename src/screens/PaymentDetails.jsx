@@ -23,11 +23,17 @@ export default function PaymentDetails() {
     state, T, set, loadPaymentBookings, backFromPaymentDetails,
     copyPayField, submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer,
     openBilling, forfeitExpiredHold, openBookingConfirmed,
+    loadPaymentRefundClaim, confirmRefundReceived, disputeRefund,
   } = useGoc();
   const s = state;
   const fileRef = useRef(null);
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+  // Flow 2 (host refund -> guest confirmation) — "Chưa nhận được" asks for
+  // an optional short reason inline, same small-form convention Verifications'
+  // own reject/escalate reason fields already use, not a new modal.
+  const [disputeFormOpen, setDisputeFormOpen] = useState(false);
+  const [disputeReasonText, setDisputeReasonText] = useState('');
   const [tick, setTick] = useState(Date.now());
 
   // A thumbnail of whatever was just picked — the picker row used to only
@@ -57,6 +63,22 @@ export default function PaymentDetails() {
   const isDisputed = phase === 'disputed';
   const isExpired = phase === 'expired';
   const isCancelled = phase === 'cancelled';
+  // Flow 2 (host refund -> guest confirmation) — a DIFFERENT real-world
+  // case from isCancelled above: that one is reject_pending_guest()'s
+  // "declined before ever paying" (payment_state-driven); this is
+  // cancel_booking()'s "was paid, host cancelled after the fact"
+  // (booking.status-driven — cancel_booking() never touches payment_state
+  // at all, so phase stays whatever it already was, e.g. 'confirmed').
+  // The two can never collide: reject_pending_guest() only ever fires on a
+  // still-pending (never-paid) booking, which cancel_booking() itself never
+  // creates a refund_claim for. Guarded against a stale claim from a
+  // PREVIOUS booking still sitting in state (same stale-poll caution as
+  // Flow 1) by checking it actually references this booking.
+  const refundClaim = (s.paymentRefundClaim
+    && booking
+    && (s.paymentRefundClaim.booking_id === booking.id || s.paymentRefundClaim.reservation_id === booking.id))
+    ? s.paymentRefundClaim : null;
+  const isHostCancelledWithRefund = booking?.status === 'cancelled' && !!refundClaim;
 
   // PHASE 1's tick drives the "seat held for" clock. PHASE 2 (14-organizer-
   // checkin.md follow-up) now ALSO ticks — not the same "your seat is at
@@ -102,6 +124,25 @@ export default function PaymentDetails() {
     }, 6000);
     return () => { active = false; clearInterval(id); };
   }, [booking?.id, phase, isConfirmed, isExpired, set, openBookingConfirmed]);
+
+  // Flow 2 — fetch the refund claim once we know this booking was
+  // cancelled (cheap: at most one row, RLS-scoped to this guest's own
+  // booking already).
+  useEffect(() => {
+    if (booking?.status === 'cancelled' && booking.id) loadPaymentRefundClaim(booking.id);
+  }, [booking?.id, booking?.status, loadPaymentRefundClaim]);
+
+  // Poll ONLY while the claim is in an active state (this ticket's own
+  // explicit instruction) — once guest_confirmed/disputed, nothing further
+  // can happen to it without a new action from either side, so nothing is
+  // gained by continuing to ask.
+  useEffect(() => {
+    if (!refundClaim || (refundClaim.status !== 'owed' && refundClaim.status !== 'host_marked_sent')) return undefined;
+    const bookingId = booking.id;
+    let active = true;
+    const id = setInterval(() => { if (active) loadPaymentRefundClaim(bookingId); }, 6000);
+    return () => { active = false; clearInterval(id); };
+  }, [refundClaim?.id, refundClaim?.status, booking?.id, loadPaymentRefundClaim]);
 
   const msLeft = booking?.hold_expires_at
     ? Math.max(0, new Date(booking.hold_expires_at).getTime() - tick) : 0;
@@ -293,6 +334,90 @@ export default function PaymentDetails() {
               {T('Chỗ đã được trả lại. Bạn có thể tìm sự kiện khác hoặc nhắn cho người tổ chức nếu có thắc mắc.',
                  'The seat has been released. You can look for another event, or message the organizer if you have questions.')}
             </p>
+          </div>
+        </div>
+      )}
+
+      {isHostCancelledWithRefund && (
+        <div style={{ margin: '16px 22px 0' }} data-testid="refund-card">
+          <div style={{ ...cardGlass({ padding: '16px 18px' }) }}>
+            <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>
+              {T('Người tổ chức đã huỷ vé của bạn', 'The organizer cancelled your booking')}
+            </span>
+            {booking.cancel_reason && (
+              <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
+                {booking.cancel_reason}
+              </p>
+            )}
+
+            {refundClaim.status === 'owed' && (
+              <p style={{ fontSize: 13, lineHeight: 1.55, color: ink, margin: '10px 0 0' }} data-testid="refund-owed">
+                {T(`Bạn sẽ được hoàn ${formatVnd(refundClaim.amount_vnd)}.`, `You'll be refunded ${formatVnd(refundClaim.amount_vnd)}.`)}
+              </p>
+            )}
+
+            {refundClaim.status === 'host_marked_sent' && (
+              <div style={{ marginTop: 10 }} data-testid="refund-host-marked-sent">
+                <p style={{ fontSize: 13, lineHeight: 1.55, color: ink, margin: 0 }}>
+                  {T(`Host đã báo đã hoàn ${formatVnd(refundClaim.amount_vnd)} cho bạn.`, `The host reported sending you ${formatVnd(refundClaim.amount_vnd)}.`)}
+                </p>
+                {!disputeFormOpen ? (
+                  <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                    <div
+                      onClick={() => s.refundActionBusy !== refundClaim.id && confirmRefundReceived(refundClaim.id)}
+                      style={{ ...inkButton({ flex: 1, borderRadius: 12, padding: 12, fontSize: 13, opacity: s.refundActionBusy === refundClaim.id ? 0.6 : 1 }) }}
+                      data-testid="refund-confirm-received"
+                    >
+                      {T('Đã nhận tiền', 'Confirm received')}
+                    </div>
+                    <div
+                      onClick={() => setDisputeFormOpen(true)}
+                      style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 12, border: `1px solid ${rule}`, fontSize: 13, color: ink, cursor: 'pointer' }}
+                      data-testid="refund-dispute-open"
+                    >
+                      {T('Chưa nhận được', 'Dispute refund')}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <textarea
+                      value={disputeReasonText}
+                      onChange={(e) => setDisputeReasonText(e.target.value)}
+                      placeholder={T('Mô tả ngắn gọn (không bắt buộc)', 'Briefly describe what happened (optional)')}
+                      data-testid="refund-dispute-reason"
+                      style={{ ...fieldGlass({ padding: '10px 12px', border: 'none', minHeight: 64 }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit', resize: 'vertical' }}
+                    />
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <div
+                        onClick={() => { setDisputeFormOpen(false); setDisputeReasonText(''); }}
+                        style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 12, border: `1px solid ${rule}`, fontSize: 13, color: ink, cursor: 'pointer' }}
+                      >
+                        {T('Huỷ', 'Cancel')}
+                      </div>
+                      <div
+                        onClick={() => s.refundActionBusy !== refundClaim.id && disputeRefund(refundClaim.id, disputeReasonText).then(() => setDisputeFormOpen(false))}
+                        style={{ ...inkButton({ flex: 1, borderRadius: 12, padding: 12, fontSize: 13, opacity: s.refundActionBusy === refundClaim.id ? 0.6 : 1 }) }}
+                        data-testid="refund-dispute-submit"
+                      >
+                        {T('Gửi báo cáo', 'Submit')}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {refundClaim.status === 'guest_confirmed' && (
+              <p style={{ fontSize: 13, lineHeight: 1.55, color: ink, margin: '10px 0 0' }} data-testid="refund-settled">
+                {T('Đã hoàn tất ▪︎ bạn đã xác nhận nhận được tiền.', 'Settled ▪︎ you confirmed receiving the refund.')}
+              </p>
+            )}
+
+            {refundClaim.status === 'disputed' && (
+              <p style={{ fontSize: 13, lineHeight: 1.55, color: alert, margin: '10px 0 0' }} data-testid="refund-disputed">
+                {T('Đang xử lý tranh chấp ▪︎ bạn đã báo chưa nhận được tiền.', "Dispute open ▪︎ you reported not receiving this refund.")}
+              </p>
+            )}
           </div>
         </div>
       )}

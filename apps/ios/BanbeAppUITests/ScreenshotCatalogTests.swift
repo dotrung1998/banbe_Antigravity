@@ -290,15 +290,30 @@ final class ScreenshotCatalogTests: XCTestCase {
 
     // MARK: - C. Booking / payment — see README "Not captured yet"
 
-    // Deliberately no test here: every state in this group (holding a seat,
-    // an awaiting-verification payment, a confirmed/cancelled booking)
-    // requires actually reserving/paying for a real seat on the shared
-    // fast-suite account. That would mutate shared fixture state other
-    // suites (EventDetailOpenInMapUITests, MapExploreSelectionUITests, the
-    // web Playwright suite's own use of the same account) depend on, which
-    // this ticket's "do not alter production data" explicitly rules out —
-    // and there is no read-only path to these specific states. See
+    // Deliberately no live capture here: every state in this group (holding
+    // a seat, an awaiting-verification payment, a confirmed/cancelled
+    // booking) requires actually reserving/paying for a real seat on the
+    // shared fast-suite account. That would mutate shared fixture state
+    // other suites (EventDetailOpenInMapUITests, MapExploreSelectionUITests,
+    // the web Playwright suite's own use of the same account) depend on,
+    // which this ticket's "do not alter production data" explicitly rules
+    // out — and there is no read-only path to these specific states. See
     // `docs/demo-screenshots/README.md`.
+    //
+    // Flow 2 (host refund -> guest confirmation, .claude/notes/01-hold-payment.md
+    // follow-up) planned states — named/registered here (per that ticket's
+    // own "add named planned states" ask) but not wired to a live capture
+    // for the exact same reason as the rest of this group: reaching any of
+    // them requires a real host-cancelled PAID booking on the shared
+    // account, which this pass must not create. `skip(_:)` below records
+    // the intent without touching data or capturing anything — running
+    // this test right now records four skips and nothing else.
+    func testGroupC_BookingPayment() {
+        skip("05-refund-owed — requires a real host-cancelled PAID booking on the shared account (refund_claims.status = 'owed'); would need to reserve+pay+have an organizer cancel it, mutating shared fixture state")
+        skip("06-refund-sent-awaiting-guest — same booking, after mark_refund_sent(); same reason")
+        skip("07-refund-confirmed — same booking, after confirm_refund_received(); same reason")
+        skip("08-refund-disputed — same booking, after dispute_refund(); same reason")
+    }
 
     // MARK: - D. Messaging
 
@@ -458,6 +473,23 @@ final class ScreenshotCatalogTests: XCTestCase {
         XCTAssertTrue(app.otherElements["screen.verifications"].waitForExistence(timeout: 18))
         capture("07-organizer", 1, "verification-queue", "Verification queue", "Bookings awaiting payment verification.", role: "host", app: app)
 
+        // Flow 2 (host refund -> guest confirmation) — the refund queue
+        // lives on this SAME VerificationsView (this ticket's own "smallest
+        // possible queue inside the already-relevant surface" ask), so it's
+        // captured right here rather than a separate navigation. Read-only,
+        // opportunistic (never disputes/marks anything itself): only
+        // captured when the shared account's own data already shows it.
+        if any(app, "refundQueue.title").waitForExistence(timeout: 3) {
+            capture("07-organizer", 5, "refunds-queue", "Refunds queue", "Active refund claims (owed/disputed) awaiting the host.", role: "host", app: app)
+            if any(app, "refundQueue.disputed").waitForExistence(timeout: 3) {
+                capture("07-organizer", 6, "refund-dispute", "Refund dispute", "A guest-disputed refund claim, visibly distinct from an owed one.", role: "host", app: app)
+            } else {
+                skip("refund-dispute — no disputed refund claim currently exists on the shared account")
+            }
+        } else {
+            skip("refunds-queue / refund-dispute — no active (owed/disputed) refund claim currently exists on the shared account")
+        }
+
         // Fresh launch for receipts-issued rather than backing out of
         // Verifications and navigating again in the SAME session — a
         // second deep navigation chained after the first reproducibly
@@ -479,10 +511,8 @@ final class ScreenshotCatalogTests: XCTestCase {
         // Organizer Dashboard and Check-in/Attendance are reached through
         // DashboardView.swift, which is outside this ticket's read scope —
         // no verified stable identifier path exists to them from here. See
-        // README "Not captured yet". Refund queue: no such screen/identifier
-        // was found within this ticket's read scope either.
+        // README "Not captured yet".
         skip("organizer-dashboard / check-in-attendance — reached only via DashboardView.swift, outside this ticket's read scope")
-        skip("refund-queue — no refund-queue screen/identifier found within this ticket's read scope")
     }
 
     // MARK: - H. Account / settings

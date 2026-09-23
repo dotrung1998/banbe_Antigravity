@@ -203,6 +203,20 @@ const initialState = {
   verifications: [],
   verificationsLoading: false,
   verificationBusy: '',
+  // Flow 2 (host refund -> guest confirmation): organizer's own refund
+  // queue (owed/disputed claims only — host_marked_sent/guest_confirmed
+  // aren't "active" anymore) and one guest-side claim for whichever
+  // booking PaymentDetails.jsx is currently showing.
+  refundQueue: [],
+  refundQueueLoading: false,
+  refundActionBusy: '',
+  paymentRefundClaim: null,
+  // Set by openNotification()'s refund_confirmed/_disputed/_overdue
+  // branches — highlights the one claim the organizer tapped from a
+  // notification, same idea as verificationsFocusBookingId just below but
+  // a separate field (refundQueue isn't filtered by it, only scrolled/
+  // flashed to, since a queue this small has no need to hide the rest).
+  refundQueueFocusClaimId: null,
   // 14-organizer-checkin.md: set by openVerificationDetail() (Attendance's
   // "Check payment" button) — narrows the queue below to exactly one
   // booking instead of the full list, whether it's the only pending item
@@ -552,8 +566,18 @@ const NOTIFICATION_TARGET_FIELD = {
   payment_disputed: { field: 'booking_id', table: 'bookings' },
   payment_needs_info: { field: 'booking_id', table: 'bookings' },
   payment_document_expiring_1d: { field: 'document_id', table: 'documents' },
+  // Flow 2 (host refund -> guest confirmation) — refund_claims is never
+  // hard-deleted anywhere in this codebase (ON DELETE CASCADE from
+  // bookings only, and no RPC ever deletes a bookings row either — same
+  // "no confirmed real trigger" reasoning 07-notifications.md already
+  // documents for booking_id-keyed kinds above), so this is defensive
+  // coverage rather than a known repro, same as those.
+  refund_marked_sent: { field: 'claim_id', table: 'refund_claims' },
+  refund_confirmed: { field: 'claim_id', table: 'refund_claims' },
+  refund_disputed: { field: 'claim_id', table: 'refund_claims' },
+  refund_overdue: { field: 'claim_id', table: 'refund_claims' },
 };
-const NOTIFICATION_TABLE_NAME = { bookings: 'bookings', documents: 'payment_documents' };
+const NOTIFICATION_TABLE_NAME = { bookings: 'bookings', documents: 'payment_documents', refund_claims: 'refund_claims' };
 
 // RLS safety (both call sites below): `bookings`/`payment_documents` both
 // scope their guest-facing SELECT to `auth.uid() = user_id`, and an
@@ -1828,6 +1852,151 @@ export function GocProvider({ children }) {
     set({ verificationBusy: '' });
     await loadVerifications();
   }, [set, loadVerifications]);
+
+  // ---- Flow 2: host refund -> guest confirmation ----
+  //
+  // Organizer's own queue — the smallest addition to this screen's existing
+  // surface rather than a new navigation section, per this ticket's own
+  // ask. Only flat `.in()` queries (no embedded-resource FK hints) — this
+  // codebase's own `loadNotifications()`/`loadNotificationAvatarMaps()`
+  // batch-fetch pattern, reused here rather than a guessed embed syntax
+  // this session has no live database to verify against.
+  const loadRefundQueue = useCallback(async () => {
+    if (s.accountType !== 'admin' && !s.myOrganizerIds.length) {
+      return set({ refundQueue: [], refundQueueLoading: false });
+    }
+    set({ refundQueueLoading: true });
+    const { data: claims, error } = await supabase
+      .from('refund_claims')
+      .select('id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at, last_flagged_at')
+      .in('status', ['owed', 'disputed'])
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.warn('loadRefundQueue failed:', error);
+      return set({ refundQueue: [], refundQueueLoading: false });
+    }
+    const rows = claims || [];
+    const bookingIds = [...new Set(rows.map(c => c.booking_id || c.reservation_id).filter(Boolean))];
+    let bookingById = {};
+    if (bookingIds.length) {
+      const { data: bookings } = await supabase.from('bookings').select('id, user_id, event_id').in('id', bookingIds);
+      bookingById = Object.fromEntries((bookings || []).map(b => [b.id, b]));
+    }
+    const eventIds = [...new Set(Object.values(bookingById).map(b => b.event_id).filter(Boolean))];
+    let eventById = {};
+    if (eventIds.length) {
+      const { data: events } = await supabase.from('events').select('id, name, organizer_id').in('id', eventIds);
+      eventById = Object.fromEntries((events || []).map(e => [e.id, e]));
+    }
+    // Defense in depth, same as loadVerifications() above — RLS already
+    // scopes refund_claims_select_host to the caller's own organizer(s),
+    // this just keeps an admin-vs-organizer account from ever rendering a
+    // row it can't actually act on due to a client-side state mismatch.
+    const scopedRows = s.accountType === 'admin' ? rows : rows.filter(c => {
+      const b = bookingById[c.booking_id || c.reservation_id];
+      const ev = b && eventById[b.event_id];
+      return ev && s.myOrganizerIds.includes(ev.organizer_id);
+    });
+    const userIds = [...new Set(scopedRows.map(c => bookingById[c.booking_id || c.reservation_id]?.user_id).filter(Boolean))];
+    let nameByUserId = {};
+    if (userIds.length) {
+      const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', userIds);
+      nameByUserId = Object.fromEntries((profiles || []).map(p => [p.id, p.display_name]));
+    }
+    const enriched = scopedRows.map(c => {
+      const b = bookingById[c.booking_id || c.reservation_id];
+      const ev = b && eventById[b.event_id];
+      return {
+        ...c,
+        guestName: (b && nameByUserId[b.user_id]) || '',
+        eventName: ev?.name || '',
+        eventId: ev?.id || null,
+      };
+    });
+    set({ refundQueue: enriched, refundQueueLoading: false });
+  }, [set, s.accountType, s.myOrganizerIds]);
+
+  /** Host's "Đã hoàn tiền" — owed -> host_marked_sent. */
+  const markRefundSent = useCallback(async (claimId, note = '') => {
+    set({ refundActionBusy: claimId });
+    try {
+      const { data, error } = await supabase.rpc('mark_refund_sent', { p_claim_id: claimId, p_note: note || '' });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error);
+    } catch (e) {
+      console.warn('markRefundSent failed:', e);
+    }
+    set({ refundActionBusy: '' });
+    await loadRefundQueue();
+  }, [set, loadRefundQueue]);
+
+  /**
+   * The guest's own single refund claim for whatever booking
+   * PaymentDetails.jsx is currently showing — fetched by booking id
+   * (normal load) or re-fetched by its own claim id after an action below
+   * (so a stale concurrent poll response, keyed by the OLD booking id,
+   * can't overwrite a state change that already landed — see this
+   * function's own guard below).
+   */
+  const loadPaymentRefundClaim = useCallback(async (id, { byClaimId = false } = {}) => {
+    if (!id) return set({ paymentRefundClaim: null });
+    const query = supabase.from('refund_claims').select('id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at');
+    const { data, error } = byClaimId
+      ? await query.eq('id', id).maybeSingle()
+      : await query.or(`booking_id.eq.${id},reservation_id.eq.${id}`).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (error) {
+      console.warn('loadPaymentRefundClaim failed:', error);
+      return;
+    }
+    // Stale-poll guard (this ticket's own explicit lesson from Flow 1): a
+    // response for a booking the guest has since navigated away from must
+    // never clobber whatever's current now.
+    set(prev => (prev.paymentBookingId === (data?.booking_id || data?.reservation_id || prev.paymentBookingId)
+      ? { paymentRefundClaim: data || null } : {}));
+  }, [set]);
+
+  /** Guest's "Đã nhận tiền" — host_marked_sent -> guest_confirmed. */
+  const confirmRefundReceived = useCallback(async (claimId) => {
+    set({ refundActionBusy: claimId });
+    // Optimistic local patch first (this ticket's own explicit ask), then
+    // reconciled by the real RPC result — never the other way around, so a
+    // failed RPC doesn't leave the UI lying about what actually happened.
+    set(prev => (prev.paymentRefundClaim?.id === claimId
+      ? { paymentRefundClaim: { ...prev.paymentRefundClaim, status: 'guest_confirmed', guest_confirmed_at: new Date().toISOString() } }
+      : {}));
+    let result;
+    try {
+      const { data, error } = await supabase.rpc('confirm_refund_received', { p_claim_id: claimId });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error);
+      result = data;
+    } catch (e) {
+      console.warn('confirmRefundReceived failed:', e);
+    }
+    set({ refundActionBusy: '' });
+    await loadPaymentRefundClaim(claimId, { byClaimId: true });
+    return result;
+  }, [set, loadPaymentRefundClaim]);
+
+  /** Guest's "Chưa nhận được" — owed/host_marked_sent -> disputed. */
+  const disputeRefund = useCallback(async (claimId, reason = '') => {
+    set({ refundActionBusy: claimId });
+    set(prev => (prev.paymentRefundClaim?.id === claimId
+      ? { paymentRefundClaim: { ...prev.paymentRefundClaim, status: 'disputed' } }
+      : {}));
+    let result;
+    try {
+      const { data, error } = await supabase.rpc('dispute_refund', { p_claim_id: claimId, p_reason: reason || '' });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error);
+      result = data;
+    } catch (e) {
+      console.warn('disputeRefund failed:', e);
+    }
+    set({ refundActionBusy: '' });
+    await loadPaymentRefundClaim(claimId, { byClaimId: true });
+    return result;
+  }, [set, loadPaymentRefundClaim]);
 
   // ---- admin dispute desk ----
   const openDisputes = useCallback(() => {
@@ -4468,6 +4637,27 @@ export function GocProvider({ children }) {
         // this app's own event-cancellation UX language elsewhere.
         if (n.data?.event_id) goEvent(n.data.event_id);
         break;
+      case 'refund_marked_sent':
+        // Guest-facing: the host reported sending the refund — straight
+        // back to the same booking's Payment screen, where the new
+        // host_marked_sent card (with "Đã nhận tiền"/"Chưa nhận được")
+        // lives. targetIsGone() above already confirmed the claim itself
+        // still exists.
+        if (n.data?.booking_id) openPaymentDetails(n.data.booking_id, 'notifications');
+        break;
+      case 'refund_confirmed':
+      case 'refund_disputed':
+      case 'refund_overdue':
+        // Organizer-facing: all three land on the refund queue living
+        // inside Verifications.jsx (this ticket's own "smallest possible
+        // queue inside the already-relevant surface" ask, not a new
+        // screen). Scoped to event ownership like every other
+        // organizer-bound kind above.
+        if (n.data?.event_id && iOrganize(n.data.event_id)) {
+          set({ refundQueueFocusClaimId: n.data.claim_id || null });
+          openVerifications('notifications');
+        }
+        break;
       // 'guest_renamed': category B, informational only, no destination by
       // design — falls to default. markNotificationRead() above is the
       // whole "action."
@@ -4636,6 +4826,7 @@ export function GocProvider({ children }) {
     currentDocument, downloadDocument, markGuestPaid, uploadPaymentDocument, openDocumentFromNotification, toggleAutoEmailDocuments,
     submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer, loadReceiptStatus, requestReceipt,
     openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
+    loadRefundQueue, markRefundSent, confirmRefundReceived, disputeRefund, loadPaymentRefundClaim,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
@@ -4665,6 +4856,7 @@ export function GocProvider({ children }) {
     currentDocument, downloadDocument, markGuestPaid, uploadPaymentDocument, openDocumentFromNotification, toggleAutoEmailDocuments,
     submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer, loadReceiptStatus, requestReceipt,
     openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
+    loadRefundQueue, markRefundSent, confirmRefundReceived, disputeRefund, loadPaymentRefundClaim,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,

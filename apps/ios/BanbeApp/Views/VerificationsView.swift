@@ -12,6 +12,10 @@ struct VerificationsView: View {
     @State private var tickTask: Task<Void, Never>?
     @State private var tick = Date()
     @State private var openChatBookingID: UUID?
+    // Flow 2 (host refund -> guest confirmation).
+    @State private var refundQueuePollTask: Task<Void, Never>?
+    @State private var refundNoteFor: UUID?
+    @State private var refundNoteText = ""
 
     private enum ReasonKind { case reject, escalate }
 
@@ -116,6 +120,21 @@ struct VerificationsView: View {
                     }
                     .padding(.top, 12)
                 }
+
+                // Flow 2 — refund queue. Only active claims (owed/disputed):
+                // host_marked_sent/guest_confirmed have nothing left for the
+                // host to do here. Hidden while focused on one verification
+                // booking, same reasoning as the dispute section above.
+                if app.verificationsFocusBookingID == nil, !app.refundQueue.isEmpty {
+                    Text(app.T("Hoàn tiền", "Refunds"))
+                        .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        .padding(.top, 24)
+                        .accessibilityIdentifier("refundQueue.title")
+                    VStack(spacing: 12) {
+                        ForEach(app.refundQueue) { claim in refundRow(claim) }
+                    }
+                    .padding(.top, 12)
+                }
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 22).padding(.bottom, 40)
@@ -123,8 +142,10 @@ struct VerificationsView: View {
         .accessibilityIdentifier("screen.verifications")
         .task { await app.loadVerifications() }
         .task { await app.loadOpenDisputes() }
+        .task { await app.loadRefundQueue() }
         .onAppear {
             startTicking()
+            startRefundQueuePolling()
             // Tapping a 'dispute_message' toast/notification lands an
             // organizer here with app.chatHighlight set — unlike
             // PaymentDetailsView, this screen only mounts DisputeChatPanel
@@ -132,9 +153,68 @@ struct VerificationsView: View {
             // here before DisputeChatPanel can scroll to/highlight anything.
             if let bookingID = app.chatHighlight?.bookingID { openChatBookingID = bookingID }
         }
-        .onDisappear { tickTask?.cancel() }
+        .onDisappear { tickTask?.cancel(); refundQueuePollTask?.cancel() }
         .onChange(of: app.chatHighlight?.bookingID) { _, newValue in
             if let newValue { openChatBookingID = newValue }
+        }
+    }
+
+    @ViewBuilder
+    private func refundRow(_ claim: RefundClaim) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(claim.guestName.isEmpty ? app.T("Khách", "Guest") : claim.guestName)
+                        .font(BanbeTheme.display(16))
+                    Text(claim.eventName).font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                }
+                Spacer(minLength: 8)
+                Text(formatVnd(claim.amountVnd)).font(BanbeTheme.display(19))
+            }
+
+            if claim.status == "disputed" {
+                // A disputed claim is not something the host can silently
+                // overwrite as "sent" — no action button here.
+                Text(app.T("Khách báo chưa nhận được tiền", "Guest reports not receiving this refund"))
+                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                    .accessibilityIdentifier("refundQueue.disputed")
+            } else if refundNoteFor == claim.id {
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField(app.T("Ghi chú/mã tham chiếu (không bắt buộc)", "Note/reference (optional)"), text: $refundNoteText)
+                        .font(.system(size: 13))
+                        .padding(11)
+                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                        .accessibilityIdentifier("refundQueue.note")
+                    HStack(spacing: 8) {
+                        action(app.T("Xác nhận", "Confirm"), id: "refundQueue.markSentConfirm") {
+                            Task { await app.markRefundSent(claim.id, note: refundNoteText) }
+                            refundNoteFor = nil; refundNoteText = ""
+                        }
+                        action(app.T("Huỷ", "Cancel"), ghost: true) { refundNoteFor = nil; refundNoteText = "" }
+                    }
+                }
+            } else {
+                action(
+                    app.refundActionBusy == claim.id ? app.T("Đang lưu…", "Saving…") : app.T("Đã hoàn tiền", "Mark refund sent"),
+                    id: "refundQueue.markSent"
+                ) { refundNoteFor = claim.id }
+            }
+        }
+        .padding(14)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityIdentifier("refundQueue.row")
+    }
+
+    private func startRefundQueuePolling() {
+        refundQueuePollTask?.cancel()
+        // Same 6s cadence PaymentDetailsView's own poll already uses
+        // elsewhere in this app — not a novel interval.
+        refundQueuePollTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                if Task.isCancelled { break }
+                await app.loadRefundQueue()
+            }
         }
     }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
@@ -15,6 +15,7 @@ import DisputeChatPanel from './DisputeChatPanel.jsx';
 export default function Verifications() {
   const {
     state, T, set, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadDisputes, backFromVerifications,
+    loadRefundQueue, markRefundSent,
   } = useGoc();
   const s = state;
   // Same documentBack-style pattern (07-notifications.md's 2026-09-18
@@ -37,6 +38,29 @@ export default function Verifications() {
   // this there would be nowhere on this screen to see it again at all.
   useEffect(() => { loadDisputes(); }, [loadDisputes]);
   const myOpenDisputes = s.disputes.filter(d => !d.dispute_resolved_at);
+
+  // Flow 2 (host refund -> guest confirmation) — the smallest possible
+  // queue inside this existing surface, per this ticket's own ask, not a
+  // new navigation section. Same 6s cadence PaymentDetails.jsx's own poll
+  // already uses elsewhere in this app, not a novel interval.
+  const [refundNoteFor, setRefundNoteFor] = useState(null);
+  const [refundNote, setRefundNote] = useState('');
+  useEffect(() => { loadRefundQueue(); }, [loadRefundQueue]);
+  useEffect(() => {
+    const id = setInterval(() => loadRefundQueue(), 6000);
+    return () => clearInterval(id);
+  }, [loadRefundQueue]);
+  // openNotification()'s refund_confirmed/_disputed/_overdue branches set
+  // this so a tap lands scrolled to the specific claim, not just "somewhere
+  // in the queue" — cleared once seen so it doesn't keep re-flashing on
+  // every 6s poll re-render.
+  const refundFocusRef = useRef(null);
+  useEffect(() => {
+    if (s.refundQueueFocusClaimId && refundFocusRef.current) {
+      refundFocusRef.current.scrollIntoView({ block: 'center' });
+      set({ refundQueueFocusClaimId: null });
+    }
+  }, [s.refundQueueFocusClaimId, s.refundQueue, set]);
 
   // Tapping a 'dispute_message' toast/notification (openNotification,
   // GocContext.jsx) lands an organizer here with s.chatHighlight set —
@@ -244,6 +268,63 @@ export default function Verifications() {
                      style={{ fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>
                   {T('Mở đoạn chat tranh chấp ›', 'Open dispute chat ›')}
                 </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Flow 2 — refund queue. Only active claims (owed/disputed):
+          host_marked_sent/guest_confirmed have nothing left for the host to
+          do here. Hidden while focused on one verification booking, same
+          reasoning as the dispute section above. */}
+      {!focusId && s.refundQueue.length > 0 && (
+        <div style={{ margin: '0 22px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }} data-testid="refund-queue-title">
+            {T('Hoàn tiền', 'Refunds')}
+          </span>
+          {s.refundQueue.map(c => (
+            <div
+              key={c.id}
+              ref={c.id === s.refundQueueFocusClaimId ? refundFocusRef : undefined}
+              style={{ ...cardGlass({ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }) }}
+              data-testid="refund-queue-row"
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                  <span style={{ ...display(16) }}>{c.guestName || T('Khách', 'Guest')}</span>
+                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{c.eventName}</span>
+                </div>
+                <span style={{ ...display(19, { whiteSpace: 'nowrap' }) }}>{formatVnd(c.amount_vnd)}</span>
+              </div>
+
+              {c.status === 'disputed' ? (
+                // A disputed claim is not something the host can silently
+                // overwrite as "sent" — no action button here, just the
+                // visible state and whatever note trail exists.
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: alert }} data-testid="refund-queue-disputed">
+                  {T('Khách báo chưa nhận được tiền', 'Guest reports not receiving this refund')}
+                </span>
+              ) : refundNoteFor === c.id ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <input
+                    value={refundNote} onChange={(e) => setRefundNote(e.target.value)}
+                    placeholder={T('Ghi chú/mã tham chiếu (không bắt buộc)', 'Note/reference (optional)')}
+                    data-testid="refund-queue-note"
+                    style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
+                  />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Action label={T('Xác nhận', 'Confirm')} testid="refund-queue-mark-sent-confirm"
+                            onClick={() => { markRefundSent(c.id, refundNote); setRefundNoteFor(null); setRefundNote(''); }} />
+                    <Action label={T('Huỷ', 'Cancel')} ghost onClick={() => { setRefundNoteFor(null); setRefundNote(''); }} />
+                  </div>
+                </div>
+              ) : (
+                <Action
+                  label={s.refundActionBusy === c.id ? T('Đang lưu…', 'Saving…') : T('Đã hoàn tiền', 'Mark refund sent')}
+                  testid="refund-queue-mark-sent"
+                  onClick={() => setRefundNoteFor(c.id)}
+                />
               )}
             </div>
           ))}

@@ -21,12 +21,27 @@ struct PaymentDetailsView: View {
     @State private var pickError = ""
     @State private var tick = Date()
     @State private var pollTask: Task<Void, Never>?
+    // Flow 2 (host refund -> guest confirmation).
+    @State private var refundPollTask: Task<Void, Never>?
+    @State private var disputeFormOpen = false
+    @State private var disputeReasonText = ""
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private var booking: PayableBooking? {
         app.paymentBookings.first { $0.id == app.paymentBookingID }
     }
+
+    // Guarded against a stale claim from a PREVIOUS booking still sitting
+    // in state (same stale-poll caution as Flow 1) by checking it actually
+    // references THIS booking.
+    private var refundClaim: RefundClaim? {
+        guard let booking, let claim = app.paymentRefundClaim,
+              claim.bookingId == booking.id || claim.reservationId == booking.id
+        else { return nil }
+        return claim
+    }
+    private var isHostCancelledWithRefund: Bool { booking?.status == "cancelled" && refundClaim != nil }
 
     var body: some View {
         ScreenScaffold {
@@ -74,9 +89,10 @@ struct PaymentDetailsView: View {
                 app.forfeitExpiredHold(booking)
             }
         }
-        .onAppear { startPollingIfNeeded() }
+        .onAppear { startPollingIfNeeded(); startRefundPollingIfNeeded() }
         .onChange(of: booking?.paymentState) { _, _ in startPollingIfNeeded() }
-        .onDisappear { pollTask?.cancel() }
+        .onChange(of: booking?.status) { _, _ in startRefundPollingIfNeeded() }
+        .onDisappear { pollTask?.cancel(); refundPollTask?.cancel() }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             Task {
@@ -148,6 +164,17 @@ struct PaymentDetailsView: View {
             // which is meant for an unconfigured-payment-info case, not a
             // declined booking.
             if phase == .cancelled { rejectedCard(booking) }
+            // Flow 2 (host refund -> guest confirmation) — a DIFFERENT real
+            // case from `.cancelled` above: that one is
+            // reject_pending_guest()'s "declined before ever paying"
+            // (paymentState-driven); this is cancel_booking()'s "was paid,
+            // host cancelled after the fact" (booking.status-driven —
+            // cancel_booking() never touches payment_state, so `phase`
+            // stays whatever it already was, e.g. .confirmed). The two can
+            // never collide: reject_pending_guest() only ever fires on a
+            // still-pending booking, which cancel_booking() never creates a
+            // refund_claim for.
+            if isHostCancelledWithRefund, let claim = refundClaim { refundCard(booking, claim) }
 
             amountCard(booking)
 
@@ -351,6 +378,83 @@ struct PaymentDetailsView: View {
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(.top, 16)
         .accessibilityIdentifier("payment.rejected")
+    }
+
+    @ViewBuilder
+    private func refundCard(_ booking: PayableBooking, _ claim: RefundClaim) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(app.T("Người tổ chức đã huỷ vé của bạn", "The organizer cancelled your booking"))
+                .font(.system(size: 13.5, weight: .semibold))
+            if let reason = booking.cancelReason, !reason.isEmpty {
+                Text(reason).font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+            }
+
+            if claim.status == "owed" {
+                Text(app.T("Bạn sẽ được hoàn \(formatVnd(claim.amountVnd)).", "You'll be refunded \(formatVnd(claim.amountVnd))."))
+                    .font(.system(size: 13)).padding(.top, 2)
+                    .accessibilityIdentifier("refund.owed")
+            }
+
+            if claim.status == "host_marked_sent" {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(app.T("Host đã báo đã hoàn \(formatVnd(claim.amountVnd)) cho bạn.", "The host reported sending you \(formatVnd(claim.amountVnd))."))
+                        .font(.system(size: 13))
+                    if !disputeFormOpen {
+                        HStack(spacing: 10) {
+                            InkButton(title: app.T("Đã nhận tiền", "Confirm received")) {
+                                Task { await app.confirmRefundReceived(claim.id) }
+                            }
+                            .accessibilityIdentifier("refund.confirmReceived")
+                            Button(app.T("Chưa nhận được", "Dispute refund")) { disputeFormOpen = true }
+                                .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                                .frame(maxWidth: .infinity).padding(12)
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+                                .accessibilityIdentifier("refund.disputeOpen")
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            TextField(app.T("Mô tả ngắn gọn (không bắt buộc)", "Briefly describe what happened (optional)"), text: $disputeReasonText)
+                                .font(.system(size: 13))
+                                .padding(10)
+                                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                                .accessibilityIdentifier("refund.disputeReason")
+                            HStack(spacing: 10) {
+                                Button(app.T("Huỷ", "Cancel")) { disputeFormOpen = false; disputeReasonText = "" }
+                                    .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                                    .frame(maxWidth: .infinity).padding(12)
+                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+                                InkButton(title: app.T("Gửi báo cáo", "Submit")) {
+                                    Task {
+                                        await app.disputeRefund(claim.id, reason: disputeReasonText)
+                                        disputeFormOpen = false
+                                    }
+                                }
+                                .accessibilityIdentifier("refund.disputeSubmit")
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 2)
+            }
+
+            if claim.status == "guest_confirmed" {
+                Text(app.T("Đã hoàn tất ▪︎ bạn đã xác nhận nhận được tiền.", "Settled ▪︎ you confirmed receiving the refund."))
+                    .font(.system(size: 13)).padding(.top, 2)
+                    .accessibilityIdentifier("refund.settled")
+            }
+
+            if claim.status == "disputed" {
+                Text(app.T("Đang xử lý tranh chấp ▪︎ bạn đã báo chưa nhận được tiền.", "Dispute open ▪︎ you reported not receiving this refund."))
+                    .font(.system(size: 13)).foregroundStyle(BanbeTheme.alert).padding(.top, 2)
+                    .accessibilityIdentifier("refund.disputed")
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.top, 16)
+        .accessibilityIdentifier("refund.card")
     }
 
     private func amountCard(_ booking: PayableBooking) -> some View {
@@ -615,6 +719,28 @@ struct PaymentDetailsView: View {
                     }
                     return
                 }
+            }
+        }
+    }
+
+    /// Flow 2 — fetch the refund claim once we know this booking was
+    /// cancelled, then poll ONLY while it's in an active state (owed/
+    /// host_marked_sent) — this ticket's own explicit instruction. Separate
+    /// from startPollingIfNeeded() above: that one stops the instant
+    /// paymentState is .cancelled/.confirmed/.expired, and cancel_booking()
+    /// never touches paymentState at all (only `status`), so it would
+    /// never even start for this exact case.
+    private func startRefundPollingIfNeeded() {
+        refundPollTask?.cancel()
+        guard let bookingID = booking?.id, booking?.status == "cancelled" else { return }
+        Task { await app.loadPaymentRefundClaim(bookingID: bookingID) }
+        refundPollTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                if Task.isCancelled { break }
+                guard booking?.id == bookingID else { return }
+                guard let status = refundClaim?.status, status == "owed" || status == "host_marked_sent" else { return }
+                await app.loadPaymentRefundClaim(bookingID: bookingID)
             }
         }
     }

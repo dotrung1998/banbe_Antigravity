@@ -652,6 +652,18 @@ final class AppState: ObservableObject {
     // 'pay-proof' storage path -> signed viewable URL, for whichever rows
     // loadVerifications last loaded — see signProofUrls.
     @Published var proofUrls: [String: URL] = [:]
+    // Flow 2 (host refund -> guest confirmation): organizer's own refund
+    // queue (owed/disputed only), and one guest-side claim for whichever
+    // booking PaymentDetailsView is currently showing.
+    @Published var refundQueue: [RefundClaim] = []
+    @Published var refundQueueLoading = false
+    @Published var refundActionBusy: UUID?
+    @Published var paymentRefundClaim: RefundClaim?
+    // Set by openNotification()'s refund_confirmed/_disputed/_overdue cases
+    // — highlights the one claim tapped from a notification, same idea as
+    // verificationsFocusBookingID above but a separate field (the refund
+    // queue isn't filtered by it, only scrolled/flashed to).
+    @Published var refundQueueFocusClaimID: UUID?
     // The temporary dispute chat — one per escalated booking.
     @Published var disputeChatBookingId: UUID?
     @Published var disputeChatMessages: [DisputeMessage] = []

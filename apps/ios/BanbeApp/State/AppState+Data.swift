@@ -745,6 +745,14 @@ extension AppState {
                     guard let bookingID = n.data["booking_id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return true }
                     if maps.bookingById[bookingID] != nil { return true }
                     staleIDs.append(n.id); return false
+                case "refund_marked_sent", "refund_confirmed", "refund_disputed", "refund_overdue":
+                    // Flow 2 — refund_claims is never hard-deleted anywhere
+                    // in this codebase (defensive coverage, same reasoning
+                    // as the booking_id-keyed kinds above), checked by
+                    // claim_id via maps.liveRefundClaimIds.
+                    guard let claimID = n.data["claim_id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return true }
+                    if maps.liveRefundClaimIds.contains(claimID) { return true }
+                    staleIDs.append(n.id); return false
                 default:
                     return true
                 }
@@ -845,6 +853,18 @@ extension AppState {
                     .in("id", values: documentIDs.map(\.uuidString))
                     .execute().value
                 maps.liveDocumentIds = Set(docs.map(\.id))
+            }
+            // Flow 2 — same existence-only batch, for claim_id.
+            let claimIDs = Set(rows.filter {
+                $0.kind == "refund_marked_sent" || $0.kind == "refund_confirmed"
+                    || $0.kind == "refund_disputed" || $0.kind == "refund_overdue"
+            }.compactMap { $0.data["claim_id"]?.stringValue.flatMap(UUID.init(uuidString:)) })
+            if !claimIDs.isEmpty {
+                let claims: [UUIDRow] = try await SupabaseService.client
+                    .from("refund_claims").select("id")
+                    .in("id", values: claimIDs.map(\.uuidString))
+                    .execute().value
+                maps.liveRefundClaimIds = Set(claims.map(\.id))
             }
         } catch {
             print("loadNotificationAvatarMaps failed:", error)
@@ -1207,6 +1227,36 @@ extension AppState {
             if let key = notification.data["event_id"]?.stringValue {
                 goEvent(key)
             }
+        case "refund_marked_sent":
+            // Guest-facing: same existence-check-then-navigate shape as
+            // "hold_created" above, straight back to the same booking's
+            // Payment screen (the new host_marked_sent card lives there).
+            if let claimIDString = notification.data["claim_id"]?.stringValue,
+               let claimID = UUID(uuidString: claimIDString),
+               let bookingIDString = notification.data["booking_id"]?.stringValue,
+               let bookingID = UUID(uuidString: bookingIDString) {
+                Task {
+                    let exists = await refundClaimExists(claimID)
+                    if !exists { reportStaleNotification(notification); return }
+                    openPaymentDetails(bookingID, back: .notifications)
+                }
+            }
+        case "refund_confirmed", "refund_disputed", "refund_overdue":
+            // Organizer-facing: all three land on the refund queue living
+            // inside VerificationsView (this ticket's own "smallest
+            // possible queue inside the already-relevant surface" ask).
+            // Scoped to event ownership like every other organizer-bound
+            // kind above.
+            if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key),
+               let claimIDString = notification.data["claim_id"]?.stringValue,
+               let claimID = UUID(uuidString: claimIDString) {
+                Task {
+                    let exists = await refundClaimExists(claimID)
+                    if !exists { reportStaleNotification(notification); return }
+                    refundQueueFocusClaimID = claimID
+                    openVerifications(back: .notifications)
+                }
+            }
         // "guest_renamed": category B, informational only, no destination
         // by design — falls to default. markNotificationRead() above is
         // the whole "action."
@@ -1309,6 +1359,15 @@ extension AppState {
         let rows: [UUIDRow]? = try? await SupabaseService.client
             .from("bookings").select("id")
             .eq("id", value: bookingID.uuidString)
+            .execute().value
+        return !(rows ?? []).isEmpty
+    }
+
+    /// Flow 2 — same shape as bookingExists() above, for refund_claims.
+    private func refundClaimExists(_ claimID: UUID) async -> Bool {
+        let rows: [UUIDRow]? = try? await SupabaseService.client
+            .from("refund_claims").select("id")
+            .eq("id", value: claimID.uuidString)
             .execute().value
         return !(rows ?? []).isEmpty
     }

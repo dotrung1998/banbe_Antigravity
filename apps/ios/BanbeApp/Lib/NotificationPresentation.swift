@@ -39,6 +39,10 @@ struct NotificationAvatarMaps {
     /// loadNotifications() can prune a stale payment_document_uploaded/
     /// _replaced notification without a second round trip.
     var liveDocumentIds: Set<UUID> = []
+    /// Flow 2 (host refund -> guest confirmation) — same purpose as
+    /// `liveDocumentIds` above, for refund_marked_sent/_confirmed/_disputed/
+    /// _overdue's own `claim_id`.
+    var liveRefundClaimIds: Set<UUID> = []
 }
 
 /// Resolves what a notification row's left-side circle should show. Never
