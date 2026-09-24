@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { findEvent } from '../data/events.js';
 import { formatVnd } from '../lib/paymentDocument.js';
+import { liveEventOverrides } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 
 export default function Attendance() {
   const {
     state, set, T, trStatus, backFromAttendance, toggleCheckin, openQrScan, openCancelBooking, markGuestPaid, uploadPaymentDocument,
-    openVerificationDetail, openRejectGuest, loadAttendanceGuests, openDocumentFromNotification,
+    openVerificationDetail, openRejectGuest, loadAttendanceGuests, openDocumentFromNotification, loadHomeLiveEvents,
   } = useGoc();
   const s = state;
   // Same documentBack-style pattern (07-notifications.md's 2026-09-18
@@ -47,9 +48,15 @@ export default function Attendance() {
   useEffect(() => {
     const key = s.attendanceEventKey;
     if (!key) return undefined;
-    const id = setInterval(() => loadAttendanceGuests(key), 6000);
+    // TASK 3 point 5 — also refresh the same batched live-status fetch
+    // Home/Dashboard use (loadHomeLiveEvents) on this same poll, so a host
+    // who stays on this screen while the event transitions to ended sees
+    // guest controls actually disappear (see eventEnded below) rather than
+    // only ever picking that up on next screen mount.
+    loadHomeLiveEvents();
+    const id = setInterval(() => { loadAttendanceGuests(key); loadHomeLiveEvents(); }, 6000);
     return () => clearInterval(id);
-  }, [s.attendanceEventKey, loadAttendanceGuests]);
+  }, [s.attendanceEventKey, loadAttendanceGuests, loadHomeLiveEvents]);
   // request_receipt() (migration 061) deep-links here via openNotification()
   // — the guest's own "Xem Receipt" asked for one that doesn't exist yet.
   // Mirrors DisputeChatPanel.jsx's chatHighlight scroll/flash pattern: a
@@ -117,6 +124,25 @@ export default function Attendance() {
     return (
       <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
         <div onClick={backFromAttendance} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
+      </div>
+    );
+  }
+
+  // TASK 3 point 5 — real, live-status-derived "has this event actually
+  // ended/been cancelled while the host was sitting on this screen", same
+  // `liveEventOverrides` merge Dashboard/Home use, not a separate
+  // calculation. When true, no actionable guest control below is reachable
+  // any more — server-side RPCs would reject them anyway (BOOKING_CANNOT_
+  // BE_CANCELLED, etc.) but this keeps the host from even seeing them.
+  const attEvLiveOverrides = liveEventOverrides(s.homeLiveEvents[attKey], attEv);
+  const attEvLive = attEvLiveOverrides ? { ...attEv, ...attEvLiveOverrides } : attEv;
+  const eventEnded = !!attEvLive.cancelled || attEvLive.endedHoursAgo != null;
+
+  if (eventEnded) {
+    return (
+      <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
+        <div onClick={backFromAttendance} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
+        <p style={{ padding: '40px 22px', fontSize: 13, color: ink }}>{T('Sự kiện đã kết thúc.', 'This event has ended.')}</p>
       </div>
     );
   }

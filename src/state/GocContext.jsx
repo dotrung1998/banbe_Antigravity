@@ -609,7 +609,7 @@ function cancelBookingErrorMessage(code, T) {
     case 'NOT_AUTHORIZED':
       return T('Bạn không có quyền huỷ vé này.', "You don't have permission to cancel this booking.");
     case 'BOOKING_CANNOT_BE_CANCELLED':
-      return T('Vé này không thể huỷ vì đã bị huỷ, hết hạn hoặc đã check-in.', "This booking can't be cancelled — it's already cancelled, expired, or checked in.");
+      return T('Vé này không thể huỷ vì đã bị huỷ, hết hạn hoặc khách đã check-in.', "This booking can't be cancelled — it's already cancelled, expired, or the guest already checked in.");
     default:
       return code
         ? T(`Không thể huỷ vé: ${code}`, `Could not cancel the booking: ${code}`)
@@ -4760,12 +4760,16 @@ export function GocProvider({ children }) {
     // undoCheckin/rejectGuest keep their exact prior behavior, unchanged,
     // per this ticket's own scope.
     if (error && prompt.kind === 'cancelBooking') {
+      // TASK 2 — raw technical details (e.g. the CONFIRMED root cause
+      // itself: `column "reason" is of type refund_reason but expression
+      // is of type text`) are logged to the dev console only, never shown
+      // to the user.
       console.warn('cancel_booking RPC threw:', error);
       set({
         reasonPromptBusy: false,
         reasonPromptError: T(
-          `Không thể huỷ vé do lỗi hệ thống: ${error.message || error.code || error}`,
-          `Could not cancel the booking due to a system error: ${error.message || error.code || error}`,
+          'Hiện chưa thể huỷ vé do lỗi hệ thống. Vui lòng thử lại sau.',
+          "Booking cancellation isn't available right now due to a system error. Please try again later.",
         ),
       });
       return;

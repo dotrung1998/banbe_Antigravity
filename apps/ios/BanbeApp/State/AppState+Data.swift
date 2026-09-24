@@ -2666,10 +2666,14 @@ extension AppState {
                 // real Postgres exception cancel_booking() itself didn't
                 // catch) — distinct from the RPC's own typed success:false
                 // response, which is handled above and never throws.
-                print("cancel_booking RPC threw:", error)
+                // TASK 2 — must never surface a raw Postgres/driver error
+                // string to the user (e.g. the CONFIRMED root cause itself:
+                // `column "reason" is of type refund_reason but expression
+                // is of type text`) — only to development logs, via print()
+                // above.
                 reasonPromptError = T(
-                    "Không thể huỷ vé do lỗi hệ thống: \(error.localizedDescription)",
-                    "Could not cancel the booking due to a system error: \(error.localizedDescription)"
+                    "Hiện chưa thể huỷ vé do lỗi hệ thống. Vui lòng thử lại sau.",
+                    "Booking cancellation isn't available right now due to a system error. Please try again later."
                 )
             } else {
                 reasonPromptError = prompt.kind == .undoCheckin
@@ -2691,7 +2695,7 @@ extension AppState {
         case "NOT_AUTHORIZED":
             return T("Bạn không có quyền huỷ vé này.", "You don't have permission to cancel this booking.")
         case "BOOKING_CANNOT_BE_CANCELLED":
-            return T("Vé này không thể huỷ vì đã bị huỷ, hết hạn hoặc đã check-in.", "This booking can't be cancelled — it's already cancelled, expired, or checked in.")
+            return T("Vé này không thể huỷ vì đã bị huỷ, hết hạn hoặc khách đã check-in.", "This booking can't be cancelled — it's already cancelled, expired, or the guest already checked in.")
         case let code?:
             return T("Không thể huỷ vé: \(code)", "Could not cancel the booking: \(code)")
         case nil:

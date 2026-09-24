@@ -45,6 +45,13 @@ struct AttendanceView: View {
 
     private var event: CatalogEvent? { EventCatalog.find(app.attendanceEventKey) }
     private var checkedCount: Int { app.attendanceGuests.filter(\.checkedIn).count }
+    // TASK 3 point 5 — the same real `applyingLiveStatus` merge Dashboard/
+    // Home already use, not a separate "ended" calculation, so a host who
+    // stays on this screen while the event genuinely ends/gets cancelled
+    // (live `status`, refreshed by startPolling() below) loses actionable
+    // guest controls instead of only picking that up on next screen mount.
+    private var liveEvent: CatalogEvent? { event.map { $0.applyingLiveStatus(app.homeLiveEvents[$0.key]) } }
+    private var eventEnded: Bool { (liveEvent?.cancelled ?? false) || liveEvent?.endedHoursAgo != nil }
 
     var body: some View {
         ScreenScaffold {
@@ -75,7 +82,11 @@ struct AttendanceView: View {
         VStack(alignment: .leading, spacing: 0) {
                 BackLink(label: app.attendanceBack == .notifications ? app.T("Thông báo", "Notifications") : app.T("Trang của bạn", "Your dashboard")) { app.screen = app.attendanceBack }
 
-                if let event {
+                if event != nil, eventEnded {
+                    Text(app.T("Sự kiện đã kết thúc.", "This event has ended."))
+                        .font(.system(size: 13))
+                        .padding(.top, 40)
+                } else if let event {
                     HStack(alignment: .top, spacing: 12) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(app.T("Điểm danh khách", "Guest check-in"))
@@ -154,12 +165,14 @@ struct AttendanceView: View {
     private func startPolling() {
         pollTask?.cancel()
         guard let key = app.attendanceEventKey else { return }
+        Task { @MainActor in await app.loadHomeLiveEvents() }
         pollTask = Task { @MainActor in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 6_000_000_000)
                 if Task.isCancelled { return }
                 guard app.attendanceEventKey == key else { return }
                 await app.loadAttendanceGuests(key)
+                await app.loadHomeLiveEvents()
             }
         }
     }

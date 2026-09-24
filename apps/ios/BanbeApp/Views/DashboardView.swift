@@ -13,11 +13,12 @@ struct DashboardView: View {
         return app.currentEvent
     }
 
-    private var myEvents: [CatalogEvent] {
-        app.myOrgEventKeys.isEmpty
-            ? EventCatalog.all.filter { $0.orgName == event.orgName }
-            : EventCatalog.all.filter { app.myOrgEventKeys.contains($0.key) }
-    }
+    // TASK 3 — was a raw static-catalogue filter with no live status
+    // merged in; now backed by `AppState.myOrgEvents`, which applies the
+    // same real `withLive`/`applyingLiveStatus` merge Home already uses,
+    // so a genuinely-ended real event actually drops out of `upcoming`
+    // (and its Check-in button) instead of staying there forever.
+    private var myEvents: [CatalogEvent] { app.myOrgEvents }
     private var upcoming: [CatalogEvent] {
         myEvents.filter { $0.isOpen }.sorted { ($0.until ?? 999) < ($1.until ?? 999) }
     }
@@ -186,6 +187,7 @@ struct DashboardView: View {
             }
         }
         .task { await app.loadMyEvents() }
+        .task { await app.loadHomeLiveEvents() }
     }
 }
 

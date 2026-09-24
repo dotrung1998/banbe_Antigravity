@@ -1,10 +1,20 @@
+import { useEffect } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, findEvent, bg } from '../data/events.js';
+import { liveEventOverrides } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
 
 export default function Dashboard() {
-  const { state, T, trStatus, stripKm, curEvent, backFromDashboard, switchToGoer, goCreate, openAttendance, goEvent, requestVerify } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent, backFromDashboard, switchToGoer, goCreate, openAttendance, goEvent, requestVerify, loadHomeLiveEvents } = useGoc();
   const s = state;
+
+  // TASK 3 (organizer Check-in ended-event filtering) — same batched live
+  // fetch Home.jsx already calls on mount (loadHomeLiveEvents), reused here
+  // rather than inventing a separate "ended" calculation: without this,
+  // `s.homeLiveEvents` could still be empty/stale if the organizer landed
+  // here without ever visiting Home first, and a real, DB-backed event
+  // that's actually ended would keep offering "Điểm danh"/Check-in below.
+  useEffect(() => { loadHomeLiveEvents(); }, [loadHomeLiveEvents]);
 
   // The header shows the org branding for one of the account's own events
   // when it actually owns any (see myOrgEventKeys) — otherwise it falls back
@@ -28,9 +38,19 @@ export default function Dashboard() {
   // currently-viewed org's name. Accounts with no real assignment yet (a
   // fresh dev database, or before the demo catalogue has been seeded) still
   // see the old name-matched demo behavior, so the prototype keeps working.
-  const myEvents = s.myOrgEventKeys.length
+  // TASK 3 — was the raw static catalogue with no live status merged in;
+  // each event now gets the same `liveEventOverrides` merge Home.jsx
+  // already applies (src/lib/countdown.js), so a real event that has
+  // actually ended (live `status`, not just the static catalogue's
+  // frozen `endedHoursAgo`) actually drops into `past` and loses its
+  // Check-in button below instead of staying "upcoming" forever.
+  const myEvents = (s.myOrgEventKeys.length
     ? EVENTS.filter(e => s.myOrgEventKeys.includes(e.key))
-    : EVENTS.filter(e => e.orgName === ev.orgName);
+    : EVENTS.filter(e => e.orgName === ev.orgName)
+  ).map(e => {
+    const overrides = liveEventOverrides(s.homeLiveEvents[e.key], e);
+    return overrides ? { ...e, ...overrides } : e;
+  });
   const upcoming = myEvents.filter(e => !e.cancelled && e.endedHoursAgo == null)
     .sort((a, c) => (a.until ?? 999) - (c.until ?? 999));
   const past = myEvents.filter(e => !e.cancelled && e.endedHoursAgo != null)

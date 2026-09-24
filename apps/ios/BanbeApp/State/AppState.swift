@@ -987,6 +987,21 @@ final class AppState: ObservableObject {
     /// `applyingLiveStatus` call, applied to every event Home might list.
     private func withLive(_ e: CatalogEvent) -> CatalogEvent { e.applyingLiveStatus(homeLiveEvents[e.key]) }
 
+    /// TASK 3 (organizer Check-in ended-event filtering) — the organizer's
+    /// own events (Dashboard's "upcoming"/"past" lists and the Check-in
+    /// entry point they feed), with the same real `withLive` merge `feed`/
+    /// `savedStrip` already use. Without this, DashboardView's own
+    /// `myEvents` read `CatalogEvent.endedHoursAgo` straight off the static
+    /// bundled catalogue — frozen at build time — so a real, DB-backed
+    /// event that has actually ended never lost its "Điểm danh"/Check-in
+    /// button.
+    var myOrgEvents: [CatalogEvent] {
+        let base = myOrgEventKeys.isEmpty
+            ? EventCatalog.all.filter { $0.orgName == currentEvent.orgName }
+            : EventCatalog.all.filter { myOrgEventKeys.contains($0.key) }
+        return base.map(withLive)
+    }
+
     /// The home feed — same filter and ordering as src/screens/Home.jsx:
     /// invite-only events never appear, and cancelled ones sink to the end.
     var feed: [CatalogEvent] {
