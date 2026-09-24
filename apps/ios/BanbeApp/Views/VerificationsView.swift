@@ -121,17 +121,24 @@ struct VerificationsView: View {
                     .padding(.top, 12)
                 }
 
-                // Flow 2 — refund queue. Only active claims (owed/disputed):
-                // host_marked_sent/guest_confirmed have nothing left for the
-                // host to do here. Hidden while focused on one verification
-                // booking, same reasoning as the dispute section above.
-                if app.verificationsFocusBookingID == nil, !app.refundQueue.isEmpty {
+                // Flow 2 — refund queue (TASK A/B, 2026-09-30 pass):
+                // app.refundQueue now comes from the exact same
+                // get_host_refund_claims() RPC + RefundClaim.hasValidDestination
+                // /isActiveRefundStatus AttendanceView's Refund Center uses —
+                // no more separate "what's actionable" logic that could drift
+                // out of sync. activeRefundRows mirrors the old owed/disputed
+                // filter; host_marked_sent claims get their own non-actionable
+                // "Đang chờ xác nhận" section instead of being silently
+                // dropped. Hidden while focused on one verification booking,
+                // same reasoning as the dispute section above.
+                if app.verificationsFocusBookingID == nil, !activeRefundRows.isEmpty || !pendingRefundRows.isEmpty {
                     Text(app.T("Hoàn tiền", "Refunds"))
                         .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
                         .padding(.top, 24)
                         .accessibilityIdentifier("refundQueue.title")
                     VStack(spacing: 12) {
-                        ForEach(app.refundQueue) { claim in refundRow(claim) }
+                        ForEach(activeRefundRows) { claim in refundRow(claim) }
+                        ForEach(pendingRefundRows) { claim in pendingRefundRow(claim) }
                     }
                     .padding(.top, 12)
                 }
@@ -159,6 +166,9 @@ struct VerificationsView: View {
         }
     }
 
+    private var activeRefundRows: [RefundClaim] { app.refundQueue.filter(\.isActiveRefundStatus) }
+    private var pendingRefundRows: [RefundClaim] { app.refundQueue.filter { $0.status == "host_marked_sent" } }
+
     @ViewBuilder
     private func refundRow(_ claim: RefundClaim) -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -178,6 +188,14 @@ struct VerificationsView: View {
                 Text(app.T("Khách báo chưa nhận được tiền", "Guest reports not receiving this refund"))
                     .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
                     .accessibilityIdentifier("refundQueue.disputed")
+            } else if !claim.hasValidDestination {
+                // TASK B — the actual fix for the reported bug: an owed
+                // claim with no valid recipient snapshot is NEVER
+                // actionable here, exactly like AttendanceView's own Refund
+                // Center — never a "Mark refund sent" CTA for it.
+                Text(app.T("Khách chưa chọn tài khoản nhận hoàn tiền.", "The guest hasn't chosen a refund destination yet."))
+                    .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                    .accessibilityIdentifier("refundQueue.needsDestination")
             } else if refundNoteFor == claim.id {
                 VStack(alignment: .leading, spacing: 8) {
                     TextField(app.T("Ghi chú/mã tham chiếu (không bắt buộc)", "Note/reference (optional)"), text: $refundNoteText)
@@ -186,10 +204,15 @@ struct VerificationsView: View {
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
                         .accessibilityIdentifier("refundQueue.note")
                     HStack(spacing: 8) {
-                        action(app.T("Xác nhận", "Confirm"), id: "refundQueue.markSentConfirm") {
-                            Task { await app.markRefundSent(claim.id, note: refundNoteText) }
+                        action(
+                            app.refundActionBusy == claim.id ? app.T("Đang lưu…", "Saving…") : app.T("Xác nhận", "Confirm"),
+                            id: "refundQueue.markSentConfirm"
+                        ) {
+                            let note = refundNoteText
                             refundNoteFor = nil; refundNoteText = ""
+                            Task { await app.markRefundSent(claim.id, note: note) }
                         }
+                        .disabled(app.refundActionBusy == claim.id)
                         action(app.T("Huỷ", "Cancel"), ghost: true) { refundNoteFor = nil; refundNoteText = "" }
                     }
                 }
@@ -203,6 +226,26 @@ struct VerificationsView: View {
         .padding(14)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityIdentifier("refundQueue.row")
+    }
+
+    @ViewBuilder
+    private func pendingRefundRow(_ claim: RefundClaim) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(claim.guestName.isEmpty ? app.T("Khách", "Guest") : claim.guestName)
+                        .font(BanbeTheme.display(16))
+                    Text(claim.eventName).font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                }
+                Spacer(minLength: 8)
+                Text(formatVnd(claim.amountVnd)).font(BanbeTheme.display(19))
+            }
+            Text(app.T("Đang chờ khách xác nhận đã nhận tiền.", "Awaiting guest confirmation."))
+                .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+        }
+        .padding(14)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityIdentifier("refundQueue.rowPending")
     }
 
     private func startRefundQueuePolling() {

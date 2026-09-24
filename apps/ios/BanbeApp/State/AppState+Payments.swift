@@ -966,99 +966,110 @@ extension AppState {
         enum CodingKeys: String, CodingKey { case id; case displayName = "display_name" }
     }
 
-    /// The organizer's own refund queue — the smallest addition to this
-    /// screen's existing surface, per this ticket's own ask, not a new
-    /// screen. Only flat `.in()` queries (mirrors
-    /// loadNotificationAvatarMaps()'s own batch-fetch shape) — no embedded-
-    /// resource FK hints, since this session has no live database to
-    /// verify the exact constraint names against.
+    /// TASK A (2026-09-30 pass) — this used to be an entirely separate
+    /// implementation from AttendanceView's Refund Center: its own client-
+    /// composed query (refund_claims -> bookings -> events -> profiles, all
+    /// joined in Swift) with no recipient-snapshot check at all, which is
+    /// the actual cause of a claim with no valid destination still showing
+    /// an active "Mark refund sent" CTA on THIS screen even after
+    /// AttendanceView was fixed — two independent copies of "what's
+    /// actionable," only one of which got fixed. Fixed: calls the exact
+    /// same get_host_refund_claims() RPC (migration 077/078)
+    /// loadRefundCenter() uses, with no event id (nil = every claim across
+    /// every event this host runs; admin-vs-organizer scoping is now
+    /// enforced server-side by the RPC itself, not trusted from `isAdmin`).
+    /// A monotonic `refundQueueSeq` guard (same pattern as
+    /// `attendanceGuestsSeq`) means a slower, older in-flight call (a poll
+    /// tick that started before a more recent one) can never overwrite what
+    /// that more recent call already applied.
     func loadRefundQueue() async {
         guard isAdmin || !myOrganizerIDs.isEmpty else { refundQueue = []; return }
+        refundQueueSeq += 1
+        let seq = refundQueueSeq
         refundQueueLoading = true
         do {
-            let claims: [RefundClaim] = try await SupabaseService.client
-                .from("refund_claims").select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at, refund_due_at, disputed_at, host_response_due_at, transfer_reference, resend_reference, resend_bank_name, resend_transferred_at, resend_note")
-                .in("status", values: ["owed", "disputed"])
-                .order("created_at", ascending: true)
+            let result: GetHostRefundClaimsResult = try await SupabaseService.client
+                .rpc("get_host_refund_claims", params: GetHostRefundClaimsParams(pEventId: nil))
                 .execute().value
-            let bookingIDs = Set(claims.compactMap { $0.bookingId ?? $0.reservationId })
-            var bookingByID: [UUID: RefundClaimBookingRow] = [:]
-            if !bookingIDs.isEmpty {
-                let bookings: [RefundClaimBookingRow] = try await SupabaseService.client
-                    .from("bookings").select("id, user_id, event_id")
-                    .in("id", values: bookingIDs.map(\.uuidString))
-                    .execute().value
-                for b in bookings { bookingByID[b.id] = b }
+            guard seq == refundQueueSeq else { return }
+            guard result.success == true else {
+                print("loadRefundQueue failed:", result.error ?? "unknown", "userID:", userID?.uuidString ?? "nil")
+                refundQueueLoading = false
+                return
             }
-            let eventIDs = Set(bookingByID.values.compactMap(\.eventId))
-            var eventByID: [String: RefundClaimEventRow] = [:]
-            if !eventIDs.isEmpty {
-                let events: [RefundClaimEventRow] = try await SupabaseService.client
-                    .from("events").select("id, name, organizer_id")
-                    .in("id", values: Array(eventIDs))
-                    .execute().value
-                for e in events { eventByID[e.id] = e }
-            }
-            // Defense in depth, same reasoning as loadVerifications() above
-            // — RLS already scopes refund_claims_select_host to the
-            // caller's own organizer(s).
-            let scoped = isAdmin ? claims : claims.filter { c in
-                guard let b = bookingByID[c.bookingId ?? c.reservationId ?? UUID()],
-                      let eventID = b.eventId, let ev = eventByID[eventID],
-                      let organizerID = ev.organizerId else { return false }
-                return myOrganizerIDs.contains(organizerID)
-            }
-            let userIDs = Set(scoped.compactMap { bookingByID[$0.bookingId ?? $0.reservationId ?? UUID()]?.userId })
-            var nameByUserID: [UUID: String] = [:]
-            if !userIDs.isEmpty {
-                let profiles: [RefundClaimProfileRow] = try await SupabaseService.client
-                    .from("profiles").select("id, display_name")
-                    .in("id", values: userIDs.map(\.uuidString))
-                    .execute().value
-                for p in profiles { nameByUserID[p.id] = p.displayName ?? "" }
-            }
-            refundQueue = scoped.map { c in
-                var claim = c
-                if let b = bookingByID[c.bookingId ?? c.reservationId ?? UUID()] {
-                    claim.guestName = b.userId.flatMap { nameByUserID[$0] } ?? ""
-                    claim.eventName = b.eventId.flatMap { eventByID[$0]?.name } ?? ""
-                }
-                return claim
-            }
+            refundQueue = result.claims ?? []
         } catch {
-            print("loadRefundQueue failed:", error)
-            refundQueue = []
+            guard seq == refundQueueSeq else { return }
+            print("loadRefundQueue failed:", error, "userID:", userID?.uuidString ?? "nil")
         }
         refundQueueLoading = false
     }
 
-    /// Host's "Đã hoàn tiền" — owed -> host_marked_sent. TASK C fix:
-    /// mark_refund_sent() (migration 075) now rejects a claim with no
-    /// valid recipient snapshot (NO_DESTINATION_SELECTED), surfaced here
-    /// instead of the previous silent print-only failure. Returns whether
-    /// it succeeded so callers (AttendanceView's "Hoàn lại lần nữa") know
-    /// whether to also refresh their own Refund Center view.
+    private struct MarkRefundSentResult: Decodable {
+        let success: Bool?
+        let error: String?
+        let claim: RefundClaim?
+    }
+
+    /// Host's "Đã hoàn tiền" — owed -> host_marked_sent. TASK C (2026-09-30
+    /// pass): mark_refund_sent() (migration 078) rejects a claim with no
+    /// valid recipient snapshot with the stable business code
+    /// REFUND_DESTINATION_REQUIRED (renamed from NO_DESTINATION_SELECTED),
+    /// and now returns the complete canonical claim on every path —
+    /// including an idempotent repeat tap. That canonical claim is patched
+    /// directly into both refundQueue and refundCenterClaims BY ID right
+    /// away, so the card can never bounce back to "Mark refund sent" in the
+    /// window between this succeeding and the backstop loadRefundQueue()
+    /// refetch completing — it's not showing stale pre-mutation data in
+    /// that window any more. Returns whether it succeeded so callers
+    /// (AttendanceView's "Hoàn lại lần nữa") know whether to also refresh
+    /// their own Refund Center view.
     @discardableResult
     func markRefundSent(_ claimID: UUID, note: String = "") async -> Bool {
+        guard refundActionBusy != claimID else { return false } // already in flight — no double-submit
         refundActionBusy = claimID
         refundBatchError = ""
         defer { refundActionBusy = nil }
         var ok = false
         do {
-            let result: RpcResult = try await SupabaseService.client
+            let result: MarkRefundSentResult = try await SupabaseService.client
                 .rpc("mark_refund_sent", params: ["p_claim_id": claimID.uuidString, "p_note": note])
                 .execute().value
             if result.success == true {
                 ok = true
+                if let canonical = result.claim {
+                    // Never strip the claim out here — VerificationsView's
+                    // own activeRefundRows/pendingRefundRows split (by
+                    // status) is what moves it into the non-actionable
+                    // "Đang chờ xác nhận" section; this patch only ever
+                    // needs to update the ONE row by id. guestName/eventName
+                    // aren't part of get_host_refund_claims()'s to_jsonb()
+                    // shape here — carried over from the existing row so
+                    // the card doesn't blank them out.
+                    refundQueue = refundQueue.map { existing in
+                        guard existing.id == canonical.id else { return existing }
+                        var merged = canonical
+                        merged.guestName = existing.guestName
+                        merged.eventName = existing.eventName
+                        return merged
+                    }
+                    refundCenterClaims = refundCenterClaims.map { rc in
+                        rc.id == canonical.id
+                            ? RefundCenterClaim(claim: canonical, guestName: rc.guestName, eligible: false, needsDestination: false, overdue: false)
+                            : rc
+                    }
+                }
             } else {
-                refundBatchError = result.error == "NO_DESTINATION_SELECTED"
+                refundBatchError = result.error == "REFUND_DESTINATION_REQUIRED"
                     ? T("Chưa thể đánh dấu đã hoàn tiền. Khách cần chọn tài khoản nhận trước.", "Cannot mark this refund sent yet — the guest needs to choose a destination first.")
                     : T("Không thể cập nhật lúc này. Vui lòng thử lại.", "Could not update right now. Please try again.")
             }
         } catch {
-            print("markRefundSent failed:", error)
+            print("markRefundSent failed:", error, "claimID:", claimID.uuidString, "userID:", userID?.uuidString ?? "nil")
             refundBatchError = T("Không thể cập nhật lúc này. Vui lòng thử lại.", "Could not update right now. Please try again.")
         }
+        // Backstop canonical refetch — both loaders' own seq guards mean a
+        // stale response from either can never clobber a fresher one.
         await loadRefundQueue()
         return ok
     }
@@ -1412,13 +1423,19 @@ extension AppState {
     /// caller owns all resolve in one query, including the guest's display
     /// name. No client-side validity check is left to get out of sync.
     func loadRefundCenter(eventKey: String) async {
+        refundCenterSeq += 1
+        let seq = refundCenterSeq
         refundCenterLoading = true
         defer { refundCenterLoading = false }
         guard let eventUUID = UUID(uuidString: eventKey) else { return }
         do {
             let result: GetHostRefundClaimsResult = try await SupabaseService.client
-                .rpc("get_host_refund_claims", params: ["p_event_id": eventUUID.uuidString])
+                .rpc("get_host_refund_claims", params: GetHostRefundClaimsParams(pEventId: eventUUID.uuidString))
                 .execute().value
+            // Only the newest call may write refundCenterClaims — a slower
+            // older in-flight poll tick landing late must never overwrite a
+            // fresher one.
+            guard seq == refundCenterSeq else { return }
             guard result.success == true else {
                 print("loadRefundCenter failed:", result.error ?? "unknown", "eventKey:", eventKey, "userID:", userID?.uuidString ?? "nil")
                 return
@@ -1426,21 +1443,16 @@ extension AppState {
             let claims = result.claims ?? []
             let now = Date()
             let enriched = claims.map { c -> RefundCenterClaim in
-                // TASK C — matches the server's own goc_refund_snapshot_valid()
-                // (migration 075): a bare selectedDestinationId with no real
-                // snapshot content must never read as "has a destination".
-                let hasDestination = c.selectedDestinationId != nil
-                    && !(c.recipientSnapshot?.bankName.isEmpty ?? true)
-                    && !(c.recipientSnapshot?.accountNumber.isEmpty ?? true)
-                    && !(c.recipientSnapshot?.accountHolderName.isEmpty ?? true)
-                let isActive = c.status == "owed" || c.status == "disputed"
                 let overdue = (c.status == "owed" && (c.refundDueAt.map { $0 < now } ?? false))
                     || (c.status == "disputed" && (c.hostResponseDueAt.map { $0 < now } ?? false))
+                // TASK B — shared presentation (RefundClaim.hasValidDestination
+                // /isActiveRefundStatus, this file's own extension above), the
+                // same rule VerificationsView's refund queue now uses too.
                 return RefundCenterClaim(
                     claim: c,
                     guestName: c.hostGuestName?.isEmpty == false ? c.hostGuestName! : T("Khách", "Guest"),
-                    eligible: hasDestination && isActive,
-                    needsDestination: isActive && !hasDestination,
+                    eligible: c.hasValidDestination && c.isActiveRefundStatus,
+                    needsDestination: c.isActiveRefundStatus && !c.hasValidDestination,
                     overdue: overdue
                 )
             }
@@ -1448,6 +1460,7 @@ extension AppState {
             refundCenterClaims = enriched
             refundCenterSelected = refundCenterSelected.intersection(eligibleIDs)
         } catch {
+            guard seq == refundCenterSeq else { return }
             // Full diagnostic only in dev — never shown raw to the user.
             print("loadRefundCenter failed:", error, "eventKey:", eventKey, "userID:", userID?.uuidString ?? "nil")
             // A transient fetch error must never clobber an already-
@@ -1843,6 +1856,29 @@ struct RefundClaim: Codable, Identifiable, Equatable {
     }
 }
 
+/// TASK B (shared host refund presentation, 2026-09-30 pass) — the ONE
+/// shared mapper for "what can a host actually do with this claim", used by
+/// both AttendanceView's Refund Center (via RefundCenterClaim, computed at
+/// loadRefundCenter()) AND VerificationsView's own refund queue. Mirrors
+/// refundClaimPresentation() in src/lib/refundPresentation.js exactly, and
+/// goc_refund_snapshot_valid() (migration 075) server-side. Before this,
+/// VerificationsView never checked for a valid destination at all — that
+/// drift (one screen enforcing this, the other not) is the actual cause of
+/// a claim with no valid recipient snapshot still showing an active "Đã
+/// hoàn tiền" CTA there.
+extension RefundClaim {
+    var hasValidDestination: Bool {
+        selectedDestinationId != nil
+            && !(recipientSnapshot?.bankName.isEmpty ?? true)
+            && !(recipientSnapshot?.accountNumber.isEmpty ?? true)
+            && !(recipientSnapshot?.accountHolderName.isEmpty ?? true)
+    }
+    var isActiveRefundStatus: Bool { status == "owed" || status == "disputed" }
+    /// Single-claim "Đã hoàn tiền"/mark-sent CTA — owed + valid destination
+    /// only. A disputed claim has its own resend/response flow, never this.
+    var isRefundActionable: Bool { status == "owed" && hasValidDestination }
+}
+
 /// Refund MVP (migration 074) — a claim's own `recipient_snapshot` jsonb,
 /// decoded directly (never a live join) — a plain copy of whichever
 /// refund_destinations row the goer picked, frozen at selection time.
@@ -2012,6 +2048,14 @@ private struct SaveRefundDestinationParams: Encodable {
         case setDefault = "p_set_default"
         case confirmed = "p_confirmed"
     }
+}
+
+/// `pEventId: nil` requests every claim across every event the caller
+/// hosts (Verifications' Account-level queue); a value scopes to one event
+/// (Attendance's Refund Center) — see get_host_refund_claims() (078).
+private struct GetHostRefundClaimsParams: Encodable {
+    let pEventId: String?
+    enum CodingKeys: String, CodingKey { case pEventId = "p_event_id" }
 }
 
 private struct CreateRefundBatchParams: Encodable {

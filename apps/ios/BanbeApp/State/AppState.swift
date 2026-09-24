@@ -671,6 +671,10 @@ final class AppState: ObservableObject {
     // booking PaymentDetailsView is currently showing.
     @Published var refundQueue: [RefundClaim] = []
     @Published var refundQueueLoading = false
+    // TASK A (2026-09-30 pass) — only the newest loadRefundQueue() call may
+    // write refundQueue; see that function's own doc comment
+    // (AppState+Payments.swift). Same pattern as attendanceGuestsSeq above.
+    var refundQueueSeq = 0
     @Published var refundActionBusy: UUID?
     @Published var paymentRefundClaim: RefundClaim?
     // Set by openNotification()'s refund_confirmed/_disputed/_overdue cases
@@ -702,6 +706,9 @@ final class AppState: ObservableObject {
     // why (root cause of the "0đ / disappearing / reappearing" bug).
     @Published var refundCenterClaims: [RefundCenterClaim] = []
     @Published var refundCenterLoading = false
+    // Same reasoning as refundQueueSeq above — only the newest
+    // loadRefundCenter() call may write refundCenterClaims.
+    var refundCenterSeq = 0
     @Published var refundCenterSelected: Set<UUID> = []
     @Published var refundBatchBusy = false
     @Published var refundBatchInFlight = false

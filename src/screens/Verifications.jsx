@@ -274,62 +274,109 @@ export default function Verifications() {
         </div>
       )}
 
-      {/* Flow 2 — refund queue. Only active claims (owed/disputed):
-          host_marked_sent/guest_confirmed have nothing left for the host to
-          do here. Hidden while focused on one verification booking, same
-          reasoning as the dispute section above. */}
-      {!focusId && s.refundQueue.length > 0 && (
-        <div style={{ margin: '0 22px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }} data-testid="refund-queue-title">
-            {T('Hoàn tiền', 'Refunds')}
-          </span>
-          {s.refundQueue.map(c => (
-            <div
-              key={c.id}
-              ref={c.id === s.refundQueueFocusClaimId ? refundFocusRef : undefined}
-              style={{ ...cardGlass({ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }) }}
-              data-testid="refund-queue-row"
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-                  <span style={{ ...display(16) }}>{c.guestName || T('Khách', 'Guest')}</span>
-                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{c.eventName}</span>
-                </div>
-                <span style={{ ...display(19, { whiteSpace: 'nowrap' }) }}>{formatVnd(c.amount_vnd)}</span>
-              </div>
-
-              {c.status === 'disputed' ? (
-                // A disputed claim is not something the host can silently
-                // overwrite as "sent" — no action button here, just the
-                // visible state and whatever note trail exists.
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: alert }} data-testid="refund-queue-disputed">
-                  {T('Khách báo chưa nhận được tiền', 'Guest reports not receiving this refund')}
-                </span>
-              ) : refundNoteFor === c.id ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <input
-                    value={refundNote} onChange={(e) => setRefundNote(e.target.value)}
-                    placeholder={T('Ghi chú/mã tham chiếu (không bắt buộc)', 'Note/reference (optional)')}
-                    data-testid="refund-queue-note"
-                    style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
-                  />
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <Action label={T('Xác nhận', 'Confirm')} testid="refund-queue-mark-sent-confirm"
-                            onClick={() => { markRefundSent(c.id, refundNote); setRefundNoteFor(null); setRefundNote(''); }} />
-                    <Action label={T('Huỷ', 'Cancel')} ghost onClick={() => { setRefundNoteFor(null); setRefundNote(''); }} />
+      {/* Flow 2 — refund queue (TASK A/B, 2026-09-30 pass): s.refundQueue now
+          comes from the exact same get_host_refund_claims() RPC + the same
+          refundClaimPresentation() mapper Attendance's Refund Center uses
+          (src/lib/refundPresentation.js) — no more separate "what's
+          actionable" logic that could drift out of sync and show a Mark-
+          refund-sent CTA for a claim with no valid recipient snapshot
+          (the actual TDK404 bug). `activeRows` mirrors Attendance's own
+          visibleRows filter; host_marked_sent claims get their own
+          non-actionable "Đang chờ xác nhận" section instead of being
+          silently dropped. Hidden while focused on one verification
+          booking, same reasoning as the dispute section above. */}
+      {!focusId && (() => {
+        const activeRows = s.refundQueue.filter(c => c.status === 'owed' || c.status === 'disputed');
+        const pendingRows = s.refundQueue.filter(c => c.status === 'host_marked_sent');
+        if (!activeRows.length && !pendingRows.length) return null;
+        return (
+          <div style={{ margin: '0 22px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }} data-testid="refund-queue-title">
+              {T('Hoàn tiền', 'Refunds')}
+            </span>
+            {activeRows.map(c => (
+              <div
+                key={c.id}
+                ref={c.id === s.refundQueueFocusClaimId ? refundFocusRef : undefined}
+                style={{ ...cardGlass({ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }) }}
+                data-testid="refund-queue-row"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                    <span style={{ ...display(16) }}>{c.guestName || T('Khách', 'Guest')}</span>
+                    <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{c.eventName}</span>
                   </div>
+                  <span style={{ ...display(19, { whiteSpace: 'nowrap' }) }}>{formatVnd(c.amount_vnd)}</span>
                 </div>
-              ) : (
-                <Action
-                  label={s.refundActionBusy === c.id ? T('Đang lưu…', 'Saving…') : T('Đã hoàn tiền', 'Mark refund sent')}
-                  testid="refund-queue-mark-sent"
-                  onClick={() => setRefundNoteFor(c.id)}
-                />
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+
+                {c.status === 'disputed' ? (
+                  // A disputed claim is not something the host can silently
+                  // overwrite as "sent" — no action button here, just the
+                  // visible state and whatever note trail exists.
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: alert }} data-testid="refund-queue-disputed">
+                    {T('Khách báo chưa nhận được tiền', 'Guest reports not receiving this refund')}
+                  </span>
+                ) : !c.hasDestination ? (
+                  // TASK B — the actual fix for the reported bug: an owed
+                  // claim with no valid recipient snapshot is NEVER
+                  // actionable here, exactly like Attendance's own Refund
+                  // Center — never a "Mark refund sent" CTA for it.
+                  <span style={{ fontSize: 11, color: alert }} data-testid="refund-queue-needs-destination">
+                    {T('Khách chưa chọn tài khoản nhận hoàn tiền.', "The guest hasn't chosen a refund destination yet.")}
+                  </span>
+                ) : refundNoteFor === c.id ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <input
+                      value={refundNote} onChange={(e) => setRefundNote(e.target.value)}
+                      placeholder={T('Ghi chú/mã tham chiếu (không bắt buộc)', 'Note/reference (optional)')}
+                      data-testid="refund-queue-note"
+                      style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
+                    />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <Action
+                        label={s.refundActionBusy === c.id ? T('Đang lưu…', 'Saving…') : T('Xác nhận', 'Confirm')}
+                        disabled={s.refundActionBusy === c.id}
+                        testid="refund-queue-mark-sent-confirm"
+                        onClick={async () => {
+                          const note = refundNote;
+                          setRefundNoteFor(null); setRefundNote('');
+                          await markRefundSent(c.id, note);
+                        }}
+                      />
+                      <Action label={T('Huỷ', 'Cancel')} ghost onClick={() => { setRefundNoteFor(null); setRefundNote(''); }} />
+                    </div>
+                  </div>
+                ) : (
+                  <Action
+                    label={s.refundActionBusy === c.id ? T('Đang lưu…', 'Saving…') : T('Đã hoàn tiền', 'Mark refund sent')}
+                    testid="refund-queue-mark-sent"
+                    onClick={() => setRefundNoteFor(c.id)}
+                  />
+                )}
+              </div>
+            ))}
+            {pendingRows.map(c => (
+              <div
+                key={c.id}
+                ref={c.id === s.refundQueueFocusClaimId ? refundFocusRef : undefined}
+                style={{ ...cardGlass({ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }) }}
+                data-testid="refund-queue-row-pending"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                    <span style={{ ...display(16) }}>{c.guestName || T('Khách', 'Guest')}</span>
+                    <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{c.eventName}</span>
+                  </div>
+                  <span style={{ ...display(19, { whiteSpace: 'nowrap' }) }}>{formatVnd(c.amount_vnd)}</span>
+                </div>
+                <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>
+                  {T('Đang chờ khách xác nhận đã nhận tiền.', 'Awaiting guest confirmation.')}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -350,15 +397,16 @@ function Line({ label, value, mono, urgent, testid }) {
   );
 }
 
-function Action({ label, onClick, ghost, testid }) {
+function Action({ label, onClick, ghost, testid, disabled }) {
   return (
-    <div onClick={onClick} data-testid={testid}
+    <div onClick={disabled ? undefined : onClick} data-testid={testid}
          style={{
            flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 600, padding: '11px 12px',
-           borderRadius: 12, cursor: 'pointer',
+           borderRadius: 12, cursor: disabled ? 'default' : 'pointer',
            background: ghost ? 'transparent' : ink,
            color: ghost ? ink : paper,
            border: ghost ? `1px solid ${rule}` : 'none',
+           opacity: disabled ? 0.5 : 1,
          }}>
       {label}
     </div>

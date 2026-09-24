@@ -7,6 +7,7 @@ import { buildVietQrPayload } from '../lib/vietqr.js';
 import { msUntil, liveEventOverrides } from '../lib/countdown.js';
 import { normalizeProofFile } from '../lib/proofUpload.js';
 import { POLICY_VERSION } from '../lib/policy.js';
+import { refundClaimPresentation } from '../lib/refundPresentation.js';
 
 const GocCtx = createContext(null);
 
@@ -1919,76 +1920,61 @@ export function GocProvider({ children }) {
 
   // ---- Flow 2: host refund -> guest confirmation ----
   //
-  // Organizer's own queue — the smallest addition to this screen's existing
-  // surface rather than a new navigation section, per this ticket's own
-  // ask. Only flat `.in()` queries (no embedded-resource FK hints) — this
-  // codebase's own `loadNotifications()`/`loadNotificationAvatarMaps()`
-  // batch-fetch pattern, reused here rather than a guessed embed syntax
-  // this session has no live database to verify against.
+  // TASK A (2026-09-30 pass) — this queue used to be an entirely SEPARATE
+  // implementation from Attendance's Refund Center: its own client-composed
+  // query (refund_claims -> bookings -> events -> profiles, all joined in
+  // JS) with no recipient-snapshot check at all, which is the actual cause
+  // of "TDK404 / 80.000đ / Mark refund sent" surviving here even after the
+  // Attendance screen was fixed — two independent copies of "what's
+  // actionable," only one of which got fixed. Fixed: this now calls the
+  // exact same get_host_refund_claims() RPC (migration 077/078) Attendance
+  // uses, just with no p_event_id (NULL = every claim across every event
+  // this host runs), and the exact same refundClaimPresentation() mapper —
+  // no more separate eligibility logic to drift out of sync.
+  const refundQueueSeq = useRef(0);
   const loadRefundQueue = useCallback(async () => {
     if (s.accountType !== 'admin' && !s.myOrganizerIds.length) {
       return set({ refundQueue: [], refundQueueLoading: false });
     }
+    const seq = ++refundQueueSeq.current;
     set({ refundQueueLoading: true });
-    const { data: claims, error } = await supabase
-      .from('refund_claims')
-      .select('id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at, last_flagged_at')
-      .in('status', ['owed', 'disputed'])
-      .order('created_at', { ascending: true });
-    if (error) {
-      console.warn('loadRefundQueue failed:', error);
-      return set({ refundQueue: [], refundQueueLoading: false });
+    const { data, error } = await supabase.rpc('get_host_refund_claims', { p_event_id: null });
+    // Only the newest call may ever write refundQueue — a slower, older
+    // in-flight call (a poll tick that started before this one) landing
+    // late must never overwrite what a more recent call already applied.
+    if (seq !== refundQueueSeq.current) return;
+    if (error || data?.success === false) {
+      if (import.meta.env?.DEV) {
+        console.warn('loadRefundQueue failed:', { code: error?.code, message: error?.message, details: error?.details, hint: error?.hint, rpcError: data?.error, userId: s.user?.id });
+      }
+      set({ refundQueueLoading: false });
+      return;
     }
-    const rows = claims || [];
-    const bookingIds = [...new Set(rows.map(c => c.booking_id || c.reservation_id).filter(Boolean))];
-    let bookingById = {};
-    if (bookingIds.length) {
-      const { data: bookings } = await supabase.from('bookings').select('id, user_id, event_id').in('id', bookingIds);
-      bookingById = Object.fromEntries((bookings || []).map(b => [b.id, b]));
-    }
-    const eventIds = [...new Set(Object.values(bookingById).map(b => b.event_id).filter(Boolean))];
-    let eventById = {};
-    if (eventIds.length) {
-      const { data: events } = await supabase.from('events').select('id, name, organizer_id').in('id', eventIds);
-      eventById = Object.fromEntries((events || []).map(e => [e.id, e]));
-    }
-    // Defense in depth, same as loadVerifications() above — RLS already
-    // scopes refund_claims_select_host to the caller's own organizer(s),
-    // this just keeps an admin-vs-organizer account from ever rendering a
-    // row it can't actually act on due to a client-side state mismatch.
-    const scopedRows = s.accountType === 'admin' ? rows : rows.filter(c => {
-      const b = bookingById[c.booking_id || c.reservation_id];
-      const ev = b && eventById[b.event_id];
-      return ev && s.myOrganizerIds.includes(ev.organizer_id);
-    });
-    const userIds = [...new Set(scopedRows.map(c => bookingById[c.booking_id || c.reservation_id]?.user_id).filter(Boolean))];
-    let nameByUserId = {};
-    if (userIds.length) {
-      const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', userIds);
-      nameByUserId = Object.fromEntries((profiles || []).map(p => [p.id, p.display_name]));
-    }
-    const enriched = scopedRows.map(c => {
-      const b = bookingById[c.booking_id || c.reservation_id];
-      const ev = b && eventById[b.event_id];
-      return {
-        ...c,
-        guestName: (b && nameByUserId[b.user_id]) || '',
-        eventName: ev?.name || '',
-        eventId: ev?.id || null,
-      };
-    });
+    const claims = data.claims || [];
+    const enriched = claims.map(c => ({
+      ...c,
+      guestName: c.guest_name || T('Khách', 'Guest'),
+      eventName: c.event_name || '',
+      eventId: c.event_id || null,
+      destination: c.recipient_snapshot || null,
+      ...refundClaimPresentation(c),
+    }));
     set({ refundQueue: enriched, refundQueueLoading: false });
-  }, [set, s.accountType, s.myOrganizerIds]);
+  }, [set, T, s.accountType, s.myOrganizerIds.length, s.user?.id]);
 
-  /** Host's "Đã hoàn tiền" — owed -> host_marked_sent. */
-  /** Shared by Verifications.jsx's own refund queue AND Attendance.jsx's
-   * "Hoàn lại lần nữa" — TASK C fix: mark_refund_sent() (migration 075) now
-   * rejects a claim with no valid recipient snapshot (NO_DESTINATION_
-   * SELECTED), which this surfaces as a friendly error instead of the
-   * previous silent console.warn-only failure. Returns whether it
-   * succeeded so callers (e.g. Attendance.jsx) know whether to also
-   * refresh their own Refund Center view. */
+  /** Host's "Đã hoàn tiền" — owed -> host_marked_sent. Shared by
+   * Verifications.jsx's own refund queue AND Attendance.jsx's "Hoàn lại lần
+   * nữa". TASK C — mark_refund_sent() (migration 078) now returns the
+   * complete canonical claim on every path (fresh transition AND an
+   * idempotent repeat tap), which is patched directly into both local
+   * queues BY ID before the full canonical refetch lands — the card can
+   * never bounce back to "Mark refund sent" between the mutation
+   * succeeding and that refetch completing, because it's no longer
+   * showing stale pre-mutation data in that window. REFUND_DESTINATION_
+   * REQUIRED is this RPC's stable business code for "no valid recipient
+   * snapshot yet" (renamed from NO_DESTINATION_SELECTED, migration 078). */
   const markRefundSent = useCallback(async (claimId, note = '') => {
+    if (s.refundActionBusy === claimId) return false; // already in flight — no double-submit
     set({ refundActionBusy: claimId, refundBatchError: '' });
     let ok = false;
     try {
@@ -1996,21 +1982,42 @@ export function GocProvider({ children }) {
       if (error) throw error;
       if (data?.success === false) {
         set({
-          refundBatchError: data.error === 'NO_DESTINATION_SELECTED'
+          refundBatchError: data.error === 'REFUND_DESTINATION_REQUIRED'
             ? T('Chưa thể đánh dấu đã hoàn tiền. Khách cần chọn tài khoản nhận trước.', 'Cannot mark this refund sent yet — the guest needs to choose a destination first.')
             : T('Không thể cập nhật lúc này. Vui lòng thử lại.', 'Could not update right now. Please try again.'),
         });
       } else {
         ok = true;
+        const canonical = data.claim;
+        if (canonical) {
+          // Patch the exact server-confirmed claim into both queues by id
+          // right away — never a merge of a stale local array, just this
+          // one row's now-authoritative fields.
+          const patch = (c) => (c.id === canonical.id ? { ...c, ...canonical, ...refundClaimPresentation(canonical) } : c);
+          set(prev => ({
+            // Never strip the claim out here — Verifications.jsx's own
+            // activeRows/pendingRows split (by status) is what moves it
+            // into the non-actionable "Đang chờ xác nhận" section; this
+            // patch only ever needs to update the ONE row by id.
+            refundQueue: prev.refundQueue.map(patch),
+            refundCenterClaims: prev.refundCenterClaims.map(patch),
+          }));
+        }
       }
     } catch (e) {
-      console.warn('markRefundSent failed:', e);
+      if (import.meta.env?.DEV) {
+        console.warn('markRefundSent failed:', { code: e?.code, message: e?.message, details: e?.details, hint: e?.hint, claimId, userId: s.user?.id });
+      }
       set({ refundBatchError: T('Không thể cập nhật lúc này. Vui lòng thử lại.', 'Could not update right now. Please try again.') });
     }
     set({ refundActionBusy: '' });
+    // Backstop canonical refetch — reconciles anything the direct-by-id
+    // patch above can't (e.g. removing it from Attendance's own
+    // refundCenterSelected). Both loaders' own seq guards mean a stale
+    // response from either can never clobber a fresher one.
     await loadRefundQueue();
     return ok;
-  }, [set, T, loadRefundQueue]);
+  }, [set, T, loadRefundQueue, s.refundActionBusy, s.user?.id]);
 
   /**
    * The guest's own single refund claim for whatever booking
@@ -2365,10 +2372,15 @@ export function GocProvider({ children }) {
    * check left to get out of sync, because an invalid row structurally
    * cannot be returned.
    */
+  const refundCenterSeq = useRef(0);
   const loadRefundCenter = useCallback(async (eventKey) => {
     if (!eventKey) return set({ refundCenterClaims: [], refundCenterLoading: false });
+    const seq = ++refundCenterSeq.current;
     set({ refundCenterLoading: true });
     const { data, error } = await supabase.rpc('get_host_refund_claims', { p_event_id: eventKey });
+    // Only the newest call may write refundCenterClaims — a slower older
+    // in-flight poll tick landing late must never overwrite a fresher one.
+    if (seq !== refundCenterSeq.current) return;
     if (error || data?.success === false) {
       // A transient fetch error must never clobber an already-populated
       // list — leave refundCenterClaims exactly as it was. Full diagnostic
@@ -2380,25 +2392,15 @@ export function GocProvider({ children }) {
       return;
     }
     const claims = data.claims || [];
-    const now = Date.now();
-    const enriched = claims.map(c => {
-      // TASK C — matches the server's own goc_refund_snapshot_valid()
-      // (migration 075) exactly: a bare selected_destination_id with no
-      // real snapshot content must never read as "has a destination".
-      const hasDestination = !!c.selected_destination_id && !!c.recipient_snapshot?.bank_name
-        && !!c.recipient_snapshot?.account_number && !!c.recipient_snapshot?.account_holder_name;
-      const isActive = c.status === 'owed' || c.status === 'disputed';
-      const overdue = (c.status === 'owed' && c.refund_due_at && new Date(c.refund_due_at).getTime() < now)
-        || (c.status === 'disputed' && c.host_response_due_at && new Date(c.host_response_due_at).getTime() < now);
-      return {
-        ...c,
-        guestName: c.guest_name || T('Khách', 'Guest'),
-        destination: c.recipient_snapshot || null,
-        eligible: hasDestination && isActive,
-        needsDestination: isActive && !hasDestination,
-        overdue,
-      };
-    });
+    // TASK B — one shared presentation mapper (refundClaimPresentation),
+    // also used by loadRefundQueue() below, so "what's actionable" can
+    // never drift between the two screens again.
+    const enriched = claims.map(c => ({
+      ...c,
+      guestName: c.guest_name || T('Khách', 'Guest'),
+      destination: c.recipient_snapshot || null,
+      ...refundClaimPresentation(c),
+    }));
     const eligibleIds = new Set(enriched.filter(c => c.eligible).map(c => c.id));
     set(prev => ({
       refundCenterClaims: enriched,
