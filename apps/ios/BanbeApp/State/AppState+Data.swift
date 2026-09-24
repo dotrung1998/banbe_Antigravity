@@ -316,6 +316,14 @@ private struct ThreadPreferenceRow: Decodable {
 private struct RPCResult: Decodable {
     let success: Bool?
     let error: String?
+    // TASK 1 (cancel_booking response handling) — cancel_booking() also
+    // returns `booking_id` on success; optional so decoding still succeeds
+    // for every other RPC sharing this same struct, which never sends it.
+    let bookingId: UUID?
+    enum CodingKeys: String, CodingKey {
+        case success, error
+        case bookingId = "booking_id"
+    }
 }
 
 // MARK: - Session, profile and account data
@@ -2612,7 +2620,30 @@ extension AppState {
             case .confirmCheckin:
                 return // guarded above; unreachable
             }
-            guard result.success == true else { throw AuthAPIError(code: "RPC_FAILED") }
+            guard result.success == true else {
+                // TASK 1 — real bug, confirmed by reading: this used to
+                // `throw AuthAPIError(code: "RPC_FAILED")` for EVERY typed
+                // `{success:false, error:...}` response regardless of kind,
+                // discarding `result.error` entirely — the catch block below
+                // never even looked at it, only at `prompt.kind`, so
+                // cancel_booking's AUTH_REQUIRED/BOOKING_NOT_FOUND/
+                // NOT_AUTHORIZED/BOOKING_CANNOT_BE_CANCELLED all collapsed
+                // into the exact same generic "Không thể huỷ vé. Vui lòng
+                // thử lại." — indistinguishable from a real transport/decode
+                // exception. Handled inline here for .cancelBooking only
+                // (undoCheckin/rejectGuest keep their prior behavior,
+                // unchanged, per this ticket's own scope) — never throws,
+                // so it can never reach the generic catch below.
+                reasonPromptBusy = false
+                if prompt.kind == .cancelBooking {
+                    reasonPromptError = Self.cancelBookingErrorMessage(result.error, T)
+                } else {
+                    reasonPromptError = prompt.kind == .undoCheckin
+                        ? T("Không thể huỷ điểm danh. Vui lòng thử lại.", "Could not undo the check-in. Please try again.")
+                        : T("Không thể từ chối yêu cầu này. Vui lòng thử lại.", "Could not reject this request. Please try again.")
+                }
+                return
+            }
 
             reasonPrompt = nil
             reasonPromptBusy = false
@@ -2630,11 +2661,41 @@ extension AppState {
             )
         } catch {
             reasonPromptBusy = false
-            reasonPromptError = prompt.kind == .undoCheckin
-                ? T("Không thể huỷ điểm danh. Vui lòng thử lại.", "Could not undo the check-in. Please try again.")
-                : prompt.kind == .rejectGuest
-                ? T("Không thể từ chối yêu cầu này. Vui lòng thử lại.", "Could not reject this request. Please try again.")
-                : T("Không thể huỷ vé. Vui lòng thử lại.", "Could not cancel the booking. Please try again.")
+            if prompt.kind == .cancelBooking {
+                // TASK 1 point 5 — a genuine thrown error (network/decode/a
+                // real Postgres exception cancel_booking() itself didn't
+                // catch) — distinct from the RPC's own typed success:false
+                // response, which is handled above and never throws.
+                print("cancel_booking RPC threw:", error)
+                reasonPromptError = T(
+                    "Không thể huỷ vé do lỗi hệ thống: \(error.localizedDescription)",
+                    "Could not cancel the booking due to a system error: \(error.localizedDescription)"
+                )
+            } else {
+                reasonPromptError = prompt.kind == .undoCheckin
+                    ? T("Không thể huỷ điểm danh. Vui lòng thử lại.", "Could not undo the check-in. Please try again.")
+                    : T("Không thể từ chối yêu cầu này. Vui lòng thử lại.", "Could not reject this request. Please try again.")
+            }
+        }
+    }
+
+    /// TASK 1 — the exact five typed outcomes cancel_booking() (migration
+    /// 069) can return, mapped to a specific, user-visible Vietnamese
+    /// message each — never the one-size-fits-all string this replaces.
+    private static func cancelBookingErrorMessage(_ code: String?, _ T: (String, String) -> String) -> String {
+        switch code {
+        case "AUTH_REQUIRED":
+            return T("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.", "Your session has expired. Please sign in again.")
+        case "BOOKING_NOT_FOUND":
+            return T("Không tìm thấy vé này. Vé có thể đã bị xoá.", "This booking could not be found. It may have been deleted.")
+        case "NOT_AUTHORIZED":
+            return T("Bạn không có quyền huỷ vé này.", "You don't have permission to cancel this booking.")
+        case "BOOKING_CANNOT_BE_CANCELLED":
+            return T("Vé này không thể huỷ vì đã bị huỷ, hết hạn hoặc đã check-in.", "This booking can't be cancelled — it's already cancelled, expired, or checked in.")
+        case let code?:
+            return T("Không thể huỷ vé: \(code)", "Could not cancel the booking: \(code)")
+        case nil:
+            return T("Không thể huỷ vé. Vui lòng thử lại.", "Could not cancel the booking. Please try again.")
         }
     }
 

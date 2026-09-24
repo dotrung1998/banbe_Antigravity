@@ -363,10 +363,20 @@ struct AttendanceView: View {
                         }
                     }
 
-                    Button(app.T("Huỷ vé", "Cancel booking")) { app.openCancelBooking(guest) }
-                        .font(.system(size: 11))
-                        .foregroundStyle(BanbeTheme.alert.opacity(0.8))
-                        .buttonStyle(.plain)
+                    // TASK 3 — UX guard only (server-side BOOKING_CANNOT_BE_CANCELLED
+                    // stays authoritative, see cancelBookingErrorMessage
+                    // above for what happens if a stale UI still reaches
+                    // this action): a checked-in booking is the one
+                    // client-known-ineligible state actually reachable here
+                    // — cancelled/expired bookings never appear in
+                    // attendanceGuests at all (loadAttendanceGuests() only
+                    // queries status IN ('pending','confirmed','attended')).
+                    if !guest.checkedIn {
+                        Button(app.T("Huỷ vé", "Cancel booking")) { app.openCancelBooking(guest) }
+                            .font(.system(size: 11))
+                            .foregroundStyle(BanbeTheme.alert.opacity(0.8))
+                            .buttonStyle(.plain)
+                    }
                 }
                 Spacer(minLength: 0)
                 Text(guest.checkedIn ? app.T("Đã đến ✓", "Here ✓") : guest.paid ? app.T("Chưa đến", "Not yet") : app.T("Chưa thanh toán", "Not paid yet"))

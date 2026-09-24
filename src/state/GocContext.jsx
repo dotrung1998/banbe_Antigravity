@@ -595,6 +595,28 @@ async function targetIsGone(n) {
   return !data;
 }
 
+// TASK 1 (cancel_booking response handling) — the exact five typed
+// outcomes cancel_booking() (supabase/migrations/20260924000069_069_refund_lifecycle.sql)
+// can return, mapped to a specific, user-visible Vietnamese message each —
+// never the one-size-fits-all "Không thể huỷ vé. Vui lòng thử lại." this
+// replaces for that RPC's own typed failures.
+function cancelBookingErrorMessage(code, T) {
+  switch (code) {
+    case 'AUTH_REQUIRED':
+      return T('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'Your session has expired. Please sign in again.');
+    case 'BOOKING_NOT_FOUND':
+      return T('Không tìm thấy vé này. Vé có thể đã bị xoá.', 'This booking could not be found. It may have been deleted.');
+    case 'NOT_AUTHORIZED':
+      return T('Bạn không có quyền huỷ vé này.', "You don't have permission to cancel this booking.");
+    case 'BOOKING_CANNOT_BE_CANCELLED':
+      return T('Vé này không thể huỷ vì đã bị huỷ, hết hạn hoặc đã check-in.', "This booking can't be cancelled — it's already cancelled, expired, or checked in.");
+    default:
+      return code
+        ? T(`Không thể huỷ vé: ${code}`, `Could not cancel the booking: ${code}`)
+        : T('Không thể huỷ vé. Vui lòng thử lại.', 'Could not cancel the booking. Please try again.');
+  }
+}
+
 export function GocProvider({ children }) {
   const [state, setStateRaw] = useState(() => {
     try {
@@ -4727,6 +4749,27 @@ export function GocProvider({ children }) {
       ? { p_booking_id: prompt.bookingId, p_reason: reasonLabel }
       : { p_booking: prompt.bookingId, p_reason: reasonLabel };
     const { data, error } = await supabase.rpc(rpcName, rpcArgs);
+    // TASK 1 — real bug, confirmed by reading: `error` (a genuine thrown
+    // PostgREST/transport/decode exception) and `!data?.success` (the RPC's
+    // own typed `{success:false, error:'AUTH_REQUIRED'|...}` response) used
+    // to collapse into the exact same generic message for cancel_booking,
+    // discarding `data?.error` entirely — indistinguishable whether the
+    // wrong booking id was sent, the caller lacked authority, the booking
+    // was already terminal, or a real system error occurred. Handled
+    // separately below for prompt.kind === 'cancelBooking' only —
+    // undoCheckin/rejectGuest keep their exact prior behavior, unchanged,
+    // per this ticket's own scope.
+    if (error && prompt.kind === 'cancelBooking') {
+      console.warn('cancel_booking RPC threw:', error);
+      set({
+        reasonPromptBusy: false,
+        reasonPromptError: T(
+          `Không thể huỷ vé do lỗi hệ thống: ${error.message || error.code || error}`,
+          `Could not cancel the booking due to a system error: ${error.message || error.code || error}`,
+        ),
+      });
+      return;
+    }
     if (error || !data?.success) {
       set({
         reasonPromptBusy: false,
@@ -4734,6 +4777,8 @@ export function GocProvider({ children }) {
           ? T('Không thể huỷ điểm danh. Vui lòng thử lại.', 'Could not undo the check-in. Please try again.')
           : prompt.kind === 'rejectGuest'
           ? T('Không thể từ chối yêu cầu này. Vui lòng thử lại.', 'Could not reject this request. Please try again.')
+          : prompt.kind === 'cancelBooking'
+          ? cancelBookingErrorMessage(data?.error, T)
           : T('Không thể huỷ vé. Vui lòng thử lại.', 'Could not cancel the booking. Please try again.'),
       });
       return;

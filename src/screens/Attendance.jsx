@@ -283,12 +283,20 @@ export default function Attendance() {
                     )}
                   </>
                 )}
-                <span
-                  onClick={(e) => { e.stopPropagation(); openCancelBooking(g.id); }}
-                  style={{ fontSize: 11, color: alert, opacity: 0.8, width: 'fit-content', cursor: 'pointer', marginTop: 2 }}
-                >
-                  {T('Huỷ vé', 'Cancel booking')}
-                </span>
+                {/* TASK 3 — UX guard only (server-side BOOKING_CANNOT_BE_CANCELLED
+                    stays authoritative): a checked-in booking is the one
+                    client-known-ineligible state actually reachable here —
+                    cancelled/expired bookings never appear in this list at
+                    all (loadAttendanceGuests() only queries status IN
+                    ('pending','confirmed','attended')). */}
+                {!g.checkedIn && (
+                  <span
+                    onClick={(e) => { e.stopPropagation(); openCancelBooking(g.id); }}
+                    style={{ fontSize: 11, color: alert, opacity: 0.8, width: 'fit-content', cursor: 'pointer', marginTop: 2 }}
+                  >
+                    {T('Huỷ vé', 'Cancel booking')}
+                  </span>
+                )}
               </div>
               <span style={{ fontSize: 11.5, fontWeight: 600, flex: 'none', padding: '5px 10px', color: g.checkedIn ? paper : ink, background: g.checkedIn ? ink : 'rgba(27,25,22,0.16)' }}>
                 {g.checkedIn ? T('Đã đến ✓', 'Here ✓') : g.paid ? T('Chưa đến', 'Not yet') : T('Chưa thanh toán', 'Not paid yet')}
