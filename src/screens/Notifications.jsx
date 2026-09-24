@@ -11,6 +11,43 @@ import { paper, ink, rule, alert, display, fieldGlass } from '../theme.js';
 // the top regardless of age. Same fonts/colors as everywhere else in the
 // app (theme.js's paper/ink/display) — no new design system.
 const COLLAPSE_AT = 20;
+
+// Refund MVP task D — one semantic trailing icon per notification title,
+// by kind category. Same minimal inline-SVG convention as Account.jsx's own
+// RowIcon (one stroke weight, one viewBox, `ink` only, no emoji) — kept
+// local here rather than importing from Account.jsx since that component
+// isn't exported and this needs a different (smaller) glyph set.
+const KIND_CATEGORY = {
+  refund_marked_sent: 'refund', refund_confirmed: 'refund', refund_disputed: 'refund', refund_overdue: 'refund',
+  dispute_message: 'dispute', dispute_resolved: 'dispute', payment_disputed: 'dispute',
+  payment_awaiting_verification: 'payment', payment_confirmed: 'payment', payment_document_uploaded: 'payment',
+  payment_document_replaced: 'payment', payment_verification_nudge: 'payment', payment_needs_info: 'payment',
+  hold_created: 'payment', hold_expired: 'payment',
+  booking_requested: 'booking', booking_cancelled: 'booking', booking_declined: 'booking',
+  checked_in: 'booking', checkin_undo: 'booking', checkin_undone: 'booking', undo_check_in: 'booking',
+  reject_pending_guest: 'booking', receipt_requested: 'booking',
+  event_share: 'event', referral_joined: 'event',
+  new_message: 'message',
+};
+function notificationCategory(kind) { return KIND_CATEGORY[kind] || 'system'; }
+
+function KindIcon({ category }) {
+  const common = { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: ink, strokeWidth: 1.9, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  const byCategory = {
+    refund: <><rect x="3" y="7.3" width="18" height="9.4" rx="1.6" /><circle cx="12" cy="12" r="2.3" /></>,
+    dispute: <><path d="M12 3.2l9 15.6H3z" /><path d="M12 9.5v4M12 16v0" /></>,
+    payment: <><rect x="3.5" y="5.5" width="17" height="13" rx="1.8" /><path d="M3.5 9.7h17" /></>,
+    booking: <><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17" /><path d="M8 3v4M16 3v4" /></>,
+    event: <><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17" /><circle cx="12" cy="14.5" r="2.1" /></>,
+    message: <path d="M4 5.5h16v10.6H9.6L5 20V16.1H4z" />,
+    system: <><circle cx="12" cy="12" r="8.4" /><path d="M12 8.3v4.5M12 15.7v0" /></>,
+  };
+  return (
+    <span aria-hidden style={{ flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.6 }}>
+      <svg {...common}>{byCategory[category] || byCategory.system}</svg>
+    </span>
+  );
+}
 // TASK 1 (2026-09-22 twentieth follow-up) — must match Inbox.jsx's own
 // SHEET_ANIM_MS exactly (not a separate arbitrary speed): the prior pass
 // left this screen's search input with no `animation` at all, so it
@@ -395,9 +432,16 @@ function Row({ n, unread, avatar, onClick, onOpenMenu, selectionMode, selected }
       data-selected={selectionMode ? (selected ? 'true' : 'false') : undefined}
       onClick={onClick}
       style={{
-        display: 'flex', gap: 10, padding: '14px 0', cursor: onClick ? 'pointer' : 'default',
+        display: 'flex', gap: 10, padding: '14px 10px', margin: '0 -10px', borderRadius: 12,
+        cursor: onClick ? 'pointer' : 'default',
         borderBottom: '1px solid rgba(27,25,22,0.16)',
-        opacity: unread ? 1 : 0.6,
+        // TASK D — unread: a clearly darker/tinted background + bold title
+        // (existing `fontWeight: unread ? 700 : 400` below, unchanged);
+        // read: normal (transparent) background. Replaces the old
+        // whole-row `opacity: 0.6` fade, which dimmed EVERYTHING in a read
+        // row (including its icon) rather than just distinguishing the two
+        // states via background.
+        background: unread ? 'rgba(27,25,22,0.07)' : 'transparent',
       }}
     >
       {/* TASK 2 (2026-09-22 seventeenth follow-up) — a checkbox affordance
@@ -424,7 +468,10 @@ function Row({ n, unread, avatar, onClick, onOpenMenu, selectionMode, selected }
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           {/* BUG 3: bold only while unread — reading a notification unbolds
               it in place (fontWeight only), it never moves sections. */}
-          <span style={{ ...display(15, { lineHeight: 1.3 }), fontWeight: unread ? 700 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.title}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <span style={{ ...display(15, { lineHeight: 1.3 }), fontWeight: unread ? 700 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.title}</span>
+            <KindIcon category={notificationCategory(n.kind)} />
+          </span>
           <span style={{ fontSize: 11, color: ink, flex: 'none', whiteSpace: 'nowrap' }}>{n.ago}</span>
         </div>
         {/* Instagram's own "bold actor/action + secondary preview" shape —

@@ -26,12 +26,9 @@ struct PaymentDetailsView: View {
     @State private var disputeFormOpen = false
     @State private var disputeReasonText = ""
     // Refund MVP — "Thêm tài khoản nhận hoàn tiền" inline form.
-    @State private var destFormOpen = false
-    @State private var destBank = ""
-    @State private var destAccount = ""
-    @State private var destHolder = ""
-    @State private var destNote = ""
-    @State private var destConfirmed = false
+    @State private var destPickerOpen = false
+    @State private var destPickerID: UUID?
+    @State private var destPickerBusy = false
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -96,7 +93,7 @@ struct PaymentDetailsView: View {
                 app.forfeitExpiredHold(booking)
             }
         }
-        .onAppear { startPollingIfNeeded(); startRefundPollingIfNeeded(); Task { await app.loadRefundDestination() } }
+        .onAppear { startPollingIfNeeded(); startRefundPollingIfNeeded(); Task { await app.loadRefundDestinations() } }
         .onChange(of: booking?.paymentState) { _, _ in startPollingIfNeeded() }
         .onChange(of: booking?.status) { _, _ in startRefundPollingIfNeeded() }
         .onDisappear { pollTask?.cancel(); refundPollTask?.cancel() }
@@ -407,7 +404,7 @@ struct PaymentDetailsView: View {
                             .font(.system(size: 13))
                             .accessibilityIdentifier("refund.owed")
                     }
-                    refundDestinationSection
+                    refundDestinationSection(claim)
                 }
                 .padding(.top, 2)
             }
@@ -496,69 +493,85 @@ struct PaymentDetailsView: View {
         .accessibilityIdentifier("refund.card")
     }
 
-    /// Refund MVP — goer's own refund destination, shown under an "owed"
-    /// claim. Mirrors PaymentDetails.jsx's own inline form exactly.
+    /// Refund MVP — goer's EXPLICIT choice of a saved destination for THIS
+    /// claim, shown under an "owed" claim. Picking one snapshots it onto the
+    /// claim server-side (select_refund_destination(), migration 074), so a
+    /// later edit/delete of the account never changes what's already
+    /// selected here. RefundAccountsView owns add/edit of the accounts
+    /// themselves.
     @ViewBuilder
-    private var refundDestinationSection: some View {
-        if app.refundDestination == nil && !destFormOpen {
-            Button(app.T("Thêm tài khoản nhận hoàn tiền", "Add a refund destination")) {
-                destFormOpen = true; destBank = ""; destAccount = ""; destHolder = ""; destNote = ""; destConfirmed = false
+    private func refundDestinationSection(_ claim: RefundClaim) -> some View {
+        if claim.selectedDestinationId == nil && !destPickerOpen {
+            Button(app.T("Chọn tài khoản nhận hoàn tiền", "Choose a refund destination")) {
+                destPickerOpen = true; destPickerID = nil
             }
             .font(.system(size: 13)).foregroundStyle(app.palette.ink)
             .frame(maxWidth: .infinity).padding(12)
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
-            .accessibilityIdentifier("refund.addDestination")
-        } else if let dest = app.refundDestination, dest.confirmedAt != nil, !destFormOpen {
+            .accessibilityIdentifier("refund.chooseDestination")
+        } else if let snapshot = claim.recipientSnapshot, !destPickerOpen {
             HStack {
-                Text(app.T("Đã lưu tài khoản nhận hoàn tiền.", "Refund destination saved."))
+                Text("\(snapshot.bankName) ▪︎ \(snapshot.accountHolderName)")
                     .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
                 Spacer()
-                Button(app.T("Sửa", "Edit")) {
-                    destFormOpen = true
-                    destBank = dest.bankName; destAccount = dest.accountNumber; destHolder = dest.accountHolderName
-                    destNote = dest.transferNote ?? ""; destConfirmed = false
+                Button(app.T("Đổi", "Change")) {
+                    destPickerOpen = true; destPickerID = claim.selectedDestinationId
                 }
                 .font(.system(size: 12))
+                .accessibilityIdentifier("refund.changeDestination")
             }
         }
-        if destFormOpen {
+        if destPickerOpen {
             VStack(alignment: .leading, spacing: 8) {
-                TextField(app.T("Tên ngân hàng", "Bank name"), text: $destBank)
-                    .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
-                TextField(app.T("Số tài khoản", "Account number"), text: $destAccount)
-                    .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
-                    .keyboardType(.numberPad)
-                TextField(app.T("Tên chủ tài khoản", "Account holder name"), text: $destHolder)
-                    .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
-                TextField(app.T("Ghi chú (không bắt buộc)", "Note (optional)"), text: $destNote)
-                    .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
-                Toggle(isOn: $destConfirmed) {
-                    Text(app.T("Tôi xác nhận thông tin tài khoản trên là chính xác.", "I confirm this account information is correct."))
-                        .font(.system(size: 12))
+                if app.refundDestinations.isEmpty {
+                    Text(app.T("Chưa có tài khoản nhận hoàn tiền", "No refund accounts saved yet"))
+                        .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(app.refundDestinations) { d in
+                            Button {
+                                destPickerID = d.id
+                            } label: {
+                                HStack {
+                                    Image(systemName: destPickerID == d.id ? "largecircle.fill.circle" : "circle")
+                                        .foregroundStyle(app.palette.ink)
+                                    Text("\(d.label ?? app.T("Tài khoản", "Account")) ▪︎ \(d.bankName) ▪︎ \(d.accountHolderName)")
+                                        .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                                    Spacer()
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .padding(10)
+                            if d.id != app.refundDestinations.last?.id { Divider().overlay(app.palette.rule) }
+                        }
+                    }
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
                 }
+                Button(app.T("Thêm tài khoản mới", "Add a new account")) {
+                    app.openRefundAccounts(back: .paymentDetails, returnToClaimID: claim.id, returnToBookingID: booking?.id)
+                }
+                .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                .frame(maxWidth: .infinity).padding(11)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+                .accessibilityIdentifier("refund.addNewDestination")
                 if !app.refundDestinationError.isEmpty {
                     Text(app.refundDestinationError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
                 }
                 HStack(spacing: 10) {
-                    Button(app.T("Huỷ", "Cancel")) { destFormOpen = false }
+                    Button(app.T("Huỷ", "Cancel")) { destPickerOpen = false }
                         .font(.system(size: 13)).foregroundStyle(app.palette.ink)
                         .frame(maxWidth: .infinity).padding(12)
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
-                    InkButton(title: app.refundDestinationBusy ? app.T("Đang lưu…", "Saving…") : app.T("Lưu", "Save")) {
-                        guard !app.refundDestinationBusy, !destBank.trimmingCharacters(in: .whitespaces).isEmpty,
-                              !destAccount.trimmingCharacters(in: .whitespaces).isEmpty,
-                              !destHolder.trimmingCharacters(in: .whitespaces).isEmpty, destConfirmed else { return }
+                    InkButton(title: destPickerBusy ? app.T("Đang lưu…", "Saving…") : app.T("Xác nhận", "Confirm")) {
+                        guard !destPickerBusy, let pickedID = destPickerID else { return }
+                        destPickerBusy = true
                         Task {
-                            let ok = await app.saveRefundDestination(
-                                bankName: destBank.trimmingCharacters(in: .whitespaces),
-                                accountNumber: destAccount.trimmingCharacters(in: .whitespaces),
-                                accountHolderName: destHolder.trimmingCharacters(in: .whitespaces),
-                                transferNote: destNote.trimmingCharacters(in: .whitespaces), confirmed: destConfirmed
-                            )
-                            if ok { destFormOpen = false }
+                            let ok = await app.selectRefundDestinationForClaim(claimID: claim.id, destinationID: pickedID)
+                            destPickerBusy = false
+                            if ok { destPickerOpen = false }
                         }
                     }
-                    .accessibilityIdentifier("refund.destSave")
+                    .accessibilityIdentifier("refund.confirmDestination")
                 }
             }
             .padding(.top, 4)

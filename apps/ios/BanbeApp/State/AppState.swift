@@ -16,6 +16,7 @@ enum Screen: String {
     case verifications, disputes
     case policy
     case mapExplore
+    case refundAccounts, myRefunds
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -664,26 +665,36 @@ final class AppState: ObservableObject {
     // verificationsFocusBookingID above but a separate field (the refund
     // queue isn't filtered by it, only scrolled/flashed to).
     @Published var refundQueueFocusClaimID: UUID?
-    // Refund MVP — goer's own refund destination (bank account to receive a
-    // refund into); nil until loaded, `RefundDestination.empty` sentinel not
-    // used — nil means "not loaded or none saved yet", checked via
-    // `refundDestinationLoaded`.
-    @Published var refundDestination: RefundDestination?
-    @Published var refundDestinationLoaded = false
+    // Refund MVP — goer's own saved refund destinations (many, migration 074).
+    @Published var refundDestinations: [RefundDestination] = []
     @Published var refundDestinationBusy = false
     @Published var refundDestinationError = ""
+    // Set when RefundAccountsView was opened FROM a specific refund claim's
+    // "Thêm tài khoản mới" — on successful save, the goer is returned
+    // straight to that claim with the new account auto-selected.
+    @Published var refundAccountsReturnToClaimID: UUID?
+    @Published var refundAccountsReturnToBookingID: UUID?
+    @Published var refundAccountsBackScreen: Screen = .profile
+    // Refund MVP — the goer's own persistent "Refunds" list (product rule
+    // A), independent of any one booking/notification.
+    @Published var myRefunds: [RefundClaim] = []
+    @Published var myRefundsLoading = false
+    @Published var myRefundsBackScreen: Screen = .profile
     // Refund MVP — host's per-event Refund Center (AttendanceView's own new
     // "Hoàn tiền" section): owed/disputed (+ resolved, for the progress
-    // summary) claims for ONE event, each already joined with the guest's
-    // refund destination and a computed eligible/needsDestination/overdue
-    // flag.
+    // summary) claims for ONE event. Recipient info comes from each claim's
+    // OWN recipientSnapshot/selectedDestinationID (migration 074), never a
+    // live destinations join — see loadRefundCenter()'s own doc comment for
+    // why (root cause of the "0đ / disappearing / reappearing" bug).
     @Published var refundCenterClaims: [RefundCenterClaim] = []
     @Published var refundCenterLoading = false
     @Published var refundCenterSelected: Set<UUID> = []
     @Published var refundBatchBusy = false
+    @Published var refundBatchInFlight = false
     @Published var refundBatchError = ""
     @Published var refundBatchResult: RefundBatchResult?
     @Published var refundResendBusy: UUID?
+    @Published var refundResendInFlight: Set<UUID> = []
     // The temporary dispute chat — one per escalated booking.
     @Published var disputeChatBookingId: UUID?
     @Published var disputeChatMessages: [DisputeMessage] = []

@@ -34,6 +34,8 @@ import Notifications from './screens/Notifications.jsx';
 import EventList from './screens/EventList.jsx';
 import Security from './screens/Security.jsx';
 import PaymentDetails from './screens/PaymentDetails.jsx';
+import RefundAccounts from './screens/RefundAccounts.jsx';
+import MyRefunds from './screens/MyRefunds.jsx';
 import Billing from './screens/Billing.jsx';
 import Payout from './screens/Payout.jsx';
 import Documents from './screens/Documents.jsx';
@@ -69,6 +71,8 @@ const SCREENS = {
   eventList: EventList,
   security: Security,
   paymentDetails: PaymentDetails,
+  refundAccounts: RefundAccounts,
+  myRefunds: MyRefunds,
   billing: Billing,
   payout: Payout,
   documents: Documents,

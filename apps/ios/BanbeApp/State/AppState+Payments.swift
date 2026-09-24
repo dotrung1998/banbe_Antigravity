@@ -1117,80 +1117,198 @@ extension AppState {
         }
     }
 
-    // MARK: Refund MVP — goer's own refund destination
+    // MARK: Refund MVP — goer's own refund destinations (many, migration 074)
 
-    /// The signed-in goer's own refund_destinations row, or nil if never set.
-    func loadRefundDestination() async {
-        guard let uid = user?.id else { refundDestination = nil; refundDestinationLoaded = true; return }
-        do {
-            let rows: [RefundDestination] = try await SupabaseService.client
-                .from("refund_destinations")
-                .select("user_id, bank_name, account_number, account_holder_name, transfer_note, confirmed_at, updated_at")
-                .eq("user_id", value: uid.uuidString)
-                .execute().value
-            refundDestination = rows.first
-        } catch {
-            print("loadRefundDestination failed:", error)
-        }
-        refundDestinationLoaded = true
+    private struct RpcResultWithID: Decodable {
+        let success: Bool?
+        let error: String?
+        let id: UUID?
     }
-
-    private struct SetRefundDestinationResult: Decodable {
+    private struct RpcResult: Decodable {
         let success: Bool?
         let error: String?
     }
 
-    /// Goer adds/edits their own refund bank account. `confirmed` must be
-    /// true (an explicit checkbox/step in the UI) or the server itself
-    /// refuses to save (set_refund_destination()'s own CONFIRMATION_REQUIRED
-    /// gate).
+    /// All of the signed-in goer's own saved refund_destinations rows.
+    func loadRefundDestinations() async {
+        guard let uid = user?.id else { refundDestinations = []; return }
+        do {
+            refundDestinations = try await SupabaseService.client
+                .from("refund_destinations")
+                .select("id, user_id, label, bank_name, account_number, account_holder_name, transfer_note, is_default, confirmed_at, updated_at")
+                .eq("user_id", value: uid.uuidString)
+                .order("is_default", ascending: false)
+                .order("updated_at", ascending: false)
+                .execute().value
+        } catch {
+            print("loadRefundDestinations failed:", error)
+        }
+    }
+
+    /// Goer adds (`id` nil) or edits (`id` given) one of their own refund
+    /// bank accounts. `confirmed` must be true (an explicit checkbox/step in
+    /// the UI) or the server refuses to save (save_refund_destination()'s
+    /// own CONFIRMATION_REQUIRED gate). Returns the saved row's id.
     @discardableResult
-    func saveRefundDestination(bankName: String, accountNumber: String, accountHolderName: String, transferNote: String, confirmed: Bool) async -> Bool {
+    func saveRefundDestination(id: UUID?, label: String, bankName: String, accountNumber: String, accountHolderName: String, transferNote: String, setDefault: Bool, confirmed: Bool) async -> UUID? {
         refundDestinationBusy = true
         refundDestinationError = ""
         defer { refundDestinationBusy = false }
         do {
-            let result: SetRefundDestinationResult = try await SupabaseService.client
-                .rpc("set_refund_destination", params: SetRefundDestinationParams(
-                    bankName: bankName, accountNumber: accountNumber, accountHolderName: accountHolderName,
-                    transferNote: transferNote.isEmpty ? nil : transferNote, confirmed: confirmed
+            let result: RpcResultWithID = try await SupabaseService.client
+                .rpc("save_refund_destination", params: SaveRefundDestinationParams(
+                    id: id?.uuidString, label: label.isEmpty ? nil : label, bankName: bankName, accountNumber: accountNumber,
+                    accountHolderName: accountHolderName, transferNote: transferNote.isEmpty ? nil : transferNote,
+                    setDefault: setDefault, confirmed: confirmed
                 ))
                 .execute().value
-            guard result.success == true else {
+            guard result.success == true, let newID = result.id else {
                 refundDestinationError = result.error == "CONFIRMATION_REQUIRED"
                     ? T("Vui lòng xác nhận thông tin trước khi lưu.", "Please confirm the details before saving.")
                     : T("Hiện chưa thể thực hiện. Vui lòng thử lại sau.", "This isn't available right now. Please try again later.")
-                return false
+                return nil
             }
+            await loadRefundDestinations()
+            return newID
         } catch {
             print("saveRefundDestination failed:", error)
             refundDestinationError = T("Hiện chưa thể thực hiện. Vui lòng thử lại sau.", "This isn't available right now. Please try again later.")
-            return false
+            return nil
         }
-        await loadRefundDestination()
-        return true
     }
+
+    @discardableResult
+    func deleteRefundDestination(_ id: UUID) async -> Bool {
+        refundDestinationBusy = true
+        defer { refundDestinationBusy = false }
+        var ok = false
+        do {
+            let result: RpcResult = try await SupabaseService.client
+                .rpc("delete_refund_destination", params: ["p_id": id.uuidString])
+                .execute().value
+            ok = result.success != false
+        } catch {
+            print("deleteRefundDestination failed:", error)
+            refundDestinationError = T("Hiện chưa thể thực hiện. Vui lòng thử lại sau.", "This isn't available right now. Please try again later.")
+        }
+        await loadRefundDestinations()
+        return ok
+    }
+
+    func setDefaultRefundDestination(_ id: UUID) async {
+        do {
+            _ = try await SupabaseService.client
+                .rpc("set_default_refund_destination", params: ["p_id": id.uuidString])
+                .execute()
+        } catch {
+            print("setDefaultRefundDestination failed:", error)
+        }
+        await loadRefundDestinations()
+    }
+
+    /// Goer's explicit confirmation of which saved account a SPECIFIC claim
+    /// should be refunded into — snapshots the recipient onto the claim
+    /// itself server-side (select_refund_destination(), migration 074).
+    @discardableResult
+    func selectRefundDestinationForClaim(claimID: UUID, destinationID: UUID) async -> Bool {
+        refundDestinationBusy = true
+        refundDestinationError = ""
+        defer { refundDestinationBusy = false }
+        var ok = false
+        do {
+            let result: RpcResult = try await SupabaseService.client
+                .rpc("select_refund_destination", params: ["p_claim_id": claimID.uuidString, "p_destination_id": destinationID.uuidString])
+                .execute().value
+            ok = result.success == true
+            if !ok { refundDestinationError = T("Hiện chưa thể thực hiện. Vui lòng thử lại sau.", "This isn't available right now. Please try again later.") }
+        } catch {
+            print("selectRefundDestinationForClaim failed:", error)
+            refundDestinationError = T("Hiện chưa thể thực hiện. Vui lòng thử lại sau.", "This isn't available right now. Please try again later.")
+        }
+        if ok { await loadPaymentRefundClaim(claimID: claimID) }
+        return ok
+    }
+
+    /// All of the goer's own active refund claims (owed/host_marked_sent/
+    /// disputed) — the persistent "Refunds" list (product rule A).
+    func loadMyRefunds() async {
+        guard let uid = user?.id else { myRefunds = []; myRefundsLoading = false; return }
+        myRefundsLoading = true
+        defer { myRefundsLoading = false }
+        do {
+            let bookings: [RefundClaimBookingRow] = try await SupabaseService.client
+                .from("bookings").select("id, user_id, event_id")
+                .eq("user_id", value: uid.uuidString)
+                .execute().value
+            guard !bookings.isEmpty else { myRefunds = []; return }
+            let bookingByID = Dictionary(uniqueKeysWithValues: bookings.map { ($0.id, $0) })
+            var claims: [RefundClaim] = try await SupabaseService.client
+                .from("refund_claims")
+                .select("id, booking_id, reservation_id, amount_vnd, status, host_marked_at, disputed_at, host_response_due_at, refund_due_at, created_at")
+                .or(bookings.map { "booking_id.eq.\($0.id.uuidString)" }.joined(separator: ","))
+                .in("status", values: ["owed", "host_marked_sent", "disputed"])
+                .order("created_at", ascending: false)
+                .execute().value
+            let eventIDs = Set(claims.compactMap { bookingByID[$0.bookingId ?? $0.reservationId ?? UUID()]?.eventId })
+            var eventByID: [String: RefundClaimEventRow] = [:]
+            if !eventIDs.isEmpty {
+                let events: [RefundClaimEventRow] = try await SupabaseService.client
+                    .from("events").select("id, name, organizer_id")
+                    .in("id", values: Array(eventIDs))
+                    .execute().value
+                for e in events { eventByID[e.id] = e }
+            }
+            for i in claims.indices {
+                let b = bookingByID[claims[i].bookingId ?? claims[i].reservationId ?? UUID()]
+                claims[i].eventKey = b?.eventId
+                claims[i].eventName = b?.eventId.flatMap { eventByID[$0]?.name } ?? ""
+            }
+            myRefunds = claims
+        } catch {
+            print("loadMyRefunds failed:", error)
+            myRefunds = []
+        }
+    }
+
+    func openRefundAccounts(back: Screen = .profile, returnToClaimID: UUID? = nil, returnToBookingID: UUID? = nil) {
+        refundAccountsBackScreen = back
+        refundAccountsReturnToClaimID = returnToClaimID
+        refundAccountsReturnToBookingID = returnToBookingID
+        screen = .refundAccounts
+    }
+    func backFromRefundAccounts() {
+        screen = refundAccountsBackScreen
+        refundAccountsReturnToClaimID = nil
+        refundAccountsReturnToBookingID = nil
+    }
+
+    func openMyRefunds(back: Screen = .profile) {
+        myRefundsBackScreen = back
+        screen = .myRefunds
+        Task { await loadMyRefunds() }
+    }
+    func backFromMyRefunds() { screen = myRefundsBackScreen }
 
     // MARK: Refund MVP — host's per-event Refund Center
 
-    private struct RefundDestinationLite: Decodable {
-        let userId: UUID
-        let bankName: String
-        let accountNumber: String
-        let accountHolderName: String
-        let confirmedAt: Date?
-        enum CodingKeys: String, CodingKey {
-            case userId = "user_id"; case bankName = "bank_name"
-            case accountNumber = "account_number"; case accountHolderName = "account_holder_name"
-            case confirmedAt = "confirmed_at"
-        }
-    }
-
     /// All refund claims for one event (not just active ones — the progress
-    /// summary needs host_marked_sent/guest_confirmed rows too), joined with
-    /// each guest's refund destination and a computed eligible/
-    /// needsDestination/overdue flag. Mirrors GocContext.jsx's own
-    /// loadRefundCenter() exactly.
+    /// summary needs host_marked_sent/guest_confirmed rows too). Recipient
+    /// info comes straight from each claim's OWN `recipientSnapshot`/
+    /// `selectedDestinationId` (migration 074) — never a live
+    /// refund_destinations join — so a guest editing/adding accounts
+    /// elsewhere can never race this list into a wrong/missing recipient or
+    /// a transient "ineligible" flicker.
+    ///
+    /// BUG FIX (root cause of the "0đ / disappearing / reappearing"
+    /// report): this used to unconditionally reset `refundCenterSelected`
+    /// to `[]` on every call — including the routine 6s poll. A host
+    /// mid-review with rows selected would have that selection silently
+    /// wiped by the next background poll tick, collapsing the review
+    /// screen's own "N khách / tổng X₫" to 0 selected / 0₫ and disabling
+    /// the confirm CTA — not any actual mutation of `amount_vnd` on a claim,
+    /// which is never written by anything client-side. Fixed by PRESERVING
+    /// selection across reloads, pruned only to ids that still exist and
+    /// are still eligible.
     func loadRefundCenter(eventKey: String) async {
         refundCenterLoading = true
         defer { refundCenterLoading = false }
@@ -1203,47 +1321,41 @@ extension AppState {
             let bookingByID = Dictionary(uniqueKeysWithValues: bookings.map { ($0.id, $0) })
             let claims: [RefundClaim] = try await SupabaseService.client
                 .from("refund_claims")
-                .select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, disputed_at, host_response_due_at, refund_due_at, transfer_reference, note, created_at")
+                .select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, disputed_at, host_response_due_at, refund_due_at, transfer_reference, selected_destination_id, recipient_snapshot, note, created_at")
                 .or(bookings.map { "booking_id.eq.\($0.id.uuidString)" }.joined(separator: ","))
                 .order("created_at", ascending: true)
                 .execute().value
             let userIDs = Set(claims.compactMap { bookingByID[$0.bookingId ?? $0.reservationId ?? UUID()]?.userId })
             var nameByUserID: [UUID: String] = [:]
-            var destByUserID: [UUID: RefundDestinationLite] = [:]
             if !userIDs.isEmpty {
-                async let profilesTask: [RefundClaimProfileRow] = SupabaseService.client
+                let profiles: [RefundClaimProfileRow] = try await SupabaseService.client
                     .from("profiles").select("id, display_name")
                     .in("id", values: userIDs.map(\.uuidString))
                     .execute().value
-                async let destsTask: [RefundDestinationLite] = SupabaseService.client
-                    .from("refund_destinations").select("user_id, bank_name, account_number, account_holder_name, confirmed_at")
-                    .in("user_id", values: userIDs.map(\.uuidString))
-                    .execute().value
-                let (profiles, dests) = try await (profilesTask, destsTask)
                 for p in profiles { nameByUserID[p.id] = p.displayName ?? "" }
-                for d in dests { destByUserID[d.userId] = d }
             }
             let now = Date()
-            refundCenterClaims = claims.map { c in
+            let enriched = claims.map { c -> RefundCenterClaim in
                 let b = bookingByID[c.bookingId ?? c.reservationId ?? UUID()]
-                let dest = b.flatMap { destByUserID[$0.userId ?? UUID()] }
-                let hasDestination = dest?.confirmedAt != nil
+                let hasDestination = c.selectedDestinationId != nil
                 let isActive = c.status == "owed" || c.status == "disputed"
                 let overdue = (c.status == "owed" && (c.refundDueAt.map { $0 < now } ?? false))
                     || (c.status == "disputed" && (c.hostResponseDueAt.map { $0 < now } ?? false))
                 return RefundCenterClaim(
                     claim: c,
                     guestName: b?.userId.flatMap { nameByUserID[$0] } ?? T("Khách", "Guest"),
-                    destination: dest.map { RefundDestination(userId: $0.userId, bankName: $0.bankName, accountNumber: $0.accountNumber, accountHolderName: $0.accountHolderName, transferNote: nil, confirmedAt: $0.confirmedAt, updatedAt: nil) },
                     eligible: hasDestination && isActive,
                     needsDestination: isActive && !hasDestination,
                     overdue: overdue
                 )
             }
-            refundCenterSelected = []
+            let eligibleIDs = Set(enriched.filter(\.eligible).map(\.id))
+            refundCenterClaims = enriched
+            refundCenterSelected = refundCenterSelected.intersection(eligibleIDs)
         } catch {
             print("loadRefundCenter failed:", error)
-            refundCenterClaims = []
+            // A transient fetch error must never clobber an already-
+            // populated list.
         }
     }
 
@@ -1259,13 +1371,17 @@ extension AppState {
 
     /// Host's "Xác nhận đã chuyển tiền" — one real, atomic batch RPC call,
     /// not a client-side loop of individual mark_refund_sent calls.
+    /// `refundBatchInFlight` (not just `refundBatchBusy`) guards against a
+    /// double-tap firing the RPC twice.
     @discardableResult
     func confirmRefundBatch(eventKey: String, note: String = "") async -> RefundBatchResult? {
+        guard !refundBatchInFlight else { return nil }
         let claimIDs = Array(refundCenterSelected)
         guard !claimIDs.isEmpty else { return nil }
         refundBatchBusy = true
+        refundBatchInFlight = true
         refundBatchError = ""
-        defer { refundBatchBusy = false }
+        defer { refundBatchBusy = false; refundBatchInFlight = false }
         do {
             let result: RefundBatchResult = try await SupabaseService.client
                 .rpc("create_and_confirm_refund_batch", params: CreateRefundBatchParams(
@@ -1273,28 +1389,34 @@ extension AppState {
                 ))
                 .execute().value
             guard result.success == true else {
-                refundBatchError = T("Hiện chưa thể thực hiện. Vui lòng thử lại sau.", "This isn't available right now. Please try again later.")
+                refundBatchError = T("Không thể cập nhật lúc này. Vui lòng thử lại.", "Could not update right now. Please try again.")
                 return nil
             }
+            // Server result is the sole source of truth from here — no
+            // local amount/status patch, only a full canonical reload.
             refundBatchResult = result
             await loadRefundCenter(eventKey: eventKey)
             return result
         } catch {
             print("confirmRefundBatch failed:", error)
-            refundBatchError = T("Hiện chưa thể thực hiện. Vui lòng thử lại sau.", "This isn't available right now. Please try again later.")
+            refundBatchError = T("Không thể cập nhật lúc này. Vui lòng thử lại.", "Could not update right now. Please try again.")
             return nil
         }
     }
 
     /// Host's "Gửi lại thông tin chuyển khoản" on a disputed claim — resends
-    /// transfer proof without changing status.
+    /// transfer proof without changing status. `refundResendInFlight`
+    /// disables only that row's own CTA and blocks a double-submit on the
+    /// same claim.
     @discardableResult
     func resendRefundTransferInfo(eventKey: String, claimID: UUID, reference: String, bankName: String, transferredAt: Date?) async -> Bool {
+        guard !refundResendInFlight.contains(claimID) else { return false }
         refundResendBusy = claimID
-        defer { refundResendBusy = nil }
+        refundResendInFlight.insert(claimID)
+        defer { refundResendBusy = nil; refundResendInFlight.remove(claimID) }
         var ok = false
         do {
-            let result: SetRefundDestinationResult = try await SupabaseService.client
+            let result: RpcResult = try await SupabaseService.client
                 .rpc("resend_refund_transfer_info", params: ResendRefundTransferInfoParams(
                     claimId: claimID.uuidString, reference: reference, bankName: bankName,
                     transferredAt: transferredAt.map { ISO8601DateFormatter().string(from: $0) }
@@ -1588,6 +1710,16 @@ struct RefundClaim: Codable, Identifiable, Equatable {
     var resendBankName: String?
     var resendTransferredAt: Date?
     var resendNote: String?
+    // Refund MVP (migration 074) — the goer's EXPLICIT destination choice
+    // for this specific claim, snapshotted at selection time. `destination`
+    // below is decoded straight from `recipientSnapshot`, never from a live
+    // refund_destinations join.
+    var selectedDestinationId: UUID?
+    var recipientSnapshot: RecipientSnapshot?
+    // Refund MVP (Refunds list) — filled client-side by loadMyRefunds()
+    // only (reuses `eventName` above, decoded as "" by default since that
+    // query's own SELECT list has no `guestName`/`eventName` columns).
+    var eventKey: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -1606,42 +1738,70 @@ struct RefundClaim: Codable, Identifiable, Equatable {
         case resendBankName = "resend_bank_name"
         case resendTransferredAt = "resend_transferred_at"
         case resendNote = "resend_note"
+        case selectedDestinationId = "selected_destination_id"
+        case recipientSnapshot = "recipient_snapshot"
     }
 }
 
-/// Refund MVP — the goer's own bank account to receive a refund into.
-struct RefundDestination: Codable, Equatable {
+/// Refund MVP (migration 074) — a claim's own `recipient_snapshot` jsonb,
+/// decoded directly (never a live join) — a plain copy of whichever
+/// refund_destinations row the goer picked, frozen at selection time.
+struct RecipientSnapshot: Codable, Equatable {
+    var label: String?
+    var bankName: String
+    var accountNumber: String
+    var accountHolderName: String
+    enum CodingKeys: String, CodingKey {
+        case label
+        case bankName = "bank_name"
+        case accountNumber = "account_number"
+        case accountHolderName = "account_holder_name"
+    }
+}
+
+/// Refund MVP — one of the goer's own saved bank accounts (migration 074:
+/// many per user, replacing the earlier one-row-per-user shape).
+struct RefundDestination: Codable, Equatable, Identifiable {
+    var id: UUID
     var userId: UUID
+    var label: String?
     var bankName: String
     var accountNumber: String
     var accountHolderName: String
     var transferNote: String?
+    var isDefault: Bool
     var confirmedAt: Date?
     var updatedAt: Date?
 
     enum CodingKeys: String, CodingKey {
+        case id
         case userId = "user_id"
+        case label
         case bankName = "bank_name"
         case accountNumber = "account_number"
         case accountHolderName = "account_holder_name"
         case transferNote = "transfer_note"
+        case isDefault = "is_default"
         case confirmedAt = "confirmed_at"
         case updatedAt = "updated_at"
     }
 }
 
 /// Refund MVP — one row in the host's per-event Refund Center, a
-/// `RefundClaim` joined with the guest's name/refund destination and a
-/// computed eligibility flag (mirrors src/state/GocContext.jsx's own
-/// `loadRefundCenter()` enrichment exactly).
+/// `RefundClaim` joined with the guest's name and a computed eligibility
+/// flag (mirrors src/state/GocContext.jsx's own `loadRefundCenter()`
+/// enrichment exactly). `destination` is the claim's own snapshot, not a
+/// live join — see `RefundClaim.recipientSnapshot`'s own doc comment.
 struct RefundCenterClaim: Identifiable, Equatable {
     let claim: RefundClaim
     let guestName: String
-    let destination: RefundDestination?
     let eligible: Bool
     let needsDestination: Bool
     let overdue: Bool
     var id: UUID { claim.id }
+    var destination: RecipientSnapshot? { claim.recipientSnapshot }
+    var transferReference: String? { claim.transferReference }
+    var amountVnd: Int { claim.amountVnd }
 }
 
 /// The jsonb `create_and_confirm_refund_batch()` returns.
@@ -1731,17 +1891,23 @@ private struct VerifyPaymentParams: Encodable {
     }
 }
 
-private struct SetRefundDestinationParams: Encodable {
+private struct SaveRefundDestinationParams: Encodable {
+    let id: String?
+    let label: String?
     let bankName: String
     let accountNumber: String
     let accountHolderName: String
     let transferNote: String?
+    let setDefault: Bool
     let confirmed: Bool
     enum CodingKeys: String, CodingKey {
+        case id = "p_id"
+        case label = "p_label"
         case bankName = "p_bank_name"
         case accountNumber = "p_account_number"
         case accountHolderName = "p_account_holder_name"
         case transferNote = "p_transfer_note"
+        case setDefault = "p_set_default"
         case confirmed = "p_confirmed"
     }
 }

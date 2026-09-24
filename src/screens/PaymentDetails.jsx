@@ -24,7 +24,7 @@ export default function PaymentDetails() {
     copyPayField, submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer,
     openBilling, forfeitExpiredHold, openBookingConfirmed,
     loadPaymentRefundClaim, confirmRefundReceived, disputeRefund,
-    loadRefundDestination, saveRefundDestination,
+    loadRefundDestinations, selectRefundDestinationForClaim, openRefundAccounts,
   } = useGoc();
   const s = state;
   const fileRef = useRef(null);
@@ -36,14 +36,11 @@ export default function PaymentDetails() {
   const [disputeFormOpen, setDisputeFormOpen] = useState(false);
   const [disputeReasonText, setDisputeReasonText] = useState('');
   const [tick, setTick] = useState(Date.now());
-  // Refund MVP — "Thêm tài khoản nhận hoàn tiền" inline form, same small-
-  // form convention as the dispute reason form just above.
-  const [destFormOpen, setDestFormOpen] = useState(false);
-  const [destBank, setDestBank] = useState('');
-  const [destAccount, setDestAccount] = useState('');
-  const [destHolder, setDestHolder] = useState('');
-  const [destNote, setDestNote] = useState('');
-  const [destConfirmed, setDestConfirmed] = useState(false);
+  // Refund MVP — "Chọn tài khoản nhận hoàn tiền" picker among the goer's
+  // own saved accounts (RefundAccounts screen owns add/edit).
+  const [destPickerOpen, setDestPickerOpen] = useState(false);
+  const [destPickerId, setDestPickerId] = useState(null);
+  const [destPickerBusy, setDestPickerBusy] = useState(false);
 
   // A thumbnail of whatever was just picked — the picker row used to only
   // ever show the filename as text, so there was no way to notice a wrong
@@ -144,7 +141,7 @@ export default function PaymentDetails() {
   // Refund MVP — the goer's own refund destination, needed as soon as an
   // owed claim exists (to decide whether to show the "Thêm tài khoản nhận
   // hoàn tiền" prompt) and kept loaded for the whole screen lifetime.
-  useEffect(() => { loadRefundDestination(); }, [loadRefundDestination]);
+  useEffect(() => { loadRefundDestinations(); }, [loadRefundDestinations]);
 
   // Poll while the claim is in an active state — 'disputed' now included
   // (was owed/host_marked_sent only) so a host's "Gửi lại thông tin chuyển
@@ -372,84 +369,85 @@ export default function PaymentDetails() {
                         `You'll be refunded ${formatVnd(refundClaim.amount_vnd)} before ${formatShortDate(refundClaim.refund_due_at, 'en')}.`)
                     : T(`Bạn sẽ được hoàn ${formatVnd(refundClaim.amount_vnd)}.`, `You'll be refunded ${formatVnd(refundClaim.amount_vnd)}.`)}
                 </p>
-                {/* Refund MVP — goer must add a confirmed refund destination
-                    before the host can see where to send the money. */}
-                {s.refundDestination === null && !destFormOpen && (
+                {/* Refund MVP — goer must EXPLICITLY select (and confirm) a
+                    saved destination for THIS claim before the host can see
+                    where to send the money; picking one snapshots it onto
+                    the claim server-side (select_refund_destination(),
+                    migration 074), so a later edit/delete of the account
+                    never changes what's already selected here. */}
+                {!refundClaim.selected_destination_id && !destPickerOpen && (
                   <div
-                    onClick={() => { setDestFormOpen(true); setDestBank(''); setDestAccount(''); setDestHolder(''); setDestNote(''); setDestConfirmed(false); }}
+                    onClick={() => { setDestPickerOpen(true); setDestPickerId(null); }}
                     style={{ marginTop: 10, textAlign: 'center', padding: 12, borderRadius: 12, border: `1px solid ${rule}`, fontSize: 13, color: ink, cursor: 'pointer' }}
-                    data-testid="refund-add-destination"
+                    data-testid="refund-choose-destination"
                   >
-                    {T('Thêm tài khoản nhận hoàn tiền', 'Add a refund destination')}
+                    {T('Chọn tài khoản nhận hoàn tiền', 'Choose a refund destination')}
                   </div>
                 )}
-                {s.refundDestination?.confirmed_at && !destFormOpen && (
+                {refundClaim.selected_destination_id && refundClaim.recipient_snapshot && !destPickerOpen && (
                   <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 12, color: ink, opacity: 0.7 }}>
-                      {T('Đã lưu tài khoản nhận hoàn tiền.', 'Refund destination saved.')}
+                      {refundClaim.recipient_snapshot.bank_name} ▪︎ {refundClaim.recipient_snapshot.account_holder_name}
                     </span>
                     <span
-                      onClick={() => {
-                        setDestFormOpen(true);
-                        setDestBank(s.refundDestination.bank_name || '');
-                        setDestAccount(s.refundDestination.account_number || '');
-                        setDestHolder(s.refundDestination.account_holder_name || '');
-                        setDestNote(s.refundDestination.transfer_note || '');
-                        setDestConfirmed(false);
-                      }}
+                      onClick={() => { setDestPickerOpen(true); setDestPickerId(refundClaim.selected_destination_id); }}
                       style={{ fontSize: 12, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
-                      data-testid="refund-edit-destination"
+                      data-testid="refund-change-destination"
                     >
-                      {T('Sửa', 'Edit')}
+                      {T('Đổi', 'Change')}
                     </span>
                   </div>
                 )}
-                {destFormOpen && (
+                {destPickerOpen && (
                   <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <input
-                      value={destBank} onChange={(e) => setDestBank(e.target.value)}
-                      placeholder={T('Tên ngân hàng', 'Bank name')} data-testid="refund-dest-bank"
-                      style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
-                    />
-                    <input
-                      value={destAccount} onChange={(e) => setDestAccount(e.target.value)}
-                      placeholder={T('Số tài khoản', 'Account number')} data-testid="refund-dest-account"
-                      style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
-                    />
-                    <input
-                      value={destHolder} onChange={(e) => setDestHolder(e.target.value)}
-                      placeholder={T('Tên chủ tài khoản', 'Account holder name')} data-testid="refund-dest-holder"
-                      style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
-                    />
-                    <input
-                      value={destNote} onChange={(e) => setDestNote(e.target.value)}
-                      placeholder={T('Ghi chú (không bắt buộc)', 'Note (optional)')} data-testid="refund-dest-note"
-                      style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
-                    />
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: ink, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={destConfirmed} onChange={(e) => setDestConfirmed(e.target.checked)} data-testid="refund-dest-confirm-checkbox" />
-                      {T('Tôi xác nhận thông tin tài khoản trên là chính xác.', 'I confirm this account information is correct.')}
-                    </label>
+                    {s.refundDestinations.length === 0 ? (
+                      <p style={{ fontSize: 12.5, color: ink, opacity: 0.75, margin: 0 }}>
+                        {T('Chưa có tài khoản nhận hoàn tiền', 'No refund accounts saved yet')}
+                      </p>
+                    ) : (
+                      <div style={{ ...fieldGlass({ display: 'flex', flexDirection: 'column' }) }}>
+                        {s.refundDestinations.map((d, i, arr) => (
+                          <label
+                            key={d.id}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', borderBottom: i < arr.length - 1 ? `1px solid ${rule}` : 'none', cursor: 'pointer' }}
+                          >
+                            <input type="radio" name="refund-dest-pick" checked={destPickerId === d.id} onChange={() => setDestPickerId(d.id)} />
+                            <span style={{ fontSize: 13, color: ink }}>
+                              {d.label || T('Tài khoản', 'Account')} ▪︎ {d.bank_name} ▪︎ {d.account_holder_name}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    <div
+                      onClick={() => openRefundAccounts('paymentDetails', { returnToClaimId: refundClaim.id, returnToBookingId: booking.id })}
+                      style={{ textAlign: 'center', padding: 11, borderRadius: 12, border: `1px solid ${rule}`, fontSize: 13, color: ink, cursor: 'pointer' }}
+                      data-testid="refund-add-new-destination"
+                    >
+                      {T('Thêm tài khoản mới', 'Add a new account')}
+                    </div>
                     {s.refundDestinationError && (
                       <p style={{ fontSize: 12, color: alert, margin: 0 }}>{s.refundDestinationError}</p>
                     )}
                     <div style={{ display: 'flex', gap: 10 }}>
                       <div
-                        onClick={() => setDestFormOpen(false)}
+                        onClick={() => setDestPickerOpen(false)}
                         style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 12, border: `1px solid ${rule}`, fontSize: 13, color: ink, cursor: 'pointer' }}
                       >
                         {T('Huỷ', 'Cancel')}
                       </div>
                       <div
                         onClick={async () => {
-                          if (s.refundDestinationBusy || !destBank.trim() || !destAccount.trim() || !destHolder.trim() || !destConfirmed) return;
-                          const ok = await saveRefundDestination({ bankName: destBank.trim(), accountNumber: destAccount.trim(), accountHolderName: destHolder.trim(), transferNote: destNote.trim(), confirmed: destConfirmed });
-                          if (ok) setDestFormOpen(false);
+                          if (destPickerBusy || !destPickerId) return;
+                          setDestPickerBusy(true);
+                          const ok = await selectRefundDestinationForClaim(refundClaim.id, destPickerId);
+                          setDestPickerBusy(false);
+                          if (ok) setDestPickerOpen(false);
                         }}
-                        style={{ ...inkButton({ flex: 1, borderRadius: 12, padding: 12, fontSize: 13, opacity: (!destBank.trim() || !destAccount.trim() || !destHolder.trim() || !destConfirmed || s.refundDestinationBusy) ? 0.5 : 1 }) }}
-                        data-testid="refund-dest-save"
+                        style={{ ...inkButton({ flex: 1, borderRadius: 12, padding: 12, fontSize: 13, opacity: (!destPickerId || destPickerBusy) ? 0.5 : 1 }) }}
+                        data-testid="refund-confirm-destination"
                       >
-                        {s.refundDestinationBusy ? T('Đang lưu…', 'Saving…') : T('Lưu', 'Save')}
+                        {destPickerBusy ? T('Đang lưu…', 'Saving…') : T('Xác nhận', 'Confirm')}
                       </div>
                     </div>
                   </div>

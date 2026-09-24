@@ -874,6 +874,46 @@ struct ChatView: View {
 /// everywhere else in the app (BanbeTheme/app.palette) — no new design system.
 private let notificationCollapseAt = 20
 
+// TASK D — one semantic trailing icon per notification title, by kind
+// category. Mirrors src/screens/Notifications.jsx's own KIND_CATEGORY/
+// KindIcon exactly — SF Symbols here instead of inline SVG (this app's own
+// existing per-platform icon convention: AccountView.swift's `row(icon:)`
+// already uses SF Symbols, not RowIcon's web-only inline SVG set).
+private let notificationKindCategory: [String: String] = [
+    "refund_marked_sent": "refund", "refund_confirmed": "refund", "refund_disputed": "refund", "refund_overdue": "refund",
+    "dispute_message": "dispute", "dispute_resolved": "dispute", "payment_disputed": "dispute",
+    "payment_awaiting_verification": "payment", "payment_confirmed": "payment", "payment_document_uploaded": "payment",
+    "payment_document_replaced": "payment", "payment_verification_nudge": "payment", "payment_needs_info": "payment",
+    "hold_created": "payment", "hold_expired": "payment",
+    "booking_requested": "booking", "booking_cancelled": "booking", "booking_declined": "booking",
+    "checked_in": "booking", "checkin_undo": "booking", "checkin_undone": "booking", "undo_check_in": "booking",
+    "reject_pending_guest": "booking", "receipt_requested": "booking",
+    "event_share": "event", "referral_joined": "event",
+    "new_message": "message",
+]
+private func notificationCategory(_ kind: String) -> String { notificationKindCategory[kind] ?? "system" }
+
+private struct NotificationKindIcon: View {
+    let category: String
+    private var symbolName: String {
+        switch category {
+        case "refund": return "banknote"
+        case "dispute": return "exclamationmark.triangle"
+        case "payment": return "creditcard"
+        case "booking": return "calendar.badge.checkmark"
+        case "event": return "calendar"
+        case "message": return "bubble.left"
+        default: return "bell"
+        }
+    }
+    var body: some View {
+        Image(systemName: symbolName)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+    }
+}
+
 struct NotificationsView: View {
     @EnvironmentObject var app: AppState
     // Which sections have had their "Xem thêm" tapped — purely a
@@ -1273,6 +1313,7 @@ struct NotificationsView: View {
                                 .font(BanbeTheme.display(15))
                                 .fontWeight(unread ? .bold : .regular)
                                 .lineLimit(1)
+                            NotificationKindIcon(category: notificationCategory(item.kind))
                             Spacer(minLength: 12)
                             Text(app.trStatus(EventLabels.ago(hoursAgo(item.createdAt))))
                                 .font(.system(size: 11))
@@ -1308,8 +1349,13 @@ struct NotificationsView: View {
                 .accessibilityIdentifier("notification-menu")
             }
         }
-        .opacity(unread ? 1 : 0.6)
-        .padding(.vertical, 14)
+        // TASK D — unread: a clearly darker/tinted background + bold title
+        // (unchanged above); read: normal (clear) background. Replaces the
+        // old whole-row `.opacity(unread ? 1 : 0.6)` fade, which dimmed
+        // everything in a read row rather than distinguishing the two
+        // states via background.
+        .padding(.vertical, 14).padding(.horizontal, 10)
+        .background(unread ? app.palette.ink.opacity(0.07) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
     }
 
     @ViewBuilder

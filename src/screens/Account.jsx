@@ -38,6 +38,7 @@ function RowIcon({ kind, size = 22 }) {
 export default function Account() {
   const {
     state, T, goHome, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, openSecurity, openDocuments, openPayout, openVerifications, openDisputes, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
+    openRefundAccounts, openMyRefunds,
     loadHomeStories, openStoryViewer, pickStoryFile, cancelStoryCreate, publishStory,
   } = useGoc();
   const s = state;
@@ -235,6 +236,16 @@ export default function Account() {
         </div>
         <div onClick={() => openDocuments('receipt', 'guest')} data-testid="account-receipts" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="receipt" />{T('Biên nhận', 'Receipts')}</span>
+          <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+        </div>
+        {/* Refund MVP (product rule A) — a persistent entry point, reachable
+            regardless of whether a notification was ever tapped. */}
+        <div onClick={() => openRefundAccounts('profile')} data-testid="account-refund-accounts" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="banknote" />{T('Tài khoản thanh toán & nhận hoàn tiền', 'Payment & refund accounts')}</span>
+          <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+        </div>
+        <div onClick={() => openMyRefunds('profile')} data-testid="account-refunds" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="checklist" />{T('Hoàn tiền', 'Refunds')}</span>
           <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
         </div>
         <div onClick={openSecurity} data-testid="account-security" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', cursor: 'pointer' }}>

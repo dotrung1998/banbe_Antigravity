@@ -149,6 +149,19 @@ struct AccountView: View {
                         app.openDocuments(kind: "receipt", role: "guest")
                     }
                     Divider().overlay(app.palette.rule)
+                    // Refund MVP (product rule A) — a persistent entry
+                    // point, reachable regardless of whether a notification
+                    // was ever tapped.
+                    row(app.T("Tài khoản thanh toán & nhận hoàn tiền", "Payment & refund accounts"),
+                        identifier: "account.refundAccounts", icon: "banknote", trailing: "›") {
+                        app.openRefundAccounts(back: .profile)
+                    }
+                    Divider().overlay(app.palette.rule)
+                    row(app.T("Hoàn tiền", "Refunds"),
+                        identifier: "account.refunds", icon: "checklist", trailing: "›") {
+                        app.openMyRefunds(back: .profile)
+                    }
+                    Divider().overlay(app.palette.rule)
                     row(app.T("Bảo mật", "Security"),
                         identifier: "account.security", icon: "lock.shield",
                         trailing: "›") {
