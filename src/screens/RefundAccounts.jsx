@@ -115,6 +115,16 @@ export default function RefundAccounts() {
           {T('Tài khoản nhận hoàn đã được lưu', 'Refund account saved')}
         </p>
       )}
+      {!formOpen && s.refundDestinationsReordering && (
+        <p style={{ margin: '14px 22px 0', fontSize: 11.5, color: ink, opacity: 0.6 }} data-testid="refund-account-reorder-saving">
+          {T('Đang lưu thứ tự…', 'Saving order…')}
+        </p>
+      )}
+      {!formOpen && !s.refundDestinationsReordering && s.refundDestinationError && (
+        <p style={{ margin: '14px 22px 0', fontSize: 12.5, color: alert }} data-testid="refund-account-reorder-error">
+          {s.refundDestinationError}
+        </p>
+      )}
 
       {!formOpen && (
         <div style={{ margin: '18px 22px 0' }}>

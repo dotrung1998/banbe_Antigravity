@@ -221,6 +221,7 @@ const initialState = {
   refundDestinations: [],
   refundDestinationBusy: false,
   refundDestinationError: '',
+  refundDestinationsReordering: false,
   // Refund MVP — the goer's own persistent "Refunds" list (product rule A),
   // independent of any one booking/notification.
   myRefunds: [],
@@ -2093,7 +2094,10 @@ export function GocProvider({ children }) {
       console.warn('loadRefundDestinations failed:', error);
       return;
     }
-    set({ refundDestinations: data || [] });
+    // TASK B point 5 — never let a plain refetch (a screen mount effect,
+    // pull-to-refresh, etc.) land mid-drag and overwrite the optimistic/
+    // authoritative order reorderRefundDestinations() is actively managing.
+    set(prev => (prev.refundDestinationsReordering ? {} : { refundDestinations: data || [] }));
   }, [set, s.user?.id]);
 
   /** Goer drags an account to a new position (TASK B) — transaction-safe,
@@ -2101,25 +2105,47 @@ export function GocProvider({ children }) {
    * migration 075), which also makes position 0 the new default
    * automatically. Never a client-only reorder: always reconciled against
    * the real server order right after. */
+  /**
+   * TASK B — was: optimistic reorder, then an UNCONDITIONAL separate
+   * loadRefundDestinations() fetch to find out what actually got
+   * persisted. That second network round trip is exactly the shape of bug
+   * that produces a "snap back"/white reload: nothing stopped a stray
+   * mount-effect refetch (or the routine one this same function's own
+   * reload triggered) from landing with pre-reorder positions and
+   * clobbering the just-applied optimistic order, and refetching via
+   * `loadRefundDestinations()` has no "keep current rows, don't blank the
+   * list" guard of its own.
+   *
+   * Fixed: the RPC (migration 076) now returns the canonical saved rows in
+   * its own response — this never fetches again on success, so there is no
+   * second request left to race. `refundDestinationsReordering` blocks a
+   * concurrent loadRefundDestinations() call (e.g. a stray mount effect)
+   * from overwriting the optimistic/authoritative order while this is in
+   * flight. On failure, the array is restored to exactly what it was
+   * before the drag (never silently left half-reordered), and a friendly
+   * error is shown — never a second, later snap-back.
+   */
   const reorderRefundDestinations = useCallback(async (orderedIds) => {
-    // Optimistic reorder so the drag doesn't visibly snap back while the
-    // RPC is in flight — reconciled against the server response below
-    // either way, so a rejected reorder still ends up showing the real
-    // (unchanged) order rather than a stale optimistic one.
-    set(prev => {
-      const byId = Object.fromEntries(prev.refundDestinations.map(d => [d.id, d]));
-      const reordered = orderedIds.map((id, i) => byId[id] && { ...byId[id], position: i, is_default: i === 0 }).filter(Boolean);
-      return reordered.length === prev.refundDestinations.length ? { refundDestinations: reordered } : {};
-    });
+    const previous = s.refundDestinations;
+    const byId = Object.fromEntries(previous.map(d => [d.id, d]));
+    const optimistic = orderedIds.map((id, i) => byId[id] && { ...byId[id], position: i, is_default: i === 0 }).filter(Boolean);
+    if (optimistic.length !== previous.length) return; // stale id set — never apply a partial/mismatched reorder
+    set({ refundDestinations: optimistic, refundDestinationsReordering: true, refundDestinationError: '' });
     try {
       const { data, error } = await supabase.rpc('reorder_refund_destinations', { p_ordered_ids: orderedIds });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error);
+      // The RPC's own response is now authoritative — no second fetch.
+      set({ refundDestinations: data.destinations || optimistic, refundDestinationsReordering: false });
     } catch (e) {
       console.warn('reorderRefundDestinations failed:', e);
+      set({
+        refundDestinations: previous,
+        refundDestinationsReordering: false,
+        refundDestinationError: T('Chưa thể lưu thứ tự. Vui lòng thử lại.', "Couldn't save the order. Please try again."),
+      });
     }
-    await loadRefundDestinations();
-  }, [set, loadRefundDestinations]);
+  }, [set, T, s.refundDestinations]);
 
   /**
    * Goer adds (`id` omitted) or edits (`id` given) one of their own refund
@@ -2351,7 +2377,13 @@ export function GocProvider({ children }) {
       nameByUserId = Object.fromEntries((profiles || []).map(p => [p.id, p.display_name]));
     }
     const now = Date.now();
-    const enriched = (claims || []).map(c => {
+    // TASK A — a claim that can't be reconciled to a real, currently-
+    // queried booking for THIS event (an orphan row — its booking_id/
+    // reservation_id no longer resolves within `bookingById`) must never
+    // render at all, per this ticket's own "must join to a real booking"
+    // rule. Filtered out before enrichment, not just hidden by CSS.
+    const validClaims = (claims || []).filter(c => !!bookingById[c.booking_id || c.reservation_id]);
+    const enriched = validClaims.map(c => {
       const b = bookingById[c.booking_id || c.reservation_id];
       // TASK C — matches the server's own goc_refund_snapshot_valid()
       // (migration 075) exactly: a bare selected_destination_id with no
@@ -3510,6 +3542,13 @@ export function GocProvider({ children }) {
       user: null, accountType: 'participant', organizerMode: false, hasHosted: false, mode: 'goer',
       screen: 'login', authMode: 'login', authMandatory: true, authReturnScreen: 'home', authBackScreen: 'home',
       referralCode: null, orgRegName: '',
+      // TASK A point 8 — every refund-related cache belongs to the account
+      // that just left; leaving it in state risks the next sign-in (on the
+      // same device/session, without a full page reload) briefly rendering
+      // the PREVIOUS user's queues/destinations/claims before its own first
+      // load completes.
+      refundCenterClaims: [], refundCenterSelected: [], refundQueue: [], refundDestinations: [],
+      myRefunds: [], paymentRefundClaim: null, attendanceGuests: [],
     });
   }, [set]);
 
@@ -4853,7 +4892,19 @@ export function GocProvider({ children }) {
     // never see attendanceGuests:[] paired with attendanceLoading:false,
     // which is exactly what would render the (wrong, not-yet-resolved)
     // empty-state text for one frame.
-    set({ screen: 'attendance', attendanceEventKey: key, attendanceGuests: [], attendanceLoading: true, attendanceBack: back });
+    //
+    // TASK A — real root cause of the "ghost TDK404 row": refundCenterClaims/
+    // refundCenterSelected were never cleared here, only ever replaced by
+    // loadRefundCenter()'s own async response. Switching Attendance from one
+    // event (or host session) to another rendered the PREVIOUS event's/
+    // account's stale claims — including a claim that has nothing to do
+    // with the event now on screen — for the entire window between mount
+    // and that response landing (or forever, if it errored). Cleared
+    // synchronously now, exactly like attendanceGuests already was.
+    set({
+      screen: 'attendance', attendanceEventKey: key, attendanceGuests: [], attendanceLoading: true, attendanceBack: back,
+      refundCenterClaims: [], refundCenterSelected: [], refundBatchError: '',
+    });
     loadAttendanceGuests(key);
   }, [set, loadAttendanceGuests]);
   const backFromAttendance = useCallback(() => set(prev => ({ screen: prev.attendanceBack || 'dashboard' })), [set]);

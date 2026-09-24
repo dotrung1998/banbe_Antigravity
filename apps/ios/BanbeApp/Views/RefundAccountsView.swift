@@ -82,6 +82,14 @@ struct RefundAccountsView: View {
                     Text(app.T("Tài khoản nhận hoàn đã được lưu", "Refund account saved"))
                         .font(.system(size: 12.5)).padding(.top, 12)
                 }
+                if !formOpen && app.refundDestinationsReordering {
+                    Text(app.T("Đang lưu thứ tự…", "Saving order…"))
+                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6)).padding(.top, 12)
+                }
+                if !formOpen && !app.refundDestinationsReordering && !app.refundDestinationError.isEmpty {
+                    Text(app.refundDestinationError)
+                        .font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 12)
+                }
 
                 if !formOpen {
                     if app.refundDestinations.isEmpty {

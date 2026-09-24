@@ -388,6 +388,14 @@ export default function Attendance() {
         const selectedTotalVnd = selectedClaims.reduce((sum, c) => sum + (c.amount_vnd || 0), 0);
         const eligibleCount = claims.filter(c => c.eligible).length;
         const statusKey = (c) => (c.overdue ? 'overdue' : c.needsDestination ? 'needsDestination' : c.status);
+        // TASK A point 6 — the selection queue (the actual row list a host
+        // taps/acts on) must only ever show owed or disputed claims, never
+        // an already-resolved host_marked_sent/guest_confirmed/waived one
+        // — those are done, not something requiring action, and showing
+        // them read as a "ghost" row implying otherwise. `claims` (ALL
+        // statuses) is kept separately for the progress summary above,
+        // which genuinely needs the resolved ones to compute "N/M sent".
+        const visibleRows = claims.filter(c => c.status === 'owed' || c.status === 'disputed');
 
         return (
           <div style={{ margin: '22px 22px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -414,7 +422,7 @@ export default function Attendance() {
                 </div>
 
                 <div style={{ ...fieldGlass({ display: 'flex', flexDirection: 'column' }) }}>
-                  {claims.map(c => {
+                  {visibleRows.map(c => {
                     const label = REFUND_STATUS_LABEL[statusKey(c)] || REFUND_STATUS_LABEL[c.status] || ['—', '—'];
                     return (
                       <div key={c.id} style={{ padding: '12px 14px', borderBottom: `1px solid ${rule}`, display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="refund-center-row">

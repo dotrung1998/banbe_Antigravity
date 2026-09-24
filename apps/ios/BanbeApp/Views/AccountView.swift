@@ -33,9 +33,21 @@ struct AccountView: View {
                            : app.T("Người tham gia", "Goer")
     }
 
+    // TASK C — reuses the exact same mechanism HomeView already established
+    // (ScreenScaffold's own scrollPositionID binding, see its doc comment)
+    // rather than a second, incompatible scroll-tracking system: a
+    // `@Published` id binding on AppState survives this View being torn
+    // down/recreated on navigation, and `.scrollPosition(id:)` is
+    // bidirectional — it both records which id is at top as the user
+    // scrolls AND scrolls back to it once a non-nil binding is set again.
+    // First-open-at-top happens for free: the binding starts `nil` and is
+    // only ever set by the user's own scrolling, never by any of this
+    // screen's data loads.
+    @State private var didAttemptScrollRestore = false
+
     var body: some View {
-        ScreenScaffold(tracksBottomBarScroll: true) {
-            VStack(alignment: .leading, spacing: 0) {
+        ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.accountScrollAnchorID) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Text(app.T("Tài khoản", "Account")).font(BanbeTheme.display(27))
                     Spacer()
@@ -120,6 +132,7 @@ struct AccountView: View {
                     counter(value: app.favorites.count, label: app.T("Đã lưu", "Saved"), icon: "bookmark", identifier: "account.savedCard") { app.goSavedList() }
                 }
                 .padding(.top, 22)
+                .id("account-stats")
 
                 // TASK 3A (2026-09-22 twenty-first follow-up) — the
                 // "Tin nhắn"/Messages shortcut row removed entirely per this
@@ -170,6 +183,7 @@ struct AccountView: View {
                 }
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.top, 20)
+                .id("account-links")
 
                 Text(app.T("Tổ chức", "Hosting"))
                     .font(.system(size: 11.5, weight: .semibold))
@@ -205,6 +219,7 @@ struct AccountView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("account.organizerToggle")
                 .padding(.top, 10)
+                .id("account-hosting-toggle")
 
                 if !app.organizerModeError.isEmpty {
                     Text(app.organizerModeError)
@@ -320,6 +335,7 @@ struct AccountView: View {
             .padding(.top, 16)
         }
         .task { if app.userID != nil { await app.loadHomeStories() } }
+        .onAppear { retryScrollRestoreIfNeeded() }
         .photosPicker(isPresented: $storyLibraryPickerOpen, selection: $storyPhotoItem, matching: .images)
         .onChange(of: storyPhotoItem) { _, item in
             Task {
@@ -439,5 +455,23 @@ struct AccountView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(identifier ?? title)
+    }
+
+    // TASK C — mirrors HomeView's own retryScrollRestoreIfNeeded() exactly
+    // (see that one's doc comment for the full "why a nil-then-reassign" —
+    // SwiftUI's `.scrollPosition(id:)` won't re-trigger a scroll if the
+    // binding is set to the SAME id it already holds, so this is a real
+    // requirement, not defensive padding). No data-readiness branch is
+    // needed here the way Home's has one: every section id above renders
+    // from state that's already in hand by the time this View exists (no
+    // equivalent async "feed" gate its own content is waiting on), so this
+    // never needs to fall back to a delayed retry.
+    private func retryScrollRestoreIfNeeded() {
+        guard !didAttemptScrollRestore, let target = app.accountScrollAnchorID else { return }
+        didAttemptScrollRestore = true
+        app.accountScrollAnchorID = nil
+        DispatchQueue.main.async {
+            app.accountScrollAnchorID = target
+        }
     }
 }

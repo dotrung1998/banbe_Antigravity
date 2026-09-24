@@ -1150,43 +1150,74 @@ extension AppState {
     func loadRefundDestinations() async {
         guard let uid = user?.id else { refundDestinations = []; return }
         do {
-            refundDestinations = try await SupabaseService.client
+            let rows: [RefundDestination] = try await SupabaseService.client
                 .from("refund_destinations")
                 .select("id, user_id, label, bank_name, account_number, account_holder_name, transfer_note, is_default, position, confirmed_at, updated_at")
                 .eq("user_id", value: uid.uuidString)
                 .order("position", ascending: true)
                 .execute().value
+            // TASK B point 5 — never let a plain refetch land mid-drag and
+            // overwrite the optimistic/authoritative order
+            // reorderRefundDestinations() is actively managing.
+            guard !refundDestinationsReordering else { return }
+            refundDestinations = rows
         } catch {
             print("loadRefundDestinations failed:", error)
         }
     }
 
-    /// Goer drags an account to a new position (TASK B) — transaction-safe,
-    /// ownership-checked server-side (reorder_refund_destinations(),
-    /// migration 075), which also makes position 0 the new default
-    /// automatically. Never a client-only reorder: always reconciled
-    /// against the real server order right after.
+    private struct ReorderRefundDestinationsResult: Decodable {
+        let success: Bool?
+        let error: String?
+        let destinations: [RefundDestination]?
+    }
+
+    /// TASK B — was: optimistic reorder, then an UNCONDITIONAL separate
+    /// loadRefundDestinations() fetch to find out what actually got
+    /// persisted. That second network round trip is exactly the shape of
+    /// bug that produces a "snap back"/white reload: nothing stopped a
+    /// stray refetch from landing with pre-reorder positions and
+    /// clobbering the just-applied optimistic order.
+    ///
+    /// Fixed: the RPC (migration 076) now returns the canonical saved rows
+    /// in its own response — this never fetches again on success, so there
+    /// is no second request left to race. `refundDestinationsReordering`
+    /// blocks a concurrent loadRefundDestinations() call from overwriting
+    /// the optimistic/authoritative order while this is in flight. On
+    /// failure, the array is restored to exactly what it was before the
+    /// drag, and a friendly error is shown.
     func reorderRefundDestinations(_ orderedIDs: [UUID]) async {
-        // Optimistic reorder so the drag doesn't visibly snap back while
-        // the RPC is in flight — reconciled against the server response
-        // below either way.
-        let byID = Dictionary(uniqueKeysWithValues: refundDestinations.map { ($0.id, $0) })
-        let reordered: [RefundDestination] = orderedIDs.enumerated().compactMap { i, id in
+        let previous = refundDestinations
+        let byID = Dictionary(uniqueKeysWithValues: previous.map { ($0.id, $0) })
+        let optimistic: [RefundDestination] = orderedIDs.enumerated().compactMap { i, id in
             guard var d = byID[id] else { return nil }
             d.position = i
             d.isDefault = i == 0
             return d
         }
-        if reordered.count == refundDestinations.count { refundDestinations = reordered }
+        guard optimistic.count == previous.count else { return } // stale id set — never apply a partial/mismatched reorder
+        refundDestinations = optimistic
+        refundDestinationsReordering = true
+        refundDestinationError = ""
         do {
-            let result: RpcResult = try await SupabaseService.client
+            let result: ReorderRefundDestinationsResult = try await SupabaseService.client
                 .rpc("reorder_refund_destinations", params: ["p_ordered_ids": orderedIDs.map(\.uuidString)])
                 .execute().value
-            if result.success != true { print("reorderRefundDestinations rejected:", result.error ?? "") }
+            guard result.success == true else {
+                refundDestinations = previous
+                refundDestinationError = T("Chưa thể lưu thứ tự. Vui lòng thử lại.", "Couldn't save the order. Please try again.")
+                refundDestinationsReordering = false
+                return
+            }
+            // The RPC's own response is now authoritative — no second fetch.
+            refundDestinations = result.destinations ?? optimistic
+            refundDestinationsReordering = false
         } catch {
             print("reorderRefundDestinations failed:", error)
+            refundDestinations = previous
+            refundDestinationError = T("Chưa thể lưu thứ tự. Vui lòng thử lại.", "Couldn't save the order. Please try again.")
+            refundDestinationsReordering = false
         }
-        await loadRefundDestinations()
     }
 
     /// Goer adds (`id` nil) or edits (`id` given) one of their own refund
@@ -1384,8 +1415,13 @@ extension AppState {
                     .execute().value
                 for p in profiles { nameByUserID[p.id] = p.displayName ?? "" }
             }
+            // TASK A — a claim that can't be reconciled to a real,
+            // currently-queried booking for THIS event (an orphan row) must
+            // never render at all, per this ticket's own "must join to a
+            // real booking" rule.
+            let validClaims = claims.filter { bookingByID[$0.bookingId ?? $0.reservationId ?? UUID()] != nil }
             let now = Date()
-            let enriched = claims.map { c -> RefundCenterClaim in
+            let enriched = validClaims.map { c -> RefundCenterClaim in
                 let b = bookingByID[c.bookingId ?? c.reservationId ?? UUID()]
                 // TASK C — matches the server's own goc_refund_snapshot_valid()
                 // (migration 075): a bare selectedDestinationId with no real

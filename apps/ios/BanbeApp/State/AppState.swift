@@ -682,6 +682,7 @@ final class AppState: ObservableObject {
     @Published var refundDestinations: [RefundDestination] = []
     @Published var refundDestinationBusy = false
     @Published var refundDestinationError = ""
+    @Published var refundDestinationsReordering = false
     // Set when RefundAccountsView was opened FROM a specific refund claim's
     // "Thêm tài khoản mới" — on successful save, the goer is returned
     // straight to that claim with the new account auto-selected.
@@ -780,6 +781,14 @@ final class AppState: ObservableObject {
     /// `ScreenScaffold`'s `.scrollPosition(id:)` binding. `nil` means "no
     /// scroll to restore" — top of the feed.
     @Published var homeScrollAnchorID: String?
+    /// TASK C — same mechanism, for AccountView (see its own doc comment):
+    /// the id of whichever section was at the top of Account's own scroll
+    /// view; survives AccountView being torn down/recreated on navigating
+    /// to a child screen (Refund accounts, My refunds, Preferences, …) and
+    /// back. `nil` means "no scroll to restore" — top of Account, which is
+    /// also always true the FIRST time Account is ever opened (nothing
+    /// but the user's own scrolling ever sets this).
+    @Published var accountScrollAnchorID: String?
 
     /// Task 1 (11-realtime-map.md follow-up): mirrors `RootView`'s own
     /// edge-swipe-back gesture progress (0 at rest, 1 at full commit) so

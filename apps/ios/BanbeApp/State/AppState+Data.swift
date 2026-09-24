@@ -2431,6 +2431,17 @@ extension AppState {
         // attendanceLoading:false, which is exactly what would render the
         // (wrong, not-yet-resolved) empty-state text for one frame.
         attendanceLoading = true
+        // TASK A — real root cause of the "ghost TDK404 row": refundCenterClaims/
+        // refundCenterSelected were never cleared here, only ever replaced by
+        // loadRefundCenter()'s own async response. Switching Attendance from
+        // one event to another rendered the PREVIOUS event's stale claims —
+        // including one that has nothing to do with the event now on screen
+        // — for the entire window between mount and that response landing
+        // (or forever, if it errored). Cleared synchronously now, exactly
+        // like attendanceGuests already was.
+        refundCenterClaims = []
+        refundCenterSelected = []
+        refundBatchError = ""
         attendanceBack = back
         screen = .attendance
         Task { await loadAttendanceGuests(key) }

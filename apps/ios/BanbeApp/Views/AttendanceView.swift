@@ -448,6 +448,13 @@ struct AttendanceView: View {
         let selectedClaims = claims.filter { selected.contains($0.id) }
         let selectedTotalVnd = selectedClaims.reduce(0) { $0 + $1.claim.amountVnd }
         let eligibleIDs = refundEligibleIDs
+        // TASK A point 6 — the selection queue (the actual row list a host
+        // taps/acts on) must only ever show owed or disputed claims, never
+        // an already-resolved host_marked_sent/guest_confirmed one — those
+        // are done, not something requiring action. `claims` (all statuses)
+        // stays separate for the progress summary above, which genuinely
+        // needs the resolved ones to compute "N/M sent".
+        let visibleRows = claims.filter { $0.claim.status == "owed" || $0.claim.status == "disputed" }
 
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -469,9 +476,9 @@ struct AttendanceView: View {
                 .disabled(eligibleIDs.isEmpty)
 
                 VStack(spacing: 0) {
-                    ForEach(claims) { c in
+                    ForEach(visibleRows) { c in
                         refundCenterRow(c)
-                        if c.id != claims.last?.id { Divider().overlay(app.palette.rule) }
+                        if c.id != visibleRows.last?.id { Divider().overlay(app.palette.rule) }
                     }
                 }
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))

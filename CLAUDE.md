@@ -12,3 +12,4 @@
 - [.claude/notes/08-payment-documents.md](.claude/notes/08-payment-documents.md) — auto-generated invoice/receipt replaced with organizer-uploaded files: WORKING (web + iOS)
 - [.claude/notes/09-auth-onboarding.md](.claude/notes/09-auth-onboarding.md) — mandatory login + policy consent + splash-before-login: WORKING (web + iOS); policy version-bump question still open, see file
 - [.claude/notes/10-oauth-login.md](.claude/notes/10-oauth-login.md) — Google/Facebook sign-in via Supabase OAuth: WORKING (web + iOS); manual Google/Facebook/Supabase-dashboard setup steps still needed before it's live, see file
+- [.claude/notes/16-refund-lifecycle.md](.claude/notes/16-refund-lifecycle.md) — host cancel → refund destinations → batch/mark-sent → dispute: WORKING (web + iOS); migration chain (069-075) and several real root-cause bugs documented — READ FIRST before touching refunds again
