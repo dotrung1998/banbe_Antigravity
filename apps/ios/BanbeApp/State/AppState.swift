@@ -664,6 +664,26 @@ final class AppState: ObservableObject {
     // verificationsFocusBookingID above but a separate field (the refund
     // queue isn't filtered by it, only scrolled/flashed to).
     @Published var refundQueueFocusClaimID: UUID?
+    // Refund MVP — goer's own refund destination (bank account to receive a
+    // refund into); nil until loaded, `RefundDestination.empty` sentinel not
+    // used — nil means "not loaded or none saved yet", checked via
+    // `refundDestinationLoaded`.
+    @Published var refundDestination: RefundDestination?
+    @Published var refundDestinationLoaded = false
+    @Published var refundDestinationBusy = false
+    @Published var refundDestinationError = ""
+    // Refund MVP — host's per-event Refund Center (AttendanceView's own new
+    // "Hoàn tiền" section): owed/disputed (+ resolved, for the progress
+    // summary) claims for ONE event, each already joined with the guest's
+    // refund destination and a computed eligible/needsDestination/overdue
+    // flag.
+    @Published var refundCenterClaims: [RefundCenterClaim] = []
+    @Published var refundCenterLoading = false
+    @Published var refundCenterSelected: Set<UUID> = []
+    @Published var refundBatchBusy = false
+    @Published var refundBatchError = ""
+    @Published var refundBatchResult: RefundBatchResult?
+    @Published var refundResendBusy: UUID?
     // The temporary dispute chat — one per escalated booking.
     @Published var disputeChatBookingId: UUID?
     @Published var disputeChatMessages: [DisputeMessage] = []

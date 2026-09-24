@@ -217,6 +217,22 @@ const initialState = {
   // a separate field (refundQueue isn't filtered by it, only scrolled/
   // flashed to, since a queue this small has no need to hide the rest).
   refundQueueFocusClaimId: null,
+  // Refund MVP — goer's own refund destination (bank account to receive a
+  // refund into); null until loaded, false once loaded-and-confirmed-empty.
+  refundDestination: undefined,
+  refundDestinationBusy: false,
+  refundDestinationError: '',
+  // Refund MVP — host's per-event Refund Center (Attendance's own new
+  // "Hoàn tiền" section): owed/disputed claims for ONE event, each already
+  // joined with the guest's refund destination (masked in the UI, not
+  // here) and a computed `eligible` flag.
+  refundCenterClaims: [],
+  refundCenterLoading: false,
+  refundCenterSelected: [],
+  refundBatchBusy: false,
+  refundBatchError: '',
+  refundBatchResult: null,
+  refundResendBusy: '',
   // 14-organizer-checkin.md: set by openVerificationDetail() (Attendance's
   // "Check payment" button) — narrows the queue below to exactly one
   // booking instead of the full list, whether it's the only pending item
@@ -1962,7 +1978,7 @@ export function GocProvider({ children }) {
    */
   const loadPaymentRefundClaim = useCallback(async (id, { byClaimId = false } = {}) => {
     if (!id) return set({ paymentRefundClaim: null });
-    const query = supabase.from('refund_claims').select('id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at');
+    const query = supabase.from('refund_claims').select('id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at, refund_due_at, disputed_at, host_response_due_at, transfer_reference, resend_reference, resend_bank_name, resend_transferred_at, resend_note');
     const { data, error } = byClaimId
       ? await query.eq('id', id).maybeSingle()
       : await query.or(`booking_id.eq.${id},reservation_id.eq.${id}`).order('created_at', { ascending: false }).limit(1).maybeSingle();
@@ -2019,6 +2035,176 @@ export function GocProvider({ children }) {
     await loadPaymentRefundClaim(claimId, { byClaimId: true });
     return result;
   }, [set, loadPaymentRefundClaim]);
+
+  // ---- Refund MVP: goer's own refund destination ----
+
+  /** The signed-in goer's own refund_destinations row, or null if never set. */
+  const loadRefundDestination = useCallback(async () => {
+    if (!s.user?.id) return set({ refundDestination: null });
+    const { data, error } = await supabase
+      .from('refund_destinations')
+      .select('user_id, bank_name, account_number, account_holder_name, transfer_note, confirmed_at, updated_at')
+      .eq('user_id', s.user.id)
+      .maybeSingle();
+    if (error) {
+      console.warn('loadRefundDestination failed:', error);
+      return;
+    }
+    set({ refundDestination: data || null });
+  }, [set, s.user?.id]);
+
+  /**
+   * Goer adds/edits their own refund bank account. `confirmed` must be true
+   * (an explicit checkbox/step in the UI, not just filling the fields) or
+   * the server itself refuses to save (set_refund_destination()'s own
+   * CONFIRMATION_REQUIRED gate) — belt-and-suspenders with whatever the
+   * form does client-side.
+   */
+  const saveRefundDestination = useCallback(async ({ bankName, accountNumber, accountHolderName, transferNote = '', confirmed = false }) => {
+    set({ refundDestinationBusy: true, refundDestinationError: '' });
+    let ok = false;
+    try {
+      const { data, error } = await supabase.rpc('set_refund_destination', {
+        p_bank_name: bankName, p_account_number: accountNumber, p_account_holder_name: accountHolderName,
+        p_transfer_note: transferNote || null, p_confirmed: !!confirmed,
+      });
+      if (error) throw error;
+      if (data?.success === false) {
+        set({
+          refundDestinationBusy: false,
+          refundDestinationError: data.error === 'CONFIRMATION_REQUIRED'
+            ? T('Vui lòng xác nhận thông tin trước khi lưu.', 'Please confirm the details before saving.')
+            : T('Hiện chưa thể thực hiện. Vui lòng thử lại sau.', "This isn't available right now. Please try again later."),
+        });
+        return false;
+      }
+      ok = true;
+    } catch (e) {
+      console.warn('saveRefundDestination failed:', e);
+      set({ refundDestinationBusy: false, refundDestinationError: T('Hiện chưa thể thực hiện. Vui lòng thử lại sau.', "This isn't available right now. Please try again later.") });
+      return false;
+    }
+    set({ refundDestinationBusy: false });
+    await loadRefundDestination();
+    return ok;
+  }, [set, T, loadRefundDestination]);
+
+  // ---- Refund MVP: host's per-event Refund Center (Attendance's own new
+  // "Hoàn tiền" section) ----
+
+  /** Owed/disputed refund claims for one event, joined with the guest's
+   * refund destination (whole row — masking is a UI-only concern) and
+   * whether it's currently eligible for the bulk-select checkbox. */
+  const loadRefundCenter = useCallback(async (eventKey) => {
+    if (!eventKey) return set({ refundCenterClaims: [], refundCenterLoading: false });
+    set({ refundCenterLoading: true });
+    const { data: bookings } = await supabase.from('bookings').select('id, user_id').eq('event_id', eventKey);
+    const bookingIds = (bookings || []).map(b => b.id);
+    if (!bookingIds.length) {
+      return set({ refundCenterClaims: [], refundCenterLoading: false });
+    }
+    // All claims for this event, not just active ones — the progress
+    // summary (count/total refunded vs remaining) needs host_marked_sent/
+    // guest_confirmed rows too, not only owed/disputed.
+    const { data: claims, error } = await supabase
+      .from('refund_claims')
+      .select('id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, disputed_at, host_response_due_at, refund_due_at, transfer_reference, note, created_at')
+      .or(bookingIds.map(id => `booking_id.eq.${id}`).join(','))
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.warn('loadRefundCenter failed:', error);
+      return set({ refundCenterClaims: [], refundCenterLoading: false });
+    }
+    const bookingById = Object.fromEntries((bookings || []).map(b => [b.id, b]));
+    const userIds = [...new Set((claims || []).map(c => bookingById[c.booking_id || c.reservation_id]?.user_id).filter(Boolean))];
+    let nameByUserId = {};
+    let destByUserId = {};
+    if (userIds.length) {
+      const [{ data: profiles }, { data: destinations }] = await Promise.all([
+        supabase.from('profiles').select('id, display_name').in('id', userIds),
+        supabase.from('refund_destinations').select('user_id, bank_name, account_number, account_holder_name, confirmed_at').in('user_id', userIds),
+      ]);
+      nameByUserId = Object.fromEntries((profiles || []).map(p => [p.id, p.display_name]));
+      destByUserId = Object.fromEntries((destinations || []).map(d => [d.user_id, d]));
+    }
+    const now = Date.now();
+    const enriched = (claims || []).map(c => {
+      const b = bookingById[c.booking_id || c.reservation_id];
+      const dest = b && destByUserId[b.user_id];
+      const hasDestination = !!dest?.confirmed_at;
+      const isActive = c.status === 'owed' || c.status === 'disputed';
+      const overdue = (c.status === 'owed' && c.refund_due_at && new Date(c.refund_due_at).getTime() < now)
+        || (c.status === 'disputed' && c.host_response_due_at && new Date(c.host_response_due_at).getTime() < now);
+      return {
+        ...c,
+        guestName: (b && nameByUserId[b.user_id]) || T('Khách', 'Guest'),
+        destination: dest || null,
+        eligible: hasDestination && isActive,
+        needsDestination: isActive && !hasDestination,
+        overdue,
+      };
+    });
+    set({ refundCenterClaims: enriched, refundCenterLoading: false, refundCenterSelected: [] });
+  }, [set, T]);
+
+  const toggleRefundCenterSelect = useCallback((claimId) => {
+    set(prev => ({
+      refundCenterSelected: prev.refundCenterSelected.includes(claimId)
+        ? prev.refundCenterSelected.filter(id => id !== claimId)
+        : [...prev.refundCenterSelected, claimId],
+    }));
+  }, [set]);
+
+  const selectAllEligibleRefundCenter = useCallback(() => {
+    set(prev => ({ refundCenterSelected: prev.refundCenterClaims.filter(c => c.eligible).map(c => c.id) }));
+  }, [set]);
+
+  const clearRefundCenterSelection = useCallback(() => set({ refundCenterSelected: [] }), [set]);
+
+  /** Host's "Xác nhận đã chuyển tiền" — one real, atomic batch, not just a
+   * client-side loop of individual mark_refund_sent calls. */
+  const confirmRefundBatch = useCallback(async (eventKey, note = '') => {
+    const claimIds = s.refundCenterSelected;
+    if (!claimIds.length) return null;
+    set({ refundBatchBusy: true, refundBatchError: '', refundBatchResult: null });
+    let result = null;
+    try {
+      const { data, error } = await supabase.rpc('create_and_confirm_refund_batch', { p_claim_ids: claimIds, p_note: note || '' });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error);
+      result = data;
+    } catch (e) {
+      console.warn('confirmRefundBatch failed:', e);
+      set({ refundBatchBusy: false, refundBatchError: T('Hiện chưa thể thực hiện. Vui lòng thử lại sau.', "This isn't available right now. Please try again later.") });
+      return null;
+    }
+    set({ refundBatchBusy: false, refundBatchResult: result });
+    await loadRefundCenter(eventKey);
+    return result;
+  }, [set, T, s.refundCenterSelected, loadRefundCenter]);
+
+  /** Host's "Gửi lại thông tin chuyển khoản" on a disputed claim — resends
+   * transfer proof without changing status (stays 'disputed' until the
+   * guest confirms, or the host uses markRefundSent for "Hoàn lại lần
+   * nữa" instead). */
+  const resendRefundTransferInfo = useCallback(async (eventKey, claimId, { reference = '', bankName = '', transferredAt = null, note = '' } = {}) => {
+    set({ refundResendBusy: claimId });
+    let ok = false;
+    try {
+      const { data, error } = await supabase.rpc('resend_refund_transfer_info', {
+        p_claim_id: claimId, p_reference: reference || '', p_bank_name: bankName || '',
+        p_transferred_at: transferredAt || null, p_note: note || '',
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error);
+      ok = true;
+    } catch (e) {
+      console.warn('resendRefundTransferInfo failed:', e);
+    }
+    set({ refundResendBusy: '' });
+    await loadRefundCenter(eventKey);
+    return ok;
+  }, [set, loadRefundCenter]);
 
   // ---- admin dispute desk ----
   const openDisputes = useCallback(() => {
@@ -4876,6 +5062,7 @@ export function GocProvider({ children }) {
     submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer, loadReceiptStatus, requestReceipt,
     openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     loadRefundQueue, markRefundSent, confirmRefundReceived, disputeRefund, loadPaymentRefundClaim,
+    loadRefundDestination, saveRefundDestination, loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
@@ -4906,6 +5093,7 @@ export function GocProvider({ children }) {
     submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer, loadReceiptStatus, requestReceipt,
     openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     loadRefundQueue, markRefundSent, confirmRefundReceived, disputeRefund, loadPaymentRefundClaim,
+    loadRefundDestination, saveRefundDestination, loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,

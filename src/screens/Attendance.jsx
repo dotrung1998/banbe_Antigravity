@@ -3,12 +3,28 @@ import { useGoc } from '../state/GocContext.jsx';
 import { findEvent } from '../data/events.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { liveEventOverrides } from '../lib/countdown.js';
-import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
+import { formatShortDate } from '../lib/paymentDocument.js';
+import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
+
+const REFUND_STATUS_LABEL = {
+  needsDestination: ['Cần tài khoản nhận tiền', 'Needs destination'],
+  owed: ['Đang chờ hoàn', 'Owed'],
+  host_marked_sent: ['Đã gửi ▪︎ chờ xác nhận', 'Sent ▪︎ awaiting confirmation'],
+  disputed: ['Đang tranh chấp', 'Disputed'],
+  guest_confirmed: ['Đã xác nhận', 'Confirmed'],
+  overdue: ['Quá hạn', 'Overdue'],
+};
+function maskAccountNumber(number) {
+  const s = String(number || '');
+  if (s.length <= 4) return s;
+  return '•'.repeat(Math.max(0, s.length - 4)) + s.slice(-4);
+}
 
 export default function Attendance() {
   const {
     state, set, T, trStatus, backFromAttendance, toggleCheckin, openQrScan, openCancelBooking, markGuestPaid, uploadPaymentDocument,
     openVerificationDetail, openRejectGuest, loadAttendanceGuests, openDocumentFromNotification, loadHomeLiveEvents,
+    loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo, markRefundSent,
   } = useGoc();
   const s = state;
   // Same documentBack-style pattern (07-notifications.md's 2026-09-18
@@ -37,6 +53,15 @@ export default function Attendance() {
   };
   const uploadErrorMessage = (code) => UPLOAD_ERROR_MESSAGES[code] || T('Không tải lên được. Thử lại nhé.', "Couldn't upload. Please try again.");
 
+  // Refund MVP — Host Event Refund Center: review screen before the actual
+  // batch confirm, and per-row "Gửi lại thông tin chuyển khoản" form.
+  const [refundReviewOpen, setRefundReviewOpen] = useState(false);
+  const [refundBulkConfirmed, setRefundBulkConfirmed] = useState(false);
+  const [resendFormFor, setResendFormFor] = useState(null);
+  const [resendReference, setResendReference] = useState('');
+  const [resendBank, setResendBank] = useState('');
+  const [copiedFor, setCopiedFor] = useState(null);
+
   // 15-organizer-checkin.md follow-up: this screen only ever reloaded on
   // mount (openAttendance) or right after the organizer's own actions
   // (accept/reject/check-in) — a guest holding a NEW slot or submitting
@@ -54,9 +79,10 @@ export default function Attendance() {
     // guest controls actually disappear (see eventEnded below) rather than
     // only ever picking that up on next screen mount.
     loadHomeLiveEvents();
-    const id = setInterval(() => { loadAttendanceGuests(key); loadHomeLiveEvents(); }, 6000);
+    loadRefundCenter(key);
+    const id = setInterval(() => { loadAttendanceGuests(key); loadHomeLiveEvents(); loadRefundCenter(key); }, 6000);
     return () => clearInterval(id);
-  }, [s.attendanceEventKey, loadAttendanceGuests, loadHomeLiveEvents]);
+  }, [s.attendanceEventKey, loadAttendanceGuests, loadHomeLiveEvents, loadRefundCenter]);
   // request_receipt() (migration 061) deep-links here via openNotification()
   // — the guest's own "Xem Receipt" asked for one that doesn't exist yet.
   // Mirrors DisputeChatPanel.jsx's chatHighlight scroll/flash pattern: a
@@ -170,7 +196,7 @@ export default function Attendance() {
       <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, margin: '10px 22px 0' }}>{T('Chạm vào tên khách hoặc quét mã QR vé khi họ tới nơi.', "Tap a guest's name, or scan their ticket QR, when they arrive.")}</p>
       <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '6px 22px 0' }}>{T('Đánh dấu "Đã thanh toán" khi bạn thấy tiền vào tài khoản, rồi tải lên hoá đơn/biên nhận thật của bạn cho khách.', 'Mark a guest paid once you see the money arrive, then upload your own real invoice/receipt for them.')}</p>
       <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: 'none' }} onChange={onReceiptFileChosen} data-testid="attendance-receipt-input" />
-      <div style={{ ...fieldGlass({ margin: '14px 22px 40px', display: 'flex', flexDirection: 'column' }) }}>
+      <div style={{ ...fieldGlass({ margin: '14px 22px 0', display: 'flex', flexDirection: 'column' }) }}>
         {guests.map(g => {
           const meta = g.qty > 1 ? (g.qty + T(' vé', ' tickets')) : T('1 vé', '1 ticket');
           // 14-organizer-checkin.md (Bugs 2a/3): check-in only makes sense
@@ -334,6 +360,193 @@ export default function Attendance() {
           <p style={{ fontSize: 12.5, color: ink, padding: '14px 16px', margin: 0 }}>{s.attendanceLoading ? T('Đang tải danh sách khách…', 'Loading guest list…') : T('Chưa có ai đặt chỗ cho sự kiện này.', 'No one has booked this event yet.')}</p>
         )}
       </div>
+
+      {/* Refund MVP — Host Event Refund Center. Only rendered once there's
+          actually something to refund for this event. */}
+      {s.refundCenterClaims.length > 0 && (() => {
+        const claims = s.refundCenterClaims;
+        const refundedClaims = claims.filter(c => c.status === 'host_marked_sent' || c.status === 'guest_confirmed');
+        const totalVnd = claims.reduce((sum, c) => sum + (c.amount_vnd || 0), 0);
+        const refundedVnd = refundedClaims.reduce((sum, c) => sum + (c.amount_vnd || 0), 0);
+        const selected = s.refundCenterSelected;
+        const selectedClaims = claims.filter(c => selected.includes(c.id));
+        const selectedTotalVnd = selectedClaims.reduce((sum, c) => sum + (c.amount_vnd || 0), 0);
+        const eligibleCount = claims.filter(c => c.eligible).length;
+        const statusKey = (c) => (c.overdue ? 'overdue' : c.needsDestination ? 'needsDestination' : c.status);
+
+        return (
+          <div style={{ margin: '22px 22px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Trung tâm hoàn tiền', 'Refund Center')}</span>
+              <span style={{ fontSize: 10.5, color: ink, opacity: 0.7 }}>
+                {T(`${refundedClaims.length}/${claims.length} đã gửi ▪︎ ${formatVnd(refundedVnd)} / ${formatVnd(totalVnd)}`,
+                   `${refundedClaims.length}/${claims.length} sent ▪︎ ${formatVnd(refundedVnd)} / ${formatVnd(totalVnd)}`)}
+              </span>
+            </div>
+
+            {!refundReviewOpen && (
+              <>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <span
+                    onClick={() => (selected.length === eligibleCount ? clearRefundCenterSelection() : selectAllEligibleRefundCenter())}
+                    style={{ fontSize: 11.5, color: ink, textDecoration: 'underline', cursor: eligibleCount ? 'pointer' : 'default', opacity: eligibleCount ? 1 : 0.4 }}
+                  >
+                    {selected.length === eligibleCount && eligibleCount > 0 ? T('Bỏ chọn tất cả', 'Deselect all') : T('Chọn tất cả', 'Select all eligible')}
+                  </span>
+                </div>
+
+                <div style={{ ...fieldGlass({ display: 'flex', flexDirection: 'column' }) }}>
+                  {claims.map(c => {
+                    const label = REFUND_STATUS_LABEL[statusKey(c)] || REFUND_STATUS_LABEL[c.status] || ['—', '—'];
+                    return (
+                      <div key={c.id} style={{ padding: '12px 14px', borderBottom: `1px solid ${rule}`, display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="refund-center-row">
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(c.id)}
+                            disabled={!c.eligible}
+                            onChange={() => toggleRefundCenterSelect(c.id)}
+                            style={{ marginTop: 3 }}
+                            data-testid="refund-center-checkbox"
+                          />
+                          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                              <span style={{ ...display(14) }}>{c.guestName}</span>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: ink, whiteSpace: 'nowrap' }}>{formatVnd(c.amount_vnd)}</span>
+                            </div>
+                            {c.destination ? (
+                              <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>
+                                {c.destination.bank_name} ▪︎ {maskAccountNumber(c.destination.account_number)} ▪︎ {c.destination.account_holder_name}
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: 11, color: alert }}>{T('Khách chưa cung cấp tài khoản nhận hoàn tiền.', "The guest hasn't provided a refund destination yet.")}</span>
+                            )}
+                            {c.transfer_reference && <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>REF {c.transfer_reference}</span>}
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2 }}>
+                              <span style={{ fontSize: 10.5, fontWeight: 600, color: c.overdue ? alert : ink, opacity: c.overdue ? 1 : 0.7 }}>{T(...label)}</span>
+                              {c.destination && (
+                                <span
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard.writeText(`${c.destination.bank_name} - ${c.destination.account_number} - ${c.destination.account_holder_name}${c.transfer_reference ? ' - REF ' + c.transfer_reference : ''}`);
+                                      setCopiedFor(c.id);
+                                      setTimeout(() => setCopiedFor(cur => (cur === c.id ? null : cur)), 1500);
+                                    } catch { /* clipboard unavailable — no-op */ }
+                                  }}
+                                  style={{ fontSize: 10.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
+                                  data-testid="refund-center-copy"
+                                >
+                                  {copiedFor === c.id ? T('Đã sao chép', 'Copied') : T('Sao chép', 'Copy')}
+                                </span>
+                              )}
+                              {c.status === 'disputed' && (
+                                <span
+                                  onClick={() => { setResendFormFor(resendFormFor === c.id ? null : c.id); setResendReference(''); setResendBank(''); }}
+                                  style={{ fontSize: 10.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
+                                >
+                                  {T('Gửi lại thông tin chuyển khoản', 'Resend transfer info')}
+                                </span>
+                              )}
+                              {c.status === 'disputed' && (
+                                <span
+                                  onClick={() => s.refundActionBusy !== c.id && markRefundSent(c.id, T('Hoàn lại lần nữa', 'Sent again'))}
+                                  style={{ fontSize: 10.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
+                                >
+                                  {T('Hoàn lại lần nữa', 'Send again')}
+                                </span>
+                              )}
+                            </div>
+                            {resendFormFor === c.id && (
+                              <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <input
+                                  value={resendBank} onChange={(e) => setResendBank(e.target.value)}
+                                  placeholder={T('Ngân hàng', 'Bank')}
+                                  style={{ ...fieldGlass({ padding: '9px 10px', border: 'none' }), fontSize: 12, color: ink, outline: 'none', fontFamily: 'inherit' }}
+                                />
+                                <input
+                                  value={resendReference} onChange={(e) => setResendReference(e.target.value)}
+                                  placeholder={T('Mã tham chiếu', 'Reference')}
+                                  style={{ ...fieldGlass({ padding: '9px 10px', border: 'none' }), fontSize: 12, color: ink, outline: 'none', fontFamily: 'inherit' }}
+                                />
+                                <div
+                                  onClick={async () => {
+                                    const ok = await resendRefundTransferInfo(attKey, c.id, { reference: resendReference, bankName: resendBank, transferredAt: new Date().toISOString() });
+                                    if (ok) { setResendFormFor(null); }
+                                  }}
+                                  style={{ ...inkButton({ borderRadius: 10, padding: 10, fontSize: 12, textAlign: 'center' }) }}
+                                >
+                                  {s.refundResendBusy === c.id ? T('Đang gửi…', 'Sending…') : T('Gửi', 'Send')}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div
+                  onClick={() => { if (selected.length) { setRefundBulkConfirmed(false); setRefundReviewOpen(true); } }}
+                  style={{ ...inkButton({ borderRadius: 12, padding: 13, fontSize: 13, textAlign: 'center', opacity: selected.length ? 1 : 0.4 }) }}
+                  data-testid="refund-center-review"
+                >
+                  {selected.length
+                    ? T(`Xem lại ${selected.length} khoản hoàn (${formatVnd(selectedTotalVnd)})`, `Review ${selected.length} refunds (${formatVnd(selectedTotalVnd)})`)
+                    : T('Chọn ít nhất một khoản để hoàn tiền', 'Select at least one refund')}
+                </div>
+              </>
+            )}
+
+            {refundReviewOpen && (
+              <div style={{ ...cardGlass({ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }) }} data-testid="refund-center-review-panel">
+                <span style={{ ...display(16) }}>{T('Xác nhận đã chuyển tiền', 'Confirm transfers sent')}</span>
+                <p style={{ fontSize: 12.5, color: ink, margin: 0 }}>
+                  {T(`${selectedClaims.length} khách ▪︎ tổng ${formatVnd(selectedTotalVnd)}`, `${selectedClaims.length} guests ▪︎ total ${formatVnd(selectedTotalVnd)}`)}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 160, overflowY: 'auto' }}>
+                  {selectedClaims.map(c => (
+                    <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: ink }}>
+                      <span>{c.guestName}</span>
+                      <span>{formatVnd(c.amount_vnd)}</span>
+                    </div>
+                  ))}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: ink, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={refundBulkConfirmed} onChange={(e) => setRefundBulkConfirmed(e.target.checked)} data-testid="refund-center-bulk-checkbox" />
+                  {T(`Tôi xác nhận đã chuyển tổng ${formatVnd(selectedTotalVnd)} cho ${selectedClaims.length} khách.`,
+                     `I confirm I've transferred a total of ${formatVnd(selectedTotalVnd)} to ${selectedClaims.length} guests.`)}
+                </label>
+                {s.refundBatchError && <p style={{ fontSize: 12, color: alert, margin: 0 }}>{s.refundBatchError}</p>}
+                {s.refundBatchResult?.skipped_count > 0 && (
+                  <p style={{ fontSize: 12, color: alert, margin: 0 }}>
+                    {T(`${s.refundBatchResult.skipped_count} khoản đã bị bỏ qua vì không còn đủ điều kiện.`, `${s.refundBatchResult.skipped_count} refund(s) were skipped — no longer eligible.`)}
+                  </p>
+                )}
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <div
+                    onClick={() => setRefundReviewOpen(false)}
+                    style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 12, border: `1px solid ${rule}`, fontSize: 13, color: ink, cursor: 'pointer' }}
+                  >
+                    {T('Quay lại', 'Back')}
+                  </div>
+                  <div
+                    onClick={async () => {
+                      if (!refundBulkConfirmed || s.refundBatchBusy) return;
+                      const result = await confirmRefundBatch(attKey, '');
+                      if (result) { setRefundReviewOpen(false); setRefundBulkConfirmed(false); }
+                    }}
+                    style={{ ...inkButton({ flex: 1, borderRadius: 12, padding: 12, fontSize: 13, opacity: (!refundBulkConfirmed || s.refundBatchBusy) ? 0.5 : 1 }) }}
+                    data-testid="refund-center-confirm"
+                  >
+                    {s.refundBatchBusy ? T('Đang xử lý…', 'Processing…') : T('Xác nhận đã chuyển tiền', 'Confirm transfers sent')}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

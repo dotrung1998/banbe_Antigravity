@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 /// Port of src/screens/Attendance.jsx — the real guest list for an event
 /// (actual bookings, not a placeholder), tap to check someone in, scan
@@ -42,6 +43,13 @@ struct AttendanceView: View {
     // elsewhere (PaymentViews' 6s poll) — no realtime subscription exists
     // anywhere in this codebase.
     @State private var pollTask: Task<Void, Never>?
+    // Refund MVP — Host Event Refund Center.
+    @State private var refundReviewOpen = false
+    @State private var refundBulkConfirmed = false
+    @State private var resendFormFor: UUID?
+    @State private var resendReference = ""
+    @State private var resendBank = ""
+    @State private var copiedFor: UUID?
 
     private var event: CatalogEvent? { EventCatalog.find(app.attendanceEventKey) }
     private var checkedCount: Int { app.attendanceGuests.filter(\.checkedIn).count }
@@ -148,6 +156,10 @@ struct AttendanceView: View {
                     }
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .padding(.top, 14)
+
+                    if !app.refundCenterClaims.isEmpty {
+                        refundCenterSection
+                    }
                 }
             }
             .foregroundStyle(app.palette.ink)
@@ -166,6 +178,7 @@ struct AttendanceView: View {
         pollTask?.cancel()
         guard let key = app.attendanceEventKey else { return }
         Task { @MainActor in await app.loadHomeLiveEvents() }
+        Task { @MainActor in await app.loadRefundCenter(eventKey: key) }
         pollTask = Task { @MainActor in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 6_000_000_000)
@@ -173,6 +186,7 @@ struct AttendanceView: View {
                 guard app.attendanceEventKey == key else { return }
                 await app.loadAttendanceGuests(key)
                 await app.loadHomeLiveEvents()
+                await app.loadRefundCenter(eventKey: key)
             }
         }
     }
@@ -404,5 +418,211 @@ struct AttendanceView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: Refund MVP — Host Event Refund Center
+
+    private func refundStatusKey(_ c: RefundCenterClaim) -> String {
+        c.overdue ? "overdue" : (c.needsDestination ? "needsDestination" : c.claim.status)
+    }
+
+    private var refundEligibleIDs: Set<UUID> { Set(app.refundCenterClaims.filter(\.eligible).map(\.id)) }
+
+    @ViewBuilder
+    private var refundCenterSection: some View {
+        let claims = app.refundCenterClaims
+        let refundedClaims = claims.filter { $0.claim.status == "host_marked_sent" || $0.claim.status == "guest_confirmed" }
+        let totalVnd = claims.reduce(0) { $0 + $1.claim.amountVnd }
+        let refundedVnd = refundedClaims.reduce(0) { $0 + $1.claim.amountVnd }
+        let selected = app.refundCenterSelected
+        let selectedClaims = claims.filter { selected.contains($0.id) }
+        let selectedTotalVnd = selectedClaims.reduce(0) { $0 + $1.claim.amountVnd }
+        let eligibleIDs = refundEligibleIDs
+
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(app.T("Trung tâm hoàn tiền", "Refund Center")).font(.system(size: 11.5, weight: .semibold))
+                Spacer()
+                Text(app.T("\(refundedClaims.count)/\(claims.count) đã gửi ▪︎ \(formatVnd(refundedVnd)) / \(formatVnd(totalVnd))",
+                            "\(refundedClaims.count)/\(claims.count) sent ▪︎ \(formatVnd(refundedVnd)) / \(formatVnd(totalVnd))"))
+                    .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+            }
+
+            if !refundReviewOpen {
+                Button(selected == eligibleIDs && !eligibleIDs.isEmpty ? app.T("Bỏ chọn tất cả", "Deselect all") : app.T("Chọn tất cả", "Select all eligible")) {
+                    if selected == eligibleIDs { app.clearRefundCenterSelection() } else { app.selectAllEligibleRefundCenter() }
+                }
+                .font(.system(size: 11.5))
+                .disabled(eligibleIDs.isEmpty)
+
+                VStack(spacing: 0) {
+                    ForEach(claims) { c in
+                        refundCenterRow(c)
+                        if c.id != claims.last?.id { Divider().overlay(app.palette.rule) }
+                    }
+                }
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                Button(selected.isEmpty
+                       ? app.T("Chọn ít nhất một khoản để hoàn tiền", "Select at least one refund")
+                       : app.T("Xem lại \(selected.count) khoản hoàn (\(formatVnd(selectedTotalVnd)))", "Review \(selected.count) refunds (\(formatVnd(selectedTotalVnd)))")) {
+                    guard !selected.isEmpty else { return }
+                    refundBulkConfirmed = false
+                    refundReviewOpen = true
+                }
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(app.palette.paper)
+                .frame(maxWidth: .infinity).padding(13)
+                .background(app.palette.ink.opacity(selected.isEmpty ? 0.4 : 1), in: RoundedRectangle(cornerRadius: 12))
+                .disabled(selected.isEmpty)
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(app.T("Xác nhận đã chuyển tiền", "Confirm transfers sent")).font(BanbeTheme.display(16))
+                    Text(app.T("\(selectedClaims.count) khách ▪︎ tổng \(formatVnd(selectedTotalVnd))", "\(selectedClaims.count) guests ▪︎ total \(formatVnd(selectedTotalVnd))"))
+                        .font(.system(size: 12.5))
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(selectedClaims) { c in
+                                HStack {
+                                    Text(c.guestName)
+                                    Spacer()
+                                    Text(formatVnd(c.claim.amountVnd))
+                                }
+                                .font(.system(size: 12))
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 160)
+                    Toggle(isOn: $refundBulkConfirmed) {
+                        Text(app.T("Tôi xác nhận đã chuyển tổng \(formatVnd(selectedTotalVnd)) cho \(selectedClaims.count) khách.",
+                                    "I confirm I've transferred a total of \(formatVnd(selectedTotalVnd)) to \(selectedClaims.count) guests."))
+                            .font(.system(size: 12))
+                    }
+                    if !app.refundBatchError.isEmpty {
+                        Text(app.refundBatchError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                    }
+                    if let skipped = app.refundBatchResult?.skippedCount, skipped > 0 {
+                        Text(app.T("\(skipped) khoản đã bị bỏ qua vì không còn đủ điều kiện.", "\(skipped) refund(s) were skipped — no longer eligible."))
+                            .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                    }
+                    HStack(spacing: 10) {
+                        Button(app.T("Quay lại", "Back")) { refundReviewOpen = false }
+                            .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                            .frame(maxWidth: .infinity).padding(12)
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+                        InkButton(title: app.refundBatchBusy ? app.T("Đang xử lý…", "Processing…") : app.T("Xác nhận đã chuyển tiền", "Confirm transfers sent")) {
+                            guard refundBulkConfirmed, !app.refundBatchBusy, let key = app.attendanceEventKey else { return }
+                            Task {
+                                if let result = await app.confirmRefundBatch(eventKey: key), result.success == true {
+                                    refundReviewOpen = false
+                                    refundBulkConfirmed = false
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+        }
+        .padding(.top, 22)
+    }
+
+    @ViewBuilder
+    private func refundCenterRow(_ c: RefundCenterClaim) -> some View {
+        let label = refundStatusLabel(refundStatusKey(c))
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 10) {
+                Button {
+                    app.toggleRefundCenterSelect(c.id)
+                } label: {
+                    Image(systemName: app.refundCenterSelected.contains(c.id) ? "checkmark.square.fill" : "square")
+                        .foregroundStyle(c.eligible ? app.palette.ink : app.palette.ink.opacity(0.25))
+                }
+                .disabled(!c.eligible)
+                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(c.guestName).font(BanbeTheme.display(14))
+                        Spacer()
+                        Text(formatVnd(c.claim.amountVnd)).font(.system(size: 13, weight: .semibold))
+                    }
+                    if let dest = c.destination {
+                        Text("\(dest.bankName) ▪︎ \(maskAccountNumber(dest.accountNumber)) ▪︎ \(dest.accountHolderName)")
+                            .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    } else {
+                        Text(app.T("Khách chưa cung cấp tài khoản nhận hoàn tiền.", "The guest hasn't provided a refund destination yet."))
+                            .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                    }
+                    if let ref = c.claim.transferReference {
+                        Text("REF \(ref)").font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                    }
+                    HStack(spacing: 8) {
+                        Text(app.T(label.0, label.1))
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(c.overdue ? BanbeTheme.alert : app.palette.ink.opacity(0.7))
+                        if c.destination != nil {
+                            Button(copiedFor == c.id ? app.T("Đã sao chép", "Copied") : app.T("Sao chép", "Copy")) {
+                                let text = [c.destination?.bankName, c.destination?.accountNumber, c.destination?.accountHolderName, c.claim.transferReference.map { "REF \($0)" }]
+                                    .compactMap { $0 }.joined(separator: " - ")
+                                UIPasteboard.general.string = text
+                                copiedFor = c.id
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { if copiedFor == c.id { copiedFor = nil } }
+                            }
+                            .font(.system(size: 10.5))
+                        }
+                        if c.claim.status == "disputed" {
+                            Button(app.T("Gửi lại thông tin chuyển khoản", "Resend transfer info")) {
+                                resendFormFor = resendFormFor == c.id ? nil : c.id
+                                resendReference = ""; resendBank = ""
+                            }
+                            .font(.system(size: 10.5))
+                            Button(app.T("Hoàn lại lần nữa", "Send again")) {
+                                guard app.refundActionBusy != c.id else { return }
+                                Task { await app.markRefundSent(c.id, note: app.T("Hoàn lại lần nữa", "Sent again")) }
+                            }
+                            .font(.system(size: 10.5))
+                        }
+                    }
+                    if resendFormFor == c.id {
+                        VStack(alignment: .leading, spacing: 6) {
+                            TextField(app.T("Ngân hàng", "Bank"), text: $resendBank)
+                                .font(.system(size: 12)).padding(9).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                            TextField(app.T("Mã tham chiếu", "Reference"), text: $resendReference)
+                                .font(.system(size: 12)).padding(9).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                            Button(app.refundResendBusy == c.id ? app.T("Đang gửi…", "Sending…") : app.T("Gửi", "Send")) {
+                                guard let key = app.attendanceEventKey else { return }
+                                Task {
+                                    let ok = await app.resendRefundTransferInfo(eventKey: key, claimID: c.id, reference: resendReference, bankName: resendBank, transferredAt: Date())
+                                    if ok { resendFormFor = nil }
+                                }
+                            }
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.paper)
+                            .frame(maxWidth: .infinity).padding(10)
+                            .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10))
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+    }
+}
+
+private func maskAccountNumber(_ number: String) -> String {
+    guard number.count > 4 else { return number }
+    return String(repeating: "•", count: number.count - 4) + number.suffix(4)
+}
+
+private func refundStatusLabel(_ key: String) -> (String, String) {
+    switch key {
+    case "needsDestination": return ("Cần tài khoản nhận tiền", "Needs destination")
+    case "owed": return ("Đang chờ hoàn", "Owed")
+    case "host_marked_sent": return ("Đã gửi ▪︎ chờ xác nhận", "Sent ▪︎ awaiting confirmation")
+    case "disputed": return ("Đang tranh chấp", "Disputed")
+    case "guest_confirmed": return ("Đã xác nhận", "Confirmed")
+    case "overdue": return ("Quá hạn", "Overdue")
+    default: return ("—", "—")
     }
 }

@@ -25,6 +25,13 @@ struct PaymentDetailsView: View {
     @State private var refundPollTask: Task<Void, Never>?
     @State private var disputeFormOpen = false
     @State private var disputeReasonText = ""
+    // Refund MVP — "Thêm tài khoản nhận hoàn tiền" inline form.
+    @State private var destFormOpen = false
+    @State private var destBank = ""
+    @State private var destAccount = ""
+    @State private var destHolder = ""
+    @State private var destNote = ""
+    @State private var destConfirmed = false
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -89,7 +96,7 @@ struct PaymentDetailsView: View {
                 app.forfeitExpiredHold(booking)
             }
         }
-        .onAppear { startPollingIfNeeded(); startRefundPollingIfNeeded() }
+        .onAppear { startPollingIfNeeded(); startRefundPollingIfNeeded(); Task { await app.loadRefundDestination() } }
         .onChange(of: booking?.paymentState) { _, _ in startPollingIfNeeded() }
         .onChange(of: booking?.status) { _, _ in startRefundPollingIfNeeded() }
         .onDisappear { pollTask?.cancel(); refundPollTask?.cancel() }
@@ -390,9 +397,19 @@ struct PaymentDetailsView: View {
             }
 
             if claim.status == "owed" {
-                Text(app.T("Bạn sẽ được hoàn \(formatVnd(claim.amountVnd)).", "You'll be refunded \(formatVnd(claim.amountVnd))."))
-                    .font(.system(size: 13)).padding(.top, 2)
-                    .accessibilityIdentifier("refund.owed")
+                VStack(alignment: .leading, spacing: 10) {
+                    if let due = claim.refundDueAt, let dueLabel = formatShortDate(due, lang: app.isEN ? "en" : "vi") {
+                        Text(app.T("Bạn sẽ được hoàn \(formatVnd(claim.amountVnd)) trước \(dueLabel).", "You'll be refunded \(formatVnd(claim.amountVnd)) before \(dueLabel)."))
+                            .font(.system(size: 13))
+                            .accessibilityIdentifier("refund.owed")
+                    } else {
+                        Text(app.T("Bạn sẽ được hoàn \(formatVnd(claim.amountVnd)).", "You'll be refunded \(formatVnd(claim.amountVnd))."))
+                            .font(.system(size: 13))
+                            .accessibilityIdentifier("refund.owed")
+                    }
+                    refundDestinationSection
+                }
+                .padding(.top, 2)
             }
 
             if claim.status == "host_marked_sent" {
@@ -444,9 +461,31 @@ struct PaymentDetailsView: View {
             }
 
             if claim.status == "disputed" {
-                Text(app.T("Đang xử lý tranh chấp ▪︎ bạn đã báo chưa nhận được tiền.", "Dispute open ▪︎ you reported not receiving this refund."))
-                    .font(.system(size: 13)).foregroundStyle(BanbeTheme.alert).padding(.top, 2)
-                    .accessibilityIdentifier("refund.disputed")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(app.T("Đang xử lý tranh chấp ▪︎ bạn đã báo chưa nhận được tiền.", "Dispute open ▪︎ you reported not receiving this refund."))
+                        .font(.system(size: 13)).foregroundStyle(BanbeTheme.alert)
+                        .accessibilityIdentifier("refund.disputed")
+                    if let due = claim.hostResponseDueAt {
+                        let viDate = formatShortDate(due, lang: "vi") ?? ""
+                        let enDate = formatShortDate(due, lang: "en") ?? ""
+                        Text(due < Date()
+                             ? app.T("Quá hạn phản hồi.", "Response overdue.")
+                             : app.T("Host cần phản hồi trước \(viDate).", "Host needs to respond before \(enDate)."))
+                            .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    }
+                    if claim.resendReference != nil || claim.resendBankName != nil {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(app.T("Thông tin chuyển khoản mới nhất", "Latest transfer info"))
+                                .font(.system(size: 11.5, weight: .semibold))
+                            if let bank = claim.resendBankName { Text(bank).font(.system(size: 12)) }
+                            if let ref = claim.resendReference { Text(app.T("Mã tham chiếu: ", "Reference: ") + ref).font(.system(size: 12)) }
+                        }
+                        .padding(10)
+                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                        .padding(.top, 4)
+                    }
+                }
+                .padding(.top, 2)
             }
         }
         .foregroundStyle(app.palette.ink)
@@ -455,6 +494,75 @@ struct PaymentDetailsView: View {
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(.top, 16)
         .accessibilityIdentifier("refund.card")
+    }
+
+    /// Refund MVP — goer's own refund destination, shown under an "owed"
+    /// claim. Mirrors PaymentDetails.jsx's own inline form exactly.
+    @ViewBuilder
+    private var refundDestinationSection: some View {
+        if app.refundDestination == nil && !destFormOpen {
+            Button(app.T("Thêm tài khoản nhận hoàn tiền", "Add a refund destination")) {
+                destFormOpen = true; destBank = ""; destAccount = ""; destHolder = ""; destNote = ""; destConfirmed = false
+            }
+            .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+            .frame(maxWidth: .infinity).padding(12)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+            .accessibilityIdentifier("refund.addDestination")
+        } else if let dest = app.refundDestination, dest.confirmedAt != nil, !destFormOpen {
+            HStack {
+                Text(app.T("Đã lưu tài khoản nhận hoàn tiền.", "Refund destination saved."))
+                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                Spacer()
+                Button(app.T("Sửa", "Edit")) {
+                    destFormOpen = true
+                    destBank = dest.bankName; destAccount = dest.accountNumber; destHolder = dest.accountHolderName
+                    destNote = dest.transferNote ?? ""; destConfirmed = false
+                }
+                .font(.system(size: 12))
+            }
+        }
+        if destFormOpen {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(app.T("Tên ngân hàng", "Bank name"), text: $destBank)
+                    .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                TextField(app.T("Số tài khoản", "Account number"), text: $destAccount)
+                    .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                    .keyboardType(.numberPad)
+                TextField(app.T("Tên chủ tài khoản", "Account holder name"), text: $destHolder)
+                    .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                TextField(app.T("Ghi chú (không bắt buộc)", "Note (optional)"), text: $destNote)
+                    .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                Toggle(isOn: $destConfirmed) {
+                    Text(app.T("Tôi xác nhận thông tin tài khoản trên là chính xác.", "I confirm this account information is correct."))
+                        .font(.system(size: 12))
+                }
+                if !app.refundDestinationError.isEmpty {
+                    Text(app.refundDestinationError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                }
+                HStack(spacing: 10) {
+                    Button(app.T("Huỷ", "Cancel")) { destFormOpen = false }
+                        .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                        .frame(maxWidth: .infinity).padding(12)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+                    InkButton(title: app.refundDestinationBusy ? app.T("Đang lưu…", "Saving…") : app.T("Lưu", "Save")) {
+                        guard !app.refundDestinationBusy, !destBank.trimmingCharacters(in: .whitespaces).isEmpty,
+                              !destAccount.trimmingCharacters(in: .whitespaces).isEmpty,
+                              !destHolder.trimmingCharacters(in: .whitespaces).isEmpty, destConfirmed else { return }
+                        Task {
+                            let ok = await app.saveRefundDestination(
+                                bankName: destBank.trimmingCharacters(in: .whitespaces),
+                                accountNumber: destAccount.trimmingCharacters(in: .whitespaces),
+                                accountHolderName: destHolder.trimmingCharacters(in: .whitespaces),
+                                transferNote: destNote.trimmingCharacters(in: .whitespaces), confirmed: destConfirmed
+                            )
+                            if ok { destFormOpen = false }
+                        }
+                    }
+                    .accessibilityIdentifier("refund.destSave")
+                }
+            }
+            .padding(.top, 4)
+        }
     }
 
     private func amountCard(_ booking: PayableBooking) -> some View {
@@ -739,7 +847,7 @@ struct PaymentDetailsView: View {
                 try? await Task.sleep(nanoseconds: 6_000_000_000)
                 if Task.isCancelled { break }
                 guard booking?.id == bookingID else { return }
-                guard let status = refundClaim?.status, status == "owed" || status == "host_marked_sent" else { return }
+                guard let status = refundClaim?.status, ["owed", "host_marked_sent", "disputed"].contains(status) else { return }
                 await app.loadPaymentRefundClaim(bookingID: bookingID)
             }
         }

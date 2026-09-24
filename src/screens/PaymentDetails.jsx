@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { useGoc } from '../state/GocContext.jsx';
 import { supabase } from '../lib/supabase.js';
-import { formatVnd } from '../lib/paymentDocument.js';
+import { formatVnd, formatShortDate } from '../lib/paymentDocument.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
 
@@ -24,6 +24,7 @@ export default function PaymentDetails() {
     copyPayField, submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer,
     openBilling, forfeitExpiredHold, openBookingConfirmed,
     loadPaymentRefundClaim, confirmRefundReceived, disputeRefund,
+    loadRefundDestination, saveRefundDestination,
   } = useGoc();
   const s = state;
   const fileRef = useRef(null);
@@ -35,6 +36,14 @@ export default function PaymentDetails() {
   const [disputeFormOpen, setDisputeFormOpen] = useState(false);
   const [disputeReasonText, setDisputeReasonText] = useState('');
   const [tick, setTick] = useState(Date.now());
+  // Refund MVP — "Thêm tài khoản nhận hoàn tiền" inline form, same small-
+  // form convention as the dispute reason form just above.
+  const [destFormOpen, setDestFormOpen] = useState(false);
+  const [destBank, setDestBank] = useState('');
+  const [destAccount, setDestAccount] = useState('');
+  const [destHolder, setDestHolder] = useState('');
+  const [destNote, setDestNote] = useState('');
+  const [destConfirmed, setDestConfirmed] = useState(false);
 
   // A thumbnail of whatever was just picked — the picker row used to only
   // ever show the filename as text, so there was no way to notice a wrong
@@ -132,12 +141,17 @@ export default function PaymentDetails() {
     if (booking?.status === 'cancelled' && booking.id) loadPaymentRefundClaim(booking.id);
   }, [booking?.id, booking?.status, loadPaymentRefundClaim]);
 
-  // Poll ONLY while the claim is in an active state (this ticket's own
-  // explicit instruction) — once guest_confirmed/disputed, nothing further
-  // can happen to it without a new action from either side, so nothing is
-  // gained by continuing to ask.
+  // Refund MVP — the goer's own refund destination, needed as soon as an
+  // owed claim exists (to decide whether to show the "Thêm tài khoản nhận
+  // hoàn tiền" prompt) and kept loaded for the whole screen lifetime.
+  useEffect(() => { loadRefundDestination(); }, [loadRefundDestination]);
+
+  // Poll while the claim is in an active state — 'disputed' now included
+  // (was owed/host_marked_sent only) so a host's "Gửi lại thông tin chuyển
+  // khoản" resend actually shows up here without the guest having to leave
+  // and reopen this screen.
   useEffect(() => {
-    if (!refundClaim || (refundClaim.status !== 'owed' && refundClaim.status !== 'host_marked_sent')) return undefined;
+    if (!refundClaim || !['owed', 'host_marked_sent', 'disputed'].includes(refundClaim.status)) return undefined;
     const bookingId = booking.id;
     let active = true;
     const id = setInterval(() => { if (active) loadPaymentRefundClaim(bookingId); }, 6000);
@@ -351,9 +365,96 @@ export default function PaymentDetails() {
             )}
 
             {refundClaim.status === 'owed' && (
-              <p style={{ fontSize: 13, lineHeight: 1.55, color: ink, margin: '10px 0 0' }} data-testid="refund-owed">
-                {T(`Bạn sẽ được hoàn ${formatVnd(refundClaim.amount_vnd)}.`, `You'll be refunded ${formatVnd(refundClaim.amount_vnd)}.`)}
-              </p>
+              <div style={{ marginTop: 10 }} data-testid="refund-owed">
+                <p style={{ fontSize: 13, lineHeight: 1.55, color: ink, margin: 0 }}>
+                  {refundClaim.refund_due_at
+                    ? T(`Bạn sẽ được hoàn ${formatVnd(refundClaim.amount_vnd)} trước ${formatShortDate(refundClaim.refund_due_at)}.`,
+                        `You'll be refunded ${formatVnd(refundClaim.amount_vnd)} before ${formatShortDate(refundClaim.refund_due_at, 'en')}.`)
+                    : T(`Bạn sẽ được hoàn ${formatVnd(refundClaim.amount_vnd)}.`, `You'll be refunded ${formatVnd(refundClaim.amount_vnd)}.`)}
+                </p>
+                {/* Refund MVP — goer must add a confirmed refund destination
+                    before the host can see where to send the money. */}
+                {s.refundDestination === null && !destFormOpen && (
+                  <div
+                    onClick={() => { setDestFormOpen(true); setDestBank(''); setDestAccount(''); setDestHolder(''); setDestNote(''); setDestConfirmed(false); }}
+                    style={{ marginTop: 10, textAlign: 'center', padding: 12, borderRadius: 12, border: `1px solid ${rule}`, fontSize: 13, color: ink, cursor: 'pointer' }}
+                    data-testid="refund-add-destination"
+                  >
+                    {T('Thêm tài khoản nhận hoàn tiền', 'Add a refund destination')}
+                  </div>
+                )}
+                {s.refundDestination?.confirmed_at && !destFormOpen && (
+                  <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, color: ink, opacity: 0.7 }}>
+                      {T('Đã lưu tài khoản nhận hoàn tiền.', 'Refund destination saved.')}
+                    </span>
+                    <span
+                      onClick={() => {
+                        setDestFormOpen(true);
+                        setDestBank(s.refundDestination.bank_name || '');
+                        setDestAccount(s.refundDestination.account_number || '');
+                        setDestHolder(s.refundDestination.account_holder_name || '');
+                        setDestNote(s.refundDestination.transfer_note || '');
+                        setDestConfirmed(false);
+                      }}
+                      style={{ fontSize: 12, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
+                      data-testid="refund-edit-destination"
+                    >
+                      {T('Sửa', 'Edit')}
+                    </span>
+                  </div>
+                )}
+                {destFormOpen && (
+                  <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <input
+                      value={destBank} onChange={(e) => setDestBank(e.target.value)}
+                      placeholder={T('Tên ngân hàng', 'Bank name')} data-testid="refund-dest-bank"
+                      style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
+                    />
+                    <input
+                      value={destAccount} onChange={(e) => setDestAccount(e.target.value)}
+                      placeholder={T('Số tài khoản', 'Account number')} data-testid="refund-dest-account"
+                      style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
+                    />
+                    <input
+                      value={destHolder} onChange={(e) => setDestHolder(e.target.value)}
+                      placeholder={T('Tên chủ tài khoản', 'Account holder name')} data-testid="refund-dest-holder"
+                      style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
+                    />
+                    <input
+                      value={destNote} onChange={(e) => setDestNote(e.target.value)}
+                      placeholder={T('Ghi chú (không bắt buộc)', 'Note (optional)')} data-testid="refund-dest-note"
+                      style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
+                    />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: ink, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={destConfirmed} onChange={(e) => setDestConfirmed(e.target.checked)} data-testid="refund-dest-confirm-checkbox" />
+                      {T('Tôi xác nhận thông tin tài khoản trên là chính xác.', 'I confirm this account information is correct.')}
+                    </label>
+                    {s.refundDestinationError && (
+                      <p style={{ fontSize: 12, color: alert, margin: 0 }}>{s.refundDestinationError}</p>
+                    )}
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <div
+                        onClick={() => setDestFormOpen(false)}
+                        style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 12, border: `1px solid ${rule}`, fontSize: 13, color: ink, cursor: 'pointer' }}
+                      >
+                        {T('Huỷ', 'Cancel')}
+                      </div>
+                      <div
+                        onClick={async () => {
+                          if (s.refundDestinationBusy || !destBank.trim() || !destAccount.trim() || !destHolder.trim() || !destConfirmed) return;
+                          const ok = await saveRefundDestination({ bankName: destBank.trim(), accountNumber: destAccount.trim(), accountHolderName: destHolder.trim(), transferNote: destNote.trim(), confirmed: destConfirmed });
+                          if (ok) setDestFormOpen(false);
+                        }}
+                        style={{ ...inkButton({ flex: 1, borderRadius: 12, padding: 12, fontSize: 13, opacity: (!destBank.trim() || !destAccount.trim() || !destHolder.trim() || !destConfirmed || s.refundDestinationBusy) ? 0.5 : 1 }) }}
+                        data-testid="refund-dest-save"
+                      >
+                        {s.refundDestinationBusy ? T('Đang lưu…', 'Saving…') : T('Lưu', 'Save')}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
             {refundClaim.status === 'host_marked_sent' && (
@@ -414,9 +515,31 @@ export default function PaymentDetails() {
             )}
 
             {refundClaim.status === 'disputed' && (
-              <p style={{ fontSize: 13, lineHeight: 1.55, color: alert, margin: '10px 0 0' }} data-testid="refund-disputed">
-                {T('Đang xử lý tranh chấp ▪︎ bạn đã báo chưa nhận được tiền.', "Dispute open ▪︎ you reported not receiving this refund.")}
-              </p>
+              <div style={{ marginTop: 10 }} data-testid="refund-disputed">
+                <p style={{ fontSize: 13, lineHeight: 1.55, color: alert, margin: 0 }}>
+                  {T('Đang xử lý tranh chấp ▪︎ bạn đã báo chưa nhận được tiền.', "Dispute open ▪︎ you reported not receiving this refund.")}
+                </p>
+                {refundClaim.host_response_due_at && (
+                  <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '6px 0 0' }}>
+                    {new Date(refundClaim.host_response_due_at).getTime() < Date.now()
+                      ? T('Quá hạn phản hồi.', 'Response overdue.')
+                      : T(`Host cần phản hồi trước ${formatShortDate(refundClaim.host_response_due_at)}.`, `Host needs to respond before ${formatShortDate(refundClaim.host_response_due_at, 'en')}.`)}
+                  </p>
+                )}
+                {/* "Gửi lại thông tin chuyển khoản" — the host resent proof
+                    without the claim leaving 'disputed'; show it here so
+                    the guest can go check their bank. */}
+                {(refundClaim.resend_reference || refundClaim.resend_bank_name) && (
+                  <div style={{ ...fieldGlass({ marginTop: 10, padding: '10px 12px' }) }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>
+                      {T('Thông tin chuyển khoản mới nhất', 'Latest transfer info')}
+                    </span>
+                    {refundClaim.resend_bank_name && <p style={{ fontSize: 12, color: ink, margin: '4px 0 0' }}>{refundClaim.resend_bank_name}</p>}
+                    {refundClaim.resend_reference && <p style={{ fontSize: 12, color: ink, margin: '2px 0 0' }}>{T('Mã tham chiếu: ', 'Reference: ') + refundClaim.resend_reference}</p>}
+                    {refundClaim.resend_transferred_at && <p style={{ fontSize: 12, color: ink, opacity: 0.7, margin: '2px 0 0' }}>{formatShortDate(refundClaim.resend_transferred_at)}</p>}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
