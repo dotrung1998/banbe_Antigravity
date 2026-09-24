@@ -2138,14 +2138,18 @@ export function GocProvider({ children }) {
       // The RPC's own response is now authoritative — no second fetch.
       set({ refundDestinations: data.destinations || optimistic, refundDestinationsReordering: false });
     } catch (e) {
-      console.warn('reorderRefundDestinations failed:', e);
+      // Full diagnostic (code/message/details/hint + what was sent) only in
+      // dev — never shown raw to the user, per this ticket's B3.
+      if (import.meta.env?.DEV) {
+        console.warn('reorderRefundDestinations failed:', { code: e?.code, message: e?.message, details: e?.details, hint: e?.hint, orderedIds, userId: s.user?.id });
+      }
       set({
         refundDestinations: previous,
         refundDestinationsReordering: false,
         refundDestinationError: T('Chưa thể lưu thứ tự. Vui lòng thử lại.', "Couldn't save the order. Please try again."),
       });
     }
-  }, [set, T, s.refundDestinations]);
+  }, [set, T, s.refundDestinations, s.user?.id]);
 
   /**
    * Goer adds (`id` omitted) or edits (`id` given) one of their own refund
@@ -2343,48 +2347,41 @@ export function GocProvider({ children }) {
    * anything client-side and is never touched by any RPC except as an
    * unmodified read-back. Fixed by PRESERVING selection across reloads,
    * pruned only to ids that still exist and are still eligible. */
+  /**
+   * TASK A (2026-09-29 pass) — was: two client-composed queries (this
+   * event's bookings, then refund_claims via a client-built `.or(booking_id
+   * .eq...)` string) plus a JS-side "drop rows whose booking isn't in
+   * bookingById" filter. That JS filter is a UI-level bandaid, not a real
+   * fix — it can only discard what already got fetched, and the actual
+   * ownership/identity chain (claim -> booking -> event -> organizer) lived
+   * in three unsynchronized places (RLS, the client bookingIds prefetch,
+   * the client filter). A ghost row could still slip through any gap
+   * between those three.
+   *
+   * Fixed: get_host_refund_claims() (migration 077) does the entire
+   * canonical join server-side with INNER JOINs — a row can only ever come
+   * back if claim -> booking -> THIS event -> an organizer the caller owns
+   * all resolve in one query. There is no client-side "is this valid?"
+   * check left to get out of sync, because an invalid row structurally
+   * cannot be returned.
+   */
   const loadRefundCenter = useCallback(async (eventKey) => {
     if (!eventKey) return set({ refundCenterClaims: [], refundCenterLoading: false });
     set({ refundCenterLoading: true });
-    const { data: bookings, error: bookingsError } = await supabase.from('bookings').select('id, user_id').eq('event_id', eventKey);
-    if (bookingsError) {
+    const { data, error } = await supabase.rpc('get_host_refund_claims', { p_event_id: eventKey });
+    if (error || data?.success === false) {
       // A transient fetch error must never clobber an already-populated
-      // list — leave refundCenterClaims exactly as it was.
-      console.warn('loadRefundCenter (bookings) failed:', bookingsError);
+      // list — leave refundCenterClaims exactly as it was. Full diagnostic
+      // logged only in dev — never surfaced raw to the user.
+      if (import.meta.env?.DEV) {
+        console.warn('loadRefundCenter failed:', { code: error?.code, message: error?.message, details: error?.details, hint: error?.hint, rpcError: data?.error, eventKey, userId: s.user?.id });
+      }
       set({ refundCenterLoading: false });
       return;
     }
-    const bookingIds = (bookings || []).map(b => b.id);
-    if (!bookingIds.length) {
-      set({ refundCenterClaims: [], refundCenterLoading: false, refundCenterSelected: [] });
-      return;
-    }
-    const { data: claims, error } = await supabase
-      .from('refund_claims')
-      .select('id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, disputed_at, host_response_due_at, refund_due_at, transfer_reference, selected_destination_id, recipient_snapshot, note, created_at')
-      .or(bookingIds.map(id => `booking_id.eq.${id}`).join(','))
-      .order('created_at', { ascending: true });
-    if (error) {
-      console.warn('loadRefundCenter (claims) failed:', error);
-      set({ refundCenterLoading: false });
-      return;
-    }
-    const bookingById = Object.fromEntries((bookings || []).map(b => [b.id, b]));
-    const userIds = [...new Set((claims || []).map(c => bookingById[c.booking_id || c.reservation_id]?.user_id).filter(Boolean))];
-    let nameByUserId = {};
-    if (userIds.length) {
-      const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', userIds);
-      nameByUserId = Object.fromEntries((profiles || []).map(p => [p.id, p.display_name]));
-    }
+    const claims = data.claims || [];
     const now = Date.now();
-    // TASK A — a claim that can't be reconciled to a real, currently-
-    // queried booking for THIS event (an orphan row — its booking_id/
-    // reservation_id no longer resolves within `bookingById`) must never
-    // render at all, per this ticket's own "must join to a real booking"
-    // rule. Filtered out before enrichment, not just hidden by CSS.
-    const validClaims = (claims || []).filter(c => !!bookingById[c.booking_id || c.reservation_id]);
-    const enriched = validClaims.map(c => {
-      const b = bookingById[c.booking_id || c.reservation_id];
+    const enriched = claims.map(c => {
       // TASK C — matches the server's own goc_refund_snapshot_valid()
       // (migration 075) exactly: a bare selected_destination_id with no
       // real snapshot content must never read as "has a destination".
@@ -2395,7 +2392,7 @@ export function GocProvider({ children }) {
         || (c.status === 'disputed' && c.host_response_due_at && new Date(c.host_response_due_at).getTime() < now);
       return {
         ...c,
-        guestName: (b && nameByUserId[b.user_id]) || T('Khách', 'Guest'),
+        guestName: c.guest_name || T('Khách', 'Guest'),
         destination: c.recipient_snapshot || null,
         eligible: hasDestination && isActive,
         needsDestination: isActive && !hasDestination,
@@ -2408,7 +2405,7 @@ export function GocProvider({ children }) {
       refundCenterLoading: false,
       refundCenterSelected: prev.refundCenterSelected.filter(id => eligibleIds.has(id)),
     }));
-  }, [set, T]);
+  }, [set, T, s.user?.id]);
 
   const toggleRefundCenterSelect = useCallback((claimId) => {
     set(prev => ({

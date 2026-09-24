@@ -1204,6 +1204,7 @@ extension AppState {
                 .rpc("reorder_refund_destinations", params: ["p_ordered_ids": orderedIDs.map(\.uuidString)])
                 .execute().value
             guard result.success == true else {
+                print("reorderRefundDestinations RPC error:", result.error ?? "unknown", "orderedIDs:", orderedIDs.map(\.uuidString), "userID:", userID?.uuidString ?? "nil")
                 refundDestinations = previous
                 refundDestinationError = T("Chưa thể lưu thứ tự. Vui lòng thử lại.", "Couldn't save the order. Please try again.")
                 refundDestinationsReordering = false
@@ -1213,7 +1214,8 @@ extension AppState {
             refundDestinations = result.destinations ?? optimistic
             refundDestinationsReordering = false
         } catch {
-            print("reorderRefundDestinations failed:", error)
+            // Full diagnostic only in dev — never shown raw to the user.
+            print("reorderRefundDestinations failed:", error, "orderedIDs:", orderedIDs.map(\.uuidString), "userID:", userID?.uuidString ?? "nil")
             refundDestinations = previous
             refundDestinationError = T("Chưa thể lưu thứ tự. Vui lòng thử lại.", "Couldn't save the order. Please try again.")
             refundDestinationsReordering = false
@@ -1390,39 +1392,40 @@ extension AppState {
     /// which is never written by anything client-side. Fixed by PRESERVING
     /// selection across reloads, pruned only to ids that still exist and
     /// are still eligible.
+    private struct GetHostRefundClaimsResult: Decodable {
+        let success: Bool?
+        let error: String?
+        let claims: [RefundClaim]?
+    }
+
+    /// TASK A (2026-09-29 pass) — was: two client-composed queries (this
+    /// event's bookings, then refund_claims via a client-built `.or(
+    /// booking_id.eq...)` string) plus a separate profiles fetch plus a
+    /// Swift-side "drop rows whose booking isn't in bookingByID" filter.
+    /// That filter is a UI-level bandaid, not a real fix — it can only
+    /// discard what already got fetched, and the actual ownership/identity
+    /// chain (claim -> booking -> event -> organizer) lived in three
+    /// unsynchronized places (RLS, the client bookings prefetch, the client
+    /// filter). Fixed: get_host_refund_claims() (migration 077) performs
+    /// the whole canonical join server-side with INNER JOINs — a row can
+    /// only come back if claim -> booking -> THIS event -> an organizer the
+    /// caller owns all resolve in one query, including the guest's display
+    /// name. No client-side validity check is left to get out of sync.
     func loadRefundCenter(eventKey: String) async {
         refundCenterLoading = true
         defer { refundCenterLoading = false }
+        guard let eventUUID = UUID(uuidString: eventKey) else { return }
         do {
-            let bookings: [RefundClaimBookingRow] = try await SupabaseService.client
-                .from("bookings").select("id, user_id, event_id")
-                .eq("event_id", value: eventKey)
+            let result: GetHostRefundClaimsResult = try await SupabaseService.client
+                .rpc("get_host_refund_claims", params: ["p_event_id": eventUUID.uuidString])
                 .execute().value
-            guard !bookings.isEmpty else { refundCenterClaims = []; refundCenterSelected = []; return }
-            let bookingByID = Dictionary(uniqueKeysWithValues: bookings.map { ($0.id, $0) })
-            let claims: [RefundClaim] = try await SupabaseService.client
-                .from("refund_claims")
-                .select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, disputed_at, host_response_due_at, refund_due_at, transfer_reference, selected_destination_id, recipient_snapshot, note, created_at")
-                .or(bookings.map { "booking_id.eq.\($0.id.uuidString)" }.joined(separator: ","))
-                .order("created_at", ascending: true)
-                .execute().value
-            let userIDs = Set(claims.compactMap { bookingByID[$0.bookingId ?? $0.reservationId ?? UUID()]?.userId })
-            var nameByUserID: [UUID: String] = [:]
-            if !userIDs.isEmpty {
-                let profiles: [RefundClaimProfileRow] = try await SupabaseService.client
-                    .from("profiles").select("id, display_name")
-                    .in("id", values: userIDs.map(\.uuidString))
-                    .execute().value
-                for p in profiles { nameByUserID[p.id] = p.displayName ?? "" }
+            guard result.success == true else {
+                print("loadRefundCenter failed:", result.error ?? "unknown", "eventKey:", eventKey, "userID:", userID?.uuidString ?? "nil")
+                return
             }
-            // TASK A — a claim that can't be reconciled to a real,
-            // currently-queried booking for THIS event (an orphan row) must
-            // never render at all, per this ticket's own "must join to a
-            // real booking" rule.
-            let validClaims = claims.filter { bookingByID[$0.bookingId ?? $0.reservationId ?? UUID()] != nil }
+            let claims = result.claims ?? []
             let now = Date()
-            let enriched = validClaims.map { c -> RefundCenterClaim in
-                let b = bookingByID[c.bookingId ?? c.reservationId ?? UUID()]
+            let enriched = claims.map { c -> RefundCenterClaim in
                 // TASK C — matches the server's own goc_refund_snapshot_valid()
                 // (migration 075): a bare selectedDestinationId with no real
                 // snapshot content must never read as "has a destination".
@@ -1435,7 +1438,7 @@ extension AppState {
                     || (c.status == "disputed" && (c.hostResponseDueAt.map { $0 < now } ?? false))
                 return RefundCenterClaim(
                     claim: c,
-                    guestName: b?.userId.flatMap { nameByUserID[$0] } ?? T("Khách", "Guest"),
+                    guestName: c.hostGuestName?.isEmpty == false ? c.hostGuestName! : T("Khách", "Guest"),
                     eligible: hasDestination && isActive,
                     needsDestination: isActive && !hasDestination,
                     overdue: overdue
@@ -1445,7 +1448,8 @@ extension AppState {
             refundCenterClaims = enriched
             refundCenterSelected = refundCenterSelected.intersection(eligibleIDs)
         } catch {
-            print("loadRefundCenter failed:", error)
+            // Full diagnostic only in dev — never shown raw to the user.
+            print("loadRefundCenter failed:", error, "eventKey:", eventKey, "userID:", userID?.uuidString ?? "nil")
             // A transient fetch error must never clobber an already-
             // populated list.
         }
@@ -1812,6 +1816,9 @@ struct RefundClaim: Codable, Identifiable, Equatable {
     // only (reuses `eventName` above, decoded as "" by default since that
     // query's own SELECT list has no `guestName`/`eventName` columns).
     var eventKey: String?
+    // get_host_refund_claims() (migration 077) returns this straight from
+    // its own canonical join — no separate profiles fetch needed.
+    var hostGuestName: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -1832,6 +1839,7 @@ struct RefundClaim: Codable, Identifiable, Equatable {
         case resendNote = "resend_note"
         case selectedDestinationId = "selected_destination_id"
         case recipientSnapshot = "recipient_snapshot"
+        case hostGuestName = "guest_name"
     }
 }
 

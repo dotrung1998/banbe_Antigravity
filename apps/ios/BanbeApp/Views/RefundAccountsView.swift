@@ -66,8 +66,22 @@ struct RefundAccountsView: View {
         }
     }
 
+    // TASK C — root cause of the dragged row overlaying/cutting off the
+    // next row: the list used to be a native `List` (with its own native
+    // drag-reorder lift/preview animation) placed INSIDE ScreenScaffold's
+    // own `ScrollView` (`scroll` defaults to true), with `.scrollDisabled
+    // (true)` and a hand-computed `.frame(height:)` (a flat `44pt * row
+    // count` sum) bolted on to make it behave like a plain non-scrolling
+    // block. That fixed-height clipping frame doesn't account for the
+    // native drag lift/preview's real (taller, elevated) row metrics, so
+    // during an active drag the container clipped whatever didn't fit
+    // inside its hand-computed height — exactly the cut-off/overlap in the
+    // report. Fixed: `ScreenScaffold(scroll: false)` (no outer ScrollView
+    // to compete with), and this screen's own `List` now owns scrolling and
+    // sizes itself natively — no `.scrollDisabled`, no manual row-height
+    // sum, so its native drag animation has the space it actually needs.
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(scroll: false) {
             VStack(alignment: .leading, spacing: 0) {
                 BackLink(label: app.T("Tài khoản", "Account")) { app.backFromRefundAccounts() }
 
@@ -91,14 +105,12 @@ struct RefundAccountsView: View {
                         .font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert).padding(.top, 12)
                 }
 
-                if !formOpen {
-                    if app.refundDestinations.isEmpty {
-                        Text(app.T("Chưa có tài khoản nhận hoàn tiền", "No refund accounts saved yet"))
-                            .font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .center)
-                            .padding(20).background(app.palette.field, in: RoundedRectangle(cornerRadius: 14)).padding(.top, 16)
-                    } else {
-                        accountsList
-                    }
+                if formOpen {
+                    ScrollView { formView.padding(.top, 4) }
+                } else if app.refundDestinations.isEmpty {
+                    Text(app.T("Chưa có tài khoản nhận hoàn tiền", "No refund accounts saved yet"))
+                        .font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .center)
+                        .padding(20).background(app.palette.field, in: RoundedRectangle(cornerRadius: 14)).padding(.top, 16)
                     Button(app.T("+ Thêm tài khoản", "+ Add account"), action: openAddForm)
                         .font(.system(size: 13)).foregroundStyle(app.palette.ink)
                         .frame(maxWidth: .infinity).padding(13)
@@ -106,11 +118,12 @@ struct RefundAccountsView: View {
                         .padding(.top, 12)
                         .accessibilityIdentifier("refund.accountAdd")
                 } else {
-                    formView
+                    accountsList
                 }
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 22).padding(.top, 16).padding(.bottom, 40)
+            .frame(maxHeight: .infinity, alignment: .top)
         }
     }
 
@@ -122,35 +135,47 @@ struct RefundAccountsView: View {
     /// only the reorder handle visible). One thin row per account — no
     /// card padding/shadow — main label + secondary bank/masked-number
     /// line, trailing "Mặc định" tag or chevron. Edit/Delete live behind a
-    /// tap on the row instead of always-visible buttons.
+    /// tap on the row instead of always-visible buttons. The "+ Thêm tài
+    /// khoản" row is its OWN List row (not a sibling outside the List) so
+    /// there is exactly one scroll container on this whole screen (TASK C1)
+    /// — never a List competing with an outer ScrollView, never a second
+    /// scrollable region.
     private var accountsList: some View {
         List {
-            ForEach(app.refundDestinations) { d in
-                VStack(spacing: 0) {
-                    accountRow(d)
-                    if openMenuID == d.id { accountRowMenu(d) }
+            Section {
+                ForEach(app.refundDestinations) { d in
+                    VStack(spacing: 0) {
+                        accountRow(d)
+                        if openMenuID == d.id { accountRowMenu(d) }
+                    }
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowBackground(app.palette.field)
+                    .listRowSeparatorTint(app.palette.rule)
                 }
-                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                .listRowBackground(app.palette.field)
-                .listRowSeparatorTint(app.palette.rule)
+                .onMove { indices, newOffset in
+                    var ids = app.refundDestinations.map(\.id)
+                    ids.move(fromOffsets: indices, toOffset: newOffset)
+                    Task { await app.reorderRefundDestinations(ids) }
+                }
+                .deleteDisabled(true)
             }
-            .onMove { indices, newOffset in
-                var ids = app.refundDestinations.map(\.id)
-                ids.move(fromOffsets: indices, toOffset: newOffset)
-                Task { await app.reorderRefundDestinations(ids) }
+            Section {
+                Button(app.T("+ Thêm tài khoản", "+ Add account"), action: openAddForm)
+                    .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                    .frame(maxWidth: .infinity).padding(13)
+                    .accessibilityIdentifier("refund.accountAdd")
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .moveDisabled(true)
+                    .deleteDisabled(true)
             }
-            .deleteDisabled(true)
         }
         .environment(\.editMode, .constant(.active))
         .listStyle(.plain)
-        .scrollDisabled(true)
-        .frame(height: rowHeight(for: app.refundDestinations))
+        .scrollContentBackground(.hidden)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14))
         .padding(.top, 16)
-    }
-
-    private func rowHeight(for destinations: [RefundDestination]) -> CGFloat {
-        destinations.reduce(CGFloat(0)) { total, d in total + (openMenuID == d.id ? 44 + 92 : 44) }
     }
 
     @ViewBuilder
