@@ -1980,18 +1980,36 @@ export function GocProvider({ children }) {
   }, [set, s.accountType, s.myOrganizerIds]);
 
   /** Host's "Đã hoàn tiền" — owed -> host_marked_sent. */
+  /** Shared by Verifications.jsx's own refund queue AND Attendance.jsx's
+   * "Hoàn lại lần nữa" — TASK C fix: mark_refund_sent() (migration 075) now
+   * rejects a claim with no valid recipient snapshot (NO_DESTINATION_
+   * SELECTED), which this surfaces as a friendly error instead of the
+   * previous silent console.warn-only failure. Returns whether it
+   * succeeded so callers (e.g. Attendance.jsx) know whether to also
+   * refresh their own Refund Center view. */
   const markRefundSent = useCallback(async (claimId, note = '') => {
-    set({ refundActionBusy: claimId });
+    set({ refundActionBusy: claimId, refundBatchError: '' });
+    let ok = false;
     try {
       const { data, error } = await supabase.rpc('mark_refund_sent', { p_claim_id: claimId, p_note: note || '' });
       if (error) throw error;
-      if (data?.success === false) throw new Error(data.error);
+      if (data?.success === false) {
+        set({
+          refundBatchError: data.error === 'NO_DESTINATION_SELECTED'
+            ? T('Chưa thể đánh dấu đã hoàn tiền. Khách cần chọn tài khoản nhận trước.', 'Cannot mark this refund sent yet — the guest needs to choose a destination first.')
+            : T('Không thể cập nhật lúc này. Vui lòng thử lại.', 'Could not update right now. Please try again.'),
+        });
+      } else {
+        ok = true;
+      }
     } catch (e) {
       console.warn('markRefundSent failed:', e);
+      set({ refundBatchError: T('Không thể cập nhật lúc này. Vui lòng thử lại.', 'Could not update right now. Please try again.') });
     }
     set({ refundActionBusy: '' });
     await loadRefundQueue();
-  }, [set, loadRefundQueue]);
+    return ok;
+  }, [set, T, loadRefundQueue]);
 
   /**
    * The guest's own single refund claim for whatever booking
@@ -2068,16 +2086,40 @@ export function GocProvider({ children }) {
     if (!s.user?.id) return set({ refundDestinations: [] });
     const { data, error } = await supabase
       .from('refund_destinations')
-      .select('id, user_id, label, bank_name, account_number, account_holder_name, transfer_note, is_default, confirmed_at, updated_at')
+      .select('id, user_id, label, bank_name, account_number, account_holder_name, transfer_note, is_default, position, confirmed_at, updated_at')
       .eq('user_id', s.user.id)
-      .order('is_default', { ascending: false })
-      .order('updated_at', { ascending: false });
+      .order('position', { ascending: true });
     if (error) {
       console.warn('loadRefundDestinations failed:', error);
       return;
     }
     set({ refundDestinations: data || [] });
   }, [set, s.user?.id]);
+
+  /** Goer drags an account to a new position (TASK B) — transaction-safe,
+   * ownership-checked server-side (reorder_refund_destinations(),
+   * migration 075), which also makes position 0 the new default
+   * automatically. Never a client-only reorder: always reconciled against
+   * the real server order right after. */
+  const reorderRefundDestinations = useCallback(async (orderedIds) => {
+    // Optimistic reorder so the drag doesn't visibly snap back while the
+    // RPC is in flight — reconciled against the server response below
+    // either way, so a rejected reorder still ends up showing the real
+    // (unchanged) order rather than a stale optimistic one.
+    set(prev => {
+      const byId = Object.fromEntries(prev.refundDestinations.map(d => [d.id, d]));
+      const reordered = orderedIds.map((id, i) => byId[id] && { ...byId[id], position: i, is_default: i === 0 }).filter(Boolean);
+      return reordered.length === prev.refundDestinations.length ? { refundDestinations: reordered } : {};
+    });
+    try {
+      const { data, error } = await supabase.rpc('reorder_refund_destinations', { p_ordered_ids: orderedIds });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error);
+    } catch (e) {
+      console.warn('reorderRefundDestinations failed:', e);
+    }
+    await loadRefundDestinations();
+  }, [set, loadRefundDestinations]);
 
   /**
    * Goer adds (`id` omitted) or edits (`id` given) one of their own refund
@@ -2196,23 +2238,63 @@ export function GocProvider({ children }) {
     set({ myRefunds: enriched, myRefundsLoading: false });
   }, [set, s.user?.id]);
 
+  // TASK A point 8 — "equivalent browser back/history behavior": pushes a
+  // real history entry when opening either screen, so the browser's own
+  // back button (and, on mobile Safari, its own edge-swipe-back gesture)
+  // returns here too, not just this app's in-view back link. Consumed
+  // (via history.back()) whenever THIS app leaves the screen on its own —
+  // see consumeRefundHistoryEntry() below — so a later stray forward-swipe
+  // never resurrects a route we already left.
+  const consumeRefundHistoryEntry = (kind) => {
+    try {
+      if (window.history.state?.bbScreen === kind) window.history.back();
+    } catch { /* unsupported */ }
+  };
+
   const openRefundAccounts = useCallback((back = 'profile', { returnToClaimId = null, returnToBookingId = null } = {}) => {
     set({ screen: 'refundAccounts', refundAccountsBack: back, refundAccountsReturnToClaimId: returnToClaimId, refundAccountsReturnToBookingId: returnToBookingId });
     try { localStorage.setItem('banbe.lastScreen', 'refundAccounts'); } catch { /* private browsing */ }
+    try { window.history.pushState({ bbScreen: 'refundAccounts' }, ''); } catch { /* unsupported */ }
   }, [set]);
   const backFromRefundAccounts = useCallback(() => {
     set(prev => ({ screen: prev.refundAccountsBack || 'profile', refundAccountsReturnToClaimId: null, refundAccountsReturnToBookingId: null }));
     try { localStorage.removeItem('banbe.lastScreen'); } catch { /* private browsing */ }
+    consumeRefundHistoryEntry('refundAccounts');
   }, [set]);
 
   const openMyRefunds = useCallback((back = 'profile') => {
     set({ screen: 'myRefunds', myRefundsBack: back });
     try { localStorage.setItem('banbe.lastScreen', 'myRefunds'); } catch { /* private browsing */ }
+    try { window.history.pushState({ bbScreen: 'myRefunds' }, ''); } catch { /* unsupported */ }
     loadMyRefunds();
   }, [set, loadMyRefunds]);
   const backFromMyRefunds = useCallback(() => {
     set(prev => ({ screen: prev.myRefundsBack || 'profile' }));
     try { localStorage.removeItem('banbe.lastScreen'); } catch { /* private browsing */ }
+    consumeRefundHistoryEntry('myRefunds');
+  }, [set]);
+
+  // The actual browser-back/edge-swipe-back handler — performs the exact
+  // same transition backFromRefundAccounts()/backFromMyRefunds() do. Reads
+  // `prev.screen` at fire time: if this app already left the screen on its
+  // own (the two functions above), that screen no longer matches and this
+  // is correctly a no-op rather than a second, conflicting transition.
+  useEffect(() => {
+    const onPopState = () => {
+      set(prev => {
+        if (prev.screen === 'refundAccounts') {
+          try { localStorage.removeItem('banbe.lastScreen'); } catch { /* private browsing */ }
+          return { screen: prev.refundAccountsBack || 'profile', refundAccountsReturnToClaimId: null, refundAccountsReturnToBookingId: null };
+        }
+        if (prev.screen === 'myRefunds') {
+          try { localStorage.removeItem('banbe.lastScreen'); } catch { /* private browsing */ }
+          return { screen: prev.myRefundsBack || 'profile' };
+        }
+        return {};
+      });
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
   }, [set]);
 
   // ---- Refund MVP: host's per-event Refund Center (Attendance's own new
@@ -2271,7 +2353,11 @@ export function GocProvider({ children }) {
     const now = Date.now();
     const enriched = (claims || []).map(c => {
       const b = bookingById[c.booking_id || c.reservation_id];
-      const hasDestination = !!c.selected_destination_id;
+      // TASK C — matches the server's own goc_refund_snapshot_valid()
+      // (migration 075) exactly: a bare selected_destination_id with no
+      // real snapshot content must never read as "has a destination".
+      const hasDestination = !!c.selected_destination_id && !!c.recipient_snapshot?.bank_name
+        && !!c.recipient_snapshot?.account_number && !!c.recipient_snapshot?.account_holder_name;
       const isActive = c.status === 'owed' || c.status === 'disputed';
       const overdue = (c.status === 'owed' && c.refund_due_at && new Date(c.refund_due_at).getTime() < now)
         || (c.status === 'disputed' && c.host_response_due_at && new Date(c.host_response_due_at).getTime() < now);
@@ -4673,7 +4759,20 @@ export function GocProvider({ children }) {
   // GUESTS() generator), resolved to display names via the profiles row a
   // check-in host is now allowed to read (see the RLS policy added
   // alongside check_in_guest()'s notification).
+  // TASK D — root cause of the "No one has booked… then flickers" report:
+  // loadAttendanceGuests() runs 3 sequential awaited queries with no
+  // request-ordering guard at all. A fast poll re-fire (the 6s interval in
+  // Attendance.jsx) or two overlapping calls (a fresh openAttendance() plus
+  // an in-flight poll tick) could let an OLDER, SLOWER response resolve
+  // AFTER a newer one and overwrite it with stale data — including
+  // momentarily replacing a real guest list with `[]`, which the empty-
+  // state text then (correctly, given what it was told) renders as "no
+  // guests" before the newer response's already-in-flight result lands a
+  // moment later. `attendanceGuestsSeq` makes only the NEWEST call's
+  // response ever allowed to write state.
+  const attendanceGuestsSeq = useRef(0);
   const loadAttendanceGuests = useCallback(async (key) => {
+    const seq = ++attendanceGuestsSeq.current;
     set({ attendanceLoading: true });
     // 'pending' belongs here too: an unpaid guest is exactly the one the
     // organizer needs to find in order to mark them paid. Expired holds are
@@ -4685,7 +4784,7 @@ export function GocProvider({ children }) {
       .in('status', ['pending', 'confirmed', 'attended']);
     if (error) {
       console.warn('Failed to load attendance list:', error);
-      set({ attendanceGuests: [], attendanceLoading: false });
+      if (seq === attendanceGuestsSeq.current) set({ attendanceGuests: [], attendanceLoading: false });
       return;
     }
     const userIds = [...new Set((bookings || []).map(b => b.user_id).filter(Boolean))];
@@ -4744,10 +4843,17 @@ export function GocProvider({ children }) {
           receipts: docInfo.receipts,
         };
       });
-    set({ attendanceGuests: guests, attendanceLoading: false });
+    // Only the newest in-flight request may write the guest list — see this
+    // function's own doc comment above.
+    if (seq === attendanceGuestsSeq.current) set({ attendanceGuests: guests, attendanceLoading: false });
   }, [set]);
   const openAttendance = useCallback((key, back = 'dashboard') => {
-    set({ screen: 'attendance', attendanceEventKey: key, attendanceGuests: [], attendanceBack: back });
+    // attendanceLoading explicitly true here too (not just inside
+    // loadAttendanceGuests) — the very first render of Attendance.jsx must
+    // never see attendanceGuests:[] paired with attendanceLoading:false,
+    // which is exactly what would render the (wrong, not-yet-resolved)
+    // empty-state text for one frame.
+    set({ screen: 'attendance', attendanceEventKey: key, attendanceGuests: [], attendanceLoading: true, attendanceBack: back });
     loadAttendanceGuests(key);
   }, [set, loadAttendanceGuests]);
   const backFromAttendance = useCallback(() => set(prev => ({ screen: prev.attendanceBack || 'dashboard' })), [set]);
@@ -5217,7 +5323,7 @@ export function GocProvider({ children }) {
     submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer, loadReceiptStatus, requestReceipt,
     openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     loadRefundQueue, markRefundSent, confirmRefundReceived, disputeRefund, loadPaymentRefundClaim,
-    loadRefundDestinations, saveRefundDestination, deleteRefundDestination, setDefaultRefundDestination, selectRefundDestinationForClaim,
+    loadRefundDestinations, saveRefundDestination, deleteRefundDestination, setDefaultRefundDestination, selectRefundDestinationForClaim, reorderRefundDestinations,
     loadMyRefunds, openRefundAccounts, backFromRefundAccounts, openMyRefunds, backFromMyRefunds,
     loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
@@ -5250,7 +5356,7 @@ export function GocProvider({ children }) {
     submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer, loadReceiptStatus, requestReceipt,
     openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     loadRefundQueue, markRefundSent, confirmRefundReceived, disputeRefund, loadPaymentRefundClaim,
-    loadRefundDestinations, saveRefundDestination, deleteRefundDestination, setDefaultRefundDestination, selectRefundDestinationForClaim,
+    loadRefundDestinations, saveRefundDestination, deleteRefundDestination, setDefaultRefundDestination, selectRefundDestinationForClaim, reorderRefundDestinations,
     loadMyRefunds, openRefundAccounts, backFromRefundAccounts, openMyRefunds, backFromMyRefunds,
     loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,

@@ -271,6 +271,15 @@ final class AppState: ObservableObject {
     // comment on why "not captured yet" is used for backend-data-dependent
     // flows instead of inventing one here).
     static let isUITesting = UserDefaults.standard.bool(forKey: "uiTesting")
+    // TASK A point 4 — only these two screens are ever restorable from
+    // `banbe.lastScreen`; any other/stale/unrecognized value is ignored.
+    static func restorableScreen(from raw: String?) -> Screen? {
+        switch raw {
+        case "refundAccounts": return .refundAccounts
+        case "myRefunds": return .myRefunds
+        default: return nil
+        }
+    }
     static let isScreenshotCatalog = UserDefaults.standard.bool(forKey: "screenshotCatalog")
     static let demoRole = UserDefaults.standard.string(forKey: "demoRole")
     static let demoScenario = UserDefaults.standard.string(forKey: "demoScenario")
@@ -544,6 +553,10 @@ final class AppState: ObservableObject {
     @Published var attendanceEventKey: String?
     @Published var attendanceGuests: [AttendanceGuest] = []
     @Published var attendanceLoading = false
+    // TASK D — only the newest loadAttendanceGuests() call may write
+    // attendanceGuests/attendanceLoading; see that function's own doc
+    // comment (AppState+Data.swift).
+    var attendanceGuestsSeq = 0
     @Published var photoViewer: PhotoViewerItem?
     /// Liked photo paths. Local-only: there's no table to hang a photo like
     /// on, and inventing one would mean a migration that isn't live yet.
@@ -1170,7 +1183,14 @@ final class AppState: ObservableObject {
     /// authReturnScreen/authBackScreen point at where onboarding was
     /// actually headed, so signing in lands there instead of always Home.
     private func postAuthDestination(isSignedIn: Bool) {
-        let target: Screen = .home
+        // TASK A point 4 — "the route must survive app relaunch", same
+        // convention as web's own `banbe.lastScreen` (GocContext.jsx):
+        // only these two screens persist themselves (openRefundAccounts/
+        // openMyRefunds below), restored here on cold start rather than
+        // building a general route-restoration system this ticket didn't
+        // ask for. Only trusted when actually signed in.
+        let restored: Screen? = isSignedIn ? Self.restorableScreen(from: UserDefaults.standard.string(forKey: "banbe.lastScreen")) : nil
+        let target: Screen = restored ?? .home
         if isSignedIn {
             screen = target
         } else {
@@ -1735,6 +1755,17 @@ final class AppState: ObservableObject {
         case .verifications: screen = verificationsBack
         case .disputes: screen = .profile
         case .mapExplore: goHome()
+        // TASK A fix — these two cases were simply missing, so the shared
+        // edge-swipe gesture's goBack() fell to `default: break` and did
+        // nothing at all for RefundAccountsView/MyRefundsView (the reported
+        // "swipe-back doesn't return to Account, at any speed" — there was
+        // no missing gesture-recognition tuning to fix, just two absent
+        // switch cases). Reuses the exact same functions the in-view
+        // BackLink already calls, so both exit paths can never drift apart
+        // again (same reasoning as paymentDetailsBackTarget's own doc
+        // comment above).
+        case .refundAccounts: backFromRefundAccounts()
+        case .myRefunds: backFromMyRefunds()
         default: break
         }
     }
@@ -1772,6 +1803,13 @@ final class AppState: ObservableObject {
         case .verifications: return verificationsBack
         case .disputes: return .profile
         case .mapExplore: return .home
+        // TASK A fix — same missing-case bug as goBack() above: without
+        // these, an in-progress edge swipe from RefundAccounts/MyRefunds
+        // peeked Home behind the dragged screen instead of Account, which
+        // would have looked like landing on the wrong screen even on the
+        // rare swipe that DID complete.
+        case .refundAccounts: return refundAccountsBackScreen
+        case .myRefunds: return myRefundsBackScreen
         default: return .home
         }
     }

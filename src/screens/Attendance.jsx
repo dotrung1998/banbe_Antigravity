@@ -9,7 +9,7 @@ import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } fr
 const REFUND_STATUS_LABEL = {
   needsDestination: ['Cần tài khoản nhận tiền', 'Needs destination'],
   owed: ['Đang chờ hoàn', 'Owed'],
-  host_marked_sent: ['Đã gửi ▪︎ chờ xác nhận', 'Sent ▪︎ awaiting confirmation'],
+  host_marked_sent: ['Đang chờ khách xác nhận đã nhận tiền.', 'Awaiting guest confirmation'],
   disputed: ['Đang tranh chấp', 'Disputed'],
   guest_confirmed: ['Đã xác nhận', 'Confirmed'],
   overdue: ['Quá hạn', 'Overdue'],
@@ -356,8 +356,23 @@ export default function Attendance() {
             </div>
           );
         })}
+        {/* TASK D — three distinct states, not two: still-loading text is
+            shown until the guest query is FULLY resolved (attendanceLoading,
+            guarded server-side by attendanceGuestsSeq in GocContext against
+            an out-of-order response ever flipping this back on stale data);
+            once genuinely loaded-and-empty, the copy itself depends on
+            whether this event has ANY refund history at all
+            (s.refundCenterClaims, loaded independently — never lets the
+            guest-list text imply "nothing has ever happened here" when a
+            historical refund claim says otherwise). */}
         {guests.length === 0 && (
-          <p style={{ fontSize: 12.5, color: ink, padding: '14px 16px', margin: 0 }}>{s.attendanceLoading ? T('Đang tải danh sách khách…', 'Loading guest list…') : T('Chưa có ai đặt chỗ cho sự kiện này.', 'No one has booked this event yet.')}</p>
+          <p style={{ fontSize: 12.5, color: ink, padding: '14px 16px', margin: 0 }} data-testid="attendance-empty-state">
+            {s.attendanceLoading
+              ? T('Đang tải khách…', 'Loading guests…')
+              : s.refundCenterClaims.length > 0
+              ? T('Hiện không có khách đang hoạt động cho sự kiện này.', 'There are no currently active guests for this event.')
+              : T('Chưa có khách đặt sự kiện này.', 'No one has booked this event yet.')}
+          </p>
         )}
       </div>
 
@@ -383,6 +398,9 @@ export default function Attendance() {
                    `${refundedClaims.length}/${claims.length} sent ▪︎ ${formatVnd(refundedVnd)} / ${formatVnd(totalVnd)}`)}
               </span>
             </div>
+            {!refundReviewOpen && s.refundBatchError && (
+              <p style={{ fontSize: 12, color: alert, margin: 0 }} data-testid="refund-center-error">{s.refundBatchError}</p>
+            )}
 
             {!refundReviewOpen && (
               <>
@@ -419,7 +437,7 @@ export default function Attendance() {
                                 {c.destination.bank_name} ▪︎ {maskAccountNumber(c.destination.account_number)} ▪︎ {c.destination.account_holder_name}
                               </span>
                             ) : (
-                              <span style={{ fontSize: 11, color: alert }}>{T('Khách chưa cung cấp tài khoản nhận hoàn tiền.', "The guest hasn't provided a refund destination yet.")}</span>
+                              <span style={{ fontSize: 11, color: alert }}>{T('Khách chưa chọn tài khoản nhận hoàn tiền.', "The guest hasn't chosen a refund destination yet.")}</span>
                             )}
                             {c.transfer_reference && <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>REF {c.transfer_reference}</span>}
                             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2 }}>
@@ -449,7 +467,14 @@ export default function Attendance() {
                               )}
                               {c.status === 'disputed' && (
                                 <span
-                                  onClick={() => s.refundActionBusy !== c.id && markRefundSent(c.id, T('Hoàn lại lần nữa', 'Sent again'))}
+                                  onClick={async () => {
+                                    if (s.refundActionBusy === c.id) return;
+                                    await markRefundSent(c.id, T('Hoàn lại lần nữa', 'Sent again'));
+                                    // TASK C point 5 — refetch canonical claims after
+                                    // every mark-sent, never trust the optimistic
+                                    // pre-call UI state.
+                                    await loadRefundCenter(attKey);
+                                  }}
                                   style={{ fontSize: 10.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
                                 >
                                   {T('Hoàn lại lần nữa', 'Send again')}

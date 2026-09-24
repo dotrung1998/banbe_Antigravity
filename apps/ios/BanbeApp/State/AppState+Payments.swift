@@ -1032,18 +1032,35 @@ extension AppState {
         refundQueueLoading = false
     }
 
-    /// Host's "Đã hoàn tiền" — owed -> host_marked_sent.
-    func markRefundSent(_ claimID: UUID, note: String = "") async {
+    /// Host's "Đã hoàn tiền" — owed -> host_marked_sent. TASK C fix:
+    /// mark_refund_sent() (migration 075) now rejects a claim with no
+    /// valid recipient snapshot (NO_DESTINATION_SELECTED), surfaced here
+    /// instead of the previous silent print-only failure. Returns whether
+    /// it succeeded so callers (AttendanceView's "Hoàn lại lần nữa") know
+    /// whether to also refresh their own Refund Center view.
+    @discardableResult
+    func markRefundSent(_ claimID: UUID, note: String = "") async -> Bool {
         refundActionBusy = claimID
+        refundBatchError = ""
         defer { refundActionBusy = nil }
+        var ok = false
         do {
-            _ = try await SupabaseService.client
+            let result: RpcResult = try await SupabaseService.client
                 .rpc("mark_refund_sent", params: ["p_claim_id": claimID.uuidString, "p_note": note])
-                .execute()
+                .execute().value
+            if result.success == true {
+                ok = true
+            } else {
+                refundBatchError = result.error == "NO_DESTINATION_SELECTED"
+                    ? T("Chưa thể đánh dấu đã hoàn tiền. Khách cần chọn tài khoản nhận trước.", "Cannot mark this refund sent yet — the guest needs to choose a destination first.")
+                    : T("Không thể cập nhật lúc này. Vui lòng thử lại.", "Could not update right now. Please try again.")
+            }
         } catch {
             print("markRefundSent failed:", error)
+            refundBatchError = T("Không thể cập nhật lúc này. Vui lòng thử lại.", "Could not update right now. Please try again.")
         }
         await loadRefundQueue()
+        return ok
     }
 
     /// Guest's "Đã nhận tiền" — host_marked_sent -> guest_confirmed.
@@ -1135,14 +1152,41 @@ extension AppState {
         do {
             refundDestinations = try await SupabaseService.client
                 .from("refund_destinations")
-                .select("id, user_id, label, bank_name, account_number, account_holder_name, transfer_note, is_default, confirmed_at, updated_at")
+                .select("id, user_id, label, bank_name, account_number, account_holder_name, transfer_note, is_default, position, confirmed_at, updated_at")
                 .eq("user_id", value: uid.uuidString)
-                .order("is_default", ascending: false)
-                .order("updated_at", ascending: false)
+                .order("position", ascending: true)
                 .execute().value
         } catch {
             print("loadRefundDestinations failed:", error)
         }
+    }
+
+    /// Goer drags an account to a new position (TASK B) — transaction-safe,
+    /// ownership-checked server-side (reorder_refund_destinations(),
+    /// migration 075), which also makes position 0 the new default
+    /// automatically. Never a client-only reorder: always reconciled
+    /// against the real server order right after.
+    func reorderRefundDestinations(_ orderedIDs: [UUID]) async {
+        // Optimistic reorder so the drag doesn't visibly snap back while
+        // the RPC is in flight — reconciled against the server response
+        // below either way.
+        let byID = Dictionary(uniqueKeysWithValues: refundDestinations.map { ($0.id, $0) })
+        let reordered: [RefundDestination] = orderedIDs.enumerated().compactMap { i, id in
+            guard var d = byID[id] else { return nil }
+            d.position = i
+            d.isDefault = i == 0
+            return d
+        }
+        if reordered.count == refundDestinations.count { refundDestinations = reordered }
+        do {
+            let result: RpcResult = try await SupabaseService.client
+                .rpc("reorder_refund_destinations", params: ["p_ordered_ids": orderedIDs.map(\.uuidString)])
+                .execute().value
+            if result.success != true { print("reorderRefundDestinations rejected:", result.error ?? "") }
+        } catch {
+            print("reorderRefundDestinations failed:", error)
+        }
+        await loadRefundDestinations()
     }
 
     /// Goer adds (`id` nil) or edits (`id` given) one of their own refund
@@ -1275,19 +1319,25 @@ extension AppState {
         refundAccountsReturnToClaimID = returnToClaimID
         refundAccountsReturnToBookingID = returnToBookingID
         screen = .refundAccounts
+        UserDefaults.standard.set("refundAccounts", forKey: "banbe.lastScreen")
     }
     func backFromRefundAccounts() {
         screen = refundAccountsBackScreen
         refundAccountsReturnToClaimID = nil
         refundAccountsReturnToBookingID = nil
+        UserDefaults.standard.removeObject(forKey: "banbe.lastScreen")
     }
 
     func openMyRefunds(back: Screen = .profile) {
         myRefundsBackScreen = back
         screen = .myRefunds
+        UserDefaults.standard.set("myRefunds", forKey: "banbe.lastScreen")
         Task { await loadMyRefunds() }
     }
-    func backFromMyRefunds() { screen = myRefundsBackScreen }
+    func backFromMyRefunds() {
+        screen = myRefundsBackScreen
+        UserDefaults.standard.removeObject(forKey: "banbe.lastScreen")
+    }
 
     // MARK: Refund MVP — host's per-event Refund Center
 
@@ -1337,7 +1387,13 @@ extension AppState {
             let now = Date()
             let enriched = claims.map { c -> RefundCenterClaim in
                 let b = bookingByID[c.bookingId ?? c.reservationId ?? UUID()]
+                // TASK C — matches the server's own goc_refund_snapshot_valid()
+                // (migration 075): a bare selectedDestinationId with no real
+                // snapshot content must never read as "has a destination".
                 let hasDestination = c.selectedDestinationId != nil
+                    && !(c.recipientSnapshot?.bankName.isEmpty ?? true)
+                    && !(c.recipientSnapshot?.accountNumber.isEmpty ?? true)
+                    && !(c.recipientSnapshot?.accountHolderName.isEmpty ?? true)
                 let isActive = c.status == "owed" || c.status == "disputed"
                 let overdue = (c.status == "owed" && (c.refundDueAt.map { $0 < now } ?? false))
                     || (c.status == "disputed" && (c.hostResponseDueAt.map { $0 < now } ?? false))
@@ -1770,6 +1826,7 @@ struct RefundDestination: Codable, Equatable, Identifiable {
     var accountHolderName: String
     var transferNote: String?
     var isDefault: Bool
+    var position: Int = 0
     var confirmedAt: Date?
     var updatedAt: Date?
 
@@ -1782,6 +1839,7 @@ struct RefundDestination: Codable, Equatable, Identifiable {
         case accountHolderName = "account_holder_name"
         case transferNote = "transfer_note"
         case isDefault = "is_default"
+        case position
         case confirmedAt = "confirmed_at"
         case updatedAt = "updated_at"
     }

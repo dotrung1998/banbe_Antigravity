@@ -21,6 +21,7 @@ struct RefundAccountsView: View {
     @State private var revealedID: UUID?
     @State private var confirmDeleteID: UUID?
     @State private var savedFlash = false
+    @State private var openMenuID: UUID?
 
     private var canSave: Bool {
         !bank.trimmingCharacters(in: .whitespaces).isEmpty
@@ -51,15 +52,16 @@ struct RefundAccountsView: View {
             formOpen = false
             savedFlash = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { savedFlash = false }
+            // TASK A point 7 — save -> pop back to the EXACT claim that sent
+            // us here (never a blank/root screen): reuses the same
+            // backFromRefundAccounts() the swipe gesture and the in-view
+            // BackLink both use, so this exit path can't drift out of sync
+            // with those either.
             if wasNew, let claimID = app.refundAccountsReturnToClaimID {
                 let bookingID = app.refundAccountsReturnToBookingID
                 _ = await app.selectRefundDestinationForClaim(claimID: claimID, destinationID: newID)
-                if let bookingID {
-                    app.paymentBookingID = bookingID
-                    app.screen = .paymentDetails
-                    app.refundAccountsReturnToClaimID = nil
-                    app.refundAccountsReturnToBookingID = nil
-                }
+                if let bookingID { app.paymentBookingID = bookingID }
+                app.backFromRefundAccounts()
             }
         }
     }
@@ -69,10 +71,12 @@ struct RefundAccountsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 BackLink(label: app.T("Tài khoản", "Account")) { app.backFromRefundAccounts() }
 
-                Text(app.T("Tài khoản thanh toán & nhận hoàn tiền", "Payment & refund accounts"))
+                Text(app.T("Tài khoản nhận hoàn tiền", "Refund accounts"))
                     .font(BanbeTheme.display(24)).padding(.top, 14)
-                Text(app.T("Lưu tài khoản ngân hàng để nhận tiền hoàn khi vé bị huỷ.", "Save a bank account to receive refunds when a booking is cancelled."))
-                    .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
+                if app.refundDestinations.count > 1 {
+                    Text(app.T("Kéo để sắp xếp", "Drag to reorder"))
+                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6)).padding(.top, 6)
+                }
 
                 if savedFlash {
                     Text(app.T("Tài khoản nhận hoàn đã được lưu", "Refund account saved"))
@@ -85,15 +89,9 @@ struct RefundAccountsView: View {
                             .font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .center)
                             .padding(20).background(app.palette.field, in: RoundedRectangle(cornerRadius: 14)).padding(.top, 16)
                     } else {
-                        VStack(spacing: 0) {
-                            ForEach(app.refundDestinations) { d in
-                                accountRow(d)
-                                if d.id != app.refundDestinations.last?.id { Divider().overlay(app.palette.rule) }
-                            }
-                        }
-                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14)).padding(.top, 16)
+                        accountsList
                     }
-                    Button(app.T("Thêm tài khoản mới", "Add a new account"), action: openAddForm)
+                    Button(app.T("+ Thêm tài khoản", "+ Add account"), action: openAddForm)
                         .font(.system(size: 13)).foregroundStyle(app.palette.ink)
                         .frame(maxWidth: .infinity).padding(13)
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
@@ -108,17 +106,71 @@ struct RefundAccountsView: View {
         }
     }
 
+    /// TASK B — compact iOS Settings-style grouped list: a native `List`
+    /// with `.onMove` gives long-press-and-drag reordering by its own
+    /// leading three-line handle for free (shown because editMode is
+    /// pinned `.active`; `.deleteDisabled` on every row suppresses the red
+    /// delete control that edit mode would otherwise also show, leaving
+    /// only the reorder handle visible). One thin row per account — no
+    /// card padding/shadow — main label + secondary bank/masked-number
+    /// line, trailing "Mặc định" tag or chevron. Edit/Delete live behind a
+    /// tap on the row instead of always-visible buttons.
+    private var accountsList: some View {
+        List {
+            ForEach(app.refundDestinations) { d in
+                VStack(spacing: 0) {
+                    accountRow(d)
+                    if openMenuID == d.id { accountRowMenu(d) }
+                }
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                .listRowBackground(app.palette.field)
+                .listRowSeparatorTint(app.palette.rule)
+            }
+            .onMove { indices, newOffset in
+                var ids = app.refundDestinations.map(\.id)
+                ids.move(fromOffsets: indices, toOffset: newOffset)
+                Task { await app.reorderRefundDestinations(ids) }
+            }
+            .deleteDisabled(true)
+        }
+        .environment(\.editMode, .constant(.active))
+        .listStyle(.plain)
+        .scrollDisabled(true)
+        .frame(height: rowHeight(for: app.refundDestinations))
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14))
+        .padding(.top, 16)
+    }
+
+    private func rowHeight(for destinations: [RefundDestination]) -> CGFloat {
+        destinations.reduce(CGFloat(0)) { total, d in total + (openMenuID == d.id ? 44 + 92 : 44) }
+    }
+
     @ViewBuilder
     private func accountRow(_ d: RefundDestination) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(d.label ?? app.T("Tài khoản", "Account")).font(BanbeTheme.display(14))
-                if d.isDefault {
-                    Text(app.T("Mặc định", "Default")).font(.system(size: 10, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.6))
-                }
+                Text("\(d.bankName) ▪︎ \(maskAccountNumber(d.accountNumber))")
+                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
             }
-            Text("\(d.bankName) ▪︎ \(revealedID == d.id ? d.accountNumber : maskAccountNumber(d.accountNumber)) ▪︎ \(d.accountHolderName)")
-                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
+            Spacer(minLength: 8)
+            if d.isDefault {
+                Text(app.T("Mặc định", "Default")).font(.system(size: 11, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.55))
+            } else {
+                Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.35))
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { openMenuID = openMenuID == d.id ? nil : d.id }
+        .frame(height: 44)
+        .padding(.horizontal, 14)
+    }
+
+    @ViewBuilder
+    private func accountRowMenu(_ d: RefundDestination) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("\(revealedID == d.id ? d.accountNumber : maskAccountNumber(d.accountNumber)) ▪︎ \(d.accountHolderName)")
+                .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
             HStack(spacing: 14) {
                 Button(revealedID == d.id ? app.T("Ẩn", "Hide") : app.T("Hiện số TK", "Reveal")) {
                     revealedID = revealedID == d.id ? nil : d.id
@@ -141,7 +193,8 @@ struct RefundAccountsView: View {
                 }
             }
         }
-        .padding(14)
+        .padding(.horizontal, 14).padding(.bottom, 10)
+        .frame(height: 92, alignment: .top)
     }
 
     private var formView: some View {

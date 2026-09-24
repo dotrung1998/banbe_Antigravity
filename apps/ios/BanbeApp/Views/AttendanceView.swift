@@ -139,9 +139,19 @@ struct AttendanceView: View {
 
                     VStack(spacing: 0) {
                         if app.attendanceGuests.isEmpty {
+                            // TASK D — three distinct states: still-loading
+                            // text shown until the guest query is FULLY
+                            // resolved (attendanceLoading, guarded against an
+                            // out-of-order response by attendanceGuestsSeq);
+                            // once genuinely loaded-and-empty, the copy
+                            // depends on whether this event has ANY refund
+                            // history at all (app.refundCenterClaims, loaded
+                            // independently).
                             Text(app.attendanceLoading
-                                 ? app.T("Đang tải danh sách khách…", "Loading guest list…")
-                                 : app.T("Chưa có ai đặt chỗ cho sự kiện này.", "No one has booked this event yet."))
+                                 ? app.T("Đang tải khách…", "Loading guests…")
+                                 : !app.refundCenterClaims.isEmpty
+                                 ? app.T("Hiện không có khách đang hoạt động cho sự kiện này.", "There are no currently active guests for this event.")
+                                 : app.T("Chưa có khách đặt sự kiện này.", "No one has booked this event yet."))
                                 .font(.system(size: 12.5))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(16)
@@ -447,6 +457,9 @@ struct AttendanceView: View {
                             "\(refundedClaims.count)/\(claims.count) sent ▪︎ \(formatVnd(refundedVnd)) / \(formatVnd(totalVnd))"))
                     .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.7))
             }
+            if !refundReviewOpen && !app.refundBatchError.isEmpty {
+                Text(app.refundBatchError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+            }
 
             if !refundReviewOpen {
                 Button(selected == eligibleIDs && !eligibleIDs.isEmpty ? app.T("Bỏ chọn tất cả", "Deselect all") : app.T("Chọn tất cả", "Select all eligible")) {
@@ -551,7 +564,7 @@ struct AttendanceView: View {
                         Text("\(dest.bankName) ▪︎ \(maskAccountNumber(dest.accountNumber)) ▪︎ \(dest.accountHolderName)")
                             .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
                     } else {
-                        Text(app.T("Khách chưa cung cấp tài khoản nhận hoàn tiền.", "The guest hasn't provided a refund destination yet."))
+                        Text(app.T("Khách chưa chọn tài khoản nhận hoàn tiền.", "The guest hasn't chosen a refund destination yet."))
                             .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
                     }
                     if let ref = c.claim.transferReference {
@@ -578,8 +591,13 @@ struct AttendanceView: View {
                             }
                             .font(.system(size: 10.5))
                             Button(app.T("Hoàn lại lần nữa", "Send again")) {
-                                guard app.refundActionBusy != c.id else { return }
-                                Task { await app.markRefundSent(c.id, note: app.T("Hoàn lại lần nữa", "Sent again")) }
+                                guard app.refundActionBusy != c.id, let key = app.attendanceEventKey else { return }
+                                Task {
+                                    await app.markRefundSent(c.id, note: app.T("Hoàn lại lần nữa", "Sent again"))
+                                    // TASK C point 5 — refetch canonical claims
+                                    // after every mark-sent action.
+                                    await app.loadRefundCenter(eventKey: key)
+                                }
                             }
                             .font(.system(size: 10.5))
                         }
@@ -619,7 +637,7 @@ private func refundStatusLabel(_ key: String) -> (String, String) {
     switch key {
     case "needsDestination": return ("Cần tài khoản nhận tiền", "Needs destination")
     case "owed": return ("Đang chờ hoàn", "Owed")
-    case "host_marked_sent": return ("Đã gửi ▪︎ chờ xác nhận", "Sent ▪︎ awaiting confirmation")
+    case "host_marked_sent": return ("Đang chờ khách xác nhận đã nhận tiền.", "Awaiting guest confirmation")
     case "disputed": return ("Đang tranh chấp", "Disputed")
     case "guest_confirmed": return ("Đã xác nhận", "Confirmed")
     case "overdue": return ("Quá hạn", "Overdue")

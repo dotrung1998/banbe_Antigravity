@@ -2425,12 +2425,30 @@ extension AppState {
     func openAttendance(_ key: String, back: Screen = .dashboard) {
         attendanceEventKey = key
         attendanceGuests = []
+        // attendanceLoading explicitly true here too, not just inside
+        // loadAttendanceGuests below — the very first render of
+        // AttendanceView must never see attendanceGuests:[] paired with
+        // attendanceLoading:false, which is exactly what would render the
+        // (wrong, not-yet-resolved) empty-state text for one frame.
+        attendanceLoading = true
         attendanceBack = back
         screen = .attendance
         Task { await loadAttendanceGuests(key) }
     }
 
+    /// TASK D — root cause of the "No one has booked… then flickers"
+    /// report: this used to run 3 sequential awaited queries with no
+    /// request-ordering guard at all. A fast poll re-fire (AttendanceView's
+    /// own 6s timer) or two overlapping calls could let an OLDER, SLOWER
+    /// response resolve AFTER a newer one and overwrite it with stale data
+    /// — including momentarily replacing a real guest list with `[]`, which
+    /// the empty-state text then renders as "no guests" before the newer
+    /// response's already-in-flight result lands a moment later.
+    /// `attendanceGuestsSeq` makes only the NEWEST call's response ever
+    /// allowed to write state.
     func loadAttendanceGuests(_ key: String) async {
+        attendanceGuestsSeq += 1
+        let seq = attendanceGuestsSeq
         attendanceLoading = true
         do {
             let bookings: [AttendanceBooking] = try await SupabaseService.client
@@ -2476,6 +2494,7 @@ extension AppState {
                     )
                 }
             }
+            guard seq == attendanceGuestsSeq else { return }
             let rightNow = Date()
             attendanceGuests = bookings
                 // Expired holds are seats nobody actually has — listing them
@@ -2504,6 +2523,7 @@ extension AppState {
             attendanceLoading = false
         } catch {
             print("Failed to load attendance list:", error)
+            guard seq == attendanceGuestsSeq else { return }
             attendanceGuests = []
             attendanceLoading = false
         }
