@@ -8,6 +8,20 @@ function eventPhotoUrl(path) {
   return supabase.storage.from('event-photos').getPublicUrl(relative).data.publicUrl;
 }
 
+// 2026-09-25 fix pass (photo viewer task) — same heart glyph/path
+// `src/screens/sheets/PhotoViewer.jsx`'s own `Icon({name:'heart'})` already
+// draws (this app's one existing heart-fill asset) — not a new icon style.
+// Deliberately has no "outline" caller anywhere in this file: the rule this
+// task adds is that an UNLIKED photo renders no heart glyph at all, only
+// this filled one once liked.
+function FilledHeart({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 20.5S3.5 15 3.5 9.2A4.7 4.7 0 0 1 12 6.5a4.7 4.7 0 0 1 8.5 2.7c0 5.8-8.5 11.3-8.5 11.3Z" />
+    </svg>
+  );
+}
+
 // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse: two tabs ("Hôm
 // nay"/"Tuần này") of ranked public event/organizer cards. Tapping an
 // unfollowed organizer's identity opens a compact sheet with a Follow CTA
@@ -103,7 +117,15 @@ export default function PulseViewer() {
             data-testid="pulse-photo-card"
             style={{ ...cardGlass({ padding: 0, display: 'flex', overflow: 'hidden', cursor: 'pointer' }) }}
           >
-            <div style={{ width: 88, height: 88, flex: 'none', background: `center/cover url(${eventPhotoUrl(item.photo_path)})` }} />
+            <div style={{ width: 88, height: 88, flex: 'none', position: 'relative', background: `center/cover url(${eventPhotoUrl(item.photo_path)})` }}>
+              {/* Heart rule (Task 3): rendered ONLY when this user has
+                  liked the photo — no outline/placeholder heart otherwise. */}
+              {s.pulsePhotoLiked[item.photo_id] && (
+                <span style={{ position: 'absolute', top: 6, right: 6, color: '#fff', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.55))' }} data-testid="pulse-photo-card-liked">
+                  <FilledHeart size={15} />
+                </span>
+              )}
+            </div>
             <div style={{ flex: 1, minWidth: 0, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4, justifyContent: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: ink, opacity: 0.5 }}>#{i + 1}</span>
@@ -133,18 +155,26 @@ export default function PulseViewer() {
               <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T('Đã xác minh', 'Verified')}</span>
             )}
             <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+              {/* Heart rule (Task 3) — the glyph itself only ever renders
+                  filled (liked) or not at all (not liked); no outline/empty
+                  heart state, no transitional animation beyond the plain
+                  fade this button's own background/color already do. The
+                  tap target (this whole pill) is identical either way. */}
               <div
                 onClick={() => togglePulsePhotoLike(s.pulsePhotoSheet.photo_id)}
                 data-testid="pulse-photo-like"
                 style={{
                   fontSize: 13, fontWeight: 600, padding: '10px 20px', borderRadius: 999, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
                   background: s.pulsePhotoLiked[s.pulsePhotoSheet.photo_id] ? ink : 'transparent',
                   color: s.pulsePhotoLiked[s.pulsePhotoSheet.photo_id] ? paper : ink,
                   border: s.pulsePhotoLiked[s.pulsePhotoSheet.photo_id] ? 'none' : `1px solid ${rule}`,
                   opacity: s.pulsePhotoBusy[s.pulsePhotoSheet.photo_id] ? 0.6 : 1,
+                  transition: 'opacity .15s ease',
                 }}
               >
-                {s.pulsePhotoLiked[s.pulsePhotoSheet.photo_id] ? T('♥ Đã thích', '♥ Liked') : T('♡ Thích', '♡ Like')} · {s.pulsePhotoSheet.like_count}
+                {s.pulsePhotoLiked[s.pulsePhotoSheet.photo_id] && <FilledHeart size={14} />}
+                <span>{T('Thích', 'Like')} · {s.pulsePhotoSheet.like_count}</span>
               </div>
               <div
                 onClick={() => sharePulsePhoto(s.pulsePhotoSheet)}

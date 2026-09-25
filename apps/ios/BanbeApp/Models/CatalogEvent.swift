@@ -19,10 +19,13 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
     let img: String
     let lat: Double
     let lng: Double
-    let meta: String
+    // 2026-09-25 fix pass — mutable now (like cancelled/endedHoursAgo
+    // below), so `applyingLiveStatus` can overlay the REAL starts_at date
+    // on top of the catalogue's static one. See Countdown.liveDateOverrides.
+    var meta: String
     /// `where` is a Swift keyword, hence the backticks — the JSON key is plain "where".
-    let `where`: String
-    let when: String
+    var `where`: String
+    var when: String
     let price: String
     let seats: String
     let seatsLong: String
@@ -48,13 +51,14 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
     var endedHoursAgo: Int?
     let soldOut: Bool
     let inviteOnly: Bool
-    let until: Int?
-    let untilLabel: String
+    var until: Int?
+    var untilLabel: String
     /// Bug 3 (15-organizer-checkin.md follow-up): "Add to Calendar" needs a
     /// real, structured start time — resolved once on the web side (the
     /// catalogue's own hardcoded-year date + time), emitted as ISO8601 so
-    /// there's nothing left to re-parse here.
-    let startDate: Date?
+    /// there's nothing left to re-parse here. Mutable since 2026-09-25 —
+    /// see `meta`'s own comment just above.
+    var startDate: Date?
     let locationLabel: String?
 
     enum CodingKeys: String, CodingKey {
@@ -102,6 +106,18 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
         copy.cancelled = overrides.cancelled
         copy.cancelledHoursAgo = overrides.cancelledHoursAgo
         copy.endedHoursAgo = overrides.endedHoursAgo
+        // 2026-09-25 fix pass — the live DATE, applied regardless of which
+        // status branch matched above (a cancelled/ended event still has a
+        // real starts_at worth showing correctly). `nil` fields mean
+        // `live.startsAt` wasn't set (a row created before that column was
+        // wired up) — the catalogue's own static date stays as a fallback.
+        let d = overrides.date
+        if let startDate = d.startDate { copy.startDate = startDate }
+        if let when = d.when { copy.when = when }
+        if let until = d.until { copy.until = until }
+        if let untilLabel = d.untilLabel { copy.untilLabel = untilLabel }
+        if let meta = d.meta { copy.meta = meta }
+        if let where_ = d.where_ { copy.where = where_ }
         return copy
     }
 }

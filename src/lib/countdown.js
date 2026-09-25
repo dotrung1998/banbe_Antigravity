@@ -59,6 +59,85 @@ function hoursSince(iso, now) {
   return Math.max(0, (now - new Date(iso).getTime()) / 3600000);
 }
 
+// 2026-09-25 fix pass — root cause of "wrong displayed months": every
+// event's `when`/`where`/`meta`/`until`/`untilLabel`/`startDate` came
+// ONLY from `src/data/events.js`'s static demo catalogue (hardcoded
+// July-2026 strings, computed once against a hardcoded `TODAY` constant)
+// — `liveEventOverrides` only ever patched `cancelled`/`endedHoursAgo`,
+// never the DISPLAY date itself, so the real `events.starts_at` row this
+// app already fetches (`loadHomeLiveEvents`/`loadLiveEventStatus`) was
+// driving live/ended status correctly while every VISIBLE date string
+// stayed frozen at the catalogue's own July dates, regardless of what the
+// real row actually said. Fixed here, not by touching the catalogue's
+// cosmetic fields (photos/galleries/descriptions stay static by design —
+// see events.js's own top comment) — only the parts that are genuinely
+// DATA, not decoration.
+const VN_WEEKDAY_SHORT = ['CN', 'Th 2', 'Th 3', 'Th 4', 'Th 5', 'Th 6', 'Th 7'];
+const VN_WEEKDAY_LONG = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+/** A real Date -> the same three fragments events.js's own ROWS baked in
+ * by hand (dayShort/dayLong/time), computed from the ACTUAL instant
+ * instead of a hardcoded string — so a real September/November
+ * `starts_at` reads as September/November, not whatever month the demo
+ * catalogue happened to hardcode for that event key. */
+function formatVnEventDate(date) {
+  const dow = date.getDay();
+  return {
+    weekdayShort: VN_WEEKDAY_SHORT[dow],
+    dayMonth: `${pad2(date.getDate())}.${pad2(date.getMonth() + 1)}`,
+    dayLong: `${VN_WEEKDAY_LONG[dow]}, ${date.getDate()} tháng ${date.getMonth() + 1}`,
+    time: `${pad2(date.getHours())}:${pad2(date.getMinutes())}`,
+  };
+}
+
+/** Whole-day difference between two instants, compared at local midnight
+ * — same semantics `data/events.js`'s own (now-removed-from-the-critical-
+ * path) `relDays()` already used, just against the REAL current date
+ * instead of a hardcoded `TODAY`. */
+function relDaysFromNow(target, now) {
+  const startOfTarget = new Date(target); startOfTarget.setHours(0, 0, 0, 0);
+  const startOfNow = new Date(now); startOfNow.setHours(0, 0, 0, 0);
+  return Math.round((startOfTarget - startOfNow) / 86400000);
+}
+
+function untilLabelText(n) {
+  return n === 0 ? 'Hôm nay' : n === 1 ? 'Ngày mai' : n < 0 ? '' : 'Còn ' + n + ' ngày';
+}
+
+/** Replaces the trailing ` ▪︎ `-joined segment(s) of a static catalogue
+ * string with live values, keeping everything before them (area/km/etc,
+ * which have no live equivalent and aren't the bug here) untouched. */
+function replaceTrailingSegments(str, count, replacements) {
+  if (typeof str !== 'string') return str;
+  const parts = str.split(' ▪︎ ');
+  if (parts.length < count) return str;
+  parts.splice(parts.length - count, count, ...replacements);
+  return parts.join(' ▪︎ ');
+}
+
+/** The live-date portion of `liveEventOverrides`' return value — `null`
+ * when `liveEvent.starts_at` isn't set (an event created before that
+ * column was wired up), in which case the caller keeps the static
+ * catalogue's own date text exactly as before. */
+function liveDateOverrides(liveEvent, staticEv, now) {
+  if (!liveEvent?.starts_at) return {};
+  const startsAt = new Date(liveEvent.starts_at);
+  if (Number.isNaN(startsAt.getTime())) return {};
+  const { weekdayShort, dayMonth, dayLong, time } = formatVnEventDate(startsAt);
+  const until = relDaysFromNow(startsAt, now);
+  const overrides = {
+    startDate: startsAt,
+    when: `${weekdayShort}, ${dayMonth} ▪︎ ${time}`,
+    until,
+    untilLabel: untilLabelText(until),
+  };
+  if (staticEv?.meta) overrides.meta = replaceTrailingSegments(staticEv.meta, 1, [`${weekdayShort}, ${time}`]);
+  if (staticEv?.where) overrides.where = replaceTrailingSegments(staticEv.where, 2, [dayLong, time]);
+  return overrides;
+}
+
 /**
  * Reconciles a real `events` row's own status against the current clock,
  * overriding the static demo catalogue's hardcoded cancelled/ended flags
@@ -82,8 +161,15 @@ function hoursSince(iso, now) {
  */
 export function liveEventOverrides(liveEvent, staticEv, now = Date.now()) {
   if (!liveEvent) return null;
+  // 2026-09-25 fix pass — the live DATE (when/where/meta/until/startDate),
+  // merged in regardless of cancelled/ended/live branch below: a
+  // cancelled or ended event still has a real `starts_at` worth showing
+  // correctly, same as a live one. See `liveDateOverrides`'s own comment
+  // for the full root-cause writeup.
+  const dateOverrides = liveDateOverrides(liveEvent, staticEv, now);
   if (liveEvent.status === 'cancelled') {
     return {
+      ...dateOverrides,
       cancelled: true,
       cancelledHoursAgo: hoursSince(liveEvent.cancelled_at, now) ?? staticEv?.cancelledHoursAgo ?? 0,
       endedHoursAgo: null,
@@ -91,6 +177,7 @@ export function liveEventOverrides(liveEvent, staticEv, now = Date.now()) {
   }
   if (liveEvent.status === 'ended') {
     return {
+      ...dateOverrides,
       cancelled: false,
       cancelledHoursAgo: null,
       endedHoursAgo: hoursSince(liveEvent.starts_at, now) ?? staticEv?.endedHoursAgo ?? 0,
@@ -99,5 +186,5 @@ export function liveEventOverrides(liveEvent, staticEv, now = Date.now()) {
   // 'live' (or 'draft'/'review', which shouldn't be publicly reachable at
   // all) — the organizer hasn't cancelled it and no sweep has marked it
   // ended, so as far as this row is concerned, neither has happened.
-  return { cancelled: false, cancelledHoursAgo: null, endedHoursAgo: null };
+  return { ...dateOverrides, cancelled: false, cancelledHoursAgo: null, endedHoursAgo: null };
 }

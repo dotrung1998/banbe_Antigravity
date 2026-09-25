@@ -316,10 +316,22 @@ struct PulseViewerView: View {
     private func pulsePhotoCard(_ item: PulsePhotoItem, rank: Int) -> some View {
         Button { app.openPulsePhotoSheet(item) } label: {
             HStack(spacing: 0) {
-                ZStack {
+                ZStack(alignment: .topTrailing) {
                     app.palette.field
                     if let urlStr = eventPhotoURL(item.photoPath), let url = URL(string: urlStr) {
                         AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
+                    }
+                    // Heart rule (Task 3) — rendered ONLY when this user has
+                    // liked the photo, same `heart.fill` asset
+                    // PhotoViewerView's own action button already uses; no
+                    // outline heart badge in the unliked state.
+                    if app.pulsePhotoLiked[item.photoId] == true {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
+                            .padding(6)
+                            .accessibilityIdentifier("pulse.photoCard.liked")
                     }
                 }
                 .frame(width: 88, height: 88)
@@ -368,17 +380,28 @@ struct PulseViewerView: View {
             }
 
             HStack(spacing: 10) {
+                // Heart rule (Task 3) — the glyph only ever renders filled
+                // (liked, same `heart.fill` asset used elsewhere in this
+                // app) or not at all; no outline/empty heart state, no
+                // transitional animation beyond this button's own opacity
+                // fade while busy. Tap target (the whole pill) is identical
+                // either way.
                 Button {
                     Task { await app.togglePulsePhotoLike(item.photoId) }
                 } label: {
                     let liked = app.pulsePhotoLiked[item.photoId] == true
-                    Text((liked ? app.T("♥ Đã thích", "♥ Liked") : app.T("♡ Thích", "♡ Like")) + " · \(item.likeCount)")
-                        .font(.system(size: 13, weight: .semibold))
-                        .padding(.horizontal, 18).padding(.vertical, 10)
-                        .background(liked ? app.palette.ink : Color.clear, in: Capsule())
-                        .foregroundStyle(liked ? app.palette.paper : app.palette.ink)
-                        .overlay(Capsule().stroke(liked ? .clear : app.palette.rule))
-                        .opacity(app.pulsePhotoBusy[item.photoId] == true ? 0.6 : 1)
+                    HStack(spacing: 6) {
+                        if liked {
+                            Image(systemName: "heart.fill").font(.system(size: 13))
+                        }
+                        Text(app.T("Thích", "Like") + " · \(item.likeCount)")
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.horizontal, 18).padding(.vertical, 10)
+                    .background(liked ? app.palette.ink : Color.clear, in: Capsule())
+                    .foregroundStyle(liked ? app.palette.paper : app.palette.ink)
+                    .overlay(Capsule().stroke(liked ? .clear : app.palette.rule))
+                    .opacity(app.pulsePhotoBusy[item.photoId] == true ? 0.6 : 1)
                 }
                 .buttonStyle(.plain)
                 .disabled(app.pulsePhotoBusy[item.photoId] == true)

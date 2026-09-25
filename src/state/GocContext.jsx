@@ -3299,8 +3299,25 @@ export function GocProvider({ children }) {
       set({ pulsePhotosLoading: false });
       return;
     }
-    set({ pulsePhotos: data.items || [], pulsePhotosLoading: false });
-  }, [set]);
+    const items = data.items || [];
+    // 2026-09-25 fix pass (photo viewer task) — the signed-in user's OWN
+    // like state for every photo in this batch, fetched in the SAME pass
+    // as the ranking itself (one extra query, own-row-only per
+    // `photo_likes_select_own`) and written to state TOGETHER with
+    // `pulsePhotos` below — never as a separate, later `set()` — so there
+    // is no render in between where a liked photo would flash as
+    // "not liked" before this resolves.
+    let liked = {};
+    if (s.user?.id && items.length) {
+      const { data: likedRows, error: likedErr } = await supabase
+        .from('photo_likes').select('event_photo_id')
+        .eq('user_id', s.user.id).in('event_photo_id', items.map(i => i.photo_id));
+      if (seq !== pulsePhotoSeqRef.current) return;
+      if (likedErr) { if (import.meta.env?.DEV) console.warn('loadPulsePhotos like-state failed:', likedErr); }
+      else liked = Object.fromEntries((likedRows || []).map(r => [r.event_photo_id, true]));
+    }
+    set({ pulsePhotos: items, pulsePhotosLoading: false, pulsePhotoLiked: liked });
+  }, [set, s.user?.id]);
   const openPulseViewer = useCallback(() => {
     // Never leave a previous session's rank sitting there indefinitely
     // (rule A5) — cleared before the fresh fetch, not just overwritten

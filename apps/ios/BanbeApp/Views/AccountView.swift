@@ -358,7 +358,17 @@ struct AccountView: View {
                     .padding(.top, 10)
                 }
 
-                if app.canHost {
+                // 2026-09-25 fix pass — reverses the previous "eligibility
+                // (canHost), not current mode" rule for THIS card
+                // specifically: a real host with organizerMode OFF now sees
+                // nothing here at all (every host-only row in this section
+                // hides together when the switch is off), not their
+                // host-page card. The onboarding pitch below is unaffected
+                // — it's for an account that has never hosted (`canHost`
+                // false always implies `organizerMode` false too, so it can
+                // only ever show in the true "never hosted" case, never for
+                // a returning host who merely toggled off).
+                if app.organizerMode {
                     Button { app.switchToHost(back: .profile) } label: {
                         HStack {
                             Image(systemName: "person.2")
@@ -383,7 +393,7 @@ struct AccountView: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("account.hostPageCard")
                     .padding(.top, 10)
-                } else {
+                } else if !app.canHost {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(app.T("Tổ chức sự kiện đầu tiên", "Host your first event"))
                             .font(BanbeTheme.display(19))

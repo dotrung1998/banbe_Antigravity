@@ -376,11 +376,16 @@ export default function Account() {
             </div>
           </div>
         )}
-        {/* Eligibility (canHost), not current mode — a real host who has
-            merely toggled organizerMode off is still a returning host, not
-            a first-timer; the "Host your first event" onboarding pitch
-            below is only for an account that has never actually hosted. */}
-        {canHost ? (
+        {/* 2026-09-25 fix pass — reverses the previous "eligibility
+            (canHost), not current mode" rule for THIS card specifically:
+            a real host with organizerMode OFF now sees nothing here at
+            all (every host-only row in this section hides together when
+            the switch is off), not their host-page card. The onboarding
+            pitch below is unaffected — it's for an account that has never
+            hosted (`canHost` false always implies `organizerMode` false
+            too, so it can only ever show in the true "never hosted" case,
+            never for a returning host who merely toggled off). */}
+        {isOrganizer ? (
           <div onClick={() => switchToHost('profile')} style={{ ...cardGlass({ marginTop: 10, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
               <RowIcon kind="users" />
@@ -393,7 +398,7 @@ export default function Account() {
             </div>
             <span style={{ fontSize: 17, color: ink, flex: 'none', lineHeight: 1 }}>›</span>
           </div>
-        ) : (
+        ) : !canHost && (
           <div style={{ ...cardGlass({ marginTop: 10, padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 10 }) }}>
             <span style={{ ...display(19, { lineHeight: 1.3 }) }}>{T('Tổ chức sự kiện đầu tiên', 'Host your first event')}</span>
             <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, margin: 0 }}>

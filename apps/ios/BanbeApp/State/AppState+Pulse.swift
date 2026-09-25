@@ -77,6 +77,12 @@ private struct PulsePhotoResult: Decodable {
     let items: [PulsePhotoItem]?
 }
 
+/// `loadPulsePhotos()`'s own per-user like-state batch query row.
+private struct LikedPhotoRow: Decodable {
+    let eventPhotoId: String
+    enum CodingKeys: String, CodingKey { case eventPhotoId = "event_photo_id" }
+}
+
 extension AppState {
     func loadPulse(period: PulseTab) async {
         let seq: Int
@@ -120,7 +126,29 @@ extension AppState {
                 .execute().value
             guard seq == pulsePhotosSeq else { return }
             guard result.success == true else { pulsePhotosLoading = false; return }
-            pulsePhotos = result.items ?? []
+            let items = result.items ?? []
+            // 2026-09-25 fix pass (photo viewer task) — the signed-in
+            // user's OWN like state for every photo in this batch, fetched
+            // BEFORE writing `pulsePhotos`/`pulsePhotoLiked` (both set
+            // together below, not `pulsePhotos` first) so there is no
+            // render in between where a liked photo would flash as
+            // "not liked" while this second query is still in flight.
+            var liked: [String: Bool] = [:]
+            if let uid = userID, !items.isEmpty {
+                do {
+                    let rows: [LikedPhotoRow] = try await SupabaseService.client
+                        .from("photo_likes").select("event_photo_id")
+                        .eq("user_id", value: uid)
+                        .in("event_photo_id", values: items.map(\.photoId))
+                        .execute().value
+                    guard seq == pulsePhotosSeq else { return }
+                    for row in rows { liked[row.eventPhotoId] = true }
+                } catch {
+                    print("loadPulsePhotos like-state failed:", error)
+                }
+            }
+            pulsePhotos = items
+            pulsePhotoLiked = liked
             pulsePhotosLoading = false
         } catch {
             guard seq == pulsePhotosSeq else { return }
