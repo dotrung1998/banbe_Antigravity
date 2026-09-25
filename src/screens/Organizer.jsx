@@ -1,14 +1,27 @@
+import { useEffect } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg } from '../data/events.js';
+import { liveEventOverrides } from '../lib/countdown.js';
 import { paper, ink, rule, display, cardGlass, inkButton } from '../theme.js';
 
 export default function Organizer() {
-  const { state, T, trStatus, stripKm, curEvent: ev, backToEvent, goEvent, goChat, toggleFollow, openPhoto } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent: ev, backToEvent, goEvent, goChat, toggleFollow, openPhoto, loadHomeLiveEvents } = useGoc();
   const s = state;
+  // 2026-09-25 fix pass (Task 0 audit) — see `orgEvents`' own comment
+  // below; this screen never fetched live status before, so it's fetched
+  // here the same way Dashboard.jsx fetches it for its own event lists.
+  useEffect(() => { loadHomeLiveEvents(); }, [loadHomeLiveEvents]);
 
   const evOrgStats = T('Tổ chức từ ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' sự kiện', 'Hosting since ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' events');
   const following = s.following.includes(ev.key);
-  const orgEvents = EVENTS.filter(e => e.orgName === ev.orgName && !e.cancelled && e.endedHoursAgo == null);
+  // 2026-09-25 fix pass (Task 0 audit) — real, user-visible bug: this
+  // organizer's OTHER "current events" (shown to every visitor of this
+  // public page) used to read the raw static catalogue — both the
+  // `!e.cancelled`/`endedHoursAgo == null` eligibility check and every
+  // displayed date via `e.meta` — never the real `starts_at`/`status`.
+  const orgEvents = EVENTS
+    .map(e => { const overrides = liveEventOverrides(s.homeLiveEvents[e.key], e); return overrides ? { ...e, ...overrides } : e; })
+    .filter(e => e.orgName === ev.orgName && !e.cancelled && e.endedHoursAgo == null);
 
   return (
     <div style={{ animation: 'gocFade 0.3s ease both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Organizer">

@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg } from '../data/events.js';
+import { liveEventOverrides } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass } from '../theme.js';
 
 const EMPTY_MESSAGES = {
@@ -14,15 +16,25 @@ const SCREEN_LABELS = { going: 'Going', saved: 'Saved', completed: 'Completed' }
 // view rather than redirecting to Home, so "back" is a single step to
 // Account instead of losing the trip there.
 export default function EventList() {
-  const { state, T, trStatus, stripKm, eventListTitle, goEvent, backFromEventList } = useGoc();
+  const { state, T, trStatus, stripKm, eventListTitle, goEvent, backFromEventList, loadHomeLiveEvents } = useGoc();
   const s = state;
   const mode = s.eventListMode;
+  // 2026-09-25 fix pass (Task 0 audit) — see `list`'s own comment below;
+  // this screen never fetched live status before.
+  useEffect(() => { loadHomeLiveEvents(); }, [loadHomeLiveEvents]);
 
   const keys = mode === 'going' ? s.attending
     : mode === 'completed'
     ? [...new Set([...(s.favorites || []), ...s.attending])]
     : (s.favorites || []);
-  let list = keys.map(k => EVENTS.find(e => e.key === k)).filter(Boolean);
+  // 2026-09-25 fix pass (Task 0 audit) — real bug: Account's own "Going"/
+  // "Saved"/"Completed" lists used the raw static catalogue — both the
+  // Going/Completed split below (`endedHoursAgo`) and every displayed date
+  // via `e.meta` came from the frozen catalogue, never live status.
+  let list = keys
+    .map(k => EVENTS.find(e => e.key === k))
+    .filter(Boolean)
+    .map(e => { const overrides = liveEventOverrides(s.homeLiveEvents[e.key], e); return overrides ? { ...e, ...overrides } : e; });
   // "Completed" means it already happened — anything still upcoming (or
   // just favorited but never actually attended/held) doesn't belong here.
   // Conversely, "Going" is only what's still ahead — once an event ends it

@@ -1204,21 +1204,30 @@ final class AppState: ObservableObject {
     /// What EventListView shows for the current `eventListMode` — the
     /// "Going"/"Saved" cards and "Completed events" row on Account each open
     /// this filtered to their own set.
+    // 2026-09-25 fix pass (Task 0 audit) — real bug: Account's own "Going"/
+    // "Saved"/"Completed" lists used the raw static catalogue — both the
+    // Going/Completed split below (`endedHoursAgo`) and every displayed
+    // date (`meta`) came from the frozen catalogue, never live status. Same
+    // `applyingLiveStatus` merge `feed`/`myOrgEvents` already use.
+    private func liveListEvent(_ key: String) -> CatalogEvent? {
+        EventCatalog.all.first { $0.key == key }?.applyingLiveStatus(homeLiveEvents[key])
+    }
+
     var eventListEvents: [CatalogEvent] {
         switch eventListMode {
         case .going:
             // Once an event ends it belongs in Completed instead of sitting
             // in Going forever.
-            return attending.compactMap { key in EventCatalog.all.first { $0.key == key } }
+            return attending.compactMap(liveListEvent)
                 .filter { $0.endedHoursAgo == nil }
-        case .saved: return favorites.compactMap { key in EventCatalog.all.first { $0.key == key } }
+        case .saved: return favorites.compactMap(liveListEvent)
         case .completed:
             var keys: [String] = []
             for key in favorites + attending where !keys.contains(key) { keys.append(key) }
             // "Completed" means it already happened — anything still
             // upcoming (or just favorited but never actually attended)
             // doesn't belong here.
-            return keys.compactMap { key in EventCatalog.all.first { $0.key == key } }
+            return keys.compactMap(liveListEvent)
                 .filter { $0.endedHoursAgo != nil }
         }
     }

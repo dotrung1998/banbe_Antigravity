@@ -185,7 +185,12 @@ export default function Attendance() {
         <div style={{ minWidth: 0 }}>
           <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Điểm danh khách', 'Guest check-in')}</span>
           <h1 style={{ ...display(24, { margin: '8px 0 0' }) }}>{attEv.name}</h1>
-          <div style={{ fontSize: 12.5, color: ink, marginTop: 4 }}>{trStatus(attEv.when)}</div>
+          {/* 2026-09-25 fix pass (Task 0 audit) — this used to read the raw
+              `attEv` (the static catalogue object), even though the
+              correctly live-merged `attEvLive` was already computed just
+              above for `eventEnded`. Real bug: the guest check-in header
+              showed the frozen catalogue date instead of the real one. */}
+          <div style={{ fontSize: 12.5, color: ink, marginTop: 4 }}>{trStatus(attEvLive.when)}</div>
         </div>
         <div onClick={openQrScan} style={{ flex: 'none', fontSize: 12, fontWeight: 600, color: paper, background: ink, borderRadius: 12, padding: '9px 14px', cursor: 'pointer', whiteSpace: 'nowrap' }}>{T('Quét QR', 'Scan QR')}</div>
       </div>

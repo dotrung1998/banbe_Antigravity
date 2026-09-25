@@ -64,5 +64,9 @@ struct EventListView: View {
             .padding(.horizontal, 20)
             .padding(.top, 16)
         }
+        // 2026-09-25 fix pass (Task 0 audit) — this screen can be reached
+        // directly from Account without Home ever having populated
+        // `homeLiveEvents`; same own-fetch Dashboard/Home already do.
+        .task { await app.loadHomeLiveEvents() }
     }
 }

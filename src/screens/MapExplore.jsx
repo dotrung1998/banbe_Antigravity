@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { findEvent, haversineKm, distanceLabel } from '../data/events.js';
+import { liveEventOverrides } from '../lib/countdown.js';
 import { densityHotspot } from '../lib/densityHotspot.js';
 import { FILTER_DEFS } from './Home.jsx';
 import { paper, ink, rule, alert, photoPill, fieldGlass, cardGlass, inkButton } from '../theme.js';
@@ -39,6 +40,15 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
   if (error) { console.warn('Failed to load map events:', error); return []; }
   return (data || []).map(row => {
     const cosmetic = findEvent(row.id);
+    // 2026-09-25 fix pass (Task 0 audit) — real bug: `when` below used to
+    // be the static catalogue's own frozen `cosmetic.when` verbatim (the
+    // comment here used to claim that was "not reformatted from starts_at
+    // ... so it never disagrees with the rest of the app," which was
+    // exactly backwards once the rest of the app started reading the real
+    // date). `row` here is a real `events` row from THIS query (already
+    // filtered `status = 'live'`), so it can drive the same
+    // `liveEventOverrides` merge every other screen uses directly.
+    const dateOverrides = cosmetic ? liveEventOverrides(row, cosmetic) : null;
     return {
       id: row.id,
       catKey: row.cat_key || cosmetic?.catKey || 'all',
@@ -50,13 +60,9 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
       startsAt: row.starts_at,
       price: cosmetic?.price,
       img: cosmetic?.img,
-      // Same "date ▪︎ time" display text the event card/list already show
-      // (events.js's own `when` field) — reused, not reformatted from
-      // starts_at here, so the map's card never disagrees with the rest of
-      // the app about how a date reads.
-      when: cosmetic?.when,
+      when: dateOverrides?.when || cosmetic?.when,
       urgent: row.seats_remaining != null && row.seats_remaining <= 5,
-      isNew: cosmetic ? cosmetic.until != null && cosmetic.until <= 1 : false,
+      isNew: (dateOverrides?.until ?? cosmetic?.until) != null && (dateOverrides?.until ?? cosmetic?.until) <= 1,
       // Live seats_remaining is this screen's own established "real-time-ish"
       // signal (already used for `urgent` above) — reused for sold-out too,
       // falling back to the static catalogue's flag only when a row has no

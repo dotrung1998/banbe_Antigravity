@@ -9,8 +9,16 @@ struct OrganizerView: View {
 
     private var event: CatalogEvent { app.currentEvent }
     private var following: Bool { app.following.contains(event.key) }
+    // 2026-09-25 fix pass (Task 0 audit) — real, user-visible bug: this
+    // organizer's OTHER "current events" (shown to every visitor of this
+    // public page) used the raw static catalogue — both `isOpen`
+    // (cancelled/endedHoursAgo) and every displayed date (`meta`) came
+    // from the frozen catalogue, never live status. Same `applyingLiveStatus`
+    // merge `feed`/`myOrgEvents` already use.
     private var orgEvents: [CatalogEvent] {
-        EventCatalog.all.filter { $0.orgName == event.orgName && $0.isOpen }
+        EventCatalog.all
+            .map { $0.applyingLiveStatus(app.homeLiveEvents[$0.key]) }
+            .filter { $0.orgName == event.orgName && $0.isOpen }
     }
 
     var body: some View {
@@ -126,5 +134,9 @@ struct OrganizerView: View {
                     .padding(.bottom, 8)
             }
         }
+        // 2026-09-25 fix pass (Task 0 audit) — see `orgEvents`' own
+        // comment; this screen can be reached without Home ever having
+        // populated `homeLiveEvents`.
+        .task { await app.loadHomeLiveEvents() }
     }
 }

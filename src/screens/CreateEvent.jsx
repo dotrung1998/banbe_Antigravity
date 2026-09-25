@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, CREATE_PALETTES, CREATE_PHOTO_SLOT_IDS, bg, img as imgUrl } from '../data/events.js';
+import { liveEventOverrides } from '../lib/countdown.js';
 import { paper, ink, rule, FACE, display, fieldGlass, cardGlass, alert } from '../theme.js';
 
 const CAT_DEFS = [
@@ -15,13 +17,26 @@ export default function CreateEvent() {
     state, T, trStatus, stripKm, curEvent: ev, createBack,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
-    pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, goEvent,
+    pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, goEvent, loadHomeLiveEvents,
   } = useGoc();
   const s = state;
+  // 2026-09-25 fix pass (Task 0 audit) — this screen can be reached
+  // directly (not only via Home, which is the only other place that calls
+  // this), so `s.homeLiveEvents` can't be assumed already populated; same
+  // own-fetch Dashboard.jsx already does.
+  useEffect(() => { loadHomeLiveEvents(); }, [loadHomeLiveEvents]);
 
   const createBackLabel = s.hasHosted ? T('Trang tổ chức của bạn', 'Your host page') : T('Trang tổ chức của bạn sẽ trông thế nào', 'Preview your organizer page');
 
-  const upcoming = EVENTS.filter(e => e.orgName === ev.orgName && !e.cancelled && e.endedHoursAgo == null)
+  // 2026-09-25 fix pass (Task 0 audit) — this used to filter/sort the RAW
+  // static catalogue (`EVENTS`), with no `liveEventOverrides` merge at
+  // all: both the `!e.cancelled`/`endedHoursAgo == null` eligibility check
+  // AND every displayed date below it (via `e.meta`) came from the frozen
+  // catalogue, never the real `starts_at`/`status`. Same merge Dashboard.jsx
+  // already applies to its own "your events" lists.
+  const upcoming = EVENTS
+    .map(e => { const overrides = liveEventOverrides(s.homeLiveEvents[e.key], e); return overrides ? { ...e, ...overrides } : e; })
+    .filter(e => e.orgName === ev.orgName && !e.cancelled && e.endedHoursAgo == null)
     .sort((a, c) => (a.until ?? 999) - (c.until ?? 999));
   const orgTrustNote = ev.orgTrusted
     ? T('Huy hiệu "Tổ chức lâu năm" ▪︎ ' + ev.orgCount + ' sự kiện từ ' + ev.orgSince, 'Established host badge ▪︎ ' + ev.orgCount + ' events since ' + ev.orgSince)

@@ -844,7 +844,15 @@ struct MapExploreView: View {
 
     @ViewBuilder
     private func selectedCard(_ ev: MapEventRow) -> some View {
+        // 2026-09-25 fix pass (Task 0 audit) — `cosmetic?.when` below used
+        // to be the static catalogue's own frozen date verbatim. `ev` here
+        // is already a real `events` row from THIS screen's own live query
+        // (`loadMapEvents`, already filtered `status = 'live'`), so it can
+        // drive the same `Countdown.liveEventOverrides` merge every other
+        // screen uses directly — no separate reformatting.
         let cosmetic = EventCatalog.find(ev.id)
+        let liveStatus = LiveEventStatus(status: ev.status, startsAt: ev.startsAt, cancelledAt: nil, cancelReason: nil)
+        let cosmeticLive = cosmetic.map { $0.applyingLiveStatus(liveStatus) } ?? cosmetic
         VStack(alignment: .leading, spacing: 10) {
             // Task 4 (11-realtime-map.md follow-up): tapping anywhere in
             // this non-CTA area re-flies the camera back to the selected
@@ -871,7 +879,7 @@ struct MapExploreView: View {
                         }
                         .accessibilityIdentifier("map.card.close")
                     }
-                    Text([cosmetic?.when, ev.area].compactMap { $0 }.joined(separator: " ▪︎ "))
+                    Text([cosmeticLive?.when, ev.area].compactMap { $0 }.joined(separator: " ▪︎ "))
                         .font(.system(size: 11)).opacity(0.65).lineLimit(1)
                     HStack {
                         if let price = cosmetic?.price {

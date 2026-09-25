@@ -100,7 +100,13 @@ struct AttendanceView: View {
                             Text(app.T("Điểm danh khách", "Guest check-in"))
                                 .font(.system(size: 11.5, weight: .semibold))
                             Text(event.name).font(BanbeTheme.display(24))
-                            Text(app.trStatus(event.when)).font(.system(size: 12.5))
+                            // 2026-09-25 fix pass (Task 0 audit) — this used
+                            // to read the raw `event` (the static catalogue
+                            // object) even though `liveEvent` was already
+                            // computed above (used for `eventEnded`) —
+                            // real bug: the guest check-in header showed the
+                            // frozen catalogue date instead of the real one.
+                            Text(app.trStatus(liveEvent?.when ?? event.when)).font(.system(size: 12.5))
                         }
                         Spacer(minLength: 0)
                         Button(app.T("Quét QR", "Scan QR")) { app.scanningQr = true }

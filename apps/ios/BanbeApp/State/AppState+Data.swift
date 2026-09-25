@@ -2202,9 +2202,16 @@ extension AppState {
                 //    already use) — see StoryViewerView.swift's
                 //    `EventShareCard`; the snapshot keeps the raw relative
                 //    path since that's what `CatalogPhoto` itself expects.
+                // 2026-09-25 fix pass (Task 0 audit) — this snapshot is
+                // rebuilt fresh every time loadHomeStories() runs (not
+                // frozen at share-creation time), so it needs the same
+                // live-date merge every other screen uses — it used to read
+                // the raw static catalogue's own `ev.when` directly, same
+                // frozen-month bug class as the others this pass fixed.
                 let snapshot: StoryEventSnapshot? = {
                     guard isEventShare, let eventId = r.eventId,
-                          let ev = EventCatalog.all.first(where: { $0.key == eventId }) else { return nil }
+                          let evRaw = EventCatalog.all.first(where: { $0.key == eventId }) else { return nil }
+                    let ev = evRaw.applyingLiveStatus(homeLiveEvents[evRaw.key])
                     return StoryEventSnapshot(eventKey: ev.key, img: ev.img, name: ev.name, when: ev.when, location: ev.where, lat: ev.lat, lng: ev.lng)
                 }()
                 let item = StoryItem(id: r.id, mediaPath: r.mediaPath, url: urlByPath[r.mediaPath], width: r.width, height: r.height, createdAt: r.createdAt, viewed: viewedSet.contains(r.id), kind: r.kind, eventSnapshot: snapshot)

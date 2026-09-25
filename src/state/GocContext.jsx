@@ -3183,7 +3183,15 @@ export function GocProvider({ children }) {
       //    rendering "undefined" text. The event's own cover image
       //    (`ev.img`) was already correct and DID load; only the
       //    date/time/location line was blank.
-      const ev = isEventShare ? EVENTS.find(e => e.key === r.event_id) : null;
+      const evRaw = isEventShare ? EVENTS.find(e => e.key === r.event_id) : null;
+      // 2026-09-25 fix pass (Task 0 audit) — this snapshot is rebuilt fresh
+      // every time `loadHomeStories()` runs (not frozen at share-creation
+      // time), so it needs the same live-date merge every other screen
+      // uses — it used to read the raw static catalogue's own `ev.when`
+      // directly, same frozen-month bug class as the others this pass
+      // fixed.
+      const overrides = evRaw ? liveEventOverrides(s.homeLiveEvents[evRaw.key], evRaw) : null;
+      const ev = evRaw && overrides ? { ...evRaw, ...overrides } : evRaw;
       byOrg[r.organizer_id].stories.push({
         id: r.id, mediaPath: r.media_path, url: urlByPath[r.media_path] || null,
         width: r.width, height: r.height, createdAt: r.created_at, viewed: viewedSet.has(r.id),
