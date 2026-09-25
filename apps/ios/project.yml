@@ -82,6 +82,13 @@ targets:
         # config — not here, so they can differ between Debug and Release).
         DEVELOPMENT_TEAM: ""
         CODE_SIGN_STYLE: Automatic
+        # .claude/notes/18-ios-personal-team-signing.md — a build-setting
+        # variable (not a literal string) so CFBundleDisplayName below can
+        # differ per configuration; Debug/Release keep the existing,
+        # unchanged value ("banbe", exactly as it already was) via this
+        # base default, and only PersonalTeamDebug overrides it, in the
+        # `configs:` block right below.
+        APP_DISPLAY_NAME: banbe
       # .claude/notes/18-ios-personal-team-signing.md — a distinct bundle
       # id for local personal-team installs, so Xcode's Automatic Signing
       # can freely register/use a brand-new App ID for it under a
@@ -89,14 +96,22 @@ targets:
       # with) the real com.banbe.ios App ID this project ships under.
       # DEVELOPMENT_TEAM is still never set here — only the bundle id
       # differs; Automatic Signing still resolves the team from whichever
-      # Apple Account is signed into Xcode.
+      # Apple Account is signed into Xcode. APP_DISPLAY_NAME override makes
+      # the Home Screen icon/name read "Banbe Dev" instead of the normal
+      # build's "banbe" — the actual fix for "which install is this?"
+      # confusion after stopping Xcode.
       configs:
         PersonalTeamDebug:
           PRODUCT_BUNDLE_IDENTIFIER: com.banbe.ios.dev
+          APP_DISPLAY_NAME: "Banbe Dev"
     info:
       path: BanbeApp/Info.plist
       properties:
-        CFBundleDisplayName: banbe
+        # $(APP_DISPLAY_NAME) — Xcode substitutes this from the build
+        # setting of the same name (defined per-configuration above), so
+        # the Home Screen icon/name can differ between configs without a
+        # second Info.plist. See .claude/notes/18-ios-personal-team-signing.md.
+        CFBundleDisplayName: $(APP_DISPLAY_NAME)
         UILaunchScreen: {}
         NSLocationWhenInUseUsageDescription: "banbe uses your location to show how far events are and to filter the area picker."
         NSCameraUsageDescription: "banbe uses your camera to scan a guest's ticket QR code at check-in, and to attach a photo to a chat message."
