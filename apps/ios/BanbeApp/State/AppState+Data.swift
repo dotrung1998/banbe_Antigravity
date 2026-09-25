@@ -609,8 +609,11 @@ extension AppState {
         // and surfacing "Vui lòng thử lại" even though the FIRST call had
         // already succeeded. `organizerModeBusy` (mirrored on the switch's
         // own `.disabled` below) makes a second tap while one is in flight
-        // a no-op instead of a second request.
-        guard !organizerModeBusy else { return }
+        // a no-op instead of a second request — `organizerModeInFlight`
+        // (checked again, synchronously, inside `applyOrganizerMode`
+        // itself) is the actual atomic guard; this check just avoids
+        // spawning a pointless extra `Task` in the common case.
+        guard !organizerModeBusy, !organizerModeInFlight else { return }
         let target = !organizerMode
         Task { await applyOrganizerMode(target) }
     }
@@ -631,11 +634,39 @@ extension AppState {
     /// preference on top of it.
     func applyOrganizerMode(_ enabled: Bool) async {
         guard accountType != "admin" else { return }
-        // TASK 2 (2026-10-05 fix pass) — see toggleOrganizerMode()'s own
-        // comment: this is the actual guard against overlapping requests,
-        // set/cleared around the whole call so a second tap during the
-        // `await` below is refused instead of racing this one.
-        guard !organizerModeBusy else { return }
+        // TASK 2 (2026-10-05 fix pass) / BUG 1 (2026-10-07 fix pass) — the
+        // actual re-entrancy guard against a second tap racing an in-flight
+        // call is `organizerModeInFlight` (a plain, non-`@Published` var —
+        // see its own doc comment on AppState.swift), checked and set
+        // SYNCHRONOUSLY, before any `await`, so the check-and-set is
+        // atomic on the MainActor with no window for a second call to slip
+        // through. The `@Published organizerModeBusy` UI flag below is a
+        // separate concern (disabling the switch) and is deliberately set
+        // only AFTER yielding — see that yield's own comment.
+        guard !organizerModeInFlight else { return }
+        organizerModeInFlight = true
+        defer { organizerModeInFlight = false }
+
+        // BUG 1 (2026-10-07 fix pass) — root cause of "one tap produces
+        // many 'Publishing changes from within view updates' warnings":
+        // `toggleOrganizerMode()` calls this from `Task { await
+        // applyOrganizerMode(target) }`, spawned directly inside the
+        // switch's Button action. An unstructured `Task` created from a
+        // synchronous SwiftUI action closure is NOT guaranteed to start on
+        // a fresh run-loop turn — its body can (and, per real-device
+        // reports, does) begin running before the CURRENT view-update
+        // transaction the button tap itself is part of has finished
+        // committing. Every one of the five `@Published` writes just below
+        // (`organizerModeBusy`, `organizerMode`, `accountType`, `mode`,
+        // `organizerModeError`) landing inside that still-open transaction
+        // fires its own copy of the warning — five writes, five warnings
+        // from one tap, matching the report exactly. `Task.yield()` — a
+        // genuine cooperative-scheduling suspension point, not an
+        // arbitrary delay — guarantees every mutation below actually runs
+        // on its OWN, later run-loop turn, unambiguously outside whatever
+        // transaction the triggering tap was part of.
+        await Task.yield()
+
         organizerModeBusy = true
         defer { organizerModeBusy = false }
 

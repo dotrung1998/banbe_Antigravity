@@ -46,18 +46,20 @@ struct BottomTabBar: View {
     // `Self.barHeight` directly for its own hosting window's hit-testable
     // band, so it stays in lockstep automatically.
     static let barHeight: CGFloat = 64
-    // TASK 1 (2026-10-05 fix pass) — reduced from 380. The dock and the
-    // create-"+" button are now ONE laid-out row (see DockRow, this file,
-    // and BottomTabBarOverlay.swift's own DockRow usage) sharing a fixed
-    // outer margin and gap; 380 alone already nearly spanned a standard
-    // iPhone's width, leaving no room for the "+" beside it without either
-    // overlapping or blowing past the safe area — the exact real-device
-    // regression this ticket reports. 300 is a genuine max/upper bound, not
-    // a fixed width: DockRow's HStack still lets this shrink further on
-    // narrower screens once the "+" and margins are accounted for (its
-    // items already use `.frame(maxWidth: .infinity)`, so they compress
-    // fluidly rather than clipping).
-    static let barWidth: CGFloat = 300
+    // TASK 1 (2026-10-05 fix pass) — reduced from 380 to 300 so the dock
+    // and the create-"+" button (now ONE laid-out row — see DockRow, this
+    // file, and BottomTabBarOverlay.swift's own DockRow usage) could sit
+    // side by side without overlapping or blowing past the safe area.
+    // BUG 2 (2026-10-07 fix pass) — 300 read as cramped once the material/
+    // scale fixes made the two controls look properly related — bumped
+    // back up moderately to 340, still well short of 380 (the old overlap-
+    // causing width) and still a genuine max/upper bound, not a fixed
+    // width: DockRow's HStack still shrinks this further on a narrower
+    // screen once the "+" and margins are accounted for (each tab item
+    // already uses `.frame(maxWidth: .infinity)`, so the whole row — and
+    // the equal spacing between tabs that comes from every item sharing
+    // the same flexible width — compresses fluidly rather than clipping).
+    static let barWidth: CGFloat = 340
     static let barHorizontalPadding: CGFloat = 20
     static let bottomOffset: CGFloat = 2
     // TASK 1 — shared with the create-"+" button (DockCreateButtonView) and

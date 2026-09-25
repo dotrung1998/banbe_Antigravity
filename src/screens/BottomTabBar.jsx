@@ -103,7 +103,13 @@ export const BAR_BOTTOM_OFFSET = 10;
 // bound the row's own flexbox can still shrink below on a narrower
 // viewport (this bar's items are already `flex`-based, not fixed-width —
 // see `items.map` below), not a fixed width.
-export const DOCK_MAX_WIDTH = 300;
+// BUG 2 (2026-10-07 fix pass) — 300 read as cramped once the shared-
+// material/scale fixes made the dock and "+" look properly related.
+// Bumped moderately to 340 (still well short of 400, the old overlap-
+// causing width) — each tab item already flexes equally
+// (`flex: '1 1 0'`), so the extra width spreads evenly across all five
+// instead of needing separate per-item spacing logic.
+export const DOCK_MAX_WIDTH = 340;
 export const DOCK_MARGIN = 16;
 export const DOCK_GAP = 10;
 // Matches BAR_HEIGHT exactly — "shared vertical center" is then structural

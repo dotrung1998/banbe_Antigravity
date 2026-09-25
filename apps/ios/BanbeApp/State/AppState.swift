@@ -324,6 +324,19 @@ final class AppState: ObservableObject {
     @Published var organizerMode = false
     @Published var organizerModeError = ""
     @Published var organizerModeBusy = false
+    // BUG 1 (2026-10-07 fix pass) — a plain (non-`@Published`) re-entrancy
+    // lock for `applyOrganizerMode`, deliberately separate from the
+    // `@Published organizerModeBusy` above. The guard against a second tap
+    // racing an in-flight call must be set the INSTANT the first call is
+    // accepted — before any `await`, including the `Task.yield()`
+    // `applyOrganizerMode` now starts with (see its own comment) — or a
+    // second tap landing in that same window would pass the same guard
+    // check and start a second, overlapping request. Setting `@Published
+    // organizerModeBusy` itself that early is exactly what reintroduces
+    // the "publishing changes from within view updates" warning this fix
+    // pass removes, so the synchronous, warning-free lock lives here, and
+    // the UI-facing published flag is set only after the yield.
+    var organizerModeInFlight = false
     @Published var hasHosted = false
     // TASK 1 (2026-10-05 fix pass) — whether the dock "+"'s creation tray
     // is open. Lives on AppState (not local @State in DockCreateButtonView)
