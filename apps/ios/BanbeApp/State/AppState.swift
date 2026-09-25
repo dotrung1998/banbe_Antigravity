@@ -748,6 +748,16 @@ final class AppState: ObservableObject {
     @Published var pulseWeeklyLoading = false
     var pulseDailySeq = 0
     var pulseWeeklySeq = 0
+    // 2026-09-25 fix pass — third Pulse tab: individual event photos ranked
+    // by real engagement (photo_likes/photo_shares, migration 083), a
+    // separate ranking from pulseDaily/pulseWeekly above, never merged into
+    // the same signals/list. See AppState+Pulse.swift.
+    @Published var pulsePhotos: [PulsePhotoItem] = []
+    @Published var pulsePhotosLoading = false
+    @Published var pulsePhotoSheet: PulsePhotoItem?
+    @Published var pulsePhotoLiked: [String: Bool] = [:]
+    @Published var pulsePhotoBusy: [String: Bool] = [:]
+    var pulsePhotosSeq = 0
     // Refund MVP — host's per-event Refund Center (AttendanceView's own new
     // "Hoàn tiền" section): owed/disputed (+ resolved, for the progress
     // summary) claims for ONE event. Recipient info comes from each claim's

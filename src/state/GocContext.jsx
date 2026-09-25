@@ -308,6 +308,14 @@ const initialState = {
   // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
   pulseDaily: [], pulseWeekly: [], pulseOpen: false, pulseTab: 'daily', pulseOrganizerSheet: null,
   pulseDailyLoading: false, pulseWeeklyLoading: false,
+  // 2026-09-25 fix pass — third Pulse tab: individual event photos ranked
+  // by real engagement (photo_likes/photo_shares, migration 083), a
+  // separate ranking from the event-level one above — never merged into
+  // the same signals/list. `pulsePhotoLiked`/`pulsePhotoBusy` are keyed by
+  // `photo_id`, mirroring `s.photoLikes`' shape in spirit but backed by a
+  // real table instead of localStorage.
+  pulsePhotos: [], pulsePhotosLoading: false, pulsePhotoSheet: null,
+  pulsePhotoLiked: {}, pulsePhotoBusy: {},
   notifications: [],
   unreadNotifications: 0,
   // Inbox tab badge (BottomTabBar.jsx) — count of messages where
@@ -3275,16 +3283,35 @@ export function GocProvider({ children }) {
       ? { pulseWeekly: data.items || [], pulseWeeklyLoading: false }
       : { pulseDaily: data.items || [], pulseDailyLoading: false });
   }, [set]);
+  // 2026-09-25 fix pass — the third Pulse tab's own ranking, loaded
+  // alongside daily/weekly on every open (same "never leave stale data
+  // sitting there" rule as loadPulse above). Fixed at the 'daily' window —
+  // the ticket asks for one photo-ranking tab, not a second period toggle
+  // layered underneath it; 'daily' matches the event tabs' own default.
+  const pulsePhotoSeqRef = useRef(0);
+  const loadPulsePhotos = useCallback(async () => {
+    const seq = ++pulsePhotoSeqRef.current;
+    set({ pulsePhotosLoading: true });
+    const { data, error } = await supabase.rpc('get_pulse_photo_ranked', { p_period: 'daily' });
+    if (seq !== pulsePhotoSeqRef.current) return; // stale response guard, same pattern as loadPulse
+    if (error || data?.success === false) {
+      if (import.meta.env?.DEV) console.warn('loadPulsePhotos failed:', error, data);
+      set({ pulsePhotosLoading: false });
+      return;
+    }
+    set({ pulsePhotos: data.items || [], pulsePhotosLoading: false });
+  }, [set]);
   const openPulseViewer = useCallback(() => {
     // Never leave a previous session's rank sitting there indefinitely
     // (rule A5) — cleared before the fresh fetch, not just overwritten
     // once it lands, so the loading state (not stale data) is what shows
     // in the gap.
-    set({ pulseOpen: true, pulseTab: 'daily', pulseDaily: [], pulseWeekly: [] });
+    set({ pulseOpen: true, pulseTab: 'daily', pulseDaily: [], pulseWeekly: [], pulsePhotos: [] });
     loadPulse('daily');
     loadPulse('weekly');
+    loadPulsePhotos();
     try { window.history.pushState({ bbSheet: 'pulse' }, ''); } catch { /* unsupported */ }
-  }, [set, loadPulse]);
+  }, [set, loadPulse, loadPulsePhotos]);
   // TASK A7 — the browser's own back button closes Pulse instead of
   // navigating the screen underneath it away, matching what a modal sheet
   // should do; consumed (history.back()) whenever the app itself closes
@@ -3312,6 +3339,95 @@ export function GocProvider({ children }) {
       }));
     }
   }, [set, s.user?.id]);
+
+  // 2026-09-25 fix pass — the ranked-photo popup: photo + organizer
+  // identity/verified badge + a "view event" action, per this ticket's own
+  // spec. Opened from a tap on a `pulsePhotos` row, closed either
+  // explicitly or by the "view event" action itself.
+  const openPulsePhotoSheet = useCallback((item) => set({ pulsePhotoSheet: item }), [set]);
+  const closePulsePhotoSheet = useCallback(() => set({ pulsePhotoSheet: null }), [set]);
+
+  /** Real, server-enforced like toggle for a ranked photo (migration 083's
+   * toggle_photo_like RPC) — replaces the local-only `togglePhotoLike`
+   * heart for this Pulse-photo context specifically (that one stays as-is
+   * for the static demo gallery it was built for; see its own doc comment
+   * for why the two can never overlap). Optimistic, with rollback on
+   * failure, patching both the list row and the open popup (if it's the
+   * same photo) so neither can show a stale count relative to the other. */
+  const togglePulsePhotoLike = useCallback(async (photoId) => {
+    if (!s.user?.id) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'profile' });
+    if (s.pulsePhotoBusy[photoId]) return;
+    const wasLiked = !!s.pulsePhotoLiked[photoId];
+    const delta = wasLiked ? -1 : 1;
+    const patchCount = (prev) => ({
+      pulsePhotos: prev.pulsePhotos.map(p => p.photo_id === photoId ? { ...p, like_count: Math.max(0, p.like_count + delta) } : p),
+      pulsePhotoSheet: prev.pulsePhotoSheet && prev.pulsePhotoSheet.photo_id === photoId
+        ? { ...prev.pulsePhotoSheet, like_count: Math.max(0, prev.pulsePhotoSheet.like_count + delta) }
+        : prev.pulsePhotoSheet,
+    });
+    set(prev => ({
+      pulsePhotoLiked: { ...prev.pulsePhotoLiked, [photoId]: !wasLiked },
+      pulsePhotoBusy: { ...prev.pulsePhotoBusy, [photoId]: true },
+      ...patchCount(prev),
+    }));
+    const { data, error } = await supabase.rpc('toggle_photo_like', { p_event_photo_id: photoId });
+    if (error) {
+      console.warn('togglePulsePhotoLike failed:', error);
+      set(prev => ({
+        pulsePhotoLiked: { ...prev.pulsePhotoLiked, [photoId]: wasLiked },
+        pulsePhotoBusy: { ...prev.pulsePhotoBusy, [photoId]: false },
+        pulsePhotos: prev.pulsePhotos.map(p => p.photo_id === photoId ? { ...p, like_count: Math.max(0, p.like_count - delta) } : p),
+        pulsePhotoSheet: prev.pulsePhotoSheet && prev.pulsePhotoSheet.photo_id === photoId
+          ? { ...prev.pulsePhotoSheet, like_count: Math.max(0, prev.pulsePhotoSheet.like_count - delta) }
+          : prev.pulsePhotoSheet,
+      }));
+      return;
+    }
+    // Reconcile against the RPC's own authoritative boolean — it toggles
+    // whatever the SERVER's current row state actually is, which can
+    // legitimately differ from this client's optimistic guess (e.g. a like
+    // from a different session this client never saw yet).
+    set(prev => ({
+      pulsePhotoLiked: { ...prev.pulsePhotoLiked, [photoId]: data },
+      pulsePhotoBusy: { ...prev.pulsePhotoBusy, [photoId]: false },
+    }));
+  }, [set, s.user?.id, s.pulsePhotoBusy, s.pulsePhotoLiked]);
+
+  /** Real share tracking for a ranked photo (migration 083's
+   * log_photo_share RPC) — logged ONLY once the share genuinely completes:
+   * `navigator.share()`'s own promise resolving (it rejects on cancel,
+   * caught below and never logged), or a copy-link write actually
+   * succeeding. Never logged just from opening the share affordance. Link
+   * carries `pid` (the real event_photos id) through `/api/photo-share`
+   * (same endpoint `sharePhotoOrganizer` already uses for the demo
+   * gallery, extended rather than duplicated — see that file's own doc
+   * comment), which resolves the real photo/event/organizer server-side
+   * and sends whoever opens it straight to that event. */
+  const sharePulsePhoto = useCallback(async (item) => {
+    const url = `https://banbe-two.vercel.app/api/photo-share?pid=${encodeURIComponent(item.photo_id)}`;
+    const title = T(`Ảnh từ ${item.organizer_name} trên banbe`, `A photo from ${item.organizer_name} on banbe`);
+    const text = T('Xem ảnh này trên banbe:', 'Check out this photo on banbe:');
+    const logShare = async (channel) => {
+      const { error } = await supabase.rpc('log_photo_share', { p_event_photo_id: item.photo_id, p_channel: channel });
+      if (error) { if (import.meta.env?.DEV) console.warn('log_photo_share failed:', error); return; }
+      set(prev => ({
+        pulsePhotos: prev.pulsePhotos.map(p => p.photo_id === item.photo_id ? { ...p, share_count: p.share_count + 1 } : p),
+        pulsePhotoSheet: prev.pulsePhotoSheet && prev.pulsePhotoSheet.photo_id === item.photo_id
+          ? { ...prev.pulsePhotoSheet, share_count: prev.pulsePhotoSheet.share_count + 1 } : prev.pulsePhotoSheet,
+      }));
+    };
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text, url });
+        await logShare('native');
+      } catch { /* cancelled — not a completed share, nothing to log */ }
+    } else if (navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(url);
+        await logShare('copy');
+      } catch { /* clipboard write denied */ }
+    }
+  }, [set, T]);
 
   const openStoryViewer = useCallback((organizerId, originRect) => {
     const groups = s.homeStories.filter(g => g.stories.length > 0);
@@ -5767,7 +5883,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet, togglePulsePhotoLike, sharePulsePhoto, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
@@ -5800,7 +5916,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet, togglePulsePhotoLike, sharePulsePhoto, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,

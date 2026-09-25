@@ -170,15 +170,51 @@ struct BottomTabBar: View {
             }
     }
 
+    // BUG (2026-09-25 iOS fix pass) — root cause of "indicator misaligned
+    // after the 300->340 width change / when + joins the row": the
+    // highlight used to be drawn from `itemFrames[activeID]`, resolved by
+    // `resolveFrames(_:_:)` below, which only re-runs `onAppear` and
+    // `onChange(of: proxy.size)` on a SEPARATE `backgroundPreferenceValue`
+    // GeometryReader — a real caching layer with its own update timing,
+    // one layout pass removed from this body's own render. Every item is
+    // already an equal `.frame(maxWidth: .infinity)` share of this bar (see
+    // the HStack below, spacing 0), so "item i's box" is always exactly the
+    // i-th `1/items.count` slice of whatever this view's OWN live width is
+    // — expressed here as a plain fraction of `geo.size.width`, resolved
+    // fresh on every single render this GeometryReader participates in,
+    // with no cache to go stale: identical in spirit to
+    // `src/screens/BottomTabBar.jsx`'s own CSS-percentage fix (same
+    // "equal-flex slice of the live container," ported to SwiftUI's own
+    // layout system rather than copying the DOM/CSS mechanism 1:1).
+    // `itemFrames`/`resolveFrames` are kept ONLY for `hitTest` below (the
+    // scrub-drag's touch→tab mapping), which genuinely needs real anchor
+    // frames — SwiftUI already reports `DragGesture(coordinateSpace: .local)`
+    // touch points in this view's own pre-transform layout space, so that
+    // path was never affected by the ancestor `DockRow.scaleEffect` bug
+    // class the highlight itself was exposed to.
+    private var activeIndex: Int? {
+        guard let activeID else { return nil }
+        return items.firstIndex(where: { $0.id == activeID })
+    }
+
     var body: some View {
+        GeometryReader { geo in
         ZStack(alignment: .leading) {
             // Soft, blurred, darker highlight blob — reuses the ink token
-            // (no new color), not a new tint.
-            if let activeID, let frame = itemFrames[activeID] {
+            // (no new color), not a new tint. Position/width are a live
+            // fraction of `geo.size.width` (see this view's own
+            // `activeIndex` doc comment) — never itemFrames — so this is
+            // correct at the current 340pt bar width, while the "+" button
+            // shrinks it further, and through the collapse/expand
+            // `scaleEffect` on DockRow (GeometryReader always reports this
+            // view's own local, pre-transform size, immune to an ancestor's
+            // scale the way a measured/cached screen-space rect is not).
+            if let activeIndex {
+                let tabWidth = geo.size.width / CGFloat(max(items.count, 1))
                 Capsule()
                     .fill(app.palette.ink.opacity(0.12))
-                    .frame(width: frame.width, height: barHeight - 10)
-                    .position(x: frame.midX, y: barHeight / 2)
+                    .frame(width: tabWidth, height: barHeight - 10)
+                    .position(x: tabWidth * (CGFloat(activeIndex) + 0.5), y: barHeight / 2)
                     .blur(radius: 0.5)
                     .allowsHitTesting(false)
             }
@@ -212,6 +248,7 @@ struct BottomTabBar: View {
                     .anchorPreference(key: TabItemFrameKey.self, value: .bounds) { [item.id: $0] }
                 }
             }
+        }
         }
         .frame(height: barHeight)
         // Task 1b follow-up: widened from 320 (fit for 4 icons) to fit the

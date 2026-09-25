@@ -13,17 +13,30 @@ function eventPhotoUrl(path) {
 // unfollowed organizer's identity opens a compact sheet with a Follow CTA
 // (never navigates away immediately — rule E8); tapping the event card
 // itself navigates straight to the event page.
+// 2026-09-25 fix pass — a THIRD tab ("Ảnh nổi bật"), a separate ranking of
+// individual event photos by real engagement (photo_likes/photo_shares,
+// migration 083) — never merged into the event-level list/signals above.
+const TABS = [
+  { key: 'daily', vi: 'Hôm nay', en: 'Today' },
+  { key: 'weekly', vi: 'Tuần này', en: 'This week' },
+  { key: 'photos', vi: 'Ảnh nổi bật', en: 'Featured photos' },
+];
+
 export default function PulseViewer() {
-  const { state, T, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, goEvent } = useGoc();
+  const {
+    state, T, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer,
+    openPulsePhotoSheet, closePulsePhotoSheet, togglePulsePhotoLike, sharePulsePhoto, goEvent,
+  } = useGoc();
   const s = state;
   if (!s.pulseOpen) return null;
-  const items = s.pulseTab === 'weekly' ? s.pulseWeekly : s.pulseDaily;
+  const isPhotoTab = s.pulseTab === 'photos';
+  const items = isPhotoTab ? s.pulsePhotos : (s.pulseTab === 'weekly' ? s.pulseWeekly : s.pulseDaily);
   // TASK A5 (2026-10-03 fix pass) — a real bug (a shared request-sequence
   // counter dropping legitimate responses, see loadPulse's own comment)
   // used to make the daily tab flash "Nothing ranked yet." even when data
   // was already on its way. Now a genuine, per-tab loading state, so a
   // still-fetching tab never gets misread as a genuinely empty one.
-  const loading = s.pulseTab === 'weekly' ? s.pulseWeeklyLoading : s.pulseDailyLoading;
+  const loading = isPhotoTab ? s.pulsePhotosLoading : (s.pulseTab === 'weekly' ? s.pulseWeeklyLoading : s.pulseDailyLoading);
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: paper, zIndex: 60, display: 'flex', flexDirection: 'column' }} data-testid="pulse-viewer">
@@ -33,7 +46,7 @@ export default function PulseViewer() {
       </div>
 
       <div style={{ display: 'flex', gap: 8, padding: '16px 20px 0' }}>
-        {[{ key: 'daily', vi: 'Hôm nay', en: 'Today' }, { key: 'weekly', vi: 'Tuần này', en: 'This week' }].map(tab => (
+        {TABS.map(tab => (
           <span
             key={tab.key}
             onClick={() => setPulseTab(tab.key)}
@@ -43,6 +56,7 @@ export default function PulseViewer() {
               background: s.pulseTab === tab.key ? ink : 'transparent',
               color: s.pulseTab === tab.key ? paper : ink,
               border: s.pulseTab === tab.key ? 'none' : `1px solid ${rule}`,
+              whiteSpace: 'nowrap',
             }}
           >
             {T(tab.vi, tab.en)}
@@ -60,7 +74,7 @@ export default function PulseViewer() {
             {T('Chưa có dữ liệu xếp hạng.', 'Nothing ranked yet.')}
           </p>
         )}
-        {!loading && items.map((item, i) => (
+        {!loading && !isPhotoTab && items.map((item, i) => (
           <div key={item.event_id} style={{ ...cardGlass({ padding: 0, display: 'flex', overflow: 'hidden' }) }} data-testid="pulse-card">
             <div onClick={() => { closePulseViewer(); goEvent(item.event_id); }} style={{ width: 88, height: 88, flex: 'none', cursor: 'pointer', background: `center/cover url(${eventPhotoUrl(item.photo_path)})` }} />
             <div style={{ flex: 1, minWidth: 0, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -78,7 +92,78 @@ export default function PulseViewer() {
             </div>
           </div>
         ))}
+        {/* TASK 4/5 (2026-09-25 fix pass) — ranked photos: rank + like/share
+            counts on the row itself; tapping opens the compact popup below
+            (not immediate navigation — matches the organizer-identity
+            sheet's own "never navigate away immediately" rule). */}
+        {!loading && isPhotoTab && items.map((item, i) => (
+          <div
+            key={item.photo_id}
+            onClick={() => openPulsePhotoSheet(item)}
+            data-testid="pulse-photo-card"
+            style={{ ...cardGlass({ padding: 0, display: 'flex', overflow: 'hidden', cursor: 'pointer' }) }}
+          >
+            <div style={{ width: 88, height: 88, flex: 'none', background: `center/cover url(${eventPhotoUrl(item.photo_path)})` }} />
+            <div style={{ flex: 1, minWidth: 0, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4, justifyContent: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: ink, opacity: 0.5 }}>#{i + 1}</span>
+                <span style={{ ...display(14, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{item.event_name}</span>
+              </div>
+              <span style={{ fontSize: 11.5, color: ink, opacity: 0.75 }}>{item.organizer_name}{item.organizer_verified ? ' ✓' : ''}</span>
+              <span style={{ fontSize: 11, color: ink, opacity: 0.6 }}>
+                {T(`${item.like_count} lượt thích ▪︎ ${item.share_count} lượt chia sẻ`, `${item.like_count} likes ▪︎ ${item.share_count} shares`)}
+              </span>
+            </div>
+          </div>
+        ))}
       </div>
+
+      {/* TASK 5 (2026-09-25 fix pass) — the ranked-photo popup: photo,
+          organizer identity/verified badge, a real like toggle, share, and
+          a clear "view event" action that navigates and closes both this
+          popup and the Pulse viewer itself, same as the organizer sheet's
+          own "Xem sự kiện" already does. */}
+      {s.pulsePhotoSheet && (
+        <div onClick={closePulsePhotoSheet} style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.45)', display: 'flex', alignItems: 'flex-end', zIndex: 70 }} data-testid="pulse-photo-sheet">
+          <div onClick={(e) => e.stopPropagation()} style={{ background: paper, width: '100%', borderRadius: '18px 18px 0 0', padding: '20px 22px 34px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 4, background: rule, borderRadius: 2 }} />
+            <div style={{ width: 160, height: 160, borderRadius: 14, marginTop: 8, background: `center/cover url(${eventPhotoUrl(s.pulsePhotoSheet.photo_path)})` }} />
+            <span style={{ ...display(17), marginTop: 4 }}>{s.pulsePhotoSheet.organizer_name}{s.pulsePhotoSheet.organizer_verified ? ' ✓' : ''}</span>
+            {s.pulsePhotoSheet.organizer_verified && (
+              <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T('Đã xác minh', 'Verified')}</span>
+            )}
+            <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+              <div
+                onClick={() => togglePulsePhotoLike(s.pulsePhotoSheet.photo_id)}
+                data-testid="pulse-photo-like"
+                style={{
+                  fontSize: 13, fontWeight: 600, padding: '10px 20px', borderRadius: 999, cursor: 'pointer',
+                  background: s.pulsePhotoLiked[s.pulsePhotoSheet.photo_id] ? ink : 'transparent',
+                  color: s.pulsePhotoLiked[s.pulsePhotoSheet.photo_id] ? paper : ink,
+                  border: s.pulsePhotoLiked[s.pulsePhotoSheet.photo_id] ? 'none' : `1px solid ${rule}`,
+                  opacity: s.pulsePhotoBusy[s.pulsePhotoSheet.photo_id] ? 0.6 : 1,
+                }}
+              >
+                {s.pulsePhotoLiked[s.pulsePhotoSheet.photo_id] ? T('♥ Đã thích', '♥ Liked') : T('♡ Thích', '♡ Like')} · {s.pulsePhotoSheet.like_count}
+              </div>
+              <div
+                onClick={() => sharePulsePhoto(s.pulsePhotoSheet)}
+                data-testid="pulse-photo-share"
+                style={{ fontSize: 13, fontWeight: 600, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: `1px solid ${rule}`, color: ink }}
+              >
+                {T('Chia sẻ', 'Share')} · {s.pulsePhotoSheet.share_count}
+              </div>
+            </div>
+            <div
+              onClick={() => { closePulsePhotoSheet(); closePulseViewer(); goEvent(s.pulsePhotoSheet.event_id); }}
+              data-testid="pulse-photo-view-event"
+              style={{ marginTop: 4, fontSize: 12, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
+            >
+              {T('Xem sự kiện / trang tổ chức', 'View event / host page')}
+            </div>
+          </div>
+        </div>
+      )}
 
       {s.pulseOrganizerSheet && (
         <div onClick={closePulseOrganizerSheet} style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.45)', display: 'flex', alignItems: 'flex-end', zIndex: 70 }}>

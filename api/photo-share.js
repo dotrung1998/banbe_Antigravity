@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js';
 import { getRedirectUrl } from './_lib/authLookup.js';
 import { escapeHtml } from './_lib/emailTemplate.js';
 
@@ -11,24 +12,76 @@ import { escapeHtml } from './_lib/emailTemplate.js';
 // square with the banbe mark, rather than the photo someone chose to
 // share. Crawlers read the tags below and never run the redirect; people
 // never see this page for more than an instant.
+//
+// Two distinct photo sources share this one endpoint (per the Pulse
+// photo-ranking ticket's own "do not invent a second incompatible URL
+// scheme" instruction), picked by which query params are present:
+//   ?photo=<filename>&org=<eventKey>&by=<name>  — the bundled STATIC demo
+//     catalogue (src/data/events.js), served from /photos/<filename>.
+//   ?pid=<event_photo uuid>                      — a REAL `event_photos`
+//     Storage row (Banbe Pulse's photo-ranking tab). Resolved via a live,
+//     anon-key lookup (event_photos/events/organizers are all public-select
+//     under RLS already — see 001/079) rather than trusting a client-
+//     supplied path/event-key pair, so this can't be pointed at an event
+//     that photo doesn't actually belong to.
 
 // Only ever our own files under /photos: a filename, nothing path-like,
 // so this can't be pointed at an arbitrary image on another host.
 const PHOTO_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.(jpe?g|png|webp)$/i;
 const EVENT_KEY_PATTERN = /^[a-z0-9]{1,40}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function getText(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-export default function handler(req, res) {
+// Same public anon-key fallback api/payment-document.js already uses — the
+// anon key is meant to be public (RLS-scoped) and is already in the client
+// bundle; without the fallback this 404s on a deployment that only set
+// VITE_SUPABASE_* at build time, not as an actual Vercel env var.
+function anonClient() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+    || 'https://ukchdgdnwytretvqjjqu.supabase.co';
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+    || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVrY2hkZ2Rud3l0cmV0dnFqanF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MjMyMjYsImV4cCI6MjEwNDI5OTIyNn0.TgyEJLTXTZgCa6ulsseY3JlrdSmEfOgqVPNh0nSgu90';
+  return createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+
+async function resolveRealPhoto(pid) {
+  if (!UUID_PATTERN.test(pid)) return null;
+  const { data } = await anonClient()
+    .from('event_photos')
+    .select('storage_path, events(id, name, organizer_id, organizers(name, verified))')
+    .eq('id', pid)
+    .maybeSingle();
+  if (!data?.events) return null;
+  const relative = String(data.storage_path || '').replace(/^event-photos\//, '');
+  return {
+    eventId: data.events.id,
+    organizerName: data.events.organizers?.name || '',
+    imagePath: relative,
+  };
+}
+
+export default async function handler(req, res) {
   const origin = getRedirectUrl(req);
+  const pid = getText(req.query?.pid);
   const photo = getText(req.query?.photo);
   const org = getText(req.query?.org);
-  const organizer = getText(req.query?.by).slice(0, 80);
+  const organizerParam = getText(req.query?.by).slice(0, 80);
 
-  const appUrl = EVENT_KEY_PATTERN.test(org) ? `${origin}/?org=${org}` : origin;
-  const imageUrl = PHOTO_PATTERN.test(photo) ? `${origin}/photos/${photo}` : `${origin}/banbe-wordmark.png`;
+  let appUrl = EVENT_KEY_PATTERN.test(org) ? `${origin}/?org=${org}` : origin;
+  let imageUrl = PHOTO_PATTERN.test(photo) ? `${origin}/photos/${photo}` : `${origin}/banbe-wordmark.png`;
+  let organizer = organizerParam;
+
+  if (pid) {
+    const real = await resolveRealPhoto(pid);
+    if (real) {
+      appUrl = `${origin}/?org=${real.eventId}`;
+      imageUrl = `${process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://ukchdgdnwytretvqjjqu.supabase.co'}/storage/v1/object/public/event-photos/${real.imagePath}`;
+      organizer = real.organizerName;
+    }
+  }
 
   const title = organizer ? `Ảnh của ${organizer} ▪︎ banbe` : 'banbe ▪︎ bạn mới mỗi tuần';
   const description = organizer
