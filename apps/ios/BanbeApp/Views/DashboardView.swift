@@ -33,6 +33,20 @@ struct DashboardView: View {
                                       : app.T("Chưa xác minh", "Not verified")
     }
 
+    /// TASK A (2026-10-01 UX foundation pass) — Dashboard is host-only (this
+    /// whole screen only ever renders for an organizer), so only host
+    /// sources apply here.
+    private var actionItems: [ActionCenterItem] {
+        buildActionCenterItems(ActionCenterInputs(
+            role: .host, now: Date(),
+            verifications: app.verifications, refundQueue: app.refundQueue, orgHolding: app.organizerHoldingSummary,
+            onOpenVerifications: { app.openVerifications(back: .dashboard) },
+            onOpenRefundCenter: { app.openVerifications(back: .dashboard) },
+            onOpenDashboard: {},
+            T: app.T
+        ))
+    }
+
     var body: some View {
         ZStack {
             app.palette.paper.ignoresSafeArea()
@@ -95,6 +109,11 @@ struct DashboardView: View {
                             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .padding(.top, 16)
                         }
+
+                        // TASK A (2026-10-01 UX foundation pass) — host-only
+                        // Action Center (this screen only ever renders for
+                        // an organizer).
+                        ActionCenterView(items: actionItems, onSeeAll: { app.openVerifications(back: .dashboard) }, horizontalInset: 0)
 
                         HStack(alignment: .firstTextBaseline) {
                             Text(app.T("Sự kiện sắp tới", "Upcoming events"))
@@ -188,6 +207,12 @@ struct DashboardView: View {
         }
         .task { await app.loadMyEvents() }
         .task { await app.loadHomeLiveEvents() }
+        // TASK A (2026-10-01 UX foundation pass).
+        .task {
+            await app.loadVerifications()
+            await app.loadRefundQueue()
+            await app.loadOrganizerHoldingSummary()
+        }
     }
 }
 

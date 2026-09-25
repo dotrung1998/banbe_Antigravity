@@ -346,6 +346,22 @@ struct RootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
 
+            // TASK C (2026-10-01 UX foundation pass) — a plain ZStack
+            // sibling (not the separate always-on-top UIWindow BottomTabBar
+            // uses) is fine here: unlike the tab bar, this FAB only ever
+            // needs to sit above ordinary screen content, never above a
+            // `.sheet()`/native modal — and being a normal sibling means it
+            // automatically sits BELOW StoryViewerView (zIndex 27) and any
+            // other higher-zIndex overlay in this same ZStack for free,
+            // satisfying "hide on full-screen story viewer" by construction.
+            CreateEventFabView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding(.trailing, 20)
+                .padding(.bottom, BottomTabBar.visibleScreens.contains(app.screen)
+                    ? BottomTabBar.barHeight + BottomTabBar.bottomOffset + 20 : 28)
+                .zIndex(15)
+                .allowsHitTesting(app.organizerMode)
+
             // BUG 3 follow-up (this session's real-device report on
             // 80c1ac3): BottomTabBar used to render HERE, as a ZStack
             // sibling with an explicit `.zIndex(10)` — correctly ordered
@@ -427,6 +443,8 @@ struct RootView: View {
             }
         }
         .fullScreenCover(isPresented: $app.scanningQr) { QRScannerView() }
+        // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
+        .fullScreenCover(isPresented: $app.pulseOpen) { PulseViewerView() }
         // The session is owned by AuthViewModel (it also drives the Face ID
         // lock); AppState mirrors it into the profile/bookings/notifications
         // the screens read.
@@ -493,6 +511,11 @@ struct RootView: View {
         // screen-local sheet check can't stomp on each other.
         .onChange(of: app.storyViewer) { _, viewer in
             BottomTabBarOverlay.shared.setStoryViewerOpen(viewer != nil)
+        }
+        // TASK E (2026-10-01 UX foundation pass) — same reasoning as
+        // storyViewer above.
+        .onChange(of: app.pulseOpen) { _, open in
+            BottomTabBarOverlay.shared.setPulseViewerOpen(open)
         }
         // TASK 3 (2026-09-22 seventeenth follow-up) — same "separate
         // UIWindow, isHidden not zIndex" reasoning as `setForcedHidden`'s
@@ -566,6 +589,8 @@ struct RootView: View {
         case .disputes: AdminDashboardView()
         case .refundAccounts: RefundAccountsView()
         case .myRefunds: MyRefundsView()
+        case .editProfile: EditProfileView()
+        case .publicProfile: PublicProfileView()
         }
     }
 

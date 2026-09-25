@@ -29,6 +29,30 @@ struct HomeView: View {
             || app.organizerPendingCount > 0 || app.organizerHoldingSummary != nil
     }
 
+    /// TASK A (2026-10-01 UX foundation pass) — goer items always
+    /// considered, host items only while `app.canHost`, merged and
+    /// re-sorted together (mirrors src/screens/Home.jsx's own actionItems).
+    private var actionItems: [ActionCenterItem] {
+        var goer = buildActionCenterItems(ActionCenterInputs(
+            role: .goer, now: tick,
+            myHolding: app.myHolding, myPendingVerification: app.myPendingVerification, myRefunds: app.myRefunds,
+            onOpenPayment: { app.openPaymentDetails($0, back: .home) },
+            onOpenMyRefunds: { app.openMyRefunds(back: .home) },
+            T: app.T
+        ))
+        if app.canHost {
+            goer += buildActionCenterItems(ActionCenterInputs(
+                role: .host, now: tick,
+                verifications: app.verifications, refundQueue: app.refundQueue, orgHolding: app.organizerHoldingSummary,
+                onOpenVerifications: { app.openVerifications() },
+                onOpenRefundCenter: { app.openVerifications() },
+                onOpenDashboard: { app.goDashboard() },
+                T: app.T
+            ))
+        }
+        return sortActionCenterItems(goer)
+    }
+
     var body: some View {
         // Task 3 (2026-09-21 follow-up) — `scrollPositionID` restores the
         // feed to roughly where the user left it on returning from Event
@@ -43,14 +67,14 @@ struct HomeView: View {
             // and they all fought for the same bandwidth.
             LazyVStack(alignment: .leading, spacing: 0) {
                 header
-                // Supersedes the old single-booking heldBanner below: this
-                // covers both payment phases, both roles, and every booking
-                // this account has — not just the one most recently reserved
-                // in the current session. heldEvent itself stays in use for
-                // tagging the "Your events" strip further down.
-                paymentBanners
+                // TASK A (2026-10-01 UX foundation pass) — replaces the old
+                // fixed four-banner `paymentBanners` block: one unified,
+                // priority-sorted, 3-card-capped Action Center covering both
+                // roles this account can hold. heldEvent itself stays in use
+                // for tagging the "Your events" strip further down.
+                ActionCenterView(items: actionItems, onSeeAll: { app.goNotifications() })
                 if !app.savedStrip.isEmpty { savedStrip }
-                if !app.homeStories.isEmpty { storyRow }
+                storyRow
                 filterTabs
                 homeExtraFilterChips
                 if app.feed.isEmpty {
@@ -69,9 +93,11 @@ struct HomeView: View {
         .task {
             guard app.userID != nil else { return }
             await app.loadPaymentBookings()
+            await app.loadMyRefunds()
             if app.canHost {
                 await app.loadVerifications()
                 await app.loadOrganizerHoldingSummary()
+                await app.loadRefundQueue()
             }
             // The data this decides on arrives asynchronously, after
             // .onAppear's own call below has almost certainly already run
@@ -191,46 +217,6 @@ struct HomeView: View {
         app.forfeitExpiredHold(justLapsed)
     }
 
-    @ViewBuilder
-    private var paymentBanners: some View {
-        // Both phases of the payment state machine, both roles this account
-        // can hold: what I (as a buyer) am waiting on, and — separately —
-        // what my own events' buyers are waiting on me for.
-        if let holding = app.myHolding {
-            PhaseBanner(
-                label: app.T("Đang giữ chỗ", "Holding a seat"),
-                detail: holding.eventName + (holding.qty > 1 ? " ▪︎ \(holding.qty)" + app.T(" vé", " tix") : "")
-                    + app.T(" ▪︎ trả để xác nhận", " ▪︎ pay to confirm"),
-                countdown: Countdown.format(Countdown.secondsUntil(holding.holdExpiresAt, now: tick))
-            ) { app.openPaymentDetails(holding.id, back: .home) }
-        }
-        if let pending = app.myPendingVerification {
-            PhaseBanner(
-                label: app.T("Đang chờ xác nhận", "Awaiting confirmation"),
-                detail: pending.eventName + app.T(" ▪︎ đồng hồ đã dừng, chỗ được khoá", " ▪︎ clock stopped, seat locked"),
-                countdown: nil
-            ) { app.openPaymentDetails(pending.id, back: .home) }
-        }
-        if app.organizerPendingCount > 0 {
-            let soonest = app.organizerSoonestVerifyDue
-            let secondsLeft = Countdown.secondsUntil(soonest, now: tick)
-            PhaseBanner(
-                label: app.T("Chờ bạn xác nhận thanh toán", "Payments awaiting your OK"),
-                detail: "\(app.organizerPendingCount)" + app.T(" khoản", app.organizerPendingCount == 1 ? " payment" : " payments")
-                    + (soonest != nil ? app.T(" ▪︎ sớm nhất còn", " ▪︎ soonest in") : ""),
-                countdown: soonest != nil ? Countdown.format(secondsLeft) : nil,
-                urgent: soonest != nil && secondsLeft == 0
-            ) { app.openVerifications() }
-        }
-        if let orgHolding = app.organizerHoldingSummary {
-            PhaseBanner(
-                label: app.T("Khách đang giữ chỗ", "Guests holding seats"),
-                detail: "\(orgHolding.count)" + app.T(" chỗ", orgHolding.count == 1 ? " seat" : " seats")
-                    + app.T(" ▪︎ sớm nhất hết hạn trong", " ▪︎ soonest expires in"),
-                countdown: orgHolding.soonestHoldExpiresAt.map { Countdown.format(Countdown.secondsUntil($0, now: tick)) }
-            ) { app.goDashboard() }
-        }
-    }
 
     // MARK: Header
 
@@ -329,9 +315,28 @@ struct HomeView: View {
 
     // MARK: Story row (Task 3.3, 07-notifications.md) — between "Your
     // events" and the main event list, per this ticket's own placement.
+    // TASK E (2026-10-01 UX foundation pass) — "Banbe Pulse" is now a
+    // PERMANENT first entry (index 0), so this row is no longer
+    // conditional on real stories existing (was `if !app.homeStories.
+    // isEmpty`) — always shows at least Pulse. Never rendered on Map (this
+    // row only exists on Home).
     private var storyRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 14) {
+                Button { app.openPulseViewer() } label: {
+                    VStack(spacing: 5) {
+                        ZStack {
+                            LinearGradient(colors: [Color(red: 0.91, green: 0.79, blue: 0.76), Color(red: 0.78, green: 0.80, blue: 0.70)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                                .frame(width: 56, height: 56)
+                            Text("✦").font(.system(size: 20))
+                        }
+                        Text(app.T("Banbe Pulse", "Banbe Pulse"))
+                            .font(.system(size: 9.5)).foregroundStyle(app.palette.ink).lineLimit(1).frame(width: 60)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("home.pulseAvatar")
                 ForEach(app.homeStories) { group in
                     Button { app.openStoryViewer(group.organizerId, originRect: app.storyRingFrames[group.organizerId]) } label: {
                         VStack(spacing: 5) {
@@ -579,44 +584,6 @@ struct EventCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("card.\(event.key)")
-    }
-}
-
-/// One row shape for every payment-phase banner Home shows, on either side
-/// of the transaction. `countdown` is optional — PHASE 2 for a buyer has
-/// nothing productive to count down (their clock already stopped), so that
-/// row renders with no timer rather than a fake or misleading one.
-private struct PhaseBanner: View {
-    @EnvironmentObject private var app: AppState
-    let label: String
-    let detail: String
-    let countdown: String?
-    var urgent: Bool = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(label).font(.system(size: 11.5, weight: .semibold))
-                    Text(detail).font(.system(size: 12.5)).lineLimit(1)
-                }
-                Spacer(minLength: 8)
-                if let countdown {
-                    Text(countdown)
-                        .font(BanbeTheme.display(18))
-                        .monospacedDigit()
-                        .foregroundStyle(urgent ? BanbeTheme.alert : app.palette.ink)
-                }
-            }
-            .foregroundStyle(app.palette.ink)
-            .padding(14)
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .contentShape(Rectangle())
-            .padding(.horizontal, 20)
-            .padding(.top, 10)
-        }
-        .buttonStyle(.plain)
     }
 }
 

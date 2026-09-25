@@ -28,6 +28,7 @@ import ReasonSheet from './screens/sheets/ReasonSheet.jsx';
 import PhotoViewer from './screens/sheets/PhotoViewer.jsx';
 import ChatPhotoViewer from './screens/sheets/ChatPhotoViewer.jsx';
 import StoryViewer from './screens/sheets/StoryViewer.jsx';
+import PulseViewer from './screens/sheets/PulseViewer.jsx';
 import Preferences from './screens/Preferences.jsx';
 import EditName from './screens/EditName.jsx';
 import Notifications from './screens/Notifications.jsx';
@@ -45,6 +46,9 @@ import Disputes from './screens/Disputes.jsx';
 import ToastStack from './screens/ToastStack.jsx';
 import Policy from './screens/Policy.jsx';
 import MapExplore from './screens/MapExplore.jsx';
+import CreateEventFab from './screens/CreateEventFab.jsx';
+import EditProfile from './screens/EditProfile.jsx';
+import PublicProfile from './screens/PublicProfile.jsx';
 
 const SCREENS = {
   splash: Splash,
@@ -81,6 +85,8 @@ const SCREENS = {
   disputes: Disputes,
   policy: Policy,
   mapExplore: MapExplore,
+  editProfile: EditProfile,
+  publicProfile: PublicProfile,
 };
 
 function Shell() {
@@ -97,7 +103,7 @@ function Shell() {
   // (it fully unmounts here, so there's nothing left to intercept taps —
   // the same "hidden, not merely lower z-index" bar this ticket asks for
   // on iOS's separate-UIWindow overlay).
-  const showBar = showsBottomBar(state.screen) && !state.storyViewer;
+  const showBar = showsBottomBar(state.screen) && !state.storyViewer && !state.pulseOpen;
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -196,10 +202,12 @@ function Shell() {
         {state.photoViewer && <PhotoViewer />}
         {state.chatPhotoViewer && <ChatPhotoViewer />}
         {state.storyViewer && <StoryViewer />}
+        {state.pulseOpen && <PulseViewer />}
         {state.reasonPrompt && <ReasonSheet />}
         {state.loading && <Loading label={T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
       {showBar && <BottomTabBar collapsed={barCollapsed} />}
+      <CreateEventFab bottom={showBar ? 108 : 28} />
       <ToastStack />
     </div>
   );

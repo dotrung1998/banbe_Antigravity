@@ -128,6 +128,7 @@ final class BottomTabBarOverlay {
     // InboxView's screen-local sheet check can never stomp on each other's
     // intent by racing a single shared setter.
     private var storyViewerOpen = false
+    private var pulseViewerOpen = false
     // TASK 3 (2026-09-22 seventeenth follow-up) — a SEPARATE flag from
     // `forcedHidden`, same reasoning as `storyViewerOpen` just above: a
     // screen-local modal action sheet (starting with NotificationsView's
@@ -229,6 +230,15 @@ final class BottomTabBarOverlay {
         applyVisibility()
     }
 
+    /// TASK E (2026-10-01 UX foundation pass) — PulseViewerView presents as
+    /// a `.fullScreenCover`, which (like StoryViewerView above) sits inside
+    /// the main window's own view hierarchy — this overlay's separate
+    /// always-on-top UIWindow would still paint above it without this.
+    func setPulseViewerOpen(_ open: Bool) {
+        pulseViewerOpen = open
+        applyVisibility()
+    }
+
     /// TASK 3 (2026-09-22 seventeenth follow-up) — called from RootView's
     /// `.onChange(of: app.modalActionSheetPresented)`. See that flag's own
     /// doc comment (AppState.swift) and `modalActionSheetPresented`'s own
@@ -240,7 +250,7 @@ final class BottomTabBarOverlay {
     }
 
     private func applyVisibility() {
-        let shouldShow = !(forcedHidden || storyViewerOpen || modalActionSheetPresented)
+        let shouldShow = !(forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented)
             && BottomTabBar.visibleScreens.contains(currentScreen)
         guard shouldShow != lastShown else { return }
         lastShown = shouldShow

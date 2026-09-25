@@ -84,4 +84,11 @@ struct Booking: Codable, Identifiable, Hashable {
         self.holdExpiresAt = holdExpiresAt; self.verifyDueAt = verifyDueAt
         self.transactionId = transactionId
     }
+
+    /// TASK B (2026-10-01 UX foundation pass) — the ONE shared rule for
+    /// "does a real ticket exist yet": BOTH `status == "confirmed"` AND
+    /// `paymentState == .confirmed`, never either alone. Any screen that
+    /// wants to show ticket QR / check-in code / "Xem vé" must check this,
+    /// not re-derive its own condition.
+    var isTicket: Bool { status == "confirmed" && paymentState == .confirmed }
 }

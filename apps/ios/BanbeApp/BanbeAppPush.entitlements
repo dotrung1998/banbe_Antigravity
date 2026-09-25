@@ -9,5 +9,12 @@
 	     automatically for a real distribution build. -->
 	<key>aps-environment</key>
 	<string>development</string>
+	<!-- TASK D (2026-10-01 UX foundation pass) — see BanbeApp.entitlements'
+	     own comment; identical declaration here so Release builds keep
+	     universal-link support too. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:banbe.app</string>
+	</array>
 </dict>
 </plist>

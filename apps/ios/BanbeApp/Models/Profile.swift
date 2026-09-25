@@ -31,6 +31,16 @@ struct Profile: Codable, Identifiable, Hashable {
     /// the "•••" menu's "Tắt loại thông báo này" action. Absent on any row
     /// created before that migration's default backfill, hence Optional.
     var mutedNotificationKinds: [String]?
+    /// TASK D (2026-10-01 UX foundation pass) — shareable profile card
+    /// fields (migration 079). `handle` is NOT NULL server-side (every
+    /// profile is backfilled one), but this struct decodes it as optional
+    /// since a row selected before that migration ran (or a stale cached
+    /// response) simply has no such column.
+    var handle: String?
+    var bio: String?
+    var city: String?
+    var interests: [String]?
+    var profileTheme: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -48,5 +58,10 @@ struct Profile: Codable, Identifiable, Hashable {
         case autoEmailDocuments = "auto_email_documents"
         case policyAcceptedAt = "policy_accepted_at"
         case mutedNotificationKinds = "muted_notification_kinds"
+        case handle
+        case bio
+        case city
+        case interests
+        case profileTheme = "profile_theme"
     }
 }

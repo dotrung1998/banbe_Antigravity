@@ -544,4 +544,83 @@ final class ScreenshotCatalogTests: XCTestCase {
         XCTAssertTrue(app.otherElements["screen.security"].waitForExistence(timeout: 18))
         capture("08-account-settings", 4, "security", "Security", "Account security settings.", role: "goer", app: app)
     }
+
+    // MARK: - I. UX foundation release (2026-10-01) — Action Center, held-
+    // booking status, organizer create-event pill, profile card/edit/public
+    // profile, Banbe Pulse.
+
+    func testGroupI_UXFoundation() {
+        let app = launchSignedIn(role: "goer", scenario: "ux-foundation-goer")
+
+        XCTAssertTrue(app.otherElements["screen.home"].waitForExistence(timeout: 20))
+        // TASK A — only exists when the shared account has a real
+        // unresolved item; never faked here.
+        if any(app, "action-center").waitForExistence(timeout: 4) {
+            capture("09-ux-foundation", 1, "action-center-goer", "Action Center (goer)", "Home's unified, priority-sorted list of what this account needs to act on.", role: "goer", app: app)
+        } else {
+            skip("action-center-goer — no unresolved actionable item currently exists on the shared goer account")
+        }
+
+        // TASK B — the held-booking (not-yet-a-ticket) status card,
+        // reached via the Action Center's own hold item if one exists.
+        // Only exists while the shared account actually has a live hold.
+        if any(app, "action-center-hold").waitForExistence(timeout: 3) {
+            any(app, "action-center-hold").tap()
+            XCTAssertTrue(app.otherElements["screen.confirmed"].waitForExistence(timeout: 15))
+            capture("09-ux-foundation", 2, "held-booking-status", "Held booking status", "Đang giữ chỗ / Chờ xác nhận thanh toán — never a ticket QR until status AND payment_state both read confirmed.", role: "goer", app: app)
+            app.buttons["Về trang chính"].firstMatch.tap()
+            if !app.otherElements["screen.home"].waitForExistence(timeout: 5) { tab(app, "tab.home").tap() }
+        } else {
+            skip("held-booking-status — the shared goer account has no active hold right now")
+        }
+
+        // TASK D — the tappable profile card + its own Edit flow, always
+        // reachable deterministically (no shared-data precondition).
+        tab(app, "tab.profile").tap()
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 15))
+        capture("09-ux-foundation", 3, "profile-card", "Account profile card", "The Account header as a tappable rounded profile card.", role: "goer", app: app)
+
+        any(app, "account.editProfile").tap()
+        XCTAssertTrue(app.otherElements["screen.editProfile"].waitForExistence(timeout: 15))
+        capture("09-ux-foundation", 4, "edit-profile", "Edit profile", "Avatar, handle, display name, bio, city, interests, palette.", role: "goer", app: app)
+
+        if any(app, "editProfile.preview").waitForExistence(timeout: 3) {
+            any(app, "editProfile.preview").tap()
+            XCTAssertTrue(app.otherElements["screen.publicProfile"].waitForExistence(timeout: 15))
+            capture("09-ux-foundation", 5, "public-profile", "Public profile", "What a shared /u/<handle> link opens — organizer mode shows event/follower stats and a Follow CTA to anyone else viewing it.", role: "goer", app: app)
+            any(app, "publicProfile.qrCta").tap()
+            capture("09-ux-foundation", 6, "public-profile-qr", "Public profile QR", "\"Hiển thị mã QR\" for in-person sharing.", role: "goer", app: app)
+        } else {
+            skip("public-profile / public-profile-qr — the shared account has no handle saved yet this run")
+        }
+
+        // TASK E — Banbe Pulse: a permanent ring entry, always present.
+        let app3 = launchSignedIn(role: "goer", scenario: "ux-foundation-pulse")
+        XCTAssertTrue(app3.otherElements["screen.home"].waitForExistence(timeout: 20))
+        XCTAssertTrue(any(app3, "home.pulseAvatar").waitForExistence(timeout: 10), "Expected the permanent Banbe Pulse ring entry")
+        any(app3, "home.pulseAvatar").tap()
+        if any(app3, "pulse.card").waitForExistence(timeout: 6) {
+            capture("09-ux-foundation", 7, "pulse-daily", "Banbe Pulse — Hôm nay", "Today's ranked public event/organizer cards.", role: "goer", app: app3)
+            app3.buttons["Tuần này"].tap()
+            capture("09-ux-foundation", 8, "pulse-weekly", "Banbe Pulse — Tuần này", "This week's ranked public event/organizer cards.", role: "goer", app: app3)
+            any(app3, "pulse.organizerIdentity").firstMatch.tap()
+            if any(app3, "pulse.follow").waitForExistence(timeout: 4) {
+                capture("09-ux-foundation", 9, "pulse-follow-sheet", "Banbe Pulse — organizer sheet", "Tapping an unfollowed organizer's identity opens this compact sheet instead of navigating away immediately.", role: "goer", app: app3)
+            } else {
+                skip("pulse-follow-sheet — the organizer sheet did not resolve within the wait")
+            }
+        } else {
+            skip("pulse-daily / pulse-weekly / pulse-follow-sheet — no ranked event data exists yet (no confirmed bookings/check-ins/follows/saves in the current window)")
+        }
+
+        // TASK C — the organizer create-event pill FAB. Same "don't toggle
+        // organizer mode on a shared account" constraint as Group G.
+        let app4 = launchSignedIn(role: "host", scenario: "ux-foundation-host")
+        XCTAssertTrue(app4.otherElements["screen.home"].waitForExistence(timeout: 20))
+        if any(app4, "create-event-fab").waitForExistence(timeout: 4) {
+            capture("09-ux-foundation", 10, "organizer-create-event-fab", "Organizer create-event pill", "Persistent \"Tạo sự kiện\" FAB on Home/Dashboard/Account while organizer mode is on.", role: "host", app: app4)
+        } else {
+            skip("organizer-create-event-fab — the shared account is not currently enrolled as an organizer; this pass will not toggle organizer mode on, since that would mutate shared account state")
+        }
+    }
 }

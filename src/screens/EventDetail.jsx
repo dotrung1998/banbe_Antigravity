@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { bg, mapsUrl } from '../data/events.js';
 import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
+import { isBookingTicket } from '../lib/bookingTicket.js';
 
 export default function EventDetail() {
   const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory } = useGoc();
@@ -79,6 +80,14 @@ export default function EventDetail() {
   const myBooking = s.booking && s.booking.event_id === ev.key && ['pending', 'confirmed', 'attended'].includes(s.booking.status)
     ? s.booking
     : null;
+  // TASK B (2026-10-01 UX foundation pass) — a held/pending booking is NOT
+  // a ticket yet. `myBooking.status` alone (checked above) can be
+  // 'pending' while payment is still just holding/awaiting verification —
+  // this bar used to unconditionally read "Xem vé của bạn ▪︎ mã {code}"
+  // for any of those, announcing a ticket + exposing the entry code before
+  // there was one. The only source of truth for "ticket exists" is BOTH
+  // booking.status === 'confirmed' AND payment_state === 'confirmed'.
+  const myBookingIsTicket = isBookingTicket(myBooking);
 
   // A completed event has nothing left to reserve — showing "Reserve"
   // (or even "Sold out ▪︎ message for waitlist") on something that already
@@ -91,8 +100,10 @@ export default function EventDetail() {
   // via hold_seats()'s own EVENT_NOT_LIVE check. Checked before `ended`/
   // `soldOut` since a cancelled event's stale `seats_remaining` can still
   // read as available or as "sold out" — neither reads as honest here.
-  const reserveBarLabel = myBooking
+  const reserveBarLabel = myBookingIsTicket
     ? T('Xem vé của bạn ▪︎ mã ' + myBooking.code, 'View your ticket ▪︎ code ' + myBooking.code)
+    : myBooking
+    ? T('Xem trạng thái thanh toán', 'View payment status')
     : ev.cancelled
     ? T('Sự kiện đã bị huỷ', 'Event has been cancelled')
     : ended

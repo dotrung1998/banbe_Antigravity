@@ -27,6 +27,31 @@ struct AccountView: View {
         app.homeStories.first { g in app.myOrganizerIdsCache.contains(g.organizerId) }
     }
 
+    /// TASK A (2026-10-01 UX foundation pass) — mirrors HomeView's own
+    /// `actionItems`; Account loads the same canonical sources independently
+    /// (see the `.task` below) so this reflects live server state even when
+    /// opened without visiting Home first this session.
+    private var actionItems: [ActionCenterItem] {
+        var goer = buildActionCenterItems(ActionCenterInputs(
+            role: .goer, now: Date(),
+            myHolding: app.myHolding, myPendingVerification: app.myPendingVerification, myRefunds: app.myRefunds,
+            onOpenPayment: { app.openPaymentDetails($0, back: .profile) },
+            onOpenMyRefunds: { app.openMyRefunds(back: .profile) },
+            T: app.T
+        ))
+        if app.canHost {
+            goer += buildActionCenterItems(ActionCenterInputs(
+                role: .host, now: Date(),
+                verifications: app.verifications, refundQueue: app.refundQueue, orgHolding: app.organizerHoldingSummary,
+                onOpenVerifications: { app.openVerifications(back: .profile) },
+                onOpenRefundCenter: { app.openVerifications(back: .profile) },
+                onOpenDashboard: { app.goDashboard() },
+                T: app.T
+            ))
+        }
+        return sortActionCenterItems(goer)
+    }
+
     private var subtitle: String {
         if app.accountType == "admin" { return app.T("Quản trị viên", "Admin") }
         return app.canHost ? app.T("Người tham gia ▪︎ Người tổ chức", "Goer ▪︎ Host")
@@ -55,6 +80,12 @@ struct AccountView: View {
                         .font(.system(size: 12)).buttonStyle(.plain)
                 }
 
+                // TASK D (2026-10-01 UX foundation pass) — the header is
+                // now a tappable rounded profile card (editorial style:
+                // soft gradient wash from the account's own chosen
+                // palette). The story ring/post-story menu keep their own
+                // existing nested tap targets unchanged — a separate
+                // trailing chevron (not the whole card) opens EditProfile.
                 HStack(spacing: 14) {
                     // Task 3.3 (07-notifications.md) — story ring: bright
                     // while an active, not-fully-viewed story exists;
@@ -74,10 +105,15 @@ struct AccountView: View {
                                     )
                                     .frame(width: 64, height: 64)
                             }
-                            Text(String(app.displayName.prefix(1)).uppercased())
-                                .font(BanbeTheme.display(22))
-                                .frame(width: 56, height: 56)
-                                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            if let urlStr = app.user?.avatarURL, let url = URL(string: urlStr) {
+                                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
+                                    .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            } else {
+                                Text(String(app.displayName.prefix(1)).uppercased())
+                                    .font(BanbeTheme.display(22))
+                                    .frame(width: 56, height: 56)
+                                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
                         }
                     }
                     .buttonStyle(.plain)
@@ -97,6 +133,9 @@ struct AccountView: View {
                                 .foregroundStyle(app.palette.ink.opacity(0.65))
                                 .buttonStyle(.plain)
                             }
+                        }
+                        if let handle = app.user?.handle, !handle.isEmpty {
+                            Text("@\(handle)").font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                         }
                         Text(subtitle).font(.system(size: 11)).kerning(0.6)
                         // Task 3.2 — story creation entry point, hosts only.
@@ -124,8 +163,25 @@ struct AccountView: View {
                         }
                     }
                     Spacer(minLength: 0)
+                    if app.isSignedIn {
+                        Button { app.openEditProfile() } label: {
+                            Image(systemName: "chevron.right").font(.system(size: 16)).foregroundStyle(app.palette.ink.opacity(0.55))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("account.editProfile")
+                    }
                 }
+                .padding(16)
+                .background(
+                    LinearGradient(
+                        colors: [(ProfilePalette.all.first { $0.key == (app.user?.profileTheme ?? "default") }?.color ?? ProfilePalette.all[0].color).opacity(0.35), .clear],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
                 .padding(.top, 22)
+                .accessibilityIdentifier("account.profileCard")
 
                 HStack(spacing: 10) {
                     counter(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going"), icon: "calendar.badge.checkmark", identifier: "account.goingCard") { app.goGoingList() }
@@ -133,6 +189,11 @@ struct AccountView: View {
                 }
                 .padding(.top, 22)
                 .id("account-stats")
+
+                // TASK A (2026-10-01 UX foundation pass) — same canonical
+                // Action Center Home/Dashboard show; Account is one of its
+                // three placements.
+                ActionCenterView(items: actionItems, onSeeAll: { app.openVerifications(back: .profile) })
 
                 // TASK 3A (2026-09-22 twenty-first follow-up) — the
                 // "Tin nhắn"/Messages shortcut row removed entirely per this
@@ -335,6 +396,18 @@ struct AccountView: View {
             .padding(.top, 16)
         }
         .task { if app.userID != nil { await app.loadHomeStories() } }
+        // TASK A (2026-10-01 UX foundation pass) — same canonical loaders
+        // HomeView's own `.task` calls.
+        .task {
+            guard app.userID != nil else { return }
+            await app.loadPaymentBookings()
+            await app.loadMyRefunds()
+            if app.canHost {
+                await app.loadVerifications()
+                await app.loadOrganizerHoldingSummary()
+                await app.loadRefundQueue()
+            }
+        }
         .onAppear { retryScrollRestoreIfNeeded() }
         .photosPicker(isPresented: $storyLibraryPickerOpen, selection: $storyPhotoItem, matching: .images)
         .onChange(of: storyPhotoItem) { _, item in

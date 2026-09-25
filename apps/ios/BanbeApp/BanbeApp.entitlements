@@ -12,5 +12,17 @@
 	     declares aps-environment. See .claude/notes/07-notifications.md
 	     for the one-line switch to flip once a paid Apple Developer
 	     account exists. -->
+	<!-- TASK D (2026-10-01 UX foundation pass) — Associated Domains, unlike
+	     Push, works on a free/personal team, so this is safe to declare
+	     here unconditionally. Universal links only actually resolve once
+	     public/.well-known/apple-app-site-association's "TEAMID" placeholder
+	     is replaced with the real Apple Developer Team ID and the site is
+	     deployed — until then iOS silently falls back to opening the plain
+	     web URL, which is the documented, non-broken degraded state, not a
+	     crash. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:banbe.app</string>
+	</array>
 </dict>
 </plist>

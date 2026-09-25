@@ -8,6 +8,12 @@
       "destination": "/index.html"
     }
   ],
+  "headers": [
+    {
+      "source": "/.well-known/apple-app-site-association",
+      "headers": [{ "key": "Content-Type", "value": "application/json" }]
+    }
+  ],
   "crons": [
     {
       "path": "/api/cron/escalate-verifications",

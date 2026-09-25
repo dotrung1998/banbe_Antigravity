@@ -24,7 +24,16 @@ struct ConfirmedView: View {
     // below — never booking.status/paidMarkedAt alone, which is the
     // pre-state-machine model this screen used to read exclusively.
     private var phase: PaymentPhase { app.booking?.paymentState ?? .holding }
-    private var isPaid: Bool { phase == .confirmed || app.booking?.paidMarkedAt != nil }
+    // TASK B (2026-10-01 UX foundation pass) — Booking.isTicket is the one
+    // shared rule (status AND payment_state both "confirmed"); the
+    // paidMarkedAt fallback below is for a booking decoded before
+    // payment_state existed and must ALSO require status == "confirmed" —
+    // it previously didn't, which could read a disputed/cancelled booking
+    // that once had paidMarkedAt set as still "paid".
+    private var isPaid: Bool {
+        guard let booking = app.booking else { return false }
+        return booking.isTicket || (booking.paidMarkedAt != nil && booking.status == "confirmed")
+    }
     private var isHolding: Bool { app.booking != nil && phase == .holding }
     private var isPendingVerification: Bool { phase == .pendingVerification }
     private var isDisputed: Bool { phase == .disputed }

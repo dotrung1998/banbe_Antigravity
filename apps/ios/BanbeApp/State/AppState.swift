@@ -17,6 +17,7 @@ enum Screen: String {
     case policy
     case mapExplore
     case refundAccounts, myRefunds
+    case editProfile, publicProfile
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -698,6 +699,26 @@ final class AppState: ObservableObject {
     @Published var myRefunds: [RefundClaim] = []
     @Published var myRefundsLoading = false
     @Published var myRefundsBackScreen: Screen = .profile
+    // TASK D (2026-10-01 UX foundation pass) — shareable profile card.
+    @Published var editProfileHandle = ""
+    @Published var editProfileName = ""
+    @Published var editProfileBio = ""
+    @Published var editProfileCity = ""
+    @Published var editProfileInterests = ""
+    @Published var editProfileTheme = "default"
+    @Published var editProfileError = ""
+    @Published var editProfileBusy = false
+    @Published var publicProfile: PublicProfile?
+    @Published var publicProfileLoading = false
+    @Published var publicProfileError = ""
+    @Published var publicProfileBackScreen: Screen = .profile
+    @Published var publicProfileHandle = ""
+    // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
+    @Published var pulseDaily: [PulseItem] = []
+    @Published var pulseWeekly: [PulseItem] = []
+    @Published var pulseOpen = false
+    @Published var pulseTab: PulseTab = .daily
+    @Published var pulseOrganizerSheet: PulseItem?
     // Refund MVP — host's per-event Refund Center (AttendanceView's own new
     // "Hoàn tiền" section): owed/disputed (+ resolved, for the progress
     // summary) claims for ONE event. Recipient info comes from each claim's
@@ -1782,6 +1803,8 @@ final class AppState: ObservableObject {
         // comment above).
         case .refundAccounts: backFromRefundAccounts()
         case .myRefunds: backFromMyRefunds()
+        case .editProfile: backFromEditProfile()
+        case .publicProfile: backFromPublicProfile()
         default: break
         }
     }
@@ -1826,6 +1849,8 @@ final class AppState: ObservableObject {
         // rare swipe that DID complete.
         case .refundAccounts: return refundAccountsBackScreen
         case .myRefunds: return myRefundsBackScreen
+        case .editProfile: return .profile
+        case .publicProfile: return publicProfileBackScreen
         default: return .home
         }
     }

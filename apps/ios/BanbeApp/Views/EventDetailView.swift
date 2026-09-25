@@ -361,9 +361,19 @@ struct EventDetailView: View {
 
     private var actionBar: some View {
         Group {
-            if let booking = myBooking {
+            if let booking = myBooking, booking.isTicket {
                 InkButton(title: app.T("Xem vé của bạn ▪︎ mã \(booking.code ?? "")",
                                        "View your ticket ▪︎ code \(booking.code ?? "")")) {
+                    app.openHeld()
+                }
+            } else if myBooking != nil {
+                // TASK B (2026-10-01 UX foundation pass) — myBooking.status
+                // (checked below) can be "pending" while payment is still
+                // just holding/awaiting verification — this used to
+                // unconditionally announce "your ticket" + expose the
+                // entry code before there was one. Booking.isTicket is the
+                // one shared rule (Booking.swift).
+                InkButton(title: app.T("Xem trạng thái thanh toán", "View payment status")) {
                     app.openHeld()
                 }
             } else if event.cancelled {

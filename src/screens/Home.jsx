@@ -3,6 +3,8 @@ import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert } from '../theme.js';
+import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
+import ActionCenter from './ActionCenter.jsx';
 
 // Second, independent chip row (12-home-filters.md) — multi-select,
 // AND-combined with FILTER_DEFS' category row and the area picker, not a
@@ -46,6 +48,8 @@ export default function Home() {
     canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary, loadHomeLiveEvents,
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
     loadHomeStories, openStoryViewer,
+    loadMyRefunds, openMyRefunds, loadRefundQueue, goNotifications,
+    openPulseViewer,
   } = useGoc();
 
   const s = state;
@@ -61,11 +65,13 @@ export default function Home() {
   useEffect(() => {
     if (!s.user?.id) return;
     loadPaymentBookings();
+    loadMyRefunds();
     if (canHost) {
       loadVerifications();
       loadOrganizerHoldingSummary();
+      loadRefundQueue();
     }
-  }, [s.user?.id, canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary]);
+  }, [s.user?.id, canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary, loadMyRefunds, loadRefundQueue]);
 
   // 2026-09-21 follow-up — real (not baked-in) ended/cancelled status for
   // every catalogue event Home might show, public info so this runs for
@@ -95,6 +101,27 @@ export default function Home() {
   // re-render every second; none of them showing means no clock runs at all.
   const anyCountdownVisible = !!(heldEv || myHolding || myPendingVerification || orgPendingCount || orgHolding);
   const tickNow = useTicking(anyCountdownVisible);
+
+  // TASK A (2026-10-01 UX foundation pass) — replaces the old fixed
+  // "always show all four PhaseBanners" block: goer items (this account's
+  // own bookings/refunds) always considered, host items only while
+  // `canHost`, merged and re-sorted together by buildActionCenterItems()'s
+  // shared priority order, capped to 3 + "Xem tất cả" by <ActionCenter>.
+  const actionItems = useMemo(() => sortActionCenterItems([
+    ...buildActionCenterItems({
+      role: 'goer', T, now: tickNow,
+      myHolding, myPendingVerification, myRefunds: s.myRefunds || [],
+      onOpenPayment: (bookingId) => openPaymentDetails(bookingId, 'home'),
+      onOpenMyRefunds: () => openMyRefunds('home'),
+    }),
+    ...(canHost ? buildActionCenterItems({
+      role: 'host', T, now: tickNow,
+      verifications: s.verifications || [], refundQueue: s.refundQueue || [], orgHolding,
+      onOpenVerifications: () => openVerifications('home'),
+      onOpenRefundCenter: () => openVerifications('home'),
+      onOpenDashboard: goDashboard,
+    }) : []),
+  ]), [T, tickNow, myHolding, myPendingVerification, s.myRefunds, canHost, s.verifications, s.refundQueue, orgHolding, openPaymentDetails, openMyRefunds, openVerifications, goDashboard]);
 
   // Home is often the screen a buyer is sitting on when a hold's countdown
   // reaches zero — not just the ticket screen. myHolding above already
@@ -218,45 +245,11 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Both phases of the payment state machine, both roles this account
-          can hold: what I (as a buyer) am waiting on, and — separately —
-          what my own events' buyers are waiting on me for. Each row only
-          renders while there is something real to show. */}
-      {!!myHolding && (
-        <PhaseBanner
-          label={T('Đang giữ chỗ', 'Holding a seat')}
-          detail={(myHolding.events?.name || '') + (myHolding.qty > 1 ? ' ▪︎ ' + myHolding.qty + T(' vé', ' tix') : '') + T(' ▪︎ trả để xác nhận', ' ▪︎ pay to confirm')}
-          countdown={formatCountdown(msUntil(myHolding.hold_expires_at, tickNow))}
-          onClick={() => openPaymentDetails(myHolding.id, 'home')}
-        />
-      )}
-      {!!myPendingVerification && (
-        <PhaseBanner
-          label={T('Đang chờ xác nhận', 'Awaiting confirmation')}
-          detail={(myPendingVerification.events?.name || '') + T(' ▪︎ đồng hồ đã dừng, chỗ được khoá', ' ▪︎ clock stopped, seat locked')}
-          countdown={null}
-          onClick={() => openPaymentDetails(myPendingVerification.id, 'home')}
-        />
-      )}
-      {!!orgPendingCount && (
-        <PhaseBanner
-          label={T('Chờ bạn xác nhận thanh toán', 'Payments awaiting your OK')}
-          detail={orgPendingCount + T(' khoản', orgPendingCount === 1 ? ' payment' : ' payments') + (orgSoonestVerifyDue ? T(' ▪︎ sớm nhất còn', ' ▪︎ soonest in') : '')}
-          countdown={orgSoonestVerifyDue ? formatCountdown(msUntil(orgSoonestVerifyDue, tickNow)) : null}
-          urgent={orgSoonestVerifyDue ? msUntil(orgSoonestVerifyDue, tickNow) === 0 : false}
-          onClick={openVerifications}
-          testId="home-org-verifications-banner"
-        />
-      )}
-      {!!orgHolding && (
-        <PhaseBanner
-          label={T('Khách đang giữ chỗ', 'Guests holding seats')}
-          detail={orgHolding.count + T(' chỗ', orgHolding.count === 1 ? ' seat' : ' seats') + T(' ▪︎ sớm nhất hết hạn trong', ' ▪︎ soonest expires in')}
-          countdown={orgHolding.soonestHoldExpiresAt ? formatCountdown(msUntil(orgHolding.soonestHoldExpiresAt, tickNow)) : null}
-          onClick={goDashboard}
-          testId="home-org-holding-banner"
-        />
-      )}
+      {/* TASK A (2026-10-01 UX foundation pass) — replaces the old fixed
+          four-banner block: one unified, priority-sorted, 3-card-capped
+          Action Center covering both roles this account can hold. See
+          src/lib/actionCenter.js for the source list and ordering rule. */}
+      <ActionCenter items={actionItems} onSeeAll={goNotifications} T={T} />
 
       {savedList.length > 0 && (
         <div style={{ padding: '16px 20px 4px', borderBottom: `1px solid ${rule}` }}>
@@ -283,10 +276,27 @@ export default function Home() {
       )}
 
       {/* Task 3.3 (07-notifications.md) — active-story row, between "Your
-          events" and the main event list, per this ticket's own placement. */}
-      {s.homeStories.length > 0 && (
-        <div style={{ display: 'flex', gap: 14, overflowX: 'auto', padding: '14px 20px', borderBottom: `1px solid ${rule}` }}>
-          {s.homeStories.map(g => (
+          events" and the main event list, per this ticket's own placement.
+          TASK E (2026-10-01 UX foundation pass) — "Banbe Pulse" is now a
+          PERMANENT first entry (index 0), so the row itself is no longer
+          conditional on real stories existing — it always shows at least
+          Pulse. Never rendered on Map (this row only exists on Home). */}
+      <div style={{ display: 'flex', gap: 14, overflowX: 'auto', padding: '14px 20px', borderBottom: `1px solid ${rule}` }}>
+        <div
+          onClick={openPulseViewer}
+          data-testid="home-pulse-avatar"
+          style={{ flex: 'none', width: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer' }}
+        >
+          <div style={{
+            width: 56, height: 56, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'linear-gradient(150deg, #E7C9C2, #C8CBB2)',
+          }}>
+            <span style={{ fontSize: 20 }}>✦</span>
+          </div>
+          <span style={{ fontSize: 9.5, color: ink, textAlign: 'center', whiteSpace: 'nowrap' }}>{T('Banbe Pulse', 'Banbe Pulse')}</span>
+        </div>
+        {s.homeStories.length > 0 && (
+          s.homeStories.map(g => (
             <div
               key={g.organizerId}
               onClick={(e) => {
@@ -309,9 +319,9 @@ export default function Home() {
               </div>
               <span style={{ fontSize: 9.5, color: ink, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 60 }}>{g.orgName}</span>
             </div>
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
 
       <div style={{ display: 'flex', gap: 20, padding: '16px 20px 14px' }}>
         {filters.map(f => (
@@ -389,28 +399,3 @@ export default function Home() {
   );
 }
 
-// One row shape for every payment-phase banner Home shows, on either side
-// of the transaction. `countdown` is optional — PHASE 2 for a buyer has
-// nothing productive to count down (their clock already stopped), so that
-// row renders with no timer rather than a fake or misleading one.
-function PhaseBanner({ label, detail, countdown, onClick, urgent, testId }) {
-  return (
-    <div
-      onClick={onClick}
-      data-testid={testId}
-      style={{ ...fieldGlass({ margin: '10px 20px 0', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, cursor: 'pointer' }) }}
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{label}</span>
-        <span style={{ fontSize: 12.5, lineHeight: 1.4, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {detail}
-        </span>
-      </div>
-      {countdown && (
-        <span style={{ ...display(19, { fontVariantNumeric: 'tabular-nums', flex: 'none', marginLeft: 12, color: urgent ? alert : ink }) }}>
-          {countdown}
-        </span>
-      )}
-    </div>
-  );
-}

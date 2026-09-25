@@ -47,6 +47,20 @@ if (typeof window !== 'undefined') {
   }
 }
 
+// TASK D (2026-10-01 UX foundation pass) — the universal-link fallback:
+// https://banbe.app/u/<handle> resolves via a plain SPA path (vercel.json
+// has no server-side routing beyond the catch-all rewrite to index.html —
+// see .claude/notes), so this app itself must recognize the path at boot,
+// same "read once at module load, before React mounts" pattern as
+// sharedOrgEventKey above. Works signed OUT too (get_public_profile() is
+// granted to anon, migration 079) — a shared profile link must open
+// something real without forcing a login wall first.
+let sharedProfileHandle = null;
+if (typeof window !== 'undefined') {
+  const m = window.location.pathname.match(/^\/u\/([a-z0-9_]{3,24})\/?$/i);
+  if (m) sharedProfileHandle = m[1].toLowerCase();
+}
+
 // Every screen a signed-out visitor may ever legitimately be on. Anything
 // else while `!user` gets redirected to 'login' by the guard effect below
 // — the enforcement point for "no guest browsing of any screen" (Task 1).
@@ -285,6 +299,13 @@ const initialState = {
   editNameValue: '',
   editNameError: '',
   editNameSaving: false,
+  // TASK D (2026-10-01 UX foundation pass) — shareable profile card.
+  editProfileHandle: '', editProfileName: '', editProfileBio: '', editProfileCity: '',
+  editProfileInterests: '', editProfileTheme: 'default', editProfileError: '', editProfileBusy: false,
+  publicProfile: null, publicProfileLoading: false, publicProfileError: '', publicProfileBack: 'profile', publicProfileHandle: '',
+  profileLinkCopiedFlash: false,
+  // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
+  pulseDaily: [], pulseWeekly: [], pulseOpen: false, pulseTab: 'daily', pulseOrganizerSheet: null,
   notifications: [],
   unreadNotifications: 0,
   // Inbox tab badge (BottomTabBar.jsx) — count of messages where
@@ -689,12 +710,35 @@ export function GocProvider({ children }) {
         // change). The blanket guard still applies from here if it turns
         // out there's no session once that resolves.
         ...(sharedOrgEventKey ? { eventKey: sharedOrgEventKey, arrivedFromSharedLink: true, screen: 'organizer' } : {}),
+        // Same reasoning, for a shared /u/<handle> profile link — the
+        // actual data fetch happens in the mount effect below (needs
+        // `supabase.rpc`, not available at this synchronous init point).
+        ...(sharedProfileHandle ? { screen: 'publicProfile', publicProfileHandle: sharedProfileHandle, publicProfileLoading: true, publicProfileBack: 'home' } : {}),
       };
     } catch {
       return initialState;
     }
   });
   const s = state;
+  // TASK D (2026-10-01 UX foundation pass) — fires the real get_public_profile()
+  // fetch for a shared /u/<handle> link's already-set initial screen (the
+  // synchronous state initializer above can only set the screen/loading
+  // flag, not await an RPC). Runs at most once — sharedProfileHandle is a
+  // module-level value read once at load, never reassigned afterward.
+  useEffect(() => {
+    if (!sharedProfileHandle) return;
+    let active = true;
+    supabase.rpc('get_public_profile', { p_handle: sharedProfileHandle }).then(({ data, error }) => {
+      if (!active) return;
+      if (error || data?.success === false) {
+        setStateRaw(prev => ({ ...prev, publicProfileLoading: false, publicProfileError: T('Không tìm thấy hồ sơ này.', "This profile couldn't be found.") }));
+        return;
+      }
+      setStateRaw(prev => ({ ...prev, publicProfile: data, publicProfileLoading: false }));
+    });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const prefsRef = useRef({ lang: state.lang, theme: state.theme });
   // BUG 1 (2026-09-22 fourteenth follow-up) — see markThreadMessagesRead()'s
   // own comment: the timestamp of the most recent successful
@@ -769,7 +813,7 @@ export function GocProvider({ children }) {
       }
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, locale, theme, prefs_saved, display_name, referral_code, policy_accepted_at, policy_version, auto_email_documents, muted_notification_kinds')
+        .select('role, locale, theme, prefs_saved, display_name, referral_code, policy_accepted_at, policy_version, auto_email_documents, muted_notification_kinds, handle, avatar_url, bio, city, interests, profile_theme')
         .eq('id', user.id)
         .maybeSingle();
       const role =
@@ -780,7 +824,16 @@ export function GocProvider({ children }) {
       const canHostNow = role === 'organizer' || role === 'admin';
       const displayName = (profile?.display_name || '').trim() || user.user_metadata?.display_name || '';
       set({
-        user: { ...user, name: displayName }, accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer',
+        // TASK D (2026-10-01 UX foundation pass) — the shareable-profile
+        // fields, loaded alongside everything else this same query already
+        // fetched rather than a second round trip.
+        user: {
+          ...user, name: displayName,
+          handle: profile?.handle || null, avatarUrl: profile?.avatar_url || null,
+          bio: profile?.bio || '', city: profile?.city || '',
+          interests: profile?.interests || [], profileTheme: profile?.profile_theme || 'default',
+        },
+        accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer',
         referralCode: profile?.referral_code || null, sessionChecked: true,
         autoEmailDocuments: profile?.auto_email_documents === true,
         mutedNotificationKinds: profile?.muted_notification_kinds || [],
@@ -3128,6 +3181,49 @@ export function GocProvider({ children }) {
   // file's shrinkToRing()), not this stored value, since PRODUCT CHANGE 3
   // lets the user drift to a different host before dismissing — this only
   // ever needs to capture where the OPEN animation started from.
+  // ---- TASK E (2026-10-01 UX foundation pass) — Banbe Pulse ----
+  // A permanent, system-generated ring entry — deliberately NOT a real row
+  // in `stories` (that table hard-expires everything in 24h, both by
+  // column default and RLS predicate; a synthetic client-side entry sidesteps
+  // that schema entirely rather than special-casing it, per this ticket's
+  // own "not authored as a normal 24h user story" rule).
+  const pulseSeq = useRef(0);
+  const loadPulse = useCallback(async (period) => {
+    const seq = ++pulseSeq.current;
+    const { data, error } = await supabase.rpc('goc_pulse_ranked', { p_period: period });
+    if (seq !== pulseSeq.current) return; // stale response guard, same pattern as loadRefundQueue
+    if (error || data?.success === false) {
+      if (import.meta.env?.DEV) console.warn('loadPulse failed:', error, data);
+      return;
+    }
+    set(period === 'weekly' ? { pulseWeekly: data.items || [] } : { pulseDaily: data.items || [] });
+  }, [set]);
+  const openPulseViewer = useCallback(() => {
+    set({ pulseOpen: true, pulseTab: 'daily' });
+    loadPulse('daily');
+    loadPulse('weekly');
+  }, [set, loadPulse]);
+  const closePulseViewer = useCallback(() => set({ pulseOpen: false, pulseOrganizerSheet: null }), [set]);
+  const setPulseTab = useCallback((tab) => set({ pulseTab: tab }), [set]);
+  const openPulseOrganizerSheet = useCallback((item) => set({ pulseOrganizerSheet: item }), [set]);
+  const closePulseOrganizerSheet = useCallback(() => set({ pulseOrganizerSheet: null }), [set]);
+  /** Follow straight from the Pulse organizer sheet — same plain optimistic
+   * table write as toggleFollowOrganizer (TASK D), just patching the
+   * lighter Pulse item shape instead of a full public-profile object. */
+  const followPulseOrganizer = useCallback(async (organizerId) => {
+    if (!s.user?.id) return;
+    set(prev => ({
+      pulseOrganizerSheet: prev.pulseOrganizerSheet ? { ...prev.pulseOrganizerSheet, following: true } : null,
+    }));
+    const { error } = await supabase.from('follows').insert({ user_id: s.user.id, organizer_id: organizerId });
+    if (error) {
+      console.warn('followPulseOrganizer failed:', error);
+      set(prev => ({
+        pulseOrganizerSheet: prev.pulseOrganizerSheet ? { ...prev.pulseOrganizerSheet, following: false } : null,
+      }));
+    }
+  }, [set, s.user?.id]);
+
   const openStoryViewer = useCallback((organizerId, originRect) => {
     const groups = s.homeStories.filter(g => g.stories.length > 0);
     const groupIndex = groups.findIndex(g => g.organizerId === organizerId);
@@ -3583,6 +3679,128 @@ export function GocProvider({ children }) {
       }
     } catch { /* best-effort email dispatch; the in-app notification already landed */ }
   }, [set, s.editNameValue, s.user, T]);
+
+  // ---- TASK D (2026-10-01 UX foundation pass) — shareable profile card ----
+  const openEditProfile = useCallback(() => set({
+    screen: 'editProfile',
+    editProfileHandle: s.user?.handle || '', editProfileName: s.user?.name || '',
+    editProfileBio: s.user?.bio || '', editProfileCity: s.user?.city || '',
+    editProfileInterests: (s.user?.interests || []).join(', '), editProfileTheme: s.user?.profileTheme || 'default',
+    editProfileError: '', editProfileBusy: false,
+  }), [set, s.user]);
+  const backFromEditProfile = useCallback(() => set({ screen: 'profile' }), [set]);
+
+  const saveProfileFields = useCallback(async (avatarUrlOverride) => {
+    set({ editProfileBusy: true, editProfileError: '' });
+    const interests = s.editProfileInterests.split(',').map(x => x.trim()).filter(Boolean);
+    const { data, error } = await supabase.rpc('save_profile', {
+      p_handle: s.editProfileHandle, p_display_name: s.editProfileName, p_bio: s.editProfileBio,
+      p_city: s.editProfileCity, p_interests: interests, p_theme: s.editProfileTheme,
+      p_avatar_url: avatarUrlOverride ?? null,
+    });
+    if (error || data?.success === false) {
+      const code = data?.error;
+      set({
+        editProfileBusy: false,
+        editProfileError: code === 'HANDLE_TAKEN' ? T('Tên người dùng này đã có người dùng.', 'That handle is already taken.')
+          : code === 'INVALID_HANDLE' ? T('Tên người dùng chỉ gồm chữ thường, số, dấu gạch dưới (3-24 ký tự).', 'Handle must be lowercase letters/numbers/underscore, 3-24 characters.')
+          : code === 'INVALID_NAME' ? T('Vui lòng nhập tên hiển thị.', 'Please enter a display name.')
+          : T('Không thể lưu lúc này. Vui lòng thử lại.', 'Could not save right now. Please try again.'),
+      });
+      return false;
+    }
+    set(prev => ({
+      editProfileBusy: false, screen: 'profile',
+      user: {
+        ...prev.user, name: s.editProfileName, handle: data.handle, bio: s.editProfileBio, city: s.editProfileCity,
+        interests, profileTheme: s.editProfileTheme, avatarUrl: avatarUrlOverride ?? prev.user?.avatarUrl,
+      },
+    }));
+    return true;
+  }, [set, s.editProfileHandle, s.editProfileName, s.editProfileBio, s.editProfileCity, s.editProfileInterests, s.editProfileTheme, T]);
+
+  /** Owner-only avatar upload — validated client-side (type/size) before
+   * ever reaching Storage; the bucket's own RLS (avatars_owner_write,
+   * migration 079) additionally enforces the path is under this user's own
+   * id, so even a bypassed client check can't write anywhere else. */
+  const uploadAvatar = useCallback(async (file) => {
+    if (!s.user?.id) return null;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      set({ editProfileError: T('Ảnh phải là JPEG, PNG hoặc WebP.', 'Image must be JPEG, PNG, or WebP.') });
+      return null;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      set({ editProfileError: T('Ảnh tối đa 5MB.', 'Image must be under 5MB.') });
+      return null;
+    }
+    set({ editProfileBusy: true, editProfileError: '' });
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `${s.user.id}/${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
+    if (error) {
+      console.warn('uploadAvatar failed:', error);
+      set({ editProfileBusy: false, editProfileError: T('Không thể tải ảnh lên. Vui lòng thử lại.', 'Could not upload the image. Please try again.') });
+      return null;
+    }
+    const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path);
+    set({ editProfileBusy: false });
+    return pub?.publicUrl || null;
+  }, [set, s.user?.id, T]);
+
+  const removeAvatar = useCallback(async () => {
+    await saveProfileFields('');
+  }, [saveProfileFields]);
+
+  /** Public profile screen — reachable by handle, works for a signed-out
+   * visitor too (get_public_profile() is granted to anon, migration 079). */
+  const openPublicProfile = useCallback(async (handle, back = 'profile') => {
+    set({ screen: 'publicProfile', publicProfile: null, publicProfileLoading: true, publicProfileError: '', publicProfileBack: back, publicProfileHandle: handle });
+    const { data, error } = await supabase.rpc('get_public_profile', { p_handle: handle });
+    if (error || data?.success === false) {
+      set({ publicProfileLoading: false, publicProfileError: T('Không tìm thấy hồ sơ này.', "This profile couldn't be found.") });
+      return;
+    }
+    set({ publicProfile: data, publicProfileLoading: false });
+  }, [set, T]);
+  const backFromPublicProfile = useCallback(() => set(prev => ({ screen: prev.publicProfileBack || 'profile' })), [set]);
+
+  const toggleFollowOrganizer = useCallback(async (organizerId) => {
+    if (!s.user?.id || !organizerId) return;
+    const wasFollowing = !!s.publicProfile?.organizer?.following;
+    // Optimistic — this is a plain, instantly-reversible social toggle
+    // (unlike refund/payment state), reconciled by the real table write
+    // below; reverted on failure.
+    set(prev => (prev.publicProfile?.organizer
+      ? { publicProfile: { ...prev.publicProfile, organizer: { ...prev.publicProfile.organizer, following: !wasFollowing, follower_count: prev.publicProfile.organizer.follower_count + (wasFollowing ? -1 : 1) } } }
+      : {}));
+    const { error } = wasFollowing
+      ? await supabase.from('follows').delete().eq('user_id', s.user.id).eq('organizer_id', organizerId)
+      : await supabase.from('follows').insert({ user_id: s.user.id, organizer_id: organizerId });
+    if (error) {
+      console.warn('toggleFollowOrganizer failed:', error);
+      set(prev => (prev.publicProfile?.organizer
+        ? { publicProfile: { ...prev.publicProfile, organizer: { ...prev.publicProfile.organizer, following: wasFollowing, follower_count: prev.publicProfile.organizer.follower_count + (wasFollowing ? 1 : -1) } } }
+        : {}));
+    }
+  }, [set, s.user?.id, s.publicProfile]);
+
+  /** Native share sheet (mobile Safari/Chrome) with a clipboard-copy
+   * fallback for browsers with no Web Share API (most desktop browsers). */
+  const sharePublicProfile = useCallback(async (handle, displayName) => {
+    const url = `https://banbe.app/u/${handle}`;
+    const title = T('Hồ sơ banbe của ' + (displayName || ''), (displayName || '') + '’s banbe profile');
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, url });
+        return;
+      }
+    } catch { /* user cancelled the native sheet — not an error */ }
+    try {
+      await navigator.clipboard.writeText(url);
+      set({ profileLinkCopiedFlash: true });
+      setTimeout(() => set({ profileLinkCopiedFlash: false }), 2200);
+    } catch { /* clipboard unavailable — nothing more to do */ }
+  }, [set, T]);
 
   // ---- notifications ----
   const loadNotifications = useCallback(async () => {
@@ -5378,7 +5596,7 @@ export function GocProvider({ children }) {
     loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, toggleFollowOrganizer, sharePublicProfile, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
@@ -5387,7 +5605,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
@@ -5411,7 +5629,7 @@ export function GocProvider({ children }) {
     loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, toggleFollowOrganizer, sharePublicProfile, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
@@ -5420,7 +5638,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,

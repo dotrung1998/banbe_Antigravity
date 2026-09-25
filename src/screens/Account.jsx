@@ -3,6 +3,10 @@ import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
 import { AttachMenuIcon } from './Chat.jsx';
+import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
+import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
+import ActionCenter from './ActionCenter.jsx';
+import { pickSoonest } from '../lib/countdown.js';
 
 // TASK 3C (2026-09-22 twenty-first follow-up) — no existing icon
 // component/library covers this screen's semantics (only Chat.jsx's own
@@ -38,8 +42,10 @@ function RowIcon({ kind, size = 22 }) {
 export default function Account() {
   const {
     state, T, goHome, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, openSecurity, openDocuments, openPayout, openVerifications, openDisputes, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
-    openRefundAccounts, openMyRefunds,
+    openRefundAccounts, openMyRefunds, openEditProfile,
     loadHomeStories, openStoryViewer, pickStoryFile, cancelStoryCreate, publishStory,
+    loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary,
+    openPaymentDetails, goDashboard,
   } = useGoc();
   const s = state;
   const storyFileRef = useRef(null);
@@ -54,6 +60,39 @@ export default function Account() {
   // hosts') so the ring below reflects real data even when Account is
   // opened directly, without having visited Home first this session.
   useEffect(() => { if (s.user) loadHomeStories(); }, [s.user, loadHomeStories]);
+  // TASK A (2026-10-01 UX foundation pass) — Account is one of this
+  // component's three placements; loads the same canonical sources Home
+  // does so the Action Center reflects live server state here too, not a
+  // stale snapshot from whenever Home last loaded them.
+  useEffect(() => {
+    if (!s.user?.id) return;
+    loadPaymentBookings();
+    loadMyRefunds();
+    if (canHost) {
+      loadVerifications();
+      loadRefundQueue();
+      loadOrganizerHoldingSummary();
+    }
+  }, [s.user?.id, canHost, loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary]);
+  const myHolding = pickSoonest(s.paymentBookings, 'holding', 'hold_expires_at');
+  const myPendingVerification = (s.paymentBookings || [])
+    .filter(b => b.payment_state === 'pending_verification')
+    .sort((a, b) => new Date(a.proof_uploaded_at || 0) - new Date(b.proof_uploaded_at || 0))[0] || null;
+  const actionItems = sortActionCenterItems([
+    ...buildActionCenterItems({
+      role: 'goer', T, now: s.now || Date.now(),
+      myHolding, myPendingVerification, myRefunds: s.myRefunds || [],
+      onOpenPayment: (bookingId) => openPaymentDetails(bookingId, 'profile'),
+      onOpenMyRefunds: () => openMyRefunds('profile'),
+    }),
+    ...(canHost ? buildActionCenterItems({
+      role: 'host', T, now: s.now || Date.now(),
+      verifications: s.verifications || [], refundQueue: s.refundQueue || [], orgHolding: s.organizerHoldingSummary,
+      onOpenVerifications: () => openVerifications('profile'),
+      onOpenRefundCenter: () => openVerifications('profile'),
+      onOpenDashboard: goDashboard,
+    }) : []),
+  ]);
   const myStoryGroup = s.myOrganizerIds.length ? s.homeStories.find(g => s.myOrganizerIds.includes(g.organizerId)) : null;
   const hasActiveStory = !!myStoryGroup;
   const storyUnviewed = hasActiveStory && !myStoryGroup.allViewed;
@@ -85,7 +124,20 @@ export default function Account() {
         <span onClick={goHome} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>Xong</span>
       </div>
 
-      <div style={{ padding: '22px 20px 0', display: 'flex', gap: 14, alignItems: 'center' }}>
+      {/* TASK D (2026-10-01 UX foundation pass) — the header is now a
+          tappable rounded profile card (editorial style: soft gradient
+          wash from the account's own chosen palette, real avatar or a
+          palette-tinted monogram, handle line). The story ring/post-story
+          menu keep their own existing nested tap targets unchanged — a
+          separate small "Chỉnh sửa" affordance (not the whole card) opens
+          EditProfile, so it can't conflict with those. */}
+      <div
+        style={{
+          ...cardGlass({ margin: '22px 20px 0', padding: '18px 16px', display: 'flex', gap: 14, alignItems: 'center' }),
+          background: `linear-gradient(165deg, ${PROFILE_PALETTE_COLORS[s.user?.profileTheme] || PROFILE_PALETTE_COLORS.default}55, transparent 70%)`,
+        }}
+        data-testid="account-profile-card"
+      >
         {/* Task 3.3 (07-notifications.md) — story ring: a bright outline
             while this host has an active, not-fully-viewed story; a
             subdued one once every active story has been viewed; no ring
@@ -102,9 +154,15 @@ export default function Account() {
             cursor: hasActiveStory ? 'pointer' : 'default',
           }}
         >
-          <div style={{ ...fieldGlass({ width: 56, height: 56, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }), ...display(22) }}>G</div>
+          {s.user?.avatarUrl ? (
+            <img src={s.user.avatarUrl} alt="" style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover' }} />
+          ) : (
+            <div style={{ ...fieldGlass({ width: 56, height: 56, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }), ...display(22) }}>
+              {(profileName || 'B').trim()[0]?.toUpperCase() || 'B'}
+            </div>
+          )}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
             <span style={{ ...display(22, { lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{profileName}</span>
             {s.user && (
@@ -113,6 +171,7 @@ export default function Account() {
               </span>
             )}
           </div>
+          {s.user?.handle && <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>@{s.user.handle}</span>}
           <span style={{ fontSize: 11, letterSpacing: '0.06em', color: ink }}>{profileSub}</span>
           {/* Task 3.2 — story creation entry point, hosts only. */}
           {isOrganizer && (
@@ -148,6 +207,11 @@ export default function Account() {
             </div>
           )}
         </div>
+        {s.user && (
+          <span onClick={openEditProfile} data-testid="account-edit-profile" style={{ flex: 'none', fontSize: 20, color: ink, opacity: 0.55, cursor: 'pointer', alignSelf: 'center' }}>
+            ›
+          </span>
+        )}
         <input ref={storyFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPickStoryFile} data-testid="story-file-input" />
         <input ref={storyCameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onPickStoryFile} data-testid="story-camera-input" />
       </div>
@@ -195,6 +259,8 @@ export default function Account() {
           <span style={{ fontSize: 11, color: ink }}>{T('Đã lưu', 'Saved')}</span>
         </div>
       </div>
+
+      <ActionCenter items={actionItems} onSeeAll={() => openVerifications('profile')} T={T} />
 
       {referralLink && (
         <div style={{ ...cardGlass({ margin: '20px 20px 0', padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, cursor: 'pointer' }) }} onClick={shareReferral}>

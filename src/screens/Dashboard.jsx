@@ -3,10 +3,32 @@ import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, findEvent, bg } from '../data/events.js';
 import { liveEventOverrides } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
+import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
+import ActionCenter from './ActionCenter.jsx';
 
 export default function Dashboard() {
-  const { state, T, trStatus, stripKm, curEvent, backFromDashboard, switchToGoer, goCreate, openAttendance, goEvent, requestVerify, loadHomeLiveEvents } = useGoc();
+  const {
+    state, T, trStatus, stripKm, curEvent, backFromDashboard, switchToGoer, goCreate, openAttendance, goEvent, requestVerify, loadHomeLiveEvents,
+    loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, openVerifications,
+  } = useGoc();
   const s = state;
+
+  // TASK A (2026-10-01 UX foundation pass) — Dashboard is host-only (this
+  // whole screen only ever renders for an organizer), so only host sources
+  // are loaded/shown here — same canonical loaders Home/Account use.
+  useEffect(() => {
+    if (!s.user?.id) return;
+    loadVerifications();
+    loadRefundQueue();
+    loadOrganizerHoldingSummary();
+  }, [s.user?.id, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary]);
+  const actionItems = sortActionCenterItems(buildActionCenterItems({
+    role: 'host', T, now: s.now || Date.now(),
+    verifications: s.verifications || [], refundQueue: s.refundQueue || [], orgHolding: s.organizerHoldingSummary,
+    onOpenVerifications: () => openVerifications('dashboard'),
+    onOpenRefundCenter: () => openVerifications('dashboard'),
+    onOpenDashboard: () => {},
+  }));
 
   // TASK 3 (organizer Check-in ended-event filtering) — same batched live
   // fetch Home.jsx already calls on mount (loadHomeLiveEvents), reused here
@@ -81,6 +103,8 @@ export default function Dashboard() {
           <span onClick={requestVerify} style={{ flex: 'none', fontSize: 12.5, fontWeight: 600, padding: '9px 16px', borderRadius: 999, background: ink, color: paper, cursor: 'pointer' }}>{T('Yêu cầu xác minh', 'Request')}</span>
         </div>
       )}
+
+      <ActionCenter items={actionItems} onSeeAll={() => openVerifications('dashboard')} T={T} />
 
       <div style={{ margin: '24px 22px 0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>

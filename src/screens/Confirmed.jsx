@@ -4,6 +4,7 @@ import { useGoc } from '../state/GocContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, cardGlass, alert } from '../theme.js';
+import { isBookingTicket } from '../lib/bookingTicket.js';
 
 export default function Confirmed() {
   const {
@@ -18,7 +19,10 @@ export default function Confirmed() {
   // one, but a booking is the one object here worth a defensive read).
   const phase = s.booking?.payment_state
     || (s.booking?.paid_marked_at ? 'confirmed' : s.booking ? 'holding' : null);
-  const isPaid = phase === 'confirmed';
+  // TASK B (2026-10-01 UX foundation pass) — the ticket/QR is only ever
+  // real once BOTH booking.status AND payment_state read 'confirmed'; see
+  // isBookingTicket()'s own doc comment (src/lib/bookingTicket.js).
+  const isPaid = isBookingTicket(s.booking);
   const isHolding = phase === 'holding';
   const isPendingVerification = phase === 'pending_verification';
   const isDisputed = phase === 'disputed';
