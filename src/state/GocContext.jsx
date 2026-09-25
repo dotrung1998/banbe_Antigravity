@@ -296,6 +296,7 @@ const initialState = {
   accountType: 'participant',
   organizerMode: false,
   organizerModeError: '',
+  organizerModeBusy: false,
   editNameValue: '',
   editNameError: '',
   editNameSaving: false,
@@ -3481,24 +3482,46 @@ export function GocProvider({ children }) {
   // preference on top of it.
   const applyOrganizerMode = useCallback(async (enabled) => {
     if (s.accountType === 'admin') return;
+    // TASK 2 (2026-10-05 fix pass) — see toggleOrganizerMode's own comment:
+    // the actual guard against a double-tap/double-click firing two
+    // overlapping requests (both reading the same stale `s.organizerMode`
+    // before the first one's optimistic flip has re-rendered), which could
+    // let the SECOND response's rollback stomp the first call's already-
+    // successful result and surface "Vui lòng thử lại" for a change that
+    // had, in fact, already gone through.
+    if (s.organizerModeBusy) return;
     const rollback = { organizerMode: s.organizerMode, accountType: s.accountType };
-    set({ organizerMode: enabled, accountType: enabled ? 'organizer' : 'participant', mode: enabled ? 'host' : 'goer', organizerModeError: '' });
+    set({ organizerMode: enabled, accountType: enabled ? 'organizer' : 'participant', mode: enabled ? 'host' : 'goer', organizerModeError: '', organizerModeBusy: true });
     const { data, error } = await supabase.rpc('set_organizer_mode', { p_enabled: enabled });
     if (error) {
       // Rolling back in silence is what makes the switch look like it "turns
-      // itself back off" — always say why it went back.
-      console.warn('Organizer mode update failed:', error);
+      // itself back off" — always say why it went back. TASK 2: logs the
+      // structured PostgrestError fields (code/message/details/hint) the
+      // supabase-js client already exposes, not just the object's default
+      // string form — this is the one place a real device's actual failure
+      // (not reproducible here) could otherwise never be diagnosed from.
+      console.warn('Organizer mode update failed:', { code: error.code, message: error.message, details: error.details, hint: error.hint });
       const notMigrated = error.code === 'PGRST202';
+      // A stale/expired access token is a known, actionable cause distinct
+      // from a genuine server rejection — PostgREST surfaces it as PGRST301
+      // (or a plain 401 on some paths). Every other code still gets the
+      // generic string: this RPC has never been observed to raise anything
+      // else, so claiming a more specific cause for those would be a guess.
+      const sessionExpired = error.code === 'PGRST301' || error.code === '401';
       return set({
         ...rollback,
         mode: rollback.organizerMode ? 'host' : 'goer',
+        organizerModeBusy: false,
         organizerModeError: notMigrated
           ? T('Máy chủ chưa cài đặt chế độ tổ chức. Hãy chạy các migration Supabase còn thiếu.', 'Organizer mode is not installed on the server yet. Apply the pending Supabase migrations.')
+          : sessionExpired
+          ? T('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại rồi thử lại.', 'Your session has expired. Please sign in again and retry.')
           : T('Không thể đổi chế độ tổ chức lúc này. Vui lòng thử lại.', 'We could not change organizer mode right now. Please try again.'),
       });
     }
-    if (data) set({ accountType: data, organizerMode: data === 'organizer' || data === 'admin', organizerModeError: '' });
-  }, [set, s.accountType, s.organizerMode, T]);
+    if (data) set({ accountType: data, organizerMode: data === 'organizer' || data === 'admin', organizerModeError: '', organizerModeBusy: false });
+    else set({ organizerModeBusy: false });
+  }, [set, s.accountType, s.organizerMode, s.organizerModeBusy, T]);
   const enableOrganizerMode = useCallback(() => applyOrganizerMode(true), [applyOrganizerMode]);
   // TASK B — the actual toggle target is the CURRENT preference
   // (organizerMode), never eligibility (canHost) — see applyOrganizerMode's
@@ -3506,8 +3529,9 @@ export function GocProvider({ children }) {
   // "cannot be turned off/back on."
   const toggleOrganizerMode = useCallback(() => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'profile' });
+    if (s.organizerModeBusy) return;
     applyOrganizerMode(!s.organizerMode);
-  }, [set, s.user, s.organizerMode, applyOrganizerMode]);
+  }, [set, s.user, s.organizerMode, s.organizerModeBusy, applyOrganizerMode]);
 
   // ---- navigation ----
   const goHome = useCallback(() => set({ screen: 'home' }), [set]);

@@ -287,12 +287,25 @@ export default function Home() {
           data-testid="home-pulse-avatar"
           style={{ flex: 'none', width: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer' }}
         >
-          <div style={{
+          {/* TASK 3 (2026-10-05 fix pass) — a refined multicolor shimmer,
+              built from Banbe's own existing dusty-rose/sage gradient
+              (the same two colors this used before) plus one warm sand
+              stop in the same muted family — never a saturated rainbow.
+              A single `hue-rotate` CSS animation, not a per-frame redraw
+              loop; `prefers-reduced-motion: reduce` (see the <style> tag
+              below) disables it, leaving the gradient's own resting frame
+              — still colorful, just not moving — as the static fallback. */}
+          <div className="bb-pulse-ring" style={{
             width: 56, height: 56, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'linear-gradient(150deg, #E7C9C2, #C8CBB2)',
+            background: 'linear-gradient(150deg, #E7C9C2, #E3CFA6 50%, #C8CBB2)',
           }}>
-            <span style={{ fontSize: 20 }}>✦</span>
+            <span style={{ fontSize: 20, color: '#fff', textShadow: '0 0 6px rgba(255,255,255,0.55)' }}>✦</span>
           </div>
+          <style>{`
+            @keyframes bb-pulse-hue { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(360deg); } }
+            .bb-pulse-ring { animation: bb-pulse-hue 7s linear infinite; }
+            @media (prefers-reduced-motion: reduce) { .bb-pulse-ring { animation: none; } }
+          `}</style>
           <span style={{ fontSize: 9.5, color: ink, textAlign: 'center', whiteSpace: 'nowrap' }}>{T('Banbe Pulse', 'Banbe Pulse')}</span>
         </div>
         {s.homeStories.length > 0 && (

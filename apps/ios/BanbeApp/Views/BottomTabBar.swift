@@ -46,9 +46,27 @@ struct BottomTabBar: View {
     // `Self.barHeight` directly for its own hosting window's hit-testable
     // band, so it stays in lockstep automatically.
     static let barHeight: CGFloat = 64
-    static let barWidth: CGFloat = 380
+    // TASK 1 (2026-10-05 fix pass) — reduced from 380. The dock and the
+    // create-"+" button are now ONE laid-out row (see DockRow, this file,
+    // and BottomTabBarOverlay.swift's own DockRow usage) sharing a fixed
+    // outer margin and gap; 380 alone already nearly spanned a standard
+    // iPhone's width, leaving no room for the "+" beside it without either
+    // overlapping or blowing past the safe area — the exact real-device
+    // regression this ticket reports. 300 is a genuine max/upper bound, not
+    // a fixed width: DockRow's HStack still lets this shrink further on
+    // narrower screens once the "+" and margins are accounted for (its
+    // items already use `.frame(maxWidth: .infinity)`, so they compress
+    // fluidly rather than clipping).
+    static let barWidth: CGFloat = 300
     static let barHorizontalPadding: CGFloat = 20
     static let bottomOffset: CGFloat = 2
+    // TASK 1 — shared with the create-"+" button (DockCreateButtonView) and
+    // DockRow's own gap/margin, so "one layout group, shared vertical
+    // center" is structural, not two independently-tuned numbers that can
+    // drift apart.
+    static let dockMargin: CGFloat = 16
+    static let dockGap: CGFloat = 10
+    static let createButtonSize: CGFloat = barHeight
     private let iconSize: CGFloat = 20
     private var barHeight: CGFloat { Self.barHeight }
 
@@ -219,12 +237,14 @@ struct BottomTabBar: View {
         // (see its own doc comment) instead of being flipped unanimated on
         // every scroll frame.
         .scaleEffect(app.bottomBarCollapsed ? 0.86 : 1, anchor: .bottom)
-        // Task 5: narrowed from 28→20, part of the "longer, flatter" pill
-        // (smaller margins + a wider `Self.barWidth` together).
-        .padding(.horizontal, Self.barHorizontalPadding)
-        // BUG 3: sits a little closer to the bottom edge than 64f2719/
-        // 623ec1e's 8pt — "shift its resting position lower."
-        .padding(.bottom, Self.bottomOffset)
+        // TASK 1 (2026-10-05 fix pass) — the outer horizontal margin and
+        // bottom offset used to live here, self-positioning this capsule in
+        // isolation. Now that the dock and the create-"+" button lay out
+        // together as one row (see DockRow below), that margin/offset moved
+        // to the ROW so both controls share exactly one outer margin and
+        // one bottom offset instead of each picking its own independently
+        // (the real cause of them reading as two unrelated floating shapes
+        // rather than one group).
         .onAppear { syncActiveToScreen() }
         .onChange(of: app.screen) { _, _ in
             withAnimation(.easeOut(duration: 0.18)) { syncActiveToScreen() }
@@ -243,6 +263,42 @@ struct BottomTabBar: View {
         var result: [String: CGRect] = [:]
         for (id, anchor) in anchors { result[id] = proxy[anchor] }
         itemFrames = result
+    }
+}
+
+/// TASK 1 (2026-10-05 fix pass) — the dock and the create-"+" button as ONE
+/// laid-out row, replacing two independently-positioned floating shapes
+/// (BottomTabBar centered via its own frame math, DockCreateButtonView
+/// pinned bottom-trailing with its own separate padding) that could and did
+/// overlap on a real device: BottomTabBar's old 380pt max width left under
+/// 4pt of clearance from a 390pt-wide iPhone's edges alone, with nothing
+/// left over for a 46-64pt circle beside it.
+///
+/// An HStack, not two absolutely-positioned views: the "+" is a fixed-size
+/// trailing child, the dock is the flexible one (`Self.barWidth` is an
+/// upper bound, not a fixed width — see that constant's own comment), and
+/// SwiftUI's normal HStack layout does the "shrink the flexible one first"
+/// math for free once the available width (this row's own container, i.e.
+/// the overlay window — already full device width, see
+/// BottomTabBarOverlay.bandWidth's own comment) is narrower than
+/// `barWidth + dockGap + createButtonSize`. One shared `dockMargin` on the
+/// row itself replaces each control's own independent outer padding, so
+/// both ends of the WHOLE group sit at the same distance from the screen
+/// edge, and `dockGap` is the one visual separation between them — "clearly
+/// two controls, visually one group," per this ticket's own ask.
+struct DockRow: View {
+    @EnvironmentObject var app: AppState
+
+    var body: some View {
+        HStack(alignment: .center, spacing: BottomTabBar.dockGap) {
+            BottomTabBar()
+            if app.organizerMode {
+                DockCreateButtonView()
+            }
+        }
+        .padding(.horizontal, BottomTabBar.dockMargin)
+        .padding(.bottom, BottomTabBar.bottomOffset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
 }
 

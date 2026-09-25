@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// TASK E (2026-10-01 UX foundation pass) — two tabs ("Hôm nay"/"Tuần
 /// này") of ranked public event/organizer cards. Tapping an unfollowed
@@ -25,10 +26,47 @@ struct PulseViewerView: View {
     @GestureState private var dragOffset: CGFloat = 0
     private let dismissThreshold: CGFloat = 120
 
+    // TASK 3 (2026-10-05 fix pass) — real iOS-style edge swipe-back: drag
+    // from the LEFT SCREEN EDGE toward the right, live-following the
+    // finger, same affordance RootView's own `edgeSwipe` gives every other
+    // screen (a `.fullScreenCover` doesn't inherit that — it's a wholly
+    // separate presentation, not part of RootView's ZStack). Confined to a
+    // thin leading strip (`edgeZoneWidth`) via `.highPriorityGesture`,
+    // exactly like RootView's own — see that gesture's doc comment for why
+    // a screen-wide gesture would instead end up arbitrating against every
+    // ordinary vertical scroll/tap for every touch, which is what would
+    // "steal" them. Attached to the WHOLE body below (content included),
+    // not just the header — a real edge-originated drag is unambiguous
+    // (nothing else recognizes touches starting in that strip), so there's
+    // no separate reason to restrict it to the header the way the
+    // downward drag above deliberately is.
+    @GestureState private var edgeDragOffset: CGFloat = 0
+    private let edgeZoneWidth: CGFloat = 20
+
+    private var edgeSwipe: some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .local)
+            .updating($edgeDragOffset) { value, state, _ in
+                state = max(0, value.translation.width)
+            }
+            .onEnded { value in
+                let width = UIScreen.main.bounds.width
+                let crossedDistance = value.translation.width > width * 0.3
+                let flicked = value.predictedEndTranslation.width > width * 0.6
+                if crossedDistance || flicked {
+                    app.closePulseViewer()
+                }
+                // A cancelled/partial swipe just needs nothing further —
+                // `edgeDragOffset` (a `@GestureState`) snaps back to 0 on
+                // its own the instant the gesture ends, animated by the
+                // `.animation(_:value:)` below.
+            }
+    }
+
     private var items: [PulseItem] { app.pulseTab == .weekly ? app.pulseWeekly : app.pulseDaily }
     private var loading: Bool { app.pulseTab == .weekly ? app.pulseWeeklyLoading : app.pulseDailyLoading }
 
     var body: some View {
+        ZStack(alignment: .leading) {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
                 HStack {
@@ -87,13 +125,39 @@ struct PulseViewerView: View {
             }
         }
         .background(app.palette.paper.ignoresSafeArea())
-        .offset(y: dragOffset)
+        .offset(x: edgeDragOffset, y: dragOffset)
         .animation(.interactiveSpring(), value: dragOffset)
+        .animation(isDraggingEdge ? nil : .interactiveSpring(), value: edgeDragOffset)
+        // A sliver of dimming that fades out as the edge-swipe progresses —
+        // the same depth cue RootView's own edge-swipe gives every other
+        // screen (see that gesture's `peekOffset`/dimming comment).
+        .overlay(Color.black.opacity(max(0, 0.12 - Double(edgeDragOffset) / 1400)).ignoresSafeArea().allowsHitTesting(false))
+
+        // The edge-swipe hit zone — a thin leading strip, exactly like
+        // RootView's own `edgeSwipe`. `.highPriorityGesture` so a touch
+        // starting in this strip always wins over the ScrollView beneath
+        // it instead of the two arbitrating; a touch outside it is never
+        // even offered to this recognizer (see `edgeZoneWidth`'s own
+        // comment), so ordinary vertical scroll, tab switching, a photo
+        // tap, and the organizer sheet's own gestures are all untouched.
+        Color.clear
+            .contentShape(Rectangle())
+            .frame(width: edgeZoneWidth)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .highPriorityGesture(edgeSwipe)
+        }
         .sheet(item: $app.pulseOrganizerSheet) { item in
             organizerSheet(item)
                 .presentationDetents([.height(260)])
         }
     }
+
+    // `edgeDragOffset` is a `@GestureState`, so it's only ever nonzero
+    // WHILE a drag is live — good enough to key "don't spring-animate every
+    // per-frame update of a live drag" off directly, matching RootView's
+    // own `dragTranslation > 0` check for the identical reason (a spring
+    // chasing a continuously-moving target reads as laggy, not smooth).
+    private var isDraggingEdge: Bool { edgeDragOffset > 0 }
 
     @ViewBuilder
     private func tabButton(_ tab: PulseTab, _ label: String) -> some View {

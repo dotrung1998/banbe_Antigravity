@@ -353,6 +353,13 @@ struct RootView: View {
             // itself, per this ticket's own "work with the existing
             // overlay, don't add another competing floating UIWindow"
             // instruction — see that file's doc comment.
+            //
+            // TASK 1 (2026-10-05 fix pass) — the tray THAT BUTTON opens
+            // (DockCreateTrayView) lives here instead, in this main
+            // window's own ZStack — see that view's own doc comment for
+            // why (it needs to dim/cover the real screen, which the dock's
+            // small band-sized overlay window cannot do).
+            if app.dockCreateTrayOpen { DockCreateTrayView().zIndex(28) }
 
             // BUG 3 follow-up (this session's real-device report on
             // 80c1ac3): BottomTabBar used to render HERE, as a ZStack

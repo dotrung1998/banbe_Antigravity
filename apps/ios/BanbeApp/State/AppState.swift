@@ -323,7 +323,15 @@ final class AppState: ObservableObject {
     @Published var accountType: String = "participant"
     @Published var organizerMode = false
     @Published var organizerModeError = ""
+    @Published var organizerModeBusy = false
     @Published var hasHosted = false
+    // TASK 1 (2026-10-05 fix pass) — whether the dock "+"'s creation tray
+    // is open. Lives on AppState (not local @State in DockCreateButtonView)
+    // because the tray itself renders in RootView's own main-window ZStack
+    // (see that file), a different view entirely from the button that
+    // opens it (DockCreateButtonView, inside BottomTabBarOverlay's separate
+    // UIWindow) — both need to read/drive the same boolean.
+    @Published var dockCreateTrayOpen = false
 
     // MARK: Feed state
     @Published var favorites: [String] = []

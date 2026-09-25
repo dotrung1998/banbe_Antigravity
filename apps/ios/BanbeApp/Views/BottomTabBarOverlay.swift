@@ -277,6 +277,19 @@ final class BottomTabBarOverlay {
             // whatever's underneath while it's still fading out.
             window?.isUserInteractionEnabled = false
             withAnimation(Self.transitionAnimation) { appState?.dockVisible = false }
+            // TASK 1 (2026-10-05 fix pass) — every case this ticket lists
+            // ("hide/reconcile dock on other sheets, Pulse, story viewer,
+            // QR and auth screens") already funnels through THIS branch —
+            // it's exactly when `shouldShow` above goes false. Closing the
+            // tray here, once, covers all of them instead of duplicating
+            // the same check at each individual call site
+            // (setStoryViewerOpen/setPulseViewerOpen/updateVisibility/…).
+            // An orphaned open tray with its dock/button now hidden
+            // underneath (e.g. Pulse opening while the tray was up) would
+            // otherwise leave an invisible scrim still intercepting taps —
+            // the exact "don't leave an invisible tap-blocking backdrop
+            // after close" failure mode this ticket calls out.
+            appState?.dockCreateTrayOpen = false
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.transitionDuration) { [weak self] in
                 guard let self, self.visibilityToken == token else { return }
                 self.window?.isHidden = true
@@ -304,15 +317,17 @@ private struct BottomTabBarOverlayRoot: View {
     // keeping this content always present is what gives that animation
     // something to animate between.
     var body: some View {
-        ZStack {
-            BottomTabBar()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            // TASK C (2026-10-03 fix pass) — same window, same visibility
-            // lifecycle as the dock itself; see DockCreateButtonView's own
-            // doc comment for why this lives here instead of a second
-            // floating UIWindow.
-            DockCreateButtonView()
-        }
+        // TASK 1 (2026-10-05 fix pass) — the dock and the create-"+" button
+        // used to be two independent ZStack children, each positioning
+        // itself (BottomTabBar centered via its own frame math,
+        // DockCreateButtonView pinned bottom-trailing with its own padding)
+        // — the real cause of the two overlapping on a real device. DockRow
+        // (BottomTabBar.swift) now lays both out together as one HStack
+        // with a shared outer margin/gap, still inside this exact same
+        // window/visibility lifecycle (see DockCreateButtonView's own doc
+        // comment for why that lives here instead of a second floating
+        // UIWindow) — only the internal composition changed.
+        DockRow()
         .offset(y: app.dockVisible ? 0 : 40)
         .opacity(app.dockVisible ? 1 : 0)
         .allowsHitTesting(app.dockVisible)

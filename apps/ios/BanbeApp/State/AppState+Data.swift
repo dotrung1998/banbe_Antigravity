@@ -582,6 +582,19 @@ extension AppState {
     // cannot be turned off."
     func toggleOrganizerMode() {
         guard isSignedIn else { return requireAuth(returnTo: .profile, backTo: .profile) }
+        // TASK 2 (2026-10-05 fix pass) — a real device's slower tap
+        // recognition made a double-tap on this button a genuine way to
+        // fire two overlapping RPC calls: both read the SAME stale
+        // `organizerMode` (the first call's optimistic flip hadn't landed
+        // yet when the second tap's target was computed), so both requests
+        // carried the identical `p_enabled` value, and whichever response
+        // arrived second could stomp the first's rollback/success state
+        // with its own — occasionally landing on the rolled-back branch
+        // and surfacing "Vui lòng thử lại" even though the FIRST call had
+        // already succeeded. `organizerModeBusy` (mirrored on the switch's
+        // own `.disabled` below) makes a second tap while one is in flight
+        // a no-op instead of a second request.
+        guard !organizerModeBusy else { return }
         let target = !organizerMode
         Task { await applyOrganizerMode(target) }
     }
@@ -602,6 +615,14 @@ extension AppState {
     /// preference on top of it.
     func applyOrganizerMode(_ enabled: Bool) async {
         guard accountType != "admin" else { return }
+        // TASK 2 (2026-10-05 fix pass) — see toggleOrganizerMode()'s own
+        // comment: this is the actual guard against overlapping requests,
+        // set/cleared around the whole call so a second tap during the
+        // `await` below is refused instead of racing this one.
+        guard !organizerModeBusy else { return }
+        organizerModeBusy = true
+        defer { organizerModeBusy = false }
+
         let rollbackMode = organizerMode
         let rollbackType = accountType
         organizerMode = enabled
@@ -621,10 +642,40 @@ extension AppState {
             organizerMode = rollbackMode
             accountType = rollbackType
             mode = rollbackMode ? "host" : "goer"
-            organizerModeError = T(
-                "Không thể đổi chế độ tổ chức lúc này. Vui lòng thử lại.",
-                "We could not change organizer mode right now. Please try again."
-            )
+            // TASK 2 (2026-10-05 fix pass) — this catch block used to log
+            // NOTHING at all, unlike its web equivalent's `console.warn`.
+            // On a real device there was never any way to see WHICH failure
+            // this generic string was covering (an expired session, an RLS
+            // rejection, a genuine network drop, …) — the exact gap this
+            // ticket's own "record the actual error code/message" ask is
+            // about. Dev-build console only; never logs the JWT/session
+            // itself, only the structured DB error PostgrestError already
+            // exposes (code/message/detail), same fields
+            // describeProofUploadError (AppState+Payments.swift) already
+            // treats as safe to print.
+            let code = (error as? PostgrestError)?.code
+            let detail = (error as? PostgrestError)?.message ?? error.localizedDescription
+            #if DEBUG
+            print("[organizerMode] set_organizer_mode(\(enabled)) failed — code=\(code ?? "nil") message=\(detail)")
+            #endif
+            // PGRST301/401-shaped codes mean the access token the RPC ran
+            // under had already expired — a known, actionable cause (stale
+            // session after the app sat backgrounded), distinct from a
+            // genuine server rejection. Everything else still gets the
+            // generic string: this file has never observed another DB error
+            // code from this specific RPC, so claiming a more specific cause
+            // for those would be a guess, not a proven root cause.
+            if code == "PGRST301" || code == "401" {
+                organizerModeError = T(
+                    "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại rồi thử lại.",
+                    "Your session has expired. Please sign in again and retry."
+                )
+            } else {
+                organizerModeError = T(
+                    "Không thể đổi chế độ tổ chức lúc này. Vui lòng thử lại.",
+                    "We could not change organizer mode right now. Please try again."
+                )
+            }
         }
     }
 

@@ -325,12 +325,7 @@ struct HomeView: View {
             HStack(spacing: 14) {
                 Button { app.openPulseViewer() } label: {
                     VStack(spacing: 5) {
-                        ZStack {
-                            LinearGradient(colors: [Color(red: 0.91, green: 0.79, blue: 0.76), Color(red: 0.78, green: 0.80, blue: 0.70)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-                                .frame(width: 56, height: 56)
-                            Text("✦").font(.system(size: 20))
-                        }
+                        PulseRingGlyph()
                         Text(app.T("Banbe Pulse", "Banbe Pulse"))
                             .font(.system(size: 9.5)).foregroundStyle(app.palette.ink).lineLimit(1).frame(width: 60)
                     }
@@ -596,5 +591,54 @@ struct StoryRingFramePreferenceKey: PreferenceKey {
     static var defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { _, new in new }
+    }
+}
+
+/// TASK 3 (2026-10-05 fix pass) — replaces the Pulse ring's static two-tone
+/// gradient + plain "✦" with a refined multicolor shimmer, still built
+/// entirely from Banbe's own existing dusty-rose/sage palette (the same two
+/// colors the old `LinearGradient` used, plus one warm sand tone already in
+/// that same muted family — never a saturated rainbow). `hueRotation`
+/// slowly cycling an `AngularGradient` is one continuous system-driven
+/// animation, not a per-frame `Timer`/`TimelineView` redraw loop — cheap
+/// for a 56×56 view and, since `HomeView` (the only place this is used) is
+/// swapped out of the screen-switch entirely on navigation, it stops
+/// running the instant Home isn't the visible screen, with no extra
+/// visibility plumbing needed. `scenePhase` still pauses it explicitly
+/// while backgrounded, and Reduce Motion skips starting it at all, leaving
+/// the gradient's own resting frame — still colorful, just not moving — as
+/// the "beautiful static state" this ticket asks for.
+private struct PulseRingGlyph: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var rotate = false
+
+    private static let colors: [Color] = [
+        Color(red: 0.91, green: 0.79, blue: 0.76), // dusty rose — the old gradient's own first stop
+        Color(red: 0.87, green: 0.75, blue: 0.62), // warm sand — a third stop in the same muted family
+        Color(red: 0.78, green: 0.80, blue: 0.70), // sage — the old gradient's own second stop
+    ]
+
+    var body: some View {
+        ZStack {
+            AngularGradient(colors: Self.colors + [Self.colors[0]], center: .center)
+                .hueRotation(.degrees(rotate ? 360 : 0))
+            Text("✦")
+                .font(.system(size: 20))
+                .foregroundStyle(.white.opacity(0.92))
+                .shadow(color: .white.opacity(0.5), radius: 3)
+        }
+        .frame(width: 56, height: 56)
+        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .onAppear { startIfEligible() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { startIfEligible() } else { rotate = false }
+        }
+        .onChange(of: reduceMotion) { _, _ in startIfEligible() }
+    }
+
+    private func startIfEligible() {
+        guard !reduceMotion, scenePhase == .active else { rotate = false; return }
+        withAnimation(.linear(duration: 7).repeatForever(autoreverses: false)) { rotate = true }
     }
 }

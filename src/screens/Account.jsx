@@ -333,7 +333,17 @@ export default function Account() {
 
       <div style={{ padding: '22px 20px 0' }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Tổ chức', 'Hosting')}</span>
-        <div onClick={toggleOrganizerMode} data-testid="organizer-mode-toggle" style={{ ...fieldGlass({ marginTop: 10, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
+        {/* TASK 2 (2026-10-05 fix pass) — `organizerModeBusy` (real guard
+            in toggleOrganizerMode/applyOrganizerMode, see GocContext.jsx)
+            mirrored here as `.opacity`/no-op click so a second tap while
+            one request is already in flight visibly does nothing instead
+            of silently queuing a race. */}
+        <div
+          onClick={s.organizerModeBusy ? undefined : toggleOrganizerMode}
+          data-testid="organizer-mode-toggle"
+          aria-disabled={s.organizerModeBusy}
+          style={{ ...fieldGlass({ marginTop: 10, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: s.organizerModeBusy ? 'default' : 'pointer', opacity: s.organizerModeBusy ? 0.55 : 1 }) }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, paddingRight: 12 }}>
             <RowIcon kind="switch" />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>

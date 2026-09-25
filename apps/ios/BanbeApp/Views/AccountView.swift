@@ -257,6 +257,13 @@ struct AccountView: View {
                     .padding(.top, 22)
 
                 Button { app.toggleOrganizerMode() } label: {
+                    // TASK 2 (2026-10-05 fix pass) — `.opacity`, not a
+                    // spinner: this toggle's own round-trip is already
+                    // near-instant on a normal connection, and a flashing
+                    // spinner for that would read as jankier than a brief
+                    // dim. `.disabled` below is what actually matters —
+                    // it's the real guard against the double-tap race
+                    // (see toggleOrganizerMode()'s own comment).
                     HStack(spacing: 12) {
                         Image(systemName: "person.2.badge.gearshape")
                             .font(.system(size: 16, weight: .medium))
@@ -293,6 +300,8 @@ struct AccountView: View {
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .disabled(app.organizerModeBusy)
+                .opacity(app.organizerModeBusy ? 0.55 : 1)
                 .accessibilityIdentifier("account.organizerToggle")
                 .padding(.top, 10)
                 .id("account-hosting-toggle")

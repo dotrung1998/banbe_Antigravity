@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { GocProvider, useGoc } from './state/GocContext.jsx';
-import BottomTabBar, { showsBottomBar } from './screens/BottomTabBar.jsx';
+import BottomTabBar, { showsBottomBar, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET } from './screens/BottomTabBar.jsx';
 
 import Splash from './screens/Splash.jsx';
 import LangPick from './screens/LangPick.jsx';
@@ -88,6 +88,39 @@ const SCREENS = {
   editProfile: EditProfile,
   publicProfile: PublicProfile,
 };
+
+// TASK 1 (2026-10-05 fix pass) — the dock and the create-"+" button laid
+// out as ONE row, replacing two independently absolutely-positioned
+// elements (BottomTabBar centered via its own left:50%/width math,
+// DockCreateButton pinned at `right: 16`) that could and did overlap on a
+// real iPhone: BottomTabBar's old 400px max width left under 4px of
+// clearance from a 390px-wide viewport's edges alone, with no room left for
+// a 46px circle beside it. `DOCK_MAX_WIDTH` on the bar itself is an upper
+// bound, not a fixed width (its own items are flex-based — see
+// BottomTabBar.jsx), so this row's own `calc(100% - margin*2)` cap is what
+// actually makes the bar shrink first on a narrow screen instead of
+// overflowing past the "+" button.
+function DockRow({ collapsed, showCreate }) {
+  return (
+    <div
+      style={{
+        position: 'absolute', left: '50%', bottom: BAR_BOTTOM_OFFSET,
+        transform: 'translateX(-50%)',
+        width: `calc(100% - ${DOCK_MARGIN * 2}px)`,
+        maxWidth: DOCK_MAX_WIDTH + (showCreate ? DOCK_GAP + CREATE_SIZE : 0),
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: DOCK_GAP,
+        // Same layer BottomTabBar's own zIndex used to sit at — see that
+        // constant's own history (623ec1e) for why 25 specifically (above
+        // MapExplore's own WebGL canvas, below Notifications' full-screen
+        // action-sheet scrim at 30).
+        zIndex: 25,
+      }}
+    >
+      <BottomTabBar collapsed={collapsed} />
+      {showCreate && <DockCreateButton />}
+    </div>
+  );
+}
 
 function Shell() {
   const { state, T } = useGoc();
@@ -206,8 +239,7 @@ function Shell() {
         {state.reasonPrompt && <ReasonSheet />}
         {state.loading && <Loading label={T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
-      {showBar && <BottomTabBar collapsed={barCollapsed} />}
-      <DockCreateButton />
+      {showBar && <DockRow collapsed={barCollapsed} showCreate={state.organizerMode} />}
       <ToastStack />
     </div>
   );

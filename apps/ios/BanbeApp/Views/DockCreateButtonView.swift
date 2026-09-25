@@ -12,77 +12,49 @@ import SwiftUI
 /// modalActionSheetPresented, and BottomTabBar.visibleScreens itself) for
 /// free — it can never render above a full-screen sheet/story/Pulse
 /// because the WHOLE WINDOW it lives in already hides itself for exactly
-/// those cases (see that file's own applyVisibility()). The window's band
-/// is already full-device-width on every current iPhone size (bandWidth's
-/// own 444pt exceeds every iPhone's screen width, so `min(bandWidth,
-/// screenBounds.width)` always clamps to the screen — confirmed by
-/// reading BottomTabBarOverlay.attach(), not assumed), so this button has
-/// real room to sit beside the dock without widening that band at all.
+/// those cases (see that file's own applyVisibility()).
+///
+/// TASK 1 (2026-10-05 fix pass) — this view used to own BOTH the round
+/// button AND its own anchored popover menu, positioned/sized independently
+/// of the dock (see DockRow's own doc comment for the overlap bug that
+/// caused). Now it's JUST the button — a fixed-size (`BottomTabBar.
+/// createButtonSize`, matching `barHeight` exactly) trailing child of
+/// DockRow's HStack, so it shares the dock's vertical center structurally
+/// (same height, same HStack `alignment: .center`) instead of independently
+/// computed padding math. Tapping it no longer opens a menu in THIS window
+/// — the tray it opens (`DockCreateTrayView`, RootView.swift) needs to rise
+/// well above this window's own small hit-testable band and dim the actual
+/// screen content behind it, neither of which this narrow band-sized window
+/// can do — so this button only flips `app.dockCreateTrayOpen`, a plain
+/// published bool the MAIN window's RootView reads to present the tray
+/// itself. The "+"→"X" morph stays here, driven by that same shared bool,
+/// so the two windows' visuals stay in lockstep with no duplicated state.
 struct DockCreateButtonView: View {
     @EnvironmentObject private var app: AppState
-    @State private var open = false
-    private let size: CGFloat = 46
 
     var body: some View {
         // Visible only in organizer mode (current UI preference — see
         // AppState+Data.swift's applyOrganizerMode fix — never
-        // eligibility), matching the old pill's own gate exactly.
+        // eligibility), matching the old pill's own gate exactly. DockRow
+        // itself already only inserts this view under the same condition,
+        // but keeping the check here too means this view never renders
+        // anything if ever reused/embedded elsewhere without that gate.
         if app.organizerMode {
-            VStack(alignment: .trailing, spacing: 10) {
-                if open {
-                    VStack(spacing: 0) {
-                        Button {
-                            open = false
-                            app.goCreate()
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "plus").font(.system(size: 14, weight: .semibold))
-                                Text(app.T("Tạo sự kiện", "Create event")).font(.system(size: 13.5))
-                                Spacer(minLength: 0)
-                            }
-                            .foregroundStyle(app.palette.ink)
-                            .padding(.horizontal, 14).padding(.vertical, 13)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("dock.createMenu.event")
-                    }
-                    .frame(minWidth: 176)
-                    .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
-                    .shadow(color: .black.opacity(0.18), radius: 16, x: 0, y: 8)
-                    .accessibilityIdentifier("dock.createMenu")
-                    .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .bottomTrailing)))
-                }
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) { open.toggle() }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(app.palette.paper)
-                        .frame(width: size, height: size)
-                        .background(app.palette.ink, in: Circle())
-                        .shadow(color: .black.opacity(0.28), radius: 10, x: 0, y: 4)
-                        .rotationEffect(.degrees(open ? 45 : 0))
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("dock.createButton")
-                .accessibilityLabel(app.T("Tạo mới", "Create"))
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { app.dockCreateTrayOpen.toggle() }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(app.palette.paper)
+                    .frame(width: BottomTabBar.createButtonSize, height: BottomTabBar.createButtonSize)
+                    .background(app.palette.ink, in: Circle())
+                    .overlay(Circle().strokeBorder(app.palette.ink.opacity(0.06)))
+                    .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 4)
+                    .rotationEffect(.degrees(app.dockCreateTrayOpen ? 45 : 0))
             }
-            .padding(.trailing, 16)
-            .padding(.bottom, BottomTabBar.bottomOffset + (BottomTabBar.barHeight - size) / 2)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-            // Outside-tap-to-close (rule C6) — a transparent full-window
-            // tap target BEHIND the button/menu (same ZStack layer order
-            // trick RootView already uses elsewhere), only while open.
-            .background(
-                Group {
-                    if open {
-                        Color.black.opacity(0.0001)
-                            .contentShape(Rectangle())
-                            .onTapGesture { withAnimation(.easeInOut(duration: 0.15)) { open = false } }
-                    }
-                }
-            )
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("dock.createButton")
+            .accessibilityLabel(app.dockCreateTrayOpen ? app.T("Đóng", "Close") : app.T("Tạo mới", "Create"))
         }
     }
 }

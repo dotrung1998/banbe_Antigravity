@@ -93,6 +93,24 @@ const ICON_SIZE = 20;
 // 18px — "shift its resting position lower."
 export const BAR_BOTTOM_OFFSET = 10;
 
+// TASK 1 (2026-10-05 fix pass) — the dock and the create-"+" button are now
+// ONE laid-out row (see DockRow in App.jsx) sharing a single outer margin
+// and gap, instead of each self-positioning independently the way
+// `DOCK_MAX_WIDTH`'s own predecessor (a flat 400px `maxWidth` on this bar
+// alone) and the button's own `right: 16` used to — on a ~390px iPhone
+// viewport that left under 4px of real clearance between them, which is
+// the actual overlap this ticket reports. `DOCK_MAX_WIDTH` is an upper
+// bound the row's own flexbox can still shrink below on a narrower
+// viewport (this bar's items are already `flex`-based, not fixed-width —
+// see `items.map` below), not a fixed width.
+export const DOCK_MAX_WIDTH = 300;
+export const DOCK_MARGIN = 16;
+export const DOCK_GAP = 10;
+// Matches BAR_HEIGHT exactly — "shared vertical center" is then structural
+// (both controls the same height, centered by the row's own
+// `alignItems: 'center'`) instead of two independently-tuned paddings.
+export const CREATE_SIZE = BAR_HEIGHT;
+
 export default function BottomTabBar({ collapsed }) {
   const { state, T, goHome, goProfile, goInbox, goNotifications, goMapExplore } = useGoc();
   const s = state;
@@ -230,49 +248,36 @@ export default function BottomTabBar({ collapsed }) {
 
   return (
     <div
+      ref={barRef}
       data-testid="bottom-tab-bar"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
       style={{
         ...barGlass({}),
-        position: 'absolute', left: '50%', bottom: BAR_BOTTOM_OFFSET,
-        // Task 1b follow-up: widened from 320 (fit for 4 icons) to fit the
-        // new Home tab without cramping the existing four. Task 5: widened
-        // again (360→400) as part of the flatter/more-elongated shape,
-        // margins narrowed 56→40 (28px/side → 20px/side) to match.
-        width: 'calc(100% - 40px)', maxWidth: 400,
+        position: 'relative',
+        // TASK 1 (2026-10-05 fix pass) — flex child of DockRow (App.jsx)
+        // now, not a self-positioned/self-sized element — `flex: 1 1 auto`
+        // + `minWidth: 0` is what lets it actually shrink below
+        // `DOCK_MAX_WIDTH` when the row (dock + gap + "+" button) doesn't
+        // fit the viewport, instead of clipping/overflowing.
+        flex: '1 1 auto', minWidth: 0, maxWidth: DOCK_MAX_WIDTH,
         borderRadius: 999,
-        // BUG 2 follow-up (623ec1e real-device report): the bar was already
-        // meant to paint above MapExplore's own content by plain document
-        // order (BottomTabBar is a later sibling of the screen container in
-        // Shell — see App.jsx), and MapExplore's own floating pills/sheet
-        // never go above zIndex 3, so 20 already had headroom on paper. It
-        // was still getting hidden on a real device — MapLibre's WebGL
-        // canvas is the one part of this screen whose compositing isn't
-        // guaranteed to respect ordinary DOM z-index the way plain HTML
-        // layers do. Bumped to 25: comfortably clear of anything MapExplore
-        // itself uses, but deliberately still under Notifications.jsx's own
-        // full-screen action-sheet scrim (`zIndex: 30`) so that scrim still
-        // dims the bar along with everything else while it's open.
-        zIndex: 25,
         height: BAR_HEIGHT, boxShadow: '0 8px 24px rgba(27,25,22,0.18)',
+        display: 'flex', justifyContent: 'space-around', alignItems: 'center',
+        touchAction: 'none',
         // BUG 1 follow-up: the shrink-on-scroll effect used to change
         // `height` and each icon's own `width`/`height` directly — layout
         // properties that force a reflow every time. A single `transform:
         // scale()` on the whole pill is compositor-only (no re-layout),
         // which is both cheaper and reads smoother; see App.jsx's Shell for
         // the matching rAF-throttled scroll handler that drives `collapsed`.
-        transform: `translateX(-50%) scale(${collapsed ? 0.86 : 1})`,
+        transform: `scale(${collapsed ? 0.86 : 1})`,
         transformOrigin: 'center bottom',
         transition: 'transform 0.28s cubic-bezier(.22,.61,.36,1)',
       }}
     >
-      <div
-        ref={barRef}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        style={{ position: 'relative', display: 'flex', justifyContent: 'space-around', alignItems: 'center', width: '100%', height: '100%', touchAction: 'none' }}
-      >
         <div
           ref={highlightRef}
           style={{
@@ -288,7 +293,7 @@ export default function BottomTabBar({ collapsed }) {
             ref={(el) => { itemRefs.current[i] = el; }}
             data-testid={item.testId}
             aria-label={item.label}
-            style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, width: 60, height: '100%', zIndex: 1 }}
+            style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, flex: '1 1 0', minWidth: 0, height: '100%', zIndex: 1 }}
           >
             <div style={{ position: 'relative', width: ICON_SIZE, height: ICON_SIZE, opacity: activeIndex === i ? 1 : 0.86 }}>
               {ICONS[item.icon](ink)}
@@ -313,7 +318,6 @@ export default function BottomTabBar({ collapsed }) {
             </span>
           </div>
         ))}
-      </div>
     </div>
   );
 }
