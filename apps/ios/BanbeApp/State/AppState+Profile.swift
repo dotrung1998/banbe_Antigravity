@@ -207,6 +207,14 @@ extension AppState {
     /// destination. Falls through silently (does nothing) for any other
     /// path; RootView/BanbeApp.swift's .onContinueUserActivity handler is
     /// the only caller.
+    ///
+    /// Under Config/PersonalTeamDebug.xcconfig (.claude/notes/
+    /// 18-ios-personal-team-signing.md) this function is simply never
+    /// reached at all — that build's entitlements omit
+    /// com.apple.developer.associated-domains, so iOS never routes a
+    /// banbe.app link to this app in the first place; it opens in Safari
+    /// instead, the ordinary system behavior for a link with no verified
+    /// app association. No code here needs to detect or special-case that.
     func handleUniversalLink(_ url: URL) {
         let parts = url.pathComponents.filter { $0 != "/" }
         guard parts.count == 2, parts[0] == "u" else { return }

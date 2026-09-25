@@ -10,6 +10,16 @@ struct BanbeApp: App {
         // AppDelegate is instantiated by UIKit before any SwiftUI @StateObject
         // exists, so it can't reach `appState` any other way — set once here.
         AppDelegate.appState = appState
+        // .claude/notes/18-ios-personal-team-signing.md — developer-only
+        // signal (console, never a user-facing banner) that this build was
+        // compiled under Config/PersonalTeamDebug.xcconfig, which omits
+        // aps-environment and com.apple.developer.associated-domains
+        // entirely. Nothing else reads this flag to change behavior beyond
+        // what ENABLE_PUSH=NO and the missing entitlement already do on
+        // their own — it's purely informational.
+        #if PERSONAL_TEAM_BUILD
+        print("Personal Team build: push and Universal Links are disabled.")
+        #endif
     }
 
     var body: some Scene {

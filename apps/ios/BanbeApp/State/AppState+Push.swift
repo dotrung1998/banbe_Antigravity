@@ -20,7 +20,10 @@ extension AppState {
     /// capability that can never actually deliver anything — confusing,
     /// not just harmless. ENABLE_PUSH flips on with Config/Release.xcconfig,
     /// once a paid Apple Developer account is set up (see
-    /// .claude/notes/07-notifications.md).
+    /// .claude/notes/07-notifications.md). Config/PersonalTeamDebug.xcconfig
+    /// (.claude/notes/18-ios-personal-team-signing.md) sets ENABLE_PUSH=NO
+    /// too, so this same guard covers that configuration for free — no
+    /// separate PERSONAL_TEAM_BUILD check needed here.
     func requestPushAuthorizationIfNeeded() {
         #if !ENABLE_PUSH
         return

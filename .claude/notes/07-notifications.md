@@ -57,6 +57,8 @@ vite build clean; iOS `xcodebuild` BUILD SUCCEEDED; 270/270 non-real-backend Pla
 
 No other file needs touching — the Swift permission-request/token-registration code activates automatically once `ENABLE_PUSH` is defined by the config in use.
 
+**2026-10-02 addendum**: a THIRD config, `PersonalTeamDebug`, now exists specifically for local real-device testing on a free/personal Apple ID with zero paid-program capabilities at all (not just Push) — see `.claude/notes/18-ios-personal-team-signing.md` for the full signing/entitlements story. The two-edit re-enable steps above are unchanged and still the correct path for `Release`.
+
 ## 2026-09-16 — message_id on dispute_message notifications; tap-to-highlight; notification delete; admin test-data purge
 
 **Task 1**: `send_dispute_message()` (migration 050, superseding 048) now captures the new `dispute_messages` row's own id (`INSERT ... RETURNING id INTO v_msg_id`) and includes it as `message_id` in the notification's `data` — additive only, same role checks/error returns/recipient logic as before. Verified against production: `send_dispute_message()` returned `message_id`, and the matching `notifications` row's `data.message_id` matched it exactly. No other notification `kind` gets the same treatment — see the comment in migration 050 for why (none of them exist to point at a specific chat message the way `dispute_message` does, even though a few also drop an unrelated system note into the permanent `messages` table as a side effect — wiring a message_id onto those would be dead data with no consuming UI).

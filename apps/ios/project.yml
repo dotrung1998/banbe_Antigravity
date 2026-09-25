@@ -12,9 +12,23 @@ options:
 # aps-environment (BanbeAppPush.entitlements). See
 # .claude/notes/07-notifications.md for exactly what to flip once a paid
 # Apple Developer account exists — it's these two files, not this one.
+# PersonalTeamDebug: local real-device testing on a free/personal Apple ID
+# with NO paid-program capability at all (also excludes Associated
+# Domains, unlike the ordinary Debug config above) — see
+# .claude/notes/18-ios-personal-team-signing.md.
 configFiles:
   Debug: Config/Debug.xcconfig
   Release: Config/Release.xcconfig
+  PersonalTeamDebug: Config/PersonalTeamDebug.xcconfig
+
+# Registers the custom PersonalTeamDebug configuration (xcodegen only
+# infers Debug/Release by default); "debug" here just picks its build
+# settings TYPE (unoptimized, debug symbols) — it stays a fully separate
+# configuration from Debug, not an alias for it.
+configs:
+  Debug: debug
+  Release: release
+  PersonalTeamDebug: debug
 
 packages:
   Supabase:
@@ -68,6 +82,17 @@ targets:
         # config — not here, so they can differ between Debug and Release).
         DEVELOPMENT_TEAM: ""
         CODE_SIGN_STYLE: Automatic
+      # .claude/notes/18-ios-personal-team-signing.md — a distinct bundle
+      # id for local personal-team installs, so Xcode's Automatic Signing
+      # can freely register/use a brand-new App ID for it under a
+      # signed-in personal Apple ID without ever touching (or colliding
+      # with) the real com.banbe.ios App ID this project ships under.
+      # DEVELOPMENT_TEAM is still never set here — only the bundle id
+      # differs; Automatic Signing still resolves the team from whichever
+      # Apple Account is signed into Xcode.
+      configs:
+        PersonalTeamDebug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.banbe.ios.dev
     info:
       path: BanbeApp/Info.plist
       properties:
@@ -121,3 +146,14 @@ schemes:
       config: Debug
       targets:
         - BanbeAppUITests
+  # .claude/notes/18-ios-personal-team-signing.md — a dedicated scheme so
+  # "Select Personal Team Debug" is a single picker choice in Xcode's
+  # scheme menu, not a manual per-run Edit Scheme > Build Configuration
+  # change. Builds/runs the app target only (no UI tests — those aren't
+  # part of local personal-device testing).
+  PersonalTeamDebug:
+    build:
+      targets:
+        BanbeApp: all
+    run:
+      config: PersonalTeamDebug
