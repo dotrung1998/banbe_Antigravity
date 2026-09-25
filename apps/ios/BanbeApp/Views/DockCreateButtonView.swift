@@ -29,6 +29,20 @@ import SwiftUI
 /// published bool the MAIN window's RootView reads to present the tray
 /// itself. The "+"→"X" morph stays here, driven by that same shared bool,
 /// so the two windows' visuals stay in lockstep with no duplicated state.
+///
+/// BUG (2026-10-06 fix pass) — this used to paint itself as a SOLID
+/// `app.palette.ink`-filled circle with its own independently-chosen
+/// shadow (`opacity(0.22), radius: 10, y: 4`) — a visually-similar but
+/// genuinely different style from the dock's own translucent
+/// `.thinMaterial` capsule (`overlay` stroke opacity 0.06, `shadow`
+/// `opacity(0.16), radius: 14, y: 6`), which is exactly why it read as "a
+/// solid black circle next to a translucent dock" on a real device. Now
+/// reuses the dock's own material/stroke/shadow constants verbatim (not a
+/// second, matching-by-eye style) — background `.thinMaterial` in a
+/// `Circle`, the SAME stroke opacity, the SAME shadow — with the glyph
+/// itself switched from white-on-ink to `app.palette.ink`, since a
+/// translucent material needs an ink-colored glyph for contrast the same
+/// way every dock tab icon already is.
 struct DockCreateButtonView: View {
     @EnvironmentObject private var app: AppState
 
@@ -45,11 +59,11 @@ struct DockCreateButtonView: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(app.palette.paper)
+                    .foregroundStyle(app.palette.ink)
                     .frame(width: BottomTabBar.createButtonSize, height: BottomTabBar.createButtonSize)
-                    .background(app.palette.ink, in: Circle())
+                    .background(.thinMaterial, in: Circle())
                     .overlay(Circle().strokeBorder(app.palette.ink.opacity(0.06)))
-                    .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 4)
+                    .shadow(color: .black.opacity(0.16), radius: 14, x: 0, y: 6)
                     .rotationEffect(.degrees(app.dockCreateTrayOpen ? 45 : 0))
             }
             .buttonStyle(.plain)

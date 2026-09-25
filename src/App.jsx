@@ -105,7 +105,6 @@ function DockRow({ collapsed, showCreate }) {
     <div
       style={{
         position: 'absolute', left: '50%', bottom: BAR_BOTTOM_OFFSET,
-        transform: 'translateX(-50%)',
         width: `calc(100% - ${DOCK_MARGIN * 2}px)`,
         maxWidth: DOCK_MAX_WIDTH + (showCreate ? DOCK_GAP + CREATE_SIZE : 0),
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: DOCK_GAP,
@@ -114,6 +113,15 @@ function DockRow({ collapsed, showCreate }) {
         // MapExplore's own WebGL canvas, below Notifications' full-screen
         // action-sheet scrim at 30).
         zIndex: 25,
+        // BUG (2026-10-06 fix pass) — the shrink-on-scroll scale used to
+        // live on BottomTabBar's own div alone, so only the dock visibly
+        // resized on scroll while the "+" beside it stayed full size. A
+        // single transform HERE, on the row that contains both, scales
+        // them together as one unit — see BottomTabBar.jsx's own comment
+        // at this transform's former call site.
+        transform: `translateX(-50%) scale(${collapsed ? 0.86 : 1})`,
+        transformOrigin: 'center bottom',
+        transition: 'transform 0.28s cubic-bezier(.22,.61,.36,1)',
       }}
     >
       <BottomTabBar collapsed={collapsed} />

@@ -267,15 +267,17 @@ export default function BottomTabBar({ collapsed }) {
         height: BAR_HEIGHT, boxShadow: '0 8px 24px rgba(27,25,22,0.18)',
         display: 'flex', justifyContent: 'space-around', alignItems: 'center',
         touchAction: 'none',
-        // BUG 1 follow-up: the shrink-on-scroll effect used to change
-        // `height` and each icon's own `width`/`height` directly — layout
-        // properties that force a reflow every time. A single `transform:
-        // scale()` on the whole pill is compositor-only (no re-layout),
-        // which is both cheaper and reads smoother; see App.jsx's Shell for
-        // the matching rAF-throttled scroll handler that drives `collapsed`.
-        transform: `scale(${collapsed ? 0.86 : 1})`,
-        transformOrigin: 'center bottom',
-        transition: 'transform 0.28s cubic-bezier(.22,.61,.36,1)',
+        // BUG (2026-10-06 fix pass) — the shrink-on-scroll `transform:
+        // scale()` used to live HERE, scoped to just this pill's own div.
+        // Since DockRow (App.jsx) lays this out as one flex row sibling of
+        // DockCreateButton, scaling only THIS child meant the dock visibly
+        // shrank on scroll while the "+" beside it stayed full size —
+        // exactly the reported "dock changes size but + stays large."
+        // Moved to DockRow's own outer div (App.jsx), so a single transform
+        // scales both controls together as one unit — matches this
+        // ticket's own "keep both in the same layout/animation state"
+        // instruction. `collapsed` itself is now unused here but kept as a
+        // prop for API compatibility with existing call sites/tests.
       }}
     >
         <div

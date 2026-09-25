@@ -362,10 +362,26 @@ extension AppState {
                 .from("profiles").select().eq("id", value: session.user.id)
                 .single().execute().value
             user = profile
-            accountType = profile.role
-            let canHostNow = profile.role == "organizer" || profile.role == "admin"
-            organizerMode = canHostNow
-            mode = canHostNow ? "host" : "goer"
+            // BUG 2 (2026-10-06 fix pass) — same race family as
+            // GocContext.jsx's organizerModeBusyRef guard (this file's web
+            // equivalent): skip the role-derived fields while a toggle is
+            // in flight, so a session/profile reload landing mid-toggle
+            // (this function is only re-invoked on sign-in/sign-out via
+            // RootView's `.task(id:)` today, but guarding here too keeps
+            // this function safe to call from anywhere in the future, and
+            // costs nothing when it isn't racing anything) can never read
+            // `profiles.role` from before that toggle's own UPDATE has
+            // committed and silently revert it.
+            if !organizerModeBusy {
+                accountType = profile.role
+                let canHostNow = profile.role == "organizer" || profile.role == "admin"
+                organizerMode = canHostNow
+                mode = canHostNow ? "host" : "goer"
+            } else {
+                #if DEBUG
+                print("[organizerMode] applySession() skipped role fields — a toggle is in flight")
+                #endif
+            }
             autoEmailDocuments = profile.autoEmailDocuments == true
             mutedNotificationKinds = profile.mutedNotificationKinds ?? []
 
@@ -630,10 +646,23 @@ extension AppState {
         mode = enabled ? "host" : "goer"
         organizerModeError = ""
 
+        // BUG 2 (2026-10-06 fix pass) — full request/response trace, dev
+        // console only, never the access token itself (just whether a
+        // session exists) or any personal data — this ticket's own
+        // explicit ask for "auth session, RPC name and parameters,
+        // PostgREST/SQL code/message, returned business code."
+        #if DEBUG
+        let session = try? await SupabaseService.client.auth.session
+        print("[organizerMode] request — hasSession=\(session != nil) expiresAt=\(session.map { String($0.expiresAt) } ?? "nil") rpc=set_organizer_mode params=[p_enabled: \(enabled)]")
+        #endif
+
         do {
             let role: String = try await SupabaseService.client
                 .rpc("set_organizer_mode", params: ["p_enabled": enabled])
                 .execute().value
+            #if DEBUG
+            print("[organizerMode] response — role=\(role)")
+            #endif
             accountType = role
             organizerMode = (role == "organizer" || role == "admin")
         } catch {

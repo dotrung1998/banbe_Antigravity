@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { BAR_HEIGHT, BAR_BOTTOM_OFFSET, DOCK_MARGIN, CREATE_SIZE } from './BottomTabBar.jsx';
-import { ink, paper, rule } from '../theme.js';
+import { ink, paper, rule, barGlass } from '../theme.js';
 
 // TASK C (2026-10-03 fix pass) — replaces the old floating "Tạo sự kiện"
 // pill (CreateEventFab.jsx, removed) with a compact "+" that sits right
@@ -63,6 +63,16 @@ export default function DockCreateButton() {
 
   return (
     <>
+      {/* BUG (2026-10-06 fix pass) — this used to be a SOLID `ink`-filled
+          circle with its own independently-chosen shadow — a visually-
+          similar but genuinely different style from the dock's own
+          translucent `barGlass` pill, which is exactly why it read as "a
+          solid black circle next to a translucent dock" on a real device.
+          Now reuses the dock's own `barGlass()` recipe verbatim (same
+          background/backdrop-filter as `BottomTabBar.jsx`) plus its exact
+          shadow, with the glyph switched from white-on-ink to plain `ink`,
+          since a translucent material needs an ink-colored glyph for
+          contrast the same way every dock tab icon already is. */}
       <div
         onClick={() => setOpen((v) => !v)}
         data-testid="dock-create-button"
@@ -70,11 +80,13 @@ export default function DockCreateButton() {
         aria-expanded={open}
         role="button"
         style={{
+          ...barGlass({}),
           flex: '0 0 auto',
           width: CREATE_SIZE, height: CREATE_SIZE, borderRadius: '50%',
-          background: ink, color: paper,
+          color: ink,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 8px 20px rgba(27,25,22,0.28)', cursor: 'pointer',
+          boxShadow: '0 8px 24px rgba(27,25,22,0.18)', cursor: 'pointer',
+          border: `1px solid ${rule}`,
           transition: 'transform 0.15s ease',
           transform: open ? 'rotate(45deg)' : 'rotate(0deg)',
         }}

@@ -768,6 +768,30 @@ export function GocProvider({ children }) {
   // effect only actually re-runs for a real user change.
   const storyViewedIdsRef = useRef(state.storyViewedIds);
 
+  // BUG 2 (2026-10-06 fix pass) — same "an async refetch can resolve out of
+  // order" family as storyViewedIdsRef just above, applied to organizer
+  // mode: `syncUser()` (below) unconditionally overwrote `organizerMode`/
+  // `accountType`/`mode` from a fresh `profiles.role` read on EVERY
+  // `onAuthStateChange` event with a session — not just sign-in.
+  // supabase-js reliably refires that callback for a background token
+  // refresh (its own auto-refresh timer, and — far more readily on mobile
+  // Safari than desktop, which is why this reproduces on a real iPhone and
+  // not in local dev — session recovery on tab/app visibility regain). If
+  // one of those refires while `applyOrganizerMode`'s own RPC call is still
+  // in flight, its SELECT can read `profiles.role` from BEFORE that RPC's
+  // UPDATE has committed, then `syncUser()`'s own `set()` — landing AFTER
+  // the toggle's own optimistic update — silently reverts organizerMode/
+  // accountType back to the pre-toggle value with no error of its own,
+  // exactly matching "switch stays on" (with `applyOrganizerMode`'s own
+  // error, if the RPC itself also genuinely failed, showing alongside it).
+  // Read via a ref (not `state.organizerModeBusy` directly) for the same
+  // reason `storyViewedIdsRef` exists: `syncUser` is defined once inside an
+  // effect with `[set]` deps, so a plain closure over state would be stale.
+  const organizerModeBusyRef = useRef(false);
+  useEffect(() => {
+    organizerModeBusyRef.current = state.organizerModeBusy;
+  }, [state.organizerModeBusy]);
+
   // Liked photos live on this device only — see the note on photoLikes.
   useEffect(() => {
     try {
@@ -825,6 +849,20 @@ export function GocProvider({ children }) {
         'participant';
       const canHostNow = role === 'organizer' || role === 'admin';
       const displayName = (profile?.display_name || '').trim() || user.user_metadata?.display_name || '';
+      // BUG 2 (2026-10-06 fix pass) — see organizerModeBusyRef's own
+      // comment above: skip the role-derived fields entirely while a
+      // toggle is in flight, so this refetch (which can legitimately read
+      // profiles.role from BEFORE that toggle's own UPDATE has committed)
+      // never overwrites the toggle's own more-recent optimistic/confirmed
+      // state. Every OTHER field this query fetched (display name,
+      // avatar, referral code, …) still applies normally — only the three
+      // organizer-mode fields are held back.
+      const roleFields = organizerModeBusyRef.current
+        ? {}
+        : { accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer' };
+      if (organizerModeBusyRef.current) {
+        console.warn('[organizerMode] syncUser() skipped role fields — a toggle is in flight');
+      }
       set({
         // TASK D (2026-10-01 UX foundation pass) — the shareable-profile
         // fields, loaded alongside everything else this same query already
@@ -835,7 +873,7 @@ export function GocProvider({ children }) {
           bio: profile?.bio || '', city: profile?.city || '',
           interests: profile?.interests || [], profileTheme: profile?.profile_theme || 'default',
         },
-        accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer',
+        ...roleFields,
         referralCode: profile?.referral_code || null, sessionChecked: true,
         autoEmailDocuments: profile?.auto_email_documents === true,
         mutedNotificationKinds: profile?.muted_notification_kinds || [],
@@ -3492,7 +3530,19 @@ export function GocProvider({ children }) {
     if (s.organizerModeBusy) return;
     const rollback = { organizerMode: s.organizerMode, accountType: s.accountType };
     set({ organizerMode: enabled, accountType: enabled ? 'organizer' : 'participant', mode: enabled ? 'host' : 'goer', organizerModeError: '', organizerModeBusy: true });
+    // BUG 2 (2026-10-06 fix pass) — full request/response trace, dev
+    // console only, never the access token itself (just whether a session
+    // exists) or any personal data — this ticket's own explicit ask for
+    // "auth session, RPC name and parameters, PostgREST/SQL code/message,
+    // returned business code, and subsequent profile refresh."
+    const { data: sessionData } = await supabase.auth.getSession();
+    console.info('[organizerMode] request', {
+      hasSession: !!sessionData?.session,
+      expiresAt: sessionData?.session?.expires_at ?? null,
+      rpc: 'set_organizer_mode', params: { p_enabled: enabled },
+    });
     const { data, error } = await supabase.rpc('set_organizer_mode', { p_enabled: enabled });
+    console.info('[organizerMode] response', { data, error: error ? { code: error.code, message: error.message } : null });
     if (error) {
       // Rolling back in silence is what makes the switch look like it "turns
       // itself back off" — always say why it went back. TASK 2: logs the

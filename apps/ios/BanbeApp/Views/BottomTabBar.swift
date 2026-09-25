@@ -228,15 +228,15 @@ struct BottomTabBar: View {
         .background(.thinMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(app.palette.ink.opacity(0.06)))
         .shadow(color: .black.opacity(0.16), radius: 14, x: 0, y: 6)
-        // BUG 1 follow-up: the shrink-on-scroll effect used to resize
-        // `barHeight`/icon frames directly — a layout property change that
-        // has to re-flow the HStack every time. A uniform `.scaleEffect` on
-        // the whole capsule is a compositor-only transform (no re-layout),
-        // which is both cheaper and reads smoother; AppState.bottomBarCollapsed
-        // itself is now throttled + set inside `withAnimation(.spring(...))`
-        // (see its own doc comment) instead of being flipped unanimated on
-        // every scroll frame.
-        .scaleEffect(app.bottomBarCollapsed ? 0.86 : 1, anchor: .bottom)
+        // BUG (2026-10-06 fix pass) — the shrink-on-scroll `.scaleEffect`
+        // used to live HERE, scoped to just this capsule's own body. Since
+        // `DockRow` lays this out as one HStack sibling of
+        // `DockCreateButtonView`, scaling only THIS child meant the dock
+        // visibly shrank on scroll while the "+" beside it stayed full
+        // size — exactly the reported "dock changes size but + stays
+        // large." Moved to `DockRow` itself (below), scoped to the WHOLE
+        // row, so both controls scale as one unit — matches this ticket's
+        // own "keep both in the same layout/animation state" instruction.
         // TASK 1 (2026-10-05 fix pass) — the outer horizontal margin and
         // bottom offset used to live here, self-positioning this capsule in
         // isolation. Now that the dock and the create-"+" button lay out
@@ -298,6 +298,12 @@ struct DockRow: View {
         }
         .padding(.horizontal, BottomTabBar.dockMargin)
         .padding(.bottom, BottomTabBar.bottomOffset)
+        // BUG (2026-10-06 fix pass) — applied to the WHOLE row now, not
+        // just `BottomTabBar`'s own body (see that scaleEffect's own
+        // former call site, this file) — both controls shrink/expand
+        // together on scroll instead of only the dock visibly resizing
+        // while the "+" stayed full size beside it.
+        .scaleEffect(app.bottomBarCollapsed ? 0.86 : 1, anchor: .bottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
 }
