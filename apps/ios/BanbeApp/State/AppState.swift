@@ -384,6 +384,20 @@ final class AppState: ObservableObject {
     // checking against that frozen number, so an event could sit at, say,
     // "10 hours ago" forever and never actually clear.
     @Published var homeLiveEvents: [String: LiveEventStatus] = [:]
+    // STAGE B (2026-09-25) — OrganizerView's real photo library, replacing
+    // the static `orgGallery` render. See loadOrganizerPhotos's own doc
+    // comment (AppState+Data.swift).
+    @Published var organizerPhotos: [OrganizerPhoto] = []
+    @Published var organizerPhotosLoading = false
+    // STAGE D (2026-09-25) — EventDetailView's real gallery: one event's
+    // own event_photos rows. See loadEventPhotos's own doc comment
+    // (AppState+Data.swift).
+    @Published var eventPhotos: [OrganizerPhoto] = []
+    @Published var eventPhotosLoading = false
+    // STAGE C (2026-09-25) — Dashboard's real "add photo" upload flow.
+    @Published var eventPhotoUploadBusy: [String: Bool] = [:]
+    @Published var eventPhotoUploaded: [String: Bool] = [:]
+    @Published var eventPhotoUploadError = ""
     @Published var now = Date()
     @Published var reserveError = ""
     @Published var loading = false

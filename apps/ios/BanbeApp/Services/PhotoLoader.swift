@@ -43,11 +43,17 @@ enum PhotoLoader {
         let cacheKey = key(path, maxPixel) as NSString
         if let hit = memory.object(forKey: cacheKey) { return hit }
 
-        // The catalogue's own photos ship in the bundle, so the common case
-        // never touches the network at all. Anything else (a future
-        // user-uploaded photo from storage) falls through to fetch().
+        // STAGE B (2026-09-25) — a real event_photos row's storage_path,
+        // already resolved to a full Supabase Storage public URL by the
+        // caller (OrganizerView's real photo library), is NOT one of this
+        // catalogue's own bundled/optimized assets — skip straight to a
+        // plain fetch of that exact URL. Any relative catalogue path (the
+        // overwhelmingly common case, e.g. "/photos/DSCF4423.jpg") is
+        // unaffected, unchanged from before.
         let data: Data?
-        if let bundled = bundledData(for: path) {
+        if path.hasPrefix("http://") || path.hasPrefix("https://") {
+            data = await fetchAbsolute(path)
+        } else if let bundled = bundledData(for: path) {
             data = bundled
         } else {
             data = await fetch(path: path)
@@ -67,6 +73,19 @@ enum PhotoLoader {
                 ?? Bundle.main.url(forResource: base, withExtension: "webp")
         else { return nil }
         return try? Data(contentsOf: url, options: .mappedIfSafe)
+    }
+
+    /// STAGE B (2026-09-25) — a real, already-absolute Storage URL, no
+    /// optimized/bundled derivative to try first (there isn't one).
+    private static func fetchAbsolute(_ urlString: String) async -> Data? {
+        guard let url = URL(string: urlString) else { return nil }
+        do {
+            let (data, response) = try await session.data(from: url)
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) { return nil }
+            return data.isEmpty ? nil : data
+        } catch {
+            return nil
+        }
     }
 
     /// Optimized derivative first, original as the fallback.

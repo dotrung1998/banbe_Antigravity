@@ -147,6 +147,17 @@ const initialState = {
   tickets: {},
   myOrgEventKeys: [],
   myOrganizerIds: [],
+  // STAGE D (2026-09-25) — EventDetail's real gallery: one event's own
+  // event_photos rows (see loadEventPhotos below).
+  eventPhotos: [],
+  eventPhotosLoading: false,
+  // STAGE B (2026-09-25) — Organizer.jsx's real photo library: real
+  // event_photos rows across all of an organizer's own events, scoped by
+  // ownership (see loadOrganizerPhotos below).
+  organizerPhotos: [],
+  organizerPhotosLoading: false,
+  // STAGE C (2026-09-25) — Dashboard's real "add photo" upload flow.
+  eventPhotoUploadBusy: {}, eventPhotoUploaded: {}, eventPhotoUploadError: '',
 
   // ---- payments & documents (supabase migration 024) ----
   // banbe still never touches the money. These carry the details a guest
@@ -1157,6 +1168,53 @@ export function GocProvider({ children }) {
       set({ myOrgEventKeys: [] });
     }
   }, [set]);
+
+  /** STAGE D (2026-09-25) — EventDetail's own real photo gallery, one
+   * event's `event_photos` rows (not the whole organizer's — that's
+   * `loadOrganizerPhotos` below). Replaces the static demo `ev.gallery`
+   * render. `event_photos` itself is openly readable (migration 001), so
+   * this needs no extra scoping beyond the event id itself — a viewer who
+   * can already reach this event's page (real `events` RLS already
+   * gated that) can see its real photos too. */
+  const loadEventPhotos = useCallback(async (eventId) => {
+    set({ eventPhotosLoading: true });
+    const { data, error } = await supabase
+      .from('event_photos').select('id, storage_path, sort_order')
+      .eq('event_id', eventId).order('sort_order', { ascending: true });
+    if (error) { if (import.meta.env?.DEV) console.warn('loadEventPhotos failed:', error); }
+    set({ eventPhotos: data || [], eventPhotosLoading: false });
+  }, [set]);
+
+  /** STAGE B (2026-09-25) — Organizer.jsx's real photo library, replacing
+   * the static demo `orgGallery` render. Two-step, both steps riding
+   * EXISTING RLS rather than a new RPC: `events` itself already lets the
+   * owner see every one of their own rows regardless of status (draft
+   * included — Task 1's own "ended must stay in the owner's library"
+   * rule, and then some) while a non-owner only ever sees
+   * live/ended/cancelled (084's fix) — so restricting to `status='live'
+   * AND visibility='public'` for a NON-owner here is what keeps the
+   * PUBLIC grid to live+public only, per this ticket's own rule 3;
+   * `event_photos` itself has always been openly readable
+   * (`event_photos_select_public: USING (true)`, migration 001) — nothing
+   * there was ever scoped by event status, so this function is the actual
+   * enforcement point for "which events' photos," not a new RLS grant. */
+  const loadOrganizerPhotos = useCallback(async (eventKey) => {
+    set({ organizerPhotosLoading: true });
+    const { data: evRow } = await supabase.from('events').select('organizer_id').eq('id', eventKey).maybeSingle();
+    const organizerId = evRow?.organizer_id;
+    if (!organizerId) { set({ organizerPhotos: [], organizerPhotosLoading: false }); return; }
+    const isOwner = s.myOrganizerIds.includes(organizerId);
+    let eventsQuery = supabase.from('events').select('id').eq('organizer_id', organizerId);
+    if (!isOwner) eventsQuery = eventsQuery.eq('status', 'live').eq('visibility', 'public');
+    const { data: orgEvents } = await eventsQuery;
+    const eventIds = (orgEvents || []).map(e => e.id);
+    if (!eventIds.length) { set({ organizerPhotos: [], organizerPhotosLoading: false }); return; }
+    const { data: photos, error } = await supabase
+      .from('event_photos').select('id, event_id, storage_path, sort_order')
+      .in('event_id', eventIds).order('sort_order', { ascending: true });
+    if (error) { if (import.meta.env?.DEV) console.warn('loadOrganizerPhotos failed:', error); }
+    set({ organizerPhotos: photos || [], organizerPhotosLoading: false });
+  }, [set, s.myOrganizerIds]);
 
   // Unread count for the notification bell, refreshed on login AND on a
   // 5s poll thereafter (matching this app's existing poll conventions —
@@ -4054,6 +4112,56 @@ export function GocProvider({ children }) {
     await saveProfileFields('');
   }, [saveProfileFields]);
 
+  /** STAGE C (2026-09-25) — the real "add a photo to one of my own events"
+   * flow this app never had: same upload shape as `uploadAvatar` above
+   * (client-side type/size guard, then Storage, then a table row), but the
+   * table row is what actually matters here — `event_photos_insert_own`
+   * (migration 001) is the real enforcement, checking THIS event's
+   * organizer is owned by the caller, not merely that the caller owns
+   * *some* organizer (all `event_photos_host_insert`, the bucket policy,
+   * checks) — so this can't be pointed at an event this account doesn't
+   * own even though the bucket policy alone wouldn't have stopped it.
+   * Deliberately callable for an event of ANY status (draft/live/ended/
+   * cancelled) — Task 1's own "ended must stay in the library" rule
+   * implies a host should be able to add a recap photo to an event after
+   * it's over, not just while it's live. */
+  const uploadEventPhoto = useCallback(async (eventId, file) => {
+    if (!s.user?.id) return false;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      set({ eventPhotoUploadError: T('Ảnh phải là JPEG, PNG hoặc WebP.', 'Image must be JPEG, PNG, or WebP.') });
+      return false;
+    }
+    if (file.size > 50 * 1024 * 1024) { // the bucket's own limit, migration 005
+      set({ eventPhotoUploadError: T('Ảnh tối đa 50MB.', 'Image must be under 50MB.') });
+      return false;
+    }
+    set(prev => ({ eventPhotoUploadBusy: { ...prev.eventPhotoUploadBusy, [eventId]: true }, eventPhotoUploadError: '' }));
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `${eventId}/${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from('event-photos').upload(path, file, { upsert: true, contentType: file.type });
+    if (upErr) {
+      console.warn('uploadEventPhoto storage failed:', upErr);
+      set(prev => ({ eventPhotoUploadBusy: { ...prev.eventPhotoUploadBusy, [eventId]: false }, eventPhotoUploadError: T('Không thể tải ảnh lên. Vui lòng thử lại.', 'Could not upload the image. Please try again.') }));
+      return false;
+    }
+    // Same "bucket name baked into storage_path" convention the original
+    // seed rows already use (event_photos.storage_path, migration 010) —
+    // every read path (eventPhotoUrl/organizerPhotoUrl/etc.) already
+    // strips this prefix defensively either way.
+    const { error: rowErr } = await supabase.from('event_photos').insert({ event_id: eventId, storage_path: `event-photos/${path}`, sort_order: 0 });
+    if (rowErr) {
+      console.warn('uploadEventPhoto row failed:', rowErr);
+      set(prev => ({ eventPhotoUploadBusy: { ...prev.eventPhotoUploadBusy, [eventId]: false }, eventPhotoUploadError: T('Không thể lưu ảnh. Vui lòng thử lại.', 'Could not save the photo. Please try again.') }));
+      return false;
+    }
+    set(prev => ({
+      eventPhotoUploadBusy: { ...prev.eventPhotoUploadBusy, [eventId]: false },
+      eventPhotoUploaded: { ...prev.eventPhotoUploaded, [eventId]: true },
+    }));
+    setTimeout(() => set(prev => ({ eventPhotoUploaded: { ...prev.eventPhotoUploaded, [eventId]: false } })), 1800);
+    return true;
+  }, [set, s.user?.id, T]);
+
   /** Public profile screen — reachable by handle, works for a signed-out
    * visitor too (get_public_profile() is granted to anon, migration 079). */
   const openPublicProfile = useCallback(async (handle, back = 'profile') => {
@@ -5882,7 +5990,7 @@ export function GocProvider({ children }) {
 
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
-    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents,
+    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
@@ -5915,7 +6023,7 @@ export function GocProvider({ children }) {
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
-    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents,
+    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,

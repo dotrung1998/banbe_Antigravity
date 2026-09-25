@@ -20,6 +20,17 @@ struct OrganizerView: View {
             .map { $0.applyingLiveStatus(app.homeLiveEvents[$0.key]) }
             .filter { $0.orgName == event.orgName && $0.isOpen }
     }
+    // STAGE B (2026-09-25) — real photo URLs from `app.organizerPhotos`
+    // (loadOrganizerPhotos), resolved the same way PulseViewerView's own
+    // `eventPhotoURL` already does.
+    private var orgPhotoURLs: [String] {
+        app.organizerPhotos.compactMap { photo in
+            let relative = photo.storagePath.hasPrefix("event-photos/")
+                ? String(photo.storagePath.dropFirst("event-photos/".count))
+                : photo.storagePath
+            return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative).absoluteString
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -108,20 +119,41 @@ struct OrganizerView: View {
                         }
                         .padding(.top, 30)
 
-                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
-                            ForEach(Array(event.orgGallery.enumerated()), id: \.offset) { index, path in
-                                GeometryReader { geo in
-                                    Button {
-                                        app.openPhoto(gallery: event.orgGallery, index: index, organizer: event.orgName, eventKey: event.key, originRect: geo.frame(in: .global))
-                                    } label: {
-                                        CatalogPhoto(path: path, height: 158)
+                        // STAGE B (2026-09-25) — real `event_photos` rows
+                        // (loadOrganizerPhotos, .task below), not the
+                        // static demo `orgGallery`. Resolved to full
+                        // Supabase Storage public URLs and fed straight
+                        // into the SAME `openPhoto`/`PhotoViewerView`
+                        // pipeline every other gallery uses — PhotoLoader
+                        // was taught to fetch an already-absolute URL
+                        // directly (see its own doc comment), so no second
+                        // lightbox was needed. A genuinely empty result
+                        // shows plain text, never a fake/demo photo
+                        // standing in for a real one.
+                        if app.organizerPhotosLoading {
+                            Text(app.T("Đang tải…", "Loading…"))
+                                .font(.system(size: 12.5)).opacity(0.6)
+                                .padding(.top, 14)
+                        } else if orgPhotoURLs.isEmpty {
+                            Text(app.T("Người tổ chức chưa đăng ảnh nào.", "This organizer hasn’t posted any photos yet."))
+                                .font(.system(size: 12.5)).opacity(0.6)
+                                .padding(.top, 14)
+                        } else {
+                            LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
+                                ForEach(Array(orgPhotoURLs.enumerated()), id: \.offset) { index, path in
+                                    GeometryReader { geo in
+                                        Button {
+                                            app.openPhoto(gallery: orgPhotoURLs, index: index, organizer: event.orgName, eventKey: event.key, originRect: geo.frame(in: .global))
+                                        } label: {
+                                            CatalogPhoto(path: path, height: 158)
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                    .buttonStyle(.plain)
+                                    .frame(height: 158)
                                 }
-                                .frame(height: 158)
                             }
+                            .padding(.top, 14)
                         }
-                        .padding(.top, 14)
                     }
                     .foregroundStyle(app.palette.ink)
                     .padding(.horizontal, 22)
@@ -138,5 +170,9 @@ struct OrganizerView: View {
         // comment; this screen can be reached without Home ever having
         // populated `homeLiveEvents`.
         .task { await app.loadHomeLiveEvents() }
+        // STAGE B (2026-09-25) — re-fetched whenever the viewed event
+        // changes (a shared link/back-navigation can land here for a
+        // different organizer entirely).
+        .task(id: event.key) { await app.loadOrganizerPhotos(eventKey: event.key) }
     }
 }

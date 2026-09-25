@@ -1,12 +1,22 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { bg, mapsUrl } from '../data/events.js';
+import { supabase } from '../lib/supabase.js';
 import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 
+function eventPhotoUrl(path) {
+  const relative = path.replace(/^event-photos\//, '');
+  return supabase.storage.from('event-photos').getPublicUrl(relative).data.publicUrl;
+}
+
 export default function EventDetail() {
-  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos } = useGoc();
   const s = state;
+  // STAGE D (2026-09-25) — real event_photos rows, replacing the static
+  // demo `ev.gallery` below.
+  useEffect(() => { loadEventPhotos(ev.key); }, [ev.key, loadEventPhotos]);
+  const realPhotoUrls = (s.eventPhotos || []).map(p => eventPhotoUrl(p.storage_path));
   const [shareStoryMsg, setShareStoryMsg] = useState('');
   // BUG 4 fix (2026-09-22 follow-up) — "Chia sẻ lên Story" used to publish
   // immediately on tap; per this ticket's own instruction, a real
@@ -254,11 +264,21 @@ export default function EventDetail() {
         {showRefund && <p style={{ margin: '14px 0 0', fontSize: 11.5, lineHeight: 1.5, color: ink, textAlign: 'center' }}>{refundNote}</p>}
         <div style={{ marginTop: 28 }}>
           <span style={{ fontSize: 11.5, color: ink }}>{T('Hình ảnh', 'Photos')}</span>
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 12, paddingBottom: 4 }}>
-            {ev.gallery.map((u, i) => (
-              <div key={i} onClick={(e) => openPhoto(ev.gallery, i, ev.orgName, ev.key, e.currentTarget.getBoundingClientRect())} style={bg(u, { flex: 'none', width: 148, height: 186, cursor: 'pointer' })} />
-            ))}
-          </div>
+          {/* STAGE D (2026-09-25) — real event_photos rows, not the static
+              demo `ev.gallery`. A genuinely photo-less real event shows
+              plain text, never a fake/demo photo standing in for a real
+              one. */}
+          {s.eventPhotosLoading ? (
+            <p style={{ fontSize: 12.5, color: ink, opacity: 0.6, marginTop: 12 }}>{T('Đang tải…', 'Loading…')}</p>
+          ) : realPhotoUrls.length ? (
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 12, paddingBottom: 4 }}>
+              {realPhotoUrls.map((u, i) => (
+                <div key={s.eventPhotos[i].id} onClick={(e) => openPhoto(realPhotoUrls, i, ev.orgName, ev.key, e.currentTarget.getBoundingClientRect())} style={bg(u, { flex: 'none', width: 148, height: 186, cursor: 'pointer' })} />
+              ))}
+            </div>
+          ) : (
+            <p style={{ fontSize: 12.5, color: ink, opacity: 0.6, marginTop: 12 }}>{T('Chưa có ảnh nào cho sự kiện này.', 'No photos for this event yet.')}</p>
+          )}
         </div>
       </div>
       </div>

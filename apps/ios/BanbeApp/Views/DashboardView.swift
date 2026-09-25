@@ -1,10 +1,17 @@
 import SwiftUI
+import PhotosUI
 
 /// Port of src/screens/Dashboard.jsx — the organizer's own page: verify
 /// badge, upcoming events each with a check-in button, past events, and
 /// "create new event" pinned at the bottom.
 struct DashboardView: View {
     @EnvironmentObject var app: AppState
+    // STAGE C (2026-09-25) — the real "add a photo to one of my own
+    // events" flow; one shared picker item/target-event pair (same
+    // pattern EditProfileView's own avatar picker uses), since there's one
+    // instance of this control per event row rather than a single one.
+    @State private var photoPickerItem: PhotosPickerItem?
+    @State private var photoPickerEventID: String?
 
     /// Branded from one of this account's real events when it owns any
     /// (myOrgEventKeys), falling back to the open event otherwise.
@@ -147,6 +154,7 @@ struct DashboardView: View {
                                         .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
+                                    addPhotoButton(for: item.key)
                                     Button(app.T("Điểm danh", "Check-in")) { app.openAttendance(item.key) }
                                         .font(.system(size: 11, weight: .semibold))
                                         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -172,27 +180,40 @@ struct DashboardView: View {
                                     .padding(16)
                             }
                             ForEach(past) { item in
-                                Button { app.goEvent(item.key) } label: {
-                                    HStack(spacing: 12) {
-                                        CatalogPhoto(path: item.img, height: 52, width: 52)
-                                            .saturation(0.5)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(item.name).font(BanbeTheme.display(15)).lineLimit(1)
-                                            Text(app.trStatus(app.stripKm(item.meta, event: item))
-                                                 + " ▪︎ " + app.trStatus(EventLabels.ago(item.endedHoursAgo ?? 0)))
-                                                .font(.system(size: 11.5)).lineLimit(1)
+                                HStack(spacing: 12) {
+                                    Button { app.goEvent(item.key) } label: {
+                                        HStack(spacing: 12) {
+                                            CatalogPhoto(path: item.img, height: 52, width: 52)
+                                                .saturation(0.5)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(item.name).font(BanbeTheme.display(15)).lineLimit(1)
+                                                Text(app.trStatus(app.stripKm(item.meta, event: item))
+                                                     + " ▪︎ " + app.trStatus(EventLabels.ago(item.endedHoursAgo ?? 0)))
+                                                    .font(.system(size: 11.5)).lineLimit(1)
+                                            }
+                                            Spacer(minLength: 0)
                                         }
-                                        Spacer(minLength: 0)
+                                        .contentShape(Rectangle())
                                     }
-                                    .padding(.horizontal, 16).padding(.vertical, 13)
-                                    .contentShape(Rectangle())
+                                    .buttonStyle(.plain)
+                                    // STAGE C — Task 1's own "ended must stay
+                                    // in the library" rule implies a host
+                                    // should be able to add a recap photo
+                                    // after the fact, not just while live.
+                                    addPhotoButton(for: item.key)
                                 }
-                                .buttonStyle(.plain)
+                                .padding(.horizontal, 16).padding(.vertical, 13)
                                 if item.key != past.last?.key { Divider().overlay(app.palette.rule) }
                             }
                         }
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .padding(.top, 10)
+
+                        if !app.eventPhotoUploadError.isEmpty {
+                            Text(app.eventPhotoUploadError)
+                                .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                                .padding(.top, 10)
+                        }
                     }
                     .foregroundStyle(app.palette.ink)
                     .padding(.horizontal, 22)
@@ -213,6 +234,36 @@ struct DashboardView: View {
             await app.loadRefundQueue()
             await app.loadOrganizerHoldingSummary()
         }
+        // STAGE C (2026-09-25) — the real "add a photo to one of my own
+        // events" flow; one shared onChange, `photoPickerEventID` says
+        // which row's tap set it (same pattern EditProfileView's own
+        // avatar picker uses for a single target).
+        .onChange(of: photoPickerItem) { _, newItem in
+            Task {
+                guard let newItem, let eventID = photoPickerEventID,
+                      let data = try? await newItem.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data) else { return }
+                _ = await app.uploadEventPhoto(eventID: eventID, image: image)
+                photoPickerEventID = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func addPhotoButton(for eventID: String) -> some View {
+        let busy = app.eventPhotoUploadBusy[eventID] == true
+        PhotosPicker(selection: $photoPickerItem, matching: .images) {
+            Text(app.eventPhotoUploaded[eventID] == true ? app.T("Đã thêm ✓", "Added ✓")
+                 : busy ? app.T("Đang tải…", "Uploading…")
+                 : app.T("+ Ảnh", "+ Photo"))
+                .font(.system(size: 11, weight: .semibold))
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule, lineWidth: 1))
+                .opacity(busy ? 0.5 : 1)
+        }
+        .disabled(busy)
+        .simultaneousGesture(TapGesture().onEnded { photoPickerEventID = eventID })
+        .accessibilityIdentifier("dashboard.addPhoto.\(eventID)")
     }
 }
 

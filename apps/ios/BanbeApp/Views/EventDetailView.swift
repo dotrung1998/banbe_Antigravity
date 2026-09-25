@@ -10,6 +10,16 @@ struct EventDetailView: View {
     @State private var shareConfirmOpen = false
 
     private var event: CatalogEvent { app.currentEvent }
+    // STAGE D (2026-09-25) — real event_photos URLs, replacing the static
+    // demo `event.gallery` below.
+    private var realPhotoURLs: [String] {
+        app.eventPhotos.compactMap { photo in
+            let relative = photo.storagePath.hasPrefix("event-photos/")
+                ? String(photo.storagePath.dropFirst("event-photos/".count))
+                : photo.storagePath
+            return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative).absoluteString
+        }
+    }
 
     /// Reached from several places, so "back" returns to whichever one you
     /// actually came from, labelled accordingly.
@@ -75,6 +85,10 @@ struct EventDetailView: View {
             backShareRow
         }
         .sheet(isPresented: $shareConfirmOpen) { shareConfirmSheet }
+        // STAGE D (2026-09-25) — re-fetched whenever the viewed event
+        // changes (this view can be reached repeatedly for different
+        // events without ever being torn down, e.g. via `goEvent`).
+        .task(id: event.key) { await app.loadEventPhotos(eventID: event.key) }
     }
 
     // BUG 4 fix (2026-09-22 follow-up) — event cover preview, title/date,
@@ -311,27 +325,41 @@ struct EventDetailView: View {
             Text(app.T("Hình ảnh", "Photos"))
                 .font(.system(size: 11.5))
                 .padding(.top, 28)
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 8) {
-                    ForEach(Array(event.gallery.enumerated()), id: \.offset) { index, path in
-                        // GeometryReader wraps each thumbnail so its own
-                        // tap can read `geo.frame(in: .global)` at the
-                        // moment it's tapped — the origin rect the photo
-                        // viewer's dismiss animation shrinks back to.
-                        GeometryReader { geo in
-                            Button {
-                                app.openPhoto(gallery: event.gallery, index: index, organizer: event.orgName, eventKey: event.key, originRect: geo.frame(in: .global))
-                            } label: {
-                                CatalogPhoto(path: path, height: 186, width: 148)
+            // STAGE D (2026-09-25) — real event_photos rows, not the
+            // static demo `event.gallery`. A genuinely photo-less real
+            // event shows plain text, never a fake/demo photo standing in
+            // for a real one.
+            if app.eventPhotosLoading {
+                Text(app.T("Đang tải…", "Loading…"))
+                    .font(.system(size: 12.5)).opacity(0.6)
+                    .padding(.top, 12)
+            } else if realPhotoURLs.isEmpty {
+                Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet."))
+                    .font(.system(size: 12.5)).opacity(0.6)
+                    .padding(.top, 12)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 8) {
+                        ForEach(Array(realPhotoURLs.enumerated()), id: \.offset) { index, path in
+                            // GeometryReader wraps each thumbnail so its own
+                            // tap can read `geo.frame(in: .global)` at the
+                            // moment it's tapped — the origin rect the photo
+                            // viewer's dismiss animation shrinks back to.
+                            GeometryReader { geo in
+                                Button {
+                                    app.openPhoto(gallery: realPhotoURLs, index: index, organizer: event.orgName, eventKey: event.key, originRect: geo.frame(in: .global))
+                                } label: {
+                                    CatalogPhoto(path: path, height: 186, width: 148)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
+                            .frame(width: 148, height: 186)
+                            .accessibilityIdentifier("event.photo.\(index)")
                         }
-                        .frame(width: 148, height: 186)
-                        .accessibilityIdentifier("event.photo.\(index)")
                     }
                 }
+                .padding(.top, 12)
             }
-            .padding(.top, 12)
         }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 22)

@@ -1,17 +1,27 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, findEvent, bg } from '../data/events.js';
 import { liveEventOverrides } from '../lib/countdown.js';
-import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
+import { paper, ink, rule, alert, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
 import ActionCenter from './ActionCenter.jsx';
 
 export default function Dashboard() {
   const {
     state, T, trStatus, stripKm, curEvent, backFromDashboard, switchToGoer, goCreate, openAttendance, goEvent, requestVerify, loadHomeLiveEvents,
-    loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, openVerifications,
+    loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, openVerifications, uploadEventPhoto,
   } = useGoc();
   const s = state;
+  // STAGE C (2026-09-25) — the real "add a photo to one of my own events"
+  // flow; see uploadEventPhoto's own doc comment (GocContext.jsx).
+  const photoInputRef = useRef(null);
+  const [photoUploadTarget, setPhotoUploadTarget] = useState(null);
+  const pickEventPhoto = (eventId) => { setPhotoUploadTarget(eventId); photoInputRef.current?.click(); };
+  const onEventPhotoChosen = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file && photoUploadTarget) uploadEventPhoto(photoUploadTarget, file);
+  };
 
   // TASK A (2026-10-01 UX foundation pass) — Dashboard is host-only (this
   // whole screen only ever renders for an organizer), so only host sources
@@ -119,6 +129,20 @@ export default function Dashboard() {
                 <span style={{ ...display(15, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</span>
                 <span style={{ fontSize: 11.5, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{trStatus(stripKm(e.meta, e))}</span>
               </div>
+              {/* STAGE C (2026-09-25) — real "add photo" affordance, the
+                  actual thing that lets Pulse's photo tab and Task 3's
+                  like/heart system have real eligible data going forward.
+                  A plain hidden file input (one shared input, `pickEventPhoto`
+                  sets which event id it's for) rather than a whole new
+                  upload sheet — same minimal shape `uploadAvatar`'s own
+                  call site uses. */}
+              <span
+                onClick={() => pickEventPhoto(e.key)}
+                data-testid={`dashboard-add-photo-${e.key}`}
+                style={{ fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', flex: 'none', cursor: s.eventPhotoUploadBusy[e.key] ? 'default' : 'pointer', opacity: s.eventPhotoUploadBusy[e.key] ? 0.5 : 1 }}
+              >
+                {s.eventPhotoUploaded[e.key] ? T('Đã thêm ✓', 'Added ✓') : s.eventPhotoUploadBusy[e.key] ? T('Đang tải…', 'Uploading…') : T('+ Ảnh', '+ Photo')}
+              </span>
               <span onClick={() => openAttendance(e.key)} style={{ fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', flex: 'none', cursor: 'pointer' }}>{T('Điểm danh', 'Check-in')}</span>
             </div>
           ))}
@@ -132,12 +156,22 @@ export default function Dashboard() {
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Sự kiện đã qua', 'Past events')}</span>
         <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
           {past.map((e, i, arr) => (
-            <div key={e.key} onClick={() => goEvent(e.key)} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '13px 16px', borderBottom: i < arr.length - 1 ? `1px solid ${rule}` : 'none', cursor: 'pointer' }}>
-              <div style={bg(e.img, { flex: 'none', width: 52, height: 52, filter: 'grayscale(0.5)' })} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+            <div key={e.key} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '13px 16px', borderBottom: i < arr.length - 1 ? `1px solid ${rule}` : 'none' }}>
+              <div onClick={() => goEvent(e.key)} style={bg(e.img, { flex: 'none', width: 52, height: 52, filter: 'grayscale(0.5)', cursor: 'pointer' })} />
+              <div onClick={() => goEvent(e.key)} style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1, cursor: 'pointer' }}>
                 <span style={{ ...display(15, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</span>
                 <span style={{ fontSize: 11.5, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{trStatus(stripKm(e.meta, e))} ▪︎ {e.agoLabel(e.endedHoursAgo)}</span>
               </div>
+              {/* STAGE C — Task 1's own "ended must stay in the library"
+                  rule implies a host should be able to add a recap photo
+                  to an event after it's over, not just while it's live. */}
+              <span
+                onClick={() => pickEventPhoto(e.key)}
+                data-testid={`dashboard-add-photo-${e.key}`}
+                style={{ fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', flex: 'none', cursor: s.eventPhotoUploadBusy[e.key] ? 'default' : 'pointer', opacity: s.eventPhotoUploadBusy[e.key] ? 0.5 : 1 }}
+              >
+                {s.eventPhotoUploaded[e.key] ? T('Đã thêm ✓', 'Added ✓') : s.eventPhotoUploadBusy[e.key] ? T('Đang tải…', 'Uploading…') : T('+ Ảnh', '+ Photo')}
+              </span>
             </div>
           ))}
           {past.length === 0 && (
@@ -145,6 +179,11 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={onEventPhotoChosen} />
+      {s.eventPhotoUploadError && (
+        <p style={{ fontSize: 12, color: alert, margin: '0 22px 16px' }}>{s.eventPhotoUploadError}</p>
+      )}
 
       </div>
       <div onClick={goCreate} style={{ ...inkButton({ flex: 'none', borderRadius: 0, padding: '18px 0 30px' }) }}>{T('+ Tạo sự kiện mới', '+ Create new event')}</div>

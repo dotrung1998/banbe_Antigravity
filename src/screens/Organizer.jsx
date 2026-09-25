@@ -2,15 +2,27 @@ import { useEffect } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg } from '../data/events.js';
 import { liveEventOverrides } from '../lib/countdown.js';
+import { supabase } from '../lib/supabase.js';
 import { paper, ink, rule, display, cardGlass, inkButton } from '../theme.js';
 
+function organizerPhotoUrl(path) {
+  const relative = path.replace(/^event-photos\//, '');
+  return supabase.storage.from('event-photos').getPublicUrl(relative).data.publicUrl;
+}
+
 export default function Organizer() {
-  const { state, T, trStatus, stripKm, curEvent: ev, backToEvent, goEvent, goChat, toggleFollow, openPhoto, loadHomeLiveEvents } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent: ev, backToEvent, goEvent, goChat, toggleFollow, openPhoto, loadHomeLiveEvents, loadOrganizerPhotos } = useGoc();
   const s = state;
   // 2026-09-25 fix pass (Task 0 audit) — see `orgEvents`' own comment
   // below; this screen never fetched live status before, so it's fetched
   // here the same way Dashboard.jsx fetches it for its own event lists.
   useEffect(() => { loadHomeLiveEvents(); }, [loadHomeLiveEvents]);
+  // STAGE B (2026-09-25) — the real photo library, replacing the static
+  // `ev.orgGallery` render below. Re-fetched whenever the viewed event
+  // changes (a shared link/back-navigation can land here for a different
+  // organizer entirely).
+  useEffect(() => { loadOrganizerPhotos(ev.key); }, [ev.key, loadOrganizerPhotos]);
+  const orgPhotoUrls = (s.organizerPhotos || []).map(p => organizerPhotoUrl(p.storage_path));
 
   const evOrgStats = T('Tổ chức từ ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' sự kiện', 'Hosting since ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' events');
   const following = s.following.includes(ev.key);
@@ -81,11 +93,24 @@ export default function Organizer() {
           <span style={{ fontSize: 11.5, color: ink }}>{T('Ảnh của', 'Photos by')} {ev.orgName}</span>
           <span style={{ fontSize: 11, color: ink }}>{T('do người tổ chức đăng', 'posted by the organizer')}</span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 14 }}>
-          {ev.orgGallery.map((u, i) => (
-            <div key={i} onClick={(e) => openPhoto(ev.orgGallery, i, ev.orgName, ev.key, e.currentTarget.getBoundingClientRect())} style={bg(u, { width: '100%', height: 158, cursor: 'pointer' })} />
-          ))}
-        </div>
+        {/* STAGE B (2026-09-25) — real event_photos rows (loadOrganizerPhotos
+            above), not the static demo `orgGallery` this used to render.
+            Scoped server-query-side to live+public events for a visitor,
+            every one of the organizer's own events (any status, Task 1's
+            own "ended must stay in the library" rule) for the owner. A
+            genuinely empty result shows plain text, never a fake/demo
+            photo standing in for a real one. */}
+        {s.organizerPhotosLoading ? (
+          <p style={{ fontSize: 12.5, color: ink, opacity: 0.6, margin: '14px 0 0' }}>{T('Đang tải…', 'Loading…')}</p>
+        ) : orgPhotoUrls.length ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 14 }}>
+            {orgPhotoUrls.map((u, i) => (
+              <div key={s.organizerPhotos[i].id} onClick={(e) => openPhoto(orgPhotoUrls, i, ev.orgName, ev.key, e.currentTarget.getBoundingClientRect())} style={bg(u, { width: '100%', height: 158, cursor: 'pointer' })} />
+            ))}
+          </div>
+        ) : (
+          <p style={{ fontSize: 12.5, color: ink, opacity: 0.6, margin: '14px 0 0' }}>{T('Người tổ chức chưa đăng ảnh nào.', 'This organizer hasn’t posted any photos yet.')}</p>
+        )}
       </div>
       </div>
       <div onClick={goChat} data-testid="organizer-message" style={{ ...inkButton({ flex: 'none', margin: '0 20px 22px', padding: '15px 0' }) }}>

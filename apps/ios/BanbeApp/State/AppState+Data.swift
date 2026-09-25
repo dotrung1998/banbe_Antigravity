@@ -120,6 +120,15 @@ struct NewStory: Encodable {
         case width, height
     }
 }
+/// STAGE C (2026-09-25) — uploadEventPhoto()'s own INSERT row.
+struct NewEventPhoto: Encodable {
+    let eventId: String
+    let storagePath: String
+    enum CodingKeys: String, CodingKey {
+        case eventId = "event_id"
+        case storagePath = "storage_path"
+    }
+}
 struct NewStoryView: Encodable {
     let storyId: UUID
     let viewerId: UUID
@@ -159,6 +168,20 @@ private struct OrganizerRow: Decodable { let id: String; let name: String }
 private struct UUIDRow: Decodable { let id: UUID }
 private struct OrganizerRef: Decodable { let organizerId: String?
     enum CodingKeys: String, CodingKey { case organizerId = "organizer_id" } }
+/// STAGE B (2026-09-25) — one row of `loadOrganizerPhotos()`'s real
+/// photo library (a real `event_photos` row, not the static catalogue).
+struct OrganizerPhoto: Decodable, Identifiable, Equatable {
+    let id: UUID
+    let eventId: String
+    let storagePath: String
+    let sortOrder: Int
+    enum CodingKeys: String, CodingKey {
+        case id
+        case eventId = "event_id"
+        case storagePath = "storage_path"
+        case sortOrder = "sort_order"
+    }
+}
 private struct BookingBrief: Decodable {
     let eventId: String
     let qty: Int
@@ -523,6 +546,121 @@ extension AppState {
             }
         } catch {
             print("Failed to load account events:", error)
+        }
+    }
+
+    /// STAGE C (2026-09-25) — the real "add a photo to one of my own
+    /// events" flow this app never had; same upload shape as
+    /// `uploadAvatar` (AppState+Profile.swift), but the row insert is what
+    /// actually matters here — `event_photos_insert_own` (migration 001)
+    /// checks THIS event's organizer is owned by the caller, not merely
+    /// that the caller owns *some* organizer (all the bucket policy,
+    /// `event_photos_host_insert`, checks), so this can't be pointed at an
+    /// event this account doesn't own even though the bucket policy alone
+    /// wouldn't have stopped it. Deliberately callable for an event of ANY
+    /// status — Task 1's own "ended must stay in the library" rule
+    /// implies a host should be able to add a recap photo after the fact,
+    /// not just while an event is live.
+    func uploadEventPhoto(eventID: String, image: UIImage) async -> Bool {
+        guard userID != nil else { return false }
+        guard let data = image.jpegData(compressionQuality: 0.85) else { return false }
+        if data.count > 50 * 1024 * 1024 { // the bucket's own limit, migration 005
+            eventPhotoUploadError = T("Ảnh tối đa 50MB.", "Image must be under 50MB.")
+            return false
+        }
+        eventPhotoUploadBusy[eventID] = true
+        eventPhotoUploadError = ""
+        defer { eventPhotoUploadBusy[eventID] = false }
+        let path = "\(eventID)/\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
+        do {
+            _ = try await SupabaseService.client.storage.from("event-photos")
+                .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
+            // Same "bucket name baked into storage_path" convention the
+            // original seed rows already use (migration 010) — every read
+            // path (eventPhotoURL/organizerPhotoUrl/etc.) already strips
+            // this prefix defensively either way.
+            _ = try await SupabaseService.client.from("event_photos")
+                .insert(NewEventPhoto(eventId: eventID, storagePath: "event-photos/\(path)"))
+                .execute()
+            eventPhotoUploaded[eventID] = true
+            Task {
+                try? await Task.sleep(nanoseconds: 1_800_000_000)
+                eventPhotoUploaded[eventID] = false
+            }
+            return true
+        } catch {
+            print("uploadEventPhoto failed:", error, "eventID:", eventID)
+            eventPhotoUploadError = T("Không thể tải ảnh lên. Vui lòng thử lại.", "Could not upload the image. Please try again.")
+            return false
+        }
+    }
+
+    /// STAGE D (2026-09-25) — EventDetailView's own real photo gallery,
+    /// one event's `event_photos` rows (not the whole organizer's — that's
+    /// `loadOrganizerPhotos` below). Replaces the static demo
+    /// `event.gallery` render. `event_photos` itself is openly readable
+    /// (migration 001), so this needs no extra scoping beyond the event
+    /// id itself — a viewer who can already reach this event's page (real
+    /// `events` RLS already gated that) can see its real photos too.
+    func loadEventPhotos(eventID: String) async {
+        eventPhotosLoading = true
+        do {
+            let photos: [OrganizerPhoto] = try await SupabaseService.client
+                .from("event_photos").select("id, event_id, storage_path, sort_order")
+                .eq("event_id", value: eventID)
+                .order("sort_order", ascending: true)
+                .execute().value
+            eventPhotos = photos
+            eventPhotosLoading = false
+        } catch {
+            print("loadEventPhotos failed:", error)
+            eventPhotos = []
+            eventPhotosLoading = false
+        }
+    }
+
+    /// STAGE B (2026-09-25) — OrganizerView's real photo library, replacing
+    /// the static demo `orgGallery` render. Two-step, both steps riding
+    /// EXISTING RLS rather than a new RPC: `events` itself already lets the
+    /// owner see every one of their own rows regardless of status (draft
+    /// included — Task 1's own "ended must stay in the owner's library"
+    /// rule, and then some) while a non-owner only ever sees
+    /// live/ended/cancelled (migration 084's fix) — so restricting to
+    /// `status='live' AND visibility='public'` for a NON-owner here is
+    /// what keeps the PUBLIC grid to live+public only, per this ticket's
+    /// own rule 3; `event_photos` itself has always been openly readable
+    /// (`event_photos_select_public: USING (true)`, migration 001) —
+    /// nothing there was ever scoped by event status, so this function is
+    /// the actual enforcement point for "which events' photos," not a new
+    /// RLS grant.
+    func loadOrganizerPhotos(eventKey: String) async {
+        organizerPhotosLoading = true
+        do {
+            let evRow: OrganizerRef = try await SupabaseService.client
+                .from("events").select("organizer_id").eq("id", value: eventKey)
+                .single().execute().value
+            guard let organizerId = evRow.organizerId else {
+                organizerPhotos = []; organizerPhotosLoading = false; return
+            }
+            let isOwner = myOrganizerIDs.contains(organizerId)
+            var query = SupabaseService.client.from("events").select("id").eq("organizer_id", value: organizerId)
+            if !isOwner { query = query.eq("status", value: "live").eq("visibility", value: "public") }
+            let orgEvents: [IDRow] = try await query.execute().value
+            let eventIds = orgEvents.map(\.id)
+            guard !eventIds.isEmpty else {
+                organizerPhotos = []; organizerPhotosLoading = false; return
+            }
+            let photos: [OrganizerPhoto] = try await SupabaseService.client
+                .from("event_photos").select("id, event_id, storage_path, sort_order")
+                .in("event_id", values: eventIds)
+                .order("sort_order", ascending: true)
+                .execute().value
+            organizerPhotos = photos
+            organizerPhotosLoading = false
+        } catch {
+            print("loadOrganizerPhotos failed:", error)
+            organizerPhotos = []
+            organizerPhotosLoading = false
         }
     }
 
