@@ -3,6 +3,10 @@ import Supabase
 import EventKit
 import UIKit
 import Photos
+// BUG (2026-10-08 fix pass) — `withAnimation` (used by applyOrganizerMode
+// below, to smooth the LazyVStack reflow its own state change causes) is a
+// SwiftUI global function; this file only imports it now, not before.
+import SwiftUI
 
 /// Row payloads for the writes this app makes. PostgREST needs `Encodable`
 /// values, so each write gets a small explicit struct rather than an
@@ -362,24 +366,45 @@ extension AppState {
                 .from("profiles").select().eq("id", value: session.user.id)
                 .single().execute().value
             user = profile
-            // BUG 2 (2026-10-06 fix pass) — same race family as
-            // GocContext.jsx's organizerModeBusyRef guard (this file's web
-            // equivalent): skip the role-derived fields while a toggle is
-            // in flight, so a session/profile reload landing mid-toggle
-            // (this function is only re-invoked on sign-in/sign-out via
-            // RootView's `.task(id:)` today, but guarding here too keeps
-            // this function safe to call from anywhere in the future, and
-            // costs nothing when it isn't racing anything) can never read
-            // `profiles.role` from before that toggle's own UPDATE has
-            // committed and silently revert it.
-            if !organizerModeBusy {
+            // BUG 2 (2026-10-06 fix pass) / BUG (2026-10-08 fix pass) —
+            // same race family as GocContext.jsx's organizerModeBusyRef
+            // guard (this file's web equivalent): skip the role-derived
+            // fields while a toggle is in flight, so a session/profile
+            // reload landing mid-toggle can never read `profiles.role`
+            // from before that toggle's own UPDATE has committed and
+            // silently revert it. This is the CONFIRMED cause of "toggle
+            // off works for an instant, then flips back on": this guard
+            // used to check `organizerModeBusy`, the `@Published` UI flag
+            // — but the 2026-10-07 fix pass (to stop a SwiftUI "publishing
+            // changes from within view updates" warning) deliberately
+            // delays setting THAT flag until after an `await Task.yield()`
+            // inside `applyOrganizerMode`, so there is now a real window,
+            // between a tap landing and that yield resuming, where
+            // `organizerModeBusy` is still `false` while a toggle is
+            // genuinely already committed to proceeding. `applySession()`
+            // is only re-invoked on sign-in/sign-out via RootView's
+            // `.task(id:)` today (not on a token refresh alone — verified
+            // by reading that `.task(id:)`'s own key, which doesn't change
+            // on a mere token refresh), so this exact window is narrow on
+            // iOS specifically, but guarding on `organizerModeInFlight`
+            // instead — the plain, non-`@Published`, synchronously-set
+            // lock that covers the ENTIRE `applyOrganizerMode` call,
+            // start to finish, not just its RPC await — closes it
+            // completely and costs nothing when nothing is racing.
+            if !organizerModeInFlight {
+                let oldMode = organizerMode
                 accountType = profile.role
                 let canHostNow = profile.role == "organizer" || profile.role == "admin"
                 organizerMode = canHostNow
                 mode = canHostNow ? "host" : "goer"
+                #if DEBUG
+                if oldMode != canHostNow {
+                    print("[organizerMode] WRITE source=applySession old=\(oldMode) new=\(canHostNow) role=\(profile.role)")
+                }
+                #endif
             } else {
                 #if DEBUG
-                print("[organizerMode] applySession() skipped role fields — a toggle is in flight")
+                print("[organizerMode] applySession() skipped role fields — a toggle is in flight (role on server=\(profile.role))")
                 #endif
             }
             autoEmailDocuments = profile.autoEmailDocuments == true
@@ -672,9 +697,28 @@ extension AppState {
 
         let rollbackMode = organizerMode
         let rollbackType = accountType
-        organizerMode = enabled
-        accountType = enabled ? "organizer" : "participant"
-        mode = enabled ? "host" : "goer"
+        #if DEBUG
+        print("[organizerMode] WRITE source=toggle-optimistic old=\(rollbackMode) new=\(enabled)")
+        #endif
+        // BUG (2026-10-08 fix pass) — item 5: the LazyVStack sections
+        // gated on `organizerMode` (Account's hosting-management list, the
+        // story-post menu, DockRow's own "+" button) used to insert/remove
+        // with no animation of their own, so this optimistic flip snapped
+        // the layout instantly. Wrapping the mutation itself in
+        // `withAnimation` — the same "animate at the state-mutation site"
+        // convention `BottomTabBarOverlay`'s `dockVisible`/
+        // `bottomBarCollapsed` already use in this codebase, not a new,
+        // second mechanism — lets `ScreenScaffold`'s existing
+        // `scrollPositionID` anchor (AccountView's own
+        // `$app.accountScrollAnchorID`) track the reflow smoothly instead
+        // of snapping, which is what read as a "jerk" whenever this value
+        // changed twice in quick succession (see the flip-back fix below —
+        // this animation helps even a single, correct transition).
+        withAnimation(.easeInOut(duration: 0.2)) {
+            organizerMode = enabled
+            accountType = enabled ? "organizer" : "participant"
+            mode = enabled ? "host" : "goer"
+        }
         organizerModeError = ""
 
         // BUG 2 (2026-10-06 fix pass) — full request/response trace, dev
@@ -694,14 +738,25 @@ extension AppState {
             #if DEBUG
             print("[organizerMode] response — role=\(role)")
             #endif
-            accountType = role
-            organizerMode = (role == "organizer" || role == "admin")
+            let confirmed = (role == "organizer" || role == "admin")
+            #if DEBUG
+            print("[organizerMode] WRITE source=toggle-rpc-success old=\(enabled) new=\(confirmed) role=\(role)")
+            #endif
+            withAnimation(.easeInOut(duration: 0.2)) {
+                accountType = role
+                organizerMode = confirmed
+            }
         } catch {
             // Rolling back in silence is what makes the switch look like it
             // "turns itself back off" — always say why it went back.
-            organizerMode = rollbackMode
-            accountType = rollbackType
-            mode = rollbackMode ? "host" : "goer"
+            #if DEBUG
+            print("[organizerMode] WRITE source=toggle-rpc-rollback old=\(enabled) new=\(rollbackMode)")
+            #endif
+            withAnimation(.easeInOut(duration: 0.2)) {
+                organizerMode = rollbackMode
+                accountType = rollbackType
+                mode = rollbackMode ? "host" : "goer"
+            }
             // TASK 2 (2026-10-05 fix pass) — this catch block used to log
             // NOTHING at all, unlike its web equivalent's `console.warn`.
             // On a real device there was never any way to see WHICH failure

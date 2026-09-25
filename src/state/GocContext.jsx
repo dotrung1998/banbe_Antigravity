@@ -787,6 +787,20 @@ export function GocProvider({ children }) {
   // Read via a ref (not `state.organizerModeBusy` directly) for the same
   // reason `storyViewedIdsRef` exists: `syncUser` is defined once inside an
   // effect with `[set]` deps, so a plain closure over state would be stale.
+  //
+  // BUG (2026-10-08 fix pass) — this ref used to be set ONLY from the
+  // `useEffect` below, mirroring `state.organizerModeBusy` a render (and a
+  // full effect-flush) AFTER `applyOrganizerMode`'s own `set({
+  // organizerModeBusy: true, ... })` call — a real, if narrow, window where
+  // `syncUser()` could still read `organizerModeBusyRef.current === false`
+  // even though a toggle had already, synchronously, committed to
+  // proceeding. `applyOrganizerMode` now also sets this ref DIRECTLY,
+  // synchronously, at the instant it accepts a call (see its own comment)
+  // — this is the confirmed fix for "toggle off works for an instant, then
+  // flips back on": the ref is now authoritative from the very first line
+  // of the call, not from whenever React gets around to committing state.
+  // The effect stays as a safety net (e.g. if `organizerModeBusy` is ever
+  // set from somewhere other than `applyOrganizerMode` in the future).
   const organizerModeBusyRef = useRef(false);
   useEffect(() => {
     organizerModeBusyRef.current = state.organizerModeBusy;
@@ -861,7 +875,9 @@ export function GocProvider({ children }) {
         ? {}
         : { accountType: role, organizerMode: canHostNow, mode: canHostNow ? 'host' : 'goer' };
       if (organizerModeBusyRef.current) {
-        console.warn('[organizerMode] syncUser() skipped role fields — a toggle is in flight');
+        console.warn('[organizerMode] syncUser() skipped role fields — a toggle is in flight', { roleOnServer: role });
+      } else {
+        console.info('[organizerMode] WRITE source=syncUser', { new: canHostNow, role });
       }
       set({
         // TASK D (2026-10-01 UX foundation pass) — the shareable-profile
@@ -3527,8 +3543,17 @@ export function GocProvider({ children }) {
     // let the SECOND response's rollback stomp the first call's already-
     // successful result and surface "Vui lòng thử lại" for a change that
     // had, in fact, already gone through.
-    if (s.organizerModeBusy) return;
+    // BUG (2026-10-08 fix pass) — the actual, atomic re-entrancy guard is
+    // the ref, checked-and-set synchronously right here, before any state
+    // update — closes the exact gap `organizerModeBusyRef`'s own doc
+    // comment (above) describes, and also covers item 4 (no duplicate
+    // submissions from one tap): two rapid calls both reach this line
+    // before either's own `set()` has re-rendered, but only the first
+    // ever sees the ref still `false`.
+    if (organizerModeBusyRef.current) return;
+    organizerModeBusyRef.current = true;
     const rollback = { organizerMode: s.organizerMode, accountType: s.accountType };
+    console.info('[organizerMode] WRITE source=toggle-optimistic', { old: s.organizerMode, new: enabled });
     set({ organizerMode: enabled, accountType: enabled ? 'organizer' : 'participant', mode: enabled ? 'host' : 'goer', organizerModeError: '', organizerModeBusy: true });
     // BUG 2 (2026-10-06 fix pass) — full request/response trace, dev
     // console only, never the access token itself (just whether a session
@@ -3558,6 +3583,8 @@ export function GocProvider({ children }) {
       // generic string: this RPC has never been observed to raise anything
       // else, so claiming a more specific cause for those would be a guess.
       const sessionExpired = error.code === 'PGRST301' || error.code === '401';
+      console.info('[organizerMode] WRITE source=toggle-rpc-rollback', { old: enabled, new: rollback.organizerMode });
+      organizerModeBusyRef.current = false;
       return set({
         ...rollback,
         mode: rollback.organizerMode ? 'host' : 'goer',
@@ -3569,8 +3596,14 @@ export function GocProvider({ children }) {
           : T('Không thể đổi chế độ tổ chức lúc này. Vui lòng thử lại.', 'We could not change organizer mode right now. Please try again.'),
       });
     }
-    if (data) set({ accountType: data, organizerMode: data === 'organizer' || data === 'admin', organizerModeError: '', organizerModeBusy: false });
-    else set({ organizerModeBusy: false });
+    organizerModeBusyRef.current = false;
+    if (data) {
+      const confirmed = data === 'organizer' || data === 'admin';
+      console.info('[organizerMode] WRITE source=toggle-rpc-success', { old: enabled, new: confirmed, role: data });
+      set({ accountType: data, organizerMode: confirmed, organizerModeError: '', organizerModeBusy: false });
+    } else {
+      set({ organizerModeBusy: false });
+    }
   }, [set, s.accountType, s.organizerMode, s.organizerModeBusy, T]);
   const enableOrganizerMode = useCallback(() => applyOrganizerMode(true), [applyOrganizerMode]);
   // TASK B — the actual toggle target is the CURRENT preference
@@ -3579,7 +3612,7 @@ export function GocProvider({ children }) {
   // "cannot be turned off/back on."
   const toggleOrganizerMode = useCallback(() => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'profile' });
-    if (s.organizerModeBusy) return;
+    if (s.organizerModeBusy || organizerModeBusyRef.current) return;
     applyOrganizerMode(!s.organizerMode);
   }, [set, s.user, s.organizerMode, s.organizerModeBusy, applyOrganizerMode]);
 
