@@ -165,10 +165,32 @@ export default function BottomTabBar({ collapsed }) {
     });
   };
 
+  // BUG (2026-09-25 fix pass) — `measure()` used to only ever re-run on
+  // mount and on a `window` `resize` event, so `rectsRef` (the scrub
+  // gesture's own item-position cache) went stale any time the BAR ITSELF
+  // reflowed for a reason other than the viewport resizing — most
+  // concretely, DockRow (App.jsx) toggling `showCreate` off
+  // `state.organizerMode`, which changes this bar's own available flex
+  // width (the "+" button appearing/disappearing beside it) without ever
+  // firing a `resize` event. A `ResizeObserver` on the bar's own element
+  // catches every actual layout change to it directly, `resize` or not.
   useEffect(() => {
     measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
+    const bar = barRef.current;
+    if (!bar || typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
+    const ro = new ResizeObserver(() => {
+      measure();
+      // Keep the highlight itself glued to the active tab through the
+      // reflow — remeasuring alone only refreshes the cache the NEXT drag
+      // reads from; without this it stays visually parked at its old
+      // (now wrong) pixel offset until the next tap/drag.
+      if (activeIndexRef.current != null) placeHighlight(activeIndexRef.current, false);
+    });
+    ro.observe(bar);
+    return () => ro.disconnect();
   }, [items.length]);
 
   // BUG 1 fix (623ec1e real-device report): the highlight used to be purely
@@ -195,13 +217,44 @@ export default function BottomTabBar({ collapsed }) {
   // ever written directly to the DOM node; they're never present in this
   // element's JSX `style` object, so React's own re-renders (triggered by
   // the much rarer `activeIndex` state change below) can't stomp on them.
+  // BUG (2026-09-25 fix pass) — root cause of "indicator misaligned after
+  // the 340pt dock width change": this used to place the highlight from
+  // `rectsRef`, raw `getBoundingClientRect()` pixel rects captured by
+  // `measure()`. Two independent problems with that, both real:
+  // 1. `rectsRef` only ever refreshed on mount/window-resize (see that
+  //    effect's own comment) — any OTHER reflow of the bar itself (most
+  //    concretely, DockRow's create-"+" button appearing/disappearing with
+  //    `state.organizerMode`, which changes this bar's own flex width with
+  //    no `resize` event) left it stale, so this drew the highlight at an
+  //    old, wrong offset. Bumping `DOCK_MAX_WIDTH` 300→340 didn't cause
+  //    this — it just made every stale-pixel error bigger and therefore
+  //    visible.
+  // 2. `getBoundingClientRect()` returns POST-transform (screen) rects.
+  //    DockRow's collapse/expand `scale()` sits on an ANCESTOR of this bar,
+  //    so `rect.left`/`rect.width` already have that scale factor baked in
+  //    — applying them again as this (descendant) element's own
+  //    `transform`/`width` double-applies the scale (a `scale(0.86)`
+  //    ancestor turned into an effective 0.86² on the highlight alone),
+  //    visibly drifting the indicator off-center specifically while the
+  //    dock is collapsed/expanding.
+  // Fixed by dropping pixel measurement for PLACEMENT entirely: every item
+  // is an equal `flex: '1 1 0'` slice of the bar with zero gap between them
+  // (see the items' own style below), so "item i's box" is exactly the i-th
+  // 1/items.length share of the bar — expressed as CSS percentages, which
+  // resolve against this element's own LOCAL (pre-transform, pre-ancestor-
+  // scale) layout box. That's immune to both problems above: it needs no
+  // measured rect at all (immune to stale `rectsRef`), and a percentage
+  // `translateX`/`width` is computed before any ancestor `transform` is
+  // applied (immune to the collapse-scale double-application). `rectsRef`
+  // is kept only for `hitTest` below, which maps a real screen-space touch
+  // point to an index — that one genuinely needs live pixel rects.
   const placeHighlight = (index, animate) => {
     const el = highlightRef.current;
-    const rect = rectsRef.current[index];
-    if (!el || !rect) return;
+    if (!el || index == null || !items.length) return;
+    const pct = 100 / items.length;
     el.style.transition = animate ? 'transform 0.18s cubic-bezier(.34,1.56,.64,1), opacity 0.15s ease' : 'opacity 0.15s ease';
-    el.style.transform = `translateX(${rect.left}px)`;
-    el.style.width = `${rect.width}px`;
+    el.style.width = `${pct}%`;
+    el.style.transform = `translateX(${index * 100}%)`;
     el.style.opacity = '1';
   };
 
