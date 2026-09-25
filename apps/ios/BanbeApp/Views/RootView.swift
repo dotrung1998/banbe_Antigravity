@@ -346,21 +346,13 @@ struct RootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
 
-            // TASK C (2026-10-01 UX foundation pass) — a plain ZStack
-            // sibling (not the separate always-on-top UIWindow BottomTabBar
-            // uses) is fine here: unlike the tab bar, this FAB only ever
-            // needs to sit above ordinary screen content, never above a
-            // `.sheet()`/native modal — and being a normal sibling means it
-            // automatically sits BELOW StoryViewerView (zIndex 27) and any
-            // other higher-zIndex overlay in this same ZStack for free,
-            // satisfying "hide on full-screen story viewer" by construction.
-            CreateEventFabView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .padding(.trailing, 20)
-                .padding(.bottom, BottomTabBar.visibleScreens.contains(app.screen)
-                    ? BottomTabBar.barHeight + BottomTabBar.bottomOffset + 20 : 28)
-                .zIndex(15)
-                .allowsHitTesting(app.organizerMode)
+            // TASK C (2026-10-03 fix pass) — the floating pill FAB that
+            // used to live here (CreateEventFabView) is gone; its
+            // replacement (DockCreateButtonView) now lives inside
+            // BottomTabBarOverlay's own separate window, next to the dock
+            // itself, per this ticket's own "work with the existing
+            // overlay, don't add another competing floating UIWindow"
+            // instruction — see that file's doc comment.
 
             // BUG 3 follow-up (this session's real-device report on
             // 80c1ac3): BottomTabBar used to render HERE, as a ZStack

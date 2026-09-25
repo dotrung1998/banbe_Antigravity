@@ -15,42 +15,80 @@ private func eventPhotoURL(_ path: String?) -> String? {
 
 struct PulseViewerView: View {
     @EnvironmentObject private var app: AppState
+    // TASK A7 (2026-10-03 fix pass) — interactive swipe-to-dismiss for the
+    // fullScreenCover presentation (a plain `.fullScreenCover` has no
+    // built-in interactive dismiss the way `.sheet` does). Attached ONLY
+    // to the header row below (title/tabs/close button), never to the
+    // ScrollView — so a downward drag on the card list still scrolls it
+    // normally instead of competing for the same gesture, and tab
+    // switching/the organizer sheet's own presentation are untouched.
+    @GestureState private var dragOffset: CGFloat = 0
+    private let dismissThreshold: CGFloat = 120
 
     private var items: [PulseItem] { app.pulseTab == .weekly ? app.pulseWeekly : app.pulseDaily }
+    private var loading: Bool { app.pulseTab == .weekly ? app.pulseWeeklyLoading : app.pulseDailyLoading }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text(app.T("Banbe Pulse", "Banbe Pulse")).font(BanbeTheme.display(20))
-                Spacer()
-                Button { app.closePulseViewer() } label: {
-                    Image(systemName: "xmark").font(.system(size: 16, weight: .semibold)).foregroundStyle(app.palette.ink)
+            VStack(spacing: 0) {
+                HStack {
+                    Text(app.T("Banbe Pulse", "Banbe Pulse")).font(BanbeTheme.display(20))
+                    Spacer()
+                    Button { app.closePulseViewer() } label: {
+                        Image(systemName: "xmark").font(.system(size: 16, weight: .semibold)).foregroundStyle(app.palette.ink)
+                    }
+                    .accessibilityIdentifier("pulse.close")
                 }
-            }
-            .padding(.horizontal, 20).padding(.top, 20)
+                .padding(.horizontal, 20).padding(.top, 20)
 
-            HStack(spacing: 8) {
-                tabButton(.daily, app.T("Hôm nay", "Today"))
-                tabButton(.weekly, app.T("Tuần này", "This week"))
-                Spacer()
+                HStack(spacing: 8) {
+                    tabButton(.daily, app.T("Hôm nay", "Today"))
+                    tabButton(.weekly, app.T("Tuần này", "This week"))
+                    Spacer()
+                }
+                .padding(.horizontal, 20).padding(.top, 16)
             }
-            .padding(.horizontal, 20).padding(.top, 16)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 8)
+                    .updating($dragOffset) { value, state, _ in
+                        // Downward only — an upward drag from the header
+                        // has nothing to do (there's no content above it
+                        // to reveal), so it's ignored rather than fighting
+                        // the release-snap-back animation for no reason.
+                        state = max(0, value.translation.height)
+                    }
+                    .onEnded { value in
+                        if value.translation.height > dismissThreshold {
+                            app.closePulseViewer()
+                        }
+                    }
+            )
 
             ScrollView {
                 VStack(spacing: 10) {
-                    if items.isEmpty {
+                    if loading {
+                        Text(app.T("Đang tải…", "Loading…"))
+                            .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.6))
+                            .padding(.top, 60)
+                            .accessibilityIdentifier("pulse.loading")
+                    } else if items.isEmpty {
                         Text(app.T("Chưa có dữ liệu xếp hạng.", "Nothing ranked yet."))
                             .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.7))
                             .padding(.top, 60)
-                    }
-                    ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
-                        pulseCard(item, rank: i + 1)
+                            .accessibilityIdentifier("pulse.empty")
+                    } else {
+                        ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
+                            pulseCard(item, rank: i + 1)
+                        }
                     }
                 }
                 .padding(20)
             }
         }
         .background(app.palette.paper.ignoresSafeArea())
+        .offset(y: dragOffset)
+        .animation(.interactiveSpring(), value: dragOffset)
         .sheet(item: $app.pulseOrganizerSheet) { item in
             organizerSheet(item)
                 .presentationDetents([.height(260)])

@@ -18,6 +18,12 @@ export default function PulseViewer() {
   const s = state;
   if (!s.pulseOpen) return null;
   const items = s.pulseTab === 'weekly' ? s.pulseWeekly : s.pulseDaily;
+  // TASK A5 (2026-10-03 fix pass) — a real bug (a shared request-sequence
+  // counter dropping legitimate responses, see loadPulse's own comment)
+  // used to make the daily tab flash "Nothing ranked yet." even when data
+  // was already on its way. Now a genuine, per-tab loading state, so a
+  // still-fetching tab never gets misread as a genuinely empty one.
+  const loading = s.pulseTab === 'weekly' ? s.pulseWeeklyLoading : s.pulseDailyLoading;
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: paper, zIndex: 60, display: 'flex', flexDirection: 'column' }} data-testid="pulse-viewer">
@@ -44,13 +50,17 @@ export default function PulseViewer() {
         ))}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 40px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {!items.length && (
-          <p style={{ fontSize: 13, color: ink, opacity: 0.7, textAlign: 'center', marginTop: 60 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 40px', display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="pulse-list" data-loading={loading ? 'true' : 'false'}>
+        {loading ? (
+          <p style={{ fontSize: 13, color: ink, opacity: 0.6, textAlign: 'center', marginTop: 60 }} data-testid="pulse-loading">
+            {T('Đang tải…', 'Loading…')}
+          </p>
+        ) : !items.length && (
+          <p style={{ fontSize: 13, color: ink, opacity: 0.7, textAlign: 'center', marginTop: 60 }} data-testid="pulse-empty">
             {T('Chưa có dữ liệu xếp hạng.', 'Nothing ranked yet.')}
           </p>
         )}
-        {items.map((item, i) => (
+        {!loading && items.map((item, i) => (
           <div key={item.event_id} style={{ ...cardGlass({ padding: 0, display: 'flex', overflow: 'hidden' }) }} data-testid="pulse-card">
             <div onClick={() => { closePulseViewer(); goEvent(item.event_id); }} style={{ width: 88, height: 88, flex: 'none', cursor: 'pointer', background: `center/cover url(${eventPhotoUrl(item.photo_path)})` }} />
             <div style={{ flex: 1, minWidth: 0, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>

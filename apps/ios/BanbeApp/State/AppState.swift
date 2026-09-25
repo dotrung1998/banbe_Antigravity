@@ -719,6 +719,14 @@ final class AppState: ObservableObject {
     @Published var pulseOpen = false
     @Published var pulseTab: PulseTab = .daily
     @Published var pulseOrganizerSheet: PulseItem?
+    // 2026-10-03 fix pass — per-tab loading state (rule A5: a still-
+    // fetching tab must never read as "genuinely empty"), and per-period
+    // sequence guards so reopening Pulse quickly can't let an older
+    // response land after a newer one. See AppState+Pulse.swift.
+    @Published var pulseDailyLoading = false
+    @Published var pulseWeeklyLoading = false
+    var pulseDailySeq = 0
+    var pulseWeeklySeq = 0
     // Refund MVP — host's per-event Refund Center (AttendanceView's own new
     // "Hoàn tiền" section): owed/disputed (+ resolved, for the progress
     // summary) claims for ONE event. Recipient info comes from each claim's

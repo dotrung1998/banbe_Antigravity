@@ -113,7 +113,18 @@ export default function Account() {
     .filter(e => e && e.endedHoursAgo == null).length;
 
   const profileName = s.user ? (s.user.name || (s.user.email ? s.user.email.split('@')[0] : T('Bạn', 'You'))) : T('Khách', 'Guest');
-  const isOrganizer = canHost;
+  // TASK B (2026-10-03 fix pass) — `isOrganizer` is the CURRENT UI
+  // preference (organizerMode), never eligibility (canHost). Using
+  // `canHost` here was the actual root cause of "organizer mode appears on
+  // by default and cannot be turned off": `canHost` stays true forever
+  // for any account that has ever really hosted (via `hasHosted`), so the
+  // switch/host section never visually reflected a toggle-off at all —
+  // see applyOrganizerMode's/toggleOrganizerMode's own doc comments for
+  // the matching state-side half of this same bug. `canHost` is still
+  // used on its own below (and by the Action Center above) wherever the
+  // question is genuinely "is this account eligible," not "is host UI on
+  // right now."
+  const isOrganizer = s.organizerMode;
   const profileSub = s.accountType === 'admin' ? T('Quản trị viên', 'Admin') : isOrganizer ? T('Người tham gia ▪︎ Người tổ chức', 'Goer ▪︎ Host') : T('Người tham gia', 'Goer');
   const profileOrgName = (s.orgRegName && s.orgRegName.trim()) || 'Bếp Nhỏ';
 
@@ -355,7 +366,11 @@ export default function Account() {
             </div>
           </div>
         )}
-        {isOrganizer ? (
+        {/* Eligibility (canHost), not current mode — a real host who has
+            merely toggled organizerMode off is still a returning host, not
+            a first-timer; the "Host your first event" onboarding pitch
+            below is only for an account that has never actually hosted. */}
+        {canHost ? (
           <div onClick={() => switchToHost('profile')} style={{ ...cardGlass({ marginTop: 10, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
               <RowIcon kind="users" />

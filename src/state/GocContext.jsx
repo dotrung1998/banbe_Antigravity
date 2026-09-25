@@ -306,6 +306,7 @@ const initialState = {
   profileLinkCopiedFlash: false,
   // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
   pulseDaily: [], pulseWeekly: [], pulseOpen: false, pulseTab: 'daily', pulseOrganizerSheet: null,
+  pulseDailyLoading: false, pulseWeeklyLoading: false,
   notifications: [],
   unreadNotifications: 0,
   // Inbox tab badge (BottomTabBar.jsx) — count of messages where
@@ -2372,6 +2373,14 @@ export function GocProvider({ children }) {
   useEffect(() => {
     const onPopState = () => {
       set(prev => {
+        // TASK A7 (2026-10-03 fix pass) — Pulse is a modal sheet, not a
+        // screen; checked first since it can be open over ANY screen
+        // (including refundAccounts/myRefunds themselves) and must close
+        // without also triggering either of those screens' own back
+        // transition in the same pop.
+        if (prev.pulseOpen) {
+          return { pulseOpen: false, pulseOrganizerSheet: null };
+        }
         if (prev.screen === 'refundAccounts') {
           try { localStorage.removeItem('banbe.lastScreen'); } catch { /* private browsing */ }
           return { screen: prev.refundAccountsBack || 'profile', refundAccountsReturnToClaimId: null, refundAccountsReturnToBookingId: null };
@@ -3187,23 +3196,48 @@ export function GocProvider({ children }) {
   // column default and RLS predicate; a synthetic client-side entry sidesteps
   // that schema entirely rather than special-casing it, per this ticket's
   // own "not authored as a normal 24h user story" rule).
-  const pulseSeq = useRef(0);
+  // 2026-10-03 fix pass — real bug: a single shared counter meant calling
+  // loadPulse('daily') then loadPulse('weekly') right after (exactly what
+  // openPulseViewer does on every open) silently DROPPED the daily
+  // response almost every time — by the time it arrived, the weekly
+  // call's own increment had already moved pulseSeq past it, so the
+  // "stale response" guard discarded a perfectly fresh, correctly-ordered
+  // response for a DIFFERENT tab. Fixed: one counter per period, so daily
+  // and weekly can never race each other, only their own prior in-flight
+  // call.
+  const pulseSeqRef = useRef({ daily: 0, weekly: 0 });
   const loadPulse = useCallback(async (period) => {
-    const seq = ++pulseSeq.current;
+    const seq = ++pulseSeqRef.current[period];
+    set(period === 'weekly' ? { pulseWeeklyLoading: true } : { pulseDailyLoading: true });
     const { data, error } = await supabase.rpc('goc_pulse_ranked', { p_period: period });
-    if (seq !== pulseSeq.current) return; // stale response guard, same pattern as loadRefundQueue
+    if (seq !== pulseSeqRef.current[period]) return; // stale response guard — only THIS period's newer call may win
     if (error || data?.success === false) {
       if (import.meta.env?.DEV) console.warn('loadPulse failed:', error, data);
+      set(period === 'weekly' ? { pulseWeeklyLoading: false } : { pulseDailyLoading: false });
       return;
     }
-    set(period === 'weekly' ? { pulseWeekly: data.items || [] } : { pulseDaily: data.items || [] });
+    set(period === 'weekly'
+      ? { pulseWeekly: data.items || [], pulseWeeklyLoading: false }
+      : { pulseDaily: data.items || [], pulseDailyLoading: false });
   }, [set]);
   const openPulseViewer = useCallback(() => {
-    set({ pulseOpen: true, pulseTab: 'daily' });
+    // Never leave a previous session's rank sitting there indefinitely
+    // (rule A5) — cleared before the fresh fetch, not just overwritten
+    // once it lands, so the loading state (not stale data) is what shows
+    // in the gap.
+    set({ pulseOpen: true, pulseTab: 'daily', pulseDaily: [], pulseWeekly: [] });
     loadPulse('daily');
     loadPulse('weekly');
+    try { window.history.pushState({ bbSheet: 'pulse' }, ''); } catch { /* unsupported */ }
   }, [set, loadPulse]);
-  const closePulseViewer = useCallback(() => set({ pulseOpen: false, pulseOrganizerSheet: null }), [set]);
+  // TASK A7 — the browser's own back button closes Pulse instead of
+  // navigating the screen underneath it away, matching what a modal sheet
+  // should do; consumed (history.back()) whenever the app itself closes
+  // Pulse first, so a stray forward-swipe can't resurrect the sheet.
+  const closePulseViewer = useCallback(() => {
+    set({ pulseOpen: false, pulseOrganizerSheet: null });
+    try { if (window.history.state?.bbSheet === 'pulse') window.history.back(); } catch { /* unsupported */ }
+  }, [set]);
   const setPulseTab = useCallback((tab) => set({ pulseTab: tab }), [set]);
   const openPulseOrganizerSheet = useCallback((item) => set({ pulseOrganizerSheet: item }), [set]);
   const closePulseOrganizerSheet = useCallback(() => set({ pulseOrganizerSheet: null }), [set]);
@@ -3428,10 +3462,27 @@ export function GocProvider({ children }) {
   // Any account can host: organizer mode is a switch on the profile, so
   // sign-up and sign-in never have to know which "type" of account this is.
   const canHost = s.organizerMode || s.accountType === 'admin' || s.hasHosted;
+  // TASK B (2026-10-03 fix pass) — root cause of "organizer mode appears on
+  // by default and cannot be turned off": this used to also clear
+  // `hasHosted: false` on every toggle-off. `hasHosted` is a real,
+  // independently re-derived FACT ("does this account genuinely own an
+  // organizer row") — re-queried on every syncUser() call regardless of
+  // this toggle (see the `organizers` lookup a few hundred lines up), so
+  // clobbering it here was always overwritten back to `true` on the very
+  // next resync anyway. Combined with `toggleOrganizerMode` targeting
+  // `!canHost` (eligibility) instead of `!organizerMode` (current
+  // preference) below, a real host with `hasHosted: true` could never
+  // toggle organizerMode back to `true` once it was `false` — `canHost`
+  // stays `true` forever (hasHosted alone makes it true), so `!canHost` is
+  // always `false`, and every tap just re-applied "off" to an already-off
+  // preference. Fixed: `applyOrganizerMode` never touches `hasHosted` at
+  // all — that field means "eligible to host," permanently true once
+  // real, and organizerMode is a completely separate, freely-togglable
+  // preference on top of it.
   const applyOrganizerMode = useCallback(async (enabled) => {
     if (s.accountType === 'admin') return;
     const rollback = { organizerMode: s.organizerMode, accountType: s.accountType };
-    set({ organizerMode: enabled, accountType: enabled ? 'organizer' : 'participant', mode: enabled ? 'host' : 'goer', organizerModeError: '', ...(enabled ? {} : { hasHosted: false }) });
+    set({ organizerMode: enabled, accountType: enabled ? 'organizer' : 'participant', mode: enabled ? 'host' : 'goer', organizerModeError: '' });
     const { data, error } = await supabase.rpc('set_organizer_mode', { p_enabled: enabled });
     if (error) {
       // Rolling back in silence is what makes the switch look like it "turns
@@ -3449,10 +3500,14 @@ export function GocProvider({ children }) {
     if (data) set({ accountType: data, organizerMode: data === 'organizer' || data === 'admin', organizerModeError: '' });
   }, [set, s.accountType, s.organizerMode, T]);
   const enableOrganizerMode = useCallback(() => applyOrganizerMode(true), [applyOrganizerMode]);
+  // TASK B — the actual toggle target is the CURRENT preference
+  // (organizerMode), never eligibility (canHost) — see applyOrganizerMode's
+  // own doc comment above for why using canHost here was the root cause of
+  // "cannot be turned off/back on."
   const toggleOrganizerMode = useCallback(() => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'profile' });
-    applyOrganizerMode(!canHost);
-  }, [set, s.user, canHost, applyOrganizerMode]);
+    applyOrganizerMode(!s.organizerMode);
+  }, [set, s.user, s.organizerMode, applyOrganizerMode]);
 
   // ---- navigation ----
   const goHome = useCallback(() => set({ screen: 'home' }), [set]);

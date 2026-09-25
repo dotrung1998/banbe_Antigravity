@@ -575,12 +575,31 @@ extension AppState {
 
     // MARK: - Organizer mode
 
+    // TASK B (2026-10-03 fix pass) — the actual toggle target is the
+    // CURRENT preference (organizerMode), never eligibility (canHost) —
+    // see applyOrganizerMode's own doc comment for why using canHost here
+    // was the root cause of "organizer mode appears on by default and
+    // cannot be turned off."
     func toggleOrganizerMode() {
         guard isSignedIn else { return requireAuth(returnTo: .profile, backTo: .profile) }
-        let target = !canHost
+        let target = !organizerMode
         Task { await applyOrganizerMode(target) }
     }
 
+    /// `hasHosted` is a real, independently re-derived FACT ("does this
+    /// account genuinely own an organizer row") — re-queried on every
+    /// session sync regardless of this toggle (applySession()'s own
+    /// `organizers` lookup), so clearing it here used to just get
+    /// overwritten back to `true` on the very next resync anyway. Combined
+    /// with toggleOrganizerMode() targeting `!canHost` instead of
+    /// `!organizerMode`, a real host with `hasHosted == true` could never
+    /// toggle organizerMode back to `true` once it was `false` — `canHost`
+    /// stays `true` forever (hasHosted alone makes it true), so `!canHost`
+    /// was always `false`, and every tap just re-applied "off" to an
+    /// already-off preference. Fixed: this never touches `hasHosted` at
+    /// all — that field means "eligible to host," permanently true once
+    /// real, and organizerMode is a completely separate, freely-togglable
+    /// preference on top of it.
     func applyOrganizerMode(_ enabled: Bool) async {
         guard accountType != "admin" else { return }
         let rollbackMode = organizerMode
@@ -589,7 +608,6 @@ extension AppState {
         accountType = enabled ? "organizer" : "participant"
         mode = enabled ? "host" : "goer"
         organizerModeError = ""
-        if !enabled { hasHosted = false }
 
         do {
             let role: String = try await SupabaseService.client

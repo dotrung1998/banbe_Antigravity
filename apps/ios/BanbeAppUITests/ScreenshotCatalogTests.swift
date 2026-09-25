@@ -613,14 +613,26 @@ final class ScreenshotCatalogTests: XCTestCase {
             skip("pulse-daily / pulse-weekly / pulse-follow-sheet — no ranked event data exists yet (no confirmed bookings/check-ins/follows/saves in the current window)")
         }
 
-        // TASK C — the organizer create-event pill FAB. Same "don't toggle
-        // organizer mode on a shared account" constraint as Group G.
+        // TASK C (2026-10-03 fix pass) — the compact "+" next to the dock,
+        // replacing the old floating create-event pill. Lives inside
+        // BottomTabBarOverlay's own separate window (not a plain ZStack
+        // sibling any more), but `any(_:_:)`'s `.descendants(matching:
+        // .any)` lookup already searches the whole app's accessibility
+        // tree regardless of which UIWindow a view lives in, so this
+        // still resolves it the same way. Same "don't toggle organizer
+        // mode on a shared account" constraint as Group G.
         let app4 = launchSignedIn(role: "host", scenario: "ux-foundation-host")
         XCTAssertTrue(app4.otherElements["screen.home"].waitForExistence(timeout: 20))
-        if any(app4, "create-event-fab").waitForExistence(timeout: 4) {
-            capture("09-ux-foundation", 10, "organizer-create-event-fab", "Organizer create-event pill", "Persistent \"Tạo sự kiện\" FAB on Home/Dashboard/Account while organizer mode is on.", role: "host", app: app4)
+        if any(app4, "dock.createButton").waitForExistence(timeout: 4) {
+            capture("09-ux-foundation", 10, "dock-create-button", "Dock create button", "Compact \"+\" next to the dock, opening a small \"Tạo sự kiện\" menu, while organizer mode is on.", role: "host", app: app4)
+            any(app4, "dock.createButton").tap()
+            if any(app4, "dock.createMenu").waitForExistence(timeout: 3) {
+                capture("09-ux-foundation", 11, "dock-create-menu", "Dock create menu", "The anchored menu opened by the dock \"+\" button.", role: "host", app: app4)
+            } else {
+                skip("dock-create-menu — the menu did not resolve within the wait")
+            }
         } else {
-            skip("organizer-create-event-fab — the shared account is not currently enrolled as an organizer; this pass will not toggle organizer mode on, since that would mutate shared account state")
+            skip("dock-create-button / dock-create-menu — the shared account is not currently enrolled as an organizer; this pass will not toggle organizer mode on, since that would mutate shared account state")
         }
     }
 }

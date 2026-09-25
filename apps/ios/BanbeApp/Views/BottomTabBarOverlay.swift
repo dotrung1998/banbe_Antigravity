@@ -304,11 +304,18 @@ private struct BottomTabBarOverlayRoot: View {
     // keeping this content always present is what gives that animation
     // something to animate between.
     var body: some View {
-        BottomTabBar()
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            .offset(y: app.dockVisible ? 0 : 40)
-            .opacity(app.dockVisible ? 1 : 0)
-            .allowsHitTesting(app.dockVisible)
-            .animation(BottomTabBarOverlay.transitionAnimation, value: app.dockVisible)
+        ZStack {
+            BottomTabBar()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            // TASK C (2026-10-03 fix pass) — same window, same visibility
+            // lifecycle as the dock itself; see DockCreateButtonView's own
+            // doc comment for why this lives here instead of a second
+            // floating UIWindow.
+            DockCreateButtonView()
+        }
+        .offset(y: app.dockVisible ? 0 : 40)
+        .opacity(app.dockVisible ? 1 : 0)
+        .allowsHitTesting(app.dockVisible)
+        .animation(BottomTabBarOverlay.transitionAnimation, value: app.dockVisible)
     }
 }

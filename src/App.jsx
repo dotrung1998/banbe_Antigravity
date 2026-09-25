@@ -46,7 +46,7 @@ import Disputes from './screens/Disputes.jsx';
 import ToastStack from './screens/ToastStack.jsx';
 import Policy from './screens/Policy.jsx';
 import MapExplore from './screens/MapExplore.jsx';
-import CreateEventFab from './screens/CreateEventFab.jsx';
+import DockCreateButton from './screens/DockCreateButton.jsx';
 import EditProfile from './screens/EditProfile.jsx';
 import PublicProfile from './screens/PublicProfile.jsx';
 
@@ -207,7 +207,7 @@ function Shell() {
         {state.loading && <Loading label={T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
       {showBar && <BottomTabBar collapsed={barCollapsed} />}
-      <CreateEventFab bottom={showBar ? 108 : 28} />
+      <DockCreateButton />
       <ToastStack />
     </div>
   );

@@ -52,9 +52,12 @@ struct AccountView: View {
         return sortActionCenterItems(goer)
     }
 
+    // TASK B (2026-10-03 fix pass) — current UI mode (organizerMode), not
+    // eligibility (canHost) — see AppState+Data.swift's applyOrganizerMode
+    // doc comment for the full root-cause writeup.
     private var subtitle: String {
         if app.accountType == "admin" { return app.T("Quản trị viên", "Admin") }
-        return app.canHost ? app.T("Người tham gia ▪︎ Người tổ chức", "Goer ▪︎ Host")
+        return app.organizerMode ? app.T("Người tham gia ▪︎ Người tổ chức", "Goer ▪︎ Host")
                            : app.T("Người tham gia", "Goer")
     }
 
@@ -139,7 +142,10 @@ struct AccountView: View {
                         }
                         Text(subtitle).font(.system(size: 11)).kerning(0.6)
                         // Task 3.2 — story creation entry point, hosts only.
-                        if app.canHost {
+                        // TASK B (2026-10-03) — host-only action, hidden
+                        // while organizerMode is off (current mode, not
+                        // eligibility).
+                        if app.organizerMode {
                             Menu {
                                 // Task 1 — icons on each row, matching the
                                 // chat composer's "+" menu exactly (same SF
@@ -265,13 +271,22 @@ struct AccountView: View {
                                 .multilineTextAlignment(.leading)
                         }
                         Spacer(minLength: 0)
-                        ZStack(alignment: app.canHost ? .trailing : .leading) {
+                        // TASK B (2026-10-03 fix pass) — THE visual bug:
+                        // this switch was bound to canHost (eligibility,
+                        // permanently true once a real host), never
+                        // organizerMode (the actual current preference) —
+                        // so it visually looked stuck "on" for any real
+                        // host regardless of what the toggle really did
+                        // underneath. See AppState+Data.swift's
+                        // applyOrganizerMode for the matching state-side
+                        // root cause.
+                        ZStack(alignment: app.organizerMode ? .trailing : .leading) {
                             Capsule()
-                                .fill(app.canHost ? app.palette.ink : app.palette.ink.opacity(0.18))
+                                .fill(app.organizerMode ? app.palette.ink : app.palette.ink.opacity(0.18))
                                 .frame(width: 44, height: 26)
                             Circle().fill(app.palette.paper).frame(width: 20, height: 20).padding(3)
                         }
-                        .animation(.easeInOut(duration: 0.15), value: app.canHost)
+                        .animation(.easeInOut(duration: 0.15), value: app.organizerMode)
                     }
                     .foregroundStyle(app.palette.ink)
                     .padding(16)
@@ -289,7 +304,13 @@ struct AccountView: View {
                         .padding(.top, 10)
                 }
 
-                if app.canHost {
+                // TASK B (2026-10-03) — host-only management navigation,
+                // hidden while organizerMode is off (current mode, not
+                // eligibility — the Action Center above already surfaces
+                // any money-owed/verification item regardless, gated on
+                // canHost, per this ticket's own "don't silently hide
+                // money owed" rule).
+                if app.organizerMode {
                     VStack(spacing: 0) {
                         row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"),
                             identifier: "host.verifications", icon: "checklist", trailing: "›") { app.openVerifications() }

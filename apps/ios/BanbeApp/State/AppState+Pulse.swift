@@ -36,20 +36,39 @@ private struct PulseResult: Decodable {
 
 extension AppState {
     func loadPulse(period: PulseTab) async {
+        let seq: Int
+        if period == .weekly { pulseWeeklySeq += 1; seq = pulseWeeklySeq; pulseWeeklyLoading = true }
+        else { pulseDailySeq += 1; seq = pulseDailySeq; pulseDailyLoading = true }
         do {
             let result: PulseResult = try await SupabaseService.client
                 .rpc("goc_pulse_ranked", params: ["p_period": period.rawValue])
                 .execute().value
-            guard result.success == true else { return }
+            // Only the newest call for THIS period may write — reopening
+            // Pulse quickly can't let an older response overwrite a newer
+            // one (same pattern as loadRefundQueue/loadAttendanceGuests).
+            guard (period == .weekly ? seq == pulseWeeklySeq : seq == pulseDailySeq) else { return }
+            guard result.success == true else {
+                if period == .weekly { pulseWeeklyLoading = false } else { pulseDailyLoading = false }
+                return
+            }
             let items = result.items ?? []
-            if period == .weekly { pulseWeekly = items } else { pulseDaily = items }
+            if period == .weekly { pulseWeekly = items; pulseWeeklyLoading = false }
+            else { pulseDaily = items; pulseDailyLoading = false }
         } catch {
+            guard (period == .weekly ? seq == pulseWeeklySeq : seq == pulseDailySeq) else { return }
             print("loadPulse failed:", error, "period:", period.rawValue)
+            if period == .weekly { pulseWeeklyLoading = false } else { pulseDailyLoading = false }
         }
     }
 
     func openPulseViewer() {
         pulseTab = .daily
+        // Never leave a previous session's rank sitting there indefinitely
+        // (rule A5) — cleared before the fresh fetch, not just overwritten
+        // once it lands, so the loading state (not stale data) is what
+        // shows in the gap.
+        pulseDaily = []
+        pulseWeekly = []
         pulseOpen = true
         Task { await loadPulse(period: .daily) }
         Task { await loadPulse(period: .weekly) }

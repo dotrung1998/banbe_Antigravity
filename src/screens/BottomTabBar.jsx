@@ -83,11 +83,15 @@ export function showsBottomBar(screen) {
 // keeping the same slim-pill proportions — the bar reads taller but not
 // noticeably wider/heavier since the label text is small (9px) and the
 // icon shrink offsets most of the added height visually.
-const BAR_HEIGHT = 64;
+// Exported so DockCreateButton.jsx (TASK C, 2026-10-03 fix pass) can align
+// itself to the exact same vertical band as this bar — "adjacent to the
+// existing dock" only reads as true if it shares these two numbers, not
+// approximations of them.
+export const BAR_HEIGHT = 64;
 const ICON_SIZE = 20;
 // BUG 3: sits a little closer to the bottom edge than 64f2719/623ec1e's
 // 18px — "shift its resting position lower."
-const BAR_BOTTOM_OFFSET = 10;
+export const BAR_BOTTOM_OFFSET = 10;
 
 export default function BottomTabBar({ collapsed }) {
   const { state, T, goHome, goProfile, goInbox, goNotifications, goMapExplore } = useGoc();
