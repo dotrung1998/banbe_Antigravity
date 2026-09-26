@@ -1,9 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { useGoc } from '../state/GocContext.jsx';
+import { supabase } from '../lib/supabase.js';
 import { paper, ink, rule, display, cardGlass, inkButton, alert } from '../theme.js';
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
 import { APP_STORE_URL } from '../lib/appStore.js';
+
+function organizerAvatarUrl(path) {
+  if (!path) return '';
+  return supabase.storage.from('organizer-photos').getPublicUrl(path).data.publicUrl;
+}
 
 // TASK D — "app not installed" fallback (rule D3): a shared /u/<handle>
 // link that doesn't open the native app (no universal-link verification,
@@ -19,10 +25,38 @@ const isMobileBrowser = typeof navigator !== 'undefined' && /iPhone|iPad|Android
 // into the organizer presentation (event/follower stats, follow CTA)
 // rather than a second, conflicting persona.
 export default function PublicProfile() {
-  const { state, T, backFromPublicProfile, toggleFollowOrganizer, sharePublicProfile } = useGoc();
+  const {
+    state, T, backFromPublicProfile, toggleFollowOrganizer, sharePublicProfile,
+    openEditProfile, orgRegNameType, orgRegDescType, saveOrganizerProfile,
+  } = useGoc();
   const s = state;
   const [qrOpen, setQrOpen] = useState(false);
   const [qrSrc, setQrSrc] = useState(null);
+  // iPhone fix pass (2026-09-26) — inline editing for the ORGANIZER half of
+  // this same page, mirroring Account.jsx's own host-tab card exactly
+  // (same orgRegName/orgRegDesc/saveOrganizerProfile — this account has at
+  // most one organizer, s.myOrganizerId, same standing assumption as
+  // everywhere else). A SEPARATE entry from "Chỉnh sửa hồ sơ" (personal,
+  // -> EditProfile) — never the same action, since they edit different
+  // rows in different tables.
+  const [orgEditing, setOrgEditing] = useState(false);
+  const [orgAvatarFile, setOrgAvatarFile] = useState(null);
+  const [orgAvatarPreview, setOrgAvatarPreview] = useState('');
+  const orgAvatarInputRef = useRef(null);
+  const onPickOrgAvatar = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (orgAvatarPreview) URL.revokeObjectURL(orgAvatarPreview);
+    setOrgAvatarFile(file);
+    setOrgAvatarPreview(URL.createObjectURL(file));
+  };
+  const doSaveOrg = async () => {
+    await saveOrganizerProfile(orgAvatarFile);
+    setOrgEditing(false);
+    setOrgAvatarFile(null);
+    if (orgAvatarPreview) { URL.revokeObjectURL(orgAvatarPreview); setOrgAvatarPreview(''); }
+  };
   const p = s.publicProfile;
 
   useEffect(() => {
@@ -92,11 +126,23 @@ export default function PublicProfile() {
         )}
 
         {org && (
-          <div style={{ display: 'flex', gap: 20, marginTop: 10 }}>
-            <Stat value={org.event_count} label={T('Sự kiện', 'Events')} />
-            <Stat value={org.follower_count} label={T('Người theo dõi', 'Followers')} />
-            {org.verified && <Stat value="✓" label={T('Đã xác minh', 'Verified')} />}
-          </div>
+          <>
+            <div style={{ display: 'flex', gap: 20, marginTop: 10 }}>
+              <Stat value={org.event_count} label={T('Sự kiện', 'Events')} />
+              <Stat value={org.follower_count} label={T('Người theo dõi', 'Followers')} />
+              {org.verified && <Stat value="✓" label={T('Đã xác minh', 'Verified')} />}
+            </div>
+            {/* iPhone fix pass — derived from the earliest REAL published
+                (live/ended) event, never the organizer's own stored
+                hosting_since text (get_public_profile, migration 091). An
+                organizer with nothing published yet gets an honest empty
+                line, never a fabricated year. */}
+            <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>
+              {org.hosting_since_year
+                ? T(`Tổ chức từ ${org.hosting_since_year}`, `Hosting since ${org.hosting_since_year}`)
+                : T('Chưa có sự kiện công khai nào', 'No published events yet')}
+            </span>
+          </>
         )}
 
         {org && !isOwnProfile && (
@@ -117,6 +163,73 @@ export default function PublicProfile() {
       <div onClick={() => setQrOpen(true)} data-testid="public-profile-qr-cta" style={{ margin: '16px 20px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '13px 0', border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer' }}>
         {T('Hiển thị mã QR', 'Show QR code')}
       </div>
+
+      {/* iPhone fix pass — "Chỉnh sửa hồ sơ" beneath "Hiển thị mã QR",
+          own-profile only (never rendered for a visitor viewing someone
+          else's page — `isOwnProfile` is a server-independent client
+          check, but the actual edit RPCs below are owner/admin-gated
+          server-side regardless, same as Account.jsx's own card). */}
+      {isOwnProfile && (
+        <div onClick={openEditProfile} data-testid="public-profile-edit-personal" style={{ margin: '10px 20px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '13px 0', border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer' }}>
+          {T('Chỉnh sửa hồ sơ', 'Edit profile')}
+        </div>
+      )}
+
+      {/* Organizer's own edit — a SEPARATE row/action from the personal one
+          above; edits organizers.name/about/avatar_path only (migration
+          090's update_organizer_profile), never profiles.*. */}
+      {/* `org.id === s.myOrganizerId` — never editing on the strength of
+          `isOwnProfile` alone. Both should already agree (one organizer
+          per account, everywhere else in this codebase), but this is the
+          one place a mismatch would silently edit the WRONG organizer's
+          row, so it's checked explicitly rather than assumed. */}
+      {isOwnProfile && org && org.id === s.myOrganizerId && (
+        <div style={{ ...cardGlass({ margin: '14px 20px 0', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }) }} data-testid="public-profile-org-edit-card">
+          {orgEditing ? (
+            <>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <div
+                  onClick={() => orgAvatarInputRef.current?.click()}
+                  style={{ flex: 'none', width: 52, height: 52, borderRadius: 12, overflow: 'hidden', cursor: 'pointer', background: 'rgba(0,0,0,0.05)' }}
+                >
+                  {(orgAvatarPreview || organizerAvatarUrl(s.myOrganizerAvatarPath)) && (
+                    <img src={orgAvatarPreview || organizerAvatarUrl(s.myOrganizerAvatarPath)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  )}
+                </div>
+                <span onClick={() => orgAvatarInputRef.current?.click()} style={{ fontSize: 12, color: ink, textDecoration: 'underline', cursor: 'pointer' }}>{T('Đổi ảnh', 'Change photo')}</span>
+                <input ref={orgAvatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={onPickOrgAvatar} />
+              </div>
+              <input
+                value={s.orgRegName} onChange={orgRegNameType} data-testid="public-profile-org-name-input"
+                style={{ fontSize: 14, fontWeight: 600, color: ink, border: `1px solid ${rule}`, borderRadius: 10, padding: '9px 11px', outline: 'none' }}
+              />
+              <textarea
+                value={s.orgRegDesc} onChange={orgRegDescType} rows={3} maxLength={2000}
+                placeholder={T('Giới thiệu ngắn về bạn/nhóm tổ chức…', 'A short introduction to you/your host team…')}
+                data-testid="public-profile-org-intro-input"
+                style={{ fontSize: 13, color: ink, border: `1px solid ${rule}`, borderRadius: 10, padding: '10px 12px', outline: 'none', resize: 'vertical', lineHeight: 1.5 }}
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <span
+                  onClick={doSaveOrg}
+                  data-testid="public-profile-org-save"
+                  style={{ flex: 1, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: paper, background: ink, padding: '10px 0', borderRadius: 10, cursor: 'pointer', opacity: s.orgProfileSaving ? 0.6 : 1 }}
+                >
+                  {s.orgProfileSaving ? T('Đang lưu…', 'Saving…') : T('Lưu', 'Save')}
+                </span>
+                <span onClick={() => setOrgEditing(false)} style={{ flex: 1, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '10px 0', borderRadius: 10, cursor: 'pointer', border: `1px solid ${rule}` }}>
+                  {T('Huỷ', 'Cancel')}
+                </span>
+              </div>
+              {s.orgProfileError && <p style={{ fontSize: 11.5, color: alert, margin: 0 }}>{s.orgProfileError}</p>}
+            </>
+          ) : (
+            <div onClick={() => setOrgEditing(true)} data-testid="public-profile-edit-org" style={{ textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>
+              {T('Chỉnh sửa hồ sơ tổ chức', 'Edit host profile')}
+            </div>
+          )}
+        </div>
+      )}
 
       {qrOpen && (
         <div onClick={() => setQrOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>

@@ -47,12 +47,12 @@ function RowIcon({ kind, size = 22 }) {
 
 export default function Account() {
   const {
-    state, T, goHome, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, openSecurity, openDocuments, openPayout, openVerifications, openDisputes, openAdminEvents, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
+    state, T, goHome, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, openSecurity, openDocuments, openPayout, openVerifications, openDisputes, openAdminEvents, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
     openRefundAccounts, openMyRefunds, openEditProfile,
     loadHomeStories, openStoryViewer, pickStoryFile, cancelStoryCreate, publishStory,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary,
     openPaymentDetails, goDashboard,
-    orgRegNameType, orgRegDescType, saveOrganizerProfile,
+    orgRegNameType, orgRegDescType, saveOrganizerProfile, setAccountTab, openPublicProfile,
   } = useGoc();
   const s = state;
   // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Both panes stay
@@ -61,7 +61,11 @@ export default function Account() {
   // either one's scroll position, and never touches organizerMode/canHost
   // (that stays a wholly separate, explicit toggle inside the Tổ chức
   // pane itself, same as before).
-  const [accountTab, setAccountTab] = useState('personal');
+  // iPhone fix pass (2026-09-26) — lifted into global state (s.accountTab)
+  // so it survives this component remounting on any navigation away and
+  // back (Preferences, the public-profile link below, etc.) — see the
+  // state's own comment (GocContext.jsx) for the full root cause.
+  const accountTab = s.accountTab;
   const storyFileRef = useRef(null);
   const storyCameraRef = useRef(null);
   // Task 1 (2026-09-21 real-device follow-up) — "Post Story" is now a real
@@ -162,7 +166,6 @@ export default function Account() {
   // right now."
   const isOrganizer = s.organizerMode;
   const profileSub = s.accountType === 'admin' ? T('Quản trị viên', 'Admin') : isOrganizer ? T('Người tham gia ▪︎ Người tổ chức', 'Goer ▪︎ Host') : T('Người tham gia', 'Goer');
-  const profileOrgName = (s.orgRegName && s.orgRegName.trim()) || 'Bếp Nhỏ';
 
   return (
     <div style={{ position: 'relative', animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Account">
@@ -194,6 +197,15 @@ export default function Account() {
         ))}
       </div>
 
+      {/* iPhone fix pass (2026-09-26) — this personal identity card (and
+          its story ring/"Đổi tên") used to sit ABOVE both tab panes, so it
+          rendered on the Tổ chức tab too, right on top of that tab's own
+          organizer profile card below — two profile cards for one screen.
+          Moved inside the SAME Cá nhân pane wrapper as the rest of this
+          tab's content (opened here, closed at its usual spot further
+          down) — the Tổ chức tab gets its own separate, organizer-only
+          card instead. */}
+      <div data-testid="account-tab-panel-personal" style={{ display: accountTab === 'personal' ? 'block' : 'none' }}>
       {/* TASK D (2026-10-01 UX foundation pass) — the header is now a
           tappable rounded profile card (editorial style: soft gradient
           wash from the account's own chosen palette, real avatar or a
@@ -277,8 +289,17 @@ export default function Account() {
             </div>
           )}
         </div>
+        {/* iPhone fix pass (2026-09-26) — this used to open EditProfile
+            directly; it now opens the same public profile page anyone else
+            sees when visiting this account's own /u/<handle> (isOwnProfile
+            there is what actually surfaces its own "Chỉnh sửa hồ sơ" row)
+            — editing is one tap further in, not the arrow's own
+            destination. */}
         {s.user && (
-          <span onClick={openEditProfile} data-testid="account-edit-profile" style={{ flex: 'none', fontSize: 20, color: ink, opacity: 0.55, cursor: 'pointer', alignSelf: 'center' }}>
+          <span
+            onClick={() => s.user?.handle && openPublicProfile(s.user.handle)}
+            data-testid="account-edit-profile"
+            style={{ flex: 'none', fontSize: 20, color: ink, opacity: 0.55, cursor: 'pointer', alignSelf: 'center' }}>
             ›
           </span>
         )}
@@ -311,7 +332,6 @@ export default function Account() {
         </div>
       )}
 
-      <div data-testid="account-tab-panel-personal" style={{ display: accountTab === 'personal' ? 'block' : 'none' }}>
       <div style={{ display: 'flex', gap: 10, padding: '22px 20px 0' }}>
         {/* data-attending-raw-count is the unfiltered s.attending.length — not
             shown to users (goingCount below is what actually renders, and is
@@ -427,10 +447,14 @@ export default function Account() {
                 </div>
               )}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1 }}>
+            <div
+              onClick={() => !orgProfileEditing && s.user?.handle && openPublicProfile(s.user.handle, 'profile')}
+              style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1, cursor: orgProfileEditing ? 'default' : 'pointer' }}
+            >
               {orgProfileEditing ? (
                 <input
                   value={s.orgRegName} onChange={orgRegNameType} data-testid="org-profile-name-input"
+                  onClick={(e) => e.stopPropagation()}
                   style={{ ...fieldGlass({ padding: '9px 11px' }), fontSize: 15, fontWeight: 600, color: ink, border: 'none', outline: 'none', width: '100%', boxSizing: 'border-box' }}
                 />
               ) : (
@@ -438,8 +462,22 @@ export default function Account() {
               )}
               <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T('Trang tổ chức', 'Host page')}</span>
             </div>
+            {/* iPhone fix pass — the SINGLE entry to this organizer's public
+                profile (openPublicProfile, same route/RPC anyone else's
+                page uses) now lives here, on the card itself; the separate
+                "Xem trang tổ chức của bạn" card (which actually opened the
+                internal Dashboard, not a public page at all — a different,
+                still-reachable destination via Home's own host link) is
+                removed rather than kept alongside a second entry point. */}
+            {!orgProfileEditing && (
+              <span
+                onClick={() => s.user?.handle && openPublicProfile(s.user.handle, 'profile')}
+                data-testid="org-profile-view-public"
+                style={{ flex: 'none', fontSize: 17, color: ink, opacity: 0.55, cursor: 'pointer' }}
+              >›</span>
+            )}
             <span
-              onClick={() => (orgProfileEditing ? doSaveOrgProfile() : setOrgProfileEditing(true))}
+              onClick={(e) => { e.stopPropagation(); orgProfileEditing ? doSaveOrgProfile() : setOrgProfileEditing(true); }}
               data-testid="org-profile-edit-toggle"
               style={{ flex: 'none', fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer', opacity: s.orgProfileSaving ? 0.5 : 1 }}
             >
@@ -514,29 +552,19 @@ export default function Account() {
             </div>
           </div>
         )}
-        {/* 2026-09-25 fix pass — reverses the previous "eligibility
-            (canHost), not current mode" rule for THIS card specifically:
-            a real host with organizerMode OFF now sees nothing here at
-            all (every host-only row in this section hides together when
-            the switch is off), not their host-page card. The onboarding
-            pitch below is unaffected — it's for an account that has never
-            hosted (`canHost` false always implies `organizerMode` false
-            too, so it can only ever show in the true "never hosted" case,
-            never for a returning host who merely toggled off). */}
-        {isOrganizer ? (
-          <div onClick={() => switchToHost('profile')} style={{ ...cardGlass({ marginTop: 10, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              <RowIcon kind="users" />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-                <span style={{ ...display(17, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{profileOrgName}</span>
-                <span style={{ fontSize: 12, color: ink }}>
-                  {s.mode === 'host' ? T('Xem trang tổ chức của bạn', 'View your host page') : T('Chuyển sang chế độ tổ chức', 'Switch to hosting')}
-                </span>
-              </div>
-            </div>
-            <span style={{ fontSize: 17, color: ink, flex: 'none', lineHeight: 1 }}>›</span>
-          </div>
-        ) : !canHost && (
+        {/* iPhone fix pass (2026-09-26) — the isOrganizer-gated "Xem trang
+            tổ chức của bạn" card that used to live here is gone: it
+            duplicated the org-profile-card's own identity (name + a
+            chevron) just to open Dashboard, not any public page, and the
+            ticket's own "single entry to its public profile" now lives on
+            the org-profile-card itself (its own onClick above). Dashboard
+            itself stays reachable exactly as before via Home's own
+            switchToHost link — nothing here removed that access, just
+            this redundant second card. The onboarding pitch below is
+            unaffected — it's for an account that has never hosted
+            (`canHost` false always implies `organizerMode` false too, so
+            it can only ever show in the true "never hosted" case). */}
+        {!canHost && (
           <div style={{ ...cardGlass({ marginTop: 10, padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 10 }) }}>
             <span style={{ ...display(19, { lineHeight: 1.3 }) }}>{T('Tổ chức sự kiện đầu tiên', 'Host your first event')}</span>
             <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, margin: 0 }}>

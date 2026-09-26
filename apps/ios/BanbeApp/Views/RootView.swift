@@ -536,6 +536,14 @@ struct RootView: View {
         .onChange(of: app.modalActionSheetPresented) { _, presented in
             BottomTabBarOverlay.shared.setModalActionSheetPresented(presented)
         }
+        // iPhone fix pass (2026-09-26) — see BottomTabBarOverlay.swift's
+        // own `areaSheetOpen` comment: the "Khu vực" sheet is hand-rolled
+        // SwiftUI content inside the main window, so this separate
+        // always-on-top dock window needs its own explicit signal to hide,
+        // same as StoryViewer/Pulse above.
+        .onChange(of: app.areaAsking) { _, open in
+            BottomTabBarOverlay.shared.setAreaSheetOpen(open)
+        }
     }
 
     /// The SCREENS map, factored out so both the current screen and the

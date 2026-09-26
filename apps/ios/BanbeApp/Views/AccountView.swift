@@ -24,7 +24,7 @@ struct AccountView: View {
     @State private var storyLibraryPickerOpen = false
 
     // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Purely a
-    // display switch (`if accountTab == ...` below) — never calls
+    // display switch (`if app.accountTab == ...` below) — never calls
     // toggleOrganizerMode or any hosting-mode side effect by itself.
     // Simplification disclosed vs. web: each tab does NOT get its own
     // independently-preserved scroll position here — this screen's
@@ -32,7 +32,7 @@ struct AccountView: View {
     // own doc comment above) is a single shared anchor across the whole
     // LazyVStack, and giving each tab its own would mean a second,
     // parallel scroll-tracking system; not built this pass.
-    @State private var accountTab = "personal"
+    // Lifted to AppState — see its own `app.accountTab` doc comment.
     @State private var orgProfileEditing = false
     @State private var orgAvatarPickerItem: PhotosPickerItem?
     @State private var orgAvatarPreviewImage: UIImage?
@@ -99,13 +99,13 @@ struct AccountView: View {
 
                 HStack(spacing: 6) {
                     ForEach([("personal", app.T("Cá nhân", "Personal")), ("host", app.T("Tổ chức", "Host"))], id: \.0) { key, label in
-                        Button { accountTab = key } label: {
+                        Button { app.accountTab = key } label: {
                             Text(label)
                                 .font(.system(size: 13, weight: .semibold))
                                 .padding(.horizontal, 16).padding(.vertical, 9)
-                                .background(accountTab == key ? app.palette.ink : .clear, in: Capsule())
-                                .overlay(Capsule().stroke(accountTab == key ? .clear : app.palette.rule, lineWidth: 1))
-                                .foregroundStyle(accountTab == key ? app.palette.paper : app.palette.ink)
+                                .background(app.accountTab == key ? app.palette.ink : .clear, in: Capsule())
+                                .overlay(Capsule().stroke(app.accountTab == key ? .clear : app.palette.rule, lineWidth: 1))
+                                .foregroundStyle(app.accountTab == key ? app.palette.paper : app.palette.ink)
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("account.tab.\(key)")
@@ -113,6 +113,13 @@ struct AccountView: View {
                 }
                 .padding(.top, 16)
 
+                // iPhone fix pass (2026-09-26) — this personal identity
+                // card (and its story ring/"Đổi tên") used to render
+                // regardless of `app.accountTab`, so it also showed on Tổ chức,
+                // right above that tab's own separate organizer card — two
+                // profile cards on one screen. Scoped to the Cá nhân tab
+                // only, matching the web fix.
+                if app.accountTab == "personal" {
                 // TASK D (2026-10-01 UX foundation pass) — the header is
                 // now a tappable rounded profile card (editorial style:
                 // soft gradient wash from the account's own chosen
@@ -200,7 +207,17 @@ struct AccountView: View {
                     }
                     Spacer(minLength: 0)
                     if app.isSignedIn {
-                        Button { app.openEditProfile() } label: {
+                        // iPhone fix pass — this used to open EditProfile
+                        // directly; it now opens the same public profile
+                        // page anyone else sees at this account's own
+                        // handle (`isOwnProfile` there is what surfaces its
+                        // own "Chỉnh sửa hồ sơ" row) — editing is one tap
+                        // further in, not the arrow's own destination.
+                        Button {
+                            if let handle = app.user?.handle, !handle.isEmpty {
+                                app.openPublicProfile(handle: handle)
+                            }
+                        } label: {
                             Image(systemName: "chevron.right").font(.system(size: 16)).foregroundStyle(app.palette.ink.opacity(0.55))
                         }
                         .buttonStyle(.plain)
@@ -218,8 +235,9 @@ struct AccountView: View {
                 .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
                 .padding(.top, 22)
                 .accessibilityIdentifier("account.profileCard")
+                } // app.accountTab == "personal" (profile card)
 
-                if accountTab == "personal" {
+                if app.accountTab == "personal" {
                 HStack(spacing: 10) {
                     counter(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going"), icon: "calendar.badge.checkmark", identifier: "account.goingCard") { app.goGoingList() }
                     counter(value: app.favorites.count, label: app.T("Đã lưu", "Saved"), icon: "bookmark", identifier: "account.savedCard") { app.goSavedList() }
@@ -282,9 +300,9 @@ struct AccountView: View {
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.top, 20)
                 .id("account-links")
-                } // accountTab == "personal"
+                } // app.accountTab == "personal"
 
-                if accountTab == "host" {
+                if app.accountTab == "host" {
                 orgProfileCard()
 
                 Text(app.T("Tổ chức", "Hosting"))
@@ -400,42 +418,16 @@ struct AccountView: View {
                     .padding(.top, 10)
                 }
 
-                // 2026-09-25 fix pass — reverses the previous "eligibility
-                // (canHost), not current mode" rule for THIS card
-                // specifically: a real host with organizerMode OFF now sees
-                // nothing here at all (every host-only row in this section
-                // hides together when the switch is off), not their
-                // host-page card. The onboarding pitch below is unaffected
-                // — it's for an account that has never hosted (`canHost`
-                // false always implies `organizerMode` false too, so it can
-                // only ever show in the true "never hosted" case, never for
-                // a returning host who merely toggled off).
-                if app.organizerMode {
-                    Button { app.switchToHost(back: .profile) } label: {
-                        HStack {
-                            Image(systemName: "person.2")
-                                .font(.system(size: 16, weight: .medium))
-                                .frame(width: 22, height: 22)
-                                .opacity(0.72)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(app.orgRegName.isEmpty ? "Bếp Nhỏ" : app.orgRegName)
-                                    .font(BanbeTheme.display(17))
-                                Text(app.mode == "host"
-                                     ? app.T("Xem trang tổ chức của bạn", "View your host page")
-                                     : app.T("Chuyển sang chế độ tổ chức", "Switch to hosting"))
-                                    .font(.system(size: 12))
-                            }
-                            Spacer()
-                            Text("›").font(.system(size: 17))
-                        }
-                        .foregroundStyle(app.palette.ink)
-                        .padding(16)
-                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("account.hostPageCard")
-                    .padding(.top, 10)
-                } else if !app.canHost {
+                // iPhone fix pass (2026-09-26) — the organizerMode-gated
+                // "Xem trang tổ chức của bạn" card that used to live here
+                // is gone: it duplicated orgProfileCard()'s own identity
+                // (name + a chevron) just to open Dashboard (switchToHost),
+                // not any public page. The ticket's own "single entry to
+                // its public profile" now lives on orgProfileCard() itself.
+                // Dashboard stays reachable exactly as before via Home's
+                // own switchToHost link — nothing here removed that
+                // access, just this redundant second card.
+                if !app.canHost {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(app.T("Tổ chức sự kiện đầu tiên", "Host your first event"))
                             .font(BanbeTheme.display(19))
@@ -454,7 +446,7 @@ struct AccountView: View {
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .padding(.top, 10)
                 }
-                } // accountTab == "host"
+                } // app.accountTab == "host"
 
                 Button {
                     if app.isSignedIn { Task { await app.signOut() } } else { app.goLogin() }
@@ -652,18 +644,40 @@ struct AccountView: View {
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 3) {
+                    Group {
                         if orgProfileEditing {
-                            TextField("", text: $app.orgRegName)
-                                .font(.system(size: 15, weight: .semibold))
-                                .padding(9)
-                                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                .accessibilityIdentifier("org.profile.nameField")
+                            VStack(alignment: .leading, spacing: 3) {
+                                TextField("", text: $app.orgRegName)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .padding(9)
+                                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    .accessibilityIdentifier("org.profile.nameField")
+                                Text(app.T("Trang tổ chức", "Host page")).font(.system(size: 11)).opacity(0.7)
+                            }
                         } else {
-                            Text(app.orgRegName.isEmpty ? app.T("Chưa đặt tên", "Unnamed host") : app.orgRegName)
-                                .font(BanbeTheme.display(18))
+                            // iPhone fix pass — the SINGLE entry to this
+                            // organizer's public profile (same
+                            // openPublicProfile(handle:) route anyone
+                            // else's page uses). The separate "Xem trang
+                            // tổ chức của bạn" card (which actually opened
+                            // the internal Dashboard, not a public page —
+                            // still reachable via Home's own host link) is
+                            // removed rather than kept alongside a second
+                            // entry point.
+                            Button {
+                                if let handle = app.user?.handle, !handle.isEmpty {
+                                    app.openPublicProfile(handle: handle)
+                                }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(app.orgRegName.isEmpty ? app.T("Chưa đặt tên", "Unnamed host") : app.orgRegName)
+                                        .font(BanbeTheme.display(18))
+                                    Text(app.T("Trang tổ chức", "Host page")).font(.system(size: 11)).opacity(0.7)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("org.profile.viewPublic")
                         }
-                        Text(app.T("Trang tổ chức", "Host page")).font(.system(size: 11)).opacity(0.7)
                     }
                     Spacer(minLength: 0)
                     Button {

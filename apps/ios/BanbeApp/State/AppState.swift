@@ -405,6 +405,11 @@ final class AppState: ObservableObject {
     // makes).
     @Published var myOrganizerID: String?
     @Published var myOrganizerAvatarPath = ""
+    // iPhone fix pass (2026-09-26) — AccountView's own Cá nhân/Tổ chức tab,
+    // lifted out of local `@State` (which reset to "personal" every time
+    // AccountView's switch-statement case was re-entered — e.g. after
+    // opening the new public-profile link and coming back) into here.
+    @Published var accountTab = "personal"
     @Published var orgProfileSaving = false
     @Published var orgProfileError = ""
     // Retention roadmap follow-up — canonical real-event cache, keyed by

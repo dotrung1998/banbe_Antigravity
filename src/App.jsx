@@ -124,6 +124,11 @@ function DockRow({ collapsed, showCreate }) {
         transform: `translateX(-50%) scale(${collapsed ? 0.86 : 1})`,
         transformOrigin: 'center bottom',
         transition: 'transform 0.28s cubic-bezier(.22,.61,.36,1)',
+        // Restores with the existing (previously unused) bottom-up "bbIn"
+        // keyframe every time this row remounts — e.g. right after the
+        // Khu vực sheet (or any other screen that suppresses the dock)
+        // closes — instead of the bar just snapping back into place.
+        animation: 'bbIn 0.28s cubic-bezier(.22,.61,.36,1) both',
       }}
     >
       <BottomTabBar collapsed={collapsed} />
@@ -146,7 +151,13 @@ function Shell() {
   // (it fully unmounts here, so there's nothing left to intercept taps —
   // the same "hidden, not merely lower z-index" bar this ticket asks for
   // on iOS's separate-UIWindow overlay).
-  const showBar = showsBottomBar(state.screen) && !state.storyViewer && !state.pulseOpen;
+  // iPhone fix pass (2026-09-26) — the "Khu vực" sheet (AreaSheet.jsx) used
+  // to render at a LOWER z-index than the dock row below, so the dock (and
+  // its separate "+" button) stayed visible and tappable THROUGH the
+  // sheet's own dimmed backdrop. Suppressed here the same centralized way
+  // StoryViewer/Pulse already are, rather than a second, independent
+  // visibility flag or another UIWindow-style overlay.
+  const showBar = showsBottomBar(state.screen) && !state.storyViewer && !state.pulseOpen && !state.areaAsking;
 
   useLayoutEffect(() => {
     const el = scrollRef.current;

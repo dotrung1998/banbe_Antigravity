@@ -12,13 +12,13 @@ struct PublicProfile: Decodable, Equatable {
         let id: String
         let name: String
         let verified: Bool
-        let hostingSince: String?
+        let hostingSinceYear: Int?
         let eventCount: Int
         var followerCount: Int
         var following: Bool
         enum CodingKeys: String, CodingKey {
             case id, name, verified
-            case hostingSince = "hosting_since"
+            case hostingSinceYear = "hosting_since_year"
             case eventCount = "event_count"
             case followerCount = "follower_count"
             case following

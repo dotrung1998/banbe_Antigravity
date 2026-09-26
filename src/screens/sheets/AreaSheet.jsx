@@ -27,7 +27,17 @@ export default function AreaSheet() {
 
   return (
     <div onClick={closeArea} style={{ position: 'absolute', inset: 0, zIndex: 21, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'gocFade 0.2s ease both' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: paper, padding: '26px 24px 36px', display: 'flex', flexDirection: 'column', animation: 'gocSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ position: 'relative', background: paper, padding: '26px 24px 36px', display: 'flex', flexDirection: 'column', animation: 'gocSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+        {/* Absolutely positioned (not a sibling-wrapping header row) so
+            "Khu vực" stays a direct child of this sheet container —
+            existing tests locate the sheet via
+            `page.getByText('Khu vực').locator('..')`. */}
+        <span
+          onClick={closeArea}
+          data-testid="area-sheet-close"
+          aria-label="Đóng"
+          style={{ position: 'absolute', top: 22, right: 20, fontSize: 15, color: ink, opacity: 0.6, cursor: 'pointer', padding: 4, lineHeight: 1 }}
+        >✕</span>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>Khu vực</span>
         <div style={{ display: 'flex', flexDirection: 'column', marginTop: 10 }}>
           {areas.map(a => (

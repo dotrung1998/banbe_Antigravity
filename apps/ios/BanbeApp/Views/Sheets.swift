@@ -38,7 +38,18 @@ struct AreaSheetView: View {
 
     var body: some View {
         BottomSheet(onDismiss: { app.areaAsking = false }) {
-            Text("Khu vực").font(.system(size: 11.5, weight: .semibold))
+            HStack {
+                Text("Khu vực").font(.system(size: 11.5, weight: .semibold))
+                Spacer()
+                Button { app.areaAsking = false } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(app.palette.ink.opacity(0.6))
+                        .padding(4)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("area.close")
+            }
             VStack(spacing: 0) {
                 ForEach(AreaOption.all) { area in
                     Button { app.pickArea(area.key) } label: {

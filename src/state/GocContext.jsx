@@ -614,6 +614,15 @@ const initialState = {
   orgProfileSaving: false,
   orgProfileError: '',
   orgProfileSaved: false,
+  // iPhone fix pass (2026-09-26) — Account's own Cá nhân/Tổ chức tab, lifted
+  // out of Account.jsx's local component state into the global store.
+  // Local state used to reset to 'personal' every time Account.jsx
+  // unmounted (any navigation away and back — Preferences, the new public-
+  // profile link, even the pre-existing EditProfile flow — remounts it,
+  // since screen switching is a plain `SCREENS[state.screen]` conditional
+  // render, not a persistent tree), silently losing whichever tab a host
+  // was actually on.
+  accountTab: 'personal',
   following: [],
   refunds: {},
   gaveTicket: false,
@@ -5934,6 +5943,8 @@ export function GocProvider({ children }) {
    * (organizer-photos bucket, path-scoped to this organizer's own id —
    * never another host's, see migration 090's own storage policies).
    */
+  const setAccountTab = useCallback((tab) => set({ accountTab: tab }), [set]);
+
   const saveOrganizerProfile = useCallback(async (avatarFile) => {
     if (!s.myOrganizerId) return;
     set({ orgProfileSaving: true, orgProfileError: '', orgProfileSaved: false });
@@ -6852,7 +6863,7 @@ export function GocProvider({ children }) {
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
-    orgRegNameType, orgRegIgType, orgRegDescType, saveOrganizerProfile,
+    orgRegNameType, orgRegIgType, orgRegDescType, saveOrganizerProfile, setAccountTab,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
@@ -6886,7 +6897,7 @@ export function GocProvider({ children }) {
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
-    orgRegNameType, orgRegIgType, orgRegDescType, saveOrganizerProfile,
+    orgRegNameType, orgRegIgType, orgRegDescType, saveOrganizerProfile, setAccountTab,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
