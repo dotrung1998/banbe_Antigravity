@@ -17,6 +17,12 @@ struct PublicProfileView: View {
     @State private var orgEditing = false
     @State private var orgAvatarPickerItem: PhotosPickerItem?
     @State private var orgAvatarPreviewImage: UIImage?
+    // Stage 1 (2026-09-27 nav/discovery pass) — a client-only "view as
+    // guest" preview for the account's OWN organizer public page: hides
+    // owner-only controls (the edit row below, the personal "Chỉnh sửa hồ
+    // sơ" button) so the owner can see exactly what a visitor sees,
+    // without touching auth, organizerMode, or which account is signed in.
+    @State private var guestPreview = false
 
     private var isOwnProfile: Bool { app.userID != nil && app.publicProfile?.id == app.userID }
 
@@ -40,6 +46,15 @@ struct PublicProfileView: View {
                 }
                 .padding(.top, 16)
 
+                if guestPreview {
+                    Button(app.T("Đang xem như khách ▪︎ Thoát", "Viewing as a guest ▪︎ Exit")) { guestPreview = false }
+                        .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.paper)
+                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .padding(.top, 10)
+                        .accessibilityIdentifier("publicProfile.guestPreviewBanner")
+                }
+
                 if app.publicProfileLoading {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                 } else if let p = app.publicProfile, p.success == true {
@@ -56,7 +71,7 @@ struct PublicProfileView: View {
                     // visitor viewing someone else's page — the edit RPCs
                     // themselves are owner/admin-gated server-side
                     // regardless, same as AccountView's own card).
-                    if isOwnProfile {
+                    if isOwnProfile && !guestPreview {
                         Button(app.T("Chỉnh sửa hồ sơ", "Edit profile")) { app.openEditProfile() }
                             .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                             .frame(maxWidth: .infinity).padding(.vertical, 13)
@@ -72,7 +87,7 @@ struct PublicProfileView: View {
                     // `org.id == app.myOrganizerID` — never editing on the
                     // strength of `isOwnProfile` alone; the one place a
                     // mismatch would silently edit the WRONG organizer.
-                    if isOwnProfile, let org = p.organizer, org.id == app.myOrganizerID {
+                    if isOwnProfile, !guestPreview, let org = p.organizer, org.id == app.myOrganizerID {
                         orgEditCard()
                     }
                 } else {
@@ -113,7 +128,18 @@ struct PublicProfileView: View {
                     .overlay(Text(String((p.displayName ?? p.handle ?? "?").prefix(1)).uppercased()).font(.system(size: 32, weight: .bold)).foregroundStyle(app.palette.paper))
                     .overlay(Circle().stroke(app.palette.paper, lineWidth: 3))
             }
-            Text(p.displayName ?? "").font(BanbeTheme.display(21))
+            // Stage 1 fix — get_public_profile already returned org.name,
+            // but nothing here ever rendered it: this heading used to show
+            // the underlying PERSON's displayName even on their organizer
+            // page, with no organizer name anywhere on the page at all.
+            // "Bởi <personal name>" underneath uses only the public-safe
+            // p.displayName already fetched — never organizers.name again.
+            Text(p.organizer?.name ?? p.displayName ?? "").font(BanbeTheme.display(21))
+            if p.organizer != nil {
+                Text(app.T("Bởi \(p.displayName ?? "")", "By \(p.displayName ?? "")"))
+                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .accessibilityIdentifier("publicProfile.orgOwnedBy")
+            }
             Text("@\(p.handle ?? "")" + (p.city?.isEmpty == false ? " ▪︎ \(p.city!)" : ""))
                 .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
             if let bio = p.bio, !bio.isEmpty {
@@ -232,10 +258,25 @@ struct PublicProfileView: View {
                     Text(app.orgProfileError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                 }
             } else {
-                Button(app.T("Chỉnh sửa hồ sơ tổ chức", "Edit host profile")) { orgEditing = true }
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .accessibilityIdentifier("publicProfile.editOrg")
+                // Stage 1's own "two adjacent actions" requirement —
+                // Chỉnh sửa (left) opens this same inline editor; Xem
+                // như khách (right) is a pure client-side preview toggle
+                // (the banner above), never a real auth/account-mode
+                // change.
+                HStack(spacing: 10) {
+                    Button(app.T("Chỉnh sửa", "Edit")) { orgEditing = true }
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                        .foregroundStyle(app.palette.ink)
+                        .accessibilityIdentifier("publicProfile.editOrg")
+                    Button(app.T("Xem như khách", "View as guest")) { guestPreview = true }
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                        .foregroundStyle(app.palette.ink)
+                        .accessibilityIdentifier("publicProfile.viewAsGuest")
+                }
             }
         }
         .foregroundStyle(app.palette.ink)

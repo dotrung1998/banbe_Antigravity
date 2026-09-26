@@ -40,6 +40,12 @@ export default function PublicProfile() {
   // -> EditProfile) — never the same action, since they edit different
   // rows in different tables.
   const [orgEditing, setOrgEditing] = useState(false);
+  // Stage 1 (2026-09-27 nav/discovery pass) — a client-only "view as
+  // guest" preview for the account's OWN organizer public page: hides
+  // owner-only controls (the edit row below, the personal "Chỉnh sửa hồ
+  // sơ" button) so the owner can see exactly what a visitor sees, without
+  // touching auth, organizerMode, or which account is signed in at all.
+  const [guestPreview, setGuestPreview] = useState(false);
   const [orgAvatarFile, setOrgAvatarFile] = useState(null);
   const [orgAvatarPreview, setOrgAvatarPreview] = useState('');
   const orgAvatarInputRef = useRef(null);
@@ -100,6 +106,12 @@ export default function PublicProfile() {
         </span>
       </div>
 
+      {guestPreview && (
+        <div onClick={() => setGuestPreview(false)} data-testid="public-profile-guest-preview-banner" style={{ margin: '10px 20px 0', textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: paper, background: ink, padding: '9px 0', borderRadius: 10, cursor: 'pointer' }}>
+          {T('Đang xem như khách ▪︎ Thoát', 'Viewing as a guest ▪︎ Exit')}
+        </div>
+      )}
+
       <div
         data-testid="public-profile-card"
         style={{
@@ -114,7 +126,20 @@ export default function PublicProfile() {
             {monogram}
           </div>
         )}
-        <span style={{ ...display(21) }}>{p.display_name}</span>
+        {/* Stage 1 fix — get_public_profile already returned org.name,
+            but nothing here ever rendered it: this heading used to show
+            the underlying PERSON's display_name even on their organizer
+            page, with no organizer name anywhere on the page at all. The
+            organizer name is now the heading when this page IS an
+            organizer's; "Bởi <personal name>" underneath uses only the
+            public-safe profiles.display_name already in `p` — never
+            organizers.name again (that's org.name, used once, above). */}
+        <span style={{ ...display(21) }}>{org ? org.name : p.display_name}</span>
+        {org && (
+          <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }} data-testid="public-profile-org-owned-by">
+            {T(`Bởi ${p.display_name}`, `By ${p.display_name}`)}
+          </span>
+        )}
         <span style={{ fontSize: 12.5, color: ink, opacity: 0.75 }}>@{p.handle}{p.city ? ' ▪︎ ' + p.city : ''}</span>
         {p.bio && <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, textAlign: 'center', margin: '4px 0 0' }}>{p.bio}</p>}
         {!!(p.interests || []).length && (
@@ -169,7 +194,7 @@ export default function PublicProfile() {
           else's page — `isOwnProfile` is a server-independent client
           check, but the actual edit RPCs below are owner/admin-gated
           server-side regardless, same as Account.jsx's own card). */}
-      {isOwnProfile && (
+      {isOwnProfile && !guestPreview && (
         <div onClick={openEditProfile} data-testid="public-profile-edit-personal" style={{ margin: '10px 20px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '13px 0', border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer' }}>
           {T('Chỉnh sửa hồ sơ', 'Edit profile')}
         </div>
@@ -183,7 +208,7 @@ export default function PublicProfile() {
           per account, everywhere else in this codebase), but this is the
           one place a mismatch would silently edit the WRONG organizer's
           row, so it's checked explicitly rather than assumed. */}
-      {isOwnProfile && org && org.id === s.myOrganizerId && (
+      {isOwnProfile && org && org.id === s.myOrganizerId && !guestPreview && (
         <div style={{ ...cardGlass({ margin: '14px 20px 0', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }) }} data-testid="public-profile-org-edit-card">
           {orgEditing ? (
             <>
@@ -224,8 +249,17 @@ export default function PublicProfile() {
               {s.orgProfileError && <p style={{ fontSize: 11.5, color: alert, margin: 0 }}>{s.orgProfileError}</p>}
             </>
           ) : (
-            <div onClick={() => setOrgEditing(true)} data-testid="public-profile-edit-org" style={{ textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>
-              {T('Chỉnh sửa hồ sơ tổ chức', 'Edit host profile')}
+            /* Stage 1's own "two adjacent actions" requirement — Chỉnh
+               sửa (left) opens this same inline editor; Xem như khách
+               (right) is a pure client-side preview toggle (the banner
+               above), never a real auth/account-mode change. */
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div onClick={() => setOrgEditing(true)} data-testid="public-profile-edit-org" style={{ flex: 1, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '10px 0', borderRadius: 10, cursor: 'pointer', border: `1px solid ${rule}` }}>
+                {T('Chỉnh sửa', 'Edit')}
+              </div>
+              <div onClick={() => setGuestPreview(true)} data-testid="public-profile-view-as-guest" style={{ flex: 1, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '10px 0', borderRadius: 10, cursor: 'pointer', border: `1px solid ${rule}` }}>
+                {T('Xem như khách', 'View as guest')}
+              </div>
             </div>
           )}
         </div>

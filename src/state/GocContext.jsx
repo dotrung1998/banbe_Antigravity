@@ -291,6 +291,14 @@ const initialState = {
   tickets: {},
   myOrgEventKeys: [],
   myOrganizerIds: [],
+  // Stage 1 (2026-09-27 nav/discovery pass) — Account > Tổ chức's host
+  // card own "Tổ chức từ <year> ▪︎ <N> sự kiện" line, same published-
+  // events-only rule (status IN live/ended) as get_public_profile's
+  // event_count/hosting_since_year (migration 091) — real event rows by
+  // organizer_id, never a stored/static total. null count means "not
+  // loaded yet"; 0 is a real, honest zero.
+  myOrgPublishedEventCount: null,
+  myOrgHostingSinceYear: null,
   // STAGE D (2026-09-25) — EventDetail's real gallery: one event's own
   // event_photos rows (see loadEventPhotos below).
   eventPhotos: [],
@@ -595,6 +603,11 @@ const initialState = {
   // an existing (previously rejected) event rather than creating a new
   // one; createSubmit() branches on this. Cleared on a fresh "create" nav.
   createEditEventId: null,
+  // Stage 1 — the real root screen/tab dock + was tapped from (or
+  // 'dashboard' for goEditEvent's own entry); createBack() reads this
+  // instead of hard-routing to a fixed screen. null until goCreate/
+  // goEditEvent set it.
+  createOriginScreen: null,
   // Admin-only "Sự kiện chờ duyệt" queue (event review queue follow-up).
   adminEvents: [],
   adminEventsLoading: false,
@@ -4490,7 +4503,14 @@ export function GocProvider({ children }) {
     // A fresh "create a new event" entry, distinct from goEditEvent's own
     // resubmission entry — always clears any prior edit target so this
     // never accidentally resubmits over a different event.
-    set({ screen: 'create', mode: 'host', createEditEventId: null, createSent: false, createError: '' });
+    // Stage 1 (2026-09-27 nav/discovery pass) — `createOriginScreen`
+    // records EXACTLY which root screen/tab dock + was tapped from
+    // (Home, Map, Inbox, Account, …), so createBack (below) can return
+    // there instead of hard-routing to a fixed 'dashboard'/'hostIntro' —
+    // that screen's own scroll/map-camera state is preserved for free by
+    // App.jsx's existing per-screen `scrollPositions` keying, as long as
+    // the screen key it returns to actually matches where the user was.
+    set(prev => ({ screen: 'create', mode: 'host', createEditEventId: null, createSent: false, createError: '', createOriginScreen: prev.screen }));
   }, [set, s.user, canHost, enableOrganizerMode]);
   const openHeld = useCallback(() => set({ screen: 'confirmed' }), [set]);
   const goHostIntro = useCallback(() => {
@@ -4498,7 +4518,14 @@ export function GocProvider({ children }) {
     if (!canHost) enableOrganizerMode();
     set({ screen: 'hostIntro' });
   }, [set, s.user, canHost, enableOrganizerMode]);
-  const createBack = useCallback(() => set(prev => ({ screen: prev.hasHosted ? 'dashboard' : 'hostIntro' })), [set]);
+  // Stage 1 fix — this used to hard-route to 'dashboard'/'hostIntro'
+  // regardless of where + was actually tapped from (Home, Map, Inbox,
+  // Account, …), so backing out of Create always landed on Dashboard
+  // instead of the real originating tab. `createOriginScreen` (set by
+  // goCreate/goEditEvent) is now the real source of truth; the old
+  // hasHosted-based guess only remains as a fallback for any entry point
+  // that predates this field.
+  const createBack = useCallback(() => set(prev => ({ screen: prev.createOriginScreen || (prev.hasHosted ? 'dashboard' : 'hostIntro') })), [set]);
 
   // The "Going"/"Saved" cards on Account — always opened from (and closed
   // back to) Account, so unlike Inbox/Dashboard there's no other entry point
@@ -5982,6 +6009,32 @@ export function GocProvider({ children }) {
       set({ orgProfileSaving: false, orgProfileError: message });
     }
   }, [set, s.myOrganizerId, s.orgRegName, s.orgRegDesc, s.myOrganizerAvatarPath, T]);
+
+  /**
+   * Stage 1 (2026-09-27 nav/discovery pass) — Account host card's own
+   * "Tổ chức từ <year> ▪︎ <N> sự kiện", read straight from real event
+   * rows by organizer_id (never a stored/static total), same published-
+   * only rule (status IN live/ended) as get_public_profile's event_count/
+   * hosting_since_year (migration 091) so both places always agree.
+   * Re-run whenever Account's host tab loads, so an admin approval or
+   * cancellation since the last visit shows up without needing a reload.
+   */
+  const loadMyOrgStats = useCallback(async () => {
+    if (!s.myOrganizerId) { set({ myOrgPublishedEventCount: null, myOrgHostingSinceYear: null }); return; }
+    const { data, error } = await supabase
+      .from('events')
+      .select('status, starts_at')
+      .eq('organizer_id', s.myOrganizerId)
+      .in('status', ['live', 'ended']);
+    if (error) { console.warn('loadMyOrgStats failed:', error); return; }
+    const rows = data || [];
+    const years = rows.map(r => r.starts_at ? new Date(r.starts_at).getFullYear() : null).filter(Boolean);
+    set({
+      myOrgPublishedEventCount: rows.length,
+      myOrgHostingSinceYear: years.length ? Math.min(...years) : null,
+    });
+  }, [set, s.myOrganizerId]);
+
   const createNameType = useCallback((e) => set({ createName: e.target.value }), [set]);
   const createDescType = useCallback((e) => set({ createDesc: e.target.value }), [set]);
   const createIntroType = useCallback((e) => set({ createIntro: e.target.value }), [set]);
@@ -6178,6 +6231,16 @@ export function GocProvider({ children }) {
         });
         if (error) throw error;
         eventId = data?.id || null;
+        // iPhone fix pass (Stage 1) — create_event_draft's RETURNING row
+        // already carries the real organizer_id (it creates the organizer
+        // row itself on a host's very first submission), but this used to
+        // go unused: myOrganizerId stayed null until the NEXT syncUser()
+        // cycle (a full reload/relogin), so Account > Tổ chức's persistent
+        // organizer card wouldn't appear right after creating a first
+        // event — only after leaving and coming back — looking like its
+        // visibility depended on having gone through dock + > Tạo sự
+        // kiện, rather than on real organizer-management ability.
+        if (data?.organizer_id) set({ myOrganizerId: data.organizer_id });
       }
 
       let mediaNote = '';
@@ -6217,7 +6280,11 @@ export function GocProvider({ children }) {
     const real = s.realEventsById[eventId];
     if (!real) return;
     set({
-      screen: 'create', createBack: 'dashboard',
+      // This state field ('dashboard') used to be named `createBack` and
+      // was never actually read by anything — createBack the FUNCTION
+      // hardcoded its own destination instead. Now the real source of
+      // truth createBack reads (see its own comment above).
+      screen: 'create', createOriginScreen: 'dashboard',
       createEditEventId: eventId, createSent: false, createError: '',
       createName: real.name || '', createCats: real.catKey ? [real.catKey] : [],
       createDesc: real.description || '', createLoc: real.area || '',
@@ -6863,7 +6930,7 @@ export function GocProvider({ children }) {
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
-    orgRegNameType, orgRegIgType, orgRegDescType, saveOrganizerProfile, setAccountTab,
+    orgRegNameType, orgRegIgType, orgRegDescType, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
@@ -6897,7 +6964,7 @@ export function GocProvider({ children }) {
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
-    orgRegNameType, orgRegIgType, orgRegDescType, saveOrganizerProfile, setAccountTab,
+    orgRegNameType, orgRegIgType, orgRegDescType, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,

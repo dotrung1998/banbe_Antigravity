@@ -33,9 +33,6 @@ struct AccountView: View {
     // LazyVStack, and giving each tab its own would mean a second,
     // parallel scroll-tracking system; not built this pass.
     // Lifted to AppState — see its own `app.accountTab` doc comment.
-    @State private var orgProfileEditing = false
-    @State private var orgAvatarPickerItem: PhotosPickerItem?
-    @State private var orgAvatarPreviewImage: UIImage?
 
     private var myStoryGroup: StoryGroup? {
         app.homeStories.first { g in app.myOrganizerIdsCache.contains(g.organizerId) }
@@ -483,6 +480,13 @@ struct AccountView: View {
                 await app.loadRefundQueue()
             }
         }
+        // Stage 1 — re-run whenever this account's organizer id becomes
+        // known (session restore, or right after creating a first event)
+        // so the host card's real published-event stats reflect the
+        // latest admin approval/cancellation, not a stale snapshot.
+        .task(id: app.myOrganizerID) {
+            if app.canHost, app.myOrganizerID != nil { await app.loadMyOrgStats() }
+        }
         .onAppear { retryScrollRestoreIfNeeded() }
         .photosPicker(isPresented: $storyLibraryPickerOpen, selection: $storyPhotoItem, matching: .images)
         .onChange(of: storyPhotoItem) { _, item in
@@ -610,18 +614,23 @@ struct AccountView: View {
     /// profiles.display_name. Only shown once this account has ever
     /// hosted; a never-hosted account instead sees the "Host your first
     /// event" pitch further down (unchanged).
+    // Stage 1 (2026-09-27 nav/discovery pass) — this card's own inline
+    // avatar/name/intro editor is gone: the whole card is now a single tap
+    // target that opens the REAL public organizer profile
+    // (openPublicProfile), which already has its own "Chỉnh sửa" entry
+    // (PublicProfileView's org edit card) — editing one place, not two.
     @ViewBuilder
     private func orgProfileCard() -> some View {
         if app.canHost, app.myOrganizerID != nil {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 14) {
-                    Button {
-                        if orgProfileEditing { /* PhotosPicker below handles presentation */ }
-                    } label: {
+            Button {
+                if let handle = app.user?.handle, !handle.isEmpty {
+                    app.openPublicProfile(handle: handle)
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 14) {
                         ZStack {
-                            if let orgAvatarPreviewImage {
-                                Image(uiImage: orgAvatarPreviewImage).resizable().scaledToFill()
-                            } else if let url = organizerAvatarURL {
+                            if let url = organizerAvatarURL {
                                 AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
                             } else {
                                 Text((app.orgRegName.first.map(String.init) ?? "B").uppercased())
@@ -629,96 +638,41 @@ struct AccountView: View {
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     .background(app.palette.field)
                             }
-                            if orgProfileEditing {
-                                Color.black.opacity(0.35)
-                                Text(app.T("Đổi ảnh", "Change")).font(.system(size: 9)).foregroundStyle(.white)
-                            }
                         }
                         .frame(width: 56, height: 56)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .overlay {
-                        if orgProfileEditing {
-                            PhotosPicker(selection: $orgAvatarPickerItem, matching: .images) { Color.clear }
-                        }
-                    }
 
-                    Group {
-                        if orgProfileEditing {
-                            VStack(alignment: .leading, spacing: 3) {
-                                TextField("", text: $app.orgRegName)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .padding(9)
-                                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                    .accessibilityIdentifier("org.profile.nameField")
-                                Text(app.T("Trang tổ chức", "Host page")).font(.system(size: 11)).opacity(0.7)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(app.orgRegName.isEmpty ? app.T("Chưa đặt tên", "Unnamed host") : app.orgRegName)
+                                .font(BanbeTheme.display(18))
+                            // Same published-events-only rule as
+                            // get_public_profile's event_count/
+                            // hosting_since_year (migration 091,
+                            // loadMyOrgStats), so this card and the
+                            // public page never disagree. nil = not
+                            // loaded yet.
+                            if let count = app.myOrgPublishedEventCount {
+                                Text(app.myOrgHostingSinceYear.map { year in
+                                    app.T("Tổ chức từ \(year) ▪︎ \(count) sự kiện", "Hosting since \(year) ▪︎ \(count) events")
+                                } ?? app.T("Chưa có sự kiện công khai nào", "No published events yet"))
+                                    .font(.system(size: 11)).opacity(0.7)
                             }
-                        } else {
-                            // iPhone fix pass — the SINGLE entry to this
-                            // organizer's public profile (same
-                            // openPublicProfile(handle:) route anyone
-                            // else's page uses). The separate "Xem trang
-                            // tổ chức của bạn" card (which actually opened
-                            // the internal Dashboard, not a public page —
-                            // still reachable via Home's own host link) is
-                            // removed rather than kept alongside a second
-                            // entry point.
-                            Button {
-                                if let handle = app.user?.handle, !handle.isEmpty {
-                                    app.openPublicProfile(handle: handle)
-                                }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(app.orgRegName.isEmpty ? app.T("Chưa đặt tên", "Unnamed host") : app.orgRegName)
-                                        .font(BanbeTheme.display(18))
-                                    Text(app.T("Trang tổ chức", "Host page")).font(.system(size: 11)).opacity(0.7)
-                                }
-                            }
-                            .buttonStyle(.plain)
+                        }
+                        Spacer(minLength: 0)
+                        Text("›").font(.system(size: 20)).opacity(0.55)
                             .accessibilityIdentifier("org.profile.viewPublic")
-                        }
                     }
-                    Spacer(minLength: 0)
-                    Button {
-                        if orgProfileEditing {
-                            Task { await app.saveOrganizerProfile(avatarImage: orgAvatarPreviewImage); orgProfileEditing = false; orgAvatarPreviewImage = nil }
-                        } else {
-                            orgProfileEditing = true
-                        }
-                    } label: {
-                        Text(app.orgProfileSaving ? app.T("Đang lưu…", "Saving…") : (orgProfileEditing ? app.T("Lưu", "Save") : app.T("Chỉnh sửa", "Edit")))
-                            .font(.system(size: 12, weight: .semibold))
+                    if !app.orgRegDesc.isEmpty {
+                        Text(app.orgRegDesc).font(.system(size: 12.5)).opacity(0.85)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(app.orgProfileSaving)
-                    .accessibilityIdentifier("org.profile.editToggle")
-                }
-                if orgProfileEditing {
-                    TextEditor(text: $app.orgRegDesc)
-                        .font(.system(size: 13))
-                        .frame(minHeight: 80)
-                        .padding(6)
-                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .accessibilityIdentifier("org.profile.introField")
-                } else if !app.orgRegDesc.isEmpty {
-                    Text(app.orgRegDesc).font(.system(size: 12.5)).opacity(0.85)
-                }
-                if !app.orgProfileError.isEmpty {
-                    Text(app.orgProfileError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                 }
             }
+            .buttonStyle(.plain)
             .foregroundStyle(app.palette.ink)
             .padding(16)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .padding(.top, 22)
             .accessibilityIdentifier("org.profile.card")
-            .onChange(of: orgAvatarPickerItem) { _, item in
-                Task {
-                    guard let item, let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
-                    await MainActor.run { orgAvatarPreviewImage = image }
-                }
-            }
         }
     }
 

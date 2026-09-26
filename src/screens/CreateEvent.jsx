@@ -184,7 +184,12 @@ export default function CreateEvent() {
   // own-fetch Dashboard.jsx already does.
   useEffect(() => { loadHomeLiveEvents(); }, [loadHomeLiveEvents]);
 
-  const createBackLabel = s.hasHosted ? T('Trang tổ chức của bạn', 'Your host page') : T('Trang tổ chức của bạn sẽ trông thế nào', 'Preview your organizer page');
+  // Stage 1 fix — this label used to name a fixed destination
+  // ("Trang tổ chức của bạn"/"Dashboard"), which stopped being true once
+  // createBack started returning to the REAL originating tab (Home, Map,
+  // Inbox, Account, …) instead of always landing on Dashboard/HostIntro.
+  // A plain "Back" reads correctly no matter which tab that turns out to be.
+  const createBackLabel = T('Quay lại', 'Back');
 
   // 2026-09-25 fix pass (Task 0 audit) — this used to filter/sort the RAW
   // static catalogue (`EVENTS`), with no `liveEventOverrides` merge at

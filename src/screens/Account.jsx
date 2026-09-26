@@ -52,7 +52,7 @@ export default function Account() {
     loadHomeStories, openStoryViewer, pickStoryFile, cancelStoryCreate, publishStory,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary,
     openPaymentDetails, goDashboard,
-    orgRegNameType, orgRegDescType, saveOrganizerProfile, setAccountTab, openPublicProfile,
+    loadMyOrgStats, setAccountTab, openPublicProfile,
   } = useGoc();
   const s = state;
   // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Both panes stay
@@ -74,27 +74,11 @@ export default function Account() {
   // single link that only ever opened the library picker.
   const [storyMenuOpen, setStoryMenuOpen] = useState(false);
 
-  // Host tab's own profile card (Stage D) — editing is inline, local draft
-  // state only becomes real on "Lưu" (saveOrganizerProfile); an unsaved
-  // avatar pick shows an immediate local preview.
-  const [orgProfileEditing, setOrgProfileEditing] = useState(false);
-  const [orgAvatarFile, setOrgAvatarFile] = useState(null);
-  const [orgAvatarPreview, setOrgAvatarPreview] = useState('');
-  const orgAvatarInputRef = useRef(null);
-  const onPickOrgAvatar = (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    if (orgAvatarPreview) URL.revokeObjectURL(orgAvatarPreview);
-    setOrgAvatarFile(file);
-    setOrgAvatarPreview(URL.createObjectURL(file));
-  };
-  const doSaveOrgProfile = async () => {
-    await saveOrganizerProfile(orgAvatarFile);
-    setOrgProfileEditing(false);
-    setOrgAvatarFile(null);
-    if (orgAvatarPreview) { URL.revokeObjectURL(orgAvatarPreview); setOrgAvatarPreview(''); }
-  };
+  // Stage 1 (2026-09-27 nav/discovery pass) — this card's own inline
+  // avatar/name/intro editor is gone: the whole card is now a single tap
+  // target that opens the REAL public organizer profile
+  // (openPublicProfile), which already has its own "Chỉnh sửa" entry
+  // (PublicProfile.jsx's org edit card) — editing one place, not two.
 
   // Task 3.3 (07-notifications.md) — loads active stories (mine + followed
   // hosts') so the ring below reflects real data even when Account is
@@ -114,6 +98,12 @@ export default function Account() {
       loadOrganizerHoldingSummary();
     }
   }, [s.user?.id, canHost, loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary]);
+  // Stage 1 — re-run whenever this account's organizer id becomes known
+  // (session restore, or right after creating a first event — see
+  // createSubmit's own comment) so the host card's real published-event
+  // stats reflect the latest admin approval/cancellation, not a stale
+  // snapshot from whenever it was last loaded.
+  useEffect(() => { if (canHost && s.myOrganizerId) loadMyOrgStats(); }, [canHost, s.myOrganizerId, loadMyOrgStats]);
   const myHolding = pickSoonest(s.paymentBookings, 'holding', 'hold_expires_at');
   const myPendingVerification = (s.paymentBookings || [])
     .filter(b => b.payment_state === 'pending_verification')
@@ -426,76 +416,50 @@ export default function Account() {
           first event" pitch further down (unchanged from before). */}
       {canHost && s.myOrganizerId && (
         <div
-          style={{ ...cardGlass({ margin: '22px 20px 0', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 12 }) }}
+          onClick={() => s.user?.handle && openPublicProfile(s.user.handle, 'profile')}
+          style={{ ...cardGlass({ margin: '22px 20px 0', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer' }) }}
           data-testid="org-profile-card"
         >
           <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-            <div
-              onClick={() => orgProfileEditing && orgAvatarInputRef.current?.click()}
-              style={{ flex: 'none', width: 56, height: 56, borderRadius: 14, cursor: orgProfileEditing ? 'pointer' : 'default', overflow: 'hidden', position: 'relative' }}
-            >
-              {(orgAvatarPreview || organizerAvatarUrl(s.myOrganizerAvatarPath)) ? (
-                <img src={orgAvatarPreview || organizerAvatarUrl(s.myOrganizerAvatarPath)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <div style={{ flex: 'none', width: 56, height: 56, borderRadius: 14, overflow: 'hidden' }}>
+              {organizerAvatarUrl(s.myOrganizerAvatarPath) ? (
+                <img src={organizerAvatarUrl(s.myOrganizerAvatarPath)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
                 <div style={{ ...fieldGlass({ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }), ...display(20) }}>
                   {(s.orgRegName || 'B').trim()[0]?.toUpperCase() || 'B'}
                 </div>
               )}
-              {orgProfileEditing && (
-                <div style={{ position: 'absolute', inset: 0, background: 'rgba(12,12,12,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10 }}>
-                  {T('Đổi ảnh', 'Change')}
-                </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1 }}>
+              <span style={{ ...display(18, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{s.orgRegName || T('Chưa đặt tên', 'Unnamed host')}</span>
+              {/* Stage 1 — same published-events-only rule as
+                  get_public_profile's event_count/hosting_since_year
+                  (migration 091, loadMyOrgStats above), so this card and
+                  the public page never disagree. null = not loaded yet
+                  (shows nothing rather than a flash of "0 sự kiện"). */}
+              {s.myOrgPublishedEventCount !== null && (
+                <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>
+                  {s.myOrgHostingSinceYear
+                    ? T(`Tổ chức từ ${s.myOrgHostingSinceYear} ▪︎ ${s.myOrgPublishedEventCount} sự kiện`, `Hosting since ${s.myOrgHostingSinceYear} ▪︎ ${s.myOrgPublishedEventCount} events`)
+                    : T('Chưa có sự kiện công khai nào', 'No published events yet')}
+                </span>
               )}
             </div>
-            <div
-              onClick={() => !orgProfileEditing && s.user?.handle && openPublicProfile(s.user.handle, 'profile')}
-              style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1, cursor: orgProfileEditing ? 'default' : 'pointer' }}
-            >
-              {orgProfileEditing ? (
-                <input
-                  value={s.orgRegName} onChange={orgRegNameType} data-testid="org-profile-name-input"
-                  onClick={(e) => e.stopPropagation()}
-                  style={{ ...fieldGlass({ padding: '9px 11px' }), fontSize: 15, fontWeight: 600, color: ink, border: 'none', outline: 'none', width: '100%', boxSizing: 'border-box' }}
-                />
-              ) : (
-                <span style={{ ...display(18, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{s.orgRegName || T('Chưa đặt tên', 'Unnamed host')}</span>
-              )}
-              <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T('Trang tổ chức', 'Host page')}</span>
-            </div>
-            {/* iPhone fix pass — the SINGLE entry to this organizer's public
-                profile (openPublicProfile, same route/RPC anyone else's
-                page uses) now lives here, on the card itself; the separate
-                "Xem trang tổ chức của bạn" card (which actually opened the
-                internal Dashboard, not a public page at all — a different,
-                still-reachable destination via Home's own host link) is
-                removed rather than kept alongside a second entry point. */}
-            {!orgProfileEditing && (
-              <span
-                onClick={() => s.user?.handle && openPublicProfile(s.user.handle, 'profile')}
-                data-testid="org-profile-view-public"
-                style={{ flex: 'none', fontSize: 17, color: ink, opacity: 0.55, cursor: 'pointer' }}
-              >›</span>
-            )}
+            {/* Stage 1 — the whole card is now the single tap target
+                (openPublicProfile, same route/RPC anyone else's page
+                uses); this chevron is purely visual, matching the
+                personal profile card's own right-side "›". Editing moved
+                entirely to that public page's own "Chỉnh sửa" entry — no
+                separate edit affordance lives on this card any more. */}
             <span
-              onClick={(e) => { e.stopPropagation(); orgProfileEditing ? doSaveOrgProfile() : setOrgProfileEditing(true); }}
-              data-testid="org-profile-edit-toggle"
-              style={{ flex: 'none', fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer', opacity: s.orgProfileSaving ? 0.5 : 1 }}
-            >
-              {s.orgProfileSaving ? T('Đang lưu…', 'Saving…') : (orgProfileEditing ? T('Lưu', 'Save') : T('Chỉnh sửa', 'Edit'))}
-            </span>
+              aria-hidden
+              data-testid="org-profile-view-public"
+              style={{ flex: 'none', fontSize: 20, color: ink, opacity: 0.55 }}
+            >›</span>
           </div>
-          {orgProfileEditing ? (
-            <textarea
-              value={s.orgRegDesc} onChange={orgRegDescType} rows={3} maxLength={2000}
-              placeholder={T('Giới thiệu ngắn về bạn/nhóm tổ chức…', 'A short introduction to you/your host team…')}
-              data-testid="org-profile-intro-input"
-              style={{ ...fieldGlass({ padding: '10px 12px' }), fontSize: 13, color: ink, border: 'none', outline: 'none', resize: 'vertical', lineHeight: 1.5 }}
-            />
-          ) : s.orgRegDesc ? (
+          {s.orgRegDesc && (
             <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, opacity: 0.85, margin: 0 }}>{s.orgRegDesc}</p>
-          ) : null}
-          {s.orgProfileError && <p style={{ fontSize: 11.5, color: alert, margin: 0 }}>{s.orgProfileError}</p>}
-          <input ref={orgAvatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={onPickOrgAvatar} />
+          )}
         </div>
       )}
 

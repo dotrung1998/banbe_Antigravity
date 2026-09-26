@@ -328,6 +328,13 @@ final class AppState: ObservableObject {
     // somewhere it didn't come from.
     @Published var inboxBack: Screen = .home
     @Published var dashboardBack: Screen = .home
+    // Stage 1 (2026-09-27 nav/discovery pass) — the real root screen/tab
+    // dock + (or Dashboard's "Sửa & gửi lại") was entered from; createBack()
+    // and backTarget's own `.create` case (below) both read this instead of
+    // hard-routing to a fixed `.dashboard`/`.hostIntro`, which used to send
+    // Back from Create to Dashboard even when the host had opened + from
+    // Home, Map, Inbox, or Account.
+    @Published var createOriginScreen: Screen = .home
     @Published var eventListMode: EventListMode = .going
 
     // MARK: Preferences (persisted per-device and, once signed in, per-account)
@@ -405,6 +412,14 @@ final class AppState: ObservableObject {
     // makes).
     @Published var myOrganizerID: String?
     @Published var myOrganizerAvatarPath = ""
+    // Stage 1 (2026-09-27 nav/discovery pass) — Account host card's own
+    // "Tổ chức từ <year> ▪︎ <N> sự kiện", read straight from real event
+    // rows by organizer_id (never a stored/static total), same published-
+    // only rule (status IN live/ended) as get_public_profile's event_count/
+    // hosting_since_year (migration 091) so both places always agree. nil
+    // means "not loaded yet"; 0 is a real, honest zero.
+    @Published var myOrgPublishedEventCount: Int?
+    @Published var myOrgHostingSinceYear: Int?
     // iPhone fix pass (2026-09-26) — AccountView's own Cá nhân/Tổ chức tab,
     // lifted out of local `@State` (which reset to "personal" every time
     // AccountView's switch-statement case was re-entered — e.g. after
@@ -1936,6 +1951,7 @@ final class AppState: ObservableObject {
         createEditEventId = nil
         createSent = false
         createError = ""
+        createOriginScreen = screen
         screen = .create
     }
 
@@ -1945,7 +1961,7 @@ final class AppState: ObservableObject {
         screen = .hostIntro
     }
 
-    func createBack() { screen = hasHosted ? .dashboard : .hostIntro }
+    func createBack() { screen = createOriginScreen }
 
     func switchToHost(back: Screen = .home) {
         guard isSignedIn else { return requireAuth(returnTo: .dashboard, backTo: .home) }
@@ -2081,7 +2097,7 @@ final class AppState: ObservableObject {
         case .chat: return chatBack == .inbox || chatBack == .notifications ? chatBack : .organizer
         case .dashboard: return dashboardBack
         case .hostIntro: return .profile
-        case .create: return hasHosted ? .dashboard : .hostIntro
+        case .create: return createOriginScreen
         case .attendance: return attendanceBack
         case .preferences, .editName, .security: return .profile
         case .login: return authBackScreen

@@ -768,6 +768,37 @@ extension AppState {
         }
     }
 
+    /// Stage 1 (2026-09-27 nav/discovery pass) — Account host card's own
+    /// "Tổ chức từ <year> ▪︎ <N> sự kiện", read straight from real event
+    /// rows by organizer_id, same published-only rule (status IN live/
+    /// ended) as get_public_profile's event_count/hosting_since_year
+    /// (migration 091) so both places always agree. Re-run whenever
+    /// Account's host tab loads, so an admin approval/cancellation since
+    /// the last visit shows up without needing a relaunch.
+    func loadMyOrgStats() async {
+        guard let organizerID = myOrganizerID else {
+            myOrgPublishedEventCount = nil
+            myOrgHostingSinceYear = nil
+            return
+        }
+        struct Row: Decodable { let status: String; let startsAt: Date?
+            enum CodingKeys: String, CodingKey { case status, startsAt = "starts_at" }
+        }
+        do {
+            let rows: [Row] = try await SupabaseService.client
+                .from("events")
+                .select("status, starts_at")
+                .eq("organizer_id", value: organizerID)
+                .in("status", values: ["live", "ended"])
+                .execute().value
+            myOrgPublishedEventCount = rows.count
+            let years = rows.compactMap { $0.startsAt.map { Calendar(identifier: .gregorian).component(.year, from: $0) } }
+            myOrgHostingSinceYear = years.min()
+        } catch {
+            print("loadMyOrgStats failed:", error)
+        }
+    }
+
     /// STAGE D (2026-09-25) — EventDetailView's own real photo gallery,
     /// one event's `event_photos` rows (not the whole organizer's — that's
     /// `loadOrganizerPhotos` below). Replaces the static demo
@@ -3522,7 +3553,11 @@ extension AppState {
                 eventID = editID
             } else {
                 if !canHost { await applyOrganizerMode(true) }
-                struct CreatedEvent: Decodable { let id: String }
+                struct CreatedEvent: Decodable {
+                    let id: String
+                    let organizerId: String?
+                    enum CodingKeys: String, CodingKey { case id, organizerId = "organizer_id" }
+                }
                 let created: CreatedEvent = try await SupabaseService.client
                     .rpc("create_event_draft", params: CreateEventParams(
                         name: createName.trimmingCharacters(in: .whitespaces),
@@ -3541,6 +3576,20 @@ extension AppState {
                     ))
                     .execute().value
                 eventID = created.id
+                // iPhone fix pass (Stage 1) — create_event_draft's own
+                // RETURNING row already carries the real organizer_id (it
+                // creates the organizer row itself on a host's very first
+                // submission), but this used to go unused: myOrganizerID
+                // stayed nil until the NEXT full session load, so Account >
+                // Tổ chức's persistent organizer card wouldn't appear right
+                // after creating a first event — only after a relaunch —
+                // looking like its visibility depended on having gone
+                // through dock + > Tạo sự kiện rather than on real
+                // organizer-management ability.
+                if let organizerId = created.organizerId {
+                    myOrganizerID = organizerId
+                    if !myOrganizerIDs.contains(organizerId) { myOrganizerIDs.append(organizerId) }
+                }
             }
 
             if let eventID, !newImages.isEmpty || !removeExistingPhotoIDs.isEmpty || (existingCoverPath?.isEmpty == false) {
@@ -3577,6 +3626,10 @@ extension AppState {
     /// review itself re-checks both ownership and `status = 'draft'` —
     /// this only lets the host SEE their own fields to correct.
     func goEditEvent(_ real: RealEventSummary) {
+        // Always reached from Dashboard's "Sửa & gửi lại" — createBack()/
+        // backTarget's `.create` case both read this real origin now
+        // instead of guessing from `hasHosted`.
+        createOriginScreen = .dashboard
         createEditEventId = real.id
         createSent = false
         createError = ""

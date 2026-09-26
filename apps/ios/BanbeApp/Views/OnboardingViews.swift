@@ -397,9 +397,12 @@ struct CreateEventView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.hasHosted
-                         ? app.T("Trang tổ chức của bạn", "Your host page")
-                         : app.T("Trang tổ chức của bạn sẽ trông thế nào", "Preview your organizer page")) {
+                // Stage 1 fix — this used to name a fixed destination,
+                // which stopped being true once createBack started
+                // returning to the REAL originating tab (see
+                // createOriginScreen's own comment) instead of always
+                // landing on Dashboard/HostIntro.
+                BackLink(label: app.T("Quay lại", "Back")) {
                     app.createBack()
                 }
 
