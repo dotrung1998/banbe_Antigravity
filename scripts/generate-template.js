@@ -12,7 +12,7 @@ export async function createBanbeEventTemplateXlsx() {
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-  <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedString+xml"/>
+  <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 </Types>`);
 
@@ -68,7 +68,7 @@ export async function createBanbeEventTemplateXlsx() {
     'included_1_label', 'included_1_detail',
     'included_2_label', 'included_2_detail',
     'included_3_label', 'included_3_detail',
-    'cover_image', 'additional_images'
+    'cover_image', 'additional_images', 'intro'
   ];
 
   const sampleRow = [
@@ -87,7 +87,8 @@ export async function createBanbeEventTemplateXlsx() {
     'Tráng miệng',
     'Bánh ngọt thủ công',
     'cover.jpg',
-    'photo1.jpg, photo2.jpg'
+    'photo1.jpg, photo2.jpg',
+    'Một buổi tối ấm cúng cho mười bốn người lạ.\n\nMón chính là thịt nướng kiểu Hàn, tráng miệng là bánh flan nhà làm.'
   ];
 
   const instructions = [
@@ -106,7 +107,8 @@ export async function createBanbeEventTemplateXlsx() {
     'Tên ngắn món/dịch vụ 3',
     'Giải thích món 3',
     'Chèn ảnh trực tiếp vào ô này HOẶC ghi tên file ảnh (ví dụ cover.jpg) (*)',
-    'Chèn ảnh trực tiếp HOẶC danh sách tên file cách nhau bằng dấu phẩy'
+    'Chèn ảnh trực tiếp HOẶC danh sách tên file cách nhau bằng dấu phẩy',
+    'Giới thiệu sự kiện dài hơn, tuỳ chọn — để dòng trống giữa các đoạn'
   ];
 
   // Shared strings
@@ -130,8 +132,16 @@ export async function createBanbeEventTemplateXlsx() {
   }
 
   const rows = [headers, sampleRow, instructions];
+  const lastColLetter = getColLetter(headers.length - 1);
   let sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <dimension ref="A1:${lastColLetter}${rows.length}"/>
+  <sheetViews>
+    <sheetView tabSelected="1" workbookViewId="0">
+      <pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>
+    </sheetView>
+  </sheetViews>
+  <cols>${headers.map((_, i) => `<col min="${i + 1}" max="${i + 1}" width="24" customWidth="1"/>`).join('')}</cols>
   <sheetData>`;
 
   rows.forEach((row, rIdx) => {
@@ -139,7 +149,17 @@ export async function createBanbeEventTemplateXlsx() {
     sheetXml += `<row r="${rowNum}">`;
     row.forEach((cellVal, cIdx) => {
       const cellRef = `${getColLetter(cIdx)}${rowNum}`;
-      if (typeof cellVal === 'number' || (/^\d+$/.test(cellVal) && cIdx === 6 || cIdx === 7)) {
+      // Root-cause fix for "the template shows only numbers" — this used to
+      // be `typeof cellVal === 'number' || (/^\d+$/.test(cellVal) && cIdx
+      // === 6 || cIdx === 7)`. Operator precedence makes `&&` bind tighter
+      // than `||`, so the real condition was `(numeric type) || (digits-only
+      // AND col G) || (col H)` — every column-H cell (including its own
+      // TEXT header "capacity" and instructions row) was forced into a raw
+      // numeric <v> regardless of content. Only actually-numeric price/
+      // capacity DATA cells (row 2, the sample row) should take this path;
+      // headers and instructions in those same columns are text.
+      const isNumericDataCell = rIdx === 1 && (cIdx === 6 || cIdx === 7) && /^\d+$/.test(cellVal);
+      if (isNumericDataCell) {
         sheetXml += `<c r="${cellRef}"><v>${cellVal}</v></c>`;
       } else {
         const sIdx = getStringIndex(cellVal);
@@ -159,7 +179,7 @@ export async function createBanbeEventTemplateXlsx() {
 <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${strings.length}" uniqueCount="${strings.length}">`;
   strings.forEach(s => {
     const escaped = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    sstXml += `<si><t>${escaped}</t></si>`;
+    sstXml += `<si><t xml:space="preserve">${escaped}</t></si>`;
   });
   sstXml += `</sst>`;
   zip.file('xl/sharedStrings.xml', sstXml);

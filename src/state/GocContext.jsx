@@ -5938,6 +5938,27 @@ export function GocProvider({ children }) {
   })), [set]);
 
   /**
+   * Excel bulk-create (Stage C) — fills the SAME create-form fields a
+   * manual entry would, from `excelEventImport.js`'s own `parsed` shape.
+   * Deliberately just a form fill, same as tapping every field by hand:
+   * this alone never creates or submits anything — only the form's own
+   * "Gửi để duyệt" (createSubmit) does that, after the host has reviewed
+   * the filled-in preview and corrected anything the import flagged.
+   */
+  const importParsedEvent = useCallback((parsed) => set({
+    createName: parsed.name || '',
+    createCats: parsed.categoryKey ? [parsed.categoryKey] : [],
+    createDesc: parsed.description || '',
+    createLoc: parsed.location || '',
+    createEventDate: parsed.eventDate || '',
+    createEventTime: parsed.eventTime ? parsed.eventTime.slice(0, 5) : '',
+    createPrice: parsed.priceVnd ? String(parsed.priceVnd) : '',
+    createSeats: parsed.capacity ? String(parsed.capacity) : '',
+    createIncludedItems: Array.isArray(parsed.inclusions) ? parsed.inclusions : [],
+    createIntro: parsed.intro || '',
+  }), [set]);
+
+  /**
    * Real cover/gallery upload for the create-event flow (migration 087's
    * schema + `update_event_media_and_details`). `files` are plain browser
    * `File` objects (CreateEvent.jsx's own local staging state, never
@@ -6752,7 +6773,7 @@ export function GocProvider({ children }) {
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
-    pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, createSubmit, requestVerify,
+    pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
@@ -6786,7 +6807,7 @@ export function GocProvider({ children }) {
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
-    pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, createSubmit, requestVerify,
+    pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   ]);
 

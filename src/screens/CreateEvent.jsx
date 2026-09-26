@@ -3,7 +3,19 @@ import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, CREATE_PALETTES, bg } from '../data/events.js';
 import { liveEventOverrides } from '../lib/countdown.js';
 import { supabase } from '../lib/supabase.js';
+import { parseExcelOrZipPackage } from '../lib/excelEventImport.js';
 import { paper, ink, rule, FACE, display, fieldGlass, cardGlass, alert } from '../theme.js';
+
+const IMPORT_FIELD_LABELS = {
+  name: ['Tên sự kiện', 'Event name'],
+  location: ['Địa điểm', 'Location'],
+  event_date: ['Ngày', 'Date'],
+  event_time: ['Giờ', 'Time'],
+  price_vnd: ['Giá vé', 'Ticket price'],
+  capacity: ['Số chỗ', 'Seats'],
+  cover_image: ['Ảnh bìa', 'Cover photo'],
+  intro: ['Giới thiệu sự kiện', 'Event introduction'],
+};
 
 const MAX_PHOTOS = 8;
 const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -23,7 +35,7 @@ export default function CreateEvent() {
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette,
-    addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem,
+    addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent,
     createSubmit, goEvent, loadHomeLiveEvents,
   } = useGoc();
   const s = state;
@@ -104,6 +116,60 @@ export default function CreateEvent() {
       setCoverKey(prevCover => (prevCover === removedItem.url ? (next[0]?.url ?? null) : prevCover));
       return next;
     });
+  };
+  // Excel bulk-create (Stage C) — upload alone only FILLS this same form
+  // (importParsedEvent) and stages any extracted images into the SAME
+  // gallery editor above; nothing is created/submitted until the host
+  // reviews the filled-in preview and presses "Gửi để duyệt" themselves.
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [importFieldErrors, setImportFieldErrors] = useState({});
+  const importInputRef = useRef(null);
+  const MAX_IMPORT_BYTES = 25 * 1024 * 1024; // generous for a few embedded photos, small enough to reject an abusive upload outright
+  const onImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > MAX_IMPORT_BYTES) {
+      setImportError(T('File quá lớn (tối đa 25MB).', 'File is too large (25MB max).'));
+      return;
+    }
+    setImportBusy(true);
+    setImportError('');
+    setImportFieldErrors({});
+    try {
+      const buf = await file.arrayBuffer();
+      const result = await parseExcelOrZipPackage(buf, file.name);
+      importParsedEvent(result.parsed);
+      const newItems = [];
+      if (result.images.cover) {
+        const coverFile = new File([result.images.cover], 'cover.jpg', { type: result.images.cover.type || 'image/jpeg' });
+        newItems.push({ kind: 'new', file: coverFile, url: URL.createObjectURL(coverFile) });
+      }
+      (result.images.gallery || []).forEach((blob, i) => {
+        const f = new File([blob], `photo-${i}.jpg`, { type: blob.type || 'image/jpeg' });
+        newItems.push({ kind: 'new', file: f, url: URL.createObjectURL(f) });
+      });
+      if (newItems.length) {
+        setItems(prev => {
+          const next = [...prev, ...newItems].slice(0, MAX_PHOTOS);
+          return next;
+        });
+        setCoverKey(prev => prev ?? newItems[0]?.url ?? null);
+      }
+      setImportFieldErrors(result.errors || {});
+      if (!result.isValid) {
+        setImportError(T(
+          'Đã điền vào biểu mẫu bên dưới — kiểm tra các mục còn thiếu trước khi gửi.',
+          'Filled in the form below — check the flagged fields before submitting.'
+        ));
+      }
+    } catch (err) {
+      console.warn('Excel import failed:', err);
+      setImportError(err?.message || T('Không thể đọc file này.', 'Could not read this file.'));
+    } finally {
+      setImportBusy(false);
+    }
   };
   const photos = items; // local alias kept short for the JSX below
   const keptExistingIds = useMemo(() => new Set(items.filter(it => it.kind === 'existing').map(it => it.id)), [items]);
@@ -375,14 +441,38 @@ export default function CreateEvent() {
         </div>
 
         {/* Excel bulk-create — real .xlsx template (public/templates/), not
-            a renamed CSV. Import/preview UI is a separate, not-yet-wired
-            piece (src/lib/excelEventImport.js parses it) — this link is
-            real and downloads a genuine workbook today; it doesn't imply
-            the import half is live. */}
-        <a
-          href="/templates/banbe_event_template.xlsx" download
-          style={{ marginTop: 18, fontSize: 12.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
-        >{T('Tải mẫu Excel để tạo hàng loạt', 'Download the Excel template for bulk creation')}</a>
+            a renamed CSV, generated by scripts/generate-template.js (the
+            SAME generator that produces the iOS-bundled copy). Upload
+            parses it (src/lib/excelEventImport.js) and only fills the form
+            above — never creates or submits an event by itself. */}
+        <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <a
+            href="/templates/banbe_event_template.xlsx" download
+            style={{ fontSize: 12.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
+          >{T('Tải mẫu Excel để tạo hàng loạt', 'Download the Excel template for bulk creation')}</a>
+          <input
+            ref={importInputRef} type="file" accept=".xlsx,.zip" style={{ display: 'none' }} onChange={onImportFile}
+          />
+          <span
+            onClick={() => !importBusy && importInputRef.current?.click()}
+            data-testid="create-event-import"
+            style={{ fontSize: 12.5, color: ink, textDecoration: 'underline', cursor: importBusy ? 'default' : 'pointer', opacity: importBusy ? 0.6 : 1 }}
+          >
+            {importBusy ? T('Đang đọc file…', 'Reading file…') : T('Tải lên file đã điền (xem trước trước khi gửi)', 'Upload a completed file (preview before submitting)')}
+          </span>
+          {importError && (
+            <div data-testid="create-event-import-error" style={{ fontSize: 12, lineHeight: 1.5, color: alert }}>
+              <p style={{ margin: 0 }}>{importError}</p>
+              {Object.keys(importFieldErrors).length > 0 && (
+                <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                  {Object.entries(importFieldErrors).map(([key, msg]) => (
+                    <li key={key}>{IMPORT_FIELD_LABELS[key] ? T(...IMPORT_FIELD_LABELS[key]) : key}: {msg}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* No SLA is actually monitored server-side — the previous "duyệt
             trong 48 giờ"/"reviews within 48h" copy promised a turnaround

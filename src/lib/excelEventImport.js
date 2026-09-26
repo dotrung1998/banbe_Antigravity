@@ -110,7 +110,15 @@ export async function parseExcelOrZipPackage(fileBuffer, fileName = '') {
   while ((rowMatch = rowRegex.exec(sheetXml)) !== null) {
     const rowNum = parseInt(rowMatch[1], 10);
     const rowContent = rowMatch[2];
-    const cellRegex = /<c[^>]*r="([A-Z]+)\d+"(?:[^>]*t="([a-z]+)")?[^>]*>(?:<v>(.*?)</v>)?(?:<is><t>(.*?)</t></is>)?<\/c>/gs;
+    // Root-cause fix — every closing tag inside this regex literal MUST
+    // escape its own "/" (regex delimiter); `</v>`/`</t>`/`</is>` here were
+    // raw, unescaped forward slashes that silently terminated the regex
+    // literal early. Rollup's import-analysis parser is what actually
+    // caught this (a plain `node --check` run doesn't, since the resulting
+    // truncated-regex-then-garbage-tokens still happens to parse as valid,
+    // if nonsensical, JS) — this file was never actually imported/built
+    // until this pass wired it into CreateEvent.jsx.
+    const cellRegex = /<c[^>]*r="([A-Z]+)\d+"(?:[^>]*t="([a-z]+)")?[^>]*>(?:<v>(.*?)<\/v>)?(?:<is><t>(.*?)<\/t><\/is>)?<\/c>/gs;
     const cells = {};
     let cellMatch;
     while ((cellMatch = cellRegex.exec(rowContent)) !== null) {
@@ -138,7 +146,6 @@ export async function parseExcelOrZipPackage(fileBuffer, fileName = '') {
   }
 
   const c = dataRow.cells;
-  const colOrder = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'];
 
   const rawName = c['A'] || '';
   const rawCat = c['B'] || '';
@@ -158,6 +165,7 @@ export async function parseExcelOrZipPackage(fileBuffer, fileName = '') {
 
   const rawCoverRef = c['O'] || '';
   const rawAddRefs = c['P'] || '';
+  const rawIntro = c['Q'] || '';
 
   // 3. Extract embedded drawing images if present
   let embeddedImagesByCol = new Map();
@@ -304,6 +312,11 @@ export async function parseExcelOrZipPackage(fileBuffer, fileName = '') {
     errors.cover_image = 'Chưa có ảnh bìa. Hãy chèn ảnh vào ô O hoặc đính kèm ảnh trong file ZIP.';
   }
 
+  const introTrimmed = rawIntro.trim();
+  if (introTrimmed.length > 4000) {
+    errors.intro = 'Giới thiệu sự kiện tối đa 4000 ký tự.';
+  }
+
   return {
     parsed: {
       name: rawName.trim(),
@@ -316,6 +329,7 @@ export async function parseExcelOrZipPackage(fileBuffer, fileName = '') {
       priceVnd: priceNum,
       capacity: capNum,
       inclusions,
+      intro: introTrimmed,
     },
     images: {
       cover: coverImageBlob,
