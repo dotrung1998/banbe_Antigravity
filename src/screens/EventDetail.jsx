@@ -20,6 +20,12 @@ export default function EventDetail() {
   // to show (no invented inclusions).
   const includedItems = ev.includedItems || [];
   const [includedSheetOpen, setIncludedSheetOpen] = useState(false);
+  // "Giới thiệu sự kiện" (migration 088) — a separate, longer editorial
+  // write-up, never the same field as `ev.desc`/"Mô tả" or the "Bao gồm"
+  // block above. Plain text only (paragraphs split on a blank line) —
+  // never dangerouslySetInnerHTML, so a host's own text can't inject markup.
+  const introParagraphs = (ev.intro || '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+  const [introExpanded, setIntroExpanded] = useState(false);
   // STAGE D (2026-09-25) — real event_photos rows, replacing the static
   // demo `ev.gallery` below.
   useEffect(() => { loadEventPhotos(ev.key); }, [ev.key, loadEventPhotos]);
@@ -275,6 +281,28 @@ export default function EventDetail() {
           <div style={{ fontSize: 12.5, color: ink, marginTop: 6 }}>{T('Bạn có thể mời thêm 1 người.', 'You can bring one +1.')}</div>
         )}
         <p style={{ fontSize: 14, lineHeight: 1.55, color: ink, margin: '20px 0 0' }}>{ev.desc}</p>
+        {introParagraphs.length > 0 && (
+          <div data-testid="event-intro-section" style={{ marginTop: 18 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Giới thiệu sự kiện', 'About this event')}</span>
+            <div style={{ marginTop: 8, overflow: 'hidden', maxHeight: introExpanded ? 'none' : 90, position: 'relative' }}>
+              {(introExpanded ? introParagraphs : introParagraphs.slice(0, 1)).map((p, i) => (
+                <p key={i} style={{ fontSize: 13.5, lineHeight: 1.6, color: ink, margin: i === 0 ? 0 : '10px 0 0', whiteSpace: 'pre-wrap' }}>{p}</p>
+              ))}
+              {!introExpanded && (
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 36, background: `linear-gradient(to bottom, transparent, ${paper})` }} />
+              )}
+            </div>
+            {(introExpanded || introParagraphs.length > 1 || introParagraphs[0]?.length > 160) && (
+              <span
+                onClick={() => setIntroExpanded(v => !v)}
+                data-testid="event-intro-toggle"
+                style={{ fontSize: 12.5, fontWeight: 600, color: ink, textDecoration: 'underline', cursor: 'pointer', display: 'inline-block', marginTop: 6 }}
+              >
+                {introExpanded ? T('Thu gọn', 'Show less') : T('Đọc thêm', 'Read more')}
+              </span>
+            )}
+          </div>
+        )}
         <div style={{ marginTop: 22, borderTop: `1px solid ${rule}` }}>
           {includedItems.length > 0 ? (
             // The whole section is tappable — opens a sheet with each

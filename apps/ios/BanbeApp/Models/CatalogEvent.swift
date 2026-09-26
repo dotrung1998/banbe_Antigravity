@@ -157,6 +157,10 @@ struct RealEventSummary: Decodable {
     let reviewedAt: Date?
     let rejectionReason: String?
     let coverImage: String?
+    // Structured "Bao gồm" (migration 087) and "Giới thiệu sự kiện"
+    // (migration 088) — same two fields web's shapeRealEvent exposes.
+    let includedItems: [IncludedItem]?
+    let intro: String?
     var organizerName: String = ""
     var photoURL: URL?
 
@@ -179,9 +183,16 @@ struct RealEventSummary: Decodable {
         case reviewedAt = "reviewed_at"
         case rejectionReason = "rejection_reason"
         case coverImage = "cover_image"
+        case includedItems = "included_items"
+        case intro
     }
 
     var soldOut: Bool { (seatsRemaining ?? 1) <= 0 }
+}
+
+struct IncludedItem: Decodable, Equatable {
+    let label: String
+    let detail: String
 }
 
 extension CatalogEvent {

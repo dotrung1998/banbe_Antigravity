@@ -900,8 +900,18 @@ final class AppState: ObservableObject {
     @Published var orgRegDesc = ""
     @Published var createName = ""
     @Published var createDesc = ""
+    // "Giới thiệu sự kiện" (migration 088) — a separate, longer editorial
+    // write-up, never conflated with createDesc ("Mô tả") or the "Bao gồm"
+    // items EventDetailView already shows via includedItems.
+    @Published var createIntro = ""
     @Published var createLoc = ""
-    @Published var createDate = ""
+    // Date/time picker fix (Stage B, 2026-09-26) — REPLACES the old
+    // free-text `createDate` ("11.07 19:00", hand-parsed with a regex and a
+    // hardcoded year) with two real Date values, always interpreted in
+    // Asia/Ho_Chi_Minh (EventDateTimeSheet's own timezone), matching what
+    // the RPC itself does server-side.
+    @Published var createEventDate: Date?
+    @Published var createEventTime: Date?
     @Published var createPrice = ""
     @Published var createSeats = ""
     @Published var createCats: [String] = []

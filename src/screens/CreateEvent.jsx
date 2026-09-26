@@ -21,7 +21,7 @@ export default function CreateEvent() {
   const {
     state, T, trStatus, stripKm, curEvent: ev, createBack,
     orgRegNameType, orgRegIgType, orgRegDescType,
-    createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
+    createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette,
     addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem,
     createSubmit, goEvent, loadHomeLiveEvents,
@@ -227,14 +227,41 @@ export default function CreateEvent() {
           <input value={s.createDesc} onChange={createDescType} placeholder={T('Mười bốn chỗ. Một ga-ra cải tạo…', 'Fourteen seats. A converted garage…')} style={fieldInput} />
         </div>
 
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <label style={labelStyle}>{T('Giới thiệu sự kiện', 'Event introduction')}</label>
+            <span style={{ fontSize: 10.5, color: ink }}>{s.createIntro.length}/4000</span>
+          </div>
+          <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.75 }}>
+            {T('Một đoạn giới thiệu dài hơn, hấp dẫn — tách dòng trống giữa các đoạn. Không phải quảng cáo giả, không phải "Bao gồm".', 'A longer, attractive write-up — leave a blank line between paragraphs. Not fabricated marketing copy, not the same as "Included".')}
+          </p>
+          <textarea
+            value={s.createIntro} onChange={createIntroType} maxLength={4000} rows={6}
+            placeholder={T('Một buổi tối ấm cúng cho mười bốn người lạ…\n\nMón chính là…', 'A cozy evening for fourteen strangers…\n\nThe main course is…')}
+            style={{ ...fieldInput, resize: 'vertical', lineHeight: 1.5, fontFamily: FACE }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 14 }}>
+          <label style={labelStyle}>{T('Địa điểm', 'Location')}</label>
+          <input value={s.createLoc} onChange={createLocType} placeholder="Bình Thạnh" style={fieldInput} />
+        </div>
+
         <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-          <div style={{ flex: 1.4, display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={labelStyle}>{T('Địa điểm', 'Location')}</label>
-            <input value={s.createLoc} onChange={createLocType} placeholder="Bình Thạnh" style={fieldInput} />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <label style={labelStyle}>{T('Ngày', 'Date')}</label>
+            <input
+              type="date" value={s.createEventDate} onChange={createEventDateType}
+              min={new Date().toISOString().slice(0, 10)}
+              data-testid="create-event-date" style={fieldInput}
+            />
           </div>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={labelStyle}>{T('Ngày ▪︎ giờ', 'Date ▪︎ time')}</label>
-            <input value={s.createDate} onChange={createDateType} placeholder="18.07 ▪︎ 19:00" style={fieldInput} />
+            <label style={labelStyle}>{T('Giờ', 'Time')}</label>
+            <input
+              type="time" value={s.createEventTime} onChange={createEventTimeType}
+              data-testid="create-event-time" style={fieldInput}
+            />
           </div>
         </div>
 

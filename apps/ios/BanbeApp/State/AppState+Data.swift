@@ -356,6 +356,33 @@ private struct RPCResult: Decodable {
 // MARK: - Session, profile and account data
 
 extension AppState {
+    /// Date/time picker fix (Stage B, 2026-09-26) — EventDateTimeSheet picks
+    /// in this SAME timezone regardless of the device's own setting, so a
+    /// host traveling outside Vietnam still enters (and sees confirmed
+    /// back) the actual Vietnam wall-clock time their guests will read.
+    static let vietnamTimeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
+    static let vnDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = vietnamTimeZone
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+    static let vnTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = vietnamTimeZone
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
+    static let vnDateTimeFormatter = vnDateFormatter
+    static let vnCombinedFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = vietnamTimeZone
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f
+    }()
 
     /// Applies a signed-in session: loads the profile, role, saved
     /// preferences and this account's real bookings/organizer events —
@@ -2337,7 +2364,7 @@ extension AppState {
     /// The columns shapeReal(As)*'s callers all need — same set web's own
     /// REAL_EVENT_ROW_COLUMNS uses (GocContext.jsx), kept as one constant so
     /// loadWeekendEvents and loadRealEventsByID never drift apart.
-    private static let realEventColumns = "id, name, cat_key, cat_label, area, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image"
+    private static let realEventColumns = "id, name, cat_key, cat_label, area, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included_items, intro"
 
     /// `events.cover_image` (migration 087) always wins over the gallery's
     /// own sort_order-first fallback when a host has explicitly picked one —
@@ -3394,16 +3421,20 @@ extension AppState {
 
         let priceDigits = createPrice.filter { $0.isNumber }
         let capacity = Int(createSeats.filter { $0.isNumber }) ?? 0
-        var eventDate: String?
-        var eventTime: String?
-        if let match = createDate.range(of: "(\\d{1,2})\\.(\\d{1,2})", options: .regularExpression) {
-            let parts = createDate[match].split(separator: ".")
-            if parts.count == 2, let day = Int(parts[0]), let month = Int(parts[1]) {
-                eventDate = String(format: "2026-%02d-%02d", month, day)
+        // Both createEventDate/createEventTime are picked in
+        // EventDateTimeSheet's own Asia/Ho_Chi_Minh calendar — formatted
+        // with that SAME timezone here so the wall-clock digits sent to the
+        // RPC match what the host actually saw, regardless of the device's
+        // own timezone setting.
+        let eventDate = createEventDate.map(AppState.vnDateFormatter.string(from:))
+        let eventTime = createEventTime.map(AppState.vnTimeFormatter.string(from:))
+        if let createEventDate, let createEventTime {
+            let combined = AppState.vnDateTimeFormatter.string(from: createEventDate) + " " + AppState.vnTimeFormatter.string(from: createEventTime)
+            if let picked = AppState.vnCombinedFormatter.date(from: combined), picked < Date().addingTimeInterval(-5 * 60) {
+                loading = false
+                createError = T("Ngày giờ sự kiện đã ở trong quá khứ.", "This event's date/time is in the past.")
+                return
             }
-        }
-        if let match = createDate.range(of: "(\\d{1,2}):(\\d{2})", options: .regularExpression) {
-            eventTime = String(createDate[match])
         }
 
         do {
@@ -3417,7 +3448,8 @@ extension AppState {
                         description: createDesc.trimmingCharacters(in: .whitespaces),
                         location: createLoc.trimmingCharacters(in: .whitespaces),
                         eventDate: eventDate, eventTime: eventTime,
-                        priceVnd: Int(priceDigits) ?? 0, capacity: capacity
+                        priceVnd: Int(priceDigits) ?? 0, capacity: capacity,
+                        intro: createIntro.trimmingCharacters(in: .whitespacesAndNewlines)
                     ))
                     .execute().value
                 guard case .bool(true) = result["success"] ?? .bool(false) else { throw URLError(.badServerResponse) }
@@ -3438,7 +3470,8 @@ extension AppState {
                         organizerName: orgRegName.trimmingCharacters(in: .whitespaces).isEmpty
                             ? "Organizer" : orgRegName.trimmingCharacters(in: .whitespaces),
                         instagram: orgRegIg.trimmingCharacters(in: .whitespaces),
-                        about: orgRegDesc.trimmingCharacters(in: .whitespaces)
+                        about: orgRegDesc.trimmingCharacters(in: .whitespaces),
+                        intro: createIntro.trimmingCharacters(in: .whitespacesAndNewlines)
                     ))
                     .execute().value
                 eventID = created.id
@@ -3484,15 +3517,13 @@ extension AppState {
         createName = real.name
         createCats = real.catKey.map { [$0] } ?? []
         createDesc = real.description ?? ""
+        createIntro = real.intro ?? ""
         createLoc = real.area ?? ""
-        let dayMonth: String = {
-            guard let dateStr = real.eventDate else { return "" }
-            let parts = dateStr.split(separator: "-")
-            guard parts.count == 3 else { return "" }
-            return "\(parts[2]).\(parts[1])"
-        }()
-        let time = real.eventTime.map { String($0.prefix(5)) } ?? ""
-        createDate = [dayMonth, time].filter { !$0.isEmpty }.joined(separator: " ")
+        createEventDate = real.eventDate.flatMap { AppState.vnDateFormatter.date(from: $0) }
+        createEventTime = real.eventTime.flatMap { raw -> Date? in
+            let normalized = raw.count == 5 ? raw + ":00" : raw
+            return AppState.vnTimeFormatter.date(from: normalized)
+        }
         createPrice = real.priceVnd.map(String.init) ?? ""
         createSeats = real.capacity.map(String.init) ?? ""
         screen = .create
@@ -3622,6 +3653,7 @@ struct ResubmitEventParams: Encodable {
     let eventTime: String?
     let priceVnd: Int
     let capacity: Int
+    let intro: String
 
     enum CodingKeys: String, CodingKey {
         case eventId = "p_event_id"
@@ -3633,6 +3665,7 @@ struct ResubmitEventParams: Encodable {
         case eventTime = "p_event_time"
         case priceVnd = "p_price_vnd"
         case capacity = "p_capacity"
+        case intro = "p_intro"
     }
 }
 
@@ -3672,6 +3705,7 @@ struct CreateEventParams: Encodable {
     let organizerName: String
     let instagram: String
     let about: String
+    let intro: String
 
     enum CodingKeys: String, CodingKey {
         case name = "p_name"
@@ -3685,5 +3719,6 @@ struct CreateEventParams: Encodable {
         case organizerName = "p_organizer_name"
         case instagram = "p_instagram"
         case about = "p_about"
+        case intro = "p_intro"
     }
 }

@@ -54,10 +54,14 @@ function shapeRealEvent(row, extra = {}) {
     coverImage: row.cover_image || '',
     included: row.included || '',
     includedItems: Array.isArray(row.included_items) ? row.included_items : [],
+    // "Giới thiệu sự kiện" (migration 088) — a separate, longer editorial
+    // description, never the same field as the short `description`/
+    // "Mô tả" or `included_items`/"Bao gồm" above.
+    intro: row.intro || '',
   };
 }
 
-const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included, included_items';
+const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included, included_items, intro';
 
 /** A real event's own selected `cover_image` (migration 087) resolved to a
  * public URL, falling back to `fallbackUrl` (the first `event_photos` row
@@ -140,7 +144,7 @@ function shapeRealEventAsCurEvent(real) {
     seats: real.seatsRemaining != null ? String(real.seatsRemaining) : '',
     seatsLong: real.soldOut ? 'Hết chỗ' : (real.seatsRemaining != null ? real.seatsRemaining + ' chỗ trống' : ''),
     urgent: real.seatsRemaining != null && real.seatsRemaining <= 5,
-    desc: real.description || '', included: real.included || '', includedItems: real.includedItems || [],
+    desc: real.description || '', included: real.included || '', includedItems: real.includedItems || [], intro: real.intro || '',
     host: real.organizerName || '', hostShort: real.organizerName || '', greeting: '',
     gallery: [], orgGallery: [], orgName: real.organizerName || '', orgIg: '', orgDesc: '',
     orgSince: '', orgCount: 0, orgTrusted: false,
@@ -561,7 +565,16 @@ const initialState = {
   createError: '',
   createDesc: '',
   createLoc: '',
-  createDate: '',
+  // Date/time picker fix (Stage B, 2026-09-26) — two canonical native-input
+  // values (`<input type="date">`'s own "yyyy-mm-dd", `<input type="time">`'s
+  // own "HH:mm") REPLACE the old single free-text `createDate` field this
+  // used to be, which relied on a hand-rolled "dd.mm ▪︎ HH:mm" regex parse
+  // AND a hardcoded "2026-" year prefix — silently wrong for any other year
+  // and impossible to validate against "today" without re-parsing. Combined
+  // into starts_at server-side exactly the same way (migration 087/088's
+  // `(p_event_date + p_event_time) AT TIME ZONE 'Asia/Ho_Chi_Minh'`).
+  createEventDate: '',
+  createEventTime: '',
   createPrice: '',
   createSeats: '',
   createPhotos: 0,
@@ -573,6 +586,11 @@ const initialState = {
   // server does — client-side is a UX nicety, the RPC is the real gate.
   createIncludedItems: [],
   createMediaError: '',
+  // "Giới thiệu sự kiện" (migration 088) — a separate, longer host-written
+  // editorial description, never conflated with createDesc ("Mô tả") or
+  // createIncludedItems ("Bao gồm"). Plain text with blank-line paragraph
+  // breaks only, never rendered as HTML.
+  createIntro: '',
   // Event review queue — set while CreateEvent.jsx is editing/resubmitting
   // an existing (previously rejected) event rather than creating a new
   // one; createSubmit() branches on this. Cleared on a fresh "create" nav.
@@ -5894,8 +5912,10 @@ export function GocProvider({ children }) {
   const orgRegDescType = useCallback((e) => set({ orgRegDesc: e.target.value }), [set]);
   const createNameType = useCallback((e) => set({ createName: e.target.value }), [set]);
   const createDescType = useCallback((e) => set({ createDesc: e.target.value }), [set]);
+  const createIntroType = useCallback((e) => set({ createIntro: e.target.value }), [set]);
   const createLocType = useCallback((e) => set({ createLoc: e.target.value }), [set]);
-  const createDateType = useCallback((e) => set({ createDate: e.target.value }), [set]);
+  const createEventDateType = useCallback((e) => set({ createEventDate: e.target.value }), [set]);
+  const createEventTimeType = useCallback((e) => set({ createEventTime: e.target.value }), [set]);
   const createPriceType = useCallback((e) => set({ createPrice: e.target.value }), [set]);
   const createSeatsType = useCallback((e) => set({ createSeats: e.target.value }), [set]);
   const pickCreateCat = useCallback((key) => set(prev => {
@@ -6007,10 +6027,17 @@ export function GocProvider({ children }) {
       if (!sessionData.session?.user) throw new Error('AUTH_REQUIRED');
       const priceVnd = parseInt((s.createPrice.match(/[\d.]+/) || ['0'])[0].replace(/\./g, ''), 10) || 0;
       const capacity = parseInt(s.createSeats, 10) || 0;
-      const dateMatch = s.createDate.match(/(\d{1,2})\.(\d{1,2})/);
-      const timeMatch = s.createDate.match(/(\d{1,2}):(\d{2})/);
-      const eventDate = dateMatch ? `2026-${String(parseInt(dateMatch[2], 10)).padStart(2, '0')}-${String(parseInt(dateMatch[1], 10)).padStart(2, '0')}` : null;
-      const eventTime = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null;
+      const eventDate = s.createEventDate || null;
+      const eventTime = s.createEventTime ? `${s.createEventTime}:00` : null;
+      // Client-side nicety only — the RPC (migration 087/088) is the real
+      // gate, converting the SAME date+time AT TIME ZONE 'Asia/Ho_Chi_Minh'.
+      // Approximated the same way here so an obviously-past pick is caught
+      // before a round trip, without needing a timezone library.
+      if (eventDate && eventTime) {
+        const nowVn = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+        const pickedVn = new Date(`${eventDate}T${eventTime}`);
+        if (pickedVn.getTime() < nowVn.getTime() - 5 * 60 * 1000) throw new Error('PAST_EVENT_NOT_ALLOWED');
+      }
       // Mirrors migration 087's own server-side validation (max 3, label
       // 1-60, detail <=300) — the RPC is the real gate; this only avoids a
       // round trip for an obviously-invalid client state.
@@ -6020,6 +6047,10 @@ export function GocProvider({ children }) {
       for (const it of includedItems) {
         if (it.label.length > 60 || it.detail.length > 300) throw new Error('INVALID_INCLUDED_ITEMS');
       }
+      // Mirrors migration 088's own 4000-char cap on "Giới thiệu sự kiện" —
+      // same client-side-is-a-nicety/RPC-is-the-real-gate reasoning above.
+      const intro = s.createIntro.trim();
+      if (intro.length > 4000) throw new Error('INVALID_INTRO');
 
       let eventId = s.createEditEventId;
       if (s.createEditEventId) {
@@ -6029,7 +6060,7 @@ export function GocProvider({ children }) {
           p_description: s.createDesc.trim(), p_location: s.createLoc.trim(),
           p_event_date: eventDate, p_event_time: eventTime,
           p_price_vnd: priceVnd, p_capacity: capacity,
-          p_included_items: includedItems,
+          p_included_items: includedItems, p_intro: intro,
         });
         if (error) throw error;
         if (data?.success === false) throw new Error(data.error);
@@ -6050,6 +6081,7 @@ export function GocProvider({ children }) {
           p_instagram: s.orgRegIg.trim(),
           p_about: s.orgRegDesc.trim(),
           p_included_items: includedItems,
+          p_intro: intro,
         });
         if (error) throw error;
         eventId = data?.id || null;
@@ -6073,10 +6105,12 @@ export function GocProvider({ children }) {
         ? T('Ngày giờ sự kiện đã ở trong quá khứ.', "This event's date/time is in the past.")
         : err.message === 'INVALID_INCLUDED_ITEMS'
         ? T('Mỗi mục "Bao gồm" cần tên (tối đa 60 ký tự) và mô tả tối đa 300 ký tự.', 'Each "Included" item needs a label (max 60 chars) and detail under 300 chars.')
+        : err.message === 'INVALID_INTRO'
+        ? T('Giới thiệu sự kiện tối đa 4000 ký tự.', 'The event introduction is limited to 4000 characters.')
         : (err.message || 'Unable to submit this event.');
       set({ loading: false, createError: message });
     }
-  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
+  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
 
   /**
@@ -6089,15 +6123,12 @@ export function GocProvider({ children }) {
   const goEditEvent = useCallback(async (eventId) => {
     const real = s.realEventsById[eventId];
     if (!real) return;
-    const dateStr = real.eventDate ? new Date(real.eventDate + 'T00:00:00') : null;
-    const dayMonth = dateStr ? `${String(dateStr.getDate()).padStart(2, '0')}.${String(dateStr.getMonth() + 1).padStart(2, '0')}` : '';
-    const time = real.eventTime ? real.eventTime.slice(0, 5) : '';
     set({
       screen: 'create', createBack: 'dashboard',
       createEditEventId: eventId, createSent: false, createError: '',
       createName: real.name || '', createCats: real.catKey ? [real.catKey] : [],
       createDesc: real.description || '', createLoc: real.area || '',
-      createDate: [dayMonth, time].filter(Boolean).join(' '),
+      createEventDate: real.eventDate || '', createEventTime: real.eventTime ? real.eventTime.slice(0, 5) : '',
       createPrice: real.priceVnd ? String(real.priceVnd) : '',
       createSeats: real.capacity ? String(real.capacity) : '',
       // Root-cause fix (Stage A media-parity pass, 2026-09-26): this used
@@ -6109,6 +6140,7 @@ export function GocProvider({ children }) {
       // wipe an event's real "Bao gồm" items. Re-seeding here from the same
       // row's own includedItems closes that gap.
       createIncludedItems: Array.isArray(real.includedItems) ? real.includedItems.map(it => ({ label: it.label || '', detail: it.detail || '' })) : [],
+      createIntro: real.intro || '',
     });
     loadEventPhotos(eventId);
   }, [set, s.realEventsById, loadEventPhotos]);
@@ -6719,7 +6751,7 @@ export function GocProvider({ children }) {
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
-    createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
+    createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
@@ -6753,7 +6785,7 @@ export function GocProvider({ children }) {
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
-    createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
+    createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   ]);

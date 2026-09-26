@@ -59,7 +59,17 @@ export default function AdminEvents() {
                 <Line label={T('Địa điểm', 'Location')} value={e.area || '—'} />
                 <Line label={T('Sức chứa', 'Capacity')} value={e.capacity != null ? String(e.capacity) : '—'} />
                 <Line label={T('Mô tả', 'Description')} value={e.description || '—'} />
+                <Line
+                  label={T('Bao gồm', 'Included')}
+                  value={e.includedItems?.length ? e.includedItems.map(it => it.label).join(' ▪︎ ') : (e.included || '—')}
+                />
               </div>
+              {e.intro && (
+                <div style={{ ...fieldGlass({ padding: '10px 12px' }) }}>
+                  <span style={{ fontSize: 10.5, color: ink, opacity: 0.65 }}>{T('Giới thiệu sự kiện', 'Event introduction')}</span>
+                  <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{e.intro}</p>
+                </div>
+              )}
 
               <input
                 value={reason}

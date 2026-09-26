@@ -197,6 +197,7 @@ struct CreateEventView: View {
     @State private var photoError = ""
     @State private var seededForEventID: String?
     @State private var seededExistingIDs: Set<UUID> = []
+    @State private var dateTimeSheetOpen = false
 
     private var removedExistingIDs: [UUID] {
         let kept = Set(galleryItems.compactMap { if case .existing(let id, _) = $0.kind { return id }; return nil })
@@ -328,6 +329,71 @@ struct CreateEventView: View {
         }
     }
 
+    @ViewBuilder
+    private func introEditor() -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text(app.T("Giới thiệu sự kiện", "Event introduction")).font(.system(size: 11.5))
+                Spacer()
+                Text("\(app.createIntro.count)/4000").font(.system(size: 10.5))
+            }
+            Text(app.T("Một đoạn giới thiệu dài hơn, hấp dẫn — tách dòng trống giữa các đoạn. Không phải quảng cáo giả, không phải \"Bao gồm\".",
+                        "A longer, attractive write-up — leave a blank line between paragraphs. Not fabricated marketing copy, not the same as \"Included\"."))
+                .font(.system(size: 11)).opacity(0.75)
+            TextEditor(text: $app.createIntro)
+                .font(.system(size: 14))
+                .frame(minHeight: 110)
+                .padding(8)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .onChange(of: app.createIntro) { _, newValue in
+                    if newValue.count > 4000 { app.createIntro = String(newValue.prefix(4000)) }
+                }
+        }
+        .foregroundStyle(app.palette.ink)
+    }
+
+    private static let vnDateLabelFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.timeZone = AppState.vietnamTimeZone
+        f.dateFormat = "dd.MM.yyyy"
+        return f
+    }()
+    private static let vnTimeLabelFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.timeZone = AppState.vietnamTimeZone
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    @ViewBuilder
+    private func dateTimeRow() -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(app.T("Ngày & giờ (giờ Việt Nam)", "Date & time (Vietnam time)")).font(.system(size: 11.5))
+            Button {
+                dateTimeSheetOpen = true
+            } label: {
+                HStack {
+                    if let date = app.createEventDate, let time = app.createEventTime {
+                        Text("\(Self.vnDateLabelFormatter.string(from: date)) ▪︎ \(Self.vnTimeLabelFormatter.string(from: time))")
+                    } else {
+                        Text(app.T("Chọn ngày & giờ", "Pick date & time")).opacity(0.6)
+                    }
+                    Spacer()
+                    Image(systemName: "calendar")
+                }
+                .font(.system(size: 14))
+                .foregroundStyle(app.palette.ink)
+                .padding(13)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .sheet(isPresented: $dateTimeSheetOpen) {
+            EventDateTimeSheet(date: $app.createEventDate, time: $app.createEventTime)
+                .environmentObject(app)
+        }
+    }
+
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
@@ -369,8 +435,9 @@ struct CreateEventView: View {
                                placeholder: app.T("Tên sự kiện của bạn", "Your event name"), text: $app.createName)
                     BanbeField(label: app.T("Mô tả", "Description"),
                                placeholder: app.T("Buổi này có gì?", "What happens?"), text: $app.createDesc)
+                    introEditor()
                     BanbeField(label: app.T("Địa điểm", "Location"), placeholder: "Bình Thạnh", text: $app.createLoc)
-                    BanbeField(label: app.T("Ngày & giờ", "Date & time"), placeholder: "11.07 19:00", text: $app.createDate)
+                    dateTimeRow()
                     HStack(spacing: 10) {
                         BanbeField(label: app.T("Giá", "Price"), placeholder: "900.000", text: $app.createPrice,
                                    keyboard: .numberPad)
@@ -454,6 +521,80 @@ struct CreateEventView: View {
         .padding(16)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.top, 22)
+    }
+}
+
+/// Date/time picker fix (Stage B, 2026-09-26) — ONE sheet, a graphical
+/// native calendar directly above a native wheel time picker, both forced
+/// to Asia/Ho_Chi_Minh via `.environment(\.timeZone, ...)` so the digits
+/// shown always match Vietnam wall-clock time regardless of the device's
+/// own timezone. Nothing is written back to the parent's bindings until
+/// "Xong" — dismissing via "Hủy" (or a swipe) leaves the previously
+/// confirmed selection untouched, which is what "reopen retains draft
+/// selection" means in practice: there's no separate, discardable draft
+/// state to lose, only ever the last CONFIRMED one.
+struct EventDateTimeSheet: View {
+    @Binding var date: Date?
+    @Binding var time: Date?
+    @EnvironmentObject var app: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var draftDate: Date
+    @State private var draftTime: Date
+
+    init(date: Binding<Date?>, time: Binding<Date?>) {
+        self._date = date
+        self._time = time
+        let calendar = Self.vnCalendar
+        self._draftDate = State(initialValue: date.wrappedValue ?? calendar.startOfDay(for: Date()))
+        self._draftTime = State(initialValue: time.wrappedValue ?? Date())
+    }
+
+    private static var vnCalendar: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = AppState.vietnamTimeZone
+        return cal
+    }()
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                DatePicker(
+                    "", selection: $draftDate, in: Date()...,
+                    displayedComponents: [.date]
+                )
+                .datePickerStyle(.graphical)
+                .environment(\.timeZone, AppState.vietnamTimeZone)
+                .padding(.horizontal, 12)
+
+                DatePicker(
+                    "", selection: $draftTime,
+                    displayedComponents: [.hourAndMinute]
+                )
+                .datePickerStyle(.wheel)
+                .environment(\.timeZone, AppState.vietnamTimeZone)
+                .labelsHidden()
+                .padding(.horizontal, 12)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 8)
+            .background(app.palette.paper)
+            .navigationTitle(app.T("Ngày & giờ", "Date & time"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(app.T("Hủy", "Cancel")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(app.T("Xong", "Done")) {
+                        date = draftDate
+                        time = draftTime
+                        dismiss()
+                    }
+                }
+            }
+        }
     }
 }
 
