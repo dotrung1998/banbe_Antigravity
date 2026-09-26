@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS } from '../data/events.js';
+import { supabase } from '../lib/supabase.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
 import { AttachMenuIcon } from './Chat.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
 import ActionCenter from './ActionCenter.jsx';
 import { pickSoonest } from '../lib/countdown.js';
+
+function organizerAvatarUrl(path) {
+  if (!path) return '';
+  return supabase.storage.from('organizer-photos').getPublicUrl(path).data.publicUrl;
+}
 
 // TASK 3C (2026-09-22 twenty-first follow-up) — no existing icon
 // component/library covers this screen's semantics (only Chat.jsx's own
@@ -46,8 +52,16 @@ export default function Account() {
     loadHomeStories, openStoryViewer, pickStoryFile, cancelStoryCreate, publishStory,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary,
     openPaymentDetails, goDashboard,
+    orgRegNameType, orgRegDescType, saveOrganizerProfile,
   } = useGoc();
   const s = state;
+  // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Both panes stay
+  // mounted (display:none on the inactive one, not unmounted), each in its
+  // OWN independently-scrolling container — switching tabs never resets
+  // either one's scroll position, and never touches organizerMode/canHost
+  // (that stays a wholly separate, explicit toggle inside the Tổ chức
+  // pane itself, same as before).
+  const [accountTab, setAccountTab] = useState('personal');
   const storyFileRef = useRef(null);
   const storyCameraRef = useRef(null);
   // Task 1 (2026-09-21 real-device follow-up) — "Post Story" is now a real
@@ -55,6 +69,28 @@ export default function Account() {
   // attach-menu convention (same icon set, same popup shape) instead of a
   // single link that only ever opened the library picker.
   const [storyMenuOpen, setStoryMenuOpen] = useState(false);
+
+  // Host tab's own profile card (Stage D) — editing is inline, local draft
+  // state only becomes real on "Lưu" (saveOrganizerProfile); an unsaved
+  // avatar pick shows an immediate local preview.
+  const [orgProfileEditing, setOrgProfileEditing] = useState(false);
+  const [orgAvatarFile, setOrgAvatarFile] = useState(null);
+  const [orgAvatarPreview, setOrgAvatarPreview] = useState('');
+  const orgAvatarInputRef = useRef(null);
+  const onPickOrgAvatar = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (orgAvatarPreview) URL.revokeObjectURL(orgAvatarPreview);
+    setOrgAvatarFile(file);
+    setOrgAvatarPreview(URL.createObjectURL(file));
+  };
+  const doSaveOrgProfile = async () => {
+    await saveOrganizerProfile(orgAvatarFile);
+    setOrgProfileEditing(false);
+    setOrgAvatarFile(null);
+    if (orgAvatarPreview) { URL.revokeObjectURL(orgAvatarPreview); setOrgAvatarPreview(''); }
+  };
 
   // Task 3.3 (07-notifications.md) — loads active stories (mine + followed
   // hosts') so the ring below reflects real data even when Account is
@@ -133,6 +169,29 @@ export default function Account() {
       <div style={{ padding: '66px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ ...display(27) }}>{T('Tài khoản', 'Account')}</span>
         <span onClick={goHome} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>Xong</span>
+      </div>
+
+      {/* Stage D — Cá nhân/Tổ chức top-level tabs. Purely a display switch
+          below (both panes' own scroll containers keep their scrollTop
+          whichever is hidden) — never calls toggleOrganizerMode or any
+          hosting-mode side effect by itself. */}
+      <div style={{ display: 'flex', gap: 6, padding: '18px 20px 0' }} data-testid="account-tabs">
+        {[
+          { key: 'personal', label: T('Cá nhân', 'Personal') },
+          { key: 'host', label: T('Tổ chức', 'Host') },
+        ].map(tab => (
+          <span
+            key={tab.key}
+            onClick={() => setAccountTab(tab.key)}
+            data-testid={`account-tab-${tab.key}`}
+            style={{
+              fontSize: 13, fontWeight: 600, padding: '9px 16px', borderRadius: 999, cursor: 'pointer',
+              background: accountTab === tab.key ? ink : 'transparent',
+              color: accountTab === tab.key ? paper : ink,
+              border: accountTab === tab.key ? 'none' : `1px solid ${rule}`,
+            }}
+          >{tab.label}</span>
+        ))}
       </div>
 
       {/* TASK D (2026-10-01 UX foundation pass) — the header is now a
@@ -252,6 +311,7 @@ export default function Account() {
         </div>
       )}
 
+      <div data-testid="account-tab-panel-personal" style={{ display: accountTab === 'personal' ? 'block' : 'none' }}>
       <div style={{ display: 'flex', gap: 10, padding: '22px 20px 0' }}>
         {/* data-attending-raw-count is the unfiltered s.attending.length — not
             shown to users (goingCount below is what actually renders, and is
@@ -331,6 +391,76 @@ export default function Account() {
         </div>
       </div>
 
+      {s.user ? (
+        <div onClick={logout} style={{ padding: '24px 20px 40px', display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: ink, cursor: 'pointer' }}><RowIcon kind="logout" size={18} />{T('Đăng xuất', 'Sign out')}</div>
+      ) : (
+        <div onClick={goLogin} style={{ padding: '24px 20px 40px', display: 'flex', alignItems: 'center', gap: 12, fontSize: 12.5, lineHeight: 1.5, color: ink, cursor: 'pointer' }}><RowIcon kind="login" size={18} />{T('Đăng nhập để lưu sự kiện và nhắn tin', 'Sign in to save events and message hosts')}</div>
+      )}
+      </div>
+
+      <div data-testid="account-tab-panel-host" style={{ display: accountTab === 'host' ? 'block' : 'none' }}>
+      {/* Host tab's OWN rounded profile card (Stage D) — organizer avatar/
+          name/introduction, stored on `organizers` (migration 090), never
+          profiles.display_name. Only shown once this account has ever
+          hosted; a never-hosted account instead sees the same "Host your
+          first event" pitch further down (unchanged from before). */}
+      {canHost && s.myOrganizerId && (
+        <div
+          style={{ ...cardGlass({ margin: '22px 20px 0', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 12 }) }}
+          data-testid="org-profile-card"
+        >
+          <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+            <div
+              onClick={() => orgProfileEditing && orgAvatarInputRef.current?.click()}
+              style={{ flex: 'none', width: 56, height: 56, borderRadius: 14, cursor: orgProfileEditing ? 'pointer' : 'default', overflow: 'hidden', position: 'relative' }}
+            >
+              {(orgAvatarPreview || organizerAvatarUrl(s.myOrganizerAvatarPath)) ? (
+                <img src={orgAvatarPreview || organizerAvatarUrl(s.myOrganizerAvatarPath)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <div style={{ ...fieldGlass({ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }), ...display(20) }}>
+                  {(s.orgRegName || 'B').trim()[0]?.toUpperCase() || 'B'}
+                </div>
+              )}
+              {orgProfileEditing && (
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(12,12,12,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10 }}>
+                  {T('Đổi ảnh', 'Change')}
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1 }}>
+              {orgProfileEditing ? (
+                <input
+                  value={s.orgRegName} onChange={orgRegNameType} data-testid="org-profile-name-input"
+                  style={{ ...fieldGlass({ padding: '9px 11px' }), fontSize: 15, fontWeight: 600, color: ink, border: 'none', outline: 'none', width: '100%', boxSizing: 'border-box' }}
+                />
+              ) : (
+                <span style={{ ...display(18, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{s.orgRegName || T('Chưa đặt tên', 'Unnamed host')}</span>
+              )}
+              <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T('Trang tổ chức', 'Host page')}</span>
+            </div>
+            <span
+              onClick={() => (orgProfileEditing ? doSaveOrgProfile() : setOrgProfileEditing(true))}
+              data-testid="org-profile-edit-toggle"
+              style={{ flex: 'none', fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer', opacity: s.orgProfileSaving ? 0.5 : 1 }}
+            >
+              {s.orgProfileSaving ? T('Đang lưu…', 'Saving…') : (orgProfileEditing ? T('Lưu', 'Save') : T('Chỉnh sửa', 'Edit'))}
+            </span>
+          </div>
+          {orgProfileEditing ? (
+            <textarea
+              value={s.orgRegDesc} onChange={orgRegDescType} rows={3} maxLength={2000}
+              placeholder={T('Giới thiệu ngắn về bạn/nhóm tổ chức…', 'A short introduction to you/your host team…')}
+              data-testid="org-profile-intro-input"
+              style={{ ...fieldGlass({ padding: '10px 12px' }), fontSize: 13, color: ink, border: 'none', outline: 'none', resize: 'vertical', lineHeight: 1.5 }}
+            />
+          ) : s.orgRegDesc ? (
+            <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, opacity: 0.85, margin: 0 }}>{s.orgRegDesc}</p>
+          ) : null}
+          {s.orgProfileError && <p style={{ fontSize: 11.5, color: alert, margin: 0 }}>{s.orgProfileError}</p>}
+          <input ref={orgAvatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={onPickOrgAvatar} />
+        </div>
+      )}
+
       <div style={{ padding: '22px 20px 0' }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Tổ chức', 'Hosting')}</span>
         {/* TASK 2 (2026-10-05 fix pass) — `organizerModeBusy` (real guard
@@ -356,7 +486,15 @@ export default function Account() {
           </span>
         </div>
         {s.organizerModeError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0' }}>{s.organizerModeError}</p>}
-        {isOrganizer && (
+        {/* Root-cause fix (Stage D) — this used to be gated on `isOrganizer`
+            (the CURRENT toggle), so turning organizer mode off hid awaiting-
+            verification/payout/invoices/receipts entirely, even for a real
+            host with an actual pending obligation. Gated on `canHost`
+            (eligibility) instead: these rows now stay reachable regardless
+            of the switch above, same as the ticket's own "don't remove
+            access to urgent host refund/dispute obligations when organizer
+            mode is off" rule. */}
+        {canHost && (
           <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
             <div onClick={openVerifications} data-testid="host-verifications" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="checklist" />{T('Chờ xác nhận thanh toán', 'Awaiting verification')}</span>
@@ -424,12 +562,8 @@ export default function Account() {
           </div>
         </div>
       )}
-
-      {s.user ? (
-        <div onClick={logout} style={{ padding: '24px 20px 40px', display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: ink, cursor: 'pointer' }}><RowIcon kind="logout" size={18} />{T('Đăng xuất', 'Sign out')}</div>
-      ) : (
-        <div onClick={goLogin} style={{ padding: '24px 20px 40px', display: 'flex', alignItems: 'center', gap: 12, fontSize: 12.5, lineHeight: 1.5, color: ink, cursor: 'pointer' }}><RowIcon kind="login" size={18} />{T('Đăng nhập để lưu sự kiện và nhắn tin', 'Sign in to save events and message hosts')}</div>
-      )}
+      <div style={{ height: 24 }} />
+      </div>
     </div>
   );
 }

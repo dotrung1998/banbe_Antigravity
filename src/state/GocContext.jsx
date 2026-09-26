@@ -603,6 +603,17 @@ const initialState = {
   orgRegName: '',
   orgRegIg: '',
   orgRegDesc: '',
+  // Host tab's own profile card (Stage D, 2026-09-26) — this account's
+  // organizer row id + its real avatar_path (migration 090). Only one
+  // organizer per account is supported (same standing assumption
+  // create_event_draft's own `ORDER BY created_at LIMIT 1` already makes —
+  // nothing else in this codebase supports multi-organizer accounts
+  // either).
+  myOrganizerId: null,
+  myOrganizerAvatarPath: '',
+  orgProfileSaving: false,
+  orgProfileError: '',
+  orgProfileSaved: false,
   following: [],
   refunds: {},
   gaveTicket: false,
@@ -1192,11 +1203,16 @@ export function GocProvider({ children }) {
       // returning on a new session.
       const { data: org } = await supabase
         .from('organizers')
-        .select('name')
+        .select('id, name, about, avatar_path')
         .or(`owner_id.eq.${user.id},user_id.eq.${user.id}`)
         .limit(1)
         .maybeSingle();
-      if (org?.name) set({ orgRegName: org.name, hasHosted: true });
+      if (org?.name) {
+        set({
+          orgRegName: org.name, orgRegDesc: org.about || '', hasHosted: true,
+          myOrganizerId: org.id, myOrganizerAvatarPath: org.avatar_path || '',
+        });
+      }
 
       // Language & theme follow the account once it has a saved preference,
       // so signing in on any device restores them instead of falling back to
@@ -5910,6 +5926,51 @@ export function GocProvider({ children }) {
   const orgRegNameType = useCallback((e) => set({ orgRegName: e.target.value }), [set]);
   const orgRegIgType = useCallback((e) => set({ orgRegIg: e.target.value }), [set]);
   const orgRegDescType = useCallback((e) => set({ orgRegDesc: e.target.value }), [set]);
+
+  /**
+   * Host tab's own profile card save (Stage D, migration 090) — a real
+   * owner/admin-gated update, separate from create_event_draft's own
+   * organizer-name side effect. Optionally uploads a new avatar first
+   * (organizer-photos bucket, path-scoped to this organizer's own id —
+   * never another host's, see migration 090's own storage policies).
+   */
+  const saveOrganizerProfile = useCallback(async (avatarFile) => {
+    if (!s.myOrganizerId) return;
+    set({ orgProfileSaving: true, orgProfileError: '', orgProfileSaved: false });
+    try {
+      let avatarPath = null;
+      if (avatarFile) {
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(avatarFile.type)) throw new Error('INVALID_IMAGE_TYPE');
+        if (avatarFile.size > 5 * 1024 * 1024) throw new Error('IMAGE_TOO_LARGE');
+        const ext = (avatarFile.name.split('.').pop() || 'jpg').toLowerCase();
+        const path = `${s.myOrganizerId}/avatar-${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('organizer-photos').upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
+        if (upErr) throw upErr;
+        avatarPath = path;
+      }
+      const { data, error } = await supabase.rpc('update_organizer_profile', {
+        p_organizer_id: s.myOrganizerId,
+        p_name: s.orgRegName.trim(),
+        p_intro: s.orgRegDesc.trim(),
+        p_avatar_path: avatarPath,
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error);
+      set({ orgProfileSaving: false, orgProfileSaved: true, myOrganizerAvatarPath: avatarPath || s.myOrganizerAvatarPath });
+    } catch (err) {
+      console.warn('saveOrganizerProfile failed:', err);
+      const message = err.message === 'INVALID_NAME'
+        ? T('Tên tổ chức không được để trống (tối đa 80 ký tự).', 'Organizer name is required (max 80 chars).')
+        : err.message === 'INVALID_INTRO'
+        ? T('Giới thiệu tối đa 2000 ký tự.', 'Introduction is limited to 2000 characters.')
+        : err.message === 'INVALID_IMAGE_TYPE'
+        ? T('Ảnh phải là JPEG, PNG hoặc WebP.', 'Photo must be JPEG, PNG, or WebP.')
+        : err.message === 'IMAGE_TOO_LARGE'
+        ? T('Ảnh tối đa 5MB.', 'Photo must be under 5MB.')
+        : (err.message || T('Không thể lưu. Vui lòng thử lại.', 'Could not save. Please try again.'));
+      set({ orgProfileSaving: false, orgProfileError: message });
+    }
+  }, [set, s.myOrganizerId, s.orgRegName, s.orgRegDesc, s.myOrganizerAvatarPath, T]);
   const createNameType = useCallback((e) => set({ createName: e.target.value }), [set]);
   const createDescType = useCallback((e) => set({ createDesc: e.target.value }), [set]);
   const createIntroType = useCallback((e) => set({ createIntro: e.target.value }), [set]);
@@ -6559,6 +6620,26 @@ export function GocProvider({ children }) {
           openVerifications('notifications');
         }
         break;
+      case 'organizer_renamed': {
+        // Stage D (2026-09-26) — this app has no standalone "view an
+        // organizer's page by id" route at all (Organizer.jsx is entirely
+        // anchored to curEvent — see its own ev.orgName-keyed reads); a
+        // genuinely-real deep link here is the organizer's own soonest
+        // real upcoming event, one tap ("Người tổ chức") from the actual
+        // organizer page, rather than fabricating a route that doesn't
+        // exist. Never fails silently: reportStaleNotification if this
+        // organizer genuinely has no live event to land on.
+        let landed = false;
+        if (n.data?.organizer_id) {
+          const { data: orgEvent } = await supabase
+            .from('events').select('id')
+            .eq('organizer_id', n.data.organizer_id).eq('status', 'live')
+            .order('starts_at', { ascending: true }).limit(1).maybeSingle();
+          if (orgEvent?.id) { goEvent(orgEvent.id); landed = true; }
+        }
+        if (!landed) reportStaleNotification(n);
+        break;
+      }
       // 'guest_renamed': category B, informational only, no destination by
       // design — falls to default. markNotificationRead() above is the
       // whole "action."
@@ -6771,7 +6852,7 @@ export function GocProvider({ children }) {
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
-    orgRegNameType, orgRegIgType, orgRegDescType,
+    orgRegNameType, orgRegIgType, orgRegDescType, saveOrganizerProfile,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
@@ -6805,7 +6886,7 @@ export function GocProvider({ children }) {
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
-    orgRegNameType, orgRegIgType, orgRegDescType,
+    orgRegNameType, orgRegIgType, orgRegDescType, saveOrganizerProfile,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,

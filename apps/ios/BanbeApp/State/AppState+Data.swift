@@ -164,7 +164,13 @@ struct MutedKindsUpdate: Encodable {
 
 // Decodable shapes for the handful of narrow selects below.
 private struct IDRow: Decodable { let id: String }
-private struct OrganizerRow: Decodable { let id: String; let name: String }
+private struct OrganizerRow: Decodable {
+    let id: String
+    let name: String
+    let about: String?
+    let avatarPath: String?
+    enum CodingKeys: String, CodingKey { case id, name, about, avatarPath = "avatar_path" }
+}
 private struct UUIDRow: Decodable { let id: UUID }
 private struct OrganizerRef: Decodable { let organizerId: String?
     enum CodingKeys: String, CodingKey { case organizerId = "organizer_id" } }
@@ -569,7 +575,7 @@ extension AppState {
 
             let organizers: [OrganizerRow] = try await SupabaseService.client
                 .from("organizers")
-                .select("id, name")
+                .select("id, name, about, avatar_path")
                 .or("owner_id.eq.\(uid.uuidString),user_id.eq.\(uid.uuidString)")
                 .execute().value
             myOrganizerIDs = organizers.map(\.id)
@@ -580,6 +586,10 @@ extension AppState {
                 // could be restored on a fresh session and it was never
                 // actually fetched.
                 if let name = organizers.first?.name, !name.isEmpty { orgRegName = name }
+                // Host tab's own profile card (Stage D, migration 090).
+                myOrganizerID = organizers.first?.id
+                orgRegDesc = organizers.first?.about ?? ""
+                myOrganizerAvatarPath = organizers.first?.avatarPath ?? ""
                 let events: [IDRow] = try await SupabaseService.client
                     .from("events")
                     .select("id")
@@ -700,6 +710,62 @@ extension AppState {
             }
         }
         return (uploaded, newImages.count - uploaded, removed)
+    }
+
+    /// Host tab's own profile card save (Stage D, migration 090) — a real
+    /// owner/admin-gated update via update_organizer_profile, separate
+    /// from create_event_draft's own organizer-name side effect. Optional
+    /// avatar upload goes to the organizer-photos bucket, path-scoped to
+    /// this organizer's own id (never another host's — migration 090's
+    /// own storage policies).
+    func saveOrganizerProfile(avatarImage: UIImage?) async {
+        guard let organizerID = myOrganizerID else { return }
+        orgProfileSaving = true
+        orgProfileError = ""
+        do {
+            var avatarPath: String?
+            if let avatarImage {
+                guard let data = avatarImage.jpegData(compressionQuality: 0.85) else { throw URLError(.cannotDecodeContentData) }
+                if data.count > 5 * 1024 * 1024 {
+                    orgProfileSaving = false
+                    orgProfileError = T("Ảnh tối đa 5MB.", "Photo must be under 5MB.")
+                    return
+                }
+                let path = "\(organizerID)/avatar-\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
+                _ = try await SupabaseService.client.storage.from("organizer-photos")
+                    .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
+                avatarPath = path
+            }
+            struct Params: Encodable {
+                let organizerId: String
+                let name: String
+                let intro: String
+                let avatarPath: String?
+                enum CodingKeys: String, CodingKey {
+                    case organizerId = "p_organizer_id", name = "p_name", intro = "p_intro", avatarPath = "p_avatar_path"
+                }
+            }
+            let result: [String: JSONValue] = try await SupabaseService.client
+                .rpc("update_organizer_profile", params: Params(organizerId: organizerID, name: orgRegName.trimmingCharacters(in: .whitespaces), intro: orgRegDesc.trimmingCharacters(in: .whitespacesAndNewlines), avatarPath: avatarPath))
+                .execute().value
+            guard case .bool(true) = result["success"] ?? .bool(false) else {
+                if case .string(let err) = result["error"] ?? .string("") {
+                    orgProfileError = err == "INVALID_NAME"
+                        ? T("Tên tổ chức không được để trống (tối đa 80 ký tự).", "Organizer name is required (max 80 chars).")
+                        : err == "INVALID_INTRO"
+                        ? T("Giới thiệu tối đa 2000 ký tự.", "Introduction is limited to 2000 characters.")
+                        : T("Không thể lưu. Vui lòng thử lại.", "Could not save. Please try again.")
+                }
+                orgProfileSaving = false
+                return
+            }
+            if let avatarPath { myOrganizerAvatarPath = avatarPath }
+            orgProfileSaving = false
+        } catch {
+            print("saveOrganizerProfile failed:", error)
+            orgProfileSaving = false
+            orgProfileError = T("Không thể lưu. Vui lòng thử lại.", "Could not save. Please try again.")
+        }
     }
 
     /// STAGE D (2026-09-25) — EventDetailView's own real photo gallery,

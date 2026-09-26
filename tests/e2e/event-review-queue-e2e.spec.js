@@ -153,6 +153,8 @@ test.describe('Event submission -> admin review -> publish — real backend E2E 
     const page = await adminPage(browser);
     await page.getByText('Tài khoản').first().click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 5000 });
+    // Stage D — admin rows now live under the "Tổ chức" account tab.
+    await page.getByTestId('account-tab-host').click();
     await page.getByTestId('admin-events').click();
     const queueScreen = page.locator('[data-screen-label="Admin events"]');
     await expect(queueScreen).toBeVisible({ timeout: 5000 });
@@ -189,6 +191,8 @@ test.describe('Event submission -> admin review -> publish — real backend E2E 
     const page = await adminPage(browser);
     await page.getByText('Tài khoản').first().click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 5000 });
+    // Stage D — admin rows now live under the "Tổ chức" account tab.
+    await page.getByTestId('account-tab-host').click();
     await page.getByTestId('admin-events').click();
     const queueScreen = page.locator('[data-screen-label="Admin events"]');
     await expect(queueScreen).toBeVisible({ timeout: 5000 });

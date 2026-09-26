@@ -398,6 +398,15 @@ final class AppState: ObservableObject {
     @Published var tickets: [String: Int] = [:]
     @Published var myOrgEventKeys: [String] = []
     @Published var myOrganizerIDs: [String] = []
+    // Host tab's own profile card (Stage D, migration 090) — this
+    // account's single organizer id + its real avatar_path. Only one
+    // organizer per account is supported (same standing assumption
+    // create_event_draft's own `ORDER BY created_at LIMIT 1` already
+    // makes).
+    @Published var myOrganizerID: String?
+    @Published var myOrganizerAvatarPath = ""
+    @Published var orgProfileSaving = false
+    @Published var orgProfileError = ""
     // Retention roadmap follow-up — canonical real-event cache, keyed by
     // real `events.id`. `nil` (key absent, i.e. `realEventsByID[key] ==
     // nil` AND `realEventsByID.index(forKey: key) == nil`) means not yet

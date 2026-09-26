@@ -23,6 +23,20 @@ struct AccountView: View {
     // own `.fullScreenCover` already was.
     @State private var storyLibraryPickerOpen = false
 
+    // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Purely a
+    // display switch (`if accountTab == ...` below) — never calls
+    // toggleOrganizerMode or any hosting-mode side effect by itself.
+    // Simplification disclosed vs. web: each tab does NOT get its own
+    // independently-preserved scroll position here — this screen's
+    // existing scroll-restore mechanism (`accountScrollAnchorID`, see its
+    // own doc comment above) is a single shared anchor across the whole
+    // LazyVStack, and giving each tab its own would mean a second,
+    // parallel scroll-tracking system; not built this pass.
+    @State private var accountTab = "personal"
+    @State private var orgProfileEditing = false
+    @State private var orgAvatarPickerItem: PhotosPickerItem?
+    @State private var orgAvatarPreviewImage: UIImage?
+
     private var myStoryGroup: StoryGroup? {
         app.homeStories.first { g in app.myOrganizerIdsCache.contains(g.organizerId) }
     }
@@ -82,6 +96,22 @@ struct AccountView: View {
                     Button(app.T("Xong", "Done")) { app.goHome() }
                         .font(.system(size: 12)).buttonStyle(.plain)
                 }
+
+                HStack(spacing: 6) {
+                    ForEach([("personal", app.T("Cá nhân", "Personal")), ("host", app.T("Tổ chức", "Host"))], id: \.0) { key, label in
+                        Button { accountTab = key } label: {
+                            Text(label)
+                                .font(.system(size: 13, weight: .semibold))
+                                .padding(.horizontal, 16).padding(.vertical, 9)
+                                .background(accountTab == key ? app.palette.ink : .clear, in: Capsule())
+                                .overlay(Capsule().stroke(accountTab == key ? .clear : app.palette.rule, lineWidth: 1))
+                                .foregroundStyle(accountTab == key ? app.palette.paper : app.palette.ink)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("account.tab.\(key)")
+                    }
+                }
+                .padding(.top, 16)
 
                 // TASK D (2026-10-01 UX foundation pass) — the header is
                 // now a tappable rounded profile card (editorial style:
@@ -189,6 +219,7 @@ struct AccountView: View {
                 .padding(.top, 22)
                 .accessibilityIdentifier("account.profileCard")
 
+                if accountTab == "personal" {
                 HStack(spacing: 10) {
                     counter(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going"), icon: "calendar.badge.checkmark", identifier: "account.goingCard") { app.goGoingList() }
                     counter(value: app.favorites.count, label: app.T("Đã lưu", "Saved"), icon: "bookmark", identifier: "account.savedCard") { app.goSavedList() }
@@ -251,6 +282,10 @@ struct AccountView: View {
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.top, 20)
                 .id("account-links")
+                } // accountTab == "personal"
+
+                if accountTab == "host" {
+                orgProfileCard()
 
                 Text(app.T("Tổ chức", "Hosting"))
                     .font(.system(size: 11.5, weight: .semibold))
@@ -313,13 +348,16 @@ struct AccountView: View {
                         .padding(.top, 10)
                 }
 
-                // TASK B (2026-10-03) — host-only management navigation,
-                // hidden while organizerMode is off (current mode, not
-                // eligibility — the Action Center above already surfaces
-                // any money-owed/verification item regardless, gated on
-                // canHost, per this ticket's own "don't silently hide
-                // money owed" rule).
-                if app.organizerMode {
+                // Root-cause fix (Stage D) — this used to be gated on
+                // `app.organizerMode` (the CURRENT toggle), so turning
+                // organizer mode off hid awaiting-verification/payout/
+                // invoices/receipts entirely, even for a real host with an
+                // actual pending obligation. Gated on `canHost`
+                // (eligibility) instead: these rows now stay reachable
+                // regardless of the switch above, same as the ticket's own
+                // "don't remove access to urgent host refund/dispute
+                // obligations when organizer mode is off" rule.
+                if app.canHost {
                     VStack(spacing: 0) {
                         row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"),
                             identifier: "host.verifications", icon: "checklist", trailing: "›") { app.openVerifications() }
@@ -416,6 +454,7 @@ struct AccountView: View {
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .padding(.top, 10)
                 }
+                } // accountTab == "host"
 
                 Button {
                     if app.isSignedIn { Task { await app.signOut() } } else { app.goLogin() }
@@ -572,6 +611,106 @@ struct AccountView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(identifier ?? title)
+    }
+
+    /// Host tab's OWN rounded profile card (Stage D) — organizer avatar/
+    /// name/introduction, stored on `organizers` (migration 090), never
+    /// profiles.display_name. Only shown once this account has ever
+    /// hosted; a never-hosted account instead sees the "Host your first
+    /// event" pitch further down (unchanged).
+    @ViewBuilder
+    private func orgProfileCard() -> some View {
+        if app.canHost, app.myOrganizerID != nil {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 14) {
+                    Button {
+                        if orgProfileEditing { /* PhotosPicker below handles presentation */ }
+                    } label: {
+                        ZStack {
+                            if let orgAvatarPreviewImage {
+                                Image(uiImage: orgAvatarPreviewImage).resizable().scaledToFill()
+                            } else if let url = organizerAvatarURL {
+                                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
+                            } else {
+                                Text((app.orgRegName.first.map(String.init) ?? "B").uppercased())
+                                    .font(BanbeTheme.display(20))
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .background(app.palette.field)
+                            }
+                            if orgProfileEditing {
+                                Color.black.opacity(0.35)
+                                Text(app.T("Đổi ảnh", "Change")).font(.system(size: 9)).foregroundStyle(.white)
+                            }
+                        }
+                        .frame(width: 56, height: 56)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .overlay {
+                        if orgProfileEditing {
+                            PhotosPicker(selection: $orgAvatarPickerItem, matching: .images) { Color.clear }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        if orgProfileEditing {
+                            TextField("", text: $app.orgRegName)
+                                .font(.system(size: 15, weight: .semibold))
+                                .padding(9)
+                                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .accessibilityIdentifier("org.profile.nameField")
+                        } else {
+                            Text(app.orgRegName.isEmpty ? app.T("Chưa đặt tên", "Unnamed host") : app.orgRegName)
+                                .font(BanbeTheme.display(18))
+                        }
+                        Text(app.T("Trang tổ chức", "Host page")).font(.system(size: 11)).opacity(0.7)
+                    }
+                    Spacer(minLength: 0)
+                    Button {
+                        if orgProfileEditing {
+                            Task { await app.saveOrganizerProfile(avatarImage: orgAvatarPreviewImage); orgProfileEditing = false; orgAvatarPreviewImage = nil }
+                        } else {
+                            orgProfileEditing = true
+                        }
+                    } label: {
+                        Text(app.orgProfileSaving ? app.T("Đang lưu…", "Saving…") : (orgProfileEditing ? app.T("Lưu", "Save") : app.T("Chỉnh sửa", "Edit")))
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(app.orgProfileSaving)
+                    .accessibilityIdentifier("org.profile.editToggle")
+                }
+                if orgProfileEditing {
+                    TextEditor(text: $app.orgRegDesc)
+                        .font(.system(size: 13))
+                        .frame(minHeight: 80)
+                        .padding(6)
+                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .accessibilityIdentifier("org.profile.introField")
+                } else if !app.orgRegDesc.isEmpty {
+                    Text(app.orgRegDesc).font(.system(size: 12.5)).opacity(0.85)
+                }
+                if !app.orgProfileError.isEmpty {
+                    Text(app.orgProfileError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                }
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(16)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.top, 22)
+            .accessibilityIdentifier("org.profile.card")
+            .onChange(of: orgAvatarPickerItem) { _, item in
+                Task {
+                    guard let item, let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
+                    await MainActor.run { orgAvatarPreviewImage = image }
+                }
+            }
+        }
+    }
+
+    private var organizerAvatarURL: URL? {
+        guard !app.myOrganizerAvatarPath.isEmpty else { return nil }
+        return try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: app.myOrganizerAvatarPath)
     }
 
     // TASK C — mirrors HomeView's own retryScrollRestoreIfNeeded() exactly

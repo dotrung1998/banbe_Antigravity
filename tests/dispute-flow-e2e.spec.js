@@ -176,6 +176,8 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
     const organizerPage = await organizerContext.newPage();
     await loginWithPassword(organizerPage, organizerUser.email, organizerUser.password);
     await organizerPage.getByText('Tài khoản').first().click();
+    // Stage D — host-only rows now live under the "Tổ chức" account tab.
+    await organizerPage.locator('[data-testid="account-tab-host"]').click();
     await organizerPage.locator('[data-testid="host-verifications"]').click();
     await expect(organizerPage.locator('[data-testid="verifications-title"]')).toBeVisible({ timeout: 5000 });
 
@@ -226,6 +228,8 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
     const adminPage = await adminContext.newPage();
     await loginWithPassword(adminPage, adminAcct.email, adminAcct.password);
     await adminPage.getByText('Tài khoản').first().click();
+    // Stage D — admin rows now live under the "Tổ chức" account tab too.
+    await adminPage.locator('[data-testid="account-tab-host"]').click();
     await adminPage.locator('[data-testid="admin-disputes"]').click();
     await expect(adminPage.locator('[data-testid="disputes-title"]')).toBeVisible({ timeout: 5000 });
 
