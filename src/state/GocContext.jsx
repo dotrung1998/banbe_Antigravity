@@ -35,7 +35,7 @@ function shapeRealEvent(row, extra = {}) {
     cancelledAt: row.cancelled_at || null,
     visibility: row.visibility,
     organizerId: row.organizer_id,
-    photoUrl: extra.photoUrl || null,
+    photoUrl: resolveCoverUrl(row.cover_image, extra.photoUrl),
     organizerName: extra.organizerName || '',
     followedHost: !!extra.followedHost,
     isReal: true,
@@ -50,10 +50,28 @@ function shapeRealEvent(row, extra = {}) {
     submittedAt: row.submitted_at || null,
     reviewedAt: row.reviewed_at || null,
     rejectionReason: row.rejection_reason || '',
+    // Real cover/gallery + structured "Bao gồm" (migration 087).
+    coverImage: row.cover_image || '',
+    included: row.included || '',
+    includedItems: Array.isArray(row.included_items) ? row.included_items : [],
   };
 }
 
-const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason';
+const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included, included_items';
+
+/** A real event's own selected `cover_image` (migration 087) resolved to a
+ * public URL, falling back to `fallbackUrl` (the first `event_photos` row
+ * by sort_order) only when no cover was ever explicitly chosen. Root-cause
+ * fix: the fallback alone doesn't track which upload the host actually
+ * picked as the cover (its own sort_order can be anything, since a host
+ * can set ANY staged photo as cover) — this is what makes the card,
+ * EventDetail and the admin review queue all show the SAME chosen cover
+ * instead of whichever photo happens to sort first. */
+function resolveCoverUrl(coverImagePath, fallbackUrl) {
+  if (!coverImagePath) return fallbackUrl || null;
+  const relative = coverImagePath.replace(/^event-photos\//, '');
+  return supabase.storage.from('event-photos').getPublicUrl(relative).data.publicUrl;
+}
 
 /** event_photos rows for `eventIds` -> { [event_id]: first public photo URL },
  * same batching + bucket-name-doubling defensive strip loadNotifications'
@@ -122,7 +140,7 @@ function shapeRealEventAsCurEvent(real) {
     seats: real.seatsRemaining != null ? String(real.seatsRemaining) : '',
     seatsLong: real.soldOut ? 'Hết chỗ' : (real.seatsRemaining != null ? real.seatsRemaining + ' chỗ trống' : ''),
     urgent: real.seatsRemaining != null && real.seatsRemaining <= 5,
-    desc: '', included: '',
+    desc: real.description || '', included: real.included || '', includedItems: real.includedItems || [],
     host: real.organizerName || '', hostShort: real.organizerName || '', greeting: '',
     gallery: [], orgGallery: [], orgName: real.organizerName || '', orgIg: '', orgDesc: '',
     orgSince: '', orgCount: 0, orgTrusted: false,
@@ -285,6 +303,14 @@ const initialState = {
   // demo catalogue.
   weekendEvents: [],
   weekendEventsLoading: false,
+  // Discovery-bug fix (2026-10-01) — Home's "Tất cả"/category feed itself
+  // is STATIC-catalogue-only (`EVENTS` from data/events.js); a real,
+  // admin-approved event with no static counterpart had no surface to ever
+  // appear on other than the date-scoped weekend strip or a personal
+  // saved/attending list. This is that missing general-purpose real-events
+  // feed, merged into Home's main `feed` (see loadDiscoveryEvents below).
+  discoveryEvents: [],
+  discoveryEventsLoading: false,
 
   // ---- payments & documents (supabase migration 024) ----
   // banbe still never touches the money. These carry the details a guest
@@ -539,6 +565,14 @@ const initialState = {
   createPrice: '',
   createSeats: '',
   createPhotos: 0,
+  // Real cover/gallery + structured "Bao gồm" (migration 087) — the actual
+  // picked File objects live in CreateEvent.jsx's OWN local component state
+  // (never serialized into this global store — a File isn't something this
+  // app persists/replays), previews only. `createIncludedItems`: up to 3
+  // { label, detail } items, validated the same way (length/count) the
+  // server does — client-side is a UX nicety, the RPC is the real gate.
+  createIncludedItems: [],
+  createMediaError: '',
   // Event review queue — set while CreateEvent.jsx is editing/resubmitting
   // an existing (previously rejected) event rather than creating a new
   // one; createSubmit() branches on this. Cleared on a fresh "create" nav.
@@ -1498,6 +1532,54 @@ export function GocProvider({ children }) {
       realEventsById: { ...prev.realEventsById, ...Object.fromEntries(shaped.map(e => [e.key, e])) },
     }));
   }, [set, s.user]);
+
+  /**
+   * Discovery-bug fix — the general-purpose counterpart to
+   * loadWeekendEvents above: EVERY real live/public (or publicly-visible
+   * cancelled/ended, per 084) event, not scoped to any date window. This
+   * is what makes an admin-approved real event actually show up in Home's
+   * main "Tất cả"/category feed regardless of whether it also happens to
+   * fall in this weekend's window or exists in the static demo catalogue.
+   * `status IN ('live','cancelled','ended')` (not just 'live') — Home's
+   * own filter chips (Upcoming/Ended) and cancelled-dimming already expect
+   * to see those too, same as the static catalogue does; 'draft'/'review'
+   * stay excluded (owner-only, same as ever). Capped at 300, soonest
+   * first — a discovery feed, not an unbounded export; revisit with real
+   * pagination if this app's event volume ever makes that cap bite.
+   */
+  const loadDiscoveryEvents = useCallback(async () => {
+    set({ discoveryEventsLoading: true });
+    const { data: rows, error } = await supabase
+      .from('events')
+      .select(REAL_EVENT_ROW_COLUMNS)
+      .eq('visibility', 'public')
+      .in('status', ['live', 'cancelled', 'ended'])
+      .order('starts_at', { ascending: true })
+      .limit(300);
+    if (error) {
+      console.warn('Failed to load discovery events:', error);
+      set({ discoveryEvents: [], discoveryEventsLoading: false });
+      return;
+    }
+    const events = rows || [];
+    const eventIds = events.map(e => e.id);
+    const organizerIds = [...new Set(events.map(e => e.organizer_id).filter(Boolean))];
+    const [photoUrlByEvent, orgsRes] = await Promise.all([
+      firstPhotoUrlByEvent(eventIds),
+      organizerIds.length
+        ? supabase.from('organizers').select('id, name').in('id', organizerIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+    const orgNameById = Object.fromEntries((orgsRes.data || []).map(o => [o.id, o.name]));
+    const shaped = events.map(e => shapeRealEvent(e, {
+      photoUrl: photoUrlByEvent[e.id],
+      organizerName: orgNameById[e.organizer_id],
+    }));
+    set(prev => ({
+      discoveryEvents: shaped, discoveryEventsLoading: false,
+      realEventsById: { ...prev.realEventsById, ...Object.fromEntries(shaped.map(e => [e.key, e])) },
+    }));
+  }, [set]);
 
   // Dedupe concurrent loadRealEventsById() calls for the same id (e.g. Home
   // and EventList both mounting) — see toggleFav's own in-flight-dedupe
@@ -5823,6 +5905,60 @@ export function GocProvider({ children }) {
   }), [set]);
   const pickCreatePalette = useCallback((key) => set({ createPalette: key }), [set]);
   const tapPhotoSlot = useCallback((index) => set(prev => ({ createPhotos: index < prev.createPhotos ? prev.createPhotos : Math.min(8, prev.createPhotos + 1) })), [set]);
+
+  // ---- structured "Bao gồm" (migration 087) — up to 3 { label, detail } ----
+  const addCreateIncludedItem = useCallback(() => set(prev => (
+    prev.createIncludedItems.length >= 3 ? prev : { createIncludedItems: [...prev.createIncludedItems, { label: '', detail: '' }] }
+  )), [set]);
+  const removeCreateIncludedItem = useCallback((index) => set(prev => ({
+    createIncludedItems: prev.createIncludedItems.filter((_, i) => i !== index),
+  })), [set]);
+  const setCreateIncludedItem = useCallback((index, field, value) => set(prev => ({
+    createIncludedItems: prev.createIncludedItems.map((it, i) => (i === index ? { ...it, [field]: value } : it)),
+  })), [set]);
+
+  /**
+   * Real cover/gallery upload for the create-event flow (migration 087's
+   * schema + `update_event_media_and_details`). `files` are plain browser
+   * `File` objects (CreateEvent.jsx's own local staging state, never
+   * serialized into this global store). Same validation
+   * `uploadEventPhoto` already enforces (JPEG/PNG/WebP, <=50MB — the
+   * `event-photos` bucket's own limit, migration 005) — kept independent
+   * of that function rather than reusing it verbatim, since this one also
+   * needs each upload's own storage path back (to set as cover_image) and
+   * an incrementing `sort_order` across the whole batch, neither of which
+   * `uploadEventPhoto` (Dashboard's single "add one more photo" flow)
+   * returns or does today.
+   *
+   * Never rolls back the just-created event on a partial failure (that
+   * would risk a real, already-submitted review-queue row disappearing
+   * out from under the host) — returns per-file outcomes so the caller can
+   * show an honest "submitted, but N photos didn't upload" message instead
+   * of silently claiming full success.
+   */
+  const submitEventMedia = useCallback(async (eventId, files, coverIndex) => {
+    let uploaded = 0;
+    let coverPath = '';
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) continue;
+      if (file.size > 50 * 1024 * 1024) continue;
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `${eventId}/${Date.now()}-${i}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('event-photos').upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) { console.warn('submitEventMedia storage failed:', upErr); continue; }
+      const storagePath = `event-photos/${path}`;
+      const { error: rowErr } = await supabase.from('event_photos').insert({ event_id: eventId, storage_path: storagePath, sort_order: i });
+      if (rowErr) { console.warn('submitEventMedia row failed:', rowErr); continue; }
+      uploaded++;
+      if (i === coverIndex) coverPath = storagePath;
+    }
+    if (coverPath) {
+      const { error } = await supabase.rpc('update_event_media_and_details', { p_event_id: eventId, p_cover_image: coverPath });
+      if (error) console.warn('submitEventMedia cover update failed:', error);
+    }
+    return { uploaded, failed: files.length - uploaded };
+  }, []);
   /**
    * Event review queue — branches on `s.createEditEventId`: a fresh
    * submission goes through create_event_draft (INSERT, status becomes
@@ -5831,9 +5967,19 @@ export function GocProvider({ children }) {
    * SAME row, ownership + `status = 'draft'` enforced server-side, never a
    * second duplicate event row for the same submission).
    */
-  const createSubmit = useCallback(async () => {
+  /**
+   * `photoFiles`/`coverIndex` — CreateEvent.jsx's own locally-staged
+   * `File[]`/cover pick (never round-tripped through this global store —
+   * see `createIncludedItems`' own comment on why). Uploaded AFTER the
+   * event row itself exists (its real id isn't known before then — see
+   * `submitEventMedia`'s own comment), so a photo-upload failure can never
+   * turn into a duplicate/missing event submission, only an honest
+   * "submitted, but N photos didn't upload" — never silently claimed as
+   * fully successful.
+   */
+  const createSubmit = useCallback(async (photoFiles = [], coverIndex = 0) => {
     if (!s.createName.trim()) return;
-    set({ loading: true, createError: '' });
+    set({ loading: true, createError: '', createMediaError: '' });
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session?.user) throw new Error('AUTH_REQUIRED');
@@ -5843,7 +5989,17 @@ export function GocProvider({ children }) {
       const timeMatch = s.createDate.match(/(\d{1,2}):(\d{2})/);
       const eventDate = dateMatch ? `2026-${String(parseInt(dateMatch[2], 10)).padStart(2, '0')}-${String(parseInt(dateMatch[1], 10)).padStart(2, '0')}` : null;
       const eventTime = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null;
+      // Mirrors migration 087's own server-side validation (max 3, label
+      // 1-60, detail <=300) — the RPC is the real gate; this only avoids a
+      // round trip for an obviously-invalid client state.
+      const includedItems = s.createIncludedItems
+        .map(it => ({ label: it.label.trim(), detail: it.detail.trim() }))
+        .filter(it => it.label.length > 0);
+      for (const it of includedItems) {
+        if (it.label.length > 60 || it.detail.length > 300) throw new Error('INVALID_INCLUDED_ITEMS');
+      }
 
+      let eventId = s.createEditEventId;
       if (s.createEditEventId) {
         const { data, error } = await supabase.rpc('resubmit_event_for_review', {
           p_event_id: s.createEditEventId,
@@ -5851,6 +6007,7 @@ export function GocProvider({ children }) {
           p_description: s.createDesc.trim(), p_location: s.createLoc.trim(),
           p_event_date: eventDate, p_event_time: eventTime,
           p_price_vnd: priceVnd, p_capacity: capacity,
+          p_included_items: includedItems,
         });
         if (error) throw error;
         if (data?.success === false) throw new Error(data.error);
@@ -5858,7 +6015,7 @@ export function GocProvider({ children }) {
         // Publishing an event is the act of hosting, so make sure organizer
         // mode is on before create_event_draft checks the profile role.
         if (!canHost) await applyOrganizerMode(true);
-        const { error } = await supabase.rpc('create_event_draft', {
+        const { data, error } = await supabase.rpc('create_event_draft', {
           p_name: s.createName.trim(),
           p_category: s.createCats[0] || 'supper',
           p_description: s.createDesc.trim(),
@@ -5870,15 +6027,32 @@ export function GocProvider({ children }) {
           p_organizer_name: s.orgRegName.trim() || 'Organizer',
           p_instagram: s.orgRegIg.trim(),
           p_about: s.orgRegDesc.trim(),
+          p_included_items: includedItems,
         });
         if (error) throw error;
+        eventId = data?.id || null;
       }
-      set({ loading: false, createSent: true, hasHosted: true, mode: 'host' });
+
+      let mediaNote = '';
+      if (eventId && photoFiles.length) {
+        const { uploaded, failed } = await submitEventMedia(eventId, photoFiles, coverIndex);
+        if (failed > 0) {
+          mediaNote = uploaded > 0
+            ? T(`Đã gửi sự kiện, nhưng ${failed} ảnh chưa tải lên được.`, `Event submitted, but ${failed} photo(s) didn't upload.`)
+            : T('Đã gửi sự kiện, nhưng không tải được ảnh nào.', "Event submitted, but no photos could be uploaded.");
+        }
+      }
+      set({ loading: false, createSent: true, hasHosted: true, mode: 'host', createMediaError: mediaNote });
     } catch (err) {
       console.warn('Event draft creation failed:', err);
-      set({ loading: false, createError: err.message || 'Unable to submit this event.' });
+      const message = err.message === 'PAST_EVENT_NOT_ALLOWED'
+        ? T('Ngày giờ sự kiện đã ở trong quá khứ.', "This event's date/time is in the past.")
+        : err.message === 'INVALID_INCLUDED_ITEMS'
+        ? T('Mỗi mục "Bao gồm" cần tên (tối đa 60 ký tự) và mô tả tối đa 300 ký tự.', 'Each "Included" item needs a label (max 60 chars) and detail under 300 chars.')
+        : (err.message || 'Unable to submit this event.');
+      set({ loading: false, createError: message });
     }
-  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createDate, s.createPrice, s.createSeats, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode]);
+  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, submitEventMedia, T]);
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
 
   /**
@@ -6482,7 +6656,7 @@ export function GocProvider({ children }) {
 
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
-    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadRealEventsById, uploadEventPhoto,
+    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
@@ -6512,11 +6686,11 @@ export function GocProvider({ children }) {
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
-    pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
+    pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
-    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadRealEventsById, uploadEventPhoto,
+    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
@@ -6546,7 +6720,7 @@ export function GocProvider({ children }) {
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
-    pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
+    pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   ]);
 

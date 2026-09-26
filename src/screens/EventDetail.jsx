@@ -13,6 +13,13 @@ function eventPhotoUrl(path) {
 export default function EventDetail() {
   const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useGoc();
   const s = state;
+  // Structured "Bao gồm" (migration 087) — up to 3 { label, detail } items.
+  // Legacy `ev.included` (plain text) stays readable as before when no
+  // structured items exist yet (an event created before this pass); never
+  // both at once, and the whole row hides when there's genuinely nothing
+  // to show (no invented inclusions).
+  const includedItems = ev.includedItems || [];
+  const [includedSheetOpen, setIncludedSheetOpen] = useState(false);
   // STAGE D (2026-09-25) — real event_photos rows, replacing the static
   // demo `ev.gallery` below.
   useEffect(() => { loadEventPhotos(ev.key); }, [ev.key, loadEventPhotos]);
@@ -269,10 +276,28 @@ export default function EventDetail() {
         )}
         <p style={{ fontSize: 14, lineHeight: 1.55, color: ink, margin: '20px 0 0' }}>{ev.desc}</p>
         <div style={{ marginTop: 22, borderTop: `1px solid ${rule}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13 }}>
-            <span style={{ color: ink, flex: 'none' }}>{T('Bao gồm', 'Included')}</span>
-            <span style={{ color: ink, textAlign: 'right' }}>{ev.included}</span>
-          </div>
+          {includedItems.length > 0 ? (
+            // The whole section is tappable — opens a sheet with each
+            // item's full label as a heading and its detail beneath.
+            <div
+              onClick={() => setIncludedSheetOpen(true)}
+              data-testid="event-included-section"
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 18, padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13, cursor: 'pointer' }}
+            >
+              <span style={{ color: ink, flex: 'none' }}>{T('Bao gồm', 'Included')}</span>
+              <span style={{ color: ink, textAlign: 'right', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '2px 6px' }}>
+                {includedItems.map((it, i) => (
+                  <span key={i}>{it.label}{i < includedItems.length - 1 ? ' ▪︎' : ''}</span>
+                ))}
+                <span style={{ opacity: 0.55 }}>›</span>
+              </span>
+            </div>
+          ) : ev.included ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13 }}>
+              <span style={{ color: ink, flex: 'none' }}>{T('Bao gồm', 'Included')}</span>
+              <span style={{ color: ink, textAlign: 'right' }}>{ev.included}</span>
+            </div>
+          ) : null}
           <div onClick={goOrganizer} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13, cursor: 'pointer' }}>
             <span style={{ color: ink }}>{T('Người tổ chức', 'Organizer')}</span>
             <span style={{ color: ink }}>{T('Ghé', 'Visit')} {ev.orgName} ›</span>
@@ -322,6 +347,27 @@ export default function EventDetail() {
       </div>
       </div>
       <div onClick={reserveBarTap} style={reserveBarStyle}>{reserveBarLabel}</div>
+      {includedSheetOpen && (
+        <div
+          onClick={() => setIncludedSheetOpen(false)}
+          data-testid="event-included-sheet"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.45)', display: 'flex', alignItems: 'flex-end', zIndex: 40 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: paper, width: '100%', maxHeight: '70vh', overflowY: 'auto', borderRadius: '18px 18px 0 0', padding: '20px 22px 34px', display: 'flex', flexDirection: 'column', gap: 16 }}
+          >
+            <div style={{ width: 36, height: 4, background: rule, borderRadius: 2, alignSelf: 'center' }} />
+            <span style={{ ...display(18) }}>{T('Bao gồm', 'What’s included')}</span>
+            {includedItems.map((it, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ ...display(15) }}>{it.label}</span>
+                {it.detail && <span style={{ fontSize: 13, lineHeight: 1.55, color: ink }}>{it.detail}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

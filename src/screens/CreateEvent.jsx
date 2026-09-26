@@ -1,8 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
-import { EVENTS, CREATE_PALETTES, CREATE_PHOTO_SLOT_IDS, bg, img as imgUrl } from '../data/events.js';
+import { EVENTS, CREATE_PALETTES, bg } from '../data/events.js';
 import { liveEventOverrides } from '../lib/countdown.js';
 import { paper, ink, rule, FACE, display, fieldGlass, cardGlass, alert } from '../theme.js';
+
+const MAX_PHOTOS = 8;
+const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MAX_PHOTO_BYTES = 50 * 1024 * 1024; // event-photos bucket's own cap, migration 005
 
 const CAT_DEFS = [
   { key: 'supper', vi: 'Supper club', en: 'Supper club' },
@@ -17,9 +21,55 @@ export default function CreateEvent() {
     state, T, trStatus, stripKm, curEvent: ev, createBack,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
-    pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, goEvent, loadHomeLiveEvents,
+    pickCreateCat, pickCreatePalette,
+    addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem,
+    createSubmit, goEvent, loadHomeLiveEvents,
   } = useGoc();
   const s = state;
+
+  // Real cover/gallery staging — plain File objects + object-URL previews,
+  // local to this screen only (never round-tripped through the global
+  // store; see GocContext.jsx's own comment on `createIncludedItems`).
+  // `coverIndex` is which staged photo becomes `cover_image`; defaults to
+  // the first one picked, changeable via each thumbnail's own "Đặt làm
+  // ảnh bìa" action.
+  const [photos, setPhotos] = useState([]); // { file, url }[]
+  const [coverIndex, setCoverIndex] = useState(0);
+  const [photoError, setPhotoError] = useState('');
+  const fileInputRef = useRef(null);
+  useEffect(() => () => { photos.forEach(p => URL.revokeObjectURL(p.url)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onPickPhotos = (e) => {
+    const picked = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!picked.length) return;
+    setPhotoError('');
+    const room = MAX_PHOTOS - photos.length;
+    if (picked.length > room) {
+      setPhotoError(T(`Chỉ có thể thêm tối đa ${MAX_PHOTOS} ảnh.`, `You can add up to ${MAX_PHOTOS} photos total.`));
+    }
+    const accepted = [];
+    for (const file of picked.slice(0, Math.max(0, room))) {
+      if (!ALLOWED_PHOTO_TYPES.has(file.type)) {
+        setPhotoError(T('Ảnh phải là JPEG, PNG hoặc WebP.', 'Photos must be JPEG, PNG, or WebP.'));
+        continue;
+      }
+      if (file.size > MAX_PHOTO_BYTES) {
+        setPhotoError(T('Mỗi ảnh tối đa 50MB.', 'Each photo must be under 50MB.'));
+        continue;
+      }
+      accepted.push({ file, url: URL.createObjectURL(file) });
+    }
+    if (accepted.length) setPhotos(prev => [...prev, ...accepted]);
+  };
+  const removePhoto = (i) => {
+    setPhotos(prev => {
+      URL.revokeObjectURL(prev[i].url);
+      const next = prev.filter((_, idx) => idx !== i);
+      return next;
+    });
+    setCoverIndex(prev => (prev === i ? 0 : prev > i ? prev - 1 : prev));
+  };
   // 2026-09-25 fix pass (Task 0 audit) — this screen can be reached
   // directly (not only via Home, which is the only other place that calls
   // this), so `s.homeLiveEvents` can't be assumed already populated; same
@@ -160,25 +210,70 @@ export default function CreateEvent() {
         <div style={{ marginTop: 22 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <span style={{ fontSize: 11.5, color: ink }}>{T('Hình ảnh', 'Photos')}</span>
-            <span style={{ fontSize: 10.5, color: ink }}>{s.createPhotos}/8</span>
+            <span style={{ fontSize: 10.5, color: ink }}>{photos.length}/{MAX_PHOTOS}</span>
           </div>
+          <input
+            ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple
+            style={{ display: 'none' }} onChange={onPickPhotos}
+          />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6, marginTop: 10 }}>
-            {CREATE_PHOTO_SLOT_IDS.map((id, i) => {
-              const filled = i < s.createPhotos;
-              return (
-                <div
-                  key={id}
-                  onClick={() => tapPhotoSlot(i)}
-                  style={Object.assign({
-                    aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                    overflow: 'hidden', borderRadius: 12, background: filled ? 'transparent' : paper,
-                    border: filled ? 'none' : `1px dashed ${ink}`,
-                  }, filled ? bg(imgUrl(id)) : {})}
-                >
-                  {!filled && <span style={{ fontSize: 18, color: ink }}>+</span>}
+            {photos.map((p, i) => (
+              <div key={p.url} style={{ position: 'relative', aspectRatio: '1', borderRadius: 12, overflow: 'hidden' }}>
+                <div style={bg(p.url, { width: '100%', height: '100%' })} />
+                <span
+                  onClick={() => removePhoto(i)}
+                  style={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 999, background: 'rgba(12,12,12,0.55)', color: '#fff', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                >×</span>
+                <span
+                  onClick={() => setCoverIndex(i)}
+                  style={{
+                    position: 'absolute', bottom: 4, left: 4, right: 4, fontSize: 9, fontWeight: 600, textAlign: 'center',
+                    padding: '3px 4px', borderRadius: 8, cursor: 'pointer',
+                    background: i === coverIndex ? ink : 'rgba(247,244,236,0.85)', color: i === coverIndex ? paper : ink,
+                  }}
+                >{i === coverIndex ? T('Ảnh bìa', 'Cover') : T('Đặt làm ảnh bìa', 'Set as cover')}</span>
+              </div>
+            ))}
+            {photos.length < MAX_PHOTOS && (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                style={{ aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: 12, background: paper, border: `1px dashed ${ink}` }}
+              >
+                <span style={{ fontSize: 18, color: ink }}>+</span>
+              </div>
+            )}
+          </div>
+          {photoError && <p style={{ fontSize: 11.5, color: alert, margin: '8px 0 0' }}>{photoError}</p>}
+        </div>
+
+        <div style={{ marginTop: 22 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontSize: 11.5, color: ink }}>{T('Bao gồm', 'Included')}</span>
+            <span style={{ fontSize: 10.5, color: ink }}>{T('Tối đa 3 mục', 'Up to 3 items')}</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+            {s.createIncludedItems.map((it, i) => (
+              <div key={i} style={{ ...cardGlass({ padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }) }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    value={it.label} maxLength={60}
+                    onChange={(e) => setCreateIncludedItem(i, 'label', e.target.value)}
+                    placeholder={T('Tên mục (vd. Nước uống)', 'Label (e.g. Drinks)')}
+                    style={{ ...fieldGlass({ padding: '9px 11px' }), flex: 1, fontSize: 13, fontFamily: FACE, color: ink, outline: 'none', border: 'none', minWidth: 0 }}
+                  />
+                  <span onClick={() => removeCreateIncludedItem(i)} style={{ fontSize: 12, color: ink, opacity: 0.6, cursor: 'pointer', flex: 'none' }}>{T('Xoá', 'Remove')}</span>
                 </div>
-              );
-            })}
+                <input
+                  value={it.detail} maxLength={300}
+                  onChange={(e) => setCreateIncludedItem(i, 'detail', e.target.value)}
+                  placeholder={T('Giải thích rõ hơn (không bắt buộc)', 'Fuller explanation (optional)')}
+                  style={{ ...fieldGlass({ padding: '9px 11px' }), fontSize: 12.5, fontFamily: FACE, color: ink, outline: 'none', border: 'none' }}
+                />
+              </div>
+            ))}
+            {s.createIncludedItems.length < 3 && (
+              <span onClick={addCreateIncludedItem} style={{ fontSize: 12.5, color: ink, fontWeight: 600, cursor: 'pointer' }}>+ {T('Thêm mục', 'Add item')}</span>
+            )}
           </div>
         </div>
 
@@ -204,15 +299,26 @@ export default function CreateEvent() {
           <p style={{ fontSize: 11, lineHeight: 1.55, color: ink, margin: '12px 0 0' }}>{T('Sự kiện mới sẽ ở trạng thái chờ duyệt. Một tài khoản admin riêng của banbe sẽ kiểm tra trước khi mở bán.', 'New events enter review. A separate banbe admin account approves them before they go live.')}</p>
         </div>
 
+        {/* Excel bulk-create — real .xlsx template (public/templates/), not
+            a renamed CSV. Import/preview UI is a separate, not-yet-wired
+            piece (src/lib/excelEventImport.js parses it) — this link is
+            real and downloads a genuine workbook today; it doesn't imply
+            the import half is live. */}
+        <a
+          href="/templates/banbe_event_template.xlsx" download
+          style={{ marginTop: 18, fontSize: 12.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
+        >{T('Tải mẫu Excel để tạo hàng loạt', 'Download the Excel template for bulk creation')}</a>
+
         {/* No SLA is actually monitored server-side — the previous "duyệt
             trong 48 giờ"/"reviews within 48h" copy promised a turnaround
             time nothing enforced. Accurate instead of reassuring. */}
-        <div onClick={createSubmit} style={createBtnStyle}>
+        <div onClick={() => createSubmit(photos.map(p => p.file), coverIndex)} style={createBtnStyle}>
           {s.createSent
             ? T('Đã gửi, đang chờ Banbe duyệt', 'Submitted, waiting for Banbe to review')
             : (s.createEditEventId ? T('Gửi lại để duyệt', 'Resubmit for review') : T('Gửi để duyệt', 'Submit for review'))}
         </div>
         {s.createError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createError}</p>}
+        {s.createMediaError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createMediaError}</p>}
         <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: '12px auto 0', textAlign: 'center', maxWidth: '23ch' }}>{T('Hoàn toàn miễn phí: không phí đăng, không phí giao dịch, không phí ẩn.', 'Completely free: no listing fee, no transaction fee, no hidden fees.')}</p>
       </div>
     </div>

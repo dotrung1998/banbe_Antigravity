@@ -1,9 +1,10 @@
 import { useEffect, useMemo } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
-import { EVENTS, bg } from '../data/events.js';
+import { EVENTS, bg, agoLabel } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass } from '../theme.js';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
+import { formatVnd } from '../lib/paymentDocument.js';
 import ActionCenter from './ActionCenter.jsx';
 
 // Second, independent chip row (12-home-filters.md) — multi-select,
@@ -49,7 +50,7 @@ export default function Home() {
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
     loadHomeStories, openStoryViewer,
     loadMyRefunds, openMyRefunds, loadRefundQueue, goNotifications,
-    openPulseViewer, loadWeekendEvents, loadRealEventsById,
+    openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById,
   } = useGoc();
 
   const s = state;
@@ -77,6 +78,13 @@ export default function Home() {
   // every catalogue event Home might show, public info so this runs for
   // every visitor (see GocContext.jsx's own comment on loadHomeLiveEvents).
   useEffect(() => { loadHomeLiveEvents(); }, [loadHomeLiveEvents]);
+  // Discovery-bug fix — fires on every Home mount, same as every other
+  // real-events loader on this screen (App.jsx's Shell remounts the whole
+  // screen component on a `screen` change, so navigating away and back
+  // already re-fires this — a fresh admin approval is visible the very
+  // next time this screen mounts, with no separate "refresh" affordance
+  // needed).
+  useEffect(() => { loadDiscoveryEvents(); }, [loadDiscoveryEvents]);
   // Retention roadmap P1 — "Cuối tuần này". Public info, same as
   // loadHomeLiveEvents above (runs for every visitor); re-fires on sign-in/
   // out too, since loadWeekendEvents' own followed-host sort depends on
@@ -152,8 +160,55 @@ export default function Home() {
     },
   }));
 
+  // Discovery-bug fix — every real event (loadDiscoveryEvents above),
+  // reshaped to the exact same card fields the static catalogue's own
+  // `withLive` output has, so it flows through the SAME filter/sort/map
+  // pipeline below (category, area, saved/attending/soldOut/upcoming/ended
+  // chips, card markup) with no second, parallel rendering path to drift
+  // out of sync with the static one. Deduped against the static catalogue
+  // by key (real ids are a slug + random suffix and practically never
+  // collide, but a real event is authoritative if they ever did).
+  // `liveEventOverrides` is reused here exactly as `withLive` reuses it for
+  // a static row — the only difference is there's no static counterpart to
+  // merge onto, so it's called with `staticEv: null`.
+  const discoveryShaped = useMemo(() => (s.discoveryEvents || [])
+    .filter(e => !EVENTS.some(se => se.key === e.key))
+    .map(e => {
+      const overrides = liveEventOverrides(
+        { starts_at: e.startsAt, status: e.status, cancelled_at: e.cancelledAt }, null
+      ) || {};
+      const seatsText = e.seatsRemaining != null ? `${e.seatsRemaining} chỗ trống` : '';
+      return {
+        key: e.key,
+        name: e.name,
+        img: e.photoUrl,
+        isReal: true,
+        catKey: e.catKey,
+        cat2Key: null,
+        // No static "invite-only" demo concept — a real non-public event
+        // (draft/review/invite) is excluded from discovery the same honest
+        // way the ticket asks for: it just never enters this array at all
+        // (the query itself is `visibility='public'`), this flag only
+        // covers the theoretical case of a future non-public real row
+        // reaching this far.
+        inviteOnly: e.visibility !== 'public',
+        area: e.area,
+        meta: `${e.area}${e.area && overrides.when ? ' ▪︎ ' : ''}${overrides.when || ''}`,
+        catDisplay: e.catLabel || e.catKey,
+        price: e.priceVnd ? formatVnd(e.priceVnd) : 'Miễn phí',
+        seats: seatsText,
+        soldOut: e.soldOut,
+        cancelled: overrides.cancelled ?? false,
+        cancelledHoursAgo: overrides.cancelledHoursAgo ?? null,
+        endedHoursAgo: overrides.endedHoursAgo ?? null,
+        until: overrides.until ?? null,
+        untilLabel: overrides.untilLabel ?? '',
+        agoLabel,
+      };
+    }), [s.discoveryEvents]);
+
   const demoted = e => (e.cancelled && (e.cancelledHoursAgo == null || e.cancelledHoursAgo >= 2)) ? 1 : 0;
-  const feed = useMemo(() => EVENTS
+  const feed = useMemo(() => [...EVENTS, ...discoveryShaped]
     .map(withLive)
     .filter(e => !e.inviteOnly && (s.filter === 'all' || e.catKey === s.filter || e.cat2Key === s.filter) && curArea.match(e))
     .filter(e => !s.filterAttending || isGoing(e.key))
@@ -179,7 +234,7 @@ export default function Home() {
         goingLabel: trStatus('Đang tham gia' + ((s.tickets[e.key] || 1) > 1 ? ' ▪︎ ' + s.tickets[e.key] + ' vé' : '')),
         saveLabel: saved ? T('Đã lưu', 'Saved') : T('Lưu', 'Save'),
       };
-    }), [s.filter, s.filterAttending, s.filterNotConfirmed, s.filterSaved, s.filterSoldOut, s.filterUpcoming, s.filterEnded, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, isAwaitingConfirmation, trStatus, stripKm, T]);
+    }), [discoveryShaped, s.filter, s.filterAttending, s.filterNotConfirmed, s.filterSaved, s.filterSoldOut, s.filterUpcoming, s.filterEnded, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, isAwaitingConfirmation, trStatus, stripKm, T]);
 
   // Retention roadmap P1 ("Cuối tuần này") — reuses the SAME district
   // (curArea) and category (s.filter) picks already driving the main feed
@@ -450,7 +505,18 @@ export default function Home() {
       {feed.map(ev => (
         <div key={ev.key} data-testid={`home-event-${ev.key}`} onClick={() => goEvent(ev.key)} style={{ cursor: 'pointer', paddingBottom: 6 }}>
           <div style={{ position: 'relative' }}>
-            <div style={bg(ev.img, { width: 'calc(100% - 40px)', height: 272, margin: '0 20px', borderRadius: '14px 14px 0 0' })} />
+            {/* Discovery-bug fix — a real event with no uploaded photo yet
+                gets the same honest "Chưa có ảnh" placeholder the weekend
+                strip already uses below, never a static demo photo standing
+                in for a real one. Static catalogue cards always have `img`
+                set (bundled imports), so this branch is a no-op for them. */}
+            {ev.isReal && !ev.img ? (
+              <div style={{ ...cardGlass({ width: 'calc(100% - 40px)', height: 272, margin: '0 20px', borderRadius: '14px 14px 0 0' }), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 12, color: ink, opacity: 0.55 }}>{T('Chưa có ảnh', 'No photo yet')}</span>
+              </div>
+            ) : (
+              <div style={bg(ev.img, { width: 'calc(100% - 40px)', height: 272, margin: '0 20px', borderRadius: '14px 14px 0 0' })} />
+            )}
             <div style={{ position: 'absolute', left: 20, right: 20, bottom: 0, height: 58, background: `linear-gradient(to bottom, rgba(247,244,236,0) 0%, rgba(247,244,236,0.3) 62%, ${paper} 100%)`, pointerEvents: 'none' }} />
             <span
               onClick={(e) => { e.stopPropagation(); toggleFav(ev.key); }}
