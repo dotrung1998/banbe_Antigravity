@@ -379,10 +379,23 @@ extension AppState {
             stopNotificationPolling()
             booking = nil
             holdDeadline = nil
+            // Stage 1 (retention roadmap P0) — this account's saves belong
+            // to it, not to whoever signs in next on this device.
+            favorites = []
+            favoritesLoadedForUID = nil
             return
         }
         userID = session.user.id
         userEmail = session.user.email
+
+        // Stage 1 (retention roadmap P0) — real `favorites` rows, not the
+        // local-only array this used to be. See favoritesLoadedForUID's own
+        // comment for why this is guarded rather than unconditional.
+        if favoritesLoadedForUID != session.user.id {
+            favoritesLoadedForUID = session.user.id
+            favorites = []
+            await loadFavorites(uid: session.user.id)
+        }
 
         do {
             let profile: Profile = try await SupabaseService.client
@@ -493,6 +506,10 @@ extension AppState {
         try? await SupabaseService.client.auth.signOut()
         // Roles belong to the account that just left — leaving them behind
         // would leak the previous user's hosting state into the next sign-in.
+        // Stage 1 — belt-and-suspenders alongside applySession(nil)'s own
+        // clear, same reasoning as web's logout() (GocContext.jsx).
+        favoritesLoadedForUID = nil
+        favorites = []
         await applySession(nil)
         // Lands on Login, not Home — Task 1: no guest browsing after
         // signing out. authMandatory since there's nothing legitimate left
@@ -2168,6 +2185,47 @@ extension AppState {
         } catch {
             print("sendChatViewerReply failed:", error)
             return false
+        }
+    }
+
+    /// Stage 1 (retention roadmap P0) — this account's real saved event ids,
+    /// from `public.favorites` (owner-only RLS already scopes this to the
+    /// signed-in user, same as web's equivalent query). Applied only if no
+    /// later account switch has already moved favoritesLoadedForUID on — a
+    /// stale response from a login this account has since left must not
+    /// resurrect its favorites.
+    func loadFavorites(uid: UUID) async {
+        struct FavoriteRow: Decodable { let eventId: String
+            enum CodingKeys: String, CodingKey { case eventId = "event_id" } }
+        do {
+            let rows: [FavoriteRow] = try await SupabaseService.client
+                .from("favorites").select("event_id").eq("user_id", value: uid).execute().value
+            if favoritesLoadedForUID == uid { favorites = rows.map(\.eventId) }
+        } catch {
+            print("loadFavorites failed:", error)
+        }
+    }
+
+    /// See toggleFavorite()'s own comment — upserts/deletes the matching
+    /// `favorites` row, rolling the optimistic UI flip back only if this is
+    /// still the same signed-in account by the time the request settles.
+    func persistFavoriteToggle(eventKey: String, uid: UUID, wasSaved: Bool) async {
+        struct FavoriteRow: Encodable { let userId: UUID; let eventId: String
+            enum CodingKeys: String, CodingKey { case userId = "user_id"; case eventId = "event_id" } }
+        defer { favoriteToggleInFlight.remove(eventKey) }
+        do {
+            if wasSaved {
+                try await SupabaseService.client.from("favorites")
+                    .delete().eq("user_id", value: uid).eq("event_id", value: eventKey).execute()
+            } else {
+                try await SupabaseService.client.from("favorites")
+                    .upsert(FavoriteRow(userId: uid, eventId: eventKey), onConflict: "user_id,event_id").execute()
+            }
+        } catch {
+            print("persistFavoriteToggle failed:", error)
+            guard userID == uid else { return }
+            if wasSaved { if !favorites.contains(eventKey) { favorites.append(eventKey) } }
+            else { favorites.removeAll { $0 == eventKey } }
         }
     }
 

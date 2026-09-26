@@ -337,6 +337,16 @@ final class AppState: ObservableObject {
     // pass removes, so the synchronous, warning-free lock lives here, and
     // the UI-facing published flag is set only after the yield.
     var organizerModeInFlight = false
+    // Stage 1 (retention roadmap P0, real favorites) — which account's
+    // `favorites` rows are currently loaded/loading, mirroring web's own
+    // favoritesUidRef (GocContext.jsx): applySession() re-runs on every
+    // sign-in AND on the app returning to the foreground with an existing
+    // session, so this stops a same-account re-run from re-clearing/
+    // reloading (no flash), while a genuine account switch still does.
+    var favoritesLoadedForUID: UUID?
+    // Dedupe rapid repeat taps on the same event's save toggle — see
+    // toggleFavorite()'s own comment.
+    var favoriteToggleInFlight: Set<String> = []
     @Published var hasHosted = false
     // TASK 1 (2026-10-05 fix pass) — whether the dock "+"'s creation tray
     // is open. Lives on AppState (not local @State in DockCreateButtonView)
@@ -1919,8 +1929,19 @@ final class AppState: ObservableObject {
 
     // MARK: - Feed interactions
 
+    // Stage 1 (retention roadmap P0) — persists to the real `favorites`
+    // table (owner-only RLS, 003_social_chat.sql), mirrors web's own
+    // toggleFav (GocContext.jsx) exactly: optimistic UI flip, in-flight
+    // dedupe per event key so a fast double-tap can't fire two opposite
+    // writes for the same row, and a rollback that only applies if this is
+    // still the same signed-in account by the time the request settles.
     func toggleFavorite(_ key: String) {
+        guard !favoriteToggleInFlight.contains(key) else { return }
+        let wasSaved = favorites.contains(key)
         if let index = favorites.firstIndex(of: key) { favorites.remove(at: index) } else { favorites.append(key) }
+        guard let uid = userID else { return } // signed-out: local-only, same as before this ticket
+        favoriteToggleInFlight.insert(key)
+        Task { await persistFavoriteToggle(eventKey: key, uid: uid, wasSaved: wasSaved) }
     }
 
     // 2026-09-21 follow-up (stories, 07-notifications.md) — REAL bug found

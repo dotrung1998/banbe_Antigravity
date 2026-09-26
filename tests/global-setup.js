@@ -89,6 +89,15 @@ export default async function globalSetup() {
   // this shared account is never a host or admin.
   const registryRow = await admin.from('email_registrations').select('auth_user_id').eq('email', PERSISTENT_TEST_EMAIL).single();
   await admin.from('profiles').update({ locale: 'vi', theme: 'light', prefs_saved: true, role: 'participant' }).eq('id', registryRow.data.auth_user_id);
+  // Stage 1 (retention roadmap P0) — `favorites` toggled from Home now
+  // persists for real (public.favorites), same table/RLS as before, no
+  // longer local-only per-session state. Left over rows from a PRIOR run
+  // (e.g. "Lưu"-tapping tests in account-and-preferences.spec.js) used to
+  // be invisible to every other spec because favorites reset to `[]` on
+  // every fresh page load; now they'd leak across spec files sharing this
+  // one account (e.g. navigation-and-events.spec.js's "no Your events
+  // section" assertion) unless reset here, same reasoning as `role` above.
+  await admin.from('favorites').delete().eq('user_id', registryRow.data.auth_user_id);
 
   const { session } = await signIn(PERSISTENT_TEST_EMAIL, PERSISTENT_TEST_PASSWORD);
   const projectRef = new URL(process.env.VITE_SUPABASE_URL).hostname.split('.')[0];

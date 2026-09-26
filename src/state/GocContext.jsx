@@ -825,6 +825,15 @@ export function GocProvider({ children }) {
     organizerModeBusyRef.current = state.organizerModeBusy;
   }, [state.organizerModeBusy]);
 
+  // Stage 1 (retention roadmap P0, real favorites) — which account's
+  // favorites are currently loaded/loading, so syncUser's re-fires (token
+  // refresh, tab refocus) don't reload/clear on every call, while a real
+  // account switch still does. See syncUser's own comment above.
+  const favoritesUidRef = useRef(null);
+  // Dedupe rapid repeat taps on the same event's save toggle — see
+  // toggleFav's own comment.
+  const favToggleInFlightRef = useRef(new Set());
+
   // Liked photos live on this device only — see the note on photoLikes.
   useEffect(() => {
     try {
@@ -867,8 +876,30 @@ export function GocProvider({ children }) {
     const syncUser = async (user) => {
       if (!active) return;
       if (!user) {
-        set({ user: null, referralCode: null, sessionChecked: true });
+        favoritesUidRef.current = null;
+        set({ user: null, referralCode: null, sessionChecked: true, favorites: [] });
         return;
+      }
+      // Stage 1 (retention roadmap P0) — real `favorites` rows, keyed by
+      // (user_id, event_id), not the local-only array this used to be.
+      // Guarded by a plain ref (not state, so it's read synchronously
+      // before this async function's first await) so: (a) a token-refresh
+      // re-firing of onAuthStateChange for the SAME account (see
+      // organizerModeBusyRef's own comment on why that happens) doesn't
+      // re-clear/reload favorites on every refresh — no flash; (b) a
+      // genuine account switch (this uid differs from the last one loaded)
+      // DOES clear the previous account's rows before the new account's
+      // own load resolves, so they never leak across accounts.
+      if (favoritesUidRef.current !== user.id) {
+        favoritesUidRef.current = user.id;
+        set({ favorites: [] });
+        const { data: favRows, error: favError } = await supabase
+          .from('favorites').select('event_id').eq('user_id', user.id);
+        if (favError) console.warn('Failed to load favorites:', favError);
+        // Only apply if no later account switch has already moved the ref
+        // on — a stale response from a login this account has since left
+        // must not resurrect its favorites.
+        if (favoritesUidRef.current === user.id) set({ favorites: (favRows || []).map(r => r.event_id) });
       }
       const { data: profile } = await supabase
         .from('profiles')
@@ -3163,7 +3194,39 @@ export function GocProvider({ children }) {
   const isAwaitingConfirmation = useCallback((k) => s.paymentBookings.some(b =>
     b.event_id === k && ['pending', 'confirmed', 'attended'].includes(b.status) && ['holding', 'pending_verification'].includes(b.payment_state)
   ), [s.paymentBookings]);
-  const toggleFav = useCallback((k) => set(prev => ({ favorites: prev.favorites.includes(k) ? prev.favorites.filter(x => x !== k) : [...prev.favorites, k] })), [set]);
+  // Stage 1 (retention roadmap P0) — persists to the real `favorites`
+  // table (owner-only RLS, 003_social_chat.sql), replacing what used to be
+  // local-only React state. Optimistic (UI flips immediately, same as
+  // before) with a server-failure rollback, guarded two ways: (1)
+  // favToggleInFlightRef ignores a repeat tap on the same event while its
+  // own request is still in flight, so a fast double-tap can't fire two
+  // opposite writes for the same row; (2) the rollback only applies if
+  // `s.user` is still this same account by the time the request settles,
+  // so a fast logout/login in between can't have it clobber the new
+  // account's own favorites.
+  const toggleFav = useCallback((k) => {
+    if (favToggleInFlightRef.current.has(k)) return;
+    const wasSaved = s.favorites.includes(k);
+    set(prev => ({ favorites: wasSaved ? prev.favorites.filter(x => x !== k) : [...prev.favorites, k] }));
+    if (!s.user) return; // signed-out guest: local-only, same as before this ticket
+    const uid = s.user.id;
+    favToggleInFlightRef.current.add(k);
+    (async () => {
+      try {
+        const { error } = wasSaved
+          ? await supabase.from('favorites').delete().eq('user_id', uid).eq('event_id', k)
+          : await supabase.from('favorites').upsert({ user_id: uid, event_id: k }, { onConflict: 'user_id,event_id' });
+        if (error) throw error;
+      } catch (error) {
+        console.warn('Failed to persist favorite toggle:', error);
+        set(prev => (prev.user?.id === uid ? {
+          favorites: wasSaved ? [...new Set([...prev.favorites, k])] : prev.favorites.filter(x => x !== k),
+        } : prev));
+      } finally {
+        favToggleInFlightRef.current.delete(k);
+      }
+    })();
+  }, [set, s.favorites, s.user]);
   // 2026-09-21 follow-up (stories, 07-notifications.md) — REAL bug found
   // while wiring stories' audience: this was local-only React state, keyed
   // by event key, never written to the real `follows(user_id, organizer_id)`
@@ -3994,10 +4057,16 @@ export function GocProvider({ children }) {
     // Roles belong to the account that just left; leaving them behind would
     // leak the previous user's hosting state into the next sign-in. Lands
     // on Login, not Home — Task 1: no guest browsing after signing out.
+    // Stage 1 (retention roadmap P0) — belt-and-suspenders alongside
+    // syncUser's own `!user` branch (the auth listener that clears
+    // `favorites`/favoritesUidRef): sets it here too so the very next
+    // render, before that listener has necessarily fired, never shows this
+    // account's saves.
+    favoritesUidRef.current = null;
     set({
       user: null, accountType: 'participant', organizerMode: false, hasHosted: false, mode: 'goer',
       screen: 'login', authMode: 'login', authMandatory: true, authReturnScreen: 'home', authBackScreen: 'home',
-      referralCode: null, orgRegName: '',
+      referralCode: null, orgRegName: '', favorites: [],
       // TASK A point 8 — every refund-related cache belongs to the account
       // that just left; leaving it in state risks the next sign-in (on the
       // same device/session, without a full page reload) briefly rendering

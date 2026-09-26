@@ -1,10 +1,28 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { setupToHome } from './helpers.js';
+import { hasServiceRole, adminClient } from './e2e/setup.mjs';
 
 test.describe('Account & Preferences Screen', () => {
   test.beforeEach(async ({ page }) => {
     await setupToHome(page);
+  });
+
+  // Stage 1 (retention roadmap P0) — "an event opened from a list..." below
+  // taps "Lưu" on the shared fast-suite account (global-setup.js), which
+  // now persists a real public.favorites row instead of the local-only
+  // state it used to be. That row would otherwise outlive this test and
+  // leak into any other spec file's own assertions about this same shared
+  // account (e.g. navigation-and-events.spec.js's "no Your events section"
+  // for a fresh visitor) if it happens to run afterward. Cleaned up here
+  // rather than in global-setup.js (which only resets once per whole
+  // suite run, not once per test).
+  test.afterEach(async () => {
+    if (!hasServiceRole()) return;
+    const admin = adminClient();
+    const { data } = await admin.from('email_registrations')
+      .select('auth_user_id').eq('email', 'doqanh0906+banbe-fast-suite-shared@gmail.com').maybeSingle();
+    if (data?.auth_user_id) await admin.from('favorites').delete().eq('user_id', data.auth_user_id);
   });
 
   test('navigates to Account screen and opens Preferences', async ({ page }) => {
