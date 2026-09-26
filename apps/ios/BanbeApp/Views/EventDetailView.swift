@@ -151,6 +151,23 @@ struct EventDetailView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
+        // Blocker fix (retention roadmap follow-up) — EventDetail had no
+        // save affordance at all before this pass. Uses the exact same
+        // isSaved/toggleFavorite Home's own EventCard already does —
+        // already catalogue-agnostic (both key off the real `favorites`
+        // table by event id), so this works identically for a static demo
+        // event and a real host-created one with no special-casing.
+        .overlay(alignment: .bottom) {
+            HStack {
+                Spacer()
+                pill(app.isSaved(event.key) ? app.T("Đã lưu", "Saved") : app.T("Lưu", "Save")) {
+                    app.toggleFavorite(event.key)
+                }
+                .accessibilityIdentifier("event.save")
+            }
+            .padding(.horizontal, 16)
+            .offset(y: 44)
+        }
     }
 
     private var hero: some View {

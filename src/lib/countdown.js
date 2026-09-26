@@ -39,6 +39,47 @@ export function msUntil(iso, now = Date.now()) {
   return Math.max(0, new Date(iso).getTime() - now);
 }
 
+// Retention roadmap P1 ("Cuối tuần này") — the applicable weekend window,
+// computed against Asia/Ho_Chi_Minh wall-clock time specifically (the
+// roadmap's own requirement), not the browser's local zone, since a host or
+// guest could load Home from anywhere. ICT has no DST and a fixed +07:00
+// offset year-round, so this is a plain millisecond shift rather than a
+// full Intl/timezone dependency.
+const ICT_OFFSET_MS = 7 * 3600 * 1000;
+
+/** `nowMs`'s wall-clock date/day-of-week in Asia/Ho_Chi_Minh. */
+function ictDateParts(nowMs) {
+  const shifted = new Date(nowMs + ICT_OFFSET_MS);
+  return { y: shifted.getUTCFullYear(), mo: shifted.getUTCMonth(), d: shifted.getUTCDate(), dow: shifted.getUTCDay() };
+}
+
+/** An Asia/Ho_Chi_Minh wall-clock instant -> the real UTC epoch ms it
+ * denotes (the inverse of ictDateParts' shift). `Date.UTC` normalizes an
+ * out-of-range day (e.g. day 32) into the next month on its own. */
+function ictWallToUtcMs(y, mo, d, h, mi, s) {
+  return Date.UTC(y, mo, d, h, mi, s) - ICT_OFFSET_MS;
+}
+
+/**
+ * "This weekend" (Sat 00:00 -> Sun 23:59:59, Asia/Ho_Chi_Minh), as an ISO
+ * range for a `starts_at` query: Mon–Fri resolves to the upcoming Sat/Sun;
+ * Sat/Sun itself resolves to the CURRENT one still under way, per the
+ * roadmap's "next applicable weekend" (a weekend already in progress is
+ * still applicable, not skipped to the following one). `start` is clamped
+ * to `nowMs` so a Saturday afternoon load never lists a Saturday-morning
+ * slot as still upcoming.
+ */
+export function thisWeekendWindow(nowMs = Date.now()) {
+  const { y, mo, d, dow } = ictDateParts(nowMs);
+  const daysToSat = dow === 6 ? 0 : dow === 0 ? -1 : 6 - dow;
+  const satStartMs = ictWallToUtcMs(y, mo, d + daysToSat, 0, 0, 0);
+  const sunEndMs = ictWallToUtcMs(y, mo, d + daysToSat + 1, 23, 59, 59);
+  return {
+    start: new Date(Math.max(satStartMs, nowMs)).toISOString(),
+    end: new Date(sunEndMs).toISOString(),
+  };
+}
+
 /**
  * Out of a list of bookings in a given payment_state, the one whose
  * `dateField` deadline is soonest AND still in the future. A booking whose
@@ -81,8 +122,11 @@ function pad2(n) { return String(n).padStart(2, '0'); }
  * by hand (dayShort/dayLong/time), computed from the ACTUAL instant
  * instead of a hardcoded string — so a real September/November
  * `starts_at` reads as September/November, not whatever month the demo
- * catalogue happened to hardcode for that event key. */
-function formatVnEventDate(date) {
+ * catalogue happened to hardcode for that event key. Exported for Home's
+ * "Cuối tuần này" section (retention roadmap P1) — those cards have no
+ * static catalogue counterpart to merge onto, so they call this directly
+ * instead of going through liveEventOverrides below. */
+export function formatVnEventDate(date) {
   const dow = date.getDay();
   return {
     weekdayShort: VN_WEEKDAY_SHORT[dow],

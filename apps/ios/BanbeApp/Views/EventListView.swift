@@ -68,5 +68,9 @@ struct EventListView: View {
         // directly from Account without Home ever having populated
         // `homeLiveEvents`; same own-fetch Dashboard/Home already do.
         .task { await app.loadHomeLiveEvents() }
+        // Blocker fix (retention roadmap follow-up) — same real-event
+        // fallback HomeView's own savedStrip task uses; this screen can
+        // list a real, non-catalogue saved/attending event too.
+        .task { await app.loadMissingRealEvents(for: app.favorites + app.attending) }
     }
 }

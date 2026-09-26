@@ -226,7 +226,17 @@ final class AppState: ObservableObject {
     // site owning its own transition flag.
     @Published var dockVisible: Bool = true
     private var lastScaffoldScrollOffset: CGFloat = 0
-    @Published var eventKey: String = "bepnho"
+    // Blocker fix (retention roadmap follow-up) — mirrors web's own
+    // useEffect on s.eventKey (GocContext.jsx): whenever this is set to a
+    // real, non-catalogue event id, kick off the canonical realEventsByID
+    // fetch so `currentEvent` (below) has something real to resolve to
+    // instead of sitting on the loading placeholder indefinitely.
+    @Published var eventKey: String = "bepnho" {
+        didSet {
+            guard eventKey != oldValue, EventCatalog.find(eventKey)?.key != eventKey else { return }
+            Task { await loadRealEventsByID([eventKey]) }
+        }
+    }
     @Published var eventBackScreen: Screen = .home
     // BUG 3 fix (2026-09-22 follow-up) — true only while the currently-open
     // Event Detail was reached via goEventFromStory(); the single source of
@@ -363,6 +373,18 @@ final class AppState: ObservableObject {
     @Published var tickets: [String: Int] = [:]
     @Published var myOrgEventKeys: [String] = []
     @Published var myOrganizerIDs: [String] = []
+    // Retention roadmap follow-up — canonical real-event cache, keyed by
+    // real `events.id`. `nil` (key absent, i.e. `realEventsByID[key] ==
+    // nil` AND `realEventsByID.index(forKey: key) == nil`) means not yet
+    // requested; an explicit `.some(nil)` means requested but the row
+    // doesn't exist or RLS denied it (an honest "unavailable", never
+    // silently dropped); `.some(event)` is the shaped real row as a
+    // CatalogEvent (CatalogEvent.fromReal) — see loadRealEventsByID.
+    @Published var realEventsByID: [String: CatalogEvent?] = [:]
+    var realEventsInFlight: Set<String> = []
+    // Retention roadmap P1 — Home's "Cuối tuần này" section.
+    @Published var weekendEvents: [CatalogEvent] = []
+    @Published var weekendEventsLoading = false
 
     // MARK: Location
     @Published var located: Bool?
@@ -1085,8 +1107,20 @@ final class AppState: ObservableObject {
 
     // MARK: - Derived
 
+    // Blocker fix (retention roadmap follow-up) — a real, host-created
+    // event (not one of the 20 static demo ones) resolves through the
+    // canonical realEventsByID cache instead of EventCatalog.find's own
+    // `?? EventCatalog.all[0]` fallback, which used to substitute a WRONG
+    // demo event's name/price/photo/description in its place.
     var currentEvent: CatalogEvent {
-        (EventCatalog.find(eventKey) ?? EventCatalog.all[0]).applyingLiveStatus(liveEventStatus)
+        if let catalogEvent = EventCatalog.find(eventKey), catalogEvent.key == eventKey {
+            return catalogEvent.applyingLiveStatus(liveEventStatus)
+        }
+        switch realEventsByID[eventKey] {
+        case .some(.some(let real)): return real
+        case .some(.none): return .unavailable(key: eventKey, T: T)
+        case .none: return .unavailable(key: eventKey, loading: true, T: T)
+        }
     }
     var currentArea: AreaOption { AreaOption.all.first { $0.key == area } ?? AreaOption.all[0] }
     var isSignedIn: Bool { userID != nil }
@@ -1184,18 +1218,47 @@ final class AppState: ObservableObject {
     /// events.js's own hardcoded STATUS map) and never increases as real
     /// time passes, so this filter previously never actually cleared
     /// anything once true.
+    // Blocker fix (retention roadmap follow-up) — a saved/attending/held
+    // event that isn't one of the 20 static demo ones (a real, host-created
+    // event) used to just vanish here (EventCatalog.all.first returns nil,
+    // dropped by compactMap) even though the underlying favorite/booking
+    // row was completely real. Falls back through the SAME canonical
+    // realEventsByID cache the weekend section and `currentEvent` use — see
+    // resolvedEvent(for:). `nil` here (still loading) is skipped quietly,
+    // never flashed as "unavailable".
+    private func resolvedEvent(for key: String) -> CatalogEvent? {
+        if let catalogEvent = EventCatalog.all.first(where: { $0.key == key }) {
+            return withLive(catalogEvent)
+        }
+        switch realEventsByID[key] {
+        case .some(.some(let real)): return real
+        case .some(.none): return .unavailable(key: key, T: T)
+        case .none: return nil // not yet requested/still loading — quiet
+        }
+    }
+
+    /// Kicks off the canonical real-event fetch for any of `keys` not in the
+    /// bundled catalogue and not yet cached — call from a View's `.task`
+    /// (see HomeView/EventListView) alongside loadHomeLiveEvents.
+    func loadMissingRealEvents(for keys: [String]) async {
+        let missing = keys.filter { key in
+            EventCatalog.all.first(where: { $0.key == key }) == nil && realEventsByID.index(forKey: key) == nil
+        }
+        guard !missing.isEmpty else { return }
+        await loadRealEventsByID(missing)
+    }
+
     var savedStrip: [CatalogEvent] {
         var keys: [String] = []
         for key in favorites + attending where !keys.contains(key) { keys.append(key) }
         if let heldKey = heldEvent?.key, !keys.contains(heldKey) { keys.append(heldKey) }
-        return keys.compactMap { key in EventCatalog.all.first { $0.key == key } }
-            .map(withLive)
+        return keys.compactMap(resolvedEvent(for:))
             .filter { ($0.endedHoursAgo ?? 0) <= 48 }
     }
 
     var heldEvent: CatalogEvent? {
         guard let deadline = holdDeadline, deadline > now else { return nil }
-        return EventCatalog.all.first { $0.key == eventKey }
+        return resolvedEvent(for: eventKey)
     }
 
     // MARK: Payment countdown banners (both phases, both roles — Home)
@@ -1234,7 +1297,16 @@ final class AppState: ObservableObject {
     // date (`meta`) came from the frozen catalogue, never live status. Same
     // `applyingLiveStatus` merge `feed`/`myOrgEvents` already use.
     private func liveListEvent(_ key: String) -> CatalogEvent? {
-        EventCatalog.all.first { $0.key == key }?.applyingLiveStatus(homeLiveEvents[key])
+        if let catalogEvent = EventCatalog.all.first(where: { $0.key == key }) {
+            return catalogEvent.applyingLiveStatus(homeLiveEvents[key])
+        }
+        // Blocker fix (retention roadmap follow-up) — same real-event
+        // fallback resolvedEvent(for:) uses (savedStrip's own comment).
+        switch realEventsByID[key] {
+        case .some(.some(let real)): return real
+        case .some(.none): return .unavailable(key: key, T: T)
+        case .none: return nil
+        }
     }
 
     var eventListEvents: [CatalogEvent] {
@@ -1271,7 +1343,7 @@ final class AppState: ObservableObject {
     /// Backs the count on Account's "Going" card — attending minus anything
     /// that's already over (that belongs in Completed instead).
     var goingEventsCount: Int {
-        attending.compactMap { key in EventCatalog.all.first { $0.key == key } }
+        attending.compactMap(liveListEvent)
             .filter { $0.endedHoursAgo == nil }.count
     }
 
@@ -1279,7 +1351,7 @@ final class AppState: ObservableObject {
     var completedEventsCount: Int {
         var keys: [String] = []
         for key in favorites + attending where !keys.contains(key) { keys.append(key) }
-        return keys.compactMap { key in EventCatalog.all.first { $0.key == key } }
+        return keys.compactMap(liveListEvent)
             .filter { $0.endedHoursAgo != nil }.count
     }
 

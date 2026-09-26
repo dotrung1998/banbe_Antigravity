@@ -11,7 +11,7 @@ function eventPhotoUrl(path) {
 }
 
 export default function EventDetail() {
-  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useGoc();
   const s = state;
   // STAGE D (2026-09-25) — real event_photos rows, replacing the static
   // demo `ev.gallery` below.
@@ -137,9 +137,31 @@ export default function EventDetail() {
       <div onClick={() => shareEvent(ev)} style={photoPill({ position: 'fixed', top: 66, right: 16, padding: '8px 13px', zIndex: 5 })}>
         {s.shared ? T('Đã sao chép link', 'Link copied') : T('Chia sẻ', 'Share')}
       </div>
+      {/* Blocker fix (retention roadmap follow-up) — EventDetail had no save
+          affordance at all before this pass, so a real event opened
+          directly (not via a card that already has its own "Lưu" chip,
+          e.g. a shared link) had no way to be saved from here. Uses Stage
+          1's exact same isSaved/toggleFav — already catalogue-agnostic
+          (both key off the real `favorites` table by event id), so this
+          works identically for a static demo event and a real host-created
+          one with no special-casing. */}
+      <div
+        onClick={() => toggleFav(ev.key)}
+        data-testid="event-detail-save"
+        style={photoPill({ position: 'fixed', top: 112, right: 16, padding: '8px 13px', zIndex: 5 })}
+      >
+        {isSaved(ev.key) ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')}
+      </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div style={{ position: 'relative', height: 400 }}>
-        <div style={bg(ev.img, { width: '100%', height: '100%', borderRadius: 0 })} />
+        {ev.img ? (
+          <div style={bg(ev.img, { width: '100%', height: '100%', borderRadius: 0 })} />
+        ) : (
+          // A real event with no photo yet (or one still loading/
+          // unavailable) — an honest neutral block, never a wrong demo
+          // event's photo standing in for it.
+          <div style={{ width: '100%', height: '100%', background: rule }} />
+        )}
         <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 78, pointerEvents: 'none', background: `linear-gradient(to bottom, rgba(247,244,236,0) 0%, rgba(247,244,236,0.3) 62%, ${paper} 100%)` }} />
       </div>
       <div style={{ padding: '22px 22px 30px', display: 'flex', flexDirection: 'column' }}>

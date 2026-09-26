@@ -2,14 +2,105 @@ import { createContext, useContext, useEffect, useMemo, useState, useCallback, u
 import { EVENTS, findEvent, haversineKm } from '../data/events.js';
 import { supabase, getAuthRedirectUrl } from '../lib/supabase.js';
 import { requestAuthEmail, requestPasswordSignup, requestPasswordReset } from '../lib/authEmail.js';
-import { renderPaymentDocument } from '../lib/paymentDocument.js';
+import { renderPaymentDocument, formatVnd } from '../lib/paymentDocument.js';
 import { buildVietQrPayload } from '../lib/vietqr.js';
-import { msUntil, liveEventOverrides } from '../lib/countdown.js';
+import { msUntil, liveEventOverrides, thisWeekendWindow, formatVnEventDate } from '../lib/countdown.js';
 import { normalizeProofFile } from '../lib/proofUpload.js';
 import { POLICY_VERSION } from '../lib/policy.js';
 import { refundClaimPresentation } from '../lib/refundPresentation.js';
 
 const GocCtx = createContext(null);
+
+/**
+ * Canonical real-`events`-row -> plain-data shape, shared by loadWeekendEvents
+ * and loadRealEventsById (retention roadmap follow-up — one lookup/shape
+ * for "Cuối tuần này" AND the Saved/Going/Completed lists, not three
+ * separate ad-hoc ones). Deliberately data-only, no baked-in Vietnamese/
+ * English text — callers format bilingual labels at render time with their
+ * own T(), the same way weekendList already does in Home.jsx, so this
+ * never has to know which language is active.
+ */
+function shapeRealEvent(row, extra = {}) {
+  return {
+    key: row.id,
+    name: row.name,
+    area: row.area || '',
+    catKey: row.cat_key || 'all',
+    catLabel: row.cat_label || '',
+    startsAt: row.starts_at || null,
+    priceVnd: row.price_vnd || 0,
+    seatsRemaining: row.seats_remaining,
+    soldOut: row.seats_remaining != null && row.seats_remaining <= 0,
+    status: row.status,
+    cancelledAt: row.cancelled_at || null,
+    visibility: row.visibility,
+    organizerId: row.organizer_id,
+    photoUrl: extra.photoUrl || null,
+    organizerName: extra.organizerName || '',
+    followedHost: !!extra.followedHost,
+    isReal: true,
+  };
+}
+
+const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id';
+
+/** event_photos rows for `eventIds` -> { [event_id]: first public photo URL },
+ * same batching + bucket-name-doubling defensive strip loadNotifications'
+ * own eventPhotoByEventId uses (see that function's comment). Shared here
+ * so loadWeekendEvents and loadRealEventsById don't each reimplement it. */
+async function firstPhotoUrlByEvent(eventIds) {
+  if (!eventIds.length) return {};
+  const { data } = await supabase
+    .from('event_photos').select('event_id, storage_path, sort_order')
+    .in('event_id', eventIds).order('sort_order', { ascending: true });
+  const byEvent = {};
+  for (const p of data || []) {
+    if (byEvent[p.event_id]) continue;
+    const relativePath = p.storage_path.replace(/^event-photos\//, '');
+    byEvent[p.event_id] = supabase.storage.from('event-photos').getPublicUrl(relativePath).data.publicUrl;
+  }
+  return byEvent;
+}
+
+/**
+ * Blocker fix (retention roadmap follow-up) — `findEvent()` (data/events.js)
+ * falls back to `EVENTS[0]` for any key not in the static demo catalogue,
+ * which `curEvent` (below) used unconditionally: opening a REAL, host-
+ * created event (goer taps a save/weekend card, or a direct link) silently
+ * rendered a WRONG demo event's name/price/photo/description, with only
+ * the date and cancelled/ended flags corrected via liveEventOverrides —
+ * confusing and simply incorrect, not an "honest placeholder." This builds
+ * a CatalogEvent-shaped object from the same canonical realEventsById row
+ * shapeRealEvent already produces instead: every FACTUAL field (name,
+ * price, area, seats, cancelled/ended, invite-only) is real; every
+ * DECORATIVE field this app has no real-data source for yet (long
+ * description, included list, organizer bio/trust stats, extra gallery
+ * photos) is an honest empty string/neutral default, never invented.
+ */
+function shapeRealEventAsCurEvent(real) {
+  const startsAt = real.startsAt ? new Date(real.startsAt) : null;
+  const { weekdayShort, dayMonth, time } = startsAt ? formatVnEventDate(startsAt) : {};
+  const endedHoursAgo = real.status === 'ended' && startsAt ? Math.max(0, Math.round((Date.now() - startsAt.getTime()) / 3600000)) : null;
+  return {
+    key: real.key, catKey: real.catKey, cat: real.catLabel || '', cat2Key: null, catDisplay: real.catLabel || '',
+    name: real.name, img: real.photoUrl || '', lat: null, lng: null,
+    meta: [real.catLabel, real.area].filter(Boolean).join(' ▪︎ '),
+    where: real.area || '',
+    when: startsAt ? `${weekdayShort}, ${dayMonth} ▪︎ ${time}` : '',
+    price: real.priceVnd ? formatVnd(real.priceVnd) : 'Miễn phí',
+    seats: real.seatsRemaining != null ? String(real.seatsRemaining) : '',
+    seatsLong: real.soldOut ? 'Hết chỗ' : (real.seatsRemaining != null ? real.seatsRemaining + ' chỗ trống' : ''),
+    urgent: real.seatsRemaining != null && real.seatsRemaining <= 5,
+    desc: '', included: '',
+    host: real.organizerName || '', hostShort: real.organizerName || '', greeting: '',
+    gallery: [], orgGallery: [], orgName: real.organizerName || '', orgIg: '', orgDesc: '',
+    orgSince: '', orgCount: 0, orgTrusted: false,
+    cancelled: real.status === 'cancelled', cancelledHoursAgo: null, endedHoursAgo,
+    soldOut: real.soldOut, inviteOnly: real.visibility === 'invite',
+    until: null, untilLabel: '', startDate: startsAt,
+    palette: 'concrete', isRealFallback: true,
+  };
+}
 
 // The one place a "?ref=CODE" link is ever read from — runs once at module
 // load (before React even mounts), so it survives however many redirects
@@ -158,6 +249,11 @@ const initialState = {
   organizerPhotosLoading: false,
   // STAGE C (2026-09-25) — Dashboard's real "add photo" upload flow.
   eventPhotoUploadBusy: {}, eventPhotoUploaded: {}, eventPhotoUploadError: '',
+  // Retention roadmap P1 — Home's "Cuối tuần này" section (see
+  // loadWeekendEvents below): real live+public events, never the static
+  // demo catalogue.
+  weekendEvents: [],
+  weekendEventsLoading: false,
 
   // ---- payments & documents (supabase migration 024) ----
   // banbe still never touches the money. These carry the details a guest
@@ -421,6 +517,14 @@ const initialState = {
   holdDeadline: null,
   now: Date.now(),
   favorites: [],
+  // Canonical real-event cache, keyed by real `events.id` (retention
+  // roadmap follow-up — see loadRealEventsById below). `undefined` (key
+  // absent) = not yet requested/still loading; `null` = requested but the
+  // row doesn't exist or RLS denied it (an honest "unavailable", never
+  // silently dropped); an object = the shaped real row. Shared by Home's
+  // "Sự kiện của bạn" strip, EventList's Saved/Going/Completed lists and
+  // the weekend section — one lookup, not three copies of the same query.
+  realEventsById: {},
   invited: [],
   orgVerifyRequested: false,
   attendanceEventKey: null,
@@ -1246,6 +1350,129 @@ export function GocProvider({ children }) {
     if (error) { if (import.meta.env?.DEV) console.warn('loadOrganizerPhotos failed:', error); }
     set({ organizerPhotos: photos || [], organizerPhotosLoading: false });
   }, [set, s.myOrganizerIds]);
+
+  /**
+   * Retention roadmap P1 ("Cuối tuần này") — a compact Home section built
+   * entirely from real `events` rows for the applicable Sat/Sun window
+   * (thisWeekendWindow, Asia/Ho_Chi_Minh — see countdown.js), never the
+   * static demo catalogue. `status='live' AND visibility='public'` is the
+   * same public-eligibility rule loadOrganizerPhotos' own non-owner branch
+   * and MapExplore's fetchLiveEvents already use — drafts, invite-only and
+   * cancelled/ended rows are excluded by construction, not filtered after
+   * the fact. A sold-out event still appears (excluded from BOOKING, not
+   * from DISCOVERY — the caller renders it non-bookable via seats_remaining)
+   * per the roadmap's own instruction not to hide it outright.
+   *
+   * Sort: followed organizers' events first (real `follows` rows, not the
+   * local-only per-event-key `following` array Organizer.jsx's UI toggle
+   * uses), then chronological by starts_at — nothing else. Explicitly not
+   * an engagement/popularity ranking: no photo-like count, no paid/sponsored
+   * flag (none exists yet), no goc_pulse_ranked() score feeds into this at
+   * all, so a host can't buy or like their way up this particular list.
+   */
+  const loadWeekendEvents = useCallback(async () => {
+    set({ weekendEventsLoading: true });
+    const { start, end } = thisWeekendWindow();
+    const { data: rows, error } = await supabase
+      .from('events')
+      .select(REAL_EVENT_ROW_COLUMNS)
+      .eq('status', 'live')
+      .eq('visibility', 'public')
+      .gte('starts_at', start)
+      .lte('starts_at', end)
+      .order('starts_at', { ascending: true });
+    if (error) {
+      console.warn('Failed to load weekend events:', error);
+      set({ weekendEvents: [], weekendEventsLoading: false });
+      return;
+    }
+    const events = rows || [];
+    const eventIds = events.map(e => e.id);
+    const organizerIds = [...new Set(events.map(e => e.organizer_id).filter(Boolean))];
+
+    const [photoUrlByEvent, orgsRes, followsRes] = await Promise.all([
+      firstPhotoUrlByEvent(eventIds),
+      organizerIds.length
+        ? supabase.from('organizers').select('id, name').in('id', organizerIds)
+        : Promise.resolve({ data: [] }),
+      // Anonymous/signed-out visitors have no followed hosts — an empty
+      // Set falls every event through to the chronological tiebreak below.
+      s.user
+        ? supabase.from('follows').select('organizer_id').eq('user_id', s.user.id)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const orgNameById = Object.fromEntries((orgsRes.data || []).map(o => [o.id, o.name]));
+    const followedOrgIds = new Set((followsRes.data || []).map(f => f.organizer_id));
+
+    const shaped = events.map(e => {
+      const real = shapeRealEvent(e, {
+        photoUrl: photoUrlByEvent[e.id],
+        organizerName: orgNameById[e.organizer_id],
+        followedHost: followedOrgIds.has(e.organizer_id),
+      });
+      const startsAt = real.startsAt ? new Date(real.startsAt) : null;
+      const { weekdayShort, dayMonth, time } = startsAt ? formatVnEventDate(startsAt) : {};
+      return {
+        ...real,
+        when: startsAt ? `${weekdayShort}, ${dayMonth} ▪︎ ${time}` : '',
+        priceLabel: real.priceVnd ? formatVnd(real.priceVnd) : null, // null -> caller shows "Miễn phí"/"Free"
+      };
+    }).sort((a, b) => {
+      if (a.followedHost !== b.followedHost) return a.followedHost ? -1 : 1;
+      return 0; // stable: both already starts_at-ascending from the query above
+    });
+
+    // Same canonical rows just fetched — feeds the shared realEventsById
+    // cache too so a card that's ALSO saved/attending doesn't trigger a
+    // second, redundant loadRealEventsById() fetch for the same id.
+    set(prev => ({
+      weekendEvents: shaped, weekendEventsLoading: false,
+      realEventsById: { ...prev.realEventsById, ...Object.fromEntries(shaped.map(e => [e.key, e])) },
+    }));
+  }, [set, s.user]);
+
+  // Dedupe concurrent loadRealEventsById() calls for the same id (e.g. Home
+  // and EventList both mounting) — see toggleFav's own in-flight-dedupe
+  // reasoning for why a ref, not state.
+  const realEventsInFlightRef = useRef(new Set());
+
+  /**
+   * The canonical real-event lookup by id, shared by Home's "Sự kiện của
+   * bạn" strip and EventList's Saved/Going/Completed lists for any saved/
+   * attending/invited event that isn't in the static demo catalogue (a
+   * real, host-created event) — see shapeRealEvent's own comment. Never
+   * invents a fallback: an id that isn't returned (deleted, or RLS denies
+   * it — e.g. a draft/invite-only event this account no longer has
+   * standing to see) is cached as `null`, an explicit "unavailable", so
+   * the caller can render that honestly instead of the row just vanishing.
+   */
+  const loadRealEventsById = useCallback(async (ids) => {
+    const wanted = [...new Set(ids)].filter(id => !(id in s.realEventsById) && !realEventsInFlightRef.current.has(id));
+    if (!wanted.length) return;
+    wanted.forEach(id => realEventsInFlightRef.current.add(id));
+    const { data: rows, error } = await supabase.from('events').select(REAL_EVENT_ROW_COLUMNS).in('id', wanted);
+    if (error) {
+      console.warn('Failed to load real events by id:', error);
+      wanted.forEach(id => realEventsInFlightRef.current.delete(id));
+      return;
+    }
+    const found = rows || [];
+    const foundIds = new Set(found.map(r => r.id));
+    const organizerIds = [...new Set(found.map(r => r.organizer_id).filter(Boolean))];
+    const [photoUrlByEvent, orgsRes] = await Promise.all([
+      firstPhotoUrlByEvent(found.map(r => r.id)),
+      organizerIds.length ? supabase.from('organizers').select('id, name').in('id', organizerIds) : Promise.resolve({ data: [] }),
+    ]);
+    const orgNameById = Object.fromEntries((orgsRes.data || []).map(o => [o.id, o.name]));
+    const shapedById = {};
+    for (const row of found) {
+      shapedById[row.id] = shapeRealEvent(row, { photoUrl: photoUrlByEvent[row.id], organizerName: orgNameById[row.organizer_id] });
+    }
+    for (const id of wanted) if (!foundIds.has(id)) shapedById[id] = null;
+    set(prev => ({ realEventsById: { ...prev.realEventsById, ...shapedById } }));
+    wanted.forEach(id => realEventsInFlightRef.current.delete(id));
+  }, [set, s.realEventsById]);
 
   // Unread count for the notification bell, refreshed on login AND on a
   // 5s poll thereafter (matching this app's existing poll conventions —
@@ -3163,11 +3390,29 @@ export function GocProvider({ children }) {
     return str.replace(/\d+[.,]\d+(?= km)/, km.toFixed(1).replace('.', ','));
   }, [located, s.userCoords]);
 
+  // Blocker fix (retention roadmap follow-up) — see shapeRealEventAsCurEvent's
+  // own comment: a real, host-created event (not one of the 20 static demo
+  // ones) resolves through the canonical realEventsById cache instead of
+  // findEvent()'s own `|| EVENTS[0]` fallback, which used to substitute a
+  // WRONG demo event's name/price/photo/description in its place.
+  const isCatalogEventKey = useMemo(() => EVENTS.some(e => e.key === s.eventKey), [s.eventKey]);
+  useEffect(() => {
+    if (!isCatalogEventKey && s.eventKey) loadRealEventsById([s.eventKey]);
+  }, [isCatalogEventKey, s.eventKey, loadRealEventsById]);
   const curEvent = useMemo(() => {
+    if (!isCatalogEventKey) {
+      const real = s.realEventsById[s.eventKey];
+      // Still loading, or genuinely unavailable (deleted/RLS-denied) — an
+      // honest, mostly-empty placeholder rather than a wrong demo event's
+      // cosmetic content. `key` stays the real one so isSaved/toggleFav
+      // and the "unavailable" UI can still key off the right id.
+      if (!real) return { ...EVENTS[0], key: s.eventKey, name: real === null ? T('Sự kiện không khả dụng', 'Event unavailable') : '', img: '', price: '', desc: '', included: '', orgName: '', gallery: [], isRealFallback: true, unavailable: real === null };
+      return shapeRealEventAsCurEvent(real);
+    }
     const base = findEvent(s.eventKey);
     const overrides = liveEventOverrides(s.liveEvent, base);
     return overrides ? { ...base, ...overrides } : base;
-  }, [s.eventKey, s.liveEvent]);
+  }, [s.eventKey, s.liveEvent, isCatalogEventKey, s.realEventsById, T]);
   const palette = curEvent.palette;
 
   const isSaved = useCallback((k) => s.favorites.includes(k), [s.favorites]);
@@ -6059,7 +6304,7 @@ export function GocProvider({ children }) {
 
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
-    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, uploadEventPhoto,
+    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadRealEventsById, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
@@ -6092,7 +6337,7 @@ export function GocProvider({ children }) {
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
-    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, uploadEventPhoto,
+    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadRealEventsById, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,

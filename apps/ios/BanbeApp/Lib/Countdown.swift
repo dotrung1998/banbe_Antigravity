@@ -132,4 +132,42 @@ enum Countdown {
             return (false, nil, nil, date)
         }
     }
+
+    /// Retention roadmap follow-up — public wrapper so a REAL (non-
+    /// catalogue) event's own `when` string can be built the exact same way
+    /// a catalogue event's is, without a static event to merge onto (see
+    /// CatalogEvent.fromReal).
+    static func whenLabel(for date: Date) -> String {
+        let d = formatVnEventDate(date)
+        return "\(d.weekdayShort), \(d.dayMonth) ▪︎ \(d.time)"
+    }
+
+    static func hoursAgo(_ date: Date?, now: Date = Date()) -> Int? { hoursSince(date, now: now) }
+
+    // Retention roadmap P1 ("Cuối tuần này") — the applicable weekend
+    // window, computed against Asia/Ho_Chi_Minh wall-clock time specifically
+    // (the roadmap's own requirement), not the device's local zone. Exact
+    // Swift counterpart of thisWeekendWindow() in src/lib/countdown.js —
+    // see that function's own comment for the full rationale. ICT has no
+    // DST and a fixed +07:00 offset year-round, so this is a plain
+    // TimeInterval shift rather than a full Calendar/TimeZone dependency.
+    private static let ictOffset: TimeInterval = 7 * 3600
+
+    static func thisWeekendWindow(now: Date = Date()) -> (start: Date, end: Date) {
+        var ictCal = Calendar(identifier: .gregorian)
+        ictCal.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        let c = ictCal.dateComponents([.year, .month, .day, .weekday], from: now)
+        let dow = (c.weekday ?? 1) - 1 // 0 = Sunday, 6 = Saturday
+        let daysToSat = dow == 6 ? 0 : (dow == 0 ? -1 : 6 - dow)
+        var satComponents = DateComponents()
+        satComponents.year = c.year; satComponents.month = c.month; satComponents.day = (c.day ?? 1) + daysToSat
+        satComponents.hour = 0; satComponents.minute = 0; satComponents.second = 0
+        satComponents.timeZone = ictCal.timeZone
+        var sunEndComponents = satComponents
+        sunEndComponents.day = (satComponents.day ?? 1) + 1
+        sunEndComponents.hour = 23; sunEndComponents.minute = 59; sunEndComponents.second = 59
+        let satStart = ictCal.date(from: satComponents) ?? now
+        let sunEnd = ictCal.date(from: sunEndComponents) ?? now
+        return (max(satStart, now), sunEnd)
+    }
 }

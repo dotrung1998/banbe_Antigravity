@@ -33,3 +33,10 @@ Trạng thái: kế hoạch sản phẩm, chưa triển khai tính năng. Cơ s�
 
 ## Triển khai
 P0 trước P1, P1 trước thông báo, P2 sau khi event/photo data ổn định; Host Pro thử bằng phỏng vấn/phần mềm quản trị trước khi xây thanh toán trong app. Mọi migration dùng forward migration, không chỉnh dữ liệu test/production bằng tay. Kiểm thử iOS PersonalTeamDebug và web; thiết bị do chủ dự án tự test.
+
+## Việc tiếp theo — chưa triển khai (P0/P1 xong, không tự ý mở rộng thêm)
+Theo đúng chỉ đạo: KHÔNG triển khai weekly push thật, sponsored placement, subscriptions hay thu phí vé ở pass này. Danh sách dưới đây chỉ là checklist việc cần làm ở pass sau, không phải code đã có.
+- Bản tổng hợp hàng tuần opt-in: cần màn hình bật/tắt rõ ràng trong Preferences (mặc định tắt), một RPC/cron gửi tối đa 1 lần/tuần chỉ cho người đã opt-in, deep link vào danh sách "Cuối tuần này" hoặc thẳng event, và một bảng chống lặp (đã gửi event nào cho ai) trước khi bật thật. PersonalTeamDebug không có APNs — ưu tiên toast trong app trước, không giả định push.
+- Phỏng vấn Host Pro: cần lịch phỏng vấn thật với host đang hoạt động trước khi chốt tính năng/giá — chưa có bản ghi phỏng vấn nào ở thời điểm viết checklist này.
+- Vị trí tài trợ có nhãn: cần thiết kế UI ghi rõ "Được tài trợ" tách biệt khỏi Cuối tuần này/Pulse hữu cơ, ngân sách/cửa sổ thời gian, và báo cáo impression → open → booking trước khi bật cho host thật.
+- Rà soát quyền riêng tư/analytics: cần xác nhận lại danh sách sự kiện ghi nhận (impression/open/save/booking/attended) không log nội dung nhạy cảm, và một bản mô tả ngắn cho người dùng biết dữ liệu gì được ghi nhận, trước khi mở rộng thu thập số liệu.

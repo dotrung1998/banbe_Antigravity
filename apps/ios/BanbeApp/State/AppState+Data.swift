@@ -2253,6 +2253,160 @@ extension AppState {
         }
     }
 
+    /// The columns shapeReal(As)*'s callers all need — same set web's own
+    /// REAL_EVENT_ROW_COLUMNS uses (GocContext.jsx), kept as one constant so
+    /// loadWeekendEvents and loadRealEventsByID never drift apart.
+    private static let realEventColumns = "id, name, cat_key, cat_label, area, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id"
+
+    /// event_photos rows for `eventIds` -> first public photo URL per event —
+    /// same batching + bucket-name-doubling defensive strip
+    /// loadNotificationAvatarMaps' own eventPhotoByEventId uses (see that
+    /// function's comment). Factored out here so loadWeekendEvents and
+    /// loadRealEventsByID don't each reimplement it.
+    private func firstPhotoURLByEvent(_ eventIds: [String]) async -> [String: URL] {
+        guard !eventIds.isEmpty else { return [:] }
+        var byEvent: [String: URL] = [:]
+        do {
+            let photos: [EventPhotoRow] = try await SupabaseService.client
+                .from("event_photos").select("event_id, storage_path, sort_order")
+                .in("event_id", values: eventIds)
+                .order("sort_order", ascending: true)
+                .execute().value
+            for p in photos where byEvent[p.eventId] == nil {
+                let relativePath = p.storagePath.hasPrefix("event-photos/")
+                    ? String(p.storagePath.dropFirst("event-photos/".count))
+                    : p.storagePath
+                if let url = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relativePath) {
+                    byEvent[p.eventId] = url
+                }
+            }
+        } catch {
+            print("firstPhotoURLByEvent failed:", error)
+        }
+        return byEvent
+    }
+
+    /// `organizers.name` for a batch of ids, as a lookup dictionary.
+    private func organizerNames(for organizerIDs: [String]) async -> [String: String] {
+        guard !organizerIDs.isEmpty else { return [:] }
+        do {
+            let orgs: [OrganizerRow] = try await SupabaseService.client
+                .from("organizers").select("id, name").in("id", values: organizerIDs).execute().value
+            return Dictionary(uniqueKeysWithValues: orgs.map { ($0.id, $0.name) })
+        } catch {
+            print("organizerNames failed:", error)
+            return [:]
+        }
+    }
+
+    /// This account's followed organizer ids (real `follows` rows) — empty
+    /// for a signed-out visitor.
+    private func followedOrganizerIDs() async -> Set<String> {
+        guard let uid = userID else { return [] }
+        struct FollowRow: Decodable { let organizerId: String
+            enum CodingKeys: String, CodingKey { case organizerId = "organizer_id" } }
+        do {
+            let rows: [FollowRow] = try await SupabaseService.client
+                .from("follows").select("organizer_id").eq("user_id", value: uid).execute().value
+            return Set(rows.map(\.organizerId))
+        } catch {
+            print("followedOrganizerIDs failed:", error)
+            return []
+        }
+    }
+
+    /// Blocker fix (retention roadmap follow-up) — the canonical real-event
+    /// lookup by id, mirroring web's loadRealEventsById (GocContext.jsx)
+    /// exactly: shared by `currentEvent`'s own fallback (see AppState.swift)
+    /// and any saved/attending/invited event that isn't in the bundled
+    /// catalogue. Never invents a fallback — an id that isn't returned
+    /// (deleted, or RLS denies it) is cached as an explicit `.some(nil)`, so
+    /// callers can render CatalogEvent.unavailable(key:) instead of the row
+    /// just vanishing.
+    func loadRealEventsByID(_ ids: [String]) async {
+        let wanted = Array(Set(ids)).filter { realEventsByID.index(forKey: $0) == nil && !realEventsInFlight.contains($0) }
+        guard !wanted.isEmpty else { return }
+        wanted.forEach { realEventsInFlight.insert($0) }
+        defer { wanted.forEach { realEventsInFlight.remove($0) } }
+        do {
+            let rows: [RealEventSummary] = try await SupabaseService.client
+                .from("events").select(Self.realEventColumns).in("id", values: wanted)
+                .execute().value
+            let foundIDs = Set(rows.map(\.id))
+            let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
+            async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
+            async let orgRows = organizerNames(for: organizerIDs)
+            let photos = await photoMap
+            let orgNameByID = await orgRows
+            for row in rows {
+                var shaped = row
+                shaped.photoURL = photos[row.id]
+                if let orgId = row.organizerId { shaped.organizerName = orgNameByID[orgId] ?? "" }
+                realEventsByID[row.id] = CatalogEvent.fromReal(shaped)
+            }
+            for id in wanted where !foundIDs.contains(id) { realEventsByID[id] = .some(nil) }
+        } catch {
+            print("loadRealEventsByID failed:", error)
+            wanted.forEach { realEventsInFlight.remove($0) }
+        }
+    }
+
+    /// Retention roadmap P1 ("Cuối tuần này") — a compact Home section built
+    /// entirely from real `events` rows for the applicable Sat/Sun window
+    /// (Countdown.thisWeekendWindow, Asia/Ho_Chi_Minh), never the bundled
+    /// demo catalogue. `status == "live" AND visibility == "public"` is the
+    /// same public-eligibility rule the web side uses (loadWeekendEvents,
+    /// GocContext.jsx) — drafts, invite-only and cancelled/ended rows are
+    /// excluded by construction. A sold-out event still appears (excluded
+    /// from booking via CatalogEvent.soldOut, not from discovery).
+    ///
+    /// Sort: followed organizers' events first (real `follows` rows), then
+    /// chronological by starts_at — nothing else. Not an engagement/
+    /// popularity ranking: no photo-like count, no paid/sponsored flag, no
+    /// goc_pulse_ranked() score feeds into this at all.
+    func loadWeekendEvents() async {
+        weekendEventsLoading = true
+        defer { weekendEventsLoading = false }
+        let (start, end) = Countdown.thisWeekendWindow()
+        do {
+            let rows: [RealEventSummary] = try await SupabaseService.client
+                .from("events").select(Self.realEventColumns)
+                .eq("status", value: "live").eq("visibility", value: "public")
+                .gte("starts_at", value: ISO8601DateFormatter().string(from: start))
+                .lte("starts_at", value: ISO8601DateFormatter().string(from: end))
+                .order("starts_at", ascending: true)
+                .execute().value
+            let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
+            async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
+            async let orgRows = organizerNames(for: organizerIDs)
+            // Anonymous/signed-out visitors have no followed hosts — an
+            // empty Set falls every event through to the chronological
+            // tiebreak below.
+            async let followedIDs = followedOrganizerIDs()
+            let photos = await photoMap
+            let orgNameByID = await orgRows
+            let followedOrgIDs = await followedIDs
+
+            var shaped: [(event: CatalogEvent, followed: Bool)] = []
+            for row in rows {
+                var r = row
+                r.photoURL = photos[row.id]
+                if let orgId = row.organizerId { r.organizerName = orgNameByID[orgId] ?? "" }
+                shaped.append((CatalogEvent.fromReal(r), row.organizerId.map { followedOrgIDs.contains($0) } ?? false))
+                // Same rows just fetched — feeds the shared realEventsByID
+                // cache too, so a card that's ALSO saved/attending doesn't
+                // trigger a second, redundant loadRealEventsByID() fetch.
+                realEventsByID[row.id] = shaped.last?.event
+            }
+            weekendEvents = shaped
+                .sorted { $0.followed != $1.followed ? $0.followed : false } // stable: already starts_at-ascending
+                .map(\.event)
+        } catch {
+            print("loadWeekendEvents failed:", error)
+            weekendEvents = []
+        }
+    }
+
     // ============ Chat photo viewer actions (Task 2, 07-notifications.md) ============
 
     /// Save/Download — writes the REAL original bytes (fetched from the

@@ -1,8 +1,8 @@
 import { useEffect, useMemo } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg } from '../data/events.js';
-import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides } from '../lib/countdown.js';
-import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert } from '../theme.js';
+import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
+import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass } from '../theme.js';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
 import ActionCenter from './ActionCenter.jsx';
 
@@ -49,7 +49,7 @@ export default function Home() {
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
     loadHomeStories, openStoryViewer,
     loadMyRefunds, openMyRefunds, loadRefundQueue, goNotifications,
-    openPulseViewer,
+    openPulseViewer, loadWeekendEvents, loadRealEventsById,
   } = useGoc();
 
   const s = state;
@@ -77,6 +77,11 @@ export default function Home() {
   // every catalogue event Home might show, public info so this runs for
   // every visitor (see GocContext.jsx's own comment on loadHomeLiveEvents).
   useEffect(() => { loadHomeLiveEvents(); }, [loadHomeLiveEvents]);
+  // Retention roadmap P1 — "Cuối tuần này". Public info, same as
+  // loadHomeLiveEvents above (runs for every visitor); re-fires on sign-in/
+  // out too, since loadWeekendEvents' own followed-host sort depends on
+  // `s.user` and is part of that function's dependency list.
+  useEffect(() => { loadWeekendEvents(); }, [loadWeekendEvents]);
   // Task 3.3 (07-notifications.md) — active stories row.
   useEffect(() => { if (s.user?.id) loadHomeStories(); }, [s.user?.id, loadHomeStories]);
   // Merges a real DB row's live status onto a static catalogue event —
@@ -176,8 +181,47 @@ export default function Home() {
       };
     }), [s.filter, s.filterAttending, s.filterNotConfirmed, s.filterSaved, s.filterSoldOut, s.filterUpcoming, s.filterEnded, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, isAwaitingConfirmation, trStatus, stripKm, T]);
 
+  // Retention roadmap P1 ("Cuối tuần này") — reuses the SAME district
+  // (curArea) and category (s.filter) picks already driving the main feed
+  // above, rather than inventing a separate preference of its own; there is
+  // no existing price preference anywhere in this app to reuse, so price
+  // isn't filtered here, only displayed. `weekendEvents` itself is already
+  // real-events-only and pre-sorted (followed hosts first, then soonest —
+  // see loadWeekendEvents' own comment); this only narrows by the two
+  // shared filters and caps it to a compact strip.
+  const AREA_DISTRICT_MATCH = {
+    q1: a => a.includes('Quận 1'),
+    thaodien: a => a.includes('Thảo Điền'),
+    binhthanh: a => a.includes('Bình Thạnh'),
+    other: a => !a.includes('Quận 1') && !a.includes('Thảo Điền') && !a.includes('Bình Thạnh'),
+  };
+  const weekendList = useMemo(() => (s.weekendEvents || [])
+    .filter(e => (AREA_DISTRICT_MATCH[curArea.key] || (() => true))(e.area))
+    .filter(e => s.filter === 'all' || e.catKey === s.filter)
+    .slice(0, 12)
+    .map(e => ({
+      ...e,
+      saved: isSaved(e.key),
+      priceDisplay: e.priceLabel || T('Miễn phí', 'Free'),
+      seatsDisplay: e.soldOut ? T('Hết chỗ', 'Sold out') : (e.seatsRemaining != null ? T(e.seatsRemaining + ' chỗ trống', e.seatsRemaining + ' left') : ''),
+    })), [s.weekendEvents, curArea.key, s.filter, isSaved, T]);
+
   const heldKey = heldEv ? heldEv.key : null;
   const savedKeys = [...new Set([...s.favorites, ...s.attending, ...s.invited, ...(heldKey ? [heldKey] : [])])];
+
+  // Blocker fix (retention roadmap follow-up) — a saved/attending/invited
+  // event that ISN'T one of the 20 static demo ones (a real, host-created
+  // event) used to just vanish here (EVENTS.find returns undefined,
+  // filtered out by Boolean below) even though the favorite/booking row
+  // itself was completely real. Anything not in the catalogue is now
+  // resolved through the SAME canonical realEventsById cache the weekend
+  // section uses (loadRealEventsById) — one lookup, not a second one.
+  const missingRealKeys = savedKeys.filter(k => !EVENTS.some(e => e.key === k) && !(k in s.realEventsById));
+  useEffect(() => {
+    if (missingRealKeys.length) loadRealEventsById(missingRealKeys);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingRealKeys.join(','), loadRealEventsById]);
+
   // Task 2a (2026-09-21 follow-up) — real 48h-after-ENDED expiry: `withLive`
   // merges the actual DB row's status/starts_at (homeLiveEvents) so
   // `endedHoursAgo` is a genuinely ticking value instead of the static
@@ -186,27 +230,59 @@ export default function Home() {
   // `status === 'ended'`), so this clause never fires for anything that
   // hasn't actually finished yet.
   const savedList = savedKeys
-    .map(k => EVENTS.find(e => e.key === k)).filter(Boolean)
-    .map(withLive)
-    .filter(e => !(e.endedHoursAgo != null && e.endedHoursAgo > 48))
-    .map(e => {
-      const nTix = s.tickets[e.key] || 1;
-      const tixStr = nTix > 1 ? ' ▪︎ ' + nTix + ' vé' : '';
-      const invited = e.inviteOnly && s.invited.includes(e.key);
+    .map(k => {
+      const catalogEv = EVENTS.find(e => e.key === k);
+      if (catalogEv) {
+        const e = withLive(catalogEv);
+        const nTix = s.tickets[e.key] || 1;
+        const tixStr = nTix > 1 ? ' ▪︎ ' + nTix + ' vé' : '';
+        const invited = e.inviteOnly && s.invited.includes(e.key);
+        let tag, status, chip;
+        if (e.cancelled) { tag = 'Đã hủy'; status = 'Đã hoàn tiền'; chip = CHIP_COLORS.cancelled; }
+        else if (e.endedHoursAgo != null) { tag = 'Đã diễn ra'; status = e.agoLabel(e.endedHoursAgo); chip = CHIP_COLORS.past; }
+        else if (invited && !isGoing(e.key)) { tag = T('Riêng tư', 'Private'); status = T('Chỉ bạn và +1 ▪︎ ', 'Just you + 1 ▪︎ ') + e.untilLabel; chip = CHIP_COLORS.invite; }
+        else if (e.key === heldKey) { tag = 'Đang giữ'; status = 'Trả để xác nhận' + tixStr; chip = CHIP_COLORS.hold; }
+        else if (isGoing(e.key)) { tag = 'Đã thanh toán'; status = e.untilLabel + tixStr; chip = CHIP_COLORS.going; }
+        else { tag = 'Đã lưu'; status = e.untilLabel; chip = CHIP_COLORS.saved; }
+        return {
+          key: e.key, name: e.name, photoUrl: e.img, endedHoursAgo: e.endedHoursAgo,
+          status: trStatus(status), tag: trStatus(tag), chip,
+          canRemove: !isGoing(e.key) && e.key !== heldKey && !invited,
+          toEvent: e.cancelled ? 'refunded' : 'event',
+        };
+      }
+      const real = s.realEventsById[k];
+      if (real === undefined) return null; // still loading — quiet, no flash
+      if (real === null) {
+        // Honest "unavailable" — deleted, or RLS no longer lets this
+        // account see it. Never invented, never silently dropped.
+        return {
+          key: k, name: T('Sự kiện không khả dụng', 'Event unavailable'), photoUrl: null,
+          status: '', tag: T('Không khả dụng', 'Unavailable'), chip: CHIP_COLORS.cancelled,
+          endedHoursAgo: null, canRemove: isSaved(k), toEvent: null, unavailable: true,
+        };
+      }
+      const startsAt = real.startsAt ? new Date(real.startsAt) : null;
+      const untilLabel = startsAt ? (() => { const { weekdayShort, dayMonth, time } = formatVnEventDate(startsAt); return `${weekdayShort}, ${dayMonth} ▪︎ ${time}`; })() : '';
+      const endedHoursAgo = real.status === 'ended' && startsAt ? Math.max(0, Math.round((Date.now() - startsAt.getTime()) / 3600000)) : null;
+      const cancelled = real.status === 'cancelled';
+      const invited = real.visibility === 'invite' && s.invited.includes(k);
       let tag, status, chip;
-      if (e.cancelled) { tag = 'Đã hủy'; status = 'Đã hoàn tiền'; chip = CHIP_COLORS.cancelled; }
-      else if (e.endedHoursAgo != null) { tag = 'Đã diễn ra'; status = e.agoLabel(e.endedHoursAgo); chip = CHIP_COLORS.past; }
-      else if (invited && !isGoing(e.key)) { tag = T('Riêng tư', 'Private'); status = T('Chỉ bạn và +1 ▪︎ ', 'Just you + 1 ▪︎ ') + e.untilLabel; chip = CHIP_COLORS.invite; }
-      else if (e.key === heldKey) { tag = 'Đang giữ'; status = 'Trả để xác nhận' + tixStr; chip = CHIP_COLORS.hold; }
-      else if (isGoing(e.key)) { tag = 'Đã thanh toán'; status = e.untilLabel + tixStr; chip = CHIP_COLORS.going; }
-      else { tag = 'Đã lưu'; status = e.untilLabel; chip = CHIP_COLORS.saved; }
+      if (cancelled) { tag = T('Đã hủy', 'Cancelled'); status = T('Đã hoàn tiền', 'Refunded'); chip = CHIP_COLORS.cancelled; }
+      else if (endedHoursAgo != null) { tag = T('Đã diễn ra', 'Past'); status = T(endedHoursAgo + ' giờ trước', endedHoursAgo + 'h ago'); chip = CHIP_COLORS.past; }
+      else if (invited && !isGoing(k)) { tag = T('Riêng tư', 'Private'); status = T('Chỉ bạn và +1 ▪︎ ', 'Just you + 1 ▪︎ ') + untilLabel; chip = CHIP_COLORS.invite; }
+      else if (k === heldKey) { tag = T('Đang giữ', 'Holding'); status = T('Trả để xác nhận', 'Pay to confirm'); chip = CHIP_COLORS.hold; }
+      else if (isGoing(k)) { tag = T('Đã thanh toán', 'Paid'); status = untilLabel; chip = CHIP_COLORS.going; }
+      else { tag = T('Đã lưu', 'Saved'); status = untilLabel; chip = CHIP_COLORS.saved; }
       return {
-        key: e.key, name: e.name, img: e.img,
-        status: trStatus(status), tag: trStatus(tag), chip,
-        canRemove: !isGoing(e.key) && e.key !== heldKey && !invited,
-        toEvent: e.cancelled ? 'refunded' : 'event',
+        key: k, name: real.name, photoUrl: real.photoUrl, endedHoursAgo,
+        status, tag, chip,
+        canRemove: !isGoing(k) && k !== heldKey && !invited,
+        toEvent: cancelled ? 'refunded' : 'event',
       };
-    });
+    })
+    .filter(Boolean)
+    .filter(e => !(e.endedHoursAgo != null && e.endedHoursAgo > 48));
 
   const feedEmptyMsg = T(
     'Chưa có buổi nào ở ' + (curArea.key === 'all' ? 'mục này' : curArea.label) + ' tuần này, thử mục khác xem sao!',
@@ -259,9 +335,15 @@ export default function Home() {
           </div>
           <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6 }}>
             {savedList.map(sv => (
-              <div key={sv.key} onClick={() => openSaved(sv)} style={{ flex: 'none', width: 152, cursor: 'pointer' }}>
+              <div key={sv.key} onClick={sv.unavailable ? undefined : () => openSaved(sv)} style={{ flex: 'none', width: 152, cursor: sv.unavailable ? 'default' : 'pointer' }}>
                 <div style={{ position: 'relative' }}>
-                  <div style={bg(sv.img, { width: 152, height: 96, borderRadius: 12, filter: 'none' })} />
+                  {sv.photoUrl ? (
+                    <div style={bg(sv.photoUrl, { width: 152, height: 96, borderRadius: 12, filter: 'none' })} />
+                  ) : (
+                    <div style={{ ...cardGlass({ width: 152, height: 96 }), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: 10.5, color: ink, opacity: 0.55 }}>{sv.unavailable ? sv.tag : T('Chưa có ảnh', 'No photo yet')}</span>
+                    </div>
+                  )}
                   <span style={photoChip(sv.chip, { top: 6, left: 6, fontSize: 9, padding: '4px 8px', borderRadius: 12 })}>{sv.tag}</span>
                   {sv.canRemove && (
                     <span onClick={(ev) => { ev.stopPropagation(); toggleFav(sv.key); }} style={lightChip({ top: 6, right: 6, fontSize: 10, padding: '4px 8px', borderRadius: 12 })}>{T('Bỏ', 'Remove')}</span>
@@ -401,6 +483,64 @@ export default function Home() {
       {feed.length > 0 && (
         <div style={{ padding: '34px 20px 6px', textAlign: 'center', borderTop: `1px solid ${rule}` }}>
           <p style={{ ...display(11.5, { margin: 0 }) }}>{T('Hết rồi, ra ngoài chơi thôi!', "That's it, go have fun!")}</p>
+        </div>
+      )}
+
+      {/* Retention roadmap P1 ("Cuối tuần này") — real live+public events
+          for the applicable weekend (see loadWeekendEvents), never demo
+          cards. Placed after the main feed (not the "Sự kiện của bạn"
+          strip near the top) on purpose: it's a discovery section, not a
+          personal one, and keeping the main feed's own card markup first
+          in the DOM avoids collisions with generic "first card containing
+          this event's name" test/query patterns already written against
+          it. Suppressed during the very first load (list still empty AND
+          still loading) so it never flashes the empty state for an
+          instant before real data arrives — same "no false state on
+          initial load" bar Stage 1's favorites work already holds to. */}
+      {!(s.weekendEventsLoading && weekendList.length === 0) && (
+        <div data-testid="home-weekend-section" style={{ padding: '16px 20px 4px', borderTop: `1px solid ${rule}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+            <span style={{ ...display(15) }}>{T('Cuối tuần này', 'This weekend')}</span>
+          </div>
+          {weekendList.length > 0 ? (
+            <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 10 }}>
+              {weekendList.map(e => (
+                <div key={e.key} data-testid={`weekend-event-${e.key}`} onClick={() => goEvent(e.key)} style={{ flex: 'none', width: 168, cursor: 'pointer' }}>
+                  <div style={{ position: 'relative' }}>
+                    {e.photoUrl ? (
+                      <div style={bg(e.photoUrl, { width: 168, height: 110 })} />
+                    ) : (
+                      // Honest placeholder — never a static demo photo
+                      // standing in for a real one (roadmap's own rule).
+                      <div style={{ ...cardGlass({ width: 168, height: 110 }), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontSize: 11, color: ink, opacity: 0.55 }}>{T('Chưa có ảnh', 'No photo yet')}</span>
+                      </div>
+                    )}
+                    <span
+                      onClick={(ev) => { ev.stopPropagation(); toggleFav(e.key); }}
+                      data-testid={`weekend-save-${e.key}`}
+                      style={e.saved ? photoChip(CHIP_COLORS.going, { top: 6, right: 6, fontSize: 9, padding: '4px 8px', borderRadius: 12 }) : lightChip({ top: 6, right: 6, fontSize: 9, padding: '4px 8px', borderRadius: 12 })}
+                    >
+                      {e.saved ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')}
+                    </span>
+                    {e.soldOut && (
+                      <span style={photoChip(CHIP_COLORS.cancelled, { bottom: 6, left: 6, fontSize: 9, padding: '4px 8px', borderRadius: 12 })}>{T('Hết chỗ', 'Sold out')}</span>
+                    )}
+                  </div>
+                  <div style={{ ...display(14, { marginTop: 7, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</div>
+                  <div style={{ fontSize: 11, color: ink, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{trStatus(e.when)}{e.area ? ' ▪︎ ' + e.area : ''}</div>
+                  <div style={{ fontSize: 11, color: ink, marginTop: 1, display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                    <span>{e.priceDisplay}</span>
+                    <span>{e.seatsDisplay}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p data-testid="weekend-empty" style={{ fontSize: 12.5, color: ink, opacity: 0.7, padding: '4px 0 12px' }}>
+              {T('Chưa có sự kiện phù hợp cuối tuần này.', 'No matching events this weekend yet.')}
+            </p>
+          )}
         </div>
       )}
 

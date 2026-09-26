@@ -72,12 +72,19 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
 
     /// Absolute URLs for the photos, which the catalogue stores as the web
     /// app's own root-relative paths ("/photos/x.jpg").
-    var imageURL: URL? { Self.photoURL(img) }
+    var imageURL: URL? { img.isEmpty ? nil : Self.photoURL(img) }
     var galleryURLs: [URL] { gallery.compactMap(Self.photoURL) }
     var orgGalleryURLs: [URL] { orgGallery.compactMap(Self.photoURL) }
 
     static func photoURL(_ path: String) -> URL? {
-        URL(string: AppConfig.apiBaseURL + path)
+        // Retention roadmap follow-up — a REAL event's photo (CatalogEvent.
+        // fromReal) is already a full Supabase Storage public URL, not one
+        // of the catalogue's own root-relative bundled paths ("/photos/x.jpg")
+        // this prefix was written for. Passing it through unprefixed keeps
+        // every existing catalogue caller (which never passes an absolute
+        // URL) working exactly as before.
+        if path.hasPrefix("http://") || path.hasPrefix("https://") { return URL(string: path) }
+        return URL(string: AppConfig.apiBaseURL + path)
     }
 
     /// Google Maps directions, same link the web event page opens.
@@ -119,6 +126,102 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
         if let meta = d.meta { copy.meta = meta }
         if let where_ = d.where_ { copy.where = where_ }
         return copy
+    }
+}
+
+/// A real, non-catalogue `events` row (retention roadmap follow-up — see
+/// AppState.loadRealEventsByID/loadWeekendEvents). Deliberately data-only,
+/// no baked-in Vietnamese/English text of its own — CatalogEvent.fromReal
+/// below does all the presentation shaping, the same job src/data/events.js
+/// does for a static catalogue row, just from real columns instead of
+/// hand-written ones.
+struct RealEventSummary: Decodable {
+    let id: String
+    let name: String
+    let area: String?
+    let catKey: String?
+    let catLabel: String?
+    let startsAt: Date?
+    let priceVnd: Int?
+    let seatsRemaining: Int?
+    let status: String
+    let cancelledAt: Date?
+    let visibility: String
+    let organizerId: String?
+    var organizerName: String = ""
+    var photoURL: URL?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, area
+        case catKey = "cat_key"
+        case catLabel = "cat_label"
+        case startsAt = "starts_at"
+        case priceVnd = "price_vnd"
+        case seatsRemaining = "seats_remaining"
+        case status
+        case cancelledAt = "cancelled_at"
+        case visibility
+        case organizerId = "organizer_id"
+    }
+
+    var soldOut: Bool { (seatsRemaining ?? 1) <= 0 }
+}
+
+extension CatalogEvent {
+    /// Blocker fix (retention roadmap follow-up) — a REAL, host-created
+    /// event (not one of the 20 static demo ones) shaped into the SAME
+    /// `CatalogEvent` every view already knows how to render, instead of
+    /// `EventCatalog.find`'s own `?? EventCatalog.all[0]` fallback, which
+    /// used to substitute a WRONG demo event's name/price/photo/description
+    /// in its place. Every FACTUAL field below is real; every DECORATIVE
+    /// one this app has no real-data source for yet (long description,
+    /// included list, organizer bio/trust stats, extra gallery photos) is
+    /// an honest empty/neutral default, never invented.
+    static func fromReal(_ real: RealEventSummary, now: Date = Date()) -> CatalogEvent {
+        let endedHoursAgo = real.status == "ended" ? Countdown.hoursAgo(real.startsAt, now: now) : nil
+        let cancelledHoursAgo = real.status == "cancelled" ? (Countdown.hoursAgo(real.cancelledAt, now: now) ?? 0) : nil
+        let priceLabel = (real.priceVnd ?? 0) > 0 ? EventLabels.vnd(real.priceVnd ?? 0) : "Miễn phí"
+        return CatalogEvent(
+            key: real.id, catKey: real.catKey ?? "all", cat: real.catLabel ?? "", cat2Key: nil, catDisplay: real.catLabel ?? "",
+            name: real.name, img: real.photoURL?.absoluteString ?? "", lat: 0, lng: 0,
+            meta: [real.catLabel, real.area].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ▪︎ "),
+            where: real.area ?? "",
+            when: real.startsAt.map(Countdown.whenLabel) ?? "",
+            price: priceLabel,
+            seats: real.seatsRemaining.map(String.init) ?? "",
+            seatsLong: real.soldOut ? "Hết chỗ" : (real.seatsRemaining.map { "\($0) chỗ trống" } ?? ""),
+            urgent: (real.seatsRemaining ?? 99) <= 5,
+            desc: "", included: "",
+            host: real.organizerName, hostShort: real.organizerName, greeting: "",
+            gallery: [], orgGallery: [], orgName: real.organizerName, orgIg: "", orgDesc: "",
+            orgSince: 0, orgCount: 0, orgTrusted: false,
+            cancelled: real.status == "cancelled", cancelledHoursAgo: cancelledHoursAgo, endedHoursAgo: endedHoursAgo,
+            soldOut: real.soldOut, inviteOnly: real.visibility == "invite",
+            until: nil, untilLabel: "", startDate: real.startsAt,
+            locationLabel: real.area
+        )
+    }
+
+    /// An honest "unavailable" placeholder — the id/key is real (so
+    /// isSaved/toggleFavorite still key off the right row) but the row
+    /// itself is gone or RLS no longer lets this account see it. Never a
+    /// wrong demo event's content standing in for it.
+    static func unavailable(key: String, loading: Bool = false, T: (String, String) -> String) -> CatalogEvent {
+        CatalogEvent(
+            key: key, catKey: "all", cat: "", cat2Key: nil, catDisplay: "",
+            // Still loading: an honest blank, same as web's curEvent while
+            // its own realEventsById fetch is in flight — never "Event
+            // unavailable" for what may well turn out to be a perfectly
+            // real, just-not-yet-fetched event.
+            name: loading ? "" : T("Sự kiện không khả dụng", "Event unavailable"), img: "", lat: 0, lng: 0,
+            meta: "", where: "", when: "", price: "",
+            seats: "", seatsLong: "", urgent: false, desc: "", included: "",
+            host: "", hostShort: "", greeting: "", gallery: [], orgGallery: [],
+            orgName: "", orgIg: "", orgDesc: "", orgSince: 0, orgCount: 0, orgTrusted: false,
+            cancelled: false, cancelledHoursAgo: nil, endedHoursAgo: nil,
+            soldOut: false, inviteOnly: false, until: nil, untilLabel: "", startDate: nil,
+            locationLabel: nil
+        )
     }
 }
 

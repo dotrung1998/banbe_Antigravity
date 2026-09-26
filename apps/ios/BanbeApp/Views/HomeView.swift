@@ -86,6 +86,7 @@ struct HomeView: View {
                     }
                     footer
                 }
+                weekendSection
                 hostLink
             }
             .padding(.bottom, 100)
@@ -113,6 +114,13 @@ struct HomeView: View {
         .task { await app.loadHomeLiveEvents() }
         // Task 3.3 (07-notifications.md) — active-story row.
         .task { if app.userID != nil { await app.loadHomeStories() } }
+        // Retention roadmap P1 ("Cuối tuần này") — public info, same as
+        // loadHomeLiveEvents above (runs for every visitor).
+        .task { await app.loadWeekendEvents() }
+        // Blocker fix (retention roadmap follow-up) — a saved/attending
+        // real (non-catalogue) event needs its own fetch for savedStrip to
+        // resolve it instead of quietly skipping it.
+        .task { await app.loadMissingRealEvents(for: app.favorites + app.attending) }
         .onAppear {
             startTickingIfNeeded()
             retryScrollRestoreIfNeeded()
@@ -504,6 +512,43 @@ struct HomeView: View {
         }
         .foregroundStyle(app.palette.ink)
         .multilineTextAlignment(.center)
+    }
+
+    /// Retention roadmap P1 ("Cuối tuần này") — real live+public events for
+    /// the applicable weekend (app.weekendEvents), never demo cards. Placed
+    /// after the main feed (not the "Sự kiện của bạn" strip near the top)
+    /// on purpose: it's a discovery section, not a personal one. Reuses
+    /// `EventCard` — the exact same view every catalogue card in the main
+    /// feed already uses — since `CatalogEvent.fromReal` shapes a real row
+    /// into the same type; no separate rendering path to keep in sync.
+    private var weekendSection: some View {
+        Group {
+            if !app.weekendEvents.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(app.T("Cuối tuần này", "This weekend"))
+                        .font(BanbeTheme.display(15))
+                        .padding(.horizontal, 20)
+                        .padding(.top, 16)
+                        .padding(.bottom, 10)
+                    ForEach(app.weekendEvents) { event in
+                        EventCard(event: event)
+                            .id("weekend-\(event.key)")
+                    }
+                }
+            } else if !app.weekendEventsLoading {
+                // Quiet empty state — no demo cards, never invented.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(app.T("Cuối tuần này", "This weekend"))
+                        .font(BanbeTheme.display(15))
+                    Text(app.T("Chưa có sự kiện phù hợp cuối tuần này.", "No matching events this weekend yet."))
+                        .font(.system(size: 12.5))
+                        .opacity(0.7)
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+            }
+        }
     }
 
     private var hostLink: some View {
