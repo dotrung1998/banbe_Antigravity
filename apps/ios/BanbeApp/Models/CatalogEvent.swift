@@ -156,6 +156,7 @@ struct RealEventSummary: Decodable {
     let submittedAt: Date?
     let reviewedAt: Date?
     let rejectionReason: String?
+    let coverImage: String?
     var organizerName: String = ""
     var photoURL: URL?
 
@@ -177,6 +178,7 @@ struct RealEventSummary: Decodable {
         case submittedAt = "submitted_at"
         case reviewedAt = "reviewed_at"
         case rejectionReason = "rejection_reason"
+        case coverImage = "cover_image"
     }
 
     var soldOut: Bool { (seatsRemaining ?? 1) <= 0 }
@@ -206,7 +208,7 @@ extension CatalogEvent {
             seats: real.seatsRemaining.map(String.init) ?? "",
             seatsLong: real.soldOut ? "Hết chỗ" : (real.seatsRemaining.map { "\($0) chỗ trống" } ?? ""),
             urgent: (real.seatsRemaining ?? 99) <= 5,
-            desc: "", included: "",
+            desc: real.description ?? "", included: "",
             host: real.organizerName, hostShort: real.organizerName, greeting: "",
             gallery: [], orgGallery: [], orgName: real.organizerName, orgIg: "", orgDesc: "",
             orgSince: 0, orgCount: 0, orgTrusted: false,

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, CREATE_PALETTES, bg } from '../data/events.js';
 import { liveEventOverrides } from '../lib/countdown.js';
+import { supabase } from '../lib/supabase.js';
 import { paper, ink, rule, FACE, display, fieldGlass, cardGlass, alert } from '../theme.js';
 
 const MAX_PHOTOS = 8;
@@ -27,24 +28,51 @@ export default function CreateEvent() {
   } = useGoc();
   const s = state;
 
-  // Real cover/gallery staging — plain File objects + object-URL previews,
-  // local to this screen only (never round-tripped through the global
-  // store; see GocContext.jsx's own comment on `createIncludedItems`).
-  // `coverIndex` is which staged photo becomes `cover_image`; defaults to
-  // the first one picked, changeable via each thumbnail's own "Đặt làm
-  // ảnh bìa" action.
-  const [photos, setPhotos] = useState([]); // { file, url }[]
-  const [coverIndex, setCoverIndex] = useState(0);
+  // Unified gallery staging — a single ordered list mixing the event's
+  // ALREADY-UPLOADED photos (when editing an owned event, `kind: 'existing'`,
+  // seeded below from `s.eventPhotos`) and newly-picked local files
+  // (`kind: 'new'`), so remove/reorder/cover-pick works the same way on
+  // both. Never round-tripped through the global store itself (see
+  // GocContext.jsx's own comment on `createIncludedItems`) — only the
+  // final File[]/removed-id list/cover reference are handed to createSubmit
+  // on actual submit.
+  const [items, setItems] = useState([]); // { kind, id?, file?, url, storagePath? }[]
+  const [coverKey, setCoverKey] = useState(null); // items[i]'s own url, used as a stable key
   const [photoError, setPhotoError] = useState('');
   const fileInputRef = useRef(null);
-  useEffect(() => () => { photos.forEach(p => URL.revokeObjectURL(p.url)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const seededForEventId = useRef(null);
+  const seededExistingIds = useRef([]); // event_photos ids present when this edit session was seeded
+
+  // Editing an owned event — seed the gallery from its real event_photos
+  // rows (loaded by goEditEvent) once per edit session, so removing/
+  // reordering/re-covering acts on what's ACTUALLY there instead of an
+  // empty local list a host could only ever add on top of.
+  useEffect(() => {
+    if (!s.createEditEventId) { seededForEventId.current = null; return; }
+    if (seededForEventId.current === s.createEditEventId) return;
+    if (s.eventPhotosLoading) return;
+    seededForEventId.current = s.createEditEventId;
+    const real = s.realEventsById[s.createEditEventId];
+    const seeded = (s.eventPhotos || []).map(p => ({
+      kind: 'existing', id: p.id, storagePath: p.storage_path,
+      url: supabase.storage.from('event-photos').getPublicUrl(p.storage_path.replace(/^event-photos\//, '')).data.publicUrl,
+    }));
+    setItems(seeded);
+    seededExistingIds.current = seeded.map(it => it.id);
+    const coverRow = seeded.find(it => it.storagePath === real?.coverImage);
+    setCoverKey((coverRow || seeded[0])?.url || null);
+  }, [s.createEditEventId, s.eventPhotos, s.eventPhotosLoading, s.realEventsById]);
+
+  useEffect(() => () => {
+    items.forEach(it => { if (it.kind === 'new') URL.revokeObjectURL(it.url); });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onPickPhotos = (e) => {
     const picked = Array.from(e.target.files || []);
     e.target.value = '';
     if (!picked.length) return;
     setPhotoError('');
-    const room = MAX_PHOTOS - photos.length;
+    const room = MAX_PHOTOS - items.length;
     if (picked.length > room) {
       setPhotoError(T(`Chỉ có thể thêm tối đa ${MAX_PHOTOS} ảnh.`, `You can add up to ${MAX_PHOTOS} photos total.`));
     }
@@ -58,18 +86,32 @@ export default function CreateEvent() {
         setPhotoError(T('Mỗi ảnh tối đa 50MB.', 'Each photo must be under 50MB.'));
         continue;
       }
-      accepted.push({ file, url: URL.createObjectURL(file) });
+      accepted.push({ kind: 'new', file, url: URL.createObjectURL(file) });
     }
-    if (accepted.length) setPhotos(prev => [...prev, ...accepted]);
+    if (accepted.length) {
+      setItems(prev => {
+        const next = [...prev, ...accepted];
+        if (coverKey == null) setCoverKey(next[0].url);
+        return next;
+      });
+    }
   };
   const removePhoto = (i) => {
-    setPhotos(prev => {
-      URL.revokeObjectURL(prev[i].url);
+    setItems(prev => {
+      const removedItem = prev[i];
+      if (removedItem.kind === 'new') URL.revokeObjectURL(removedItem.url);
       const next = prev.filter((_, idx) => idx !== i);
+      setCoverKey(prevCover => (prevCover === removedItem.url ? (next[0]?.url ?? null) : prevCover));
       return next;
     });
-    setCoverIndex(prev => (prev === i ? 0 : prev > i ? prev - 1 : prev));
   };
+  const photos = items; // local alias kept short for the JSX below
+  const keptExistingIds = useMemo(() => new Set(items.filter(it => it.kind === 'existing').map(it => it.id)), [items]);
+  const removedExistingIds = seededExistingIds.current.filter(id => !keptExistingIds.has(id));
+  const newFilesInOrder = items.filter(it => it.kind === 'new').map(it => it.file);
+  const coverItem = items.find(it => it.url === coverKey) || null;
+  const coverIndex = coverItem?.kind === 'new' ? newFilesInOrder.indexOf(coverItem.file) : -1;
+  const existingCoverPath = coverItem?.kind === 'existing' ? coverItem.storagePath : '';
   // 2026-09-25 fix pass (Task 0 audit) — this screen can be reached
   // directly (not only via Home, which is the only other place that calls
   // this), so `s.homeLiveEvents` can't be assumed already populated; same
@@ -224,14 +266,20 @@ export default function CreateEvent() {
                   onClick={() => removePhoto(i)}
                   style={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 999, background: 'rgba(12,12,12,0.55)', color: '#fff', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
                 >×</span>
+                {i > 0 && (
+                  <span
+                    onClick={() => setItems(prev => { const next = [...prev]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next; })}
+                    style={{ position: 'absolute', top: 4, left: 4, width: 20, height: 20, borderRadius: 999, background: 'rgba(12,12,12,0.55)', color: '#fff', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                  >‹</span>
+                )}
                 <span
-                  onClick={() => setCoverIndex(i)}
+                  onClick={() => setCoverKey(p.url)}
                   style={{
                     position: 'absolute', bottom: 4, left: 4, right: 4, fontSize: 9, fontWeight: 600, textAlign: 'center',
                     padding: '3px 4px', borderRadius: 8, cursor: 'pointer',
-                    background: i === coverIndex ? ink : 'rgba(247,244,236,0.85)', color: i === coverIndex ? paper : ink,
+                    background: p.url === coverKey ? ink : 'rgba(247,244,236,0.85)', color: p.url === coverKey ? paper : ink,
                   }}
-                >{i === coverIndex ? T('Ảnh bìa', 'Cover') : T('Đặt làm ảnh bìa', 'Set as cover')}</span>
+                >{p.url === coverKey ? T('Ảnh bìa', 'Cover') : T('Đặt làm ảnh bìa', 'Set as cover')}</span>
               </div>
             ))}
             {photos.length < MAX_PHOTOS && (
@@ -312,7 +360,7 @@ export default function CreateEvent() {
         {/* No SLA is actually monitored server-side — the previous "duyệt
             trong 48 giờ"/"reviews within 48h" copy promised a turnaround
             time nothing enforced. Accurate instead of reassuring. */}
-        <div onClick={() => createSubmit(photos.map(p => p.file), coverIndex)} style={createBtnStyle}>
+        <div onClick={() => createSubmit(newFilesInOrder, coverIndex, { removePhotoIds: removedExistingIds, existingCoverPath })} style={createBtnStyle}>
           {s.createSent
             ? T('Đã gửi, đang chờ Banbe duyệt', 'Submitted, waiting for Banbe to review')
             : (s.createEditEventId ? T('Gửi lại để duyệt', 'Resubmit for review') : T('Gửi để duyệt', 'Submit for review'))}

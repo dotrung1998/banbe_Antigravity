@@ -907,6 +907,11 @@ final class AppState: ObservableObject {
     @Published var createCats: [String] = []
     @Published var createSent = false
     @Published var createError = ""
+    // Media-parity pass (Stage A, 2026-09-26) — a photo upload/removal
+    // failure never blocks the already-submitted event row (see
+    // reconcileEventMedia's own comment), so this is a separate, non-fatal
+    // notice next to createError rather than another failure mode of it.
+    @Published var createMediaError = ""
     // Event review queue — set while editing/resubmitting a previously-
     // REJECTED event rather than creating a new one; submitCreateEvent()
     // branches on this. Cleared whenever "create a new event" is entered

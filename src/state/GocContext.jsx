@@ -5936,29 +5936,50 @@ export function GocProvider({ children }) {
    * show an honest "submitted, but N photos didn't upload" message instead
    * of silently claiming full success.
    */
-  const submitEventMedia = useCallback(async (eventId, files, coverIndex) => {
+  /**
+   * Reconciles an event's gallery against the host's current staged state
+   * in one pass — used by BOTH first-time creation (no `removeIds`, no
+   * `existingCoverPath`) and editing an already-submitted/owned event
+   * (STAGE A iOS-media-parity follow-up, 2026-09-26), so the two paths
+   * can't silently drift apart. Order: removals first (so a re-picked
+   * cover can never collide with a stale row), then new uploads, then a
+   * single cover write — never rolls back the event row itself on a
+   * partial media failure (see this function's own prior history above).
+   */
+  const reconcileEventMedia = useCallback(async (eventId, { newFiles = [], coverIndex = -1, removeIds = [], existingCoverPath = '' } = {}) => {
+    let removed = 0;
+    for (const photoId of removeIds) {
+      const row = (s.eventPhotos || []).find(p => p.id === photoId);
+      if (row?.storage_path) {
+        const relative = row.storage_path.replace(/^event-photos\//, '');
+        await supabase.storage.from('event-photos').remove([relative]);
+      }
+      const { error } = await supabase.from('event_photos').delete().eq('id', photoId);
+      if (!error) removed++;
+    }
     let uploaded = 0;
-    let coverPath = '';
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    let newCoverPath = '';
+    for (let i = 0; i < newFiles.length; i++) {
+      const file = newFiles[i];
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) continue;
       if (file.size > 50 * 1024 * 1024) continue;
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
       const path = `${eventId}/${Date.now()}-${i}.${ext}`;
       const { error: upErr } = await supabase.storage.from('event-photos').upload(path, file, { upsert: true, contentType: file.type });
-      if (upErr) { console.warn('submitEventMedia storage failed:', upErr); continue; }
+      if (upErr) { console.warn('reconcileEventMedia storage failed:', upErr); continue; }
       const storagePath = `event-photos/${path}`;
       const { error: rowErr } = await supabase.from('event_photos').insert({ event_id: eventId, storage_path: storagePath, sort_order: i });
-      if (rowErr) { console.warn('submitEventMedia row failed:', rowErr); continue; }
+      if (rowErr) { console.warn('reconcileEventMedia row failed:', rowErr); continue; }
       uploaded++;
-      if (i === coverIndex) coverPath = storagePath;
+      if (i === coverIndex) newCoverPath = storagePath;
     }
-    if (coverPath) {
-      const { error } = await supabase.rpc('update_event_media_and_details', { p_event_id: eventId, p_cover_image: coverPath });
-      if (error) console.warn('submitEventMedia cover update failed:', error);
+    const finalCover = newCoverPath || existingCoverPath;
+    if (finalCover) {
+      const { error } = await supabase.rpc('update_event_media_and_details', { p_event_id: eventId, p_cover_image: finalCover });
+      if (error) console.warn('reconcileEventMedia cover update failed:', error);
     }
-    return { uploaded, failed: files.length - uploaded };
-  }, []);
+    return { uploaded, failed: newFiles.length - uploaded, removed };
+  }, [s.eventPhotos]);
   /**
    * Event review queue — branches on `s.createEditEventId`: a fresh
    * submission goes through create_event_draft (INSERT, status becomes
@@ -5977,8 +5998,9 @@ export function GocProvider({ children }) {
    * "submitted, but N photos didn't upload" — never silently claimed as
    * fully successful.
    */
-  const createSubmit = useCallback(async (photoFiles = [], coverIndex = 0) => {
+  const createSubmit = useCallback(async (photoFiles = [], coverIndex = 0, mediaOpts = {}) => {
     if (!s.createName.trim()) return;
+    const { removePhotoIds = [], existingCoverPath = '' } = mediaOpts;
     set({ loading: true, createError: '', createMediaError: '' });
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -6034,8 +6056,10 @@ export function GocProvider({ children }) {
       }
 
       let mediaNote = '';
-      if (eventId && photoFiles.length) {
-        const { uploaded, failed } = await submitEventMedia(eventId, photoFiles, coverIndex);
+      if (eventId && (photoFiles.length || removePhotoIds.length || existingCoverPath)) {
+        const { uploaded, failed } = await reconcileEventMedia(eventId, {
+          newFiles: photoFiles, coverIndex, removeIds: removePhotoIds, existingCoverPath,
+        });
         if (failed > 0) {
           mediaNote = uploaded > 0
             ? T(`Đã gửi sự kiện, nhưng ${failed} ảnh chưa tải lên được.`, `Event submitted, but ${failed} photo(s) didn't upload.`)
@@ -6052,7 +6076,7 @@ export function GocProvider({ children }) {
         : (err.message || 'Unable to submit this event.');
       set({ loading: false, createError: message });
     }
-  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, submitEventMedia, T]);
+  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
 
   /**
@@ -6076,8 +6100,18 @@ export function GocProvider({ children }) {
       createDate: [dayMonth, time].filter(Boolean).join(' '),
       createPrice: real.priceVnd ? String(real.priceVnd) : '',
       createSeats: real.capacity ? String(real.capacity) : '',
+      // Root-cause fix (Stage A media-parity pass, 2026-09-26): this used
+      // to leave createIncludedItems at whatever the PREVIOUS screen visit
+      // left behind (often []), and createSubmit always sends the current
+      // createIncludedItems verbatim — resubmit_event_for_review's own
+      // `COALESCE(p_included_items, included_items)` only preserves the old
+      // value on a NULL param, not an empty array, so an edit could silently
+      // wipe an event's real "Bao gồm" items. Re-seeding here from the same
+      // row's own includedItems closes that gap.
+      createIncludedItems: Array.isArray(real.includedItems) ? real.includedItems.map(it => ({ label: it.label || '', detail: it.detail || '' })) : [],
     });
-  }, [set, s.realEventsById]);
+    loadEventPhotos(eventId);
+  }, [set, s.realEventsById, loadEventPhotos]);
 
   // ---- attendance ----
   // The guest list is real bookings for this event (not the old fake

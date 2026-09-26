@@ -612,6 +612,69 @@ extension AppState {
         }
     }
 
+    /// Port of web's reconcileEventMedia (GocContext.jsx, Stage A media-
+    /// parity pass, 2026-09-26) — CreateEventView's cover/gallery editor
+    /// hands this the event's current staged state in one call: existing
+    /// `event_photos` ids the host removed, new UIImages to upload, and
+    /// which surviving item (existing storage path OR a freshly-uploaded
+    /// one) is the cover. Removals run first so a re-picked cover can never
+    /// collide with a row still being deleted. Never rolls back the event
+    /// row itself on a partial media failure — returns per-item outcomes so
+    /// the caller can show an honest partial-failure notice instead of
+    /// silently claiming full success.
+    @discardableResult
+    func reconcileEventMedia(
+        eventID: String, newImages: [UIImage], coverNewIndex: Int?,
+        removeExistingIDs: [UUID], existingCoverPath: String?
+    ) async -> (uploaded: Int, failed: Int, removed: Int) {
+        var removed = 0
+        for photoID in removeExistingIDs {
+            if let row = eventPhotos.first(where: { $0.id == photoID }) {
+                let relative = row.storagePath.hasPrefix("event-photos/")
+                    ? String(row.storagePath.dropFirst("event-photos/".count)) : row.storagePath
+                _ = try? await SupabaseService.client.storage.from("event-photos").remove(paths: [relative])
+            }
+            do {
+                _ = try await SupabaseService.client.from("event_photos").delete().eq("id", value: photoID).execute()
+                removed += 1
+            } catch {
+                print("reconcileEventMedia delete failed:", error)
+            }
+        }
+
+        var uploaded = 0
+        var newCoverPath: String?
+        for (i, image) in newImages.enumerated() {
+            guard let data = image.jpegData(compressionQuality: 0.85), data.count <= 50 * 1024 * 1024 else { continue }
+            let path = "\(eventID)/\(Int(Date().timeIntervalSince1970 * 1000))-\(i).jpg"
+            do {
+                _ = try await SupabaseService.client.storage.from("event-photos")
+                    .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
+                let storagePath = "event-photos/\(path)"
+                _ = try await SupabaseService.client.from("event_photos")
+                    .insert(NewEventPhoto(eventId: eventID, storagePath: storagePath)).execute()
+                uploaded += 1
+                if i == coverNewIndex { newCoverPath = storagePath }
+            } catch {
+                print("reconcileEventMedia upload failed:", error)
+            }
+        }
+
+        if let cover = newCoverPath ?? existingCoverPath, !cover.isEmpty {
+            struct Params: Encodable {
+                let eventId: String
+                let coverImage: String
+                enum CodingKeys: String, CodingKey { case eventId = "p_event_id", coverImage = "p_cover_image" }
+            }
+            do {
+                _ = try await SupabaseService.client.rpc("update_event_media_and_details", params: Params(eventId: eventID, coverImage: cover)).execute()
+            } catch {
+                print("reconcileEventMedia cover update failed:", error)
+            }
+        }
+        return (uploaded, newImages.count - uploaded, removed)
+    }
+
     /// STAGE D (2026-09-25) — EventDetailView's own real photo gallery,
     /// one event's `event_photos` rows (not the whole organizer's — that's
     /// `loadOrganizerPhotos` below). Replaces the static demo
@@ -2274,7 +2337,17 @@ extension AppState {
     /// The columns shapeReal(As)*'s callers all need — same set web's own
     /// REAL_EVENT_ROW_COLUMNS uses (GocContext.jsx), kept as one constant so
     /// loadWeekendEvents and loadRealEventsByID never drift apart.
-    private static let realEventColumns = "id, name, cat_key, cat_label, area, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason"
+    private static let realEventColumns = "id, name, cat_key, cat_label, area, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image"
+
+    /// `events.cover_image` (migration 087) always wins over the gallery's
+    /// own sort_order-first fallback when a host has explicitly picked one —
+    /// same root-cause fix as web's resolveCoverUrl (GocContext.jsx): a
+    /// batch upload's sort_order reflects upload order, not cover status.
+    private func resolveCoverURL(_ coverImagePath: String?) -> URL? {
+        guard let path = coverImagePath, !path.isEmpty else { return nil }
+        let relative = path.hasPrefix("event-photos/") ? String(path.dropFirst("event-photos/".count)) : path
+        return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative)
+    }
 
     /// event_photos rows for `eventIds` -> first public photo URL per event —
     /// same batching + bucket-name-doubling defensive strip
@@ -2358,7 +2431,7 @@ extension AppState {
             let orgNameByID = await orgRows
             for row in rows {
                 var shaped = row
-                shaped.photoURL = photos[row.id]
+                shaped.photoURL = resolveCoverURL(row.coverImage) ?? photos[row.id]
                 if let orgId = row.organizerId { shaped.organizerName = orgNameByID[orgId] ?? "" }
                 realEventsByID[row.id] = CatalogEvent.fromReal(shaped)
             }
@@ -2408,7 +2481,7 @@ extension AppState {
             var shaped: [(event: CatalogEvent, followed: Bool)] = []
             for row in rows {
                 var r = row
-                r.photoURL = photos[row.id]
+                r.photoURL = resolveCoverURL(row.coverImage) ?? photos[row.id]
                 if let orgId = row.organizerId { r.organizerName = orgNameByID[orgId] ?? "" }
                 shaped.append((CatalogEvent.fromReal(r), row.organizerId.map { followedOrgIDs.contains($0) } ?? false))
                 // Same rows just fetched — feeds the shared realEventsByID
@@ -3310,10 +3383,14 @@ extension AppState {
     /// event (goEditEvent below) goes through resubmit_event_for_review
     /// (UPDATE the SAME row; ownership + `status = 'draft'` enforced
     /// server-side, never a second duplicate event row).
-    func submitCreateEvent() async {
+    func submitCreateEvent(
+        newImages: [UIImage] = [], coverNewIndex: Int? = nil,
+        removeExistingPhotoIDs: [UUID] = [], existingCoverPath: String? = nil
+    ) async {
         guard !createName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         loading = true
         createError = ""
+        createMediaError = ""
 
         let priceDigits = createPrice.filter { $0.isNumber }
         let capacity = Int(createSeats.filter { $0.isNumber }) ?? 0
@@ -3330,6 +3407,7 @@ extension AppState {
         }
 
         do {
+            var eventID: String?
             if let editID = createEditEventId {
                 let result: [String: JSONValue] = try await SupabaseService.client
                     .rpc("resubmit_event_for_review", params: ResubmitEventParams(
@@ -3343,9 +3421,11 @@ extension AppState {
                     ))
                     .execute().value
                 guard case .bool(true) = result["success"] ?? .bool(false) else { throw URLError(.badServerResponse) }
+                eventID = editID
             } else {
                 if !canHost { await applyOrganizerMode(true) }
-                _ = try await SupabaseService.client
+                struct CreatedEvent: Decodable { let id: String }
+                let created: CreatedEvent = try await SupabaseService.client
                     .rpc("create_event_draft", params: CreateEventParams(
                         name: createName.trimmingCharacters(in: .whitespaces),
                         category: createCats.first ?? "supper",
@@ -3360,8 +3440,22 @@ extension AppState {
                         instagram: orgRegIg.trimmingCharacters(in: .whitespaces),
                         about: orgRegDesc.trimmingCharacters(in: .whitespaces)
                     ))
-                    .execute()
+                    .execute().value
+                eventID = created.id
             }
+
+            if let eventID, !newImages.isEmpty || !removeExistingPhotoIDs.isEmpty || (existingCoverPath?.isEmpty == false) {
+                let (uploaded, failed, _) = await reconcileEventMedia(
+                    eventID: eventID, newImages: newImages, coverNewIndex: coverNewIndex,
+                    removeExistingIDs: removeExistingPhotoIDs, existingCoverPath: existingCoverPath
+                )
+                if failed > 0 {
+                    createMediaError = uploaded > 0
+                        ? T("Đã gửi sự kiện, nhưng \(failed) ảnh chưa tải lên được.", "Event submitted, but \(failed) photo(s) didn't upload.")
+                        : T("Đã gửi sự kiện, nhưng không tải được ảnh nào.", "Event submitted, but no photos could be uploaded.")
+                }
+            }
+
             loading = false
             createSent = true
             hasHosted = true
@@ -3431,7 +3525,7 @@ extension AppState {
             let names = await orgNames
             adminEvents = rows.map { row in
                 var r = row
-                r.photoURL = photos[row.id]
+                r.photoURL = resolveCoverURL(row.coverImage) ?? photos[row.id]
                 if let orgId = row.organizerId { r.organizerName = names[orgId] ?? "" }
                 return r
             }
@@ -3489,7 +3583,7 @@ extension AppState {
             let names = await orgNames
             myOrgEventSummaries = rows.map { row in
                 var r = row
-                r.photoURL = photos[row.id]
+                r.photoURL = resolveCoverURL(row.coverImage) ?? photos[row.id]
                 if let orgId = row.organizerId { r.organizerName = names[orgId] ?? "" }
                 return r
             }

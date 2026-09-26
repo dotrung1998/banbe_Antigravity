@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 /// Port of src/screens/Splash.jsx — the wordmark, the tagline, and a
 /// spinner; tapping (or waiting) moves on to the language picker.
@@ -152,6 +153,32 @@ struct ThemePickView: View {
 /// Port of src/screens/CreateEvent.jsx — the organizer profile fields, the
 /// event fields, category pickers and the submit that calls
 /// create_event_draft.
+/// A single staged gallery tile — either one of the event's ALREADY-
+/// uploaded `event_photos` rows (when editing an owned event) or a
+/// freshly-picked local image, unified so remove/reorder/cover-pick work
+/// the same way on both (mirrors web's CreateEvent.jsx `items` list).
+private struct StagedGalleryItem: Identifiable, Equatable {
+    enum Kind: Equatable {
+        case existing(photoID: UUID, storagePath: String)
+        case new(image: UIImage)
+        static func == (a: Kind, b: Kind) -> Bool {
+            switch (a, b) {
+            case (.existing(let x, _), .existing(let y, _)): return x == y
+            case (.new(let x), .new(let y)): return x === y
+            default: return false
+            }
+        }
+    }
+    let id: String
+    var kind: Kind
+    var url: URL? // only for .existing, resolved once at seed time
+
+    var image: UIImage? { if case .new(let img) = kind { return img }; return nil }
+}
+
+/// Port of src/screens/CreateEvent.jsx — the organizer profile fields, the
+/// event fields, category pickers and the submit that calls
+/// create_event_draft.
 struct CreateEventView: View {
     @EnvironmentObject var app: AppState
 
@@ -162,6 +189,144 @@ struct CreateEventView: View {
         ("music", "Nhạc", "Music"),
         ("popup", "Pop-up", "Pop-up"),
     ]
+    private let maxPhotos = 8
+
+    @State private var galleryItems: [StagedGalleryItem] = []
+    @State private var coverItemID: String?
+    @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var photoError = ""
+    @State private var seededForEventID: String?
+    @State private var seededExistingIDs: Set<UUID> = []
+
+    private var removedExistingIDs: [UUID] {
+        let kept = Set(galleryItems.compactMap { if case .existing(let id, _) = $0.kind { return id }; return nil })
+        return seededExistingIDs.filter { !kept.contains($0) }
+    }
+    private var newImagesInOrder: [UIImage] { galleryItems.compactMap(\.image) }
+    private var coverNewIndex: Int? {
+        guard let coverItemID, let item = galleryItems.first(where: { $0.id == coverItemID }),
+              case .new(let image) = item.kind else { return nil }
+        return newImagesInOrder.firstIndex(where: { $0 === image })
+    }
+    private var existingCoverPath: String? {
+        guard let coverItemID, let item = galleryItems.first(where: { $0.id == coverItemID }),
+              case .existing(_, let path) = item.kind else { return nil }
+        return path
+    }
+
+    private func seedGalleryIfNeeded() {
+        guard let editID = app.createEditEventId else {
+            if seededForEventID != nil { galleryItems = []; coverItemID = nil; seededExistingIDs = [] }
+            seededForEventID = nil
+            return
+        }
+        guard seededForEventID != editID, !app.eventPhotosLoading else { return }
+        seededForEventID = editID
+        let cover = app.myOrgEventSummaries.first(where: { $0.id == editID })?.coverImage
+        let seeded: [StagedGalleryItem] = app.eventPhotos.map { photo in
+            let relative = photo.storagePath.hasPrefix("event-photos/")
+                ? String(photo.storagePath.dropFirst("event-photos/".count)) : photo.storagePath
+            let url = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative)
+            return StagedGalleryItem(id: photo.id.uuidString, kind: .existing(photoID: photo.id, storagePath: photo.storagePath), url: url)
+        }
+        galleryItems = seeded
+        seededExistingIDs = Set(app.eventPhotos.map(\.id))
+        let coverItem = seeded.first { if case .existing(_, let path) = $0.kind { return path == cover }; return false }
+        coverItemID = (coverItem ?? seeded.first)?.id
+    }
+
+    private func removeGalleryItem(_ item: StagedGalleryItem) {
+        galleryItems.removeAll { $0.id == item.id }
+        if coverItemID == item.id { coverItemID = galleryItems.first?.id }
+    }
+
+    @ViewBuilder
+    private func gallerySection() -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(app.T("Hình ảnh", "Photos")).font(.system(size: 11.5))
+                Spacer()
+                Text("\(galleryItems.count)/\(maxPhotos)").font(.system(size: 10.5))
+            }
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                ForEach(galleryItems) { item in
+                    ZStack(alignment: .topTrailing) {
+                        Group {
+                            if let image = item.image {
+                                Image(uiImage: image).resizable().scaledToFill()
+                            } else {
+                                AsyncImage(url: item.url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .aspectRatio(1, contentMode: .fill)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                        Button { removeGalleryItem(item) } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 20, height: 20)
+                                .background(Color.black.opacity(0.55), in: Circle())
+                        }
+                        .padding(4)
+
+                        VStack {
+                            Spacer()
+                            Button { coverItemID = item.id } label: {
+                                Text(item.id == coverItemID ? app.T("Ảnh bìa", "Cover") : app.T("Đặt làm ảnh bìa", "Set as cover"))
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 3)
+                                    .background(item.id == coverItemID ? app.palette.ink : app.palette.paper.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
+                                    .foregroundStyle(item.id == coverItemID ? app.palette.paper : app.palette.ink)
+                            }
+                            .padding(4)
+                        }
+                    }
+                }
+                if galleryItems.count < maxPhotos {
+                    PhotosPicker(selection: $pickerItems, maxSelectionCount: maxPhotos - galleryItems.count, matching: .images) {
+                        Image(systemName: "plus")
+                            .foregroundStyle(app.palette.ink)
+                            .frame(maxWidth: .infinity)
+                            .aspectRatio(1, contentMode: .fill)
+                            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(app.palette.ink, style: StrokeStyle(lineWidth: 1, dash: [4])))
+                    }
+                }
+            }
+            if !photoError.isEmpty {
+                Text(photoError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+            }
+        }
+        .padding(.top, 22)
+        .onChange(of: pickerItems) { _, newItems in
+            guard !newItems.isEmpty else { return }
+            Task {
+                var accepted: [StagedGalleryItem] = []
+                for pickerItem in newItems {
+                    guard let data = try? await pickerItem.loadTransferable(type: Data.self), let image = UIImage(data: data) else {
+                        await MainActor.run { photoError = app.T("Không thể đọc một trong các ảnh đã chọn.", "Couldn't read one of the selected photos.") }
+                        continue
+                    }
+                    if data.count > 50 * 1024 * 1024 {
+                        await MainActor.run { photoError = app.T("Mỗi ảnh tối đa 50MB.", "Each photo must be under 50MB.") }
+                        continue
+                    }
+                    accepted.append(StagedGalleryItem(id: UUID().uuidString, kind: .new(image: image), url: nil))
+                }
+                await MainActor.run {
+                    if !accepted.isEmpty {
+                        photoError = ""
+                        galleryItems.append(contentsOf: accepted)
+                        if coverItemID == nil { coverItemID = galleryItems.first?.id }
+                    }
+                    pickerItems = []
+                }
+            }
+        }
+    }
 
     var body: some View {
         ScreenScaffold {
@@ -231,6 +396,8 @@ struct CreateEventView: View {
                     }
                 }
 
+                gallerySection()
+
                 // No SLA is actually monitored server-side — the previous
                 // "duyệt sự kiện đầu tiên trong 48 giờ"/"reviews your first
                 // event within 48 hours" copy promised a turnaround time
@@ -244,12 +411,23 @@ struct CreateEventView: View {
                           enabled: !app.createName.trimmingCharacters(in: .whitespaces).isEmpty
                               && !app.createSent && !app.loading,
                           cornerRadius: 999) {
-                    Task { await app.submitCreateEvent() }
+                    Task {
+                        await app.submitCreateEvent(
+                            newImages: newImagesInOrder, coverNewIndex: coverNewIndex,
+                            removeExistingPhotoIDs: removedExistingIDs, existingCoverPath: existingCoverPath
+                        )
+                    }
                 }
                 .padding(.top, 26)
 
                 if !app.createError.isEmpty {
                     Text(app.createError)
+                        .font(.system(size: 12))
+                        .foregroundStyle(BanbeTheme.alert)
+                        .padding(.top, 12)
+                }
+                if !app.createMediaError.isEmpty {
+                    Text(app.createMediaError)
                         .font(.system(size: 12))
                         .foregroundStyle(BanbeTheme.alert)
                         .padding(.top, 12)
@@ -260,6 +438,12 @@ struct CreateEventView: View {
             .padding(.top, 16)
             .padding(.bottom, 40)
         }
+        .task(id: app.createEditEventId) {
+            guard let editID = app.createEditEventId else { seedGalleryIfNeeded(); return }
+            await app.loadEventPhotos(eventID: editID)
+        }
+        .onChange(of: app.eventPhotos) { _, _ in seedGalleryIfNeeded() }
+        .onAppear { seedGalleryIfNeeded() }
     }
 
     private func group<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
