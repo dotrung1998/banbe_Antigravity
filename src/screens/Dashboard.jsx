@@ -10,8 +10,22 @@ export default function Dashboard() {
   const {
     state, T, trStatus, stripKm, curEvent, backFromDashboard, switchToGoer, goCreate, openAttendance, goEvent, requestVerify, loadHomeLiveEvents,
     loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, openVerifications, uploadEventPhoto,
+    loadRealEventsById, goEditEvent,
   } = useGoc();
   const s = state;
+  // Event review queue — a real, host-created event isn't in the static
+  // demo catalogue, so it's resolved through the same canonical
+  // realEventsById cache Home/EventList already use (see loadRealEventsById's
+  // own comment), keyed off the account's real ownership list
+  // (myOrgEventKeys, loaded at sign-in from events -> organizer -> owner_id).
+  const myRealOrgKeys = s.myOrgEventKeys.filter(k => !EVENTS.some(e => e.key === k));
+  useEffect(() => {
+    if (myRealOrgKeys.length) loadRealEventsById(myRealOrgKeys);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myRealOrgKeys.join(','), loadRealEventsById]);
+  const myRealEvents = myRealOrgKeys.map(k => s.realEventsById[k]).filter(Boolean);
+  const pendingReal = myRealEvents.filter(e => e.status === 'review');
+  const needsFixReal = myRealEvents.filter(e => e.status === 'draft' && e.rejectionReason);
   // STAGE C (2026-09-25) — the real "add a photo to one of my own events"
   // flow; see uploadEventPhoto's own doc comment (GocContext.jsx).
   const photoInputRef = useRef(null);
@@ -115,6 +129,38 @@ export default function Dashboard() {
       )}
 
       <ActionCenter items={actionItems} onSeeAll={() => openVerifications('dashboard')} T={T} />
+
+      {/* Event review queue — a real submission's own status/reason, never
+          the static catalogue. Pending: still awaiting an admin decision,
+          no action to take yet. Needs fixing: rejected (status flipped back
+          to 'draft' by admin_review_event, migration 085) — "Sửa & gửi lại"
+          opens CreateEvent pre-filled (goEditEvent), which resubmits the
+          SAME event row (resubmit_event_for_review), never a duplicate. */}
+      {(pendingReal.length > 0 || needsFixReal.length > 0) && (
+        <div style={{ margin: '24px 22px 0' }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Sự kiện đã gửi', 'Submitted events')}</span>
+          <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
+            {needsFixReal.map((e, i) => (
+              <div key={e.key} data-testid={`dashboard-needs-fix-${e.key}`} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '13px 16px', borderBottom: (i < needsFixReal.length - 1 || pendingReal.length) ? `1px solid ${rule}` : 'none' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
+                  <span style={{ ...display(15) }}>{e.name}</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 600, color: alert }}>{T('Cần chỉnh sửa', 'Needs fixing')}</span>
+                </div>
+                <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.8, margin: 0 }}>{e.rejectionReason}</p>
+                <span onClick={() => goEditEvent(e.key)} data-testid={`dashboard-resubmit-${e.key}`} style={{ fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', alignSelf: 'flex-start', cursor: 'pointer' }}>
+                  {T('Sửa & gửi lại', 'Fix & resubmit')}
+                </span>
+              </div>
+            ))}
+            {pendingReal.map((e, i) => (
+              <div key={e.key} data-testid={`dashboard-pending-${e.key}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', padding: '13px 16px', borderBottom: i < pendingReal.length - 1 ? `1px solid ${rule}` : 'none' }}>
+                <span style={{ ...display(15) }}>{e.name}</span>
+                <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Đang chờ Banbe duyệt', 'Waiting for Banbe to review')}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ margin: '24px 22px 0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>

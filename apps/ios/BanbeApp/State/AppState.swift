@@ -13,7 +13,7 @@ enum Screen: String {
     case create, attendance, preferences, editName, notifications, eventList
     case security
     case paymentDetails, billing, payout, documents, documentView
-    case verifications, disputes
+    case verifications, disputes, adminEvents
     case policy
     case mapExplore
     case refundAccounts, myRefunds
@@ -385,6 +385,18 @@ final class AppState: ObservableObject {
     // Retention roadmap P1 — Home's "Cuối tuần này" section.
     @Published var weekendEvents: [CatalogEvent] = []
     @Published var weekendEventsLoading = false
+    // Event review queue (event submission -> review -> publish) — this
+    // account's own REAL (non-catalogue) events, raw (status, rejection
+    // reason, submitted/reviewed timestamps included) rather than shaped
+    // into a public-facing CatalogEvent, since DashboardView needs to
+    // distinguish 'review'/'draft'+reason from 'live'/'ended', which
+    // CatalogEvent alone can't (it only ever carries derived booleans).
+    @Published var myOrgEventSummaries: [RealEventSummary] = []
+    // Admin-only "Sự kiện chờ duyệt" queue.
+    @Published var adminEvents: [RealEventSummary] = []
+    @Published var adminEventsLoading = false
+    @Published var adminEventBusy: String?
+    @Published var adminEventError = ""
 
     // MARK: Location
     @Published var located: Bool?
@@ -862,6 +874,11 @@ final class AppState: ObservableObject {
     @Published var createCats: [String] = []
     @Published var createSent = false
     @Published var createError = ""
+    // Event review queue — set while editing/resubmitting a previously-
+    // REJECTED event rather than creating a new one; submitCreateEvent()
+    // branches on this. Cleared whenever "create a new event" is entered
+    // fresh (goCreate's own reset, mirroring web's GocContext.jsx).
+    @Published var createEditEventId: String?
     @Published var orgVerifyRequested = false
 
     // MARK: Map explore (11-realtime-map.md)
@@ -1173,11 +1190,27 @@ final class AppState: ObservableObject {
     /// bundled catalogue — frozen at build time — so a real, DB-backed
     /// event that has actually ended never lost its "Điểm danh"/Check-in
     /// button.
+    // Blocker fix (event review queue follow-up) — a real, host-created
+    // event only ever belongs here once it's actually 'live'/'ended'
+    // (bookable or already happened) — 'review'/'draft' rows show in
+    // DashboardView's own separate pending/needsFix sections instead (see
+    // myPendingEvents/myNeedsFixEvents below), never mixed into "Upcoming".
     var myOrgEvents: [CatalogEvent] {
-        let base = myOrgEventKeys.isEmpty
-            ? EventCatalog.all.filter { $0.orgName == currentEvent.orgName }
-            : EventCatalog.all.filter { myOrgEventKeys.contains($0.key) }
-        return base.map(withLive)
+        if myOrgEventKeys.isEmpty {
+            return EventCatalog.all.filter { $0.orgName == currentEvent.orgName }.map(withLive)
+        }
+        let catalogOwned = EventCatalog.all.filter { myOrgEventKeys.contains($0.key) }.map(withLive)
+        let realOwned = myOrgEventSummaries
+            .filter { $0.status == "live" || $0.status == "ended" || $0.status == "cancelled" }
+            .map { CatalogEvent.fromReal($0) }
+        return catalogOwned + realOwned
+    }
+
+    /// Real submissions still awaiting an admin decision.
+    var myPendingEvents: [RealEventSummary] { myOrgEventSummaries.filter { $0.status == "review" } }
+    /// Real submissions an admin sent back for correction (rejection_reason set).
+    var myNeedsFixEvents: [RealEventSummary] {
+        myOrgEventSummaries.filter { $0.status == "draft" && !($0.rejectionReason ?? "").isEmpty }
     }
 
     /// The home feed — same filter and ordering as src/screens/Home.jsx:
@@ -1821,12 +1854,21 @@ final class AppState: ObservableObject {
         screen = .reserve
     }
 
-    func goDashboard() { screen = .dashboard }
+    func goDashboard() {
+        screen = .dashboard
+        Task { await loadMyOrgEventSummaries() }
+    }
 
     func goCreate() {
         guard isSignedIn else { return requireAuth(returnTo: .create, backTo: .hostIntro) }
         if !canHost { Task { await applyOrganizerMode(true) } }
         mode = "host"
+        // A fresh "create a new event" entry, distinct from goEditEvent's
+        // own resubmission entry — always clears any prior edit target so
+        // this never accidentally resubmits over a different event.
+        createEditEventId = nil
+        createSent = false
+        createError = ""
         screen = .create
     }
 
@@ -1934,7 +1976,7 @@ final class AppState: ObservableObject {
         case .documents: screen = .profile
         case .documentView: screen = documentBack
         case .verifications: screen = verificationsBack
-        case .disputes: screen = .profile
+        case .disputes, .adminEvents: screen = .profile
         case .mapExplore: goHome()
         // TASK A fix — these two cases were simply missing, so the shared
         // edge-swipe gesture's goBack() fell to `default: break` and did
@@ -1984,7 +2026,7 @@ final class AppState: ObservableObject {
         case .documents: return .profile
         case .documentView: return documentBack
         case .verifications: return verificationsBack
-        case .disputes: return .profile
+        case .disputes, .adminEvents: return .profile
         case .mapExplore: return .home
         // TASK A fix — same missing-case bug as goBack() above: without
         // these, an in-progress edge swipe from RefundAccounts/MyRefunds

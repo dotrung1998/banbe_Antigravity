@@ -175,9 +175,21 @@ struct CreateEventView: View {
                 Text(app.T("Dành cho người tổ chức", "For organizers"))
                     .font(.system(size: 11.5, weight: .semibold))
                     .padding(.top, 14)
-                Text(app.T("Tạo sự kiện, hoàn toàn miễn phí", "Create an event, completely free"))
+                Text(app.createEditEventId != nil
+                     ? app.T("Chỉnh sửa và gửi lại", "Correct and resubmit")
+                     : app.T("Tạo sự kiện, hoàn toàn miễn phí", "Create an event, completely free"))
                     .font(BanbeTheme.display(26))
                     .padding(.top, 8)
+                if let editID = app.createEditEventId,
+                   let reason = app.myOrgEventSummaries.first(where: { $0.id == editID })?.rejectionReason,
+                   !reason.isEmpty {
+                    Text(app.T("Bị từ chối: ", "Rejected: ") + reason)
+                        .font(.system(size: 12))
+                        .foregroundStyle(BanbeTheme.alert)
+                        .padding(10)
+                        .background(BanbeTheme.alert.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .padding(.top, 10)
+                }
 
                 group(app.T("Hồ sơ người tổ chức", "Organizer profile")) {
                     BanbeField(label: app.T("Tên", "Name"), placeholder: "Bếp Nhỏ", text: $app.orgRegName)
@@ -219,10 +231,16 @@ struct CreateEventView: View {
                     }
                 }
 
+                // No SLA is actually monitored server-side — the previous
+                // "duyệt sự kiện đầu tiên trong 48 giờ"/"reviews your first
+                // event within 48 hours" copy promised a turnaround time
+                // nothing enforced. Accurate instead of reassuring.
                 InkButton(title: app.createSent
-                          ? app.T("Đã gửi ▪︎ banbe đang duyệt", "Submitted ▪︎ under review")
+                          ? app.T("Đã gửi, đang chờ Banbe duyệt", "Submitted, waiting for Banbe to review")
                           : (app.loading ? app.T("Đang gửi…", "Submitting…")
-                                         : app.T("Gửi để duyệt", "Submit for review")),
+                                         : (app.createEditEventId != nil
+                                            ? app.T("Gửi lại để duyệt", "Resubmit for review")
+                                            : app.T("Gửi để duyệt", "Submit for review"))),
                           enabled: !app.createName.trimmingCharacters(in: .whitespaces).isEmpty
                               && !app.createSent && !app.loading,
                           cornerRadius: 999) {
@@ -234,12 +252,6 @@ struct CreateEventView: View {
                     Text(app.createError)
                         .font(.system(size: 12))
                         .foregroundStyle(BanbeTheme.alert)
-                        .padding(.top, 12)
-                }
-                if app.createSent {
-                    Text(app.T("banbe duyệt sự kiện đầu tiên trong 48 giờ. Sau đó bạn đăng trực tiếp.",
-                               "banbe reviews your first event within 48 hours. After that you post directly."))
-                        .font(.system(size: 11.5))
                         .padding(.top, 12)
                 }
             }

@@ -43,6 +43,7 @@ import Documents from './screens/Documents.jsx';
 import DocumentView from './screens/DocumentView.jsx';
 import Verifications from './screens/Verifications.jsx';
 import Disputes from './screens/Disputes.jsx';
+import AdminEvents from './screens/AdminEvents.jsx';
 import ToastStack from './screens/ToastStack.jsx';
 import Policy from './screens/Policy.jsx';
 import MapExplore from './screens/MapExplore.jsx';
@@ -83,6 +84,7 @@ const SCREENS = {
   documentView: DocumentView,
   verifications: Verifications,
   disputes: Disputes,
+  adminEvents: AdminEvents,
   policy: Policy,
   mapExplore: MapExplore,
   editProfile: EditProfile,

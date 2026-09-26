@@ -1467,6 +1467,14 @@ extension AppState {
             if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key) {
                 openAttendance(key, back: .notifications)
             }
+        case "event_approved", "event_rejected":
+            // Event review queue — DashboardView is the one place the host
+            // can already see their own real event's status/rejection
+            // reason, same per-event ownership guard as every other
+            // organizer-bound kind here.
+            if let key = notification.data["event_id"]?.stringValue, myOrgEventKeys.contains(key) {
+                goDashboard()
+            }
         case "hold_created", "payment_needs_info", "checked_in", "checkin_undone":
             // 01-hold-payment.md follow-up: hold_created is the guest's own
             // mirror of "booking_requested" (hold_seats(), migration 053)
@@ -2256,7 +2264,7 @@ extension AppState {
     /// The columns shapeReal(As)*'s callers all need — same set web's own
     /// REAL_EVENT_ROW_COLUMNS uses (GocContext.jsx), kept as one constant so
     /// loadWeekendEvents and loadRealEventsByID never drift apart.
-    private static let realEventColumns = "id, name, cat_key, cat_label, area, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id"
+    private static let realEventColumns = "id, name, cat_key, cat_label, area, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason"
 
     /// event_photos rows for `eventIds` -> first public photo URL per event —
     /// same batching + bucket-name-doubling defensive strip
@@ -3286,11 +3294,16 @@ extension AppState {
         }
     }
 
+    /// Event review queue — branches on `createEditEventId`: a fresh
+    /// submission goes through create_event_draft (INSERT, status becomes
+    /// 'review' — migration 085), while editing a previously-REJECTED
+    /// event (goEditEvent below) goes through resubmit_event_for_review
+    /// (UPDATE the SAME row; ownership + `status = 'draft'` enforced
+    /// server-side, never a second duplicate event row).
     func submitCreateEvent() async {
         guard !createName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         loading = true
         createError = ""
-        if !canHost { await applyOrganizerMode(true) }
 
         let priceDigits = createPrice.filter { $0.isNumber }
         let capacity = Int(createSeats.filter { $0.isNumber }) ?? 0
@@ -3307,27 +3320,44 @@ extension AppState {
         }
 
         do {
-            _ = try await SupabaseService.client
-                .rpc("create_event_draft", params: CreateEventParams(
-                    name: createName.trimmingCharacters(in: .whitespaces),
-                    category: createCats.first ?? "supper",
-                    description: createDesc.trimmingCharacters(in: .whitespaces),
-                    location: createLoc.trimmingCharacters(in: .whitespaces),
-                    eventDate: eventDate,
-                    eventTime: eventTime,
-                    priceVnd: Int(priceDigits) ?? 0,
-                    capacity: capacity,
-                    organizerName: orgRegName.trimmingCharacters(in: .whitespaces).isEmpty
-                        ? "Organizer" : orgRegName.trimmingCharacters(in: .whitespaces),
-                    instagram: orgRegIg.trimmingCharacters(in: .whitespaces),
-                    about: orgRegDesc.trimmingCharacters(in: .whitespaces)
-                ))
-                .execute()
+            if let editID = createEditEventId {
+                let result: [String: JSONValue] = try await SupabaseService.client
+                    .rpc("resubmit_event_for_review", params: ResubmitEventParams(
+                        eventId: editID,
+                        name: createName.trimmingCharacters(in: .whitespaces),
+                        category: createCats.first ?? "supper",
+                        description: createDesc.trimmingCharacters(in: .whitespaces),
+                        location: createLoc.trimmingCharacters(in: .whitespaces),
+                        eventDate: eventDate, eventTime: eventTime,
+                        priceVnd: Int(priceDigits) ?? 0, capacity: capacity
+                    ))
+                    .execute().value
+                guard case .bool(true) = result["success"] ?? .bool(false) else { throw URLError(.badServerResponse) }
+            } else {
+                if !canHost { await applyOrganizerMode(true) }
+                _ = try await SupabaseService.client
+                    .rpc("create_event_draft", params: CreateEventParams(
+                        name: createName.trimmingCharacters(in: .whitespaces),
+                        category: createCats.first ?? "supper",
+                        description: createDesc.trimmingCharacters(in: .whitespaces),
+                        location: createLoc.trimmingCharacters(in: .whitespaces),
+                        eventDate: eventDate,
+                        eventTime: eventTime,
+                        priceVnd: Int(priceDigits) ?? 0,
+                        capacity: capacity,
+                        organizerName: orgRegName.trimmingCharacters(in: .whitespaces).isEmpty
+                            ? "Organizer" : orgRegName.trimmingCharacters(in: .whitespaces),
+                        instagram: orgRegIg.trimmingCharacters(in: .whitespaces),
+                        about: orgRegDesc.trimmingCharacters(in: .whitespaces)
+                    ))
+                    .execute()
+            }
             loading = false
             createSent = true
             hasHosted = true
             mode = "host"
             await loadMyEvents()
+            await loadMyOrgEventSummaries()
         } catch {
             loading = false
             createError = T(
@@ -3338,6 +3368,181 @@ extension AppState {
     }
 
     func requestVerify() { orgVerifyRequested = true }
+
+    /// Opens CreateEventView pre-filled with a previously-REJECTED event's
+    /// own real data (Dashboard's "Sửa & gửi lại"). resubmit_event_for_
+    /// review itself re-checks both ownership and `status = 'draft'` —
+    /// this only lets the host SEE their own fields to correct.
+    func goEditEvent(_ real: RealEventSummary) {
+        createEditEventId = real.id
+        createSent = false
+        createError = ""
+        createName = real.name
+        createCats = real.catKey.map { [$0] } ?? []
+        createDesc = real.description ?? ""
+        createLoc = real.area ?? ""
+        let dayMonth: String = {
+            guard let dateStr = real.eventDate else { return "" }
+            let parts = dateStr.split(separator: "-")
+            guard parts.count == 3 else { return "" }
+            return "\(parts[2]).\(parts[1])"
+        }()
+        let time = real.eventTime.map { String($0.prefix(5)) } ?? ""
+        createDate = [dayMonth, time].filter { !$0.isEmpty }.joined(separator: " ")
+        createPrice = real.priceVnd.map(String.init) ?? ""
+        createSeats = real.capacity.map(String.init) ?? ""
+        screen = .create
+    }
+
+    // ---- admin event review queue (event submission -> review -> publish) ----
+
+    func openAdminEvents() {
+        guard isAdmin else { return }
+        screen = .adminEvents
+        Task { await loadPendingEvents() }
+    }
+
+    /// `events_select_admin` (migration 085) is what actually makes this
+    /// return every organizer's pending rows, not just this account's own.
+    func loadPendingEvents() async {
+        adminEventsLoading = true
+        adminEventError = ""
+        defer { adminEventsLoading = false }
+        do {
+            let rows: [RealEventSummary] = try await SupabaseService.client
+                .from("events").select(Self.realEventColumns)
+                .eq("status", value: "review")
+                .order("submitted_at", ascending: true)
+                .execute().value
+            let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
+            async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
+            async let orgNames = organizerNames(for: organizerIDs)
+            let photos = await photoMap
+            let names = await orgNames
+            adminEvents = rows.map { row in
+                var r = row
+                r.photoURL = photos[row.id]
+                if let orgId = row.organizerId { r.organizerName = names[orgId] ?? "" }
+                return r
+            }
+        } catch {
+            print("loadPendingEvents failed:", error)
+            adminEvents = []
+            adminEventError = error.localizedDescription
+        }
+    }
+
+    /// admin_review_event (migration 085) does the actual admin-gated,
+    /// race-safe (row-locked, status-checked) transition — this just calls
+    /// it and refreshes the queue. A rejection with no reason is blocked
+    /// server-side (REASON_REQUIRED) as well as here.
+    @discardableResult
+    func reviewEvent(_ eventId: String, approve: Bool, reason: String) async -> Bool {
+        if !approve && reason.trimmingCharacters(in: .whitespaces).isEmpty {
+            adminEventError = "REASON_REQUIRED"
+            return false
+        }
+        adminEventBusy = eventId
+        adminEventError = ""
+        var ok = false
+        do {
+            let result: [String: JSONValue] = try await SupabaseService.client
+                .rpc("admin_review_event", params: AdminReviewEventParams(eventId: eventId, approve: approve, reason: reason))
+                .execute().value
+            if case .bool(true) = result["success"] ?? .bool(false) {
+                ok = true
+            } else if case .string(let err) = result["error"] ?? .string("") {
+                adminEventError = err
+            }
+        } catch {
+            print("reviewEvent failed:", error)
+            adminEventError = error.localizedDescription
+        }
+        adminEventBusy = nil
+        if ok { await loadPendingEvents() }
+        return ok
+    }
+
+    /// This account's own real (non-catalogue) events, raw — see
+    /// myOrgEventSummaries' own doc comment (AppState.swift).
+    func loadMyOrgEventSummaries() async {
+        let realKeys = myOrgEventKeys.filter { key in EventCatalog.all.first(where: { $0.key == key }) == nil }
+        guard !realKeys.isEmpty else { myOrgEventSummaries = []; return }
+        do {
+            let rows: [RealEventSummary] = try await SupabaseService.client
+                .from("events").select(Self.realEventColumns).in("id", values: realKeys)
+                .execute().value
+            let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
+            async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
+            async let orgNames = organizerNames(for: organizerIDs)
+            let photos = await photoMap
+            let names = await orgNames
+            myOrgEventSummaries = rows.map { row in
+                var r = row
+                r.photoURL = photos[row.id]
+                if let orgId = row.organizerId { r.organizerName = names[orgId] ?? "" }
+                return r
+            }
+        } catch {
+            print("loadMyOrgEventSummaries failed:", error)
+            myOrgEventSummaries = []
+        }
+    }
+}
+
+/// A generic RPC's jsonb reply where the exact value type per key varies
+/// (a plain `[String: String]`/`[String: Bool]` can't decode a mixed
+/// `{success, status}` or `{success, error}` response). Only the couple of
+/// cases admin_review_event actually returns are handled.
+enum JSONValue: Decodable {
+    case bool(Bool)
+    case string(String)
+    case null
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let b = try? container.decode(Bool.self) { self = .bool(b); return }
+        if let s = try? container.decode(String.self) { self = .string(s); return }
+        self = .null
+    }
+}
+
+/// RPC parameter payload for resubmit_event_for_review.
+struct ResubmitEventParams: Encodable {
+    let eventId: String
+    let name: String
+    let category: String
+    let description: String
+    let location: String
+    let eventDate: String?
+    let eventTime: String?
+    let priceVnd: Int
+    let capacity: Int
+
+    enum CodingKeys: String, CodingKey {
+        case eventId = "p_event_id"
+        case name = "p_name"
+        case category = "p_category"
+        case description = "p_description"
+        case location = "p_location"
+        case eventDate = "p_event_date"
+        case eventTime = "p_event_time"
+        case priceVnd = "p_price_vnd"
+        case capacity = "p_capacity"
+    }
+}
+
+/// RPC parameter payload for admin_review_event.
+struct AdminReviewEventParams: Encodable {
+    let eventId: String
+    let approve: Bool
+    let reason: String
+
+    enum CodingKeys: String, CodingKey {
+        case eventId = "p_event_id"
+        case approve = "p_approve"
+        case reason = "p_reason"
+    }
 }
 
 /// RPC parameter payloads (PostgREST needs one Encodable value per call;

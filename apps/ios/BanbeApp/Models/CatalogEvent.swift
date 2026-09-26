@@ -143,11 +143,19 @@ struct RealEventSummary: Decodable {
     let catLabel: String?
     let startsAt: Date?
     let priceVnd: Int?
+    let capacity: Int?
     let seatsRemaining: Int?
     let status: String
     let cancelledAt: Date?
     let visibility: String
     let organizerId: String?
+    // Event review queue (event submission -> review -> publish).
+    let description: String?
+    let eventDate: String?
+    let eventTime: String?
+    let submittedAt: Date?
+    let reviewedAt: Date?
+    let rejectionReason: String?
     var organizerName: String = ""
     var photoURL: URL?
 
@@ -157,11 +165,18 @@ struct RealEventSummary: Decodable {
         case catLabel = "cat_label"
         case startsAt = "starts_at"
         case priceVnd = "price_vnd"
+        case capacity
         case seatsRemaining = "seats_remaining"
         case status
         case cancelledAt = "cancelled_at"
         case visibility
         case organizerId = "organizer_id"
+        case description
+        case eventDate = "event_date"
+        case eventTime = "event_time"
+        case submittedAt = "submitted_at"
+        case reviewedAt = "reviewed_at"
+        case rejectionReason = "rejection_reason"
     }
 
     var soldOut: Bool { (seatsRemaining ?? 1) <= 0 }

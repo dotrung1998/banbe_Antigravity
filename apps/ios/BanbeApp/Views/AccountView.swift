@@ -353,6 +353,10 @@ struct AccountView: View {
                     VStack(spacing: 0) {
                         row(app.T("Bảng quản trị", "Admin Panel"),
                             identifier: "admin.panel", icon: "exclamationmark.shield", trailing: "›") { app.openAdminDashboard() }
+                        // Event submission -> review -> publish — a separate
+                        // desk from the payment dispute one above.
+                        row(app.T("Sự kiện chờ duyệt", "Pending events"),
+                            identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›") { app.openAdminEvents() }
                     }
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .padding(.top, 10)

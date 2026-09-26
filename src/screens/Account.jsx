@@ -41,7 +41,7 @@ function RowIcon({ kind, size = 22 }) {
 
 export default function Account() {
   const {
-    state, T, goHome, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, openSecurity, openDocuments, openPayout, openVerifications, openDisputes, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
+    state, T, goHome, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, openSecurity, openDocuments, openPayout, openVerifications, openDisputes, openAdminEvents, switchToHost, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
     openRefundAccounts, openMyRefunds, openEditProfile,
     loadHomeStories, openStoryViewer, pickStoryFile, cancelStoryCreate, publishStory,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary,
@@ -414,6 +414,12 @@ export default function Account() {
           <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản trị', 'Admin')}</span>
           <div onClick={openDisputes} data-testid="admin-disputes" style={{ ...fieldGlass({ marginTop: 10, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="alertShield" />{T('Tranh chấp thanh toán', 'Payment disputes')}</span>
+            <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+          </div>
+          {/* Event submission -> review -> publish — a separate desk from
+              the payment dispute one above; don't conflate the two. */}
+          <div onClick={openAdminEvents} data-testid="admin-events" style={{ ...fieldGlass({ marginTop: 8, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="alertShield" />{T('Sự kiện chờ duyệt', 'Pending events')}</span>
             <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
           </div>
         </div>

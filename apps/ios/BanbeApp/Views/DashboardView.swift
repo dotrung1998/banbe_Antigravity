@@ -122,6 +122,59 @@ struct DashboardView: View {
                         // an organizer).
                         ActionCenterView(items: actionItems, onSeeAll: { app.openVerifications(back: .dashboard) }, horizontalInset: 0)
 
+                        // Event review queue — a real submission's own
+                        // status/reason, never the static catalogue.
+                        // Pending: still awaiting an admin decision.
+                        // Needs fixing: rejected (status flipped back to
+                        // 'draft' by admin_review_event, migration 085) —
+                        // "Sửa & gửi lại" opens CreateEventView pre-filled
+                        // (goEditEvent), which resubmits the SAME row
+                        // (resubmit_event_for_review), never a duplicate.
+                        if !app.myPendingEvents.isEmpty || !app.myNeedsFixEvents.isEmpty {
+                            Text(app.T("Sự kiện đã gửi", "Submitted events"))
+                                .font(.system(size: 11.5, weight: .semibold))
+                                .padding(.top, 24)
+                            VStack(spacing: 0) {
+                                ForEach(app.myNeedsFixEvents, id: \.id) { row in
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack(alignment: .firstTextBaseline) {
+                                            Text(row.name).font(BanbeTheme.display(15))
+                                            Spacer()
+                                            Text(app.T("Cần chỉnh sửa", "Needs fixing"))
+                                                .font(.system(size: 10.5, weight: .semibold))
+                                                .foregroundStyle(BanbeTheme.alert)
+                                        }
+                                        Text(row.rejectionReason ?? "")
+                                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.8))
+                                        Button(app.T("Sửa & gửi lại", "Fix & resubmit")) { app.goEditEvent(row) }
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .padding(.horizontal, 10).padding(.vertical, 6)
+                                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule, lineWidth: 1))
+                                            .buttonStyle(.plain)
+                                            .accessibilityIdentifier("dashboard.resubmit.\(row.id)")
+                                    }
+                                    .padding(.vertical, 13).padding(.horizontal, 16)
+                                    .accessibilityIdentifier("dashboard.needsFix.\(row.id)")
+                                    if row.id != app.myNeedsFixEvents.last?.id || !app.myPendingEvents.isEmpty {
+                                        Divider().overlay(app.palette.rule)
+                                    }
+                                }
+                                ForEach(app.myPendingEvents, id: \.id) { row in
+                                    HStack {
+                                        Text(row.name).font(BanbeTheme.display(15))
+                                        Spacer()
+                                        Text(app.T("Đang chờ Banbe duyệt", "Waiting for Banbe to review"))
+                                            .font(.system(size: 10.5, weight: .semibold))
+                                            .foregroundStyle(app.palette.ink.opacity(0.65))
+                                    }
+                                    .padding(.vertical, 13).padding(.horizontal, 16)
+                                    .accessibilityIdentifier("dashboard.pending.\(row.id)")
+                                    if row.id != app.myPendingEvents.last?.id { Divider().overlay(app.palette.rule) }
+                                }
+                            }
+                            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+
                         HStack(alignment: .firstTextBaseline) {
                             Text(app.T("Sự kiện sắp tới", "Upcoming events"))
                                 .font(.system(size: 11.5, weight: .semibold))
@@ -226,7 +279,14 @@ struct DashboardView: View {
                 }
             }
         }
-        .task { await app.loadMyEvents() }
+        .task {
+            await app.loadMyEvents()
+            // Event review queue — this account's own real (non-catalogue)
+            // events, raw status/rejection reason included. Sequenced
+            // after loadMyEvents() (not a separate parallel .task), since
+            // it reads myOrgEventKeys, which THAT call is what populates.
+            await app.loadMyOrgEventSummaries()
+        }
         .task { await app.loadHomeLiveEvents() }
         // TASK A (2026-10-01 UX foundation pass).
         .task {

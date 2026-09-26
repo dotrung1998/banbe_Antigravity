@@ -586,6 +586,7 @@ struct RootView: View {
         case .documentView: DocumentViewerView()
         case .verifications: VerificationsView()
         case .disputes: AdminDashboardView()
+        case .adminEvents: AdminEventsView()
         case .refundAccounts: RefundAccountsView()
         case .myRefunds: MyRefundsView()
         case .editProfile: EditProfileView()

@@ -63,7 +63,14 @@ export default function CreateEvent() {
       <div onClick={createBack} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {createBackLabel}</div>
       <div style={{ padding: '14px 22px 40px', display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Dành cho người tổ chức', 'For organizers')}</span>
-        <h1 style={{ ...display(26, { margin: '8px 0 0' }) }}>{T('Tạo sự kiện, hoàn toàn miễn phí', 'Create an event, completely free')}</h1>
+        <h1 style={{ ...display(26, { margin: '8px 0 0' }) }}>
+          {s.createEditEventId ? T('Chỉnh sửa và gửi lại', 'Correct and resubmit') : T('Tạo sự kiện, hoàn toàn miễn phí', 'Create an event, completely free')}
+        </h1>
+        {s.createEditEventId && s.realEventsById[s.createEditEventId]?.rejectionReason && (
+          <p style={{ fontSize: 12, lineHeight: 1.55, color: alert, margin: '10px 0 0', background: 'rgba(178,58,42,0.08)', padding: '10px 12px', borderRadius: 10 }}>
+            {T('Bị từ chối: ', 'Rejected: ') + s.realEventsById[s.createEditEventId].rejectionReason}
+          </p>
+        )}
 
         <div style={{ ...cardGlass({ marginTop: 22, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }) }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -197,7 +204,14 @@ export default function CreateEvent() {
           <p style={{ fontSize: 11, lineHeight: 1.55, color: ink, margin: '12px 0 0' }}>{T('Sự kiện mới sẽ ở trạng thái chờ duyệt. Một tài khoản admin riêng của banbe sẽ kiểm tra trước khi mở bán.', 'New events enter review. A separate banbe admin account approves them before they go live.')}</p>
         </div>
 
-        <div onClick={createSubmit} style={createBtnStyle}>{s.createSent ? T('Đã gửi ▪︎ banbe duyệt trong 48 giờ', 'Sent ▪︎ banbe reviews within 48h') : T('Gửi để duyệt', 'Submit for review')}</div>
+        {/* No SLA is actually monitored server-side — the previous "duyệt
+            trong 48 giờ"/"reviews within 48h" copy promised a turnaround
+            time nothing enforced. Accurate instead of reassuring. */}
+        <div onClick={createSubmit} style={createBtnStyle}>
+          {s.createSent
+            ? T('Đã gửi, đang chờ Banbe duyệt', 'Submitted, waiting for Banbe to review')
+            : (s.createEditEventId ? T('Gửi lại để duyệt', 'Resubmit for review') : T('Gửi để duyệt', 'Submit for review'))}
+        </div>
         {s.createError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createError}</p>}
         <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: '12px auto 0', textAlign: 'center', maxWidth: '23ch' }}>{T('Hoàn toàn miễn phí: không phí đăng, không phí giao dịch, không phí ẩn.', 'Completely free: no listing fee, no transaction fee, no hidden fees.')}</p>
       </div>

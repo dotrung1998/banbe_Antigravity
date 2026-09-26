@@ -39,10 +39,21 @@ function shapeRealEvent(row, extra = {}) {
     organizerName: extra.organizerName || '',
     followedHost: !!extra.followedHost,
     isReal: true,
+    // Event review queue (retention/admin follow-up) — carried through so
+    // Dashboard.jsx can show a rejected/pending event's own real status
+    // without a second query.
+    description: row.description || '',
+    priceCents: row.price_cents || 0,
+    capacity: row.capacity,
+    eventDate: row.event_date || null,
+    eventTime: row.event_time || null,
+    submittedAt: row.submitted_at || null,
+    reviewedAt: row.reviewed_at || null,
+    rejectionReason: row.rejection_reason || '',
   };
 }
 
-const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id';
+const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason';
 
 /** event_photos rows for `eventIds` -> { [event_id]: first public photo URL },
  * same batching + bucket-name-doubling defensive strip loadNotifications'
@@ -507,6 +518,15 @@ const initialState = {
   createPrice: '',
   createSeats: '',
   createPhotos: 0,
+  // Event review queue — set while CreateEvent.jsx is editing/resubmitting
+  // an existing (previously rejected) event rather than creating a new
+  // one; createSubmit() branches on this. Cleared on a fresh "create" nav.
+  createEditEventId: null,
+  // Admin-only "Sự kiện chờ duyệt" queue (event review queue follow-up).
+  adminEvents: [],
+  adminEventsLoading: false,
+  adminEventBusy: '',
+  adminEventError: '',
   orgRegName: '',
   orgRegIg: '',
   orgRegDesc: '',
@@ -765,8 +785,13 @@ const NOTIFICATION_TARGET_FIELD = {
   refund_confirmed: { field: 'claim_id', table: 'refund_claims' },
   refund_disputed: { field: 'claim_id', table: 'refund_claims' },
   refund_overdue: { field: 'claim_id', table: 'refund_claims' },
+  // Event review queue — the event itself is never hard-deleted by any RPC
+  // in this schema, but registered anyway for the same defensive reason
+  // the refund_* kinds above are (no known repro, just consistent coverage).
+  event_approved: { field: 'event_id', table: 'events' },
+  event_rejected: { field: 'event_id', table: 'events' },
 };
-const NOTIFICATION_TABLE_NAME = { bookings: 'bookings', documents: 'payment_documents', refund_claims: 'refund_claims' };
+const NOTIFICATION_TABLE_NAME = { bookings: 'bookings', documents: 'payment_documents', refund_claims: 'refund_claims', events: 'events' };
 
 // RLS safety (both call sites below): `bookings`/`payment_documents` both
 // scope their guest-facing SELECT to `auth.uid() = user_id`, and an
@@ -3007,6 +3032,75 @@ export function GocProvider({ children }) {
     set({ auditTrail: data || [] });
   }, [set]);
 
+  // ---- admin event review queue (event submission -> review -> publish) ----
+  // Separate desk from the payment/dispute one above — an admin reviewing a
+  // NEW EVENT SUBMISSION is not the same job as one verifying a payment or
+  // ruling on a dispute, even though both are gated the same way
+  // (is_platform_admin(), migration 026/085).
+  const openAdminEvents = useCallback(() => {
+    set({ screen: 'adminEvents', adminEvents: [], adminEventsLoading: true, adminEventError: '' });
+  }, [set]);
+
+  /**
+   * `events_select_admin` (migration 085) is what actually makes this
+   * return every organizer's pending rows, not just this account's own —
+   * a direct `.from('events')` read, same pattern v_pending_verifications/
+   * v_disputes establish for the other two admin queues, just without a
+   * dedicated view (no evidence/PII join complex enough to warrant one).
+   */
+  const loadPendingEvents = useCallback(async () => {
+    set({ adminEventsLoading: true, adminEventError: '' });
+    const { data, error } = await supabase
+      .from('events')
+      .select(`${REAL_EVENT_ROW_COLUMNS}, organizers(name)`)
+      .eq('status', 'review')
+      .order('submitted_at', { ascending: true });
+    if (error) {
+      console.warn('loadPendingEvents failed:', error);
+      set({ adminEvents: [], adminEventsLoading: false, adminEventError: error.message });
+      return;
+    }
+    const rows = data || [];
+    const photoUrlByEvent = await firstPhotoUrlByEvent(rows.map(r => r.id));
+    const shaped = rows.map(r => shapeRealEvent(r, { photoUrl: photoUrlByEvent[r.id], organizerName: r.organizers?.name }));
+    set({ adminEvents: shaped, adminEventsLoading: false });
+  }, [set]);
+
+  /**
+   * admin_review_event (migration 085) does the actual admin-gated,
+   * race-safe (row-locked, status-checked) transition — this just calls it
+   * and refreshes the queue. A rejection with no reason is blocked
+   * server-side (REASON_REQUIRED) as well as here, so a direct RPC call
+   * bypassing this UI can't skip it either.
+   */
+  const reviewEvent = useCallback(async (eventId, approve, reason) => {
+    if (!approve && !(reason || '').trim()) {
+      set({ adminEventError: 'REASON_REQUIRED' });
+      return false;
+    }
+    set({ adminEventBusy: eventId, adminEventError: '' });
+    let ok = false;
+    try {
+      const { data, error } = await supabase.rpc('admin_review_event', {
+        p_event_id: eventId, p_approve: !!approve, p_reason: reason || '',
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.error);
+      ok = true;
+    } catch (e) {
+      console.warn('reviewEvent failed:', e);
+      set({ adminEventError: e.message || 'REVIEW_FAILED' });
+    }
+    set({ adminEventBusy: '' });
+    // Public discovery (Home's weekend section, EventList, MapExplore) only
+    // ever queries `status = 'live'` rows — nothing else needs to be
+    // "refreshed" client-side for an approval to become visible there; the
+    // very next real fetch already reflects the server-confirmed state.
+    // This just refreshes the admin's OWN queue view.
+    if (ok) await loadPendingEvents();
+    return ok;
+  }, [set, loadPendingEvents]);
+
   // ---- the temporary dispute chat (guest <-> organizer, while escalated) ----
   /**
    * escalate_payment_dispute() opens this thread server-side; this just
@@ -4242,7 +4336,10 @@ export function GocProvider({ children }) {
   const goCreate = useCallback(() => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'create', authBackScreen: 'hostIntro' });
     if (!canHost) enableOrganizerMode();
-    set({ screen: 'create', mode: 'host' });
+    // A fresh "create a new event" entry, distinct from goEditEvent's own
+    // resubmission entry — always clears any prior edit target so this
+    // never accidentally resubmits over a different event.
+    set({ screen: 'create', mode: 'host', createEditEventId: null, createSent: false, createError: '' });
   }, [set, s.user, canHost, enableOrganizerMode]);
   const openHeld = useCallback(() => set({ screen: 'confirmed' }), [set]);
   const goHostIntro = useCallback(() => {
@@ -5700,40 +5797,87 @@ export function GocProvider({ children }) {
   }), [set]);
   const pickCreatePalette = useCallback((key) => set({ createPalette: key }), [set]);
   const tapPhotoSlot = useCallback((index) => set(prev => ({ createPhotos: index < prev.createPhotos ? prev.createPhotos : Math.min(8, prev.createPhotos + 1) })), [set]);
+  /**
+   * Event review queue — branches on `s.createEditEventId`: a fresh
+   * submission goes through create_event_draft (INSERT, status becomes
+   * 'review' — migration 085), while editing a previously-REJECTED event
+   * (goEditEvent below) goes through resubmit_event_for_review (UPDATE the
+   * SAME row, ownership + `status = 'draft'` enforced server-side, never a
+   * second duplicate event row for the same submission).
+   */
   const createSubmit = useCallback(async () => {
     if (!s.createName.trim()) return;
     set({ loading: true, createError: '' });
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session?.user) throw new Error('AUTH_REQUIRED');
-      // Publishing an event is the act of hosting, so make sure organizer
-      // mode is on before create_event_draft checks the profile role.
-      if (!canHost) await applyOrganizerMode(true);
       const priceVnd = parseInt((s.createPrice.match(/[\d.]+/) || ['0'])[0].replace(/\./g, ''), 10) || 0;
       const capacity = parseInt(s.createSeats, 10) || 0;
       const dateMatch = s.createDate.match(/(\d{1,2})\.(\d{1,2})/);
       const timeMatch = s.createDate.match(/(\d{1,2}):(\d{2})/);
-      const { error } = await supabase.rpc('create_event_draft', {
-        p_name: s.createName.trim(),
-        p_category: s.createCats[0] || 'supper',
-        p_description: s.createDesc.trim(),
-        p_location: s.createLoc.trim(),
-        p_event_date: dateMatch ? `2026-${String(parseInt(dateMatch[2], 10)).padStart(2, '0')}-${String(parseInt(dateMatch[1], 10)).padStart(2, '0')}` : null,
-        p_event_time: timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null,
-        p_price_vnd: priceVnd,
-        p_capacity: capacity,
-        p_organizer_name: s.orgRegName.trim() || 'Organizer',
-        p_instagram: s.orgRegIg.trim(),
-        p_about: s.orgRegDesc.trim(),
-      });
-      if (error) throw error;
+      const eventDate = dateMatch ? `2026-${String(parseInt(dateMatch[2], 10)).padStart(2, '0')}-${String(parseInt(dateMatch[1], 10)).padStart(2, '0')}` : null;
+      const eventTime = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : null;
+
+      if (s.createEditEventId) {
+        const { data, error } = await supabase.rpc('resubmit_event_for_review', {
+          p_event_id: s.createEditEventId,
+          p_name: s.createName.trim(), p_category: s.createCats[0] || 'supper',
+          p_description: s.createDesc.trim(), p_location: s.createLoc.trim(),
+          p_event_date: eventDate, p_event_time: eventTime,
+          p_price_vnd: priceVnd, p_capacity: capacity,
+        });
+        if (error) throw error;
+        if (data?.success === false) throw new Error(data.error);
+      } else {
+        // Publishing an event is the act of hosting, so make sure organizer
+        // mode is on before create_event_draft checks the profile role.
+        if (!canHost) await applyOrganizerMode(true);
+        const { error } = await supabase.rpc('create_event_draft', {
+          p_name: s.createName.trim(),
+          p_category: s.createCats[0] || 'supper',
+          p_description: s.createDesc.trim(),
+          p_location: s.createLoc.trim(),
+          p_event_date: eventDate,
+          p_event_time: eventTime,
+          p_price_vnd: priceVnd,
+          p_capacity: capacity,
+          p_organizer_name: s.orgRegName.trim() || 'Organizer',
+          p_instagram: s.orgRegIg.trim(),
+          p_about: s.orgRegDesc.trim(),
+        });
+        if (error) throw error;
+      }
       set({ loading: false, createSent: true, hasHosted: true, mode: 'host' });
     } catch (err) {
       console.warn('Event draft creation failed:', err);
       set({ loading: false, createError: err.message || 'Unable to submit this event.' });
     }
-  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createDate, s.createPrice, s.createSeats, s.orgRegName, s.orgRegIg, s.orgRegDesc, canHost, applyOrganizerMode]);
+  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createDate, s.createPrice, s.createSeats, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode]);
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
+
+  /**
+   * Opens CreateEvent pre-filled with a previously-REJECTED (status
+   * 'draft', rejection_reason set) event's own real data, from Dashboard's
+   * "Sửa & gửi lại" action. `resubmit_event_for_review` itself re-checks
+   * both ownership and `status = 'draft'` — this is only what lets the
+   * host actually SEE their own fields to correct, not the enforcement.
+   */
+  const goEditEvent = useCallback(async (eventId) => {
+    const real = s.realEventsById[eventId];
+    if (!real) return;
+    const dateStr = real.eventDate ? new Date(real.eventDate + 'T00:00:00') : null;
+    const dayMonth = dateStr ? `${String(dateStr.getDate()).padStart(2, '0')}.${String(dateStr.getMonth() + 1).padStart(2, '0')}` : '';
+    const time = real.eventTime ? real.eventTime.slice(0, 5) : '';
+    set({
+      screen: 'create', createBack: 'dashboard',
+      createEditEventId: eventId, createSent: false, createError: '',
+      createName: real.name || '', createCats: real.catKey ? [real.catKey] : [],
+      createDesc: real.description || '', createLoc: real.area || '',
+      createDate: [dayMonth, time].filter(Boolean).join(' '),
+      createPrice: real.priceVnd ? String(real.priceVnd) : '',
+      createSeats: real.capacity ? String(real.capacity) : '',
+    });
+  }, [set, s.realEventsById]);
 
   // ---- attendance ----
   // The guest list is real bookings for this event (not the old fake
@@ -6004,6 +6148,14 @@ export function GocProvider({ children }) {
         // event, where "mark as paid" already lives (see Attendance.jsx).
         if (n.data?.event_id && iOrganize(n.data.event_id)) openAttendance(n.data.event_id, 'notifications');
         break;
+      case 'event_approved':
+      case 'event_rejected':
+        // Event review queue — Dashboard is the one place the host can
+        // already see their own real (non-catalogue) event's status/
+        // rejection reason (see Dashboard.jsx's myEvents), same per-event
+        // ownership guard as every other organizer-bound kind here.
+        if (n.data?.event_id && iOrganize(n.data.event_id)) goDashboard();
+        break;
       case 'payment_awaiting_verification':
       case 'payment_verification_nudge':
         // 01-hold-payment.md follow-up: fired by submit_payment_proof()
@@ -6126,7 +6278,7 @@ export function GocProvider({ children }) {
       default:
         break;
     }
-  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, openVerifications, openPaymentDetails, openDocumentFromNotification, reportStaleNotification, goEvent]);
+  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, openVerifications, openPaymentDetails, openDocumentFromNotification, reportStaleNotification, goEvent, goDashboard]);
   /**
    * The organizer's "mark as paid". confirm_payment issues the receipt in
    * the same transaction (migration 024) and notifies the guest, which is
@@ -6320,6 +6472,7 @@ export function GocProvider({ children }) {
     loadMyRefunds, openRefundAccounts, backFromRefundAccounts, openMyRefunds, backFromMyRefunds,
     loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
+    openAdminEvents, loadPendingEvents, reviewEvent, goEditEvent,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, toggleFollowOrganizer, sharePublicProfile, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
@@ -6353,6 +6506,7 @@ export function GocProvider({ children }) {
     loadMyRefunds, openRefundAccounts, backFromRefundAccounts, openMyRefunds, backFromMyRefunds,
     loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
+    openAdminEvents, loadPendingEvents, reviewEvent, goEditEvent,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, toggleFollowOrganizer, sharePublicProfile, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
