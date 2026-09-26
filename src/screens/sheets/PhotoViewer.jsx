@@ -51,7 +51,7 @@ const GESTURE_THRESHOLD = 44;
 const DRAG_REVEAL_DISTANCE = 200;
 
 export default function PhotoViewer() {
-  const { state: s, T, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer, isSaved, toggleFav } = useGoc();
+  const { state: s, T, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, isSaved, toggleFav } = useGoc();
   const drag = useRef(null);
   const photoRef = useRef(null);
   // Task 2b follow-up: the blurred-copy backdrop and its dim overlay, so a
@@ -91,10 +91,15 @@ export default function PhotoViewer() {
   }, [index]);
   if (!s.photoViewer) return null;
 
-  const { gallery, organizer, eventKey, originRect } = s.photoViewer;
-  const url = gallery[index];
-  const liked = isPhotoLiked(url);
-  const saved = isSaved(eventKey);
+  const { gallery, organizer, originRect } = s.photoViewer;
+  // Identity fix — `gallery` entries are real { id, url, eventId } rows
+  // now, not bare URLs (see openPhoto's own comment). Every like/save/share
+  // action below keys off the photo's own `id`/`eventId`, never the URL.
+  const photo = gallery[index];
+  const url = photo.url;
+  const engagement = s.photoEngagement[photo.id] || { likeCount: 0, shareCount: 0, likedByMe: false };
+  const liked = engagement.likedByMe;
+  const saved = isSaved(photo.eventId);
 
   // Task 2a (real-device follow-up): confirmed by reading this function's
   // own call sites, not assumed — the backdrop's `onBackdropClick` below
@@ -320,25 +325,36 @@ export default function PhotoViewer() {
           <span style={caption}>
             {s.photoShared ? T('Đã sao chép link', 'Link copied') : 'banbe ▪︎ bạn mới mỗi tuần'}
           </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 'none' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
+            {/* A.6 — counts sit immediately LEFT of their icon. No save
+                count: the bookmark below saves the EVENT, not the photo
+                (there's no real photo-save model in this schema — see the
+                ticket's own instruction not to fake one), so it gets no
+                count at all, unlike like/share. */}
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={caption}>{engagement.likeCount}</span>
+              <span
+                onClick={stop(() => togglePhotoLike(photo.id))}
+                data-testid="photo-like"
+                title={T('Thích ảnh này', 'Like this photo')}
+                style={iconButton(liked)}
+              ><Icon name="heart" filled={liked} /></span>
+            </span>
             <span
-              onClick={stop(() => togglePhotoLike(url))}
-              data-testid="photo-like"
-              title={T('Thích ảnh này', 'Like this photo')}
-              style={iconButton(liked)}
-            ><Icon name="heart" filled={liked} /></span>
-            <span
-              onClick={stop(() => toggleFav(eventKey))}
+              onClick={stop(() => toggleFav(photo.eventId))}
               data-testid="photo-save-event"
               title={T('Lưu sự kiện', 'Save this event')}
               style={iconButton(saved)}
             ><Icon name="bookmark" filled={saved} /></span>
-            <span
-              onClick={stop(sharePhotoOrganizer)}
-              data-testid="photo-share"
-              title={T('Chia sẻ', 'Share')}
-              style={iconButton(false)}
-            ><Icon name="share" /></span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={caption}>{engagement.shareCount}</span>
+              <span
+                onClick={stop(() => sharePhoto({ photo_id: photo.id, organizer_name: organizer }))}
+                data-testid="photo-share"
+                title={T('Chia sẻ', 'Share')}
+                style={iconButton(false)}
+              ><Icon name="share" /></span>
+            </span>
           </div>
         </div>
       </div>

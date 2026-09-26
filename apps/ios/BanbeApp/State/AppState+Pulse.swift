@@ -10,6 +10,14 @@ import Foundation
 // this case is purely a UI tab selector, never itself sent as `p_period`.
 enum PulseTab: String { case daily, weekly, photos }
 
+/// Migration 086 — `goc_pulse_ranked()` (080, unchanged ranking) now also
+/// returns a transparent breakdown of the real score components, plus the
+/// event's category/"bao gồm" fields. All new fields decode with a default
+/// (never fabricated when absent) so this struct stays source-compatible
+/// with any older cached response shape. `followCount` is the organizer's
+/// TOTAL follower count (a documented proxy, not period-scoped — `follows`
+/// has no `created_at` column yet) — must never be relabelled as
+/// period-scoped in any UI reading it.
 struct PulseItem: Decodable, Identifiable, Equatable {
     let eventId: String
     let eventName: String
@@ -18,6 +26,13 @@ struct PulseItem: Decodable, Identifiable, Equatable {
     let organizerName: String
     let organizerVerified: Bool
     let score: Double
+    var category: String?
+    var catLabel: String?
+    var included: String?
+    var bookingCount: Int = 0
+    var checkinCount: Int = 0
+    var followCount: Int = 0
+    var saveCount: Int = 0
     var following: Bool = false
     var id: String { eventId }
 
@@ -29,6 +44,31 @@ struct PulseItem: Decodable, Identifiable, Equatable {
         case organizerName = "organizer_name"
         case organizerVerified = "organizer_verified"
         case score
+        case category
+        case catLabel = "cat_label"
+        case included
+        case bookingCount = "booking_count"
+        case checkinCount = "checkin_count"
+        case followCount = "follow_count"
+        case saveCount = "save_count"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        eventId = try c.decode(String.self, forKey: .eventId)
+        eventName = try c.decode(String.self, forKey: .eventName)
+        photoPath = try c.decodeIfPresent(String.self, forKey: .photoPath)
+        organizerId = try c.decode(String.self, forKey: .organizerId)
+        organizerName = try c.decode(String.self, forKey: .organizerName)
+        organizerVerified = try c.decode(Bool.self, forKey: .organizerVerified)
+        score = try c.decode(Double.self, forKey: .score)
+        category = try c.decodeIfPresent(String.self, forKey: .category)
+        catLabel = try c.decodeIfPresent(String.self, forKey: .catLabel)
+        included = try c.decodeIfPresent(String.self, forKey: .included)
+        bookingCount = try c.decodeIfPresent(Int.self, forKey: .bookingCount) ?? 0
+        checkinCount = try c.decodeIfPresent(Int.self, forKey: .checkinCount) ?? 0
+        followCount = try c.decodeIfPresent(Int.self, forKey: .followCount) ?? 0
+        saveCount = try c.decodeIfPresent(Int.self, forKey: .saveCount) ?? 0
     }
 }
 
@@ -116,6 +156,15 @@ extension AppState {
     /// window — this ticket asks for one photo-ranking tab, not a second
     /// period toggle layered underneath it; 'daily' matches the event
     /// tabs' own default.
+    /// 2026-09-26 photo-interactions redesign — the signed-in user's own
+    /// like state for this batch, plus the ranking RPC's own counts, are
+    /// now merged into the CANONICAL `photoEngagement` map (via
+    /// `mergePhotoEngagement`, AppState+PhotoEngagement.swift) TOGETHER
+    /// with `pulsePhotos` below, in the SAME `set`-equivalent — never a
+    /// separate, later write — so there is no render in between where a
+    /// liked photo would flash as "not liked." This is also what keeps this
+    /// tab's counts/liked-state identical to whatever EventDetail/
+    /// Organizer/PhotoViewerView already show for the same photo id.
     func loadPulsePhotos() async {
         pulsePhotosSeq += 1
         let seq = pulsePhotosSeq
@@ -127,12 +176,6 @@ extension AppState {
             guard seq == pulsePhotosSeq else { return }
             guard result.success == true else { pulsePhotosLoading = false; return }
             let items = result.items ?? []
-            // 2026-09-25 fix pass (photo viewer task) — the signed-in
-            // user's OWN like state for every photo in this batch, fetched
-            // BEFORE writing `pulsePhotos`/`pulsePhotoLiked` (both set
-            // together below, not `pulsePhotos` first) so there is no
-            // render in between where a liked photo would flash as
-            // "not liked" while this second query is still in flight.
             var liked: [String: Bool] = [:]
             if let uid = userID, !items.isEmpty {
                 do {
@@ -147,8 +190,13 @@ extension AppState {
                     print("loadPulsePhotos like-state failed:", error)
                 }
             }
+            let engagementRows = items.map {
+                PhotoEngagementRow(photoId: $0.photoId, eventId: $0.eventId,
+                                    likeCount: $0.likeCount, shareCount: $0.shareCount,
+                                    likedByMe: liked[$0.photoId] == true)
+            }
             pulsePhotos = items
-            pulsePhotoLiked = liked
+            photoEngagement = mergePhotoEngagement(photoEngagement, rows: engagementRows)
             pulsePhotosLoading = false
         } catch {
             guard seq == pulsePhotosSeq else { return }
@@ -192,72 +240,10 @@ extension AppState {
         }
     }
 
-    /// Real, server-enforced like toggle for a ranked photo (migration
-    /// 083's toggle_photo_like RPC) — replaces the local-only heart button
-    /// for this Pulse-photo context specifically (PhotoViewer's own is
-    /// left untouched — it only ever operates on the bundled static demo
-    /// gallery, structurally disconnected from real event_photos rows; see
-    /// 17-ux-foundation-release.md's 2026-10-03 fix pass for the full
-    /// trace). Optimistic, with rollback on failure, patching both the
-    /// list row and the open popup (if it's the same photo).
-    func togglePulsePhotoLike(_ photoID: String) async {
-        guard isSignedIn else { return requireAuth(returnTo: .profile, backTo: .profile) }
-        guard pulsePhotoBusy[photoID] != true else { return }
-        let wasLiked = pulsePhotoLiked[photoID] == true
-        let delta = wasLiked ? -1 : 1
-        pulsePhotoLiked[photoID] = !wasLiked
-        pulsePhotoBusy[photoID] = true
-        patchPulsePhotoLikeCount(photoID, delta: delta)
-        do {
-            let liked: Bool = try await SupabaseService.client
-                .rpc("toggle_photo_like", params: ["p_event_photo_id": photoID])
-                .execute().value
-            // Reconcile against the RPC's own authoritative boolean — same
-            // "server always wins" reasoning as the web equivalent.
-            pulsePhotoLiked[photoID] = liked
-            pulsePhotoBusy[photoID] = false
-        } catch {
-            print("togglePulsePhotoLike failed:", error)
-            pulsePhotoLiked[photoID] = wasLiked
-            pulsePhotoBusy[photoID] = false
-            patchPulsePhotoLikeCount(photoID, delta: -delta)
-        }
-    }
-
-    private func patchPulsePhotoLikeCount(_ photoID: String, delta: Int) {
-        if let idx = pulsePhotos.firstIndex(where: { $0.photoId == photoID }) {
-            pulsePhotos[idx].likeCount = max(0, pulsePhotos[idx].likeCount + delta)
-        }
-        if pulsePhotoSheet?.photoId == photoID {
-            pulsePhotoSheet?.likeCount = max(0, (pulsePhotoSheet?.likeCount ?? 0) + delta)
-        }
-    }
-
-    /// Real share tracking for a ranked photo (migration 083's
-    /// log_photo_share RPC) — logged ONLY once the native share sheet
-    /// genuinely completes (`UIActivityViewController`'s own
-    /// `completionWithItemsHandler` reporting `completed == true`), never
-    /// merely from presenting the sheet. Called from PulseViewerView's own
-    /// share button, which owns presenting the `UIActivityViewController`
-    /// (needs a view controller to present from — kept out of AppState,
-    /// same split `EventDetailView.share()` already uses).
-    func logPulsePhotoShare(_ photoID: String) async {
-        do {
-            _ = try await SupabaseService.client
-                .rpc("log_photo_share", params: ["p_event_photo_id": photoID, "p_channel": "native"])
-                .execute()
-            patchPulsePhotoShareCount(photoID, delta: 1)
-        } catch {
-            print("logPulsePhotoShare failed:", error)
-        }
-    }
-
-    private func patchPulsePhotoShareCount(_ photoID: String, delta: Int) {
-        if let idx = pulsePhotos.firstIndex(where: { $0.photoId == photoID }) {
-            pulsePhotos[idx].shareCount = max(0, pulsePhotos[idx].shareCount + delta)
-        }
-        if pulsePhotoSheet?.photoId == photoID {
-            pulsePhotoSheet?.shareCount = max(0, (pulsePhotoSheet?.shareCount ?? 0) + delta)
-        }
-    }
+    // 2026-09-26 photo-interactions redesign — the old Pulse-local
+    // `togglePulsePhotoLike`/`logPulsePhotoShare`/patch-count helpers are
+    // gone. A ranked photo's like toggle and share logging now go through
+    // the SAME canonical `togglePhotoLike(_:)`/`logPhotoShare(_:)`
+    // (AppState+PhotoEngagement.swift) every other surface uses — one
+    // shared source of truth instead of a second, Pulse-only copy.
 }

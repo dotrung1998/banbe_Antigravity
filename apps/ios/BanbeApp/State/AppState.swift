@@ -88,21 +88,46 @@ struct ReasonPrompt: Equatable {
     let guestName: String
 }
 
+/// One photo in a gallery handed to the viewer — the real `event_photos.id`,
+/// its resolved public URL, and its OWN owning event's id (not necessarily
+/// the screen's currently-viewed event — Organizer's photo grid spans every
+/// event an organizer has ever posted to, see loadOrganizerPhotos's own doc
+/// comment). Photo-interactions redesign (2026-09-26) — replaces the old
+/// bare `[String]` URL gallery, which had no way to identify a photo's real
+/// database row at all (the root cause of the like/save/share-vs-Pulse
+/// mismatch this pass fixes).
+struct PhotoGalleryItem: Equatable, Identifiable {
+    let id: String
+    let url: String
+    let eventId: String
+}
+
 /// A gallery opened in the viewer — the whole set of photos it was tapped
 /// from, so a left/right swipe can move through the rest, plus which one is
 /// showing and the organizer it belongs to (shown as the faint credit).
 struct PhotoViewerItem: Equatable {
-    let gallery: [String]
+    let gallery: [PhotoGalleryItem]
     var index: Int
     let organizer: String
-    /// The event the photo belongs to — what the save button saves, and
-    /// what the shared link points at.
-    let eventKey: String
     /// The tapped thumbnail's on-screen frame (global coordinate space) at
     /// the moment it was opened — where the dismiss animation shrinks back
     /// to (14-photo-viewer.md), rather than fading/sliding away generically.
     let originRect: CGRect
-    var path: String { gallery[index] }
+    var current: PhotoGalleryItem { gallery[index] }
+}
+
+/// Photo-interactions redesign (2026-09-26) — the canonical per-photo
+/// engagement snapshot, keyed by the real `event_photos.id` (lowercased
+/// UUID text, matching what every RPC in this schema returns and decodes
+/// as). ONE shared model read by EventDetail's/Organizer's grids, the
+/// full-screen PhotoViewerView, AND Pulse's photo tab — a like/share done
+/// on any surface is immediately correct everywhere else, including after
+/// Pulse re-loads. Mirrors src/state/GocContext.jsx's own `photoEngagement`
+/// map entry shape exactly.
+struct PhotoEngagement: Equatable {
+    var likeCount: Int
+    var shareCount: Int
+    var likedByMe: Bool
 }
 
 /// A chat photo opened in ITS OWN fullscreen viewer (07-notifications.md /
@@ -638,11 +663,16 @@ final class AppState: ObservableObject {
     // comment (AppState+Data.swift).
     var attendanceGuestsSeq = 0
     @Published var photoViewer: PhotoViewerItem?
-    /// Liked photo paths. Local-only: there's no table to hang a photo like
-    /// on, and inventing one would mean a migration that isn't live yet.
-    @Published var photoLikes: [String] = UserDefaults.standard.stringArray(forKey: "banbe.photoLikes") ?? [] {
-        didSet { UserDefaults.standard.set(photoLikes, forKey: "banbe.photoLikes") }
-    }
+    /// Photo-interactions redesign (2026-09-26) — the canonical engagement
+    /// map (see `PhotoEngagement`'s own doc comment) + a busy-set guarding a
+    /// double-tap/racing toggle on the same photo id. Replaces the old
+    /// local-only, URL-keyed `photoLikes` UserDefaults array (which was
+    /// structurally disconnected from Pulse's real `photo_likes`/
+    /// `photo_shares` tables — see 17-ux-foundation-release.md's
+    /// 2026-10-03 fix pass for the original trace) — this is now the ONE
+    /// real per-photo like/share source of truth, live migration 083/086.
+    @Published var photoEngagement: [String: PhotoEngagement] = [:]
+    @Published var photoEngagementBusy: Set<String> = []
     @Published var scanningQr = false
     @Published var reasonPrompt: ReasonPrompt?
     @Published var reasonPromptBusy = false
@@ -813,8 +843,11 @@ final class AppState: ObservableObject {
     @Published var pulsePhotos: [PulsePhotoItem] = []
     @Published var pulsePhotosLoading = false
     @Published var pulsePhotoSheet: PulsePhotoItem?
-    @Published var pulsePhotoLiked: [String: Bool] = [:]
-    @Published var pulsePhotoBusy: [String: Bool] = [:]
+    // 2026-09-26 photo-interactions redesign — the old Pulse-local
+    // `pulsePhotoLiked`/`pulsePhotoBusy` maps are gone; every like/busy
+    // read for a ranked photo now goes through the canonical
+    // `photoEngagement`/`photoEngagementBusy` above (see PhotoEngagement's
+    // own doc comment) — one shared source of truth instead of two.
     var pulsePhotosSeq = 0
     // Refund MVP — host's per-event Refund Center (AttendanceView's own new
     // "Hoàn tiền" section): owed/disputed (+ resolved, for the progress
@@ -1691,11 +1724,15 @@ final class AppState: ObservableObject {
     /// X" on an organizer page) opens it larger, over a dimmed backdrop —
     /// with a light tap of haptic feedback, which is the part the web
     /// version can't do (navigator.vibrate isn't implemented on iOS Safari).
-    func openPhoto(gallery: [String], index: Int, organizer: String, eventKey: String, originRect: CGRect) {
+    /// Photo-interactions redesign (2026-09-26) — `gallery` is now
+    /// `[PhotoGalleryItem]` (real id + url + OWNING event id per photo, see
+    /// its own doc comment), no separate `eventKey` param — each gallery
+    /// entry carries its own `eventId`.
+    func openPhoto(gallery: [PhotoGalleryItem], index: Int, organizer: String, originRect: CGRect) {
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.prepare()
         generator.impactOccurred()
-        photoViewer = PhotoViewerItem(gallery: gallery, index: index, organizer: organizer, eventKey: eventKey, originRect: originRect)
+        photoViewer = PhotoViewerItem(gallery: gallery, index: index, organizer: organizer, originRect: originRect)
     }
     func closePhoto() { photoViewer = nil }
 
@@ -1803,10 +1840,11 @@ final class AppState: ObservableObject {
         photoViewer = item
     }
 
-    func isPhotoLiked(_ path: String) -> Bool { photoLikes.contains(path) }
-    func togglePhotoLike(_ path: String) {
-        if let index = photoLikes.firstIndex(of: path) { photoLikes.remove(at: index) } else { photoLikes.append(path) }
-    }
+    // 2026-09-26 photo-interactions redesign — the old local-only
+    // `isPhotoLiked`/`togglePhotoLike(_ path:)` pair (UserDefaults, keyed by
+    // raw photo path/URL, zero Supabase calls) is gone. The real, unified
+    // `togglePhotoLike(_ photoId:)` lives in AppState+PhotoEngagement.swift,
+    // next to `loadPhotoEngagement`/`logPhotoShare`.
 
     /// Opens a shared organizer link — banbe://organizer/<eventKey>. The
     /// scheme is registered in project.yml; a plain https:// link can't

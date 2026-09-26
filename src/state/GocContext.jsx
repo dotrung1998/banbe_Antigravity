@@ -73,6 +73,26 @@ async function firstPhotoUrlByEvent(eventIds) {
   return byEvent;
 }
 
+/** Merges `get_photo_engagement`/ranking-RPC rows into the canonical
+ * `photoEngagement` map (see its own state comment) — a plain object merge,
+ * never a full replace, so a batch covering ONE screen's photos never wipes
+ * out engagement already loaded for another screen's. */
+function mergePhotoEngagement(existing, rows) {
+  if (!rows || !rows.length) return existing;
+  const next = { ...existing };
+  for (const r of rows) {
+    const id = r.photo_id;
+    if (!id) continue;
+    const prev = next[id];
+    next[id] = {
+      likeCount: r.like_count ?? prev?.likeCount ?? 0,
+      shareCount: r.share_count ?? prev?.shareCount ?? 0,
+      likedByMe: r.liked_by_me ?? prev?.likedByMe ?? false,
+    };
+  }
+  return next;
+}
+
 /**
  * Blocker fix (retention roadmap follow-up) — `findEvent()` (data/events.js)
  * falls back to `EVENTS[0]` for any key not in the static demo catalogue,
@@ -429,11 +449,12 @@ const initialState = {
   // 2026-09-25 fix pass — third Pulse tab: individual event photos ranked
   // by real engagement (photo_likes/photo_shares, migration 083), a
   // separate ranking from the event-level one above — never merged into
-  // the same signals/list. `pulsePhotoLiked`/`pulsePhotoBusy` are keyed by
-  // `photo_id`, mirroring `s.photoLikes`' shape in spirit but backed by a
-  // real table instead of localStorage.
+  // the same signals/list. Like/share counts and this user's own liked
+  // state for these SAME photo ids now live in the canonical
+  // `photoEngagement` map (see its own comment) — not a separate
+  // Pulse-only copy, so a like/share here or on EventDetail/Organizer/
+  // PhotoViewer is immediately visible in both places.
   pulsePhotos: [], pulsePhotosLoading: false, pulsePhotoSheet: null,
-  pulsePhotoLiked: {}, pulsePhotoBusy: {},
   notifications: [],
   unreadNotifications: 0,
   // Inbox tab badge (BottomTabBar.jsx) — count of messages where
@@ -561,9 +582,15 @@ const initialState = {
   // Explicitly cleared (not just left stale) on an intentional exit via the
   // "← Đóng" button, so reopening the map from Home later starts fresh.
   mapExploreState: null,
-  // Liked photo URLs. Local-only: there's no table to hang a photo like on,
-  // and inventing one would mean a migration that isn't live yet.
-  photoLikes: [],
+  // Photo identity/engagement fix (real event_photos.id, not a URL) —
+  // canonical, keyed by event_photos.id, shared by EventDetail's/
+  // Organizer's photo grids, the full-screen PhotoViewer AND Banbe Pulse's
+  // photo tab — the ONE source of truth for a real photo's like/share
+  // counts and this user's own liked state, so no two surfaces can ever
+  // disagree after a toggle/refetch. { [photoId]: { likeCount, shareCount,
+  // likedByMe } }. `photoEngagementBusy` guards a double tap/racing toggle
+  // per photo id, same pattern the old Pulse-only togglePulsePhotoLike used.
+  photoEngagement: {}, photoEngagementBusy: {},
   photoShared: false,
   // True when this visit arrived on a shared "?org=" link, which is the only
   // time the organizer page offers to open the native app instead.
@@ -963,13 +990,6 @@ export function GocProvider({ children }) {
   // toggleFav's own comment.
   const favToggleInFlightRef = useRef(new Set());
 
-  // Liked photos live on this device only — see the note on photoLikes.
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('banbe.photoLikes') || '[]');
-      if (Array.isArray(saved) && saved.length) setStateRaw(prev => ({ ...prev, photoLikes: saved }));
-    } catch { /* private browsing, or nothing saved yet */ }
-  }, []);
   useEffect(() => {
     prefsRef.current = { lang: state.lang, theme: state.theme };
   }, [state.lang, state.theme]);
@@ -1336,6 +1356,26 @@ export function GocProvider({ children }) {
    * this needs no extra scoping beyond the event id itself — a viewer who
    * can already reach this event's page (real `events` RLS already
    * gated that) can see its real photos too. */
+  /** Photo identity/engagement fix — real per-photo like/share counts +
+   * this user's own liked state for ANY set of real event_photos ids
+   * (migration 086's get_photo_engagement, a general-purpose read path
+   * Pulse's own top-20-only ranking RPC can't serve). Merges into the
+   * canonical `photoEngagement` map rather than replacing it, so loading
+   * one screen's photos never drops another screen's already-loaded rows.
+   * Fire-and-forget from the gallery loaders below — the photo grid itself
+   * renders from `eventPhotos`/`organizerPhotos` immediately; engagement
+   * (like counts, liked-heart badges) fills in a moment later. */
+  const loadPhotoEngagement = useCallback(async (photoIds) => {
+    const ids = [...new Set((photoIds || []).filter(Boolean))];
+    if (!ids.length) return;
+    const { data, error } = await supabase.rpc('get_photo_engagement', { p_photo_ids: ids });
+    if (error || data?.success === false) {
+      if (import.meta.env?.DEV) console.warn('loadPhotoEngagement failed:', error, data);
+      return;
+    }
+    set(prev => ({ photoEngagement: mergePhotoEngagement(prev.photoEngagement, data.items || []) }));
+  }, [set]);
+
   const loadEventPhotos = useCallback(async (eventId) => {
     set({ eventPhotosLoading: true });
     const { data, error } = await supabase
@@ -1343,7 +1383,8 @@ export function GocProvider({ children }) {
       .eq('event_id', eventId).order('sort_order', { ascending: true });
     if (error) { if (import.meta.env?.DEV) console.warn('loadEventPhotos failed:', error); }
     set({ eventPhotos: data || [], eventPhotosLoading: false });
-  }, [set]);
+    loadPhotoEngagement((data || []).map(p => p.id));
+  }, [set, loadPhotoEngagement]);
 
   /** STAGE B (2026-09-25) — Organizer.jsx's real photo library, replacing
    * the static demo `orgGallery` render. Two-step, both steps riding
@@ -1374,7 +1415,8 @@ export function GocProvider({ children }) {
       .in('event_id', eventIds).order('sort_order', { ascending: true });
     if (error) { if (import.meta.env?.DEV) console.warn('loadOrganizerPhotos failed:', error); }
     set({ organizerPhotos: photos || [], organizerPhotosLoading: false });
-  }, [set, s.myOrganizerIds]);
+    loadPhotoEngagement((photos || []).map(p => p.id));
+  }, [set, s.myOrganizerIds, loadPhotoEngagement]);
 
   /**
    * Retention roadmap P1 ("Cuối tuần này") — a compact Home section built
@@ -1889,12 +1931,20 @@ export function GocProvider({ children }) {
   // 14-photo-viewer.md). Copied into a plain object immediately; a live
   // DOMRect is a view onto layout that can change/go stale, and this one
   // only ever needs to be read back later, never re-measured.
-  const openPhoto = useCallback((gallery, index, organizer, eventKey, originRect) => {
+  // `gallery` is now an array of { id, url, eventId } — the real
+  // event_photos.id and its OWN owning event id, not just a bare URL. This
+  // is the identity fix (17-ux-foundation-release.md's own trace found
+  // PhotoViewer only ever knew a photo's URL, never its real database row —
+  // the root cause of every like/save/share mismatch with Pulse). Every
+  // caller (EventDetail/Organizer grids) now passes its own fetched
+  // `event_photos` rows shaped this way instead of a plain URL list — see
+  // those screens' own gallery-building code.
+  const openPhoto = useCallback((gallery, index, organizer, originRect) => {
     try { navigator.vibrate?.(8); } catch { /* unsupported — no haptic, no harm */ }
     const rect = originRect
       ? { top: originRect.top, left: originRect.left, width: originRect.width, height: originRect.height }
       : null;
-    set({ photoViewer: { gallery, index, organizer, eventKey, originRect: rect } });
+    set({ photoViewer: { gallery, index, organizer, originRect: rect } });
   }, [set]);
   const closePhoto = useCallback(() => set({ photoViewer: null }), [set]);
   const showPhotoAt = useCallback((index) => set(prev => {
@@ -1903,53 +1953,95 @@ export function GocProvider({ children }) {
     return { photoViewer: { ...prev.photoViewer, index: clamped } };
   }), [set]);
 
-  const isPhotoLiked = useCallback((url) => s.photoLikes.includes(url), [s.photoLikes]);
-  const togglePhotoLike = useCallback((url) => set(prev => {
-    const photoLikes = prev.photoLikes.includes(url)
-      ? prev.photoLikes.filter(x => x !== url)
-      : [...prev.photoLikes, url];
-    try { localStorage.setItem('banbe.photoLikes', JSON.stringify(photoLikes)); } catch { /* private browsing */ }
-    return { photoLikes };
-  }), [set]);
+  /** Real, server-enforced like toggle for ANY real photo (migration 083's
+   * toggle_photo_like RPC) — the ONE like path for EventDetail's/
+   * Organizer's grids, the full-screen PhotoViewer AND Pulse's photo tab
+   * (replaces the old per-surface `togglePulsePhotoLike`, folded in here).
+   * Optimistic with rollback on failure; `photoEngagementBusy` blocks a
+   * double tap/racing toggle on the same photo id, same guard shape the
+   * Pulse-only version already had. */
+  const togglePhotoLike = useCallback(async (photoId) => {
+    if (!s.user?.id) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'profile' });
+    if (s.photoEngagementBusy[photoId]) return;
+    const cur = s.photoEngagement[photoId] || { likeCount: 0, shareCount: 0, likedByMe: false };
+    const wasLiked = cur.likedByMe;
+    const delta = wasLiked ? -1 : 1;
+    // Computed ONCE, up front, and reused for both the optimistic write and
+    // the later reconciliation — rather than re-reading `prev.photoEngagement`
+    // a second time inside the post-await `set()` call. The two `set()`
+    // calls straddle a real network await, and re-deriving from `prev` at
+    // that point turned out to race a concurrent render pass and silently
+    // drop the optimistic count bump (confirmed live: `prev` inside the
+    // second call's updater still reflected the PRE-toggle entry even
+    // though the first call had already committed and painted the liked
+    // heart) — closing over the value we already know is correct sidesteps
+    // that entirely instead of trusting a second, unnecessary state read.
+    const optimistic = { ...cur, likedByMe: !wasLiked, likeCount: Math.max(0, cur.likeCount + delta) };
+    set(prev => ({
+      photoEngagement: { ...prev.photoEngagement, [photoId]: optimistic },
+      photoEngagementBusy: { ...prev.photoEngagementBusy, [photoId]: true },
+    }));
+    const { data, error } = await supabase.rpc('toggle_photo_like', { p_event_photo_id: photoId });
+    if (error) {
+      console.warn('togglePhotoLike failed:', error);
+      set(prev => ({
+        photoEngagement: { ...prev.photoEngagement, [photoId]: cur },
+        photoEngagementBusy: { ...prev.photoEngagementBusy, [photoId]: false },
+      }));
+      return;
+    }
+    // Reconcile against the RPC's own authoritative boolean — it toggles
+    // whatever the SERVER's current row state actually is, which can
+    // legitimately differ from this client's optimistic guess (e.g. a like
+    // from a different session this client never saw yet). Only the
+    // boolean is corrected; the count stays the one we already applied
+    // optimistically (see the comment above `optimistic`).
+    set(prev => ({
+      photoEngagement: { ...prev.photoEngagement, [photoId]: { ...optimistic, likedByMe: data } },
+      photoEngagementBusy: { ...prev.photoEngagementBusy, [photoId]: false },
+    }));
+  }, [set, s.user?.id, s.photoEngagementBusy, s.photoEngagement]);
 
-  // Shares the photo's organizer, not the photo file itself — a bare image
-  // URL says nothing about who took it or where to find more. The link
-  // carries "?org=<eventKey>", which lands on that organizer's page (see
-  // the capture at the top of this file); the native app registers a
-  // banbe:// scheme for the same destination, offered from that page.
-  const sharePhotoOrganizer = useCallback(async () => {
-    if (!s.photoViewer) return;
-    const { organizer, eventKey, gallery, index } = s.photoViewer;
-    // /api/photo-share carries Open Graph tags naming this photo as the
-    // preview image and then forwards into the app. Sharing the plain
-    // "/?org=" link instead left WhatsApp and friends scraping index.html,
-    // which has no OG tags, so every shared photo previewed as the site
-    // favicon — a black square with the banbe mark.
-    const photoFile = (gallery[index] || '').split('/').pop();
-    const url = `https://banbe-two.vercel.app/api/photo-share?org=${encodeURIComponent(eventKey)}`
-      + `&photo=${encodeURIComponent(photoFile)}&by=${encodeURIComponent(organizer)}`;
-    const title = T(`Ảnh của ${organizer} trên banbe`, `${organizer} on banbe`);
-    const text = T(
-      `Xem ảnh và các buổi sắp tới của ${organizer} trên banbe:`,
-      `See ${organizer}'s photos and what they have coming up on banbe:`
-    );
+  /** Real share tracking for ANY real photo (migration 083's
+   * log_photo_share RPC) — logged ONLY once the share genuinely completes:
+   * `navigator.share()`'s own promise resolving (rejects on cancel, caught
+   * below and never logged), or a copy-link write actually succeeding.
+   * Never logged just from opening the share affordance. Link carries
+   * `pid` (the real event_photos id) through `/api/photo-share`, which
+   * resolves the real photo/event/organizer server-side. `item` is
+   * `{ photo_id, organizer_name }` — the same shape Pulse's ranked photo
+   * rows already have; EventDetail/Organizer/PhotoViewer construct it from
+   * their own gallery entry. */
+  const sharePhoto = useCallback(async (item) => {
+    const photoId = item.photo_id;
+    const url = `https://banbe-two.vercel.app/api/photo-share?pid=${encodeURIComponent(photoId)}`;
+    const title = T(`Ảnh từ ${item.organizer_name} trên banbe`, `A photo from ${item.organizer_name} on banbe`);
+    const text = T('Xem ảnh này trên banbe:', 'Check out this photo on banbe:');
     const done = () => {
       set({ photoShared: true });
       setTimeout(() => set({ photoShared: false }), 1800);
     };
-    // Deliberately a link share rather than a file attachment. Attaching
-    // the photo put the picture in the message but cost the caption (share
-    // targets take the attachment and drop the text), and on desktop the
-    // browser handed the file over as a path that targets pasted as
-    // literal text. The link carries the photo as its own preview image
-    // instead, so both the picture and the caption survive.
+    const logShare = async (channel) => {
+      const { error } = await supabase.rpc('log_photo_share', { p_event_photo_id: photoId, p_channel: channel });
+      if (error) { if (import.meta.env?.DEV) console.warn('log_photo_share failed:', error); return; }
+      set(prev => ({
+        photoEngagement: {
+          ...prev.photoEngagement,
+          [photoId]: {
+            ...(prev.photoEngagement[photoId] || { likeCount: 0, likedByMe: false, shareCount: 0 }),
+            shareCount: (prev.photoEngagement[photoId]?.shareCount || 0) + 1,
+          },
+        },
+      }));
+    };
     if (navigator.share) {
-      try { await navigator.share({ title, text, url }); } catch { /* cancelled */ }
+      try { await navigator.share({ title, text, url }); await logShare('native'); } catch { /* cancelled — not a completed share, nothing to log */ }
       done();
     } else if (navigator.clipboard) {
-      navigator.clipboard.writeText(url).then(done, done);
+      try { await navigator.clipboard.writeText(url); await logShare('copy'); } catch { /* clipboard write denied */ }
+      done();
     } else { done(); }
-  }, [set, s.photoViewer, T]);
+  }, [set, T]);
 
   // ---- payments & documents ----
   // The one rule the whole feature is built around: banbe is not a payment
@@ -3771,20 +3863,29 @@ export function GocProvider({ children }) {
     // 2026-09-25 fix pass (photo viewer task) — the signed-in user's OWN
     // like state for every photo in this batch, fetched in the SAME pass
     // as the ranking itself (one extra query, own-row-only per
-    // `photo_likes_select_own`) and written to state TOGETHER with
+    // `photo_likes_select_own`) and merged into the CANONICAL
+    // `photoEngagement` map (see its own state comment) TOGETHER with
     // `pulsePhotos` below — never as a separate, later `set()` — so there
     // is no render in between where a liked photo would flash as
-    // "not liked" before this resolves.
-    let liked = {};
+    // "not liked" before this resolves. This is also what keeps this tab's
+    // counts/liked-state identical to whatever EventDetail/Organizer/
+    // PhotoViewer already show for the same photo id.
+    let likedIds = new Set();
     if (s.user?.id && items.length) {
       const { data: likedRows, error: likedErr } = await supabase
         .from('photo_likes').select('event_photo_id')
         .eq('user_id', s.user.id).in('event_photo_id', items.map(i => i.photo_id));
       if (seq !== pulsePhotoSeqRef.current) return;
       if (likedErr) { if (import.meta.env?.DEV) console.warn('loadPulsePhotos like-state failed:', likedErr); }
-      else liked = Object.fromEntries((likedRows || []).map(r => [r.event_photo_id, true]));
+      else likedIds = new Set((likedRows || []).map(r => r.event_photo_id));
     }
-    set({ pulsePhotos: items, pulsePhotosLoading: false, pulsePhotoLiked: liked });
+    const engagementRows = items.map(i => ({
+      photo_id: i.photo_id, like_count: i.like_count, share_count: i.share_count, liked_by_me: likedIds.has(i.photo_id),
+    }));
+    set(prev => ({
+      pulsePhotos: items, pulsePhotosLoading: false,
+      photoEngagement: mergePhotoEngagement(prev.photoEngagement, engagementRows),
+    }));
   }, [set, s.user?.id]);
   const openPulseViewer = useCallback(() => {
     // Never leave a previous session's rank sitting there indefinitely
@@ -3832,87 +3933,12 @@ export function GocProvider({ children }) {
   const openPulsePhotoSheet = useCallback((item) => set({ pulsePhotoSheet: item }), [set]);
   const closePulsePhotoSheet = useCallback(() => set({ pulsePhotoSheet: null }), [set]);
 
-  /** Real, server-enforced like toggle for a ranked photo (migration 083's
-   * toggle_photo_like RPC) — replaces the local-only `togglePhotoLike`
-   * heart for this Pulse-photo context specifically (that one stays as-is
-   * for the static demo gallery it was built for; see its own doc comment
-   * for why the two can never overlap). Optimistic, with rollback on
-   * failure, patching both the list row and the open popup (if it's the
-   * same photo) so neither can show a stale count relative to the other. */
-  const togglePulsePhotoLike = useCallback(async (photoId) => {
-    if (!s.user?.id) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'profile' });
-    if (s.pulsePhotoBusy[photoId]) return;
-    const wasLiked = !!s.pulsePhotoLiked[photoId];
-    const delta = wasLiked ? -1 : 1;
-    const patchCount = (prev) => ({
-      pulsePhotos: prev.pulsePhotos.map(p => p.photo_id === photoId ? { ...p, like_count: Math.max(0, p.like_count + delta) } : p),
-      pulsePhotoSheet: prev.pulsePhotoSheet && prev.pulsePhotoSheet.photo_id === photoId
-        ? { ...prev.pulsePhotoSheet, like_count: Math.max(0, prev.pulsePhotoSheet.like_count + delta) }
-        : prev.pulsePhotoSheet,
-    });
-    set(prev => ({
-      pulsePhotoLiked: { ...prev.pulsePhotoLiked, [photoId]: !wasLiked },
-      pulsePhotoBusy: { ...prev.pulsePhotoBusy, [photoId]: true },
-      ...patchCount(prev),
-    }));
-    const { data, error } = await supabase.rpc('toggle_photo_like', { p_event_photo_id: photoId });
-    if (error) {
-      console.warn('togglePulsePhotoLike failed:', error);
-      set(prev => ({
-        pulsePhotoLiked: { ...prev.pulsePhotoLiked, [photoId]: wasLiked },
-        pulsePhotoBusy: { ...prev.pulsePhotoBusy, [photoId]: false },
-        pulsePhotos: prev.pulsePhotos.map(p => p.photo_id === photoId ? { ...p, like_count: Math.max(0, p.like_count - delta) } : p),
-        pulsePhotoSheet: prev.pulsePhotoSheet && prev.pulsePhotoSheet.photo_id === photoId
-          ? { ...prev.pulsePhotoSheet, like_count: Math.max(0, prev.pulsePhotoSheet.like_count - delta) }
-          : prev.pulsePhotoSheet,
-      }));
-      return;
-    }
-    // Reconcile against the RPC's own authoritative boolean — it toggles
-    // whatever the SERVER's current row state actually is, which can
-    // legitimately differ from this client's optimistic guess (e.g. a like
-    // from a different session this client never saw yet).
-    set(prev => ({
-      pulsePhotoLiked: { ...prev.pulsePhotoLiked, [photoId]: data },
-      pulsePhotoBusy: { ...prev.pulsePhotoBusy, [photoId]: false },
-    }));
-  }, [set, s.user?.id, s.pulsePhotoBusy, s.pulsePhotoLiked]);
-
-  /** Real share tracking for a ranked photo (migration 083's
-   * log_photo_share RPC) — logged ONLY once the share genuinely completes:
-   * `navigator.share()`'s own promise resolving (it rejects on cancel,
-   * caught below and never logged), or a copy-link write actually
-   * succeeding. Never logged just from opening the share affordance. Link
-   * carries `pid` (the real event_photos id) through `/api/photo-share`
-   * (same endpoint `sharePhotoOrganizer` already uses for the demo
-   * gallery, extended rather than duplicated — see that file's own doc
-   * comment), which resolves the real photo/event/organizer server-side
-   * and sends whoever opens it straight to that event. */
-  const sharePulsePhoto = useCallback(async (item) => {
-    const url = `https://banbe-two.vercel.app/api/photo-share?pid=${encodeURIComponent(item.photo_id)}`;
-    const title = T(`Ảnh từ ${item.organizer_name} trên banbe`, `A photo from ${item.organizer_name} on banbe`);
-    const text = T('Xem ảnh này trên banbe:', 'Check out this photo on banbe:');
-    const logShare = async (channel) => {
-      const { error } = await supabase.rpc('log_photo_share', { p_event_photo_id: item.photo_id, p_channel: channel });
-      if (error) { if (import.meta.env?.DEV) console.warn('log_photo_share failed:', error); return; }
-      set(prev => ({
-        pulsePhotos: prev.pulsePhotos.map(p => p.photo_id === item.photo_id ? { ...p, share_count: p.share_count + 1 } : p),
-        pulsePhotoSheet: prev.pulsePhotoSheet && prev.pulsePhotoSheet.photo_id === item.photo_id
-          ? { ...prev.pulsePhotoSheet, share_count: prev.pulsePhotoSheet.share_count + 1 } : prev.pulsePhotoSheet,
-      }));
-    };
-    if (navigator.share) {
-      try {
-        await navigator.share({ title, text, url });
-        await logShare('native');
-      } catch { /* cancelled — not a completed share, nothing to log */ }
-    } else if (navigator.clipboard) {
-      try {
-        await navigator.clipboard.writeText(url);
-        await logShare('copy');
-      } catch { /* clipboard write denied */ }
-    }
-  }, [set, T]);
+  // The Pulse-only `togglePulsePhotoLike`/`sharePulsePhoto` that used to
+  // live here are gone — folded into the canonical `togglePhotoLike`/
+  // `sharePhoto` (defined next to `openPhoto` above), which every surface
+  // showing a real photo (EventDetail/Organizer grids, PhotoViewer, and
+  // this Pulse tab) now calls identically, reading/writing the SAME
+  // `photoEngagement` map. See A.3/A.6/A.8 of the photo-interactions fix.
 
   const openStoryViewer = useCallback((organizerId, originRect) => {
     const groups = s.homeStories.filter(g => g.stories.length > 0);
@@ -6477,13 +6503,13 @@ export function GocProvider({ children }) {
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, toggleFollowOrganizer, sharePublicProfile, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
-    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
+    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet, togglePulsePhotoLike, sharePulsePhoto, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,
@@ -6511,13 +6537,13 @@ export function GocProvider({ children }) {
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, toggleFollowOrganizer, sharePublicProfile, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
-    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, isPhotoLiked, togglePhotoLike, sharePhotoOrganizer,
+    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet, togglePulsePhotoLike, sharePulsePhoto, markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createLocType, createDateType, createPriceType, createSeatsType,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, createSubmit, requestVerify,

@@ -59,8 +59,14 @@ struct PhotoViewerView: View {
         return min(1, max(0, dragTranslation.height / dragRevealDistance))
     }
 
-    private var liked: Bool { app.isPhotoLiked(item.path) }
-    private var saved: Bool { app.isSaved(item.eventKey) }
+    // Photo-interactions redesign (2026-09-26) — reads the canonical
+    // engagement map (AppState+PhotoEngagement.swift), keyed by the photo's
+    // real `event_photos.id`, replacing the old local-only
+    // `photoLikes`/`isPhotoLiked(path:)` pair (structurally disconnected
+    // from Pulse's real photo_likes/photo_shares tables).
+    private var engagement: PhotoEngagement { app.photoEngagement[item.current.id] ?? PhotoEngagement(likeCount: 0, shareCount: 0, likedByMe: false) }
+    private var liked: Bool { engagement.likedByMe }
+    private var saved: Bool { app.isSaved(item.current.eventId) }
 
     /// A swipe past this many points changes the photo (or, vertically,
     /// dismisses); anything short of that (including a plain tap, which
@@ -116,7 +122,7 @@ struct PhotoViewerView: View {
                 // would make the ZStack size itself to that larger child and
                 // shift everything off-centre (GeometryReader places its
                 // content topLeading, not centred).
-                CatalogPhoto(path: item.path, height: proxy.size.height, cornerRadius: 0)
+                CatalogPhoto(path: item.current.url, height: proxy.size.height, cornerRadius: 0)
                     .frame(width: proxy.size.width)
                     .scaleEffect(1.24)
                     .blur(radius: 34)
@@ -138,7 +144,7 @@ struct PhotoViewerView: View {
                     caption(app.T("Ảnh của", "Photo by") + " \(item.organizer)")
                         .accessibilityIdentifier("photoViewer.credit")
 
-                    CatalogPhoto(path: item.path,
+                    CatalogPhoto(path: item.current.url,
                                  height: proxy.size.height / 3,
                                  width: photoWidth,
                                  cornerRadius: 14)
@@ -254,22 +260,42 @@ struct PhotoViewerView: View {
         .opacity(dismissTransform == nil ? 1 : 0)
     }
 
+    /// Photo-interactions redesign (2026-09-26) — same caption text style as
+    /// the credit line above (`caption(_:)`), minus its own drag-fade (the
+    /// enclosing `actions` HStack already applies that once, below —
+    /// nesting both would compound the fade).
+    private func countLabel(_ n: Int) -> some View {
+        Text("\(n)")
+            .font(.system(size: 10.5))
+            .kerning(0.4)
+            .foregroundStyle(.white.opacity(0.72))
+            .shadow(color: .black.opacity(0.55), radius: 3, y: 1)
+    }
+
     private var actions: some View {
-        HStack(spacing: 2) {
-            action("heart", filled: liked, on: liked,
-                   id: "photoViewer.like",
-                   label: app.T("Thích ảnh này", "Like this photo")) {
-                app.togglePhotoLike(item.path)
+        HStack(spacing: 14) {
+            // Like count immediately to the LEFT of the heart icon.
+            HStack(spacing: 2) {
+                countLabel(engagement.likeCount)
+                action("heart", filled: liked, on: liked,
+                       id: "photoViewer.like",
+                       label: app.T("Thích ảnh này", "Like this photo")) {
+                    Task { await app.togglePhotoLike(item.current.id) }
+                }
             }
             action("bookmark", filled: saved, on: saved,
                    id: "photoViewer.save",
                    label: app.T("Lưu sự kiện", "Save this event")) {
-                app.toggleFavorite(item.eventKey)
+                app.toggleFavorite(item.current.eventId)
             }
-            action("square.and.arrow.up", filled: false, on: false,
-                   id: "photoViewer.share",
-                   label: app.T("Chia sẻ", "Share")) {
-                share()
+            // Share count immediately to the LEFT of the share icon.
+            HStack(spacing: 2) {
+                countLabel(engagement.shareCount)
+                action("square.and.arrow.up", filled: false, on: false,
+                       id: "photoViewer.share",
+                       label: app.T("Chia sẻ", "Share")) {
+                    share()
+                }
             }
         }
         // Task 4: fades out with the same `dragProgress` driving the
@@ -330,30 +356,25 @@ struct PhotoViewerView: View {
             .opacity(1 - dragProgress)
     }
 
-    /// Shares the photo's organizer, not the photo file itself — a bare
-    /// image URL says nothing about who took it or where to find more. The
-    /// link carries "?org=<eventKey>", which lands on that organizer's page
-    /// on the web and offers to reopen it here via banbe://.
+    /// Shares this photo. Photo-interactions redesign (2026-09-26) — the
+    /// link now carries "?pid=<real event_photos.id>" (matching web's own
+    /// unified `sharePhoto`), which `/api/photo-share` already resolves
+    /// server-side (unchanged, no edit needed there) into this exact
+    /// photo/event/organizer's Open Graph preview. Real share tracking
+    /// (`log_photo_share`, migration 083) is logged ONLY once the native
+    /// share sheet genuinely completes — `UIActivityViewController`'s own
+    /// `completionWithItemsHandler` reporting `completed == true` — never
+    /// merely from presenting it, mirroring web's `sharePhoto`'s own
+    /// "only on a genuine completed share, never on cancellation" rule.
     private func share() {
-        // /api/photo-share carries Open Graph tags naming this photo as the
-        // preview image and then forwards into the app, so the picture
-        // survives as the link's own preview. Sharing the photo as a file
-        // attachment instead put the picture in the message but cost the
-        // caption — share targets take the attachment and drop the text.
-        let photoFile = (item.path as NSString).lastPathComponent
-        var components = URLComponents(string: "https://banbe-two.vercel.app/api/photo-share")
-        components?.queryItems = [
-            URLQueryItem(name: "org", value: item.eventKey),
-            URLQueryItem(name: "photo", value: photoFile),
-            URLQueryItem(name: "by", value: item.organizer),
-        ]
-        let url = components?.url
+        let photoId = item.current.id
+        guard let url = URL(string: "https://banbe-two.vercel.app/api/photo-share?pid=\(photoId)") else { return }
         let text = app.T(
             "Xem ảnh và các buổi sắp tới của \(item.organizer) trên banbe:",
             "See \(item.organizer)'s photos and what they have coming up on banbe:"
         )
         Task {
-            let image = await PhotoLoader.load(path: item.path, maxPixel: 1600)
+            let image = await PhotoLoader.load(path: item.current.url, maxPixel: 1600)
             // The link goes through PhotoShareSource so the share sheet's
             // own preview shows this photo straight from the cache rather
             // than waiting to scrape the URL — what the target sends is the
@@ -362,6 +383,10 @@ struct PhotoViewerView: View {
             let items: [Any] = [text, PhotoShareSource(image: image, title: text, url: url)]
             await MainActor.run {
                 let activity = UIActivityViewController(activityItems: items, applicationActivities: nil)
+                activity.completionWithItemsHandler = { _, completed, _, _ in
+                    guard completed else { return }
+                    Task { await app.logPhotoShare(photoId) }
+                }
                 UIApplication.shared.connectedScenes
                     .compactMap { $0 as? UIWindowScene }
                     .first?.keyWindow?.rootViewController?

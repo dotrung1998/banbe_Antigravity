@@ -171,14 +171,16 @@ struct PulseViewerView: View {
         }
         .sheet(item: $app.pulseOrganizerSheet) { item in
             organizerSheet(item)
-                .presentationDetents([.height(260)])
+                .presentationDetents([.height(300)])
         }
-        // TASK 5 (2026-09-25 fix pass) — the ranked-photo popup: photo,
-        // organizer identity/verified badge, a real like toggle, share,
-        // and a "view event" action, same shape as `organizerSheet` above.
+        // TASK 5 (2026-09-25 fix pass) / B5 (2026-09-26 redesign) — the
+        // ranked-photo popup is now a real fixed-height sheet at two-thirds
+        // of the screen (`.fraction(0.66)`, matching web's `height: '66vh'`)
+        // rather than a small fixed-point height.
         .sheet(item: $app.pulsePhotoSheet) { item in
             photoSheet(item)
-                .presentationDetents([.height(360)])
+                .presentationDetents([.fraction(0.66)])
+                .presentationDragIndicator(.hidden)
         }
     }
 
@@ -206,30 +208,48 @@ struct PulseViewerView: View {
     // `completionWithItemsHandler` reporting `completed == true` — never
     // merely from presenting it (matches this ticket's own explicit "not
     // merely opening a share sheet" instruction; the existing
-    // `PhotoViewerView` share helper does NOT do this — it flips its own
-    // "shared" flag at presentation time — so this is a deliberately new,
-    // correct helper, not a reuse of that one). Link carries `pid` (the
+    // `PhotoViewerView` share helper does the same, independently, since it
+    // also attaches a cached image via `PhotoShareSource` — a legitimate
+    // per-surface difference, not a missed reuse). Link carries `pid` (the
     // real `event_photos` id) through `/api/photo-share`, the SAME OG-tag
-    // endpoint `sharePhotoOrganizer`'s web equivalent already uses,
-    // extended (not duplicated) to also resolve a real photo row server-side.
+    // endpoint web's unified `sharePhoto` already uses.
+    // 2026-09-26 photo-interactions redesign — logs through the CANONICAL
+    // `AppState.logPhotoShare` (replaces the old Pulse-only
+    // `logPulsePhotoShare`), so the bumped share count lands in the one
+    // shared `photoEngagement` map every surface reads.
     private func sharePulsePhoto(_ item: PulsePhotoItem) {
         guard let url = URL(string: "https://banbe-two.vercel.app/api/photo-share?pid=\(item.photoId)") else { return }
         let title = app.T("Ảnh từ \(item.organizerName) trên banbe", "A photo from \(item.organizerName) on banbe")
         let activity = UIActivityViewController(activityItems: [title, url], applicationActivities: nil)
         activity.completionWithItemsHandler = { _, completed, _, _ in
             guard completed else { return }
-            Task { await app.logPulsePhotoShare(item.photoId) }
+            Task { await app.logPhotoShare(item.photoId) }
         }
         UIApplication.shared.topViewController?.present(activity, animated: true)
     }
 
+    /// Canonical engagement for a ranked photo — reads `app.photoEngagement`
+    /// first (kept correct by likes/shares done on ANY surface), falling
+    /// back to the ranking RPC's own `likeCount`/`shareCount` only until
+    /// that map has an entry for this id yet (mirrors web's own
+    /// `s.photoEngagement[item.photo_id] || { likeCount: item.like_count,
+    /// ... }` fallback).
+    private func engagement(_ item: PulsePhotoItem) -> PhotoEngagement {
+        app.photoEngagement[item.photoId] ?? PhotoEngagement(likeCount: item.likeCount, shareCount: item.shareCount, likedByMe: false)
+    }
+
+    // B — tapping ANYWHERE on a ranked event card now always opens the
+    // follow/view-event sheet below (was: only the organizer-name text did
+    // this, while tapping the photo/event-name navigated away immediately —
+    // one consistent tap target per card now, matching web's own B3 fix).
+    // The right-hand breakdown column is a transparent read of the REAL
+    // score components migration 086 returns — nothing here is invented.
     @ViewBuilder
     private func pulseCard(_ item: PulseItem, rank: Int) -> some View {
-        HStack(spacing: 0) {
-            Button {
-                app.closePulseViewer()
-                app.goEvent(item.eventId)
-            } label: {
+        Button {
+            app.openPulseOrganizerSheet(item)
+        } label: {
+            HStack(spacing: 0) {
                 // TASK E — these are real Supabase Storage `event_photos`
                 // rows (approved organizer media), not the bundled static
                 // demo catalogue CatalogPhoto/PhotoLoader is built for —
@@ -244,98 +264,6 @@ struct PulseViewerView: View {
                 }
                 .frame(width: 88, height: 88)
                 .clipped()
-            }
-            .buttonStyle(.plain)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text("#\(rank)").font(.system(size: 11, weight: .bold)).foregroundStyle(app.palette.ink.opacity(0.5))
-                    Button {
-                        app.closePulseViewer()
-                        app.goEvent(item.eventId)
-                    } label: {
-                        Text(item.eventName).font(BanbeTheme.display(14)).lineLimit(1)
-                    }
-                    .buttonStyle(.plain)
-                }
-                Button {
-                    app.openPulseOrganizerSheet(item)
-                } label: {
-                    Text(item.organizerName + (item.organizerVerified ? " ✓" : ""))
-                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.75))
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("pulse.organizerIdentity")
-            }
-            .padding(.horizontal, 14)
-            Spacer(minLength: 0)
-        }
-        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .accessibilityIdentifier("pulse.card")
-    }
-
-    @ViewBuilder
-    private func organizerSheet(_ item: PulseItem) -> some View {
-        VStack(spacing: 10) {
-            Capsule().fill(app.palette.rule).frame(width: 36, height: 4).padding(.top, 8)
-            Text(item.organizerName).font(BanbeTheme.display(19)).padding(.top, 8)
-            if item.organizerVerified {
-                Text(app.T("Đã xác minh", "Verified")).font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
-            }
-            Button {
-                Task { await app.followPulseOrganizer(item.organizerId) }
-            } label: {
-                Text(item.following ? app.T("Đang theo dõi", "Following") : app.T("Theo dõi", "Follow"))
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.horizontal, 28).padding(.vertical, 10)
-                    .background(item.following ? Color.clear : app.palette.ink, in: Capsule())
-                    .foregroundStyle(item.following ? app.palette.ink : app.palette.paper)
-                    .overlay(Capsule().stroke(item.following ? app.palette.rule : .clear))
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("pulse.follow")
-            Button(app.T("Xem sự kiện", "View event")) {
-                app.closePulseOrganizerSheet()
-                app.closePulseViewer()
-                app.goEvent(item.eventId)
-            }
-            .font(.system(size: 12)).foregroundStyle(app.palette.ink).underline()
-            .padding(.top, 4)
-            Spacer()
-        }
-        .foregroundStyle(app.palette.ink)
-        .padding(.horizontal, 22)
-        .background(app.palette.paper.ignoresSafeArea())
-    }
-
-    // TASK 4 (2026-09-25 fix pass) — a ranked-photo row: rank + like/share
-    // counts, tapping opens the compact popup below (never navigates
-    // immediately — same rule the organizer-identity sheet already
-    // follows).
-    @ViewBuilder
-    private func pulsePhotoCard(_ item: PulsePhotoItem, rank: Int) -> some View {
-        Button { app.openPulsePhotoSheet(item) } label: {
-            HStack(spacing: 0) {
-                ZStack(alignment: .topTrailing) {
-                    app.palette.field
-                    if let urlStr = eventPhotoURL(item.photoPath), let url = URL(string: urlStr) {
-                        AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
-                    }
-                    // Heart rule (Task 3) — rendered ONLY when this user has
-                    // liked the photo, same `heart.fill` asset
-                    // PhotoViewerView's own action button already uses; no
-                    // outline heart badge in the unliked state.
-                    if app.pulsePhotoLiked[item.photoId] == true {
-                        Image(systemName: "heart.fill")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
-                            .padding(6)
-                            .accessibilityIdentifier("pulse.photoCard.liked")
-                    }
-                }
-                .frame(width: 88, height: 88)
-                .clipped()
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
@@ -344,95 +272,294 @@ struct PulseViewerView: View {
                     }
                     Text(item.organizerName + (item.organizerVerified ? " ✓" : ""))
                         .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.75))
-                    Text(app.T("\(item.likeCount) lượt thích ▪︎ \(item.shareCount) lượt chia sẻ",
-                               "\(item.likeCount) likes ▪︎ \(item.shareCount) shares"))
-                        .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        .accessibilityIdentifier("pulse.organizerIdentity")
+                    if let included = item.included, !included.isEmpty {
+                        Text(app.T("Bao gồm: ", "Includes: ") + included)
+                            .font(.system(size: 10)).foregroundStyle(app.palette.ink.opacity(0.55))
+                            .lineLimit(1)
+                    }
                 }
                 .padding(.horizontal, 14)
                 Spacer(minLength: 0)
+
+                // Right-side breakdown — cat_label pill + booking/check-in/
+                // follow counts, every number a field goc_pulse_ranked()
+                // actually returns (migration 086). `followCount` is the
+                // organizer's TOTAL follower count (a documented proxy,
+                // not period-scoped) — copy below deliberately doesn't
+                // claim otherwise.
+                VStack(alignment: .trailing, spacing: 3) {
+                    if let cat = item.catLabel, !cat.isEmpty {
+                        Text(cat)
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(app.palette.paper, in: Capsule())
+                            .foregroundStyle(app.palette.ink)
+                            .lineLimit(1)
+                    }
+                    Text(app.T("\(item.bookingCount) vé", "\(item.bookingCount) bkgs"))
+                        .font(.system(size: 9.5)).foregroundStyle(app.palette.ink.opacity(0.65)).lineLimit(1)
+                    Text(app.T("\(item.checkinCount) check-in", "\(item.checkinCount) chk-in"))
+                        .font(.system(size: 9.5)).foregroundStyle(app.palette.ink.opacity(0.65)).lineLimit(1)
+                    Text(app.T("\(item.followCount) theo dõi", "\(item.followCount) follows"))
+                        .font(.system(size: 9.5)).foregroundStyle(app.palette.ink.opacity(0.5)).lineLimit(1)
+                }
+                .frame(width: 82, alignment: .trailing)
+                .padding(.trailing, 12)
+                .accessibilityIdentifier("pulse.rankBreakdown")
             }
         }
         .buttonStyle(.plain)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .accessibilityIdentifier("pulse.photoCard")
+        .accessibilityIdentifier("pulse.card")
     }
 
-    // TASK 5 (2026-09-25 fix pass) — photo + organizer identity/verified
-    // badge + a real like toggle + share + "view event", same shape as
-    // `organizerSheet` above.
+    // B3 — two large, equal-width, side-by-side rounded buttons instead of
+    // a solid Follow pill + a separately-sized underlined "Xem sự kiện"
+    // link. "Xem sự kiện" is now always a solid filled primary button
+    // (matches web); "Theo dõi"/"Đang theo dõi" keeps its existing
+    // filled/outline toggle look.
     @ViewBuilder
-    private func photoSheet(_ item: PulsePhotoItem) -> some View {
+    private func organizerSheet(_ item: PulseItem) -> some View {
         VStack(spacing: 10) {
             Capsule().fill(app.palette.rule).frame(width: 36, height: 4).padding(.top, 8)
-            ZStack {
-                app.palette.field
-                if let urlStr = eventPhotoURL(item.photoPath), let url = URL(string: urlStr) {
-                    AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
-                }
-            }
-            .frame(width: 160, height: 160)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(.top, 8)
-
-            Text(item.organizerName + (item.organizerVerified ? " ✓" : "")).font(BanbeTheme.display(17))
+            Text(item.organizerName).font(BanbeTheme.display(19)).padding(.top, 8)
             if item.organizerVerified {
                 Text(app.T("Đã xác minh", "Verified")).font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
             }
-
             HStack(spacing: 10) {
-                // Heart rule (Task 3) — the glyph only ever renders filled
-                // (liked, same `heart.fill` asset used elsewhere in this
-                // app) or not at all; no outline/empty heart state, no
-                // transitional animation beyond this button's own opacity
-                // fade while busy. Tap target (the whole pill) is identical
-                // either way.
                 Button {
-                    Task { await app.togglePulsePhotoLike(item.photoId) }
+                    Task { await app.followPulseOrganizer(item.organizerId) }
                 } label: {
-                    let liked = app.pulsePhotoLiked[item.photoId] == true
-                    HStack(spacing: 6) {
-                        if liked {
-                            Image(systemName: "heart.fill").font(.system(size: 13))
-                        }
-                        Text(app.T("Thích", "Like") + " · \(item.likeCount)")
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.horizontal, 18).padding(.vertical, 10)
-                    .background(liked ? app.palette.ink : Color.clear, in: Capsule())
-                    .foregroundStyle(liked ? app.palette.paper : app.palette.ink)
-                    .overlay(Capsule().stroke(liked ? .clear : app.palette.rule))
-                    .opacity(app.pulsePhotoBusy[item.photoId] == true ? 0.6 : 1)
+                    Text(item.following ? app.T("Đang theo dõi", "Following") : app.T("Theo dõi", "Follow"))
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14).padding(.horizontal, 10)
+                        .background(item.following ? Color.clear : app.palette.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .foregroundStyle(item.following ? app.palette.ink : app.palette.paper)
+                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(item.following ? app.palette.rule : .clear))
                 }
                 .buttonStyle(.plain)
-                .disabled(app.pulsePhotoBusy[item.photoId] == true)
-                .accessibilityIdentifier("pulse.photoLike")
+                .accessibilityIdentifier("pulse.follow")
 
                 Button {
-                    sharePulsePhoto(item)
+                    app.closePulseOrganizerSheet()
+                    app.closePulseViewer()
+                    app.goEvent(item.eventId)
                 } label: {
-                    Text(app.T("Chia sẻ", "Share") + " · \(item.shareCount)")
-                        .font(.system(size: 13, weight: .semibold))
-                        .padding(.horizontal, 18).padding(.vertical, 10)
-                        .overlay(Capsule().stroke(app.palette.rule))
-                        .foregroundStyle(app.palette.ink)
+                    Text(app.T("Xem sự kiện", "View event"))
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14).padding(.horizontal, 10)
+                        .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .foregroundStyle(app.palette.paper)
                 }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("pulse.photoShare")
+                .accessibilityIdentifier("pulse.viewEvent")
             }
-            .padding(.top, 6)
-
-            Button(app.T("Xem sự kiện / trang tổ chức", "View event / host page")) {
-                app.closePulsePhotoSheet()
-                app.closePulseViewer()
-                app.goEvent(item.eventId)
-            }
-            .font(.system(size: 12)).foregroundStyle(app.palette.ink).underline()
-            .padding(.top, 4)
-            .accessibilityIdentifier("pulse.photoViewEvent")
+            .padding(.top, 10)
             Spacer()
         }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 22)
         .background(app.palette.paper.ignoresSafeArea())
+    }
+
+    // TASK 4 (2026-09-25 fix pass) / B4 (2026-09-26 redesign) — a
+    // ranked-photo row: rank + a right-side quick-actions column (like,
+    // share), each its own tap target — tapping a quick action does NOT
+    // also open the popup sheet below (SwiftUI hit-tests the innermost
+    // `Button` first, so nesting them as SIBLINGS of the card's own
+    // `.onTapGesture`, rather than wrapping the whole card in one `Button`,
+    // is what gives each control its own target without a manual
+    // stop-propagation call). Tapping anywhere else on the card still opens
+    // the sheet. Counts/liked-state read the canonical `photoEngagement`
+    // map (`engagement(_:)` above), never a Pulse-local copy.
+    @ViewBuilder
+    private func pulsePhotoCard(_ item: PulsePhotoItem, rank: Int) -> some View {
+        let eng = engagement(item)
+        HStack(spacing: 0) {
+            ZStack(alignment: .topTrailing) {
+                app.palette.field
+                if let urlStr = eventPhotoURL(item.photoPath), let url = URL(string: urlStr) {
+                    AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
+                }
+                // Heart rule (Task 3) — rendered ONLY when this user has
+                // liked the photo, same `heart.fill` asset
+                // PhotoViewerView's own action button already uses; no
+                // outline heart badge in the unliked state.
+                if eng.likedByMe {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
+                        .padding(6)
+                        .allowsHitTesting(false)
+                        .accessibilityIdentifier("pulse.photoCard.liked")
+                }
+            }
+            .frame(width: 88, height: 88)
+            .clipped()
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("#\(rank)").font(.system(size: 11, weight: .bold)).foregroundStyle(app.palette.ink.opacity(0.5))
+                    Text(item.eventName).font(BanbeTheme.display(14)).lineLimit(1)
+                }
+                Text(item.organizerName + (item.organizerVerified ? " ✓" : ""))
+                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+            }
+            .padding(.horizontal, 14)
+            Spacer(minLength: 0)
+
+            VStack(alignment: .trailing, spacing: 8) {
+                Button {
+                    Task { await app.togglePhotoLike(item.photoId) }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("\(eng.likeCount)").font(.system(size: 11)).foregroundStyle(app.palette.ink)
+                        if eng.likedByMe {
+                            Image(systemName: "heart.fill").font(.system(size: 12)).foregroundStyle(app.palette.ink)
+                        } else {
+                            Text(app.T("Thích", "Like")).font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.55))
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(app.photoEngagementBusy.contains(item.photoId))
+                .accessibilityIdentifier("pulse.photoCard.quickLike")
+
+                Button {
+                    sharePulsePhoto(item)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("\(eng.shareCount)").font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        Image(systemName: "square.and.arrow.up").font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("pulse.photoCard.quickShare")
+            }
+            .frame(width: 60)
+            .padding(.trailing, 12)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { app.openPulsePhotoSheet(item) }
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityIdentifier("pulse.photoCard")
+    }
+
+    // TASK 5 (2026-09-25 fix pass) / B5 (2026-09-26 redesign) — a real
+    // fixed-height sheet, top 2/3 a large `<img>`-equivalent (`.scaledToFit`,
+    // never a cropping `.scaledToFill` — portrait AND landscape photos both
+    // display honestly, un-cropped) on a near-black background with a drag
+    // handle + explicit "×" close button overlaid; bottom 1/3 (scrollable)
+    // keeps the organizer identity/verified badge, like/share buttons with
+    // counts, and "Xem sự kiện" link. The `GeometryReader` drives the exact
+    // 2:1 split against the sheet's own live height (this view fills
+    // whatever the `.presentationDetents([.fraction(0.66)])` container
+    // below gives it, matching web's `height: '66vh'`).
+    @ViewBuilder
+    private func photoSheet(_ item: PulsePhotoItem) -> some View {
+        let eng = engagement(item)
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                ZStack {
+                    Color(red: 0.047, green: 0.043, blue: 0.035)
+                    if let urlStr = eventPhotoURL(item.photoPath), let url = URL(string: urlStr) {
+                        AsyncImage(url: url) { $0.resizable().scaledToFit() } placeholder: { Color.clear }
+                    }
+                    VStack {
+                        Capsule().fill(Color.white.opacity(0.55)).frame(width: 36, height: 4)
+                            .padding(.top, 10)
+                        Spacer()
+                    }
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Button { app.closePulsePhotoSheet() } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 30, height: 30)
+                                    .background(Color.black.opacity(0.5), in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(12)
+                            .accessibilityIdentifier("pulse-photo-sheet-close")
+                        }
+                        Spacer()
+                    }
+                }
+                .frame(height: geo.size.height * 2 / 3)
+                .clipped()
+
+                ScrollView {
+                    VStack(spacing: 8) {
+                        Text(item.organizerName + (item.organizerVerified ? " ✓" : "")).font(BanbeTheme.display(16))
+                        if item.organizerVerified {
+                            Text(app.T("Đã xác minh", "Verified")).font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        }
+
+                        HStack(spacing: 10) {
+                            // Heart rule (Task 3) — the glyph only ever
+                            // renders filled (liked) or not at all; no
+                            // outline/empty heart state. Reads/writes the
+                            // canonical `photoEngagement` map, so this
+                            // matches whatever the quick-action column and
+                            // EventDetail/Organizer/PhotoViewer already show
+                            // for the same photo id.
+                            Button {
+                                Task { await app.togglePhotoLike(item.photoId) }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    if eng.likedByMe {
+                                        Image(systemName: "heart.fill").font(.system(size: 13))
+                                    }
+                                    Text(app.T("Thích", "Like") + " · \(eng.likeCount)")
+                                }
+                                .font(.system(size: 13, weight: .semibold))
+                                .padding(.horizontal, 18).padding(.vertical, 10)
+                                .background(eng.likedByMe ? app.palette.ink : Color.clear, in: Capsule())
+                                .foregroundStyle(eng.likedByMe ? app.palette.paper : app.palette.ink)
+                                .overlay(Capsule().stroke(eng.likedByMe ? .clear : app.palette.rule))
+                                .opacity(app.photoEngagementBusy.contains(item.photoId) ? 0.6 : 1)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(app.photoEngagementBusy.contains(item.photoId))
+                            .accessibilityIdentifier("pulse.photoLike")
+
+                            Button {
+                                sharePulsePhoto(item)
+                            } label: {
+                                Text(app.T("Chia sẻ", "Share") + " · \(eng.shareCount)")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .padding(.horizontal, 18).padding(.vertical, 10)
+                                    .overlay(Capsule().stroke(app.palette.rule))
+                                    .foregroundStyle(app.palette.ink)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("pulse.photoShare")
+                        }
+                        .padding(.top, 6)
+
+                        Button(app.T("Xem sự kiện / trang tổ chức", "View event / host page")) {
+                            app.closePulsePhotoSheet()
+                            app.closePulseViewer()
+                            app.goEvent(item.eventId)
+                        }
+                        .font(.system(size: 12)).foregroundStyle(app.palette.ink).underline()
+                        .padding(.top, 4)
+                        .accessibilityIdentifier("pulse.photoViewEvent")
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 22).padding(.top, 14).padding(.bottom, 26)
+                }
+                .frame(height: geo.size.height / 3)
+                .background(app.palette.paper)
+            }
+        }
+        .ignoresSafeArea(edges: .bottom)
     }
 }

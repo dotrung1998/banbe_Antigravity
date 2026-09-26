@@ -16,7 +16,12 @@ export default function EventDetail() {
   // STAGE D (2026-09-25) — real event_photos rows, replacing the static
   // demo `ev.gallery` below.
   useEffect(() => { loadEventPhotos(ev.key); }, [ev.key, loadEventPhotos]);
-  const realPhotoUrls = (s.eventPhotos || []).map(p => eventPhotoUrl(p.storage_path));
+  // Photo identity fix — each gallery entry now carries its own real
+  // event_photos.id + owning event id, not just a URL (see openPhoto's own
+  // comment in GocContext.jsx). Every photo here belongs to THIS event, so
+  // eventId is just ev.key, but it travels per-photo like Organizer.jsx's
+  // gallery does, for the same shape both screens hand to openPhoto.
+  const realPhotos = (s.eventPhotos || []).map(p => ({ id: p.id, url: eventPhotoUrl(p.storage_path), eventId: ev.key }));
   const [shareStoryMsg, setShareStoryMsg] = useState('');
   // BUG 4 fix (2026-09-22 follow-up) — "Chia sẻ lên Story" used to publish
   // immediately on tap; per this ticket's own instruction, a real
@@ -292,10 +297,22 @@ export default function EventDetail() {
               one. */}
           {s.eventPhotosLoading ? (
             <p style={{ fontSize: 12.5, color: ink, opacity: 0.6, marginTop: 12 }}>{T('Đang tải…', 'Loading…')}</p>
-          ) : realPhotoUrls.length ? (
+          ) : realPhotos.length ? (
             <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 12, paddingBottom: 4 }}>
-              {realPhotoUrls.map((u, i) => (
-                <div key={s.eventPhotos[i].id} onClick={(e) => openPhoto(realPhotoUrls, i, ev.orgName, ev.key, e.currentTarget.getBoundingClientRect())} style={bg(u, { flex: 'none', width: 148, height: 186, cursor: 'pointer' })} />
+              {realPhotos.map((p, i) => (
+                <div key={p.id} onClick={(e) => openPhoto(realPhotos, i, ev.orgName, e.currentTarget.getBoundingClientRect())} style={{ position: 'relative', flex: 'none' }}>
+                  <div style={bg(p.url, { width: 148, height: 186, cursor: 'pointer' })} />
+                  {/* A.7 — a liked photo gets a filled heart badge; an
+                      unliked one shows no heart glyph at all here (only the
+                      full-screen viewer's own like button, opened by
+                      tapping the photo, is the discoverable way to like
+                      it). */}
+                  {s.photoEngagement[p.id]?.likedByMe && (
+                    <span style={{ position: 'absolute', top: 8, right: 8, color: '#fff', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.55))', pointerEvents: 'none' }}>
+                      <svg width={15} height={15} viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.5S3.5 15 3.5 9.2A4.7 4.7 0 0 1 12 6.5a4.7 4.7 0 0 1 8.5 2.7c0 5.8-8.5 11.3-8.5 11.3Z" /></svg>
+                    </span>
+                  )}
+                </div>
               ))}
             </div>
           ) : (

@@ -629,6 +629,12 @@ extension AppState {
                 .execute().value
             eventPhotos = photos
             eventPhotosLoading = false
+            // Photo-interactions redesign (2026-09-26) — fire-and-forget,
+            // not awaited: the grid renders immediately from `eventPhotos`
+            // above, engagement (like counts/badges) fills in a moment
+            // later via the canonical `photoEngagement` map.
+            let ids = photos.map { $0.id.uuidString.lowercased() }
+            Task { await loadPhotoEngagement(ids) }
         } catch {
             print("loadEventPhotos failed:", error)
             eventPhotos = []
@@ -674,6 +680,10 @@ extension AppState {
                 .execute().value
             organizerPhotos = photos
             organizerPhotosLoading = false
+            // Photo-interactions redesign (2026-09-26) — fire-and-forget,
+            // same reasoning as loadEventPhotos above.
+            let ids = photos.map { $0.id.uuidString.lowercased() }
+            Task { await loadPhotoEngagement(ids) }
         } catch {
             print("loadOrganizerPhotos failed:", error)
             organizerPhotos = []

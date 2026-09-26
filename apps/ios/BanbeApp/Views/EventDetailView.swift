@@ -12,12 +12,18 @@ struct EventDetailView: View {
     private var event: CatalogEvent { app.currentEvent }
     // STAGE D (2026-09-25) — real event_photos URLs, replacing the static
     // demo `event.gallery` below.
-    private var realPhotoURLs: [String] {
+    // Photo-interactions redesign (2026-09-26) — each entry now carries the
+    // photo's real id + its OWN owning event id (every photo here genuinely
+    // belongs to `event.key`, since this is a single-event query), not just
+    // a bare URL — see `PhotoGalleryItem`'s own doc comment.
+    private var realPhotos: [PhotoGalleryItem] {
         app.eventPhotos.compactMap { photo in
             let relative = photo.storagePath.hasPrefix("event-photos/")
                 ? String(photo.storagePath.dropFirst("event-photos/".count))
                 : photo.storagePath
-            return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative).absoluteString
+            guard let url = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative).absoluteString
+            else { return nil }
+            return PhotoGalleryItem(id: photo.id.uuidString.lowercased(), url: url, eventId: event.key)
         }
     }
 
@@ -350,23 +356,40 @@ struct EventDetailView: View {
                 Text(app.T("Đang tải…", "Loading…"))
                     .font(.system(size: 12.5)).opacity(0.6)
                     .padding(.top, 12)
-            } else if realPhotoURLs.isEmpty {
+            } else if realPhotos.isEmpty {
                 Text(app.T("Chưa có ảnh nào cho sự kiện này.", "No photos for this event yet."))
                     .font(.system(size: 12.5)).opacity(0.6)
                     .padding(.top, 12)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 8) {
-                        ForEach(Array(realPhotoURLs.enumerated()), id: \.offset) { index, path in
+                        ForEach(Array(realPhotos.enumerated()), id: \.element.id) { index, photo in
                             // GeometryReader wraps each thumbnail so its own
                             // tap can read `geo.frame(in: .global)` at the
                             // moment it's tapped — the origin rect the photo
                             // viewer's dismiss animation shrinks back to.
                             GeometryReader { geo in
                                 Button {
-                                    app.openPhoto(gallery: realPhotoURLs, index: index, organizer: event.orgName, eventKey: event.key, originRect: geo.frame(in: .global))
+                                    app.openPhoto(gallery: realPhotos, index: index, organizer: event.orgName, originRect: geo.frame(in: .global))
                                 } label: {
-                                    CatalogPhoto(path: path, height: 186, width: 148)
+                                    ZStack(alignment: .topTrailing) {
+                                        CatalogPhoto(path: photo.url, height: 186, width: 148)
+                                        // A liked photo gets a filled heart
+                                        // badge; an unliked one shows no
+                                        // heart glyph at all here — only the
+                                        // full-screen viewer's own like
+                                        // button (opened by tapping the
+                                        // photo) is the discoverable way to
+                                        // like it, matching web's rule.
+                                        if app.photoEngagement[photo.id]?.likedByMe == true {
+                                            Image(systemName: "heart.fill")
+                                                .font(.system(size: 13))
+                                                .foregroundStyle(.white)
+                                                .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
+                                                .padding(8)
+                                                .allowsHitTesting(false)
+                                        }
+                                    }
                                 }
                                 .buttonStyle(.plain)
                             }

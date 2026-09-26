@@ -23,12 +23,21 @@ struct OrganizerView: View {
     // STAGE B (2026-09-25) — real photo URLs from `app.organizerPhotos`
     // (loadOrganizerPhotos), resolved the same way PulseViewerView's own
     // `eventPhotoURL` already does.
-    private var orgPhotoURLs: [String] {
+    // Photo-interactions redesign (2026-09-26) — THE EVENTID BUG FIX: this
+    // grid spans ALL of an organizer's events, so every photo must carry
+    // its OWN `photo.eventId` (already fetched by loadOrganizerPhotos,
+    // previously discarded) — not the screen's currently-viewed
+    // `event.key`. Previously every photo here was tagged with whichever
+    // event happened to be on screen, so PhotoViewerView's "save event"
+    // bookmark could silently act on the wrong event.
+    private var orgPhotos: [PhotoGalleryItem] {
         app.organizerPhotos.compactMap { photo in
             let relative = photo.storagePath.hasPrefix("event-photos/")
                 ? String(photo.storagePath.dropFirst("event-photos/".count))
                 : photo.storagePath
-            return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative).absoluteString
+            guard let url = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative).absoluteString
+            else { return nil }
+            return PhotoGalleryItem(id: photo.id.uuidString.lowercased(), url: url, eventId: photo.eventId)
         }
     }
 
@@ -134,18 +143,28 @@ struct OrganizerView: View {
                             Text(app.T("Đang tải…", "Loading…"))
                                 .font(.system(size: 12.5)).opacity(0.6)
                                 .padding(.top, 14)
-                        } else if orgPhotoURLs.isEmpty {
+                        } else if orgPhotos.isEmpty {
                             Text(app.T("Người tổ chức chưa đăng ảnh nào.", "This organizer hasn’t posted any photos yet."))
                                 .font(.system(size: 12.5)).opacity(0.6)
                                 .padding(.top, 14)
                         } else {
                             LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
-                                ForEach(Array(orgPhotoURLs.enumerated()), id: \.offset) { index, path in
+                                ForEach(Array(orgPhotos.enumerated()), id: \.element.id) { index, photo in
                                     GeometryReader { geo in
                                         Button {
-                                            app.openPhoto(gallery: orgPhotoURLs, index: index, organizer: event.orgName, eventKey: event.key, originRect: geo.frame(in: .global))
+                                            app.openPhoto(gallery: orgPhotos, index: index, organizer: event.orgName, originRect: geo.frame(in: .global))
                                         } label: {
-                                            CatalogPhoto(path: path, height: 158)
+                                            ZStack(alignment: .topTrailing) {
+                                                CatalogPhoto(path: photo.url, height: 158)
+                                                if app.photoEngagement[photo.id]?.likedByMe == true {
+                                                    Image(systemName: "heart.fill")
+                                                        .font(.system(size: 13))
+                                                        .foregroundStyle(.white)
+                                                        .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
+                                                        .padding(8)
+                                                        .allowsHitTesting(false)
+                                                }
+                                            }
                                         }
                                         .buttonStyle(.plain)
                                     }

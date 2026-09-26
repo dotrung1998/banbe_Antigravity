@@ -22,7 +22,14 @@ export default function Organizer() {
   // changes (a shared link/back-navigation can land here for a different
   // organizer entirely).
   useEffect(() => { loadOrganizerPhotos(ev.key); }, [ev.key, loadOrganizerPhotos]);
-  const orgPhotoUrls = (s.organizerPhotos || []).map(p => organizerPhotoUrl(p.storage_path));
+  // Photo identity fix — a REAL bug found while tracing this: every photo
+  // here used to be handed to PhotoViewer tagged with THIS screen's own
+  // `ev.key`, even though this grid spans the organizer's OTHER events too
+  // (`loadOrganizerPhotos` fetches by organizer, not by event) — so "Lưu sự
+  // kiện" on a photo from a different event silently saved/showed the
+  // WRONG event. Each photo now carries its own real `event_id` (already
+  // fetched, just previously discarded).
+  const orgPhotos = (s.organizerPhotos || []).map(p => ({ id: p.id, url: organizerPhotoUrl(p.storage_path), eventId: p.event_id }));
 
   const evOrgStats = T('Tổ chức từ ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' sự kiện', 'Hosting since ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' events');
   const following = s.following.includes(ev.key);
@@ -102,10 +109,17 @@ export default function Organizer() {
             photo standing in for a real one. */}
         {s.organizerPhotosLoading ? (
           <p style={{ fontSize: 12.5, color: ink, opacity: 0.6, margin: '14px 0 0' }}>{T('Đang tải…', 'Loading…')}</p>
-        ) : orgPhotoUrls.length ? (
+        ) : orgPhotos.length ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 14 }}>
-            {orgPhotoUrls.map((u, i) => (
-              <div key={s.organizerPhotos[i].id} onClick={(e) => openPhoto(orgPhotoUrls, i, ev.orgName, ev.key, e.currentTarget.getBoundingClientRect())} style={bg(u, { width: '100%', height: 158, cursor: 'pointer' })} />
+            {orgPhotos.map((p, i) => (
+              <div key={p.id} onClick={(e) => openPhoto(orgPhotos, i, ev.orgName, e.currentTarget.getBoundingClientRect())} style={{ position: 'relative', cursor: 'pointer' }}>
+                <div style={bg(p.url, { width: '100%', height: 158 })} />
+                {s.photoEngagement[p.id]?.likedByMe && (
+                  <span style={{ position: 'absolute', top: 8, right: 8, color: '#fff', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.55))', pointerEvents: 'none' }}>
+                    <svg width={15} height={15} viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.5S3.5 15 3.5 9.2A4.7 4.7 0 0 1 12 6.5a4.7 4.7 0 0 1 8.5 2.7c0 5.8-8.5 11.3-8.5 11.3Z" /></svg>
+                  </span>
+                )}
+              </div>
             ))}
           </div>
         ) : (
