@@ -487,6 +487,20 @@ struct AccountView: View {
         .task(id: app.myOrganizerID) {
             if app.canHost, app.myOrganizerID != nil { await app.loadMyOrgStats() }
         }
+        // Stage 2 (2026-09-27 nav/discovery pass) — native pull-to-
+        // refresh, the SAME real reloads the `.task`s above already call,
+        // never a second/duplicate poll.
+        .refreshable {
+            guard app.userID != nil else { return }
+            await app.loadPaymentBookings()
+            await app.loadMyRefunds()
+            if app.canHost {
+                await app.loadVerifications()
+                await app.loadOrganizerHoldingSummary()
+                await app.loadRefundQueue()
+                if app.myOrganizerID != nil { await app.loadMyOrgStats() }
+            }
+        }
         .onAppear { retryScrollRestoreIfNeeded() }
         .photosPicker(isPresented: $storyLibraryPickerOpen, selection: $storyPhotoItem, matching: .images)
         .onChange(of: storyPhotoItem) { _, item in

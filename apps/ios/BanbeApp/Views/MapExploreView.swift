@@ -1128,6 +1128,16 @@ struct MapExploreView: View {
                     }
                 }
                 .listStyle(.plain)
+                // Stage 2 (2026-09-27 nav/discovery pass) — native pull-
+                // to-refresh on Map's own event list, reusing the SAME
+                // real refetch searchHere()/the infinite-scroll `.onAppear`
+                // above already use (current bounds, no camera/selection
+                // reset), never a second/duplicate poll.
+                .refreshable {
+                    guard let region = lastQueriedRegion else { return }
+                    boundsChanged = false
+                    await app.loadMapEvents(bounds: boundsOf(region))
+                }
                 .onChange(of: visibleEvents.map(\.id)) { _, ids in
                     // Bug 2 (best-effort list-scroll restore): SwiftUI's
                     // List has no pixel scrollTop to round-trip the way a

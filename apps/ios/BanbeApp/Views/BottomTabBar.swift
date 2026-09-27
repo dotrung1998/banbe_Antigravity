@@ -17,6 +17,21 @@ struct BottomTabBar: View {
     @EnvironmentObject var app: AppState
 
     static let visibleScreens: Set<Screen> = [.home, .mapExplore, .notifications, .inbox, .profile]
+    // Stage 2 (2026-09-27 nav/discovery pass) — the ordered list RootView's
+    // own root-tab swipe gesture navigates through; must match this file's
+    // own `items` order exactly (that array can't be reused directly — it's
+    // built with @EnvironmentObject-dependent actions/labels below).
+    static let dockOrder: [Screen] = [.home, .mapExplore, .notifications, .inbox, .profile]
+    static func goto(_ screen: Screen, app: AppState) {
+        switch screen {
+        case .home: app.goHome()
+        case .mapExplore: app.goMapExplore()
+        case .notifications: app.goNotifications()
+        case .inbox: app.goInbox()
+        case .profile: app.goProfile()
+        default: break
+        }
+    }
 
     // BUG 2 (64f2719) / BUG 3 (623ec1e) follow-ups: bumped up from 22/19
     // (expanded/collapsed) to a single fixed, larger size, then bumped

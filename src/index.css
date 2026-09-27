@@ -84,6 +84,13 @@ input::placeholder {
   to { opacity: 1; }
 }
 
+/* Stage 2 (2026-09-27 nav/discovery pass) — pull-to-refresh's own native-
+   style spinner (App.jsx's Shell). */
+@keyframes gocSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Story viewer progress bar fill (StoryViewer.jsx) — 07-notifications.md Task 3.4. */
 @keyframes gocStoryFill {
   from { width: 0%; }

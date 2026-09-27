@@ -121,6 +121,14 @@ struct HomeView: View {
         // real (non-catalogue) event needs its own fetch for savedStrip to
         // resolve it instead of quietly skipping it.
         .task { await app.loadMissingRealEvents(for: app.favorites + app.attending) }
+        // Stage 2 (2026-09-27 nav/discovery pass) — native pull-to-
+        // refresh, the SAME real reloads the `.task`s above already call,
+        // never a second/duplicate poll.
+        .refreshable {
+            await app.loadHomeLiveEvents()
+            await app.loadWeekendEvents()
+            if app.userID != nil { await app.loadHomeStories() }
+        }
         .onAppear {
             startTickingIfNeeded()
             retryScrollRestoreIfNeeded()

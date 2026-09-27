@@ -64,6 +64,12 @@ export function showsBottomBar(screen) {
   return BAR_SCREENS.has(screen);
 }
 
+// Stage 2 (2026-09-27 nav/discovery pass) — the ordered list root-tab
+// swipe (App.jsx's Shell) navigates through; must match `items` above's
+// own key order exactly (that array can't be reused directly — it's built
+// from hooks inside the component below).
+export const DOCK_ORDER = ['home', 'mapExplore', 'notifications', 'inbox', 'profile'];
+
 // BUG 2 (64f2719) / BUG 3 (623ec1e) follow-ups: bumped from 22/19
 // (expanded/collapsed) to one fixed, bigger size, then bumped again for
 // BUG 3's "make the resting bar a bit bigger" ask. The shrink-on-scroll

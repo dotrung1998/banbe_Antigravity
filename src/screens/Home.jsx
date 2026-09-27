@@ -388,7 +388,7 @@ export default function Home() {
             <span style={{ ...display(15) }}>{T('Sự kiện của bạn', 'Your events')}</span>
             <span style={{ fontSize: 11.5, color: ink }}>{T('Sự kiện đã qua sẽ ẩn sau 48h', 'Past events clear after 48h')}</span>
           </div>
-          <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6 }}>
+          <div data-hscroll="true" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6 }}>
             {savedList.map(sv => (
               <div key={sv.key} onClick={sv.unavailable ? undefined : () => openSaved(sv)} style={{ flex: 'none', width: 152, cursor: sv.unavailable ? 'default' : 'pointer' }}>
                 <div style={{ position: 'relative' }}>
@@ -418,7 +418,7 @@ export default function Home() {
           PERMANENT first entry (index 0), so the row itself is no longer
           conditional on real stories existing — it always shows at least
           Pulse. Never rendered on Map (this row only exists on Home). */}
-      <div style={{ display: 'flex', gap: 14, overflowX: 'auto', padding: '14px 20px', borderBottom: `1px solid ${rule}` }}>
+      <div data-hscroll="true" style={{ display: 'flex', gap: 14, overflowX: 'auto', padding: '14px 20px', borderBottom: `1px solid ${rule}` }}>
         <div
           onClick={openPulseViewer}
           data-testid="home-pulse-avatar"
@@ -569,7 +569,7 @@ export default function Home() {
             <span style={{ ...display(15) }}>{T('Cuối tuần này', 'This weekend')}</span>
           </div>
           {weekendList.length > 0 ? (
-            <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 10 }}>
+            <div data-hscroll="true" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 10 }}>
               {weekendList.map(e => (
                 <div key={e.key} data-testid={`weekend-event-${e.key}`} onClick={() => goEvent(e.key)} style={{ flex: 'none', width: 168, cursor: 'pointer' }}>
                   <div style={{ position: 'relative' }}>

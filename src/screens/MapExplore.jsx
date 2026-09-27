@@ -426,6 +426,57 @@ export default function MapExplore() {
     setLoading(false);
   }, []);
 
+  // Stage 2 (2026-09-27 nav/discovery pass) — pull-to-refresh, LOCAL to
+  // this list (not Shell's/App.jsx's generic one): MapExplore renders as
+  // a `position: fixed` full-viewport overlay, so Shell's own scroll
+  // container's scrollTop never moves here and is always 0 — treating
+  // that as "at the top" would hijack the map's OWN vertical gestures
+  // (the bottom sheet's drag-to-resize handle, this very list's native
+  // scroll). This list (`listRef`) has a real, independent scrollTop, so
+  // it gets its own tiny pointer-gesture pair instead, calling this
+  // screen's OWN real refetch (searchHere — current bounds, no camera/
+  // selection reset).
+  const [mapPullDist, setMapPullDist] = useState(0);
+  const [mapRefreshing, setMapRefreshing] = useState(false);
+  const [mapRefreshError, setMapRefreshError] = useState('');
+  const mapPullRef = useRef({ active: false, startY: 0, pointerId: null });
+  const MAP_PULL_TRIGGER = 64;
+  const MAP_PULL_MAX = 100;
+  const onListPointerDown = (e) => {
+    if (listRef.current && listRef.current.scrollTop > 0) return;
+    mapPullRef.current = { active: true, startY: e.clientY, pointerId: e.pointerId };
+  };
+  const onListPointerMove = (e) => {
+    const g = mapPullRef.current;
+    if (!g.active || e.pointerId !== g.pointerId) return;
+    const dy = e.clientY - g.startY;
+    if (dy <= 0) { setMapPullDist(0); return; }
+    setMapPullDist(Math.min(MAP_PULL_MAX, dy * 0.5));
+  };
+  const endListPull = async () => {
+    const g = mapPullRef.current;
+    if (!g.active) return;
+    g.active = false;
+    if (mapPullDist >= MAP_PULL_TRIGGER) {
+      setMapRefreshing(true);
+      setMapRefreshError('');
+      setMapPullDist(MAP_PULL_TRIGGER * 0.72);
+      try {
+        await searchHere();
+      } catch (err) {
+        console.warn('Map pull-to-refresh failed:', err);
+        setMapRefreshError(T('Không thể làm mới. Vui lòng thử lại.', 'Could not refresh. Please try again.'));
+        setTimeout(() => setMapRefreshError(''), 3000);
+      } finally {
+        setMapRefreshing(false);
+        setMapPullDist(0);
+      }
+    } else {
+      setMapPullDist(0);
+    }
+  };
+  const cancelListPull = () => { mapPullRef.current.active = false; if (!mapRefreshing) setMapPullDist(0); };
+
   const loadMore = useCallback(async () => {
     const next = page + 1;
     const bounds = lastQueriedBounds.current ? boundsToBox(lastQueriedBounds.current) : null;
@@ -861,12 +912,35 @@ export default function MapExplore() {
         <div
           ref={listRef}
           data-testid="map-list-scroll"
-          style={{ flex: 1, overflowY: 'auto', padding: '0 16px 24px' }}
+          style={{ flex: 1, overflowY: 'auto', padding: '0 16px 24px', position: 'relative', touchAction: 'pan-y' }}
           onScroll={(e) => {
             const el = e.currentTarget;
             if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) loadMore();
           }}
+          onPointerDown={onListPointerDown}
+          onPointerMove={onListPointerMove}
+          onPointerUp={endListPull}
+          onPointerCancel={cancelListPull}
         >
+          {(mapPullDist > 0 || mapRefreshing || mapRefreshError) && (
+            <div
+              data-testid="map-pull-to-refresh-indicator"
+              style={{ position: 'absolute', top: 4, left: 0, right: 0, display: 'flex', justifyContent: 'center', transform: `translateY(${Math.max(0, mapPullDist - 24)}px)`, pointerEvents: 'none' }}
+            >
+              {mapRefreshError ? (
+                <span style={{ fontSize: 11, fontWeight: 600, color: ink, background: paper, borderRadius: 999, padding: '6px 12px', boxShadow: '0 4px 14px rgba(27,25,22,0.16)' }}>{mapRefreshError}</span>
+              ) : (
+                <span
+                  aria-hidden
+                  style={{
+                    width: 20, height: 20, borderRadius: '50%', border: `2.5px solid ${rule}`, borderTopColor: ink, boxSizing: 'border-box', background: paper,
+                    animation: (mapRefreshing || mapPullDist >= MAP_PULL_TRIGGER) ? 'gocSpin 0.7s linear infinite' : 'none',
+                    transform: (mapRefreshing || mapPullDist >= MAP_PULL_TRIGGER) ? 'none' : `rotate(${Math.min(1, mapPullDist / MAP_PULL_TRIGGER) * 360}deg)`,
+                  }}
+                />
+              )}
+            </div>
+          )}
           {loading && visibleEvents.length === 0 && <div style={{ padding: 20, color: ink, opacity: 0.6, fontSize: 13 }}>{T('Đang tải…', 'Loading…')}</div>}
           {!loading && visibleEvents.length === 0 && <div style={{ padding: 20, color: ink, opacity: 0.6, fontSize: 13 }}>{T('Không có sự kiện nào ở khu vực này.', 'No events in this area.')}</div>}
           {visibleEvents.map(ev => (

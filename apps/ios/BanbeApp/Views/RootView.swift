@@ -19,6 +19,18 @@ struct RootView: View {
     @State private var isCommittingBack = false
     @State private var isDragTracking = false
 
+    // Stage 2 (2026-09-27 nav/discovery pass) — root-tab swipe: a
+    // left/right horizontal drag on a root screen (BottomTabBar.
+    // visibleScreens) moves to the adjacent tab in dock order, exactly as
+    // tapping that tab does. `nil` until a drag crosses the start
+    // threshold and picks a direction; only "horizontal" ever drives
+    // `tabSwipeTranslation`, so a vertical scroll is left entirely to each
+    // screen's own ScrollView (this gesture is `.simultaneousGesture`, not
+    // `.highPriorityGesture` — it never blocks that scroll from also
+    // recognizing the same touch).
+    @State private var tabSwipeTranslation: CGFloat = 0
+    @State private var tabSwipeDirection: String?
+
     // How far in from the leading edge a swipe can originate — matches the
     // HIG's own edge-swipe affordance width. `edgeSwipe` below is attached
     // only to a strip this wide (see the `Color.clear` in `body` carrying
@@ -119,6 +131,66 @@ struct RootView: View {
     }
 
     private var isPeeking: Bool { isDragTracking || isCommittingBack }
+
+    // Stage 2 — same 70pt commit distance as the web equivalent
+    // (App.jsx's Shell, SWIPE_COMMIT_PX).
+    private let tabSwipeCommitDistance: CGFloat = 70
+
+    private var tabSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .local)
+            .onChanged { value in
+                guard BottomTabBar.visibleScreens.contains(app.screen) else { return }
+                if tabSwipeDirection == nil {
+                    let dx = value.translation.width
+                    let dy = value.translation.height
+                    if abs(dx) < 10 && abs(dy) < 10 { return }
+                    if abs(dy) >= abs(dx) {
+                        tabSwipeDirection = "vertical"
+                        return
+                    }
+                    let width = UIScreen.main.bounds.width
+                    let startX = value.startLocation.x
+                    // Reserves the SAME leading-edge strip edgeSwipeBack
+                    // already owns (edgeSwipeZoneWidth), on every root
+                    // screen — never just Map — and, for Map specifically,
+                    // a narrow strip near the trailing edge is the ONLY
+                    // place this engages at all (map panning owns the rest
+                    // of the canvas), mirroring the web equivalent's own
+                    // EDGE_RESERVE_PX/Map-specific narrowing exactly.
+                    if startX < edgeSwipeZoneWidth {
+                        tabSwipeDirection = "vertical"
+                        return
+                    }
+                    if app.screen == .mapExplore && startX < width - edgeSwipeZoneWidth {
+                        tabSwipeDirection = "vertical"
+                        return
+                    }
+                    tabSwipeDirection = "horizontal"
+                }
+                guard tabSwipeDirection == "horizontal" else { return }
+                let idx = BottomTabBar.dockOrder.firstIndex(of: app.screen)
+                let canNext = idx != nil && idx! < BottomTabBar.dockOrder.count - 1
+                let canPrev = (idx ?? 0) > 0
+                var dx = value.translation.width
+                if dx < 0 && !canNext { dx *= 0.25 }
+                if dx > 0 && !canPrev { dx *= 0.25 }
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { tabSwipeTranslation = dx }
+            }
+            .onEnded { value in
+                defer { tabSwipeDirection = nil }
+                guard tabSwipeDirection == "horizontal" else { return }
+                let idx = BottomTabBar.dockOrder.firstIndex(of: app.screen)
+                let dx = value.translation.width
+                if dx <= -tabSwipeCommitDistance, let idx, idx < BottomTabBar.dockOrder.count - 1 {
+                    BottomTabBar.goto(BottomTabBar.dockOrder[idx + 1], app: app)
+                } else if dx >= tabSwipeCommitDistance, let idx, idx > 0 {
+                    BottomTabBar.goto(BottomTabBar.dockOrder[idx - 1], app: app)
+                }
+                withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) { tabSwipeTranslation = 0 }
+            }
+    }
 
     /// BUG 1 fix (2026-09-22 tenth follow-up) — true whenever the
     /// currently-showing screen is an Event Detail reached FROM a story
@@ -248,7 +320,12 @@ struct RootView: View {
             // Follows the finger 1:1 during the drag, then either finishes
             // the slide off-screen (commit) or springs back to place
             // (cancel) — the same two outcomes the system gesture has.
-            .offset(x: isCommittingBack ? UIScreen.main.bounds.width : dragTranslation)
+            // `tabSwipeTranslation` (Stage 2) is added on top — the two
+            // are mutually exclusive in practice (edgeSwipe only ever
+            // engages inside the leading-edge strip tabSwipeGesture itself
+            // excludes), so at most one is ever non-zero at a time.
+            .offset(x: (isCommittingBack ? UIScreen.main.bounds.width : dragTranslation) + tabSwipeTranslation)
+            .simultaneousGesture(tabSwipeGesture)
             // Depth cue on the dragged edge, same as UIKit's pop shadow.
             .shadow(color: .black.opacity(dragProgress * 0.16), radius: 16, x: -6, y: 0)
             // Belt-and-suspenders once a drag is already tracking: keeps a

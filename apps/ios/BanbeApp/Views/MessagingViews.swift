@@ -109,6 +109,11 @@ struct InboxView: View {
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
                     .background(app.palette.paper)
+                    // Stage 2 (2026-09-27 nav/discovery pass) — native
+                    // pull-to-refresh, the SAME real reload this screen's
+                    // own `.task` already calls, never a second/duplicate
+                    // poll.
+                    .refreshable { await app.loadInboxThreads() }
                 }
             }
         }
@@ -1159,6 +1164,10 @@ struct NotificationsView: View {
                 await app.loadNotifications()
                 syncSectionMembership()
             }
+            // Stage 2 (2026-09-27 nav/discovery pass) — native pull-to-
+            // refresh, the SAME real reload `.task` above already calls,
+            // never a second/duplicate poll.
+            .refreshable { await app.loadNotifications() }
             .onChange(of: app.notifications) { _, _ in syncSectionMembership() }
             // BUG 3 (2026-09-22 eighteenth follow-up) — real root cause:
             // `app.modalActionSheetPresented` (BottomTabBarOverlay.swift's
