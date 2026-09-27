@@ -14,29 +14,35 @@ import { ink, alert, barGlass } from '../theme.js';
 // set still reads as one family. See 06-design-tokens.md for the fuller
 // rationale and why this isn't a copy of any IG/FB/Twitter glyph (none of
 // the three use a map pin, a bell, or a flap-top envelope for these slots).
+// Stage 3 (2026-09-27 nav/discovery pass) — each glyph now has a real
+// filled (selected) and outline (unselected) variant, matching iOS's own
+// SF Symbol filled/outline convention this app's icon set already read as
+// belonging to. The bell used to be a solid shape UNCONDITIONALLY (no
+// outline variant existed at all), which is the actual "bell stays filled
+// even when Notifications isn't the active tab" bug this fixes.
 const ICONS = {
-  map: (c) => (
+  map: (c, filled) => (
     <svg viewBox="0 0 24 24" width="100%" height="100%">
-      <path d="M12 3c-3.3 0-6 2.6-6 6.1C6 13.4 12 21 12 21s6-7.6 6-11.9C18 5.6 15.3 3 12 3z" fill="none" stroke={c} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx="12" cy="9.3" r="2.3" fill={c} />
+      <path d="M12 3c-3.3 0-6 2.6-6 6.1C6 13.4 12 21 12 21s6-7.6 6-11.9C18 5.6 15.3 3 12 3z" fill={filled ? c : 'none'} stroke={c} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx="12" cy="9.3" r="2.3" fill={filled ? 'var(--bb-bg)' : c} />
     </svg>
   ),
-  notifications: (c) => (
+  notifications: (c, filled) => (
     <svg viewBox="0 0 24 24" width="100%" height="100%">
-      <path d="M12 3.5c-2.8 0-5 2.2-5 5v4.6l-1.6 2.7c-.3.5.1 1.2.7 1.2h11.8c.6 0 1-.7.7-1.2L17 13.1V8.5c0-2.8-2.2-5-5-5z" fill={c} />
+      <path d="M12 3.5c-2.8 0-5 2.2-5 5v4.6l-1.6 2.7c-.3.5.1 1.2.7 1.2h11.8c.6 0 1-.7.7-1.2L17 13.1V8.5c0-2.8-2.2-5-5-5z" fill={filled ? c : 'none'} stroke={c} strokeWidth={filled ? 0 : 2.2} strokeLinejoin="round" />
       <path d="M9.6 18.6a2.4 2.4 0 0 0 4.8 0" stroke={c} strokeWidth="2" strokeLinecap="round" fill="none" />
     </svg>
   ),
-  inbox: (c) => (
+  inbox: (c, filled) => (
     <svg viewBox="0 0 24 24" width="100%" height="100%">
-      <rect x="4.5" y="7" width="15" height="11" rx="2.4" fill="none" stroke={c} strokeWidth="2.4" />
-      <path d="M5.5 8.2 L12 13.5 L18.5 8.2" fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="4.5" y="7" width="15" height="11" rx="2.4" fill={filled ? c : 'none'} stroke={c} strokeWidth="2.4" />
+      <path d="M5.5 8.2 L12 13.5 L18.5 8.2" fill="none" stroke={filled ? 'var(--bb-bg)' : c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
-  profile: (c) => (
+  profile: (c, filled) => (
     <svg viewBox="0 0 24 24" width="100%" height="100%">
-      <circle cx="12" cy="8" r="3.8" fill="none" stroke={c} strokeWidth="2.6" />
-      <path d="M5 19.2c1.3-3.9 4.2-5.8 7-5.8s5.7 1.9 7 5.8" stroke={c} strokeWidth="2.6" strokeLinecap="round" fill="none" />
+      <circle cx="12" cy="8" r="3.8" fill={filled ? c : 'none'} stroke={c} strokeWidth="2.6" />
+      <path d="M5 19.2c1.3-3.9 4.2-5.8 7-5.8s5.7 1.9 7 5.8" stroke={c} strokeWidth="2.6" strokeLinecap="round" fill={filled ? c : 'none'} />
     </svg>
   ),
   // Task 1b follow-up: a straightforward addition to the existing icon set
@@ -46,10 +52,10 @@ const ICONS = {
   // a map glyph), a house for an actual Home tab is the universally
   // understood, semantically correct choice, not a borrowed IG/FB/Twitter
   // shape (none of those three put a house on a Home-equivalent tab).
-  home: (c) => (
+  home: (c, filled) => (
     <svg viewBox="0 0 24 24" width="100%" height="100%">
       <path d="M4 11.5 12 4l8 7.5" fill="none" stroke={c} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M6 10v9.5h12V10" fill="none" stroke={c} strokeWidth="2.4" strokeLinejoin="round" />
+      <path d="M6 10v9.5h12V10" fill={filled ? c : 'none'} stroke={c} strokeWidth="2.4" strokeLinejoin="round" />
     </svg>
   ),
 };
@@ -94,7 +100,11 @@ export const DOCK_ORDER = ['home', 'mapExplore', 'notifications', 'inbox', 'prof
 // existing dock" only reads as true if it shares these two numbers, not
 // approximations of them.
 export const BAR_HEIGHT = 64;
-const ICON_SIZE = 20;
+// Stage 3 (2026-09-27 nav/discovery pass) — bumped back up (20→26) now
+// that the text labels below each icon are gone (see the removed
+// `dockLabel` span) — the icon itself is the only thing left to read at a
+// glance, so it gets the room the labels used to occupy.
+const ICON_SIZE = 26;
 // BUG 3: sits a little closer to the bottom edge than 64f2719/623ec1e's
 // 18px — "shift its resting position lower."
 export const BAR_BOTTOM_OFFSET = 10;
@@ -115,7 +125,11 @@ export const BAR_BOTTOM_OFFSET = 10;
 // causing width) — each tab item already flexes equally
 // (`flex: '1 1 0'`), so the extra width spreads evenly across all five
 // instead of needing separate per-item spacing logic.
-export const DOCK_MAX_WIDTH = 340;
+// Stage 3 — widened further (340→380) now that there's no label text to
+// wrap/clip; larger icons (26px, up from 20) and 5 equally-flexed items
+// both benefit from the extra room, and 380 is still comfortably short of
+// the 400px that originally overlapped the "+" button.
+export const DOCK_MAX_WIDTH = 380;
 export const DOCK_MARGIN = 16;
 export const DOCK_GAP = 10;
 // Matches BAR_HEIGHT exactly — "shared vertical center" is then structural
@@ -134,17 +148,15 @@ export default function BottomTabBar({ collapsed }) {
   // loadInboxThreads in GocContext.jsx), shown uncapped per this ticket's
   // own ask: unlike a raw message count, a conversation count naturally
   // stays small enough that "9+" would just be hiding real information.
-  // Task 5 (2026-09-21 follow-up): `dockLabel` is a SHORT (one-word) form
-  // of the same destination `label` already carries for aria-label —
-  // "Trang chính"/"Home" is fine as a screen-reader label but too long to
-  // sit under a 20px icon in a 400px-wide bar without wrapping or
-  // overflowing; "Trang chủ" is the ordinary short Vietnamese form.
+  // Stage 3 (2026-09-27 nav/discovery pass) — visible dock text labels
+  // removed entirely (see the icon-only render below); `label` remains
+  // the sole source for the accessibility label/VoiceOver announcement.
   const items = useMemo(() => [
-    { key: 'home', icon: 'home', onClick: goHome, label: T('Trang chính', 'Home'), dockLabel: T('Trang chủ', 'Home'), testId: 'tab-home', badge: 0, badgeCapped: false },
-    { key: 'mapExplore', icon: 'map', onClick: goMapExplore, label: T('Bản đồ', 'Map'), dockLabel: T('Bản đồ', 'Map'), testId: 'tab-map', badge: 0, badgeCapped: false },
-    { key: 'notifications', icon: 'notifications', onClick: goNotifications, label: T('Thông báo', 'Notifications'), dockLabel: T('Thông báo', 'Alerts'), testId: 'tab-notifications', badge: s.unreadNotifications || 0, badgeCapped: true },
-    { key: 'inbox', icon: 'inbox', onClick: goInbox, label: T('Tin nhắn', 'Messages'), dockLabel: T('Tin nhắn', 'Inbox'), testId: 'tab-inbox', badge: s.unreadMessages || 0, badgeCapped: false },
-    { key: 'profile', icon: 'profile', onClick: goProfile, label: T('Tài khoản', 'Account'), dockLabel: T('Tài khoản', 'Account'), testId: 'tab-profile', badge: 0, badgeCapped: false },
+    { key: 'home', icon: 'home', onClick: goHome, label: T('Trang chính', 'Home'), testId: 'tab-home', badge: 0, badgeCapped: false },
+    { key: 'mapExplore', icon: 'map', onClick: goMapExplore, label: T('Bản đồ', 'Map'), testId: 'tab-map', badge: 0, badgeCapped: false },
+    { key: 'notifications', icon: 'notifications', onClick: goNotifications, label: T('Thông báo', 'Notifications'), testId: 'tab-notifications', badge: s.unreadNotifications || 0, badgeCapped: true },
+    { key: 'inbox', icon: 'inbox', onClick: goInbox, label: T('Tin nhắn', 'Messages'), testId: 'tab-inbox', badge: s.unreadMessages || 0, badgeCapped: false },
+    { key: 'profile', icon: 'profile', onClick: goProfile, label: T('Tài khoản', 'Account'), testId: 'tab-profile', badge: 0, badgeCapped: false },
   ], [goHome, goMapExplore, goNotifications, goInbox, goProfile, T, s.unreadNotifications, s.unreadMessages]);
 
   // FEATURE — scrub-to-select: press anywhere on the bar and drag; a soft
@@ -258,7 +270,12 @@ export default function BottomTabBar({ collapsed }) {
     const el = highlightRef.current;
     if (!el || index == null || !items.length) return;
     const pct = 100 / items.length;
-    el.style.transition = animate ? 'transform 0.18s cubic-bezier(.34,1.56,.64,1), opacity 0.15s ease' : 'opacity 0.15s ease';
+    // Stage 3 (2026-09-27 nav/discovery pass) — honors Reduce Motion: the
+    // spring glide becomes a plain, near-instant snap (still fades in via
+    // opacity, which isn't the kind of motion that setting asks to avoid).
+    const reduceMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const glide = reduceMotion ? 'transform 0.01s linear' : 'transform 0.32s cubic-bezier(.34,1.56,.64,1)';
+    el.style.transition = animate ? `${glide}, opacity 0.15s ease` : 'opacity 0.15s ease';
     el.style.width = `${pct}%`;
     el.style.transform = `translateX(${index * 100}%)`;
     el.style.opacity = '1';
@@ -360,10 +377,15 @@ export default function BottomTabBar({ collapsed }) {
             ref={(el) => { itemRefs.current[i] = el; }}
             data-testid={item.testId}
             aria-label={item.label}
-            style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, flex: '1 1 0', minWidth: 0, height: '100%', zIndex: 1 }}
+            role="tab"
+            aria-selected={activeIndex === i}
+            style={{
+              position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flex: '1 1 0', minWidth: 44, minHeight: 44, height: '100%', zIndex: 1,
+            }}
           >
-            <div style={{ position: 'relative', width: ICON_SIZE, height: ICON_SIZE, opacity: activeIndex === i ? 1 : 0.86 }}>
-              {ICONS[item.icon](ink)}
+            <div style={{ position: 'relative', width: ICON_SIZE, height: ICON_SIZE, opacity: activeIndex === i ? 1 : 0.72 }}>
+              {ICONS[item.icon](ink, activeIndex === i)}
               {item.badge > 0 && (
                 <span
                   style={{
@@ -376,13 +398,6 @@ export default function BottomTabBar({ collapsed }) {
                 </span>
               )}
             </div>
-            {/* Task 5 (2026-09-21 follow-up) — a small label under each
-                icon so it's not icon-only; reuses `item.label`, already
-                computed for `aria-label` above, rather than a second
-                string. */}
-            <span style={{ fontSize: 8, fontWeight: 600, color: ink, opacity: activeIndex === i ? 1 : 0.72, whiteSpace: 'nowrap' }}>
-              {item.dockLabel}
-            </span>
           </div>
         ))}
     </div>

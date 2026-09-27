@@ -15,6 +15,7 @@ import SwiftUI
 /// glass) while reading as this app's own icon family.
 struct BottomTabBar: View {
     @EnvironmentObject var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     static let visibleScreens: Set<Screen> = [.home, .mapExplore, .notifications, .inbox, .profile]
     // Stage 2 (2026-09-27 nav/discovery pass) — the ordered list RootView's
@@ -74,7 +75,9 @@ struct BottomTabBar: View {
     // already uses `.frame(maxWidth: .infinity)`, so the whole row — and
     // the equal spacing between tabs that comes from every item sharing
     // the same flexible width — compresses fluidly rather than clipping).
-    static let barWidth: CGFloat = 340
+    // Stage 3 — widened further (340→380) now that there's no label text
+    // to wrap/clip; matches the web bar's own bump.
+    static let barWidth: CGFloat = 380
     static let barHorizontalPadding: CGFloat = 20
     static let bottomOffset: CGFloat = 2
     // TASK 1 — shared with the create-"+" button (DockCreateButtonView) and
@@ -84,18 +87,17 @@ struct BottomTabBar: View {
     static let dockMargin: CGFloat = 16
     static let dockGap: CGFloat = 10
     static let createButtonSize: CGFloat = barHeight
-    private let iconSize: CGFloat = 20
+    // Stage 3 (2026-09-27 nav/discovery pass) — bumped back up (20→26) now
+    // that the on-dock text labels are gone (see the removed `dockLabel`
+    // field/Text below) — the icon itself is the only thing left to read
+    // at a glance, so it gets the room the labels used to occupy.
+    private let iconSize: CGFloat = 26
     private var barHeight: CGFloat { Self.barHeight }
 
     private struct Item: Identifiable {
         let id: String
-        let icon: (Color) -> AnyView
+        let icon: (Color, Bool) -> AnyView
         let label: String
-        // Task 5 (2026-09-21 follow-up): a SHORT (one-word) form of `label`
-        // for the on-dock text — "Trang chính"/"Home" is fine as an
-        // accessibility label but too long to sit under a 20px icon
-        // without wrapping/overflowing.
-        let dockLabel: String
         let action: () -> Void
         let badge: Int
         // Notifications' badge (per-account read_at) caps at "9+" — this
@@ -109,14 +111,14 @@ struct BottomTabBar: View {
 
     private var items: [Item] {
         [
-            Item(id: "home", icon: { AnyView(HomeGlyph(color: $0)) }, label: app.T("Trang chính", "Home"), dockLabel: app.T("Trang chủ", "Home"), action: { app.goHome() }, badge: 0),
-            Item(id: "map", icon: { AnyView(MapGlyph(color: $0)) }, label: app.T("Bản đồ", "Map"), dockLabel: app.T("Bản đồ", "Map"), action: { app.goMapExplore() }, badge: 0),
-            Item(id: "notifications", icon: { AnyView(NotificationsGlyph(color: $0)) }, label: app.T("Thông báo", "Notifications"), dockLabel: app.T("Thông báo", "Alerts"), action: { app.goNotifications() }, badge: app.unreadNotifications, badgeCapped: true),
+            Item(id: "home", icon: { AnyView(HomeGlyph(color: $0, filled: $1)) }, label: app.T("Trang chính", "Home"), action: { app.goHome() }, badge: 0),
+            Item(id: "map", icon: { AnyView(MapGlyph(color: $0, filled: $1)) }, label: app.T("Bản đồ", "Map"), action: { app.goMapExplore() }, badge: 0),
+            Item(id: "notifications", icon: { AnyView(NotificationsGlyph(color: $0, filled: $1)) }, label: app.T("Thông báo", "Notifications"), action: { app.goNotifications() }, badge: app.unreadNotifications, badgeCapped: true),
             // Unread count: number of conversations with an unread message
             // — see refreshUnreadMessageCount() (AppState+Data.swift),
             // refreshed on the same 5s poll as unreadNotifications.
-            Item(id: "inbox", icon: { AnyView(InboxGlyph(color: $0)) }, label: app.T("Tin nhắn", "Messages"), dockLabel: app.T("Tin nhắn", "Inbox"), action: { app.goInbox() }, badge: app.unreadMessages),
-            Item(id: "profile", icon: { AnyView(ProfileGlyph(color: $0)) }, label: app.T("Tài khoản", "Account"), dockLabel: app.T("Tài khoản", "Account"), action: { app.goProfile() }, badge: 0),
+            Item(id: "inbox", icon: { AnyView(InboxGlyph(color: $0, filled: $1)) }, label: app.T("Tin nhắn", "Messages"), action: { app.goInbox() }, badge: app.unreadMessages),
+            Item(id: "profile", icon: { AnyView(ProfileGlyph(color: $0, filled: $1)) }, label: app.T("Tài khoản", "Account"), action: { app.goProfile() }, badge: 0),
         ]
     }
 
@@ -169,7 +171,7 @@ struct BottomTabBar: View {
                 isDragging = true
                 let id = hitTest(value.location.x)
                 if id != activeID {
-                    withAnimation(.interactiveSpring()) { activeID = id }
+                    withAnimation(reduceMotion ? .linear(duration: 0.01) : .interactiveSpring()) { activeID = id }
                 }
             }
             .onEnded { value in
@@ -212,6 +214,39 @@ struct BottomTabBar: View {
         return items.firstIndex(where: { $0.id == activeID })
     }
 
+    // Stage 3 (2026-09-27 nav/discovery pass) — extracted out of `body`'s
+    // own `ForEach` (a real, confirmed Swift type-checker timeout when
+    // this whole modifier chain sat inline there: "unable to type-check
+    // this expression in reasonable time"). The on-dock text label is
+    // gone; the icon (now filled/outline per selection) is the only
+    // visible content, at a 44pt+ tap target via the frame below.
+    // `accessibilityLabel` keeps VoiceOver announcing the real
+    // destination name.
+    @ViewBuilder
+    private func tabItem(_ item: Item) -> some View {
+        let isActive = activeID == item.id
+        let badgeText: String = (item.badgeCapped && item.badge > 9) ? "9+" : String(item.badge)
+        ZStack(alignment: .topTrailing) {
+            item.icon(app.palette.ink, isActive)
+                .frame(width: iconSize, height: iconSize)
+                .opacity(isActive ? 1 : 0.72)
+            if item.badge > 0 {
+                Text(badgeText)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .frame(minWidth: 14, minHeight: 14)
+                    .background(BanbeTheme.alert, in: Capsule())
+                    .offset(x: 7, y: -5)
+            }
+        }
+        .frame(minWidth: 44, maxWidth: .infinity, minHeight: barHeight)
+        .accessibilityIdentifier("tab.\(item.id)")
+        .accessibilityLabel(item.label)
+        .accessibilityAddTraits(isActive ? [.isSelected] : [])
+        .anchorPreference(key: TabItemFrameKey.self, value: .bounds) { [item.id: $0] }
+    }
+
     var body: some View {
         GeometryReader { geo in
         ZStack(alignment: .leading) {
@@ -236,31 +271,7 @@ struct BottomTabBar: View {
 
             HStack(spacing: 0) {
                 ForEach(items) { item in
-                    VStack(spacing: 3) {
-                        ZStack(alignment: .topTrailing) {
-                            item.icon(app.palette.ink)
-                                .frame(width: iconSize, height: iconSize)
-                                .opacity(activeID == item.id ? 1 : 0.86)
-                            if item.badge > 0 {
-                                Text(item.badgeCapped && item.badge > 9 ? "9+" : "\(item.badge)")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 4)
-                                    .frame(minWidth: 14, minHeight: 14)
-                                    .background(BanbeTheme.alert, in: Capsule())
-                                    .offset(x: 7, y: -5)
-                            }
-                        }
-                        // Task 5 (2026-09-21 follow-up) — a small label
-                        // under each icon so it's not icon-only.
-                        Text(item.dockLabel)
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(app.palette.ink.opacity(activeID == item.id ? 1 : 0.72))
-                    }
-                    .frame(maxWidth: .infinity, minHeight: barHeight)
-                    .accessibilityIdentifier("tab.\(item.id)")
-                    .accessibilityLabel(item.label)
-                    .anchorPreference(key: TabItemFrameKey.self, value: .bounds) { [item.id: $0] }
+                    tabItem(item)
                 }
             }
         }
@@ -301,7 +312,11 @@ struct BottomTabBar: View {
         // rather than one group).
         .onAppear { syncActiveToScreen() }
         .onChange(of: app.screen) { _, _ in
-            withAnimation(.easeOut(duration: 0.18)) { syncActiveToScreen() }
+            // Stage 3 (2026-09-27 nav/discovery pass) — honors Reduce
+            // Motion: the spring glide becomes a plain, near-instant snap.
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : .interpolatingSpring(stiffness: 260, damping: 22)) {
+                syncActiveToScreen()
+            }
         }
         // BUG 3 follow-up (4d137235 real-device report): a `.zIndex()` set
         // HERE, inside this view's own `body`, does NOT affect BottomTabBar's
@@ -392,13 +407,20 @@ private struct TabItemFrameKey: PreferenceKey {
 // commands are resolved to absolute control points — see each addCurve
 // below, one SVG command per line, same coordinates, so both platforms
 // trace the literal same outline instead of two independently-drawn pins.
+// Stage 3 (2026-09-27 nav/discovery pass) — each glyph now takes `filled`
+// (selected) vs outline (unselected), matching SF Symbol's own filled/
+// outline convention. NotificationsGlyph used to be a solid shape
+// UNCONDITIONALLY (no outline variant existed), which is the actual "bell
+// stays filled even when Notifications isn't the active tab" bug this
+// fixes.
 private struct MapGlyph: View {
     let color: Color
+    var filled: Bool = false
     var body: some View {
         GeometryReader { geo in
             let s = geo.size.width / 24
             ZStack {
-                Path { p in
+                let outline = Path { p in
                     p.move(to: CGPoint(x: 12 * s, y: 3 * s))
                     // c -3.3,0 -6,2.6 -6,6.1
                     p.addCurve(to: CGPoint(x: 6 * s, y: 9.1 * s), control1: CGPoint(x: 8.7 * s, y: 3 * s), control2: CGPoint(x: 6 * s, y: 5.6 * s))
@@ -410,8 +432,9 @@ private struct MapGlyph: View {
                     p.addCurve(to: CGPoint(x: 12 * s, y: 3 * s), control1: CGPoint(x: 18 * s, y: 5.6 * s), control2: CGPoint(x: 15.3 * s, y: 3 * s))
                     p.closeSubpath()
                 }
-                .stroke(color, style: StrokeStyle(lineWidth: 2.4 * s, lineCap: .round, lineJoin: .round))
-                Circle().fill(color).frame(width: 4.6 * s, height: 4.6 * s).position(x: 12 * s, y: 9.3 * s)
+                if filled { outline.fill(color) }
+                outline.stroke(color, style: StrokeStyle(lineWidth: 2.4 * s, lineCap: .round, lineJoin: .round))
+                Circle().fill(filled ? Color(uiColor: .systemBackground) : color).frame(width: 4.6 * s, height: 4.6 * s).position(x: 12 * s, y: 9.3 * s)
             }
         }
     }
@@ -419,23 +442,24 @@ private struct MapGlyph: View {
 
 private struct NotificationsGlyph: View {
     let color: Color
+    var filled: Bool = false
     var body: some View {
         GeometryReader { geo in
             let s = geo.size.width / 24
+            let bell = Path { p in
+                p.move(to: CGPoint(x: 7 * s, y: 13.1 * s))
+                p.addLine(to: CGPoint(x: 7 * s, y: 8.5 * s))
+                p.addCurve(to: CGPoint(x: 12 * s, y: 3.5 * s), control1: CGPoint(x: 7 * s, y: 5.7 * s), control2: CGPoint(x: 9.2 * s, y: 3.5 * s))
+                p.addCurve(to: CGPoint(x: 17 * s, y: 8.5 * s), control1: CGPoint(x: 14.8 * s, y: 3.5 * s), control2: CGPoint(x: 17 * s, y: 5.7 * s))
+                p.addLine(to: CGPoint(x: 17 * s, y: 13.1 * s))
+                p.addLine(to: CGPoint(x: 18.7 * s, y: 16.3 * s))
+                p.addCurve(to: CGPoint(x: 18 * s, y: 17.4 * s), control1: CGPoint(x: 19 * s, y: 16.9 * s), control2: CGPoint(x: 18.6 * s, y: 17.4 * s))
+                p.addLine(to: CGPoint(x: 6 * s, y: 17.4 * s))
+                p.addCurve(to: CGPoint(x: 5.3 * s, y: 16.3 * s), control1: CGPoint(x: 5.4 * s, y: 17.4 * s), control2: CGPoint(x: 5 * s, y: 16.9 * s))
+                p.closeSubpath()
+            }
             ZStack {
-                Path { p in
-                    p.move(to: CGPoint(x: 7 * s, y: 13.1 * s))
-                    p.addLine(to: CGPoint(x: 7 * s, y: 8.5 * s))
-                    p.addCurve(to: CGPoint(x: 12 * s, y: 3.5 * s), control1: CGPoint(x: 7 * s, y: 5.7 * s), control2: CGPoint(x: 9.2 * s, y: 3.5 * s))
-                    p.addCurve(to: CGPoint(x: 17 * s, y: 8.5 * s), control1: CGPoint(x: 14.8 * s, y: 3.5 * s), control2: CGPoint(x: 17 * s, y: 5.7 * s))
-                    p.addLine(to: CGPoint(x: 17 * s, y: 13.1 * s))
-                    p.addLine(to: CGPoint(x: 18.7 * s, y: 16.3 * s))
-                    p.addCurve(to: CGPoint(x: 18 * s, y: 17.4 * s), control1: CGPoint(x: 19 * s, y: 16.9 * s), control2: CGPoint(x: 18.6 * s, y: 17.4 * s))
-                    p.addLine(to: CGPoint(x: 6 * s, y: 17.4 * s))
-                    p.addCurve(to: CGPoint(x: 5.3 * s, y: 16.3 * s), control1: CGPoint(x: 5.4 * s, y: 17.4 * s), control2: CGPoint(x: 5 * s, y: 16.9 * s))
-                    p.closeSubpath()
-                }
-                .fill(color)
+                if filled { bell.fill(color) } else { bell.stroke(color, style: StrokeStyle(lineWidth: 2.2 * s, lineJoin: .round)) }
                 Path { p in p.addArc(center: CGPoint(x: 12 * s, y: 18.6 * s), radius: 2.4 * s, startAngle: .degrees(0), endAngle: .degrees(180), clockwise: false) }
                     .stroke(color, style: StrokeStyle(lineWidth: 2 * s, lineCap: .round))
             }
@@ -445,20 +469,23 @@ private struct NotificationsGlyph: View {
 
 private struct InboxGlyph: View {
     let color: Color
+    var filled: Bool = false
     var body: some View {
         GeometryReader { geo in
             let s = geo.size.width / 24
             ZStack {
-                RoundedRectangle(cornerRadius: 2.4 * s, style: .continuous)
-                    .stroke(color, lineWidth: 2.4 * s)
-                    .frame(width: 15 * s, height: 11 * s)
-                    .position(x: 12 * s, y: 12.5 * s)
+                let rect = RoundedRectangle(cornerRadius: 2.4 * s, style: .continuous)
+                if filled {
+                    rect.fill(color).frame(width: 15 * s, height: 11 * s).position(x: 12 * s, y: 12.5 * s)
+                } else {
+                    rect.stroke(color, lineWidth: 2.4 * s).frame(width: 15 * s, height: 11 * s).position(x: 12 * s, y: 12.5 * s)
+                }
                 Path { p in
                     p.move(to: CGPoint(x: 5.5 * s, y: 8.2 * s))
                     p.addLine(to: CGPoint(x: 12 * s, y: 13.5 * s))
                     p.addLine(to: CGPoint(x: 18.5 * s, y: 8.2 * s))
                 }
-                .stroke(color, style: StrokeStyle(lineWidth: 2.2 * s, lineCap: .round, lineJoin: .round))
+                .stroke(filled ? Color(uiColor: .systemBackground) : color, style: StrokeStyle(lineWidth: 2.2 * s, lineCap: .round, lineJoin: .round))
             }
         }
     }
@@ -466,11 +493,24 @@ private struct InboxGlyph: View {
 
 private struct ProfileGlyph: View {
     let color: Color
+    var filled: Bool = false
     var body: some View {
         GeometryReader { geo in
             let s = geo.size.width / 24
             ZStack {
-                Circle().stroke(color, lineWidth: 2.6 * s).frame(width: 7.6 * s, height: 7.6 * s).position(x: 12 * s, y: 8 * s)
+                if filled {
+                    Circle().fill(color).frame(width: 7.6 * s, height: 7.6 * s).position(x: 12 * s, y: 8 * s)
+                } else {
+                    Circle().stroke(color, lineWidth: 2.6 * s).frame(width: 7.6 * s, height: 7.6 * s).position(x: 12 * s, y: 8 * s)
+                }
+                Path { p in
+                    p.move(to: CGPoint(x: 5 * s, y: 19.2 * s))
+                    p.addCurve(to: CGPoint(x: 19 * s, y: 19.2 * s), control1: CGPoint(x: 6.3 * s, y: 15.3 * s), control2: CGPoint(x: 17.7 * s, y: 15.3 * s))
+                    p.addLine(to: CGPoint(x: 19 * s, y: 21 * s))
+                    p.addLine(to: CGPoint(x: 5 * s, y: 21 * s))
+                    p.closeSubpath()
+                }
+                .fill(filled ? color : Color.clear)
                 Path { p in
                     p.move(to: CGPoint(x: 5 * s, y: 19.2 * s))
                     p.addCurve(to: CGPoint(x: 19 * s, y: 19.2 * s), control1: CGPoint(x: 6.3 * s, y: 15.3 * s), control2: CGPoint(x: 17.7 * s, y: 15.3 * s))
@@ -491,6 +531,7 @@ private struct ProfileGlyph: View {
 // shape for shape.
 private struct HomeGlyph: View {
     let color: Color
+    var filled: Bool = false
     var body: some View {
         GeometryReader { geo in
             let s = geo.size.width / 24
@@ -501,13 +542,14 @@ private struct HomeGlyph: View {
                     p.addLine(to: CGPoint(x: 20 * s, y: 11.5 * s))
                 }
                 .stroke(color, style: StrokeStyle(lineWidth: 2.4 * s, lineCap: .round, lineJoin: .round))
-                Path { p in
+                let house = Path { p in
                     p.move(to: CGPoint(x: 6 * s, y: 10 * s))
                     p.addLine(to: CGPoint(x: 6 * s, y: 19.5 * s))
                     p.addLine(to: CGPoint(x: 18 * s, y: 19.5 * s))
                     p.addLine(to: CGPoint(x: 18 * s, y: 10 * s))
                 }
-                .stroke(color, style: StrokeStyle(lineWidth: 2.4 * s, lineJoin: .round))
+                if filled { house.fill(color) }
+                house.stroke(color, style: StrokeStyle(lineWidth: 2.4 * s, lineJoin: .round))
             }
         }
     }
