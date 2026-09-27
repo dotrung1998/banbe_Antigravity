@@ -480,6 +480,13 @@ const initialState = {
   editProfileHandle: '', editProfileName: '', editProfileBio: '', editProfileCity: '',
   editProfileInterests: '', editProfileTheme: 'default', editProfileError: '', editProfileBusy: false,
   publicProfile: null, publicProfileLoading: false, publicProfileError: '', publicProfileBack: 'profile', publicProfileHandle: '',
+  // Profile-nav fix pass (2026-09-27) — same screen serves three different
+  // entries: the account's own PERSONAL card (must never show the org
+  // edit/guest-preview pair below, even when this account also hosts),
+  // and the organizer MANAGEMENT page's own "Chỉnh sửa"/"Xem như khách"
+  // buttons (which land here already decided which of those two states to
+  // start in, rather than requiring a second tap once the page opens).
+  publicProfileContext: 'organizer', publicProfileGuestPreview: false, publicProfileAutoEdit: false,
   profileLinkCopiedFlash: false,
   // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
   pulseDaily: [], pulseWeekly: [], pulseOpen: false, pulseTab: 'daily', pulseOrganizerSheet: null,
@@ -4515,7 +4522,10 @@ export function GocProvider({ children }) {
   const backToEvent = useCallback(() => set({ screen: 'event' }), [set]);
   const backToOrganizer = useCallback(() => set({ screen: 'organizer' }), [set]);
   const goLogin = useCallback(() => set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'home' }), [set]);
-  const goDashboard = useCallback(() => set({ screen: 'dashboard' }), [set]);
+  // `back` is only honored when it's really a screen name — several call
+  // sites (ActionCenter's onOpenDashboard) wire this straight to an
+  // onClick, which would otherwise hand it the click event instead.
+  const goDashboard = useCallback((back) => set({ screen: 'dashboard', ...(typeof back === 'string' ? { dashboardBack: back } : {}) }), [set]);
   const goCreate = useCallback(() => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'create', authBackScreen: 'hostIntro' });
     if (!canHost) enableOrganizerMode();
@@ -4778,8 +4788,12 @@ export function GocProvider({ children }) {
 
   /** Public profile screen — reachable by handle, works for a signed-out
    * visitor too (get_public_profile() is granted to anon, migration 079). */
-  const openPublicProfile = useCallback(async (handle, back = 'profile') => {
-    set({ screen: 'publicProfile', publicProfile: null, publicProfileLoading: true, publicProfileError: '', publicProfileBack: back, publicProfileHandle: handle });
+  const openPublicProfile = useCallback(async (handle, back = 'profile', opts = {}) => {
+    const { context = 'organizer', guestPreview = false, autoEdit = false } = opts;
+    set({
+      screen: 'publicProfile', publicProfile: null, publicProfileLoading: true, publicProfileError: '', publicProfileBack: back, publicProfileHandle: handle,
+      publicProfileContext: context, publicProfileGuestPreview: guestPreview, publicProfileAutoEdit: autoEdit,
+    });
     const { data, error } = await supabase.rpc('get_public_profile', { p_handle: handle });
     if (error || data?.success === false) {
       set({ publicProfileLoading: false, publicProfileError: T('Không tìm thấy hồ sơ này.', "This profile couldn't be found.") });

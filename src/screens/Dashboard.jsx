@@ -10,7 +10,7 @@ export default function Dashboard() {
   const {
     state, T, trStatus, stripKm, curEvent, backFromDashboard, switchToGoer, goCreate, openAttendance, goEvent, requestVerify, loadHomeLiveEvents,
     loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, openVerifications, uploadEventPhoto,
-    loadRealEventsById, goEditEvent,
+    loadRealEventsById, goEditEvent, openPublicProfile,
   } = useGoc();
   const s = state;
   // Event review queue — a real, host-created event isn't in the static
@@ -120,6 +120,34 @@ export default function Dashboard() {
         </div>
       </div>
       <div style={{ padding: '14px 22px 0', fontSize: 12.5, color: ink }}>{dashStatsLine}</div>
+
+      {/* Rule 3 (2026-09-27 nav/discovery pass) — this management page's
+          own pair of matching actions on the account's real public
+          organizer page: "Chỉnh sửa" opens it ready to edit name/avatar/
+          intro (the existing owner-only flow already on that page,
+          PublicProfile.jsx's org-edit card — just started open here
+          instead of needing a second tap there); "Xem như khách" opens
+          the exact same page as any visitor sees it (guest preview,
+          client-only — never touches auth or organizer mode). Neither
+          button lives on the personal profile card (Account.jsx). */}
+      {s.user?.handle && (
+        <div style={{ display: 'flex', gap: 10, margin: '16px 22px 0' }}>
+          <div
+            onClick={() => openPublicProfile(s.user.handle, 'dashboard', { context: 'organizer', autoEdit: true })}
+            data-testid="dashboard-edit-org"
+            style={{ flex: 1, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '10px 0', borderRadius: 10, cursor: 'pointer', border: '1px solid rgba(27,25,22,0.16)' }}
+          >
+            {T('Chỉnh sửa', 'Edit')}
+          </div>
+          <div
+            onClick={() => openPublicProfile(s.user.handle, 'dashboard', { context: 'organizer', guestPreview: true })}
+            data-testid="dashboard-view-as-guest"
+            style={{ flex: 1, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '10px 0', borderRadius: 10, cursor: 'pointer', border: '1px solid rgba(27,25,22,0.16)' }}
+          >
+            {T('Xem như khách', 'View as guest')}
+          </div>
+        </div>
+      )}
 
       {verifyState === 'none' && (
         <div style={{ ...cardGlass({ margin: '16px 22px 0', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }) }}>

@@ -851,6 +851,15 @@ final class AppState: ObservableObject {
     @Published var publicProfileError = ""
     @Published var publicProfileBackScreen: Screen = .profile
     @Published var publicProfileHandle = ""
+    // Profile-nav fix pass (2026-09-27) — same screen serves three
+    // different entries: the account's own PERSONAL card ("personal",
+    // must never show the org edit/guest-preview pair), and the organizer
+    // MANAGEMENT page's own "Chỉnh sửa"/"Xem như khách" buttons
+    // ("organizer", default — lands here already decided which of those
+    // two states to start in, rather than requiring a second tap).
+    @Published var publicProfileContext = "organizer"
+    @Published var publicProfileGuestPreview = false
+    @Published var publicProfileAutoEdit = false
     // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
     @Published var pulseDaily: [PulseItem] = []
     @Published var pulseWeekly: [PulseItem] = []
@@ -1955,7 +1964,8 @@ final class AppState: ObservableObject {
         screen = .reserve
     }
 
-    func goDashboard() {
+    func goDashboard(back: Screen? = nil) {
+        if let back { dashboardBack = back }
         screen = .dashboard
         Task { await loadMyOrgEventSummaries() }
     }

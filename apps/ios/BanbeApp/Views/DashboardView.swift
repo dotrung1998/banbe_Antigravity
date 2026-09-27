@@ -98,6 +98,41 @@ struct DashboardView: View {
                         .font(.system(size: 12.5))
                         .padding(.top, 14)
 
+                        // Rule 3 (2026-09-27 nav/discovery pass) — this
+                        // management page's own pair of matching actions on
+                        // the account's real public organizer page:
+                        // "Chỉnh sửa" opens it ready to edit name/avatar/
+                        // intro (the existing owner-only flow already on
+                        // that page, PublicProfileView's org edit card —
+                        // just started open here instead of needing a
+                        // second tap there); "Xem như khách" opens the
+                        // exact same page as any visitor sees it (guest
+                        // preview, client-only — never touches auth or
+                        // organizer mode). Neither button lives on the
+                        // personal profile card (AccountView).
+                        if let handle = app.user?.handle, !handle.isEmpty {
+                            HStack(spacing: 10) {
+                                Button(app.T("Chỉnh sửa", "Edit")) {
+                                    app.openPublicProfile(handle: handle, back: .dashboard, context: "organizer", autoEdit: true)
+                                }
+                                .font(.system(size: 12.5, weight: .semibold))
+                                .frame(maxWidth: .infinity).padding(.vertical, 10)
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                                .foregroundStyle(app.palette.ink)
+                                .accessibilityIdentifier("dashboard.editOrg")
+                                Button(app.T("Xem như khách", "View as guest")) {
+                                    app.openPublicProfile(handle: handle, back: .dashboard, context: "organizer", guestPreview: true)
+                                }
+                                .font(.system(size: 12.5, weight: .semibold))
+                                .frame(maxWidth: .infinity).padding(.vertical, 10)
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                                .foregroundStyle(app.palette.ink)
+                                .accessibilityIdentifier("dashboard.viewAsGuest")
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 16)
+                        }
+
                         if !event.orgTrusted && !app.orgVerifyRequested {
                             HStack(spacing: 12) {
                                 Text(app.T("Xác minh hồ sơ để khách tin tưởng hơn.",

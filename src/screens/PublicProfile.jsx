@@ -39,13 +39,19 @@ export default function PublicProfile() {
   // everywhere else). A SEPARATE entry from "Chỉnh sửa hồ sơ" (personal,
   // -> EditProfile) — never the same action, since they edit different
   // rows in different tables.
-  const [orgEditing, setOrgEditing] = useState(false);
+  // Profile-nav fix pass (2026-09-27) — both initial states now come from
+  // which button was tapped to get here (Dashboard's own "Chỉnh sửa"/"Xem
+  // như khách" pair, see openPublicProfile's `opts`), so this page opens
+  // already in the right state instead of requiring a second tap once it
+  // renders. Still local component state after that — same as before,
+  // toggled purely client-side.
+  const [orgEditing, setOrgEditing] = useState(() => s.publicProfileAutoEdit);
   // Stage 1 (2026-09-27 nav/discovery pass) — a client-only "view as
   // guest" preview for the account's OWN organizer public page: hides
   // owner-only controls (the edit row below, the personal "Chỉnh sửa hồ
   // sơ" button) so the owner can see exactly what a visitor sees, without
   // touching auth, organizerMode, or which account is signed in at all.
-  const [guestPreview, setGuestPreview] = useState(false);
+  const [guestPreview, setGuestPreview] = useState(() => s.publicProfileGuestPreview);
   const [orgAvatarFile, setOrgAvatarFile] = useState(null);
   const [orgAvatarPreview, setOrgAvatarPreview] = useState('');
   const orgAvatarInputRef = useRef(null);
@@ -208,7 +214,15 @@ export default function PublicProfile() {
           per account, everywhere else in this codebase), but this is the
           one place a mismatch would silently edit the WRONG organizer's
           row, so it's checked explicitly rather than assumed. */}
-      {isOwnProfile && org && org.id === s.myOrganizerId && !guestPreview && (
+      {/* Rule 1 (2026-09-27 nav/discovery pass) — this pair only belongs on
+          the organizer MANAGEMENT page (Dashboard.jsx's own "Chỉnh sửa"/
+          "Xem như khách" buttons land here already decided which state to
+          start in); the account's PERSONAL profile card must never show
+          it, even for a host account whose own handle carries org data
+          too. `publicProfileContext` is 'personal' only when opened from
+          Account > Cá nhân — every other entry (Dashboard, a shared link,
+          a visitor) is 'organizer' by default. */}
+      {isOwnProfile && org && org.id === s.myOrganizerId && !guestPreview && s.publicProfileContext !== 'personal' && (
         <div style={{ ...cardGlass({ margin: '14px 20px 0', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }) }} data-testid="public-profile-org-edit-card">
           {orgEditing ? (
             <>

@@ -152,12 +152,15 @@ extension AppState {
 
     /// Public profile screen — reachable by handle, works for a signed-out
     /// visitor too (get_public_profile() is granted to anon, migration 079).
-    func openPublicProfile(handle: String, back: Screen = .profile) {
+    func openPublicProfile(handle: String, back: Screen = .profile, context: String = "organizer", guestPreview: Bool = false, autoEdit: Bool = false) {
         publicProfileBackScreen = back
         publicProfile = nil
         publicProfileLoading = true
         publicProfileError = ""
         publicProfileHandle = handle
+        publicProfileContext = context
+        publicProfileGuestPreview = guestPreview
+        publicProfileAutoEdit = autoEdit
         screen = .publicProfile
         Task { await loadPublicProfile(handle: handle) }
     }

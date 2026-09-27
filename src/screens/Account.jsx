@@ -287,7 +287,7 @@ export default function Account() {
             destination. */}
         {s.user && (
           <span
-            onClick={() => s.user?.handle && openPublicProfile(s.user.handle)}
+            onClick={() => s.user?.handle && openPublicProfile(s.user.handle, 'profile', { context: 'personal' })}
             data-testid="account-edit-profile"
             style={{ flex: 'none', fontSize: 20, color: ink, opacity: 0.55, cursor: 'pointer', alignSelf: 'center' }}>
             ›
@@ -416,7 +416,7 @@ export default function Account() {
           first event" pitch further down (unchanged from before). */}
       {canHost && s.myOrganizerId && (
         <div
-          onClick={() => s.user?.handle && openPublicProfile(s.user.handle, 'profile')}
+          onClick={() => goDashboard('profile')}
           style={{ ...cardGlass({ margin: '22px 20px 0', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer' }) }}
           data-testid="org-profile-card"
         >
@@ -445,12 +445,13 @@ export default function Account() {
                 </span>
               )}
             </div>
-            {/* Stage 1 — the whole card is now the single tap target
-                (openPublicProfile, same route/RPC anyone else's page
-                uses); this chevron is purely visual, matching the
-                personal profile card's own right-side "›". Editing moved
-                entirely to that public page's own "Chỉnh sửa" entry — no
-                separate edit affordance lives on this card any more. */}
+            {/* Profile-nav fix pass (2026-09-27) — the whole card is now
+                the single tap target, opening the real organizer
+                management page (Dashboard.jsx, real upcoming/past events +
+                check-in), NOT the public profile — visiting the public
+                page is Dashboard's own "Xem như khách" button below. This
+                chevron is purely visual, matching the personal profile
+                card's own right-side "›". */}
             <span
               aria-hidden
               data-testid="org-profile-view-public"
@@ -516,18 +517,12 @@ export default function Account() {
             </div>
           </div>
         )}
-        {/* iPhone fix pass (2026-09-26) — the isOrganizer-gated "Xem trang
-            tổ chức của bạn" card that used to live here is gone: it
-            duplicated the org-profile-card's own identity (name + a
-            chevron) just to open Dashboard, not any public page, and the
-            ticket's own "single entry to its public profile" now lives on
-            the org-profile-card itself (its own onClick above). Dashboard
-            itself stays reachable exactly as before via Home's own
-            switchToHost link — nothing here removed that access, just
-            this redundant second card. The onboarding pitch below is
-            unaffected — it's for an account that has never hosted
-            (`canHost` false always implies `organizerMode` false too, so
-            it can only ever show in the true "never hosted" case). */}
+        {/* No separate "Xem trang tổ chức của bạn" card here — org-profile-card
+            above (its own onClick) is the single entry into that management
+            page now. The onboarding pitch below is for an account that has
+            never hosted (`canHost` false always implies `organizerMode`
+            false too, so it can only ever show in the true "never hosted"
+            case). */}
         {!canHost && (
           <div style={{ ...cardGlass({ marginTop: 10, padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 10 }) }}>
             <span style={{ ...display(19, { lineHeight: 1.3 }) }}>{T('Tổ chức sự kiện đầu tiên', 'Host your first event')}</span>

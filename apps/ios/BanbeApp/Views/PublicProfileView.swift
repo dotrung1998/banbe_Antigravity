@@ -14,6 +14,12 @@ struct PublicProfileView: View {
     // at most one organizer, app.myOrganizerID). A SEPARATE action from
     // "Chỉnh sửa hồ sơ" (personal, -> EditProfileView) — never the same,
     // since they edit different rows in different tables.
+    // Profile-nav fix pass (2026-09-27) — both initial values now come
+    // from which button was tapped to get here (DashboardView's own
+    // "Chỉnh sửa"/"Xem như khách" pair, see AppState.openPublicProfile's
+    // params), so this page opens already in the right state instead of
+    // requiring a second tap once it renders. Still local state after
+    // that — toggled purely client-side, same as before.
     @State private var orgEditing = false
     @State private var orgAvatarPickerItem: PhotosPickerItem?
     @State private var orgAvatarPreviewImage: UIImage?
@@ -87,7 +93,14 @@ struct PublicProfileView: View {
                     // `org.id == app.myOrganizerID` — never editing on the
                     // strength of `isOwnProfile` alone; the one place a
                     // mismatch would silently edit the WRONG organizer.
-                    if isOwnProfile, !guestPreview, let org = p.organizer, org.id == app.myOrganizerID {
+                    // Rule 1 (2026-09-27 nav/discovery pass) — this card
+                    // only belongs on the organizer MANAGEMENT page
+                    // (DashboardView's own "Chỉnh sửa"/"Xem như khách"
+                    // buttons land here already decided which state to
+                    // start in); the account's PERSONAL profile card must
+                    // never show it, even for a host account whose own
+                    // handle carries org data too.
+                    if isOwnProfile, !guestPreview, app.publicProfileContext != "personal", let org = p.organizer, org.id == app.myOrganizerID {
                         orgEditCard()
                     }
                 } else {
@@ -98,6 +111,10 @@ struct PublicProfileView: View {
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 20)
+        }
+        .onAppear {
+            guestPreview = app.publicProfileGuestPreview
+            orgEditing = app.publicProfileAutoEdit
         }
         .sheet(isPresented: $qrOpen) {
             VStack(spacing: 14) {

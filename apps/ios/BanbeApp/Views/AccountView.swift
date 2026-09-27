@@ -212,7 +212,7 @@ struct AccountView: View {
                         // further in, not the arrow's own destination.
                         Button {
                             if let handle = app.user?.handle, !handle.isEmpty {
-                                app.openPublicProfile(handle: handle)
+                                app.openPublicProfile(handle: handle, back: .profile, context: "personal")
                             }
                         } label: {
                             Image(systemName: "chevron.right").font(.system(size: 16)).foregroundStyle(app.palette.ink.opacity(0.55))
@@ -415,15 +415,9 @@ struct AccountView: View {
                     .padding(.top, 10)
                 }
 
-                // iPhone fix pass (2026-09-26) — the organizerMode-gated
-                // "Xem trang tổ chức của bạn" card that used to live here
-                // is gone: it duplicated orgProfileCard()'s own identity
-                // (name + a chevron) just to open Dashboard (switchToHost),
-                // not any public page. The ticket's own "single entry to
-                // its public profile" now lives on orgProfileCard() itself.
-                // Dashboard stays reachable exactly as before via Home's
-                // own switchToHost link — nothing here removed that
-                // access, just this redundant second card.
+                // No separate "Xem trang tổ chức của bạn" card here —
+                // orgProfileCard() above is the single entry into that
+                // management page now.
                 if !app.canHost {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(app.T("Tổ chức sự kiện đầu tiên", "Host your first event"))
@@ -628,18 +622,16 @@ struct AccountView: View {
     /// profiles.display_name. Only shown once this account has ever
     /// hosted; a never-hosted account instead sees the "Host your first
     /// event" pitch further down (unchanged).
-    // Stage 1 (2026-09-27 nav/discovery pass) — this card's own inline
-    // avatar/name/intro editor is gone: the whole card is now a single tap
-    // target that opens the REAL public organizer profile
-    // (openPublicProfile), which already has its own "Chỉnh sửa" entry
-    // (PublicProfileView's org edit card) — editing one place, not two.
+    // Profile-nav fix pass (2026-09-27) — the whole card is now the single
+    // tap target, opening the real organizer management page
+    // (DashboardView, real upcoming/past events + check-in), NOT the
+    // public profile — visiting the public page is Dashboard's own "Xem
+    // như khách" button.
     @ViewBuilder
     private func orgProfileCard() -> some View {
         if app.canHost, app.myOrganizerID != nil {
             Button {
-                if let handle = app.user?.handle, !handle.isEmpty {
-                    app.openPublicProfile(handle: handle)
-                }
+                app.goDashboard(back: .profile)
             } label: {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 14) {
