@@ -228,6 +228,21 @@ struct ConfirmedView: View {
                             }
                         }
                         .padding(.top, 14)
+
+                        // Real-device follow-up (2026-09-27) — fills the
+                        // empty space below the ticket row (this
+                        // ScrollView's own frame is taller than its
+                        // top-anchored content, leaving blank scrollable
+                        // room above the footer buttons) with the shared
+                        // Banbe loading GIF, at half its previous pixel
+                        // size (public/banbe-loading.gif was resized
+                        // 380x297 -> 190x148, not just displayed smaller).
+                        HStack {
+                            Spacer()
+                            BanbeLoadingVisual(size: 190)
+                            Spacer()
+                        }
+                        .padding(.top, 20)
                     }
                     .foregroundStyle(app.palette.ink)
                     .padding(.horizontal, 30)

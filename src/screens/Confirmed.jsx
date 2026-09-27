@@ -233,6 +233,15 @@ export default function Confirmed() {
           </div>
           {showQr && <QrCode value={s.booking.id} />}
         </div>
+        {/* Real-device follow-up (2026-09-27) — fills the empty space below
+            the ticket row (this container's own `flex:1` absorbs whatever
+            room is left over after the fixed-size content above it) with
+            the same shared Banbe loading GIF, at half its previous pixel
+            size (public/banbe-loading.gif was resized 380x297 -> 190x148,
+            not just displayed smaller) per this follow-up's own request. */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 20 }}>
+          <BanbeLoadingVisual size={190} />
+        </div>
       </div>
       {showQr && (
         <div onClick={() => giveTicket(ev)} style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0', cursor: 'pointer' }}>{giveLabel}</div>
