@@ -24,8 +24,21 @@ enum NotificationAvatarSource: Equatable {
     /// rendered via CatalogPhoto's own specialized loader (WebP derivative,
     /// downsampling, disk cache) rather than a plain URL — see BUG 1 below.
     case catalogPhoto(String)
+    /// iPhone fix pass (2026-09-27), Issue 1 — the generic bell fallback,
+    /// specialized for Team-related kinds (organizer_invite,
+    /// organizer_invite_response, event_credit_invite) so the row reads as
+    /// "a Team thing" rather than an anonymous system alert, whenever no
+    /// real organizer avatar/event photo resolved either.
+    case teamFallback
     case fallback
 }
+
+/// iPhone fix pass (2026-09-27), Issue 1 — mirrors web's own KIND_CATEGORY
+/// "team" bucket (src/screens/Notifications.jsx). Kept here (not folded
+/// into `avatarSource` itself) so NotificationsView's trailing KindIcon and
+/// this file's own fallback-avatar choice read the exact same three kinds
+/// from one place.
+let teamNotificationKinds: Set<String> = ["organizer_invite", "organizer_invite_response", "event_credit_invite"]
 
 /// Lookup tables AppState.loadNotifications() batch-fetches once per
 /// screen-open — booking_id -> (eventId, userId), event_id -> cover photo
@@ -34,6 +47,12 @@ struct NotificationAvatarMaps {
     var bookingById: [UUID: (eventId: String, userId: UUID?)] = [:]
     var eventPhotoByEventId: [String: URL] = [:]
     var avatarByUserId: [UUID: URL] = [:]
+    // iPhone fix pass (2026-09-27), Issue 1 — organizer_invite/
+    // organizer_invite_response carry `data.organizer_id` but no booking or
+    // event, so neither existing branch below ever resolved anything for
+    // them (always `.fallback`, the generic bell). Batched alongside the
+    // other maps in loadNotificationAvatarMaps() below.
+    var organizerAvatarByOrganizerId: [String: URL] = [:]
     /// 2026-09-19 follow-up: document ids confirmed to still exist, fetched
     /// alongside the other batch joins above purely so
     /// loadNotifications() can prune a stale payment_document_uploaded/
@@ -60,10 +79,19 @@ func avatarSource(for notification: AppNotification, maps: NotificationAvatarMap
     if wantsGuestAvatar, let userId = booking?.userId, let url = maps.avatarByUserId[userId] {
         return .image(url)
     }
+    // iPhone fix pass (2026-09-27), Issue 1 — organizer_invite/
+    // organizer_invite_response's real actor is the organizer they're
+    // about, never a booking/event photo (neither exists on this kind).
+    if notification.kind == "organizer_invite" || notification.kind == "organizer_invite_response",
+       let organizerId = notification.data["organizer_id"]?.stringValue,
+       let url = maps.organizerAvatarByOrganizerId[organizerId] {
+        return .image(url)
+    }
     let eventId = notification.data["event_id"]?.stringValue ?? booking?.eventId
     if let eventId, let url = maps.eventPhotoByEventId[eventId] {
         return .image(url)
     }
+    if teamNotificationKinds.contains(notification.kind) { return .teamFallback }
     // 2026-09-18 follow-up (BUG 1): `event_photos` has never had a single
     // real row written to it by any code path in this app — confirmed by
     // repo-wide grep, the only inserts anywhere are migration 010's

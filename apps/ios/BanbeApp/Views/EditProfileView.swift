@@ -54,7 +54,7 @@ struct EditProfileView: View {
                 .onChange(of: avatarPickerItem) { _, newItem in
                     Task {
                         guard let newItem, let data = try? await newItem.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
-                        if let url = await app.uploadAvatar(image) { await app.saveProfileFields(avatarURLOverride: url) }
+                        await app.changeAvatarAndSave(image)
                     }
                 }
 

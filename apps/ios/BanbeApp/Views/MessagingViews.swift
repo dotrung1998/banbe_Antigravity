@@ -926,6 +926,10 @@ private let notificationKindCategory: [String: String] = [
     "reject_pending_guest": "booking", "receipt_requested": "booking",
     "event_share": "event", "referral_joined": "event",
     "new_message": "message",
+    // iPhone fix pass (2026-09-27), Issue 1 — these fell to "system" (the
+    // generic bell) before; mirrors web's own new 'team' KIND_CATEGORY
+    // entry (Notifications.jsx) exactly.
+    "organizer_invite": "team", "organizer_invite_response": "team", "event_credit_invite": "team",
 ]
 private func notificationCategory(_ kind: String) -> String { notificationKindCategory[kind] ?? "system" }
 
@@ -939,6 +943,7 @@ private struct NotificationKindIcon: View {
         case "booking": return "calendar.badge.checkmark"
         case "event": return "calendar"
         case "message": return "bubble.left"
+        case "team": return "person.2"
         default: return "bell"
         }
     }
@@ -1409,6 +1414,8 @@ struct NotificationsView: View {
             .clipShape(Circle())
         case .catalogPhoto(let path):
             CatalogPhoto(path: path, height: 40, width: 40, cornerRadius: 20)
+        case .teamFallback:
+            teamAvatarFallback
         case .fallback:
             avatarFallback
         }
@@ -1423,6 +1430,17 @@ struct NotificationsView: View {
             .fill(app.palette.ink.opacity(0.08))
             .frame(width: 40, height: 40)
             .overlay(Text("🔔").font(.system(size: 16)))
+    }
+
+    // iPhone fix pass (2026-09-27), Issue 1 — same circle, a people glyph
+    // instead of the bell, for organizer_invite/organizer_invite_response/
+    // event_credit_invite whenever no real organizer avatar/event photo
+    // resolved either.
+    private var teamAvatarFallback: some View {
+        Circle()
+            .fill(app.palette.ink.opacity(0.08))
+            .frame(width: 40, height: 40)
+            .overlay(Image(systemName: "person.2.fill").font(.system(size: 15)).foregroundStyle(app.palette.ink.opacity(0.55)))
     }
 
     private func hoursAgo(_ date: Date) -> Int {

@@ -171,7 +171,32 @@ struct PublicProfileView: View {
                 HStack(spacing: 6) {
                     ForEach(badges) { badge in
                         Button {
-                            Task { await app.openOrganizerTeam(organizerID: badge.organizerId, back: .publicProfile) }
+                            // iPhone fix pass (2026-09-27), Issue 3 — CONFIRMED
+                            // root cause of the OrganizerProfile -> Team ->
+                            // member -> Back loop: this app has ONE shared
+                            // `organizerTeamBackScreen` field (there is no
+                            // real navigation stack), and `openOrganizerTeam`
+                            // unconditionally overwrites it on every call.
+                            // Reaching this profile FROM that same
+                            // organizer's Team (publicProfileBackScreen ==
+                            // .organizerTeam, same organizerId already
+                            // loaded) and then tapping this badge used to
+                            // PUSH A SECOND `.organizerTeam` instance with a
+                            // NEW back-target (.publicProfile) — silently
+                            // clobbering the original Team screen's own
+                            // memory of coming from OrganizerProfile.
+                            // Back from that second Team then only ever
+                            // returns to this same profile, never further
+                            // back out — the reported cycle. Popping to the
+                            // Team screen ALREADY "underneath" (a plain
+                            // back, not a second push) is what this
+                            // ticket's own "pop to the existing route"
+                            // instruction means here.
+                            if app.organizerTeamOrganizerId == badge.organizerId, app.publicProfileBackScreen == .organizerTeam {
+                                app.backFromPublicProfile()
+                            } else {
+                                Task { await app.openOrganizerTeam(organizerID: badge.organizerId, back: .publicProfile) }
+                            }
                         } label: {
                             Text(app.T("Thành viên của \(badge.organizerName) Team", "Member of the \(badge.organizerName) Team"))
                                 .font(.system(size: 10.5, weight: .semibold))

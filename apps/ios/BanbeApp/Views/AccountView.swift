@@ -22,6 +22,14 @@ struct AccountView: View {
     // below is attached to the screen itself, same as `storyCameraOpen`'s
     // own `.fullScreenCover` already was.
     @State private var storyLibraryPickerOpen = false
+    // iPhone fix pass (2026-09-27), Issue 1 — same "flash the one row a
+    // notification pointed at" convention AttendanceView's own
+    // highlightedGuestID already establishes (app.attendanceHighlightBookingID).
+    // Local, view-only flash state; app.teamInviteHighlightOrganizerId/
+    // eventCreditHighlightId (AppState.swift) are cleared the instant
+    // they're consumed here so a later, unrelated visit never re-triggers.
+    @State private var highlightedTeamInviteOrganizerId: String?
+    @State private var highlightedEventCreditId: UUID?
 
     // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Purely a
     // display switch (`if app.accountTab == ...` below) — never calls
@@ -101,6 +109,7 @@ struct AccountView: View {
         .task { if app.userID != nil { await app.loadHomeStories() } }
         .task { if app.userID != nil { await app.loadMyOrganizerMemberships() } }
         .task { if app.userID != nil { await app.loadMyEventCredits() } }
+        .task { if app.userID != nil { await app.loadMyConfirmedEventCredits() } }
         // TASK A (2026-10-01 UX foundation pass) — same canonical loaders
         // HomeView's own `.task` calls.
         .task {
@@ -120,7 +129,9 @@ struct AccountView: View {
         .task(id: app.myOrganizerID) {
             if app.canHost, app.myOrganizerID != nil { await app.loadMyOrgStats() }
         }
-        .onAppear { retryScrollRestoreIfNeeded(); syncAccountTabToRole() }
+        .onAppear { retryScrollRestoreIfNeeded(); syncAccountTabToRole(); consumeTeamHighlightsIfNeeded() }
+        .onChange(of: app.teamInviteHighlightOrganizerId) { _, _ in consumeTeamHighlightsIfNeeded() }
+        .onChange(of: app.eventCreditHighlightId) { _, _ in consumeTeamHighlightsIfNeeded() }
         // Account extension (2026-09-27, Stage 1/2) — a role change
         // (organizer mode toggled off elsewhere, an admin demoted, an
         // account switch) can leave `app.accountTab` pointing at a tab
@@ -428,6 +439,34 @@ struct AccountView: View {
         .padding(.top, 16)
     }
 
+    // iPhone fix pass (2026-09-27), Issue 1 — consumes whichever highlight
+    // AppState's own organizer_invite/event_credit_invite notification
+    // cases set (AppState+Data.swift's openNotification()), the instant
+    // this view actually has the matching row mounted (myOrganizerInvites/
+    // myEventCredits load asynchronously — Account's own `.task`s above —
+    // so a highlight set before that load resolves needs re-checking on
+    // change too, hence this also runs from the two `.onChange`s above).
+    private func consumeTeamHighlightsIfNeeded() {
+        if let target = app.teamInviteHighlightOrganizerId,
+           app.myOrganizerInvites.contains(where: { $0.organizerId == target }) {
+            app.accountTab = "personal"
+            highlightedTeamInviteOrganizerId = target
+            app.teamInviteHighlightOrganizerId = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+                if highlightedTeamInviteOrganizerId == target { highlightedTeamInviteOrganizerId = nil }
+            }
+        }
+        if let target = app.eventCreditHighlightId,
+           app.myEventCredits.contains(where: { $0.id == target }) || app.myConfirmedEventCredits.contains(where: { $0.id == target }) {
+            app.accountTab = "personal"
+            highlightedEventCreditId = target
+            app.eventCreditHighlightId = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+                if highlightedEventCreditId == target { highlightedEventCreditId = nil }
+            }
+        }
+    }
+
     private func syncAccountTabToRole() {
         if app.accountTab == "host" && !app.organizerMode { app.accountTab = "personal" }
         else if app.accountTab == "admin" && app.accountType != "admin" { app.accountTab = "personal" }
@@ -621,7 +660,10 @@ struct AccountView: View {
                     }
                 }
                 .padding(14)
-                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(
+                    highlightedTeamInviteOrganizerId == inv.organizerId ? BanbeTheme.alert.opacity(0.14) : app.palette.field,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
                 .padding(.top, 8)
                 .accessibilityIdentifier("team.invite.\(inv.id)")
             }
@@ -658,8 +700,12 @@ struct AccountView: View {
         // Organizer Team pass (2026-09-27, Stage 2) — a real, explicit,
         // owner-assigned event-organizing credit this account was
         // actually sent. Never derived from bookings/check-ins.
+        // iPhone fix pass (2026-09-27), Issue 5 — header now explicitly
+        // says "pending" and this is followed by a SEPARATE confirmed
+        // section (myConfirmedEventCredits) below, per this ticket's own
+        // "pending invites separately from confirmed credits" ask.
         if !app.myEventCredits.isEmpty {
-            Text(app.T("Ghi nhận đóng góp sự kiện", "Event-organizing credits")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Đóng góp sự kiện — lời mời đang chờ", "Event contributions — pending invites")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myEventCredits) { c in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(app.T(
@@ -675,9 +721,43 @@ struct AccountView: View {
                     }
                 }
                 .padding(14)
-                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(
+                    highlightedEventCreditId == c.id ? BanbeTheme.alert.opacity(0.14) : app.palette.field,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
                 .padding(.top, 8)
                 .accessibilityIdentifier("eventCredit.\(c.id)")
+            }
+        }
+        // iPhone fix pass (2026-09-27), Issue 5 — the CONFIRMED half; this
+        // account's own PRIVATE view (always visible here to its owner,
+        // regardless of the separate public_visible opt-in that only ever
+        // gates the PUBLIC profile's own credited_events, get_public_profile
+        // migration 100). Read-only (no Accept/Decline — already resolved),
+        // tappable straight to the event.
+        if !app.myConfirmedEventCredits.isEmpty {
+            Text(app.T("Đóng góp sự kiện — đã xác nhận", "Event contributions — confirmed")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            ForEach(app.myConfirmedEventCredits) { c in
+                Button { app.goEvent(c.eventId) } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(c.events?.name ?? app.T("Một sự kiện", "An event")).font(.system(size: 13, weight: .semibold))
+                            Text(c.organizers?.name ?? app.T("Một tổ chức", "An organizer")).font(.system(size: 11)).opacity(0.65)
+                        }
+                        Spacer(minLength: 0)
+                        Text("›").font(.system(size: 18)).opacity(0.5)
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(14)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .background(
+                    highlightedEventCreditId == c.id ? BanbeTheme.alert.opacity(0.14) : app.palette.field,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+                .padding(.top, 8)
+                .accessibilityIdentifier("eventCreditConfirmed.\(c.id)")
             }
         }
     }

@@ -86,6 +86,42 @@ test.describe('Organizer Team — public page + member cards + event credits (St
     await context.close();
   });
 
+  // iPhone fix pass (2026-09-27), Issue 3 — regression test for the real
+  // root cause: openOrganizerTeam() unconditionally overwrites the ONE
+  // shared organizerTeamBack field on every call (there is no real
+  // navigation stack), so tapping the "Thành viên của X Team" badge from a
+  // profile reached via THIS SAME organizer's Team used to PUSH A SECOND
+  // Team screen with a different back-target, clobbering the original
+  // one's own memory of coming from OrganizerProfile — Back from Team then
+  // only ever cycled back to the member's profile, never out to
+  // OrganizerProfile. Fixed to pop to the existing Team screen instead of
+  // pushing a second one.
+  test('OrganizerProfile -> Team -> member -> badge pops back to Team (not a second push), Back then reaches OrganizerProfile', async ({ browser }) => {
+    test.skip(!hasServiceRole(), 'requires service role for real-backend setup');
+    const context = await browser.newContext();
+    const page = await context.newPage();
+
+    await page.goto(`/org/${TEST_ORG_ID}`);
+    await expect(page.locator('[data-screen-label="Organizer profile"]')).toBeVisible({ timeout: 8000 });
+    await page.getByTestId('organizer-profile-team-row').click();
+    await expect(page.locator('[data-screen-label="Organizer team"]')).toBeVisible({ timeout: 5000 });
+
+    await page.getByTestId('team-member-card-teamstage2member').click();
+    await expect(page.locator('[data-screen-label="Public profile"]')).toBeVisible({ timeout: 5000 });
+
+    // Tapping the badge must pop back to the SAME Team screen already
+    // "underneath" — never push a second one that would silently replace
+    // the original's own back-target.
+    await page.getByTestId(`public-profile-team-badge-${TEST_ORG_ID}`).click();
+    await expect(page.locator('[data-screen-label="Organizer team"]')).toBeVisible({ timeout: 5000 });
+
+    // The Team screen's own Back must still remember OrganizerProfile —
+    // the exact thing the bug destroyed.
+    await page.getByText('‹ Quay lại', { exact: true }).click();
+    await expect(page.locator('[data-screen-label="Organizer profile"]')).toBeVisible({ timeout: 5000 });
+    await context.close();
+  });
+
   test('member hides Team association: badge, credited event and Team roster all disappear immediately', async ({ browser }) => {
     test.skip(!hasServiceRole(), 'requires service role for real-backend setup');
     const { client: memberClient } = await signIn(memberUser.email, memberUser.password);

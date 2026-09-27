@@ -848,6 +848,15 @@ final class AppState: ObservableObject {
     // verificationsFocusBookingID above but a separate field (the refund
     // queue isn't filtered by it, only scrolled/flashed to).
     @Published var refundQueueFocusClaimID: UUID?
+    // iPhone fix pass (2026-09-27), Issue 1 — same "scroll/flash to the one
+    // tapped from a notification" idea, for Account's own pending Team
+    // invite / event-credit invite lists (teamInvitesAndMemberships,
+    // AccountView.swift). `openNotification()`'s organizer_invite/
+    // event_credit_invite cases set these; AccountView clears each one
+    // once consumed (`.onAppear`/`.onDisappear`) so it never re-triggers on
+    // a later, unrelated visit.
+    @Published var teamInviteHighlightOrganizerId: String?
+    @Published var eventCreditHighlightId: UUID?
     // Refund MVP — goer's own saved refund destinations (many, migration 074).
     @Published var refundDestinations: [RefundDestination] = []
     @Published var refundDestinationBusy = false
@@ -930,6 +939,15 @@ final class AppState: ObservableObject {
     @Published var organizerTeamBackScreen: Screen = .organizerProfile
     @Published var organizerTeamOrganizerId = ""
     @Published var myEventCredits: [EventCreditInvite] = []
+    // iPhone fix pass (2026-09-27), Issue 5 — the confirmed half of the
+    // same real-credit model; `myEventCredits` above only ever loaded
+    // `status = 'invited'`, so Account had no load path at all for a
+    // credit this account already ACCEPTED (the public-profile side,
+    // get_public_profile's own `credited_events`, already existed and is
+    // already privacy-correct — see loadMyConfirmedEventCredits()'s own
+    // comment). Never a second model: same `event_credits` table, same
+    // RLS, just the other status value.
+    @Published var myConfirmedEventCredits: [EventCreditInvite] = []
     // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
     @Published var pulseDaily: [PulseItem] = []
     @Published var pulseWeekly: [PulseItem] = []
@@ -2245,6 +2263,14 @@ final class AppState: ObservableObject {
         case .editProfile: backFromEditProfile()
         case .publicProfile: backFromPublicProfile()
         case .organizerProfile: backFromOrganizerProfile()
+        // iPhone fix pass (2026-09-27), Issue 4 — the other half of the
+        // same confirmed bug: `.organizerTeam` fell to `default: break`
+        // (a real no-op) here too, so `app.screen` never actually changed
+        // on a completed edge-swipe — RootView's own `isCommittingBack`
+        // handler still played the slide-off animation and then reset
+        // `isCommittingBack`/`dragTranslation` regardless, reading as
+        // "snaps back to Team" once that animation finished.
+        case .organizerTeam: backFromOrganizerTeam()
         case .reports: backFromReports()
         default: break
         }
@@ -2293,6 +2319,14 @@ final class AppState: ObservableObject {
         case .editProfile: return .profile
         case .publicProfile: return publicProfileBackScreen
         case .organizerProfile: return organizerProfileBackScreen
+        // iPhone fix pass (2026-09-27), Issue 4 — CONFIRMED root cause of
+        // "edge-swipe on Team reveals Home instead of OrganizerProfile,
+        // then snaps back to Team": `.organizerTeam` had no case here at
+        // all, so it fell to `default: return .home` — the edge-swipe
+        // peek (RootView.swift's `screenView(for: app.backTargetScreen,
+        // isPreview: true)`) always previewed Home underneath, regardless
+        // of where Team was actually opened from.
+        case .organizerTeam: return organizerTeamBackScreen
         case .reports: return reportsBackScreen
         default: return .home
         }

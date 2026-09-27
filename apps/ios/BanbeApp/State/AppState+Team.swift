@@ -313,6 +313,31 @@ extension AppState {
         }
     }
 
+    /// iPhone fix pass (2026-09-27), Issue 5 — the CONFIRMED half; same
+    /// table/RLS as loadMyEventCredits() above (event_credits_select_own:
+    /// `user_id = auth.uid()`), just `status = 'accepted'` instead of
+    /// `'invited'`. Account's own "Đóng góp sự kiện" section renders these
+    /// separately from the pending list — this account's own PRIVATE view,
+    /// regardless of whether it opted into showing them publicly (that's a
+    /// SEPARATE switch, `set_organizer_member_visibility`'s own
+    /// `public_visible`, which only ever gates the PUBLIC profile's own
+    /// `credited_events` — see get_public_profile, migration 100).
+    func loadMyConfirmedEventCredits() async {
+        guard let uid = userID else { return }
+        do {
+            let rows: [EventCreditInvite] = try await SupabaseService.client
+                .from("event_credits")
+                .select("id, event_id, organizer_id, status, events(name), organizers(name)")
+                .eq("user_id", value: uid.uuidString)
+                .eq("status", value: "accepted")
+                .order("responded_at", ascending: false)
+                .execute().value
+            myConfirmedEventCredits = rows
+        } catch {
+            print("loadMyConfirmedEventCredits failed:", error)
+        }
+    }
+
     func respondToEventCredit(creditID: UUID, accept: Bool) async {
         struct Params: Encodable {
             let pCreditId: String
@@ -323,7 +348,13 @@ extension AppState {
             let _: TeamRPCResult = try await SupabaseService.client
                 .rpc("respond_to_event_credit", params: Params(pCreditId: creditID.uuidString, pAccept: accept))
                 .execute().value
+            // iPhone fix pass (2026-09-27), Issue 5 — "refresh all views
+            // after the action": an accept moves the row from the pending
+            // list to the confirmed one; reloading only the pending side
+            // (as before) left an accepted credit invisible until the next
+            // full relaunch.
             await loadMyEventCredits()
+            await loadMyConfirmedEventCredits()
         } catch {
             print("respondToEventCredit failed:", error)
         }

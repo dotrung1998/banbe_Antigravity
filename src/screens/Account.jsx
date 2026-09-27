@@ -73,7 +73,7 @@ export default function Account() {
     openPaymentDetails, goDashboard,
     loadMyOrgStats, setAccountTab, openPublicProfile, openReports,
     loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility,
-    loadMyEventCredits, respondToEventCredit,
+    loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, goEvent,
   } = useGoc();
   const s = state;
   // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Both panes stay
@@ -121,6 +121,7 @@ export default function Account() {
   // Organizer Team pass (2026-09-27, Stage 2) — this account's own pending
   // event-credit invites ("did I really help organize this event").
   useEffect(() => { if (s.user?.id) loadMyEventCredits(); }, [s.user?.id, loadMyEventCredits]);
+  useEffect(() => { if (s.user?.id) loadMyConfirmedEventCredits(); }, [s.user?.id, loadMyConfirmedEventCredits]);
   // TASK A (2026-10-01 UX foundation pass) — Account is one of this
   // component's three placements; loads the same canonical sources Home
   // does so the Action Center reflects live server state here too, not a
@@ -294,10 +295,14 @@ export default function Account() {
 
       {/* Organizer Team pass (2026-09-27, Stage 2) — a real, explicit,
           owner-assigned event-organizing credit this account was actually
-          sent. Never derived from bookings/check-ins. */}
+          sent. Never derived from bookings/check-ins.
+          iPhone fix pass (2026-09-27), Issue 5 — header now explicitly says
+          "pending", followed by a SEPARATE confirmed section below
+          (myConfirmedEventCredits), per this ticket's own "pending invites
+          separately from confirmed credits" ask. */}
       {s.myEventCredits.length > 0 && (
         <div style={{ margin: '18px 20px 0' }} data-testid="account-event-credits">
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Ghi nhận đóng góp sự kiện', 'Event-organizing credits')}</span>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện — lời mời đang chờ', 'Event contributions — pending invites')}</span>
           {s.myEventCredits.map(c => (
             <div key={c.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`event-credit-${c.id}`}>
               <span style={{ fontSize: 13, color: ink }}>
@@ -307,6 +312,31 @@ export default function Account() {
                 <div onClick={() => respondToEventCredit(c.id, true)} data-testid={`event-credit-accept-${c.id}`} style={{ ...inkButton({ flex: 1, padding: 10, fontSize: 12.5 }) }}>{T('Chấp nhận', 'Accept')}</div>
                 <div onClick={() => respondToEventCredit(c.id, false)} data-testid={`event-credit-decline-${c.id}`} style={{ ...fieldGlass({ flex: 1, padding: 10, fontSize: 12.5, textAlign: 'center', cursor: 'pointer' }) }}>{T('Từ chối', 'Decline')}</div>
               </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* iPhone fix pass (2026-09-27), Issue 5 — the CONFIRMED half; this
+          account's own PRIVATE view (always visible here to its owner,
+          regardless of the separate public_visible opt-in that only ever
+          gates the PUBLIC profile's own credited_events, get_public_profile
+          migration 100). Read-only (no Accept/Decline — already resolved),
+          tappable straight to the event. */}
+      {s.myConfirmedEventCredits.length > 0 && (
+        <div style={{ margin: '18px 20px 0' }} data-testid="account-event-credits-confirmed">
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện — đã xác nhận', 'Event contributions — confirmed')}</span>
+          {s.myConfirmedEventCredits.map(c => (
+            <div
+              key={c.id}
+              onClick={() => goEvent(c.event_id)}
+              style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }) }}
+              data-testid={`event-credit-confirmed-${c.id}`}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: ink }}>{c.events?.name || T('Một sự kiện', 'An event')}</span>
+                <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{c.organizers?.name || T('Một tổ chức', 'An organizer')}</span>
+              </div>
+              <span aria-hidden style={{ fontSize: 18, color: ink, opacity: 0.5 }}>›</span>
             </div>
           ))}
         </div>

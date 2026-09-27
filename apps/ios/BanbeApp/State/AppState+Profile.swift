@@ -224,10 +224,30 @@ extension AppState {
 
     /// Owner-only avatar upload — validated client-side before ever reaching
     /// Storage; the avatars bucket's own RLS (avatars_owner_write, migration
-    /// 079) additionally enforces the path is under this user's own id.
-    func uploadAvatar(_ image: UIImage) async -> String? {
+    /// 079/104) additionally enforces the path is under this user's own id.
+    /// iPhone fix pass (2026-09-27), Issue 2 — CONFIRMED root cause of
+    /// "picking a new image shows 'Vui lòng thử lại' for the personal
+    /// profile": `uid.uuidString` is Swift's UPPERCASE UUID representation;
+    /// migration 079's RLS compared it against `auth.uid()::text`, which
+    /// Postgres always renders lowercase — a case-sensitive `=` never
+    /// matched, so every real upload was silently rejected by RLS (not a
+    /// decode/size/type problem at all). `.lowercased()` here is the
+    /// client-side half of that fix (migration 104 is the authoritative,
+    /// any-client-safe half); "Remove" never hit this because
+    /// removeAvatar() below never uploads anything.
+    /// Returns the new object's (public URL, storage path) — the path is
+    /// what a caller needs to roll this upload back if the SUBSEQUENT
+    /// save_profile() call fails, so a rejected save never leaves an
+    /// orphaned, unreferenced file behind (see changeAvatarAndSave() below).
+    func uploadAvatar(_ image: UIImage) async -> (url: String, path: String)? {
         guard let uid = userID else { return nil }
-        guard let data = image.jpegData(compressionQuality: 0.85) else { return nil }
+        guard let data = image.jpegData(compressionQuality: 0.85) else {
+            #if DEBUG
+            print("[avatar] stage=decode result=FAILED — UIImage.jpegData returned nil")
+            #endif
+            editProfileError = T("Không thể tải ảnh lên. Vui lòng thử lại.", "Could not upload the image. Please try again.")
+            return nil
+        }
         if data.count > 5 * 1024 * 1024 {
             editProfileError = T("Ảnh tối đa 5MB.", "Image must be under 5MB.")
             return nil
@@ -235,17 +255,46 @@ extension AppState {
         editProfileBusy = true
         editProfileError = ""
         defer { editProfileBusy = false }
-        let path = "\(uid.uuidString)/\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
+        let path = "\(uid.uuidString.lowercased())/\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
         do {
             _ = try await SupabaseService.client.storage.from("avatars")
                 .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
+            #if DEBUG
+            print("[avatar] stage=upload result=OK path=\(path)")
+            #endif
             let url = try SupabaseService.client.storage.from("avatars").getPublicURL(path: path)
-            return url.absoluteString
+            return (url.absoluteString, path)
         } catch {
+            #if DEBUG
+            // DEBUG only, per this ticket's own instruction — never a
+            // token/private URL/bank-data field, just the SDK's own error
+            // description and which stage produced it.
+            print("[avatar] stage=upload result=FAILED bucket=avatars error=\(error)")
+            #endif
             print("uploadAvatar failed:", error, "userID:", uid.uuidString)
             editProfileError = T("Không thể tải ảnh lên. Vui lòng thử lại.", "Could not upload the image. Please try again.")
             return nil
         }
+    }
+
+    /// iPhone fix pass (2026-09-27), Issue 2 — replaces EditProfileView's
+    /// own two-step "upload, then save" call so this file owns the
+    /// rollback: a successful upload followed by a FAILED save_profile()
+    /// (a genuinely different failure stage — validation, network, RLS on
+    /// `profiles` itself) used to leave that upload permanently orphaned in
+    /// the avatars bucket, counted against nothing. Deletes it the instant
+    /// the save comes back false.
+    @discardableResult
+    func changeAvatarAndSave(_ image: UIImage) async -> Bool {
+        guard let (url, path) = await uploadAvatar(image) else { return false }
+        let saved = await saveProfileFields(avatarURLOverride: url)
+        if !saved {
+            #if DEBUG
+            print("[avatar] stage=save result=FAILED — rolling back orphaned upload path=\(path)")
+            #endif
+            _ = try? await SupabaseService.client.storage.from("avatars").remove(paths: [path])
+        }
+        return saved
     }
     func removeAvatar() async { await saveProfileFields(avatarURLOverride: "") }
 

@@ -132,7 +132,30 @@ export default function PublicProfile() {
             {p.team_badges.map(b => (
               <span
                 key={b.organizer_id}
-                onClick={() => openOrganizerTeam(b.organizer_id, 'profile')}
+                onClick={() => {
+                  // iPhone fix pass (2026-09-27), Issue 3 — CONFIRMED root
+                  // cause of the OrganizerProfile -> Team -> member ->
+                  // Back loop: this app has ONE shared `organizerTeamBack`
+                  // field (no real navigation stack), unconditionally
+                  // overwritten on every openOrganizerTeam() call. Reaching
+                  // this profile FROM that same organizer's Team
+                  // (publicProfileBack === 'organizerTeam', same
+                  // organizerId already loaded) and then tapping this
+                  // badge used to PUSH A SECOND 'organizerTeam' screen with
+                  // a NEW back-target ('publicProfile') — silently
+                  // clobbering the original Team screen's own memory of
+                  // coming from OrganizerProfile. Popping to the Team
+                  // screen ALREADY "underneath" (a plain back, not a
+                  // second push) fixes it. This also fixes a separate,
+                  // pre-existing bug in the same line: the back-target
+                  // passed here was the literal string 'profile' (Account)
+                  // instead of 'publicProfile' (this screen).
+                  if (s.organizerTeamOrganizerId === b.organizer_id && s.publicProfileBack === 'organizerTeam') {
+                    backFromPublicProfile();
+                  } else {
+                    openOrganizerTeam(b.organizer_id, 'publicProfile');
+                  }
+                }}
                 data-testid={`public-profile-team-badge-${b.organizer_id}`}
                 style={{ fontSize: 10.5, fontWeight: 600, color: ink, background: 'rgba(255,255,255,0.7)', padding: '6px 12px', borderRadius: 999, cursor: 'pointer', border: `1px solid ${rule}` }}
               >

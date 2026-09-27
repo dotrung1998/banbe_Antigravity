@@ -28,6 +28,10 @@ const KIND_CATEGORY = {
   reject_pending_guest: 'booking', receipt_requested: 'booking',
   event_share: 'event', referral_joined: 'event',
   new_message: 'message',
+  // iPhone fix pass (2026-09-27), Issue 1 — these fell to 'system' (the
+  // generic bell/circle glyph) before; a distinct people icon reads as "a
+  // Team thing" instead.
+  organizer_invite: 'team', organizer_invite_response: 'team', event_credit_invite: 'team',
 };
 function notificationCategory(kind) { return KIND_CATEGORY[kind] || 'system'; }
 
@@ -40,6 +44,7 @@ function KindIcon({ category }) {
     booking: <><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17" /><path d="M8 3v4M16 3v4" /></>,
     event: <><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17" /><circle cx="12" cy="14.5" r="2.1" /></>,
     message: <path d="M4 5.5h16v10.6H9.6L5 20V16.1H4z" />,
+    team: <><circle cx="8.5" cy="8.5" r="3" /><circle cx="16" cy="9.5" r="2.4" /><path d="M3.2 19c.5-3.1 2.7-5 5.3-5s4.8 1.9 5.3 5" /><path d="M14.5 14.3c2.1.2 3.8 1.9 4.2 4.7" /></>,
     system: <><circle cx="12" cy="12" r="8.4" /><path d="M12 8.3v4.5M12 15.7v0" /></>,
   };
   return (
@@ -410,7 +415,12 @@ function Section({ title, children }) {
 // image. Used whenever avatarSourceFor() can't resolve an event photo or a
 // guest avatar (neither exists, or the notification kind has no specific
 // actor at all, e.g. referral_joined).
-function AvatarFallback() {
+// iPhone fix pass (2026-09-27), Issue 1 — Team-related kinds get the same
+// people glyph as their trailing KindIcon (category 'team') instead of the
+// generic bell, so the row reads as "a Team thing" at a glance even when no
+// event photo/guest avatar resolved either.
+function AvatarFallback({ kind }) {
+  const isTeam = kind === 'organizer_invite' || kind === 'organizer_invite_response' || kind === 'event_credit_invite';
   return (
     <div
       aria-hidden
@@ -420,7 +430,7 @@ function AvatarFallback() {
         fontSize: 16, color: ink,
       }}
     >
-      🔔
+      {isTeam ? '👥' : '🔔'}
     </div>
   );
 }
@@ -462,7 +472,7 @@ function Row({ n, unread, avatar, onClick, onOpenMenu, selectionMode, selected }
       {avatar.type === 'image' ? (
         <div style={bg(avatar.url, { flex: 'none', width: 40, height: 40, borderRadius: '50%' })} />
       ) : (
-        <AvatarFallback />
+        <AvatarFallback kind={n.kind} />
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>

@@ -302,6 +302,14 @@ private struct ProfileAvatarRow: Decodable {
         case avatarUrl = "avatar_url"
     }
 }
+private struct OrganizerAvatarRow: Decodable {
+    let id: String
+    let avatarPath: String?
+    enum CodingKeys: String, CodingKey {
+        case id
+        case avatarPath = "avatar_path"
+    }
+}
 /// Row shape for the payment_documents query loadAttendanceGuests() runs to
 /// populate AttendanceGuest.hasReceipt/receiptVersionCount/receiptPendingDelete
 /// — mirrors the web's equivalent query in GocContext.jsx.
@@ -739,20 +747,45 @@ extension AppState {
         guard let organizerID = myOrganizerID else { return }
         orgProfileSaving = true
         orgProfileError = ""
-        do {
-            var avatarPath: String?
-            if let avatarImage {
-                guard let data = avatarImage.jpegData(compressionQuality: 0.85) else { throw URLError(.cannotDecodeContentData) }
-                if data.count > 5 * 1024 * 1024 {
-                    orgProfileSaving = false
-                    orgProfileError = T("Ảnh tối đa 5MB.", "Photo must be under 5MB.")
-                    return
-                }
-                let path = "\(organizerID)/avatar-\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
+        // iPhone fix pass (2026-09-27), Issue 2 — separated from the RPC's
+        // own `do/catch` below so a failure can be attributed to the
+        // correct STAGE (upload vs. save) in DEBUG, and so a successful
+        // upload followed by a failed save can roll the upload back
+        // instead of leaving it permanently orphaned in organizer-photos.
+        var avatarPath: String?
+        if let avatarImage {
+            guard let data = avatarImage.jpegData(compressionQuality: 0.85) else {
+                orgProfileSaving = false
+                orgProfileError = T("Không thể lưu. Vui lòng thử lại.", "Could not save. Please try again.")
+                #if DEBUG
+                print("[orgAvatar] stage=decode result=FAILED — UIImage.jpegData returned nil")
+                #endif
+                return
+            }
+            if data.count > 5 * 1024 * 1024 {
+                orgProfileSaving = false
+                orgProfileError = T("Ảnh tối đa 5MB.", "Photo must be under 5MB.")
+                return
+            }
+            let path = "\(organizerID)/avatar-\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
+            do {
                 _ = try await SupabaseService.client.storage.from("organizer-photos")
                     .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
+                #if DEBUG
+                print("[orgAvatar] stage=upload result=OK path=\(path)")
+                #endif
                 avatarPath = path
+            } catch {
+                #if DEBUG
+                print("[orgAvatar] stage=upload result=FAILED bucket=organizer-photos organizerID=\(organizerID) error=\(error)")
+                #endif
+                print("saveOrganizerProfile upload failed:", error)
+                orgProfileSaving = false
+                orgProfileError = T("Không thể tải ảnh lên. Vui lòng thử lại.", "Could not upload the image. Please try again.")
+                return
             }
+        }
+        do {
             struct Params: Encodable {
                 let organizerId: String
                 let name: String
@@ -785,13 +818,29 @@ extension AppState {
                         ? T("Một liên kết không hợp lệ. Chỉ chấp nhận đường dẫn https://.", "One of the links is invalid. Only https:// links are accepted.")
                         : T("Không thể lưu. Vui lòng thử lại.", "Could not save. Please try again.")
                 }
+                // iPhone fix pass (2026-09-27), Issue 2 — the upload above
+                // already succeeded (`avatarPath` non-nil), but this save
+                // didn't take it — roll the upload back rather than leave
+                // an orphaned, unreferenced object in organizer-photos.
+                if let avatarPath {
+                    #if DEBUG
+                    print("[orgAvatar] stage=save result=FAILED — rolling back orphaned upload path=\(avatarPath)")
+                    #endif
+                    _ = try? await SupabaseService.client.storage.from("organizer-photos").remove(paths: [avatarPath])
+                }
                 orgProfileSaving = false
                 return
             }
             if let avatarPath { myOrganizerAvatarPath = avatarPath }
             orgProfileSaving = false
         } catch {
+            #if DEBUG
+            print("[orgAvatar] stage=save result=FAILED(threw) organizerID=\(organizerID) error=\(error)")
+            #endif
             print("saveOrganizerProfile failed:", error)
+            if let avatarPath {
+                _ = try? await SupabaseService.client.storage.from("organizer-photos").remove(paths: [avatarPath])
+            }
             orgProfileSaving = false
             orgProfileError = T("Không thể lưu. Vui lòng thử lại.", "Could not save. Please try again.")
         }
@@ -1466,6 +1515,25 @@ extension AppState {
                     .execute().value
                 maps.liveRefundClaimIds = Set(claims.map(\.id))
             }
+            // iPhone fix pass (2026-09-27), Issue 1 — real organizer avatar
+            // for organizer_invite/organizer_invite_response, when it
+            // resolves; `teamNotificationKinds`'s own fallback (a people
+            // glyph, not the generic bell) covers every other case.
+            let organizerIDs = Set(rows.filter {
+                $0.kind == "organizer_invite" || $0.kind == "organizer_invite_response"
+            }.compactMap { $0.data["organizer_id"]?.stringValue })
+            if !organizerIDs.isEmpty {
+                let organizers: [OrganizerAvatarRow] = try await SupabaseService.client
+                    .from("organizers").select("id, avatar_path")
+                    .in("id", values: Array(organizerIDs))
+                    .execute().value
+                for o in organizers {
+                    guard let path = o.avatarPath, !path.isEmpty,
+                          let url = try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: path)
+                    else { continue }
+                    maps.organizerAvatarByOrganizerId[o.id] = url
+                }
+            }
         } catch {
             print("loadNotificationAvatarMaps failed:", error)
         }
@@ -1863,6 +1931,59 @@ extension AppState {
                     if !exists { reportStaleNotification(notification); return }
                     refundQueueFocusClaimID = claimID
                     openVerifications(back: .notifications)
+                }
+            }
+        // iPhone fix pass (2026-09-27), Issue 1 — real root cause: neither
+        // kind had a case here at all, so tapping fell straight to
+        // `default: break` — "does nothing" beyond the read-state write
+        // every kind already gets above. Ownership is enforced server-side
+        // regardless (organizer_members_select_own/event_credits_select_own
+        // RLS, migrations 098/100) — this only decides where a legitimate
+        // recipient lands.
+        case "organizer_invite":
+            if let organizerId = notification.data["organizer_id"]?.stringValue {
+                Task {
+                    await loadMyOrganizerMemberships()
+                    if myOrganizerInvites.contains(where: { $0.organizerId == organizerId }) {
+                        teamInviteHighlightOrganizerId = organizerId
+                        screen = .profile
+                    } else {
+                        // Already accepted/declined, or the owner removed
+                        // it before this tap landed — a real status toast
+                        // (same mechanism reportStaleNotification() already
+                        // uses below), never a silent no-op or a dead link
+                        // into an empty pending list.
+                        let stillMember = myTeamMemberships.contains(where: { $0.organizerId == organizerId })
+                        pushToast(AppNotification(
+                            id: UUID(), recipientId: notification.recipientId, kind: "stale_notice",
+                            title: stillMember
+                                ? T("Bạn đã tham gia đội ngũ này rồi.", "You're already a member of this Team.")
+                                : T("Lời mời này không còn nữa.", "This invitation is no longer available."),
+                            body: "", data: [:], readAt: Date(), createdAt: Date()
+                        ))
+                    }
+                }
+            }
+        case "organizer_invite_response":
+            // The host's own roster management lives inline on their
+            // Dashboard (DashboardView.swift's own Team section) — no
+            // separate screen to route to.
+            goDashboard()
+        case "event_credit_invite":
+            if let eventId = notification.data["event_id"]?.stringValue {
+                Task {
+                    await loadMyEventCredits()
+                    await loadMyConfirmedEventCredits()
+                    if let credit = myEventCredits.first(where: { $0.eventId == eventId }) ?? myConfirmedEventCredits.first(where: { $0.eventId == eventId }) {
+                        eventCreditHighlightId = credit.id
+                        screen = .profile
+                    } else {
+                        pushToast(AppNotification(
+                            id: UUID(), recipientId: notification.recipientId, kind: "stale_notice",
+                            title: T("Lời mời ghi nhận này không còn nữa.", "This credit invitation is no longer available."),
+                            body: "", data: [:], readAt: Date(), createdAt: Date()
+                        ))
+                    }
                 }
             }
         // "guest_renamed": category B, informational only, no destination
