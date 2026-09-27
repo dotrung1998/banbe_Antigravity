@@ -6,7 +6,6 @@ import PhotosUI
 struct SplashView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var auth: AuthViewModel
-    @State private var spin = false
 
     var body: some View {
         ZStack {
@@ -17,19 +16,19 @@ struct SplashView: View {
                     .font(.system(size: 14))
                     .foregroundStyle(app.palette.ink)
                     .padding(.top, 16)
-                Circle()
-                    .trim(from: 0, to: 0.5)
-                    .stroke(app.palette.ink, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .frame(width: 28, height: 28)
-                    .rotationEffect(.degrees(spin ? 360 : 0))
-                    .animation(.linear(duration: 1.7).repeatForever(autoreverses: false), value: spin)
+                // A3 (Pulse/loading UX pass, 2026-09-27) — the shared
+                // Banbe loading GIF, replacing the plain orbit-arc spinner
+                // this used before (BanbeLoadingVisual honors Reduce
+                // Motion itself). Bundled with the app (project.yml), so
+                // this — the very first thing a cold launch shows — works
+                // offline, per this ticket's own instruction.
+                BanbeLoadingVisual(size: 44)
                     .padding(.top, 34)
             }
         }
         .contentShape(Rectangle())
         .onTapGesture { app.dismissSplash(isSignedIn: auth.isSignedIn) }
         .task {
-            spin = true
             try? await Task.sleep(nanoseconds: 2_600_000_000)
             if app.screen == .splash { app.dismissSplash(isSignedIn: auth.isSignedIn) }
         }

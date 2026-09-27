@@ -1,6 +1,94 @@
 import SwiftUI
 import UIKit
 import CoreImage.CIFilterBuiltins
+import ImageIO
+
+/// Pulse/loading UX pass (2026-09-27) — the shared Banbe loading visual,
+/// used at every spot the ticket named: a fetching Pulse tab
+/// (PulseViewerView), the branded splash screen and Face ID wait screen
+/// (SplashView/FaceIDLockView), the Confirmed ticket's QR-generation gap,
+/// and a pending seat reservation (RootView's `loadingOverlay`). Web's
+/// equivalent is `src/components/BanbeLoadingVisual.jsx`, sharing the same
+/// bundled `banbe-loading.gif` (see project.yml — referenced in place from
+/// `public/`, exactly like the wordmark/mark artwork, so both platforms
+/// draw the literal same file, never two independently-exported copies).
+///
+/// SwiftUI has no native multi-frame GIF playback (`Image(uiImage:)` only
+/// ever paints an animated `UIImage`'s FIRST frame) — frames are decoded
+/// once via ImageIO and looped through a small `UIViewRepresentable`
+/// (`UIImageView.animationImages`), the standard, documented mechanism for
+/// this. Honors Reduce Motion: shows the GIF's own first frame, static,
+/// instead of looping it — there's no earlier Reduce-Motion precedent on
+/// this codebase to match (grepped both platforms — neither `Loading.jsx`'s
+/// `gocTumble` spin nor `SplashView`'s orbit arc guards on it today), so
+/// this is a new, narrowly-scoped guard rather than a wider retrofit.
+struct BanbeLoadingVisual: View {
+    var size: CGFloat = 72
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Group {
+            if reduceMotion {
+                if let frame = Self.firstFrame {
+                    Image(uiImage: frame).resizable().scaledToFit()
+                } else {
+                    ProgressView()
+                }
+            } else if !Self.frames.isEmpty {
+                AnimatedGIFView(frames: Self.frames, duration: Self.totalDuration)
+            } else {
+                // Decode failed — never expected (a bundled asset), but a
+                // missing/corrupt file shouldn't blank whichever loading
+                // moment is showing this.
+                ProgressView()
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityLabel(Text("Loading"))
+    }
+
+    // Decoded once, process-wide — every call site (Pulse alone creates
+    // one of these per tab load) shares the same decoded frames instead of
+    // re-parsing the bundled GIF from disk each time this view appears.
+    private static let (frames, durations, firstFrame): ([UIImage], [Double], UIImage?) = {
+        guard let url = Bundle.main.url(forResource: "banbe-loading", withExtension: "gif"),
+              let data = try? Data(contentsOf: url),
+              let source = CGImageSourceCreateWithData(data as CFData, nil)
+        else { return ([], [], nil) }
+        let count = CGImageSourceGetCount(source)
+        var frames: [UIImage] = []
+        var durations: [Double] = []
+        for i in 0..<count {
+            guard let cgImage = CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
+            frames.append(UIImage(cgImage: cgImage))
+            let props = CGImageSourceCopyPropertiesAtIndex(source, i, nil) as? [String: Any]
+            let gifProps = props?[kCGImagePropertyGIFDictionary as String] as? [String: Any]
+            let delay = (gifProps?[kCGImagePropertyGIFUnclampedDelayTime as String] as? Double)
+                ?? (gifProps?[kCGImagePropertyGIFDelayTime as String] as? Double) ?? 0.1
+            durations.append(max(delay, 0.02))
+        }
+        return (frames, durations, frames.first)
+    }()
+
+    private static var totalDuration: Double { durations.reduce(0, +) }
+}
+
+private struct AnimatedGIFView: UIViewRepresentable {
+    let frames: [UIImage]
+    let duration: Double
+
+    func makeUIView(context: Context) -> UIImageView {
+        let view = UIImageView()
+        view.contentMode = .scaleAspectFit
+        view.animationImages = frames
+        view.animationDuration = duration > 0 ? duration : 1
+        view.animationRepeatCount = 0
+        if !frames.isEmpty { view.startAnimating() }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIImageView, context: Context) {}
+}
 
 /// A photo from the catalogue, loaded remotely from the deployed web app's
 /// static assets (see PhotoCatalog / CatalogEvent.photoURL).

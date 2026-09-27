@@ -14,6 +14,23 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // minimal glyphs rather than an invented illustrated icon language.
 const CAT_GLYPH = { all: '▪︎', supper: '🍽️', fashion: '👗', gallery: '🖼️', music: '🎵' };
 
+// Map filters pass (2026-09-27) — "each event's own existing palette
+// color, not the same color for every event": this app has no prior
+// per-category color anywhere (grepped both platforms before adding
+// this) — three of these four ARE an existing app palette, reused
+// verbatim: Home.jsx's own Pulse-ring gradient (`bb-pulse-ring`, the same
+// dusty-rose/sand/sage trio already shown on the Pulse entry). FILTER_DEFS
+// has one more non-"all" category (music) than that trio has colors, so
+// one additional muted tone was added in the same dusty/desaturated
+// family (never a saturated/rainbow color, matching this app's whole
+// palette) rather than reusing one of the three for two different
+// categories, which would defeat "not the same color for every event."
+// Keyed by the SAME FILTER_DEFS category keys the filter chips already
+// use, so a dot's color always matches its own event's real category.
+const CAT_DOT_COLOR = {
+  all: ink, supper: '#E7C9C2', fashion: '#E3CFA6', gallery: '#C8CBB2', music: '#B7A6C7',
+};
+
 // Same disabled-button opacity this app already uses everywhere else
 // (apps/ios/BanbeApp/Views/Components.swift:151, Login.jsx's loginBtnStyle)
 // — reused verbatim for the compass button while location is denied.
@@ -368,6 +385,35 @@ export default function MapExplore() {
     return () => clearInterval(interval);
   }, []);
 
+  // Moved above the marker-draw effect below (it references `visibleIdSet`
+  // in its own dependency array, which is evaluated at render time — a
+  // real "Cannot access before initialization" TDZ error surfaced this,
+  // not a guess) — see each memo's own doc comment for what/why.
+  const visibleEvents = useMemo(() => {
+    let list = events;
+    if (catFilter !== 'all') list = list.filter(e => e.catKey === catFilter);
+    if (openNowOnly) list = list.filter(e => e.seatsRemaining > 0);
+    if (sortByDistance && s.userCoords) {
+      // Stage 3 — a no-location event has no real distance to sort by;
+      // sorts after every plottable one rather than a NaN-driven,
+      // effectively-random position.
+      list = [...list].sort((a, b) => {
+        if (a.hasLocation !== b.hasLocation) return a.hasLocation ? -1 : 1;
+        if (!a.hasLocation) return 0;
+        return haversineKm(s.userCoords, a) - haversineKm(s.userCoords, b);
+      });
+    }
+    return list;
+  }, [events, catFilter, openNowOnly, sortByDistance, s.userCoords]);
+
+  // B1 — the ONE filtered event-id set the list below and the map's own
+  // markers (the draw effect right after this) both key off, so they can
+  // never disagree about which events currently match. Never drops an
+  // event from `events` itself (Stage 3's own no-coordinates rule is
+  // untouched) — this is purely "does THIS id currently match the active
+  // filters."
+  const visibleIdSet = useMemo(() => new Set(visibleEvents.map(e => e.id)), [visibleEvents]);
+
   // ---- draw/refresh pins whenever the event list or selection changes ----
   useEffect(() => {
     const map = mapRef.current;
@@ -384,6 +430,23 @@ export default function MapExplore() {
         // them just never gets a marker, never an invented position.
         if (!ev.hasLocation) continue;
         const isSelected = ev.id === selectedId;
+
+        // B1 — a geolocated event that doesn't match the CURRENT filters
+        // gets a small, passive, non-clickable dot in its own category's
+        // color instead of the normal clickable pin — visibly different
+        // (no glyph, no shadow, no cursor, roughly a third the size), so
+        // it never reads as "another selectable matching pin." Selection
+        // itself (`selectedId`) is untouched by this — Bug 1/2's own
+        // "selection stays independent of the list filter" behavior,
+        // documented at length below, is unaffected either way.
+        if (!visibleIdSet.has(ev.id)) {
+          const dotEl = document.createElement('div');
+          dotEl.setAttribute('data-testid', `map-dot-${ev.id}`);
+          dotEl.style.cssText = `width:9px;height:9px;border-radius:50%;background:${CAT_DOT_COLOR[ev.catKey] || CAT_DOT_COLOR.all};border:1px solid ${paper};opacity:0.85;pointer-events:none;`;
+          const dotMarker = new maplibregl.Marker({ element: dotEl }).setLngLat([ev.lng, ev.lat]).addTo(map);
+          markersRef.current.push(dotMarker);
+          continue;
+        }
         // Follow-up (11-realtime-map.md, "first post-return polling cycle
         // does not reset map state"): a real, confirmed, pre-existing bug —
         // MapLibre's own `Marker._update()` unconditionally OVERWRITES
@@ -430,7 +493,15 @@ export default function MapExplore() {
       }
     })();
     return () => { cancelled = true; };
-  }, [events, selectedId, selectEvent]);
+    // B3 — `visibleIdSet` (derived from `catFilter`/`openNowOnly`/
+    // `sortByDistance`/`s.userCoords` via `visibleEvents`) is now a real
+    // dependency: a filter change alone (no new `events` from the network)
+    // must still redraw which ids are pins vs. dots. The existing
+    // `cancelled` guard above already prevents an in-flight redraw from a
+    // STALE effect run (e.g. a rapid filter change firing this twice in a
+    // row) from painting markers after a newer run has already started —
+    // satisfies "rapid filter changes cannot render stale icons."
+  }, [events, selectedId, selectEvent, visibleIdSet]);
 
   const searchHere = useCallback(async () => {
     const map = mapRef.current;
@@ -503,22 +574,20 @@ export default function MapExplore() {
     if (more.length) { setEvents(prev => [...prev, ...more]); setPage(next); }
   }, [page]);
 
-  const visibleEvents = useMemo(() => {
-    let list = events;
-    if (catFilter !== 'all') list = list.filter(e => e.catKey === catFilter);
-    if (openNowOnly) list = list.filter(e => e.seatsRemaining > 0);
-    if (sortByDistance && s.userCoords) {
-      // Stage 3 — a no-location event has no real distance to sort by;
-      // sorts after every plottable one rather than a NaN-driven,
-      // effectively-random position.
-      list = [...list].sort((a, b) => {
-        if (a.hasLocation !== b.hasLocation) return a.hasLocation ? -1 : 1;
-        if (!a.hasLocation) return 0;
-        return haversineKm(s.userCoords, a) - haversineKm(s.userCoords, b);
-      });
-    }
-    return list;
-  }, [events, catFilter, openNowOnly, sortByDistance, s.userCoords]);
+  // B2 — snaps the sheet to MID exactly when the user actually CHANGES a
+  // filter (category or "Còn chỗ"), never on mount, a map pan (`boundsChanged`
+  // has nothing to do with these two), a list scroll, or the 5s freshness
+  // poll (none of those touch `catFilter`/`openNowOnly`). `sortByDistance`
+  // ("Gần bạn") is deliberately excluded — it re-orders the list, it never
+  // excludes an event, so it isn't a "filter" in this ticket's sense.
+  // Mirrors the existing `catFilterMountedRef` pattern immediately below
+  // (same reasoning: `useEffect` has no built-in "skip the mount" the way
+  // iOS's `.onChange` does).
+  const filterChangeMountedRef = useRef(false);
+  useEffect(() => {
+    if (!filterChangeMountedRef.current) { filterChangeMountedRef.current = true; return; }
+    setSheetSnap('mid');
+  }, [catFilter, openNowOnly]);
 
   // Design change (11-realtime-map.md follow-up): the selected event's
   // preview card is intentionally decoupled from the list's active filter.

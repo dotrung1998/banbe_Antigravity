@@ -437,6 +437,22 @@ struct MapExploreView: View {
             // only when the user actually taps a different category chip.
             guard !isPreview else { return }
             recenterOnFilterDensityHotspot()
+            // B2 (Map filters pass, 2026-09-27) — snaps to MID on a genuine
+            // filter change specifically, never on mount (same `.onChange`
+            // guarantee as `recenterOnFilterDensityHotspot` above), a map
+            // pan/`boundsChanged` (unrelated state), a list scroll, or the
+            // 5s freshness poll (`app.loadMapEvents` never touches `catFilter`).
+            withAnimation(.easeOut(duration: 0.28)) { sheetDetent = .fraction(0.45) }
+        }
+        .onChange(of: openNowOnly) { _, _ in
+            // B2 — "Còn chỗ" excludes events the same way the category
+            // chips do, so it gets the same MID-snap; it does NOT get
+            // `recenterOnFilterDensityHotspot()` (that's this ticket's own
+            // "do not change camera position" — the existing camera-fly
+            // behavior above is pre-existing, category-filter-only
+            // behavior this pass doesn't extend to a second filter).
+            guard !isPreview else { return }
+            withAnimation(.easeOut(duration: 0.28)) { sheetDetent = .fraction(0.45) }
         }
         .onChange(of: app.mapCloseConfirmed) { _, confirmed in
             // Follow-up bug 1 (11-realtime-map.md): a confirmed close used
@@ -984,30 +1000,72 @@ struct MapExploreView: View {
 
     // MARK: - Pins
 
+    // B1 (Map filters pass, 2026-09-27) — three of these four ARE an
+    // existing app color (Home's own Pulse-ring gradient stops); one
+    // additional muted tone in the same dusty/desaturated family was added
+    // for the 4th non-"all" category, since that trio only has 3 colors —
+    // see web's `CAT_DOT_COLOR` (MapExplore.jsx) for the identical values/
+    // reasoning; kept in sync by hand (this app has no shared cross-
+    // platform color-constant file to import from).
+    private static let categoryDotColor: [String: Color] = [
+        "all": .primary,
+        "supper": Color(red: 0.906, green: 0.788, blue: 0.761),
+        "fashion": Color(red: 0.890, green: 0.812, blue: 0.651),
+        "gallery": Color(red: 0.784, green: 0.796, blue: 0.698),
+        "music": Color(red: 0.718, green: 0.651, blue: 0.780),
+    ]
+
     @ViewBuilder
     private func pin(for ev: MapEventRow) -> some View {
-        let isSelected = ev.id == selectedId
-        let isPopping = ev.id == poppingId
-        ZStack(alignment: .topTrailing) {
-            Text(categories.first { $0.key == ev.catKey }?.glyph ?? "▪︎")
-                .font(.system(size: 14))
-                .frame(width: 30, height: 30)
-                .background(app.palette.paper, in: Circle())
-                .overlay(Circle().stroke(app.palette.ink, lineWidth: isSelected ? 2.5 : 1.5))
-                .shadow(radius: isSelected ? 5 : 3)
-            if let seats = ev.seatsRemaining, seats <= 5 {
-                Circle().fill(Color(red: 0.6, green: 0.24, blue: 0.18)).frame(width: 9, height: 9)
-                    .overlay(Circle().stroke(app.palette.paper, lineWidth: 1.5))
+        // B1 — a geolocated event that doesn't currently match the active
+        // filters (`visibleIdSet`, derived from the SAME `visibleEvents`
+        // the list panel shows) gets a small, passive, non-interactive dot
+        // in its own category's color instead of the normal clickable
+        // pin — never rendered as "another selectable matching pin."
+        // Selection itself is untouched: `selectedEvent`/`mapEventsWithCoordinates`
+        // (this pin ForEach's own data source) deliberately stay on the
+        // FULL unfiltered set (see that property's own doc comment), so a
+        // selection whose pin just became a dot still keeps its card.
+        if !visibleIdSet.contains(ev.id) {
+            Circle()
+                .fill(Self.categoryDotColor[ev.catKey ?? "all"] ?? Self.categoryDotColor["all"]!)
+                .frame(width: 9, height: 9)
+                .overlay(Circle().stroke(app.palette.paper, lineWidth: 1))
+                .opacity(0.85)
+                .allowsHitTesting(false)
+                .accessibilityIdentifier("map.dot.\(ev.id)")
+        } else {
+            let isSelected = ev.id == selectedId
+            let isPopping = ev.id == poppingId
+            ZStack(alignment: .topTrailing) {
+                Text(categories.first { $0.key == ev.catKey }?.glyph ?? "▪︎")
+                    .font(.system(size: 14))
+                    .frame(width: 30, height: 30)
+                    .background(app.palette.paper, in: Circle())
+                    .overlay(Circle().stroke(app.palette.ink, lineWidth: isSelected ? 2.5 : 1.5))
+                    .shadow(radius: isSelected ? 5 : 3)
+                if let seats = ev.seatsRemaining, seats <= 5 {
+                    Circle().fill(Color(red: 0.6, green: 0.24, blue: 0.18)).frame(width: 9, height: 9)
+                        .overlay(Circle().stroke(app.palette.paper, lineWidth: 1.5))
+                }
             }
+            // Selected pin sits slightly larger and settles there; the brief
+            // overshoot past that (isPopping) plays once per actual selection
+            // change, guarded in selectEvent(_:) — never replayed by a poll
+            // refresh while the same pin stays selected.
+            .scaleEffect(isPopping ? 1.32 : (isSelected ? 1.15 : 1))
+            .zIndex(isSelected ? 1 : 0)
+            .accessibilityIdentifier("map.pin.\(ev.id)")
+            .onTapGesture { selectEvent(ev) }
         }
-        // Selected pin sits slightly larger and settles there; the brief
-        // overshoot past that (isPopping) plays once per actual selection
-        // change, guarded in selectEvent(_:) — never replayed by a poll
-        // refresh while the same pin stays selected.
-        .scaleEffect(isPopping ? 1.32 : (isSelected ? 1.15 : 1))
-        .zIndex(isSelected ? 1 : 0)
-        .accessibilityIdentifier("map.pin.\(ev.id)")
-        .onTapGesture { selectEvent(ev) }
+    }
+
+    /// B1 — the ONE filtered event-id set the list panel (`visibleEvents`)
+    /// and the map's own pins (`pin(for:)`) both key off, so they can
+    /// never disagree about which events currently match the active
+    /// filters.
+    private var visibleIdSet: Set<String> {
+        Set(visibleEvents.map(\.id))
     }
 
     /// Sweep finding (11-realtime-map.md follow-up): the full, unfiltered

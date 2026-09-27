@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase.js';
 import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, cardGlass, alert } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
+import BanbeLoadingVisual from './BanbeLoadingVisual.jsx';
 
 export default function Confirmed() {
   const {
@@ -317,9 +318,20 @@ function QrCode({ value }) {
     return () => { active = false; };
   }, [value]);
 
+  // A4 (Pulse/loading UX pass, 2026-09-27) — "the currently blank region
+  // beneath 'View Your Ticket' ONLY when ticket content is actually
+  // loading": `QRCode.toDataURL` above is async — `src` is genuinely null
+  // for one tick while it resolves, and this exact block used to render
+  // nothing at all during that gap (an honest-but-blank region, reached by
+  // tapping "Xem vé của bạn" on Event Detail). Now shows the shared Banbe
+  // loading GIF for that gap instead of a blank box. iOS's own QR
+  // (`QRCodeImage` in Components.swift) generates synchronously via
+  // CoreImage inside `body` — no equivalent async gap exists there, so no
+  // iOS change was needed for this specific item (confirmed by reading
+  // that component, not assumed).
   return (
-    <div style={{ flex: 'none', width: 76, height: 76, background: '#FFFFFF', padding: 6 }}>
-      {src && <img src={src} alt="QR" style={{ width: '100%', height: '100%', display: 'block' }} />}
+    <div style={{ flex: 'none', width: 76, height: 76, background: '#FFFFFF', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {src ? <img src={src} alt="QR" style={{ width: '100%', height: '100%', display: 'block' }} /> : <BanbeLoadingVisual size={40} />}
     </div>
   );
 }

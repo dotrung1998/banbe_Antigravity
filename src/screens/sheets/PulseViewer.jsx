@@ -1,6 +1,25 @@
+import { useCallback, useRef, useState } from 'react';
 import { useGoc } from '../../state/GocContext.jsx';
 import { supabase } from '../../lib/supabase.js';
 import { paper, ink, rule, fieldSolid, display, cardGlass } from '../../theme.js';
+import BanbeLoadingVisual from '../BanbeLoadingVisual.jsx';
+
+// A2 (2026-09-27 Pulse/loading UX pass) — the left-edge-swipe-or-X
+// interactive dismiss. `pulseOpen` never touches `state.screen` (Home
+// stays the active, mounted screen underneath the whole time — see
+// App.jsx: `{state.pulseOpen && <PulseViewer />}` renders this as a
+// sibling OVERLAY of whatever `SCREENS[state.screen]` already rendered,
+// unlike a route change), so translating THIS component's own root by
+// `transform: translateX(...)` continuously reveals the real, live Home
+// underneath — never a snapshot, never white — for both the X tap and an
+// edge-swipe, as ONE shared animation, never a second/different one
+// depending on which control triggered it. `EDGE_ZONE_PX` mirrors
+// RootView's iOS `edgeSwipeZoneWidth`/MapExplore's own touch-scoping
+// convention: only a touch starting in that thin leading strip is ever
+// offered this gesture at all, so the scrollable card list's own vertical
+// scroll and every tab/card tap elsewhere are untouched.
+const EDGE_ZONE_PX = 24;
+const DISMISS_DURATION_MS = 260;
 
 function eventPhotoUrl(path) {
   if (!path) return null;
@@ -56,6 +75,38 @@ export default function PulseViewer() {
     openPulsePhotoSheet, closePulsePhotoSheet, togglePhotoLike, sharePhoto, goEvent,
   } = useGoc();
   const s = state;
+  const [dragX, setDragX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isCommitting, setIsCommitting] = useState(false);
+  const dragRef = useRef({ active: false, startX: 0, pointerId: null });
+
+  const commitDismiss = useCallback(() => {
+    setIsCommitting(true);
+    setTimeout(() => { closePulseViewer(); }, DISMISS_DURATION_MS);
+  }, [closePulseViewer]);
+
+  const onEdgePointerDown = (e) => {
+    dragRef.current = { active: true, startX: e.clientX, pointerId: e.pointerId };
+    setIsDragging(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onEdgePointerMove = (e) => {
+    const g = dragRef.current;
+    if (!g.active || e.pointerId !== g.pointerId) return;
+    setDragX(Math.max(0, e.clientX - g.startX));
+  };
+  const onEdgePointerUp = () => {
+    const g = dragRef.current;
+    if (!g.active) return;
+    g.active = false;
+    setIsDragging(false);
+    if (dragX > window.innerWidth * 0.3) {
+      commitDismiss();
+    } else {
+      setDragX(0);
+    }
+  };
+
   if (!s.pulseOpen) return null;
   const isPhotoTab = s.pulseTab === 'photos';
   const items = isPhotoTab ? s.pulsePhotos : (s.pulseTab === 'weekly' ? s.pulseWeekly : s.pulseDaily);
@@ -66,11 +117,35 @@ export default function PulseViewer() {
   // still-fetching tab never gets misread as a genuinely empty one.
   const loading = isPhotoTab ? s.pulsePhotosLoading : (s.pulseTab === 'weekly' ? s.pulseWeeklyLoading : s.pulseDailyLoading);
 
+  const slideX = isCommitting ? window.innerWidth : dragX;
+
   return (
-    <div style={{ position: 'fixed', inset: 0, background: paper, zIndex: 60, display: 'flex', flexDirection: 'column' }} data-testid="pulse-viewer">
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: paper, zIndex: 60, display: 'flex', flexDirection: 'column',
+        transform: `translateX(${slideX}px)`,
+        transition: isDragging ? 'none' : `transform ${DISMISS_DURATION_MS}ms cubic-bezier(.22,.61,.36,1)`,
+      }}
+      data-testid="pulse-viewer"
+    >
+      {/* A2 — the edge-swipe hit zone: a thin leading strip, exactly like
+          MapExplore's own pointer-scoped drag handle. Only a touch
+          starting here is ever offered this gesture, so the card list's
+          ordinary vertical scroll and every tab/card tap are untouched. */}
+      <div
+        data-testid="pulse-edge-swipe-zone"
+        onPointerDown={onEdgePointerDown}
+        onPointerMove={onEdgePointerMove}
+        onPointerUp={onEdgePointerUp}
+        onPointerCancel={onEdgePointerUp}
+        style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: EDGE_ZONE_PX, zIndex: 1, touchAction: 'none' }}
+      />
       <div style={{ padding: '20px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ ...display(20) }}>{T('Banbe Pulse', 'Banbe Pulse')}</span>
-        <span onClick={closePulseViewer} data-testid="pulse-close" style={{ fontSize: 22, color: ink, cursor: 'pointer' }}>×</span>
+        {/* A1 — the SAME wordmark asset + width Home's own header uses
+            (Home.jsx:353, width 126) — never a second/different logo
+            treatment. Accessible name stays "Banbe Pulse" via `alt`. */}
+        <img src="/banbe-wordmark.png" alt="Banbe Pulse" crossOrigin="anonymous" style={{ width: 126, height: 'auto', display: 'block' }} />
+        <span onClick={commitDismiss} data-testid="pulse-close" style={{ fontSize: 22, color: ink, cursor: 'pointer' }}>×</span>
       </div>
 
       <div style={{ display: 'flex', gap: 8, padding: '16px 20px 0' }}>
@@ -94,9 +169,9 @@ export default function PulseViewer() {
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 40px', display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="pulse-list" data-loading={loading ? 'true' : 'false'}>
         {loading ? (
-          <p style={{ fontSize: 13, color: ink, opacity: 0.6, textAlign: 'center', marginTop: 60 }} data-testid="pulse-loading">
-            {T('Đang tải…', 'Loading…')}
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 60 }} data-testid="pulse-loading">
+            <BanbeLoadingVisual size={56} />
+          </div>
         ) : !items.length && (
           <p style={{ fontSize: 13, color: ink, opacity: 0.7, textAlign: 'center', marginTop: 60 }} data-testid="pulse-empty">
             {T('Chưa có dữ liệu xếp hạng.', 'Nothing ranked yet.')}

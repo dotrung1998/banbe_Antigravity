@@ -16,49 +16,74 @@ private func eventPhotoURL(_ path: String?) -> String? {
 
 struct PulseViewerView: View {
     @EnvironmentObject private var app: AppState
-    // TASK A7 (2026-10-03 fix pass) — interactive swipe-to-dismiss for the
-    // fullScreenCover presentation (a plain `.fullScreenCover` has no
-    // built-in interactive dismiss the way `.sheet` does). Attached ONLY
-    // to the header row below (title/tabs/close button), never to the
-    // ScrollView — so a downward drag on the card list still scrolls it
-    // normally instead of competing for the same gesture, and tab
-    // switching/the organizer sheet's own presentation are untouched.
-    @GestureState private var dragOffset: CGFloat = 0
-    private let dismissThreshold: CGFloat = 120
 
-    // TASK 3 (2026-10-05 fix pass) — real iOS-style edge swipe-back: drag
-    // from the LEFT SCREEN EDGE toward the right, live-following the
-    // finger, same affordance RootView's own `edgeSwipe` gives every other
-    // screen (a `.fullScreenCover` doesn't inherit that — it's a wholly
-    // separate presentation, not part of RootView's ZStack). Confined to a
-    // thin leading strip (`edgeZoneWidth`) via `.highPriorityGesture`,
-    // exactly like RootView's own — see that gesture's doc comment for why
-    // a screen-wide gesture would instead end up arbitrating against every
-    // ordinary vertical scroll/tap for every touch, which is what would
-    // "steal" them. Attached to the WHOLE body below (content included),
-    // not just the header — a real edge-originated drag is unambiguous
-    // (nothing else recognizes touches starting in that strip), so there's
-    // no separate reason to restrict it to the header the way the
-    // downward drag above deliberately is.
-    @GestureState private var edgeDragOffset: CGFloat = 0
+    // iOS/Map UX pass (2026-09-27) — Pulse used to be a `.fullScreenCover`,
+    // a wholly separate UIKit presentation layer with no access to
+    // whatever was behind it. Both dismiss gestures below used to drive a
+    // `@GestureState` (which snaps back to 0 the INSTANT a gesture ends,
+    // committed or not — it has no way to continue an animation past
+    // release) purely as visual feedback, then call `app.closePulseViewer()`
+    // to actually close — which just flips `app.pulseOpen`, triggering
+    // `.fullScreenCover`'s own separate, unrelated system dismiss transition
+    // (a downward/cover-style slide). That's the confirmed root cause of
+    // both bugs this ticket named: the X button had no transition of its
+    // own at all (straight to the system's downward cover-dismiss), and a
+    // completed edge-swipe visually snapped back to 0 for one frame before
+    // that same downward slide took over — "a second slide after
+    // releasing." Root cause confirmed by reading the code (GestureState's
+    // documented reset-on-end behavior + `.fullScreenCover`'s own default
+    // transition), not guessed from the symptom.
+    //
+    // Fix: PulseViewerView is no longer a `.fullScreenCover` at all — it's
+    // a plain ZStack sibling in RootView, exactly like `PhotoViewerView`,
+    // so Home stays mounted directly underneath it the whole time (see
+    // RootView.swift). Both dismiss paths below now drive the SAME plain
+    // `@State` `dragTranslation` (not `@GestureState`, mirroring RootView's
+    // own proven `edgeSwipe`/`dragTranslation`/`isCommitting` pattern
+    // exactly) so a committed dismiss — from either the X tap or a crossed
+    // edge-swipe — animates ONE continuous rightward slide that
+    // continuously reveals the real Home view underneath, then removes
+    // this view entirely once that single animation finishes. No second,
+    // unrelated system transition ever plays.
+    @State private var dragTranslation: CGFloat = 0
+    @State private var isDragTracking = false
+    @State private var isCommitting = false
     private let edgeZoneWidth: CGFloat = 20
+
+    private var slideOffset: CGFloat {
+        isCommitting ? UIScreen.main.bounds.width : dragTranslation
+    }
+
+    /// Shared by the X button (a plain tap) and a crossed edge-swipe — the
+    /// ONE dismiss animation this ticket asks for, never a second/different
+    /// one depending on which control triggered it.
+    private func commitDismiss() {
+        guard !isCommitting else { return }
+        withAnimation(.easeOut(duration: 0.22)) { isCommitting = true }
+    }
 
     private var edgeSwipe: some Gesture {
         DragGesture(minimumDistance: 4, coordinateSpace: .local)
-            .updating($edgeDragOffset) { value, state, _ in
-                state = max(0, value.translation.width)
+            .onChanged { value in
+                guard !isCommitting else { return }
+                isDragTracking = true
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    dragTranslation = max(0, value.translation.width)
+                }
             }
             .onEnded { value in
+                defer { isDragTracking = false }
+                guard !isCommitting else { return }
                 let width = UIScreen.main.bounds.width
                 let crossedDistance = value.translation.width > width * 0.3
                 let flicked = value.predictedEndTranslation.width > width * 0.6
                 if crossedDistance || flicked {
-                    app.closePulseViewer()
+                    commitDismiss()
+                } else {
+                    withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) { dragTranslation = 0 }
                 }
-                // A cancelled/partial swipe just needs nothing further —
-                // `edgeDragOffset` (a `@GestureState`) snaps back to 0 on
-                // its own the instant the gesture ends, animated by the
-                // `.animation(_:value:)` below.
             }
     }
 
@@ -76,9 +101,17 @@ struct PulseViewerView: View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
                 HStack {
-                    Text(app.T("Banbe Pulse", "Banbe Pulse")).font(BanbeTheme.display(20))
+                    // A/1 — the SAME wordmark asset + width Home's own
+                    // header uses (HomeView.swift:243, `BanbeLogo(kind:
+                    // .wordmark, width: 126)`), tinted for the current
+                    // theme by BanbeLogo itself — never a second/different
+                    // logo treatment. `.accessibilityLabel` overrides
+                    // BanbeLogo's own generic "banbe" label so this still
+                    // reads as "Banbe Pulse" to VoiceOver, per the ticket.
+                    BanbeLogo(kind: .wordmark, width: 126)
+                        .accessibilityLabel("Banbe Pulse")
                     Spacer()
-                    Button { app.closePulseViewer() } label: {
+                    Button { commitDismiss() } label: {
                         Image(systemName: "xmark").font(.system(size: 16, weight: .semibold)).foregroundStyle(app.palette.ink)
                     }
                     .accessibilityIdentifier("pulse.close")
@@ -98,29 +131,14 @@ struct PulseViewerView: View {
                 }
                 .padding(.top, 16)
             }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 8)
-                    .updating($dragOffset) { value, state, _ in
-                        // Downward only — an upward drag from the header
-                        // has nothing to do (there's no content above it
-                        // to reveal), so it's ignored rather than fighting
-                        // the release-snap-back animation for no reason.
-                        state = max(0, value.translation.height)
-                    }
-                    .onEnded { value in
-                        if value.translation.height > dismissThreshold {
-                            app.closePulseViewer()
-                        }
-                    }
-            )
-
             ScrollView {
                 VStack(spacing: 10) {
                     if loading {
-                        Text(app.T("Đang tải…", "Loading…"))
-                            .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.6))
-                            .padding(.top, 60)
+                        // A3 — the shared Banbe loading GIF while a Pulse
+                        // tab is fetching (BanbeLoadingVisual honors Reduce
+                        // Motion on its own — see that view's doc comment).
+                        BanbeLoadingVisual(size: 64)
+                            .padding(.top, 44)
                             .accessibilityIdentifier("pulse.loading")
                     } else if app.pulseTab == .photos {
                         if app.pulsePhotos.isEmpty {
@@ -148,13 +166,11 @@ struct PulseViewerView: View {
             }
         }
         .background(app.palette.paper.ignoresSafeArea())
-        .offset(x: edgeDragOffset, y: dragOffset)
-        .animation(.interactiveSpring(), value: dragOffset)
-        .animation(isDraggingEdge ? nil : .interactiveSpring(), value: edgeDragOffset)
-        // A sliver of dimming that fades out as the edge-swipe progresses —
+        .offset(x: slideOffset)
+        // A sliver of dimming that fades out as the dismiss progresses —
         // the same depth cue RootView's own edge-swipe gives every other
         // screen (see that gesture's `peekOffset`/dimming comment).
-        .overlay(Color.black.opacity(max(0, 0.12 - Double(edgeDragOffset) / 1400)).ignoresSafeArea().allowsHitTesting(false))
+        .overlay(Color.black.opacity(max(0, 0.12 - Double(slideOffset) / 1400)).ignoresSafeArea().allowsHitTesting(false))
 
         // The edge-swipe hit zone — a thin leading strip, exactly like
         // RootView's own `edgeSwipe`. `.highPriorityGesture` so a touch
@@ -182,14 +198,20 @@ struct PulseViewerView: View {
                 .presentationDetents([.fraction(0.66)])
                 .presentationDragIndicator(.hidden)
         }
+        // Mirrors RootView's own `.onChange(of: isCommittingBack)` exactly —
+        // let the single slide-to-edge animation actually finish playing
+        // (0.22s) before removing this view from RootView's ZStack at all.
+        // `app.pulseOpen = false` here is what makes it disappear (see
+        // RootView.swift's `if app.pulseOpen { PulseViewerView() }`) — no
+        // separate transition plays on removal since that conditional uses
+        // `.transition(.identity)`.
+        .onChange(of: isCommitting) { _, committing in
+            guard committing else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                app.closePulseViewer()
+            }
+        }
     }
-
-    // `edgeDragOffset` is a `@GestureState`, so it's only ever nonzero
-    // WHILE a drag is live — good enough to key "don't spring-animate every
-    // per-frame update of a live drag" off directly, matching RootView's
-    // own `dragTranslation > 0` check for the identical reason (a spring
-    // chasing a continuously-moving target reads as laggy, not smooth).
-    private var isDraggingEdge: Bool { edgeDragOffset > 0 }
 
     @ViewBuilder
     private func tabButton(_ tab: PulseTab, _ label: String) -> some View {

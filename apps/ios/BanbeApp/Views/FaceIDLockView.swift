@@ -12,9 +12,21 @@ struct FaceIDLockView: View {
         ZStack {
             Color(.systemBackground).ignoresSafeArea()
             VStack(spacing: 16) {
-                Image(systemName: "faceid")
-                    .font(.system(size: 44))
-                    .foregroundStyle(.secondary)
+                // A3 (Pulse/loading UX pass, 2026-09-27) — the shared
+                // Banbe loading GIF as a branded "waiting" visual, shown
+                // WHILE `isAuthenticating` (i.e. the real system Face ID
+                // prompt from BiometricAuthService.authenticate is up or
+                // about to appear) — the system prompt is its own separate
+                // overlay LAContext presents on top of the app, so this
+                // never covers or replaces it; at rest (not authenticating
+                // yet) this still shows the plain Face ID glyph, unchanged.
+                if isAuthenticating {
+                    BanbeLoadingVisual(size: 44)
+                } else {
+                    Image(systemName: "faceid")
+                        .font(.system(size: 44))
+                        .foregroundStyle(.secondary)
+                }
                 HStack(spacing: 4) {
                     // The wordmark — same asset the Home screen uses —
                     // standing in for the word "banbe" itself.

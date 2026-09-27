@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg, agoLabel } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
@@ -6,6 +6,145 @@ import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChi
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import ActionCenter from './ActionCenter.jsx';
+
+// A5 (2026-09-27 Pulse/loading UX pass) — one-at-a-time Banbe-styled
+// speech bubbles above the Home Pulse entry: label -> real top 1/2/3
+// event names (fetched via the SAME loadPulse('daily') the Pulse viewer
+// itself uses — never a second/invented ranking source) -> two more
+// labels, then hidden. Plays once per user per `BUBBLE_SEQUENCE_VERSION`
+// (localStorage, matches the "persist seen state per user/version"
+// instruction), and is dismissed immediately by tapping outside it,
+// tapping the Pulse avatar itself (which opens Pulse), or on unmount.
+const BUBBLE_SEQUENCE_VERSION = 'v1';
+const BUBBLE_STEP_MS = { label: 1700, names: 2600 };
+
+function pulseBubbleSeenKey(userId) {
+  return `banbe_pulse_bubbles_seen_${BUBBLE_SEQUENCE_VERSION}_${userId || 'guest'}`;
+}
+
+function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen, loadPulse }) {
+  const [step, setStep] = useState(-1); // -1 = not started/hidden, 0..3 = the 4 sequence steps
+  const [reduceMotion] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+  );
+
+  const dismiss = () => {
+    setStep(-1);
+    try { window.localStorage.setItem(pulseBubbleSeenKey(userId), '1'); } catch { /* private mode etc. — best-effort only */ }
+  };
+
+  // Kick off the fetch + sequence once, the first time this mounts on a
+  // fresh Home visit that hasn't already seen it. The seen-flag is written
+  // HERE, immediately — not only once the sequence finishes/dismisses —
+  // per the ticket's own "avoid replaying the entire sequence on every
+  // Home render" instruction: Home unmounts/remounts on every navigation
+  // away and back (App.jsx's plain screen switch), so gating the flag on
+  // full completion would replay the whole thing from step 0 every time a
+  // user left Home and came back before it finished.
+  //
+  // Real bug found while writing this pass's own test, confirmed by
+  // reading (not guessed): `userId` (`s.user?.id`) is still `undefined`
+  // for Home's very first render after sign-in — GocContext's syncUser()
+  // hydrates it asynchronously, the same "resolves a tick after mount"
+  // shape as this session's earlier login-race/booking-load-guard bugs —
+  // so writing the seen-flag unconditionally at mount time was keying it
+  // under a `..._guest` fallback that a later, real-userId mount never
+  // matches, replaying the whole sequence on the very next Home visit.
+  // Fixed by gating on `userId` itself: this effect is a no-op (doesn't
+  // check OR write anything yet) until a real id is available.
+  useEffect(() => {
+    if (!userId) return;
+    let already = false;
+    try { already = window.localStorage.getItem(pulseBubbleSeenKey(userId)) === '1'; } catch { /* ignore */ }
+    if (already) return;
+    try { window.localStorage.setItem(pulseBubbleSeenKey(userId), '1'); } catch { /* private mode etc. — best-effort only */ }
+    loadPulse('daily');
+    setStep(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  // Advances label -> names -> label -> label -> hidden(+seen). Waits out
+  // a still-loading fetch before showing the real-names step rather than
+  // racing it (advances once `pulseDailyLoading` actually goes false).
+  useEffect(() => {
+    if (step < 0 || step > 2) return undefined;
+    if (step === 0 && pulseDailyLoading) return undefined; // hold on step 0 until data's ready
+    const ms = step === 0 ? BUBBLE_STEP_MS.names : BUBBLE_STEP_MS.label;
+    const id = setTimeout(() => setStep(s => (s < 0 ? s : s + 1)), ms);
+    return () => clearTimeout(id);
+  }, [step, pulseDailyLoading]);
+
+  useEffect(() => {
+    if (step === 3) {
+      const id = setTimeout(dismiss, BUBBLE_STEP_MS.label);
+      return () => clearTimeout(id);
+    }
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  // Opening Pulse (tapping the avatar this bubble sits above) dismisses it
+  // immediately — never lingers on top of the now-open Pulse viewer.
+  useEffect(() => {
+    if (pulseOpen && step >= 0) dismiss();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pulseOpen]);
+
+  // Tap-outside dismiss — a single document-level listener, only while
+  // actually showing something.
+  useEffect(() => {
+    if (step < 0) return undefined;
+    const onDocPointerDown = (e) => {
+      if (!e.target.closest?.('[data-testid="home-pulse-teaser-bubble"]')) dismiss();
+    };
+    document.addEventListener('pointerdown', onDocPointerDown);
+    return () => document.removeEventListener('pointerdown', onDocPointerDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  if (step < 0) return null;
+
+  let content;
+  if (step === 0) {
+    content = <span>{T('Top sự kiện hôm nay', "Today's top events")}</span>;
+  } else if (step === 1) {
+    // Never invented — an honest, short empty hint when the real ranking
+    // has nothing yet, instead of placeholder names.
+    content = pulseDaily.length === 0
+      ? <span>{T('Chưa có xếp hạng hôm nay', 'Nothing ranked yet today')}</span>
+      : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {pulseDaily.slice(0, 3).map((item, i) => (
+            <span key={item.event_id} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>
+              {i + 1}. {item.event_name}
+            </span>
+          ))}
+        </div>
+      );
+  } else if (step === 2) {
+    content = <span>{T('Top sự kiện tuần này', "This week's top events")}</span>;
+  } else {
+    content = <span>{T('Ảnh nổi bật', 'Featured photos')}</span>;
+  }
+
+  return (
+    <div
+      data-testid="home-pulse-teaser-bubble"
+      role="status"
+      aria-live="polite"
+      style={{
+        position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 8,
+        background: ink, color: paper, fontSize: 11.5, fontWeight: 600, lineHeight: 1.4,
+        padding: '9px 12px', borderRadius: 12, whiteSpace: 'nowrap', zIndex: 5, pointerEvents: 'auto',
+        boxShadow: '0 6px 18px rgba(27,25,22,0.24)',
+        animation: reduceMotion ? 'none' : 'gocFade 0.22s ease both',
+      }}
+    >
+      {content}
+      <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: `5px solid ${ink}` }} />
+    </div>
+  );
+}
 
 // Second, independent chip row (12-home-filters.md) — multi-select,
 // AND-combined with FILTER_DEFS' category row and the area picker, not a
@@ -50,7 +189,7 @@ export default function Home() {
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
     loadHomeStories, openStoryViewer,
     loadMyRefunds, openMyRefunds, loadRefundQueue, goNotifications,
-    openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById,
+    openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, loadPulse,
   } = useGoc();
 
   const s = state;
@@ -422,8 +561,20 @@ export default function Home() {
         <div
           onClick={openPulseViewer}
           data-testid="home-pulse-avatar"
-          style={{ flex: 'none', width: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer' }}
+          style={{ flex: 'none', width: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer', position: 'relative' }}
         >
+          {/* A5 — the teaser-bubble sequence, anchored above this avatar
+              (never covering the filter row/cards above it, and never
+              intercepting taps on the avatar itself — see its own `bottom:
+              '100%'` positioning). */}
+          <PulseTeaserBubble
+            T={T}
+            userId={s.user?.id}
+            pulseDaily={s.pulseDaily}
+            pulseDailyLoading={s.pulseDailyLoading}
+            pulseOpen={s.pulseOpen}
+            loadPulse={loadPulse}
+          />
           {/* TASK 3 (2026-10-05 fix pass) — a refined multicolor shimmer,
               built from Banbe's own existing dusty-rose/sage gradient
               (the same two colors this used before) plus one warm sand

@@ -60,6 +60,13 @@ targets:
         buildPhase: resources
       - path: ../../public/banbe-wordmark-sm.png
         buildPhase: resources
+      # Pulse/loading UX pass (2026-09-27) — the shared Banbe loading GIF
+      # (BanbeLoadingVisual), referenced in place from `public/` for the
+      # same single-source-of-truth reason as the logo artwork above, and
+      # bundled with the app (not fetched) so the initial splash works
+      # offline per this ticket's own instruction.
+      - path: ../../public/banbe-loading.gif
+        buildPhase: resources
     resources:
       - BanbeApp/Resources
     dependencies:

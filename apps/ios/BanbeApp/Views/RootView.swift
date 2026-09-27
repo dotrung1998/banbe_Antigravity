@@ -608,6 +608,26 @@ struct RootView: View {
                     .zIndex(storyUnderlaysEvent ? -1 : 27)
                     .allowsHitTesting(!storyUnderlaysEvent)
             }
+            // A/2 (iOS/Map UX pass, 2026-09-27) — Pulse used to be a
+            // `.fullScreenCover` (see the removed call below this ZStack) —
+            // a wholly separate UIKit presentation layer, which is exactly
+            // why its own dismiss gestures could never actually reveal
+            // Home continuously underneath (there's no "underneath" inside
+            // a cover presentation) and always ended in a second, unrelated
+            // system slide-down. Now a plain ZStack sibling, exactly like
+            // `PhotoViewerView` above — Home (still `app.screen`, still
+            // mounted) sits directly beneath it, so PulseViewerView's own
+            // drag-driven `.offset(x:)` reveals the real thing, not a
+            // snapshot. `.transition(.identity)`: PulseViewerView owns its
+            // ONE dismiss animation entirely itself (see that file's
+            // `commitDismiss()`) — this conditional must never layer a
+            // second SwiftUI transition on top of it.
+            if app.pulseOpen {
+                PulseViewerView()
+                    .transition(.identity)
+                    .zIndex(26)
+            }
+
             if app.loading { loadingOverlay }
 
             if !app.toasts.isEmpty {
@@ -711,8 +731,10 @@ struct RootView: View {
             }
         }
         .fullScreenCover(isPresented: $app.scanningQr) { QRScannerView() }
-        // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
-        .fullScreenCover(isPresented: $app.pulseOpen) { PulseViewerView() }
+        // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse. No longer a
+        // `.fullScreenCover` — see the `if app.pulseOpen { PulseViewerView() }`
+        // ZStack sibling above, and that view's own `commitDismiss()` doc
+        // comment for the real, confirmed bug this fixes.
         // The session is owned by AuthViewModel (it also drives the Face ID
         // lock); AppState mirrors it into the profile/bookings/notifications
         // the screens read.
@@ -883,9 +905,11 @@ struct RootView: View {
         ZStack {
             app.palette.paper.opacity(0.9).ignoresSafeArea()
             VStack(spacing: 14) {
-                // src/screens/Loading.jsx tumbles the mark while it waits.
-                BanbeLogo(kind: .mark, width: 54, height: 54)
-                ProgressView()
+                // A4 (Pulse/loading UX pass, 2026-09-27) — the shared
+                // Banbe loading GIF while a seat-reservation request is
+                // pending, replacing the plain mark+spinner this used
+                // before (BanbeLoadingVisual honors Reduce Motion itself).
+                BanbeLoadingVisual(size: 64)
                 Text(app.T("Đang giữ chỗ cho bạn…", "Holding your seat…"))
                     .font(.system(size: 13))
                     .foregroundStyle(app.palette.ink)
