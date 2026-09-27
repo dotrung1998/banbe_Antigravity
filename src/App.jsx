@@ -9,6 +9,7 @@ import ThemePick from './screens/ThemePick.jsx';
 import Loading from './screens/Loading.jsx';
 import Home from './screens/Home.jsx';
 import Account from './screens/Account.jsx';
+import AccountGroup from './screens/AccountGroup.jsx';
 import Inbox from './screens/Inbox.jsx';
 import EventDetail from './screens/EventDetail.jsx';
 import Organizer from './screens/Organizer.jsx';
@@ -62,6 +63,7 @@ const SCREENS = {
   themePick: ThemePick,
   home: Home,
   profile: Account,
+  accountGroup: AccountGroup,
   inbox: Inbox,
   event: EventDetail,
   organizer: Organizer,

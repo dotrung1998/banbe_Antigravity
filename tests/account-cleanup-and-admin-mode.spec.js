@@ -24,20 +24,25 @@ test.describe('Account cleanup + admin organizer-mode fix', () => {
     await page.getByTestId('tab-profile').click();
     await page.waitForSelector('[data-screen-label="Account"]');
 
-    // Cá nhân (default tab): the toggle is here, the management rows are
-    // not VISIBLE — both tab panes stay mounted for scroll-position
-    // preservation (Stage D's own established design), so this checks
-    // `.toBeHidden()` (CSS display:none, the real "not on Cá nhân" signal)
-    // rather than DOM absence.
+    // Cá nhân (default tab): the toggle is here; the management rows
+    // aren't reachable at all from here any more (Account IA pass,
+    // 2026-09-27 — they live behind the Tổ chức tab's own "hostOps" group
+    // card, a separate screen, not just a hidden pane) — `.toBeHidden()`
+    // also covers "not attached to the DOM at all," which is what this
+    // actually is now.
     await expect(page.getByTestId('organizer-mode-toggle')).toBeVisible();
     await expect(page.getByTestId('host-verifications')).toBeHidden();
     await expect(page.getByTestId('host-payout')).toBeHidden();
     await expect(page.getByTestId('host-invoices')).toBeHidden();
     await expect(page.getByTestId('host-receipts')).toBeHidden();
 
-    // Tổ chức: the management rows are here instead.
+    // Tổ chức: the management rows are reachable here instead — via the
+    // "Vận hành & thanh toán tổ chức" group card (Account IA pass,
+    // 2026-09-27), never inline on Account itself any more.
     await page.getByTestId('account-tab-host').click();
     await expect(page.getByTestId('account-tab-panel-host')).toBeVisible();
+    await expect(page.getByTestId('account-group-hostOps')).toBeVisible();
+    await page.getByTestId('account-group-hostOps').click();
     await expect(page.getByTestId('host-verifications')).toBeVisible();
     await expect(page.getByTestId('host-payout')).toBeVisible();
     await expect(page.getByTestId('host-invoices')).toBeVisible();

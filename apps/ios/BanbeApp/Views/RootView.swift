@@ -630,6 +630,13 @@ struct RootView: View {
 
             if app.loading { loadingOverlay }
 
+            // Pulse teaser pass (2026-09-27) — always in the tree (it's a
+            // no-op Group when not eligible/showing — see its own body),
+            // never gated on `app.pulseOpen`/`app.screen` here, since it
+            // needs to keep observing `app.screen`'s own changes itself to
+            // know when to suspend/resume.
+            PulseTeaserBubbleView().zIndex(29)
+
             if !app.toasts.isEmpty {
                 ToastOverlay()
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -860,7 +867,7 @@ struct RootView: View {
         // in a later `.task` — so the very first frame this switch draws
         // already shows the restored camera/detent/filters/selection
         // instead of flashing the defaults for a frame first.
-        case .mapExplore: MapExploreView(restored: app.mapExploreState, isPreview: isPreview)
+        case .mapExplore: MapExploreView(restored: app.mapExploreState, isPreview: isPreview, startFocusedOnSearch: app.mapExploreFocusSearch)
         case .home: HomeView()
         case .profile: AccountView()
         // TASK 2 (2026-09-22 twenty-first follow-up) — see InboxView's own
@@ -898,6 +905,7 @@ struct RootView: View {
         case .organizerProfile: OrganizerProfileView()
         case .reports: ReportsView()
         case .organizerTeam: OrganizerTeamView()
+        case .accountGroup: AccountGroupView()
         }
     }
 

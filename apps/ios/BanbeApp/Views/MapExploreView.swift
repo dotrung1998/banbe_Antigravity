@@ -63,6 +63,13 @@ struct MapExploreView: View {
     @State private var catFilter: String
     @State private var openNowOnly: Bool
     @State private var sortByDistance: Bool
+    // Home quick event search (2026-09-27) — see `visibleEvents`'s own
+    // doc comment. `startFocusedOnSearch` is read once, at construction
+    // (mirrors `hadRestoredState`'s own one-shot capture), so a later
+    // unrelated re-render can't re-focus the field out from under the user.
+    @State private var searchQuery = ""
+    @FocusState private var searchFieldFocused: Bool
+    private let startFocusedOnSearch: Bool
     @State private var initialCenterSet: Bool
     // Defaults to the "tall" snap point (covers most of the screen, leaving
     // a small map strip visible at top) per the ticket's layout spec — not
@@ -181,9 +188,10 @@ struct MapExploreView: View {
     /// `.presentationDetents` selection — the sheet's native slide-up-from-
     /// bottom presentation animation then plays directly TO the saved
     /// detent, not to the default one first.
-    init(restored: MapExploreState?, isPreview: Bool = false) {
+    init(restored: MapExploreState?, isPreview: Bool = false, startFocusedOnSearch: Bool = false) {
         hadRestoredState = restored != nil
         self.isPreview = isPreview
+        self.startFocusedOnSearch = startFocusedOnSearch
         restoreBubbleProgress = restored != nil ? 0 : 1
         // Bug 2 follow-up: a fresh open has nothing to wait for — reveal
         // immediately, as before. A restored instance starts hidden; `.task`
@@ -1093,6 +1101,11 @@ struct MapExploreView: View {
         var list = app.mapEvents
         if catFilter != "all" { list = list.filter { effectiveCatKey($0) == catFilter } }
         if openNowOnly { list = list.filter { ($0.seatsRemaining ?? 0) > 0 } }
+        // Home quick event search (2026-09-27) — a by-name/area text
+        // filter, ANDed with the filters above; never a second search
+        // index (same `app.mapEvents` this screen already loads).
+        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !q.isEmpty { list = list.filter { $0.name.lowercased().contains(q) || $0.area.lowercased().contains(q) } }
         if sortByDistance, let coords = app.userCoords {
             list.sort { distanceKm(coords, $0) ?? .greatestFiniteMagnitude < distanceKm(coords, $1) ?? .greatestFiniteMagnitude }
         }
@@ -1125,6 +1138,35 @@ struct MapExploreView: View {
 
     private var sheetContent: some View {
         VStack(spacing: 0) {
+            // Home quick event search (2026-09-27) — a plain text filter,
+            // ANDed with the category/open-now/nearby controls below;
+            // reuses this screen's own existing list/filter/event-detail
+            // routing rather than a second search surface. Autofocused on
+            // arrival from Home's search button (`startFocusedOnSearch`).
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").font(.system(size: 14)).opacity(0.55)
+                TextField(app.T("Tìm sự kiện theo tên…", "Search events by name…"), text: $searchQuery)
+                    .focused($searchFieldFocused)
+                    .font(.system(size: 14))
+                    .accessibilityIdentifier("map.searchInput")
+                if !searchQuery.isEmpty {
+                    Button { searchQuery = "" } label: {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 14)).opacity(0.45)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("map.searchClear")
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, 16).padding(.bottom, 10)
+            .onAppear {
+                if startFocusedOnSearch {
+                    searchFieldFocused = true
+                    app.mapExploreFocusSearch = false
+                }
+            }
+
             // Task 2a (11-realtime-map.md follow-up): every category is
             // visible up front now — wraps onto as many rows as needed
             // instead of requiring the user to discover horizontal

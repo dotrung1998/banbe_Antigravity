@@ -125,6 +125,9 @@ test.describe('Account wiring', () => {
     await page.getByTestId('tab-profile').click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible();
 
+    // Account IA pass (2026-09-27) — invoices/receipts now live inside the
+    // "payments" AccountGroup child screen, reached via its group card.
+    await page.getByTestId('account-group-payments').click();
     await expect(page.getByTestId('account-invoices')).toBeVisible();
     await expect(page.getByTestId('account-receipts')).toBeVisible();
   });
@@ -134,6 +137,7 @@ test.describe('Account wiring', () => {
     await page.getByTestId('tab-profile').click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible();
 
+    await page.getByTestId('account-group-payments').click();
     await page.getByTestId('account-receipts').click();
     await expect(page.locator('[data-screen-label="Documents"]')).toBeVisible();
     await expect(page.getByTestId('documents-title')).toHaveText(/Biên nhận|Receipts/);

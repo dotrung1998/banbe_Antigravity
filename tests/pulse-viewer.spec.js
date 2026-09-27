@@ -15,11 +15,12 @@ async function openPulse(page) {
 }
 
 test.describe('Banbe Pulse — header, loading asset, interactive dismiss', () => {
-  test('header shows the shared wordmark logo (not a text label), accessible as "Banbe Pulse"', async ({ page }) => {
+  test('header shows the logo followed by visible "Pulse" text, one accessible "Banbe Pulse" title', async ({ page }) => {
     await openPulse(page);
-    const logo = page.locator('[data-testid="pulse-viewer"] img[alt="Banbe Pulse"]');
-    await expect(logo).toBeVisible();
-    await expect(logo).toHaveAttribute('src', '/banbe-wordmark.png');
+    const heading = page.locator('[data-testid="pulse-viewer"] [role="heading"]');
+    await expect(heading).toHaveAttribute('aria-label', 'Banbe Pulse');
+    await expect(heading.locator('img')).toHaveAttribute('src', '/banbe-wordmark.png');
+    await expect(heading).toContainText('Pulse');
   });
 
   test('the shared loading GIF asset is actually served', async ({ page }) => {
@@ -102,5 +103,45 @@ test.describe('Home — Pulse teaser speech bubbles', () => {
     await page.click('[data-testid="map-back"]');
     await page.waitForSelector('[data-screen-label="Home"]');
     await expect(page.locator('[data-testid="home-pulse-teaser-bubble"]')).toHaveCount(0);
+  });
+
+  test('tapping the bubble advances to the next step immediately, without waiting out its timer', async ({ page }) => {
+    await setupToHome(page);
+    const bubble = page.locator('[data-testid="home-pulse-teaser-bubble"]');
+    await expect(bubble).toBeVisible({ timeout: 4000 });
+    await expect(bubble).toContainText(/Top sự kiện hôm nay|Today's top events/);
+    await bubble.click();
+    // Step 1 is either the real top-3 names or the honest empty hint —
+    // never still step 0's own label, and well before the ~4.6s the real
+    // timer would otherwise take.
+    await expect(bubble).not.toContainText(/Top sự kiện hôm nay|Today's top events/);
+  });
+
+  test('is anchored to the Pulse ring itself (not a fixed page offset), staying clear of "Sự kiện của bạn"', async ({ page }) => {
+    await setupToHome(page);
+    const bubble = page.locator('[data-testid="home-pulse-teaser-bubble"]');
+    await expect(bubble).toBeVisible({ timeout: 4000 });
+    const ring = page.locator('[data-testid="home-pulse-avatar"]');
+    const bubbleBox = await bubble.boundingBox();
+    const ringBox = await ring.boundingBox();
+    // Bubble sits fully above the ring, with real clearance — never
+    // overlapping it or reading as part of whatever renders above it.
+    expect(bubbleBox.y + bubbleBox.height).toBeLessThan(ringBox.y);
+  });
+});
+
+test.describe('Banbe Pulse — cached vs. loading tabs', () => {
+  test('switching tabs after the initial load never re-shows the loading GIF for already-cached content', async ({ page }) => {
+    await openPulse(page);
+    // All three tabs are fetched up front on open (openPulseViewer) — wait
+    // for the daily tab's own loading to finish first.
+    await expect(page.getByTestId('pulse-loading')).toHaveCount(0, { timeout: 8000 });
+
+    await page.getByTestId('pulse-tab-weekly').click();
+    await expect(page.getByTestId('pulse-loading')).toHaveCount(0);
+    await page.getByTestId('pulse-tab-photos').click();
+    await expect(page.getByTestId('pulse-loading')).toHaveCount(0);
+    await page.getByTestId('pulse-tab-daily').click();
+    await expect(page.getByTestId('pulse-loading')).toHaveCount(0);
   });
 });

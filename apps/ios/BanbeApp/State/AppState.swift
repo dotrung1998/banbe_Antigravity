@@ -20,6 +20,7 @@ enum Screen: String {
     case editProfile, publicProfile, organizerProfile
     case reports
     case organizerTeam
+    case accountGroup
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -452,6 +453,10 @@ final class AppState: ObservableObject {
     // AccountView's switch-statement case was re-entered — e.g. after
     // opening the new public-profile link and coming back) into here.
     @Published var accountTab = "personal"
+    // Account IA pass (2026-09-27) — which group AccountGroupView shows:
+    // "team" | "activity" | "payments" | "preferences" | "hostOps" |
+    // "adminReview". `accountTab` itself is untouched by opening a group.
+    @Published var accountGroupKey: String?
     @Published var orgProfileSaving = false
     @Published var orgProfileError = ""
     // Retention roadmap follow-up — canonical real-event cache, keyed by
@@ -576,6 +581,12 @@ final class AppState: ObservableObject {
     // time (RootView.swift's ZStack), so this dictionary keeps updating even
     // while visually covered.
     @Published var storyRingFrames: [String: CGRect] = [:]
+    // Pulse teaser pass (2026-09-27) — the Pulse ring's own global frame,
+    // same PreferenceKey mechanism as storyRingFrames above (HomeView's
+    // `PulseRingFramePreferenceKey`, `.onPreferenceChange`), read by
+    // `PulseTeaserBubbleView` to position itself against the REAL ring
+    // on screen rather than guessing a fixed offset.
+    @Published var pulseRingFrame: CGRect?
     @Published var storyCreatePreviewImage: UIImage?
     @Published var storyCreateBusy = false
     @Published var storyViewedIds: Set<UUID> = []
@@ -1939,6 +1950,15 @@ final class AppState: ObservableObject {
         )
         screen = .mapExplore
     }
+    // Home quick event search (2026-09-27) — reuses the EXISTING
+    // MapExploreView list/filter/event-detail experience (region/status
+    // filters, real events already loaded there) rather than a second
+    // search index/screen — the only genuinely missing piece was a
+    // by-name text filter (see that view's own `searchQuery`). Leaves
+    // `mapExploreState` nil (a normal fresh open, its own density-hotspot
+    // centering), unlike `openEventOnMap(_:)` above.
+    @Published var mapExploreFocusSearch = false
+    func openEventSearch() { mapExploreFocusSearch = true; screen = .mapExplore }
     func goOrganizer() { screen = .organizer }
     func backToEvent() { screen = .event }
     func openHeld() { screen = .confirmed }
@@ -2272,6 +2292,10 @@ final class AppState: ObservableObject {
         // "snaps back to Team" once that animation finished.
         case .organizerTeam: backFromOrganizerTeam()
         case .reports: backFromReports()
+        // Account IA pass (2026-09-27) — `accountTab` is never touched by
+        // AccountGroupView, so returning to `.profile` always lands back
+        // on whichever tab was already showing.
+        case .accountGroup: screen = .profile
         default: break
         }
     }
@@ -2328,6 +2352,7 @@ final class AppState: ObservableObject {
         // of where Team was actually opened from.
         case .organizerTeam: return organizerTeamBackScreen
         case .reports: return reportsBackScreen
+        case .accountGroup: return .profile
         default: return .home
         }
     }

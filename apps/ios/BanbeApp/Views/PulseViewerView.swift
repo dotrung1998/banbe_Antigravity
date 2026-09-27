@@ -101,15 +101,19 @@ struct PulseViewerView: View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
                 HStack {
-                    // A/1 — the SAME wordmark asset + width Home's own
-                    // header uses (HomeView.swift:243, `BanbeLogo(kind:
-                    // .wordmark, width: 126)`), tinted for the current
-                    // theme by BanbeLogo itself — never a second/different
-                    // logo treatment. `.accessibilityLabel` overrides
-                    // BanbeLogo's own generic "banbe" label so this still
-                    // reads as "Banbe Pulse" to VoiceOver, per the ticket.
-                    BanbeLogo(kind: .wordmark, width: 126)
-                        .accessibilityLabel("Banbe Pulse")
+                    // A/1 (real-device follow-up) — logo FOLLOWED BY
+                    // visible text "Pulse", one title: the logo alone read
+                    // as just "banbe," nothing naming this specific
+                    // screen. Grouped via `.accessibilityElement(children:
+                    // .combine)` + one `.accessibilityLabel` so VoiceOver
+                    // announces the pair once, as "Banbe Pulse" — matches
+                    // web's `role="heading"` fix exactly.
+                    HStack(spacing: 8) {
+                        BanbeLogo(kind: .wordmark, width: 100)
+                        Text(app.T("Pulse", "Pulse")).font(BanbeTheme.display(20))
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Banbe Pulse")
                     Spacer()
                     Button { commitDismiss() } label: {
                         Image(systemName: "xmark").font(.system(size: 16, weight: .semibold)).foregroundStyle(app.palette.ink)

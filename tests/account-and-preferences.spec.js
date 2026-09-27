@@ -26,15 +26,28 @@ test.describe('Account & Preferences Screen', () => {
   });
 
   test('navigates to Account screen and opens Preferences', async ({ page }) => {
-    // "Tài khoản" is the account link on Home (Vietnamese baseline)
-    await page.getByText('Tài khoản').first().click();
+    // Found while verifying this pass's own Account IA changes — this
+    // whole file's `getByText('Tài khoản').first().click()` was a stale,
+    // ALREADY-broken selector, unrelated to this ticket: the dock has been
+    // icon-only for several passes now (BottomTabBar.jsx's own comment,
+    // "label text removed entirely... `label` remains the sole source for
+    // the accessibility label"), so no visible "Tài khoản" text has
+    // existed to click for a while — confirmed by diffing BottomTabBar.jsx
+    // against 2b7bbbb (identical, untouched this pass). Fixed opportunistically
+    // (it was blocking verification of this pass's own changes), not part
+    // of this ticket's own ask.
+    await page.getByTestId('tab-profile').click();
 
     // Verify Account screen
     const accountScreen = page.locator('[data-screen-label="Account"]');
     await expect(accountScreen).toBeVisible({ timeout: 3000 });
 
-    // Click "Ngôn ngữ & hiển thị" to open Preferences
-    await page.getByText('Ngôn ngữ & hiển thị').click();
+    // "Ngôn ngữ & hiển thị" was already a stale label too (the row reads
+    // "Tùy chỉnh ứng dụng"/"App preferences" now, an earlier, unrelated
+    // rename) — it also now lives inside the "preferences" AccountGroup
+    // child screen (Account IA pass, 2026-09-27), not directly on Account.
+    await page.getByTestId('account-group-preferences').click();
+    await page.getByTestId('account-preferences').click();
 
     // Verify Preferences screen
     const prefScreen = page.locator('[data-screen-label="Preferences"]');
@@ -62,7 +75,7 @@ test.describe('Account & Preferences Screen', () => {
   // (a guest seeing the toggle at all) can no longer happen.
 
   test('can return from Account to Home', async ({ page }) => {
-    await page.getByText('Tài khoản').first().click();
+    await page.getByTestId('tab-profile').click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 3000 });
 
     // "Xong" button on Account returns to Home
@@ -71,11 +84,14 @@ test.describe('Account & Preferences Screen', () => {
   });
 
   test('Security opens from Account and offers a password form', async ({ page }) => {
-    await page.getByText('Tài khoản').first().click();
+    await page.getByTestId('tab-profile').click();
     const accountScreen = page.locator('[data-screen-label="Account"]');
     await expect(accountScreen).toBeVisible({ timeout: 3000 });
 
-    await accountScreen.getByTestId('account-security').click();
+    // Security now lives inside the "preferences" AccountGroup child
+    // screen (Account IA pass, 2026-09-27), not directly on Account.
+    await accountScreen.getByTestId('account-group-preferences').click();
+    await page.getByTestId('account-security').click();
     const securityScreen = page.locator('[data-screen-label="Security"]');
     await expect(securityScreen).toBeVisible({ timeout: 3000 });
 
@@ -97,7 +113,7 @@ test.describe('Account & Preferences Screen', () => {
   test('an event opened from a list has a back pill naming that list', async ({ page }) => {
     // Saved is the one a signed-out guest can actually put an event into.
     await page.locator('[data-screen-label="Home"]').getByText('Lưu', { exact: true }).first().click();
-    await page.getByText('Tài khoản').first().click();
+    await page.getByTestId('tab-profile').click();
     const accountScreen = page.locator('[data-screen-label="Account"]');
     await expect(accountScreen).toBeVisible({ timeout: 3000 });
 
@@ -120,7 +136,7 @@ test.describe('Account & Preferences Screen', () => {
   // list view and — the point of the fix — a single tap back lands on
   // Account again, not Home.
   test('"Going" and "Saved" open their own list, and back returns to Account', async ({ page }) => {
-    await page.getByText('Tài khoản').first().click();
+    await page.getByTestId('tab-profile').click();
     const accountScreen = page.locator('[data-screen-label="Account"]');
     await expect(accountScreen).toBeVisible({ timeout: 3000 });
 

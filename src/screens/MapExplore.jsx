@@ -121,6 +121,11 @@ export default function MapExplore() {
   const [catFilter, setCatFilter] = useState(() => restored?.catFilter ?? 'all');
   const [openNowOnly, setOpenNowOnly] = useState(() => restored?.openNowOnly ?? false);
   const [sortByDistance, setSortByDistance] = useState(() => restored?.sortByDistance ?? false);
+  // Home quick event search (2026-09-27) — a by-name/area text filter,
+  // ANDed with the existing category/open-now/nearby filters above (never
+  // a separate search index — same `events` this screen already loads).
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef(null);
   // Task 6 (2026-09-21 follow-up) — "Open in Map"'s own snapshot
   // (GocContext.jsx's openEventOnMap) never sets `sheetSnap` (only
   // camera/selectedId), so a genuine MapExplore-to-MapExplore restore
@@ -279,6 +284,9 @@ export default function MapExplore() {
   // mistakenly reusing the exact same snapshot later.
   useEffect(() => {
     if (restored) setMapExploreState(null);
+    // Home quick event search — autofocus the moment this screen paints,
+    // exactly the "focuses input" the ticket asks for.
+    if (restored?.focusSearch) searchInputRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -393,6 +401,10 @@ export default function MapExplore() {
     let list = events;
     if (catFilter !== 'all') list = list.filter(e => e.catKey === catFilter);
     if (openNowOnly) list = list.filter(e => e.seatsRemaining > 0);
+    // Home quick event search — real events only, matched by name/area;
+    // ANDed with the filters above, never a replacement for them.
+    const q = searchQuery.trim().toLowerCase();
+    if (q) list = list.filter(e => e.name?.toLowerCase().includes(q) || e.area?.toLowerCase().includes(q));
     if (sortByDistance && s.userCoords) {
       // Stage 3 — a no-location event has no real distance to sort by;
       // sorts after every plottable one rather than a NaN-driven,
@@ -404,7 +416,7 @@ export default function MapExplore() {
       });
     }
     return list;
-  }, [events, catFilter, openNowOnly, sortByDistance, s.userCoords]);
+  }, [events, catFilter, openNowOnly, searchQuery, sortByDistance, s.userCoords]);
 
   // B1 — the ONE filtered event-id set the list below and the map's own
   // markers (the draw effect right after this) both key off, so they can
@@ -946,6 +958,32 @@ export default function MapExplore() {
           <div style={{ width: 36, height: 4, borderRadius: 2, background: rule }} />
         </div>
 
+        {/* Home quick event search (2026-09-27) — a plain text filter,
+            ANDed with the category/open-now/nearby controls below;
+            reuses this screen's own existing list/filter/event-detail
+            routing rather than a second search surface. Autofocused on
+            arrival from Home's search button (see the mount effect
+            above). */}
+        <div style={{ padding: '0 16px 10px' }}>
+          <div style={{ ...fieldGlass({}), display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px' }}>
+            <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.55, flex: 'none' }}>
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={T('Tìm sự kiện theo tên…', 'Search events by name…')}
+              data-testid="map-search-input"
+              style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontSize: 13.5, color: ink, fontFamily: "'Be Vietnam Pro', sans-serif" }}
+            />
+            {searchQuery && (
+              <span onClick={() => setSearchQuery('')} data-testid="map-search-clear" style={{ cursor: 'pointer', color: ink, opacity: 0.5, fontSize: 16, lineHeight: 1, flex: 'none' }}>×</span>
+            )}
+          </div>
+        </div>
+
         {/* Primary, always-present control for the list/map balance — the
             drag handle above still works as an additional way to move
             between snap points, but these two buttons are the explicit,
@@ -1035,7 +1073,13 @@ export default function MapExplore() {
             </div>
           )}
           {loading && visibleEvents.length === 0 && <div style={{ padding: 20, color: ink, opacity: 0.6, fontSize: 13 }}>{T('Đang tải…', 'Loading…')}</div>}
-          {!loading && visibleEvents.length === 0 && <div style={{ padding: 20, color: ink, opacity: 0.6, fontSize: 13 }}>{T('Không có sự kiện nào ở khu vực này.', 'No events in this area.')}</div>}
+          {!loading && visibleEvents.length === 0 && (
+            <div style={{ padding: 20, color: ink, opacity: 0.6, fontSize: 13 }} data-testid="map-search-no-results">
+              {searchQuery.trim()
+                ? T(`Không tìm thấy sự kiện nào khớp với "${searchQuery.trim()}".`, `No events match "${searchQuery.trim()}".`)
+                : T('Không có sự kiện nào ở khu vực này.', 'No events in this area.')}
+            </div>
+          )}
           {visibleEvents.map(ev => (
             <div
               key={ev.id}

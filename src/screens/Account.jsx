@@ -26,7 +26,7 @@ function organizerAvatarUrl(path) {
 // SAME string get_account_kpis (migration 097) expects — never re-derived
 // inside Reports.jsx itself, so what the user tapped is exactly what gets
 // fetched.
-function ReportsRow({ label, onClick, testId }) {
+export function ReportsRow({ label, onClick, testId }) {
   return (
     <div
       onClick={onClick}
@@ -39,7 +39,28 @@ function ReportsRow({ label, onClick, testId }) {
   );
 }
 
-function RowIcon({ kind, size = 22 }) {
+// Color-as-wayfinding pass (2026-09-27) — a restrained accent, reusing the
+// SAME existing profile-palette tokens (src/lib/profileTheme.js — already
+// how the personal/organizer card washes tell those two apart) rather than
+// a new/arbitrary color set. Icon glyphs themselves stay `ink` (unchanged,
+// always-readable stroke) — the color lives ONLY in a soft circular
+// backdrop behind the glyph, exactly the existing card-wash convention
+// (a translucent tint OVER the card's own paper/field background), so
+// light/dark contrast is inherited for free instead of re-derived, and
+// color is never the only signal (shape + label are unchanged). Kept in
+// one small map here (not per-call-site) so Account/Notifications can
+// never drift on what a given meaning's color is — Notifications.jsx's
+// own KindIcon imports this exact map.
+export const ROW_ACCENT_COLORS = {
+  team: PROFILE_PALETTE_COLORS.moss,
+  activity: PROFILE_PALETTE_COLORS.rose,
+  payments: PROFILE_PALETTE_COLORS.sand,
+  preferences: PROFILE_PALETTE_COLORS.ink,
+  hostOps: PROFILE_PALETTE_COLORS.moss,
+  adminReview: PROFILE_PALETTE_COLORS.rose,
+};
+
+export function RowIcon({ kind, size = 22, accent }) {
   const glyphSize = Math.round(size * 0.82);
   const common = { width: glyphSize, height: glyphSize, viewBox: '0 0 24 24', fill: 'none', stroke: ink, strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
   const byKind = {
@@ -58,22 +79,58 @@ function RowIcon({ kind, size = 22 }) {
     alertShield: <><path d="M12 3.2l6.8 2.8v5.7c0 4.7-3 7.4-6.8 8.7-3.8-1.3-6.8-4-6.8-8.7V6z" /><path d="M12 8.5v4.3M12 15.4v0" /></>,
   };
   return (
-    <span aria-hidden style={{ width: size, height: size, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.72 }}>
-      <svg {...common}>{byKind[kind]}</svg>
+    <span
+      aria-hidden
+      style={{
+        width: size, height: size, flex: 'none', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: accent ? `${accent}55` : 'transparent',
+      }}
+    >
+      <svg {...common} style={{ opacity: 0.72 }}>{byKind[kind]}</svg>
     </span>
+  );
+}
+
+// Account IA pass (2026-09-27) — a grouped entry card: icon + title +
+// optional badge (an urgent pending-action COUNT, never buried inside the
+// child screen only — see this ticket's own "preserve urgent pending-
+// action visibility... at the group entry" instruction) + chevron, opening
+// the shared AccountGroup child screen. `groupKey` doubles as the
+// `ROW_ACCENT_COLORS` lookup AND the `data-testid`/route id both platforms
+// share, so iOS/web can't drift on what a given group actually is.
+function GroupCard({ groupKey, iconKind, label, badge, onClick, marginTop = 8 }) {
+  return (
+    <div
+      onClick={onClick}
+      data-testid={`account-group-${groupKey}`}
+      style={{ ...fieldGlass({ marginTop, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
+        <RowIcon kind={iconKind} accent={ROW_ACCENT_COLORS[groupKey]} />
+        {label}
+      </span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {!!badge && (
+          <span style={{ fontSize: 11, fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }} data-testid={`account-group-${groupKey}-badge`}>
+            {badge}
+          </span>
+        )}
+        <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+      </span>
+    </div>
   );
 }
 
 export default function Account() {
   const {
-    state, T, goHome, goEditName, openPreferences, goGoingList, goSavedList, goCompletedList, openSecurity, openDocuments, openPayout, openVerifications, openDisputes, openAdminEvents, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
-    openRefundAccounts, openMyRefunds, openEditProfile,
+    state, T, goHome, goEditName, goGoingList, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
+    openMyRefunds, openEditProfile,
     loadHomeStories, openStoryViewer, pickStoryFile, cancelStoryCreate, publishStory,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary,
     openPaymentDetails, goDashboard,
-    loadMyOrgStats, setAccountTab, openPublicProfile, openReports,
-    loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility,
-    loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, goEvent,
+    loadMyOrgStats, setAccountTab, openPublicProfile, openReports, openAccountGroup,
+    loadMyOrganizerMemberships,
+    loadMyEventCredits, loadMyConfirmedEventCredits,
   } = useGoc();
   const s = state;
   // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Both panes stay
@@ -171,9 +228,6 @@ export default function Account() {
     if (file) pickStoryFile(file);
   };
   const doPublishStory = async () => { await publishStory(); };
-  const completedCount = [...new Set([...(s.favorites || []), ...s.attending])]
-    .map(k => EVENTS.find(e => e.key === k))
-    .filter(e => e && e.endedHoursAgo != null).length;
   // Once an event is over it belongs in "Completed", not "Going" — otherwise
   // it just sits there forever looking like something still upcoming.
   const goingCount = s.attending
@@ -244,104 +298,15 @@ export default function Account() {
           down) — the Tổ chức tab gets its own separate, organizer-only
           card instead. */}
       <div data-testid="account-tab-panel-personal" style={{ display: accountTab === 'personal' ? 'block' : 'none' }}>
-      <ReportsRow label={T('Số liệu & báo cáo', 'Metrics & reports')} testId="account-reports-personal" onClick={() => openReports('personal', null, 'profile')} />
-
-      {/* Organizer Team pass (2026-09-27, Stage 1) — a real, pending
-          invite this account was actually sent (organizer_members,
-          migration 098). Accepting does NOT turn on public visibility —
-          that's the separate switch in "Đội ngũ của tôi" below. */}
-      {s.myOrganizerInvites.length > 0 && (
-        <div style={{ margin: '18px 20px 0' }} data-testid="account-team-invites">
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Lời mời Team', 'Team invites')}</span>
-          {s.myOrganizerInvites.map(inv => (
-            <div key={inv.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`team-invite-${inv.id}`}>
-              <span style={{ fontSize: 13, color: ink }}>
-                {T(`${inv.organizers?.name || 'Một tổ chức'} mời bạn làm ${inv.public_role}`, `${inv.organizers?.name || 'An organizer'} invited you as ${inv.public_role}`)}
-              </span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div onClick={() => respondToOrganizerInvite(inv.id, true)} data-testid={`team-invite-accept-${inv.id}`} style={{ ...inkButton({ flex: 1, padding: 10, fontSize: 12.5 }) }}>{T('Chấp nhận', 'Accept')}</div>
-                <div onClick={() => respondToOrganizerInvite(inv.id, false)} data-testid={`team-invite-decline-${inv.id}`} style={{ ...fieldGlass({ flex: 1, padding: 10, fontSize: 12.5, textAlign: 'center', cursor: 'pointer' }) }}>{T('Từ chối', 'Decline')}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Each accepted membership's OWN visibility switch — off by default,
-          and the ONLY way it can ever turn on (never the organizer owner). */}
-      {s.myTeamMemberships.length > 0 && (
-        <div style={{ margin: '18px 20px 0' }} data-testid="account-team-memberships">
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đội ngũ của tôi', 'My teams')}</span>
-          {s.myTeamMemberships.map(m => (
-            <div key={m.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`team-membership-${m.id}`}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-                <span style={{ fontSize: 13, color: ink }}>{m.organizers?.name || T('Một tổ chức', 'An organizer')}</span>
-                <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{m.public_role}</span>
-              </div>
-              <div
-                onClick={() => setOrganizerMemberVisibility(m.id, !m.public_visible)}
-                data-testid={`team-membership-visibility-${m.id}`}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
-              >
-                <span style={{ fontSize: 11, color: ink }}>{T('Hiển thị tôi trong Team', 'Show me in the Team')}</span>
-                <span aria-hidden style={{ flex: 'none', width: 40, height: 24, borderRadius: 12, padding: 3, background: m.public_visible ? ink : 'rgba(27,25,22,0.18)', transition: 'background .15s' }}>
-                  <span style={{ display: 'block', width: 18, height: 18, borderRadius: '50%', background: paper, transform: m.public_visible ? 'translateX(16px)' : 'translateX(0)', transition: 'transform .15s' }} />
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Organizer Team pass (2026-09-27, Stage 2) — a real, explicit,
-          owner-assigned event-organizing credit this account was actually
-          sent. Never derived from bookings/check-ins.
-          iPhone fix pass (2026-09-27), Issue 5 — header now explicitly says
-          "pending", followed by a SEPARATE confirmed section below
-          (myConfirmedEventCredits), per this ticket's own "pending invites
-          separately from confirmed credits" ask. */}
-      {s.myEventCredits.length > 0 && (
-        <div style={{ margin: '18px 20px 0' }} data-testid="account-event-credits">
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện — lời mời đang chờ', 'Event contributions — pending invites')}</span>
-          {s.myEventCredits.map(c => (
-            <div key={c.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`event-credit-${c.id}`}>
-              <span style={{ fontSize: 13, color: ink }}>
-                {T(`${c.organizers?.name || 'Một tổ chức'} ghi nhận bạn đã tổ chức "${c.events?.name || ''}"`, `${c.organizers?.name || 'An organizer'} credited you for organizing "${c.events?.name || ''}"`)}
-              </span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div onClick={() => respondToEventCredit(c.id, true)} data-testid={`event-credit-accept-${c.id}`} style={{ ...inkButton({ flex: 1, padding: 10, fontSize: 12.5 }) }}>{T('Chấp nhận', 'Accept')}</div>
-                <div onClick={() => respondToEventCredit(c.id, false)} data-testid={`event-credit-decline-${c.id}`} style={{ ...fieldGlass({ flex: 1, padding: 10, fontSize: 12.5, textAlign: 'center', cursor: 'pointer' }) }}>{T('Từ chối', 'Decline')}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {/* iPhone fix pass (2026-09-27), Issue 5 — the CONFIRMED half; this
-          account's own PRIVATE view (always visible here to its owner,
-          regardless of the separate public_visible opt-in that only ever
-          gates the PUBLIC profile's own credited_events, get_public_profile
-          migration 100). Read-only (no Accept/Decline — already resolved),
-          tappable straight to the event. */}
-      {s.myConfirmedEventCredits.length > 0 && (
-        <div style={{ margin: '18px 20px 0' }} data-testid="account-event-credits-confirmed">
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện — đã xác nhận', 'Event contributions — confirmed')}</span>
-          {s.myConfirmedEventCredits.map(c => (
-            <div
-              key={c.id}
-              onClick={() => goEvent(c.event_id)}
-              style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }) }}
-              data-testid={`event-credit-confirmed-${c.id}`}
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: ink }}>{c.events?.name || T('Một sự kiện', 'An event')}</span>
-                <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{c.organizers?.name || T('Một tổ chức', 'An organizer')}</span>
-              </div>
-              <span aria-hidden style={{ fontSize: 18, color: ink, opacity: 0.5 }}>›</span>
-            </div>
-          ))}
-        </div>
-      )}
-      {/* TASK D (2026-10-01 UX foundation pass) — the header is now a
+      {/* Account IA pass (2026-09-27) — the identity card is now the FIRST
+          thing under the tab pills (was: reports row, then Team invites/
+          memberships/event-credit sections, THEN this card) — Going/Saved
+          immediately follow it, per this ticket's own ordering ask.
+          Team invites/memberships and event credits (pending + confirmed)
+          moved into the "team"/"activity" AccountGroup child screens below
+          — never duplicated here, only their own pending COUNTS surface at
+          the group-entry level now (GroupCard's `badge`).
+          TASK D (2026-10-01 UX foundation pass) — the header is now a
           tappable rounded profile card (editorial style: soft gradient
           wash from the account's own chosen palette, real avatar or a
           palette-tinted monogram, handle line). The story ring/post-story
@@ -488,6 +453,8 @@ export default function Account() {
 
       <ActionCenter items={actionItems} onSeeAll={() => openVerifications('profile')} T={T} />
 
+      <ReportsRow label={T('Số liệu & báo cáo', 'Metrics & reports')} testId="account-reports-personal" onClick={() => openReports('personal', null, 'profile')} />
+
       {referralLink && (
         <div style={{ ...cardGlass({ margin: '20px 20px 0', padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, cursor: 'pointer' }) }} onClick={shareReferral}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
@@ -505,46 +472,40 @@ export default function Account() {
         </div>
       )}
 
-      {/* TASK 3A (2026-09-22 twenty-first follow-up) — the "Tin nhắn"/
-          Messages shortcut row removed entirely from Account per this
-          ticket's own ask; Inbox stays reachable exactly as before via the
-          bottom dock (BottomTabBar.jsx), untouched. */}
-      <div style={{ ...fieldGlass({ margin: '20px 20px 0', display: 'flex', flexDirection: 'column' }) }}>
-        <div onClick={goCompletedList} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="calendarCheck" />{T('Sự kiện đã hoàn thành', 'Completed events')}</span>
-          <span style={{ fontSize: 13, color: ink }}>{completedCount} ›</span>
-        </div>
-        {/* TASK 3B — broader, more accurate label: this screen holds more
-            than language/theme (see PreferencesView/Preferences.jsx).
-            Destination (`openPreferences`) and the right-side summary are
-            unchanged. */}
-        <div onClick={openPreferences} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="sliders" />{T('Tùy chỉnh ứng dụng', 'App preferences')}</span>
-          <span style={{ fontSize: 13, color: ink }}>{s.lang === 'en' ? 'English' : 'Tiếng Việt'} ▪︎ {s.theme === 'dark' ? T('Tối', 'Dark') : T('Sáng', 'Light')}</span>
-        </div>
-        <div onClick={() => openDocuments('invoice', 'guest')} data-testid="account-invoices" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="document" />{T('Hoá đơn', 'Invoices')}</span>
-          <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-        </div>
-        <div onClick={() => openDocuments('receipt', 'guest')} data-testid="account-receipts" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="receipt" />{T('Biên nhận', 'Receipts')}</span>
-          <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-        </div>
-        {/* Refund MVP (product rule A) — a persistent entry point, reachable
-            regardless of whether a notification was ever tapped. */}
-        <div onClick={() => openRefundAccounts('profile')} data-testid="account-refund-accounts" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="banknote" />{T('Tài khoản thanh toán & nhận hoàn tiền', 'Payment & refund accounts')}</span>
-          <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-        </div>
-        <div onClick={() => openMyRefunds('profile')} data-testid="account-refunds" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="checklist" />{T('Hoàn tiền', 'Refunds')}</span>
-          <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-        </div>
-        <div onClick={openSecurity} data-testid="account-security" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', cursor: 'pointer' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="shield" />{T('Bảo mật', 'Security')}</span>
-          <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-        </div>
-      </div>
+      {/* Account IA pass (2026-09-27) — the old single long list of rows
+          (Completed events / App preferences / Invoices / Receipts /
+          Payment & refund accounts / Refunds / Security), plus Team
+          invites/memberships and event credits from further up, are now
+          FOUR grouped entry cards, each opening the shared AccountGroup
+          child screen for that one related flow. Every child action keeps
+          its EXACT original data-testid/route (openDocuments/openSecurity/
+          etc., unchanged) — only WHERE it's reached from moved. Badge
+          counts are the same real, un-derived pending-action data that
+          used to render inline here — never buried, still visible at this
+          entry level. */}
+      <GroupCard
+        groupKey="team" iconKind="users"
+        label={T('Hồ sơ & Team', 'Profile & Team')}
+        badge={s.myOrganizerInvites.length}
+        onClick={() => openAccountGroup('team')}
+        marginTop={20}
+      />
+      <GroupCard
+        groupKey="activity" iconKind="calendarCheck"
+        label={T('Vé & hoạt động', 'Tickets & activity')}
+        badge={s.myEventCredits.length}
+        onClick={() => openAccountGroup('activity')}
+      />
+      <GroupCard
+        groupKey="payments" iconKind="banknote"
+        label={T('Thanh toán & giấy tờ', 'Payments & documents')}
+        onClick={() => openAccountGroup('payments')}
+      />
+      <GroupCard
+        groupKey="preferences" iconKind="sliders"
+        label={T('Tùy chỉnh', 'Preferences')}
+        onClick={() => openAccountGroup('preferences')}
+      />
 
       {/* Account extension (2026-09-27, Stage 1) — "Organizer mode OFF
           means host UI is OFF": the whole Tổ chức tab disappears while
@@ -615,9 +576,9 @@ export default function Account() {
       </div>
 
       <div data-testid="account-tab-panel-host" style={{ display: accountTab === 'host' ? 'block' : 'none' }}>
-      {s.myOrganizerId && (
-        <ReportsRow label={T('Số liệu & báo cáo', 'Metrics & reports')} testId="account-reports-host" onClick={() => openReports('host', s.myOrganizerId, 'profile')} />
-      )}
+      {/* Account IA pass (2026-09-27) — identity card FIRST under the tab
+          pills (was: reports row, then this card) — matches Cá nhân's own
+          reordering. */}
       {/* Host tab's OWN rounded profile card (Stage D) — organizer avatar/
           name/introduction, stored on `organizers` (migration 090), never
           profiles.display_name. Only shown once this account has ever
@@ -691,32 +652,25 @@ export default function Account() {
         </div>
       )}
 
-      {/* Account regression fix pass (2026-09-27), Item 1 — moved here
-          from Cá nhân: real host-management rows, only ever reachable
-          while organizerMode is on (this whole tab's own visibility
-          rule) — never duplicated in both tabs. */}
+      {s.myOrganizerId && (
+        <ReportsRow label={T('Số liệu & báo cáo', 'Metrics & reports')} testId="account-reports-host" onClick={() => openReports('host', s.myOrganizerId, 'profile')} />
+      )}
+
+      {/* Account regression fix pass (2026-09-27), Item 1 — host-management
+          rows, only ever reachable while organizerMode is on (this whole
+          tab's own visibility rule). Account IA pass (2026-09-27) — now
+          ONE grouped entry card (was an inline 4-row list) — same exact
+          child actions/testids, moved into the shared AccountGroup screen.
+          Badge = real outstanding host duties (verifications + refund
+          queue), never invented. */}
       {canHost && (
-        <div style={{ padding: '22px 20px 0' }}>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản lý thanh toán', 'Payment management')}</span>
-          <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
-            <div onClick={openVerifications} data-testid="host-verifications" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="checklist" />{T('Chờ xác nhận thanh toán', 'Awaiting verification')}</span>
-              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-            </div>
-            <div onClick={openPayout} data-testid="host-payout" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="banknote" />{T('Nhận thanh toán', 'Getting paid')}</span>
-              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-            </div>
-            <div onClick={() => openDocuments('invoice', 'host')} data-testid="host-invoices" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="document" />{T('Hoá đơn đã phát hành', 'Invoices issued')}</span>
-              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-            </div>
-            <div onClick={() => openDocuments('receipt', 'host')} data-testid="host-receipts" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', cursor: 'pointer' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="receipt" />{T('Biên nhận đã phát hành', 'Receipts issued')}</span>
-              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-            </div>
-          </div>
-        </div>
+        <GroupCard
+          groupKey="hostOps" iconKind="checklist"
+          label={T('Vận hành & thanh toán tổ chức', 'Event operations & payments')}
+          badge={(s.verifications || []).length + (s.refundQueue || []).length}
+          onClick={() => openAccountGroup('hostOps')}
+          marginTop={22}
+        />
       )}
 
       <div style={{ height: 24 }} />
@@ -736,19 +690,16 @@ export default function Account() {
       {s.accountType === 'admin' && (
         <div data-testid="account-tab-panel-admin" style={{ display: accountTab === 'admin' ? 'block' : 'none' }}>
           <ReportsRow label={T('Số liệu & báo cáo', 'Metrics & reports')} testId="account-reports-admin" onClick={() => openReports('admin', null, 'profile')} />
-          <div style={{ padding: '22px 20px 0' }}>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản trị', 'Admin')}</span>
-            <div onClick={openDisputes} data-testid="admin-disputes" style={{ ...fieldGlass({ marginTop: 10, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="alertShield" />{T('Tranh chấp thanh toán', 'Payment disputes')}</span>
-              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-            </div>
-            {/* Event submission -> review -> publish — a separate desk from
-                the payment dispute one above; don't conflate the two. */}
-            <div onClick={openAdminEvents} data-testid="admin-events" style={{ ...fieldGlass({ marginTop: 8, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="alertShield" />{T('Sự kiện chờ duyệt', 'Pending events')}</span>
-              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-            </div>
-          </div>
+          {/* Account IA pass (2026-09-27) — same "Payment disputes"/
+              "Pending events" actions, now one grouped entry card. No
+              identity card exists for Admin (there never was one) — this
+              tab has nothing else to reorder ahead of. */}
+          <GroupCard
+            groupKey="adminReview" iconKind="alertShield"
+            label={T('Duyệt & kiểm duyệt', 'Review & moderation')}
+            onClick={() => openAccountGroup('adminReview')}
+            marginTop={22}
+          />
           <div style={{ height: 24 }} />
         </div>
       )}

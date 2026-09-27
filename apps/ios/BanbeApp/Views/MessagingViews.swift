@@ -933,6 +933,19 @@ private let notificationKindCategory: [String: String] = [
 ]
 private func notificationCategory(_ kind: String) -> String { notificationKindCategory[kind] ?? "system" }
 
+// Color-as-wayfinding pass (2026-09-27) — the SAME meaning -> color map
+// AccountView's own group cards use (ROW_ACCENT_COLORS), consolidated to
+// the 4 groups that actually exist there — money-related kinds ->
+// "payments" (sand), booking/event -> "activity" (rose), team -> "team"
+// (moss), message/system -> neutral (ink). Mirrors web's own
+// `CATEGORY_ACCENT` (Notifications.jsx) value-for-value.
+private let notificationCategoryAccent: [String: Color] = [
+    "refund": ROW_ACCENT_COLORS["payments"]!, "payment": ROW_ACCENT_COLORS["payments"]!, "dispute": ROW_ACCENT_COLORS["payments"]!,
+    "booking": ROW_ACCENT_COLORS["activity"]!, "event": ROW_ACCENT_COLORS["activity"]!,
+    "team": ROW_ACCENT_COLORS["team"]!,
+    "message": ROW_ACCENT_COLORS["preferences"]!, "system": ROW_ACCENT_COLORS["preferences"]!,
+]
+
 private struct NotificationKindIcon: View {
     let category: String
     private var symbolName: String {
@@ -951,6 +964,8 @@ private struct NotificationKindIcon: View {
         Image(systemName: symbolName)
             .font(.system(size: 11, weight: .medium))
             .foregroundStyle(.secondary)
+            .frame(width: 22, height: 22)
+            .background((notificationCategoryAccent[category] ?? ROW_ACCENT_COLORS["preferences"]!).opacity(0.33), in: Circle())
             .accessibilityHidden(true)
     }
 }

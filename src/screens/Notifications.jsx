@@ -35,6 +35,24 @@ const KIND_CATEGORY = {
 };
 function notificationCategory(kind) { return KIND_CATEGORY[kind] || 'system'; }
 
+// Color-as-wayfinding pass (2026-09-27) — the SAME meaning -> color map
+// Account.jsx's own group cards use (ROW_ACCENT_COLORS, re-derived here
+// rather than imported since that module isn't a shared design-tokens
+// file — see its own doc comment for why these four values specifically).
+// Consolidated to the 4 groups that actually exist there: money-related
+// kinds -> "payments" (sand), booking/event kinds -> "activity" (rose),
+// team kinds -> "team" (moss), message/system -> neutral (ink, same as
+// "preferences"). The glyph itself stays `ink` (unchanged, always-
+// readable stroke) — color lives only in a soft circular backdrop behind
+// it, same convention as RowIcon's own `accent` prop, so light/dark
+// contrast is inherited for free and color is never the only signal.
+const CATEGORY_ACCENT = {
+  refund: '#E3D3B4', payment: '#E3D3B4', dispute: '#E3D3B4',
+  booking: '#E7C9C2', event: '#E7C9C2',
+  team: '#C8CBB2',
+  message: '#3A3630', system: '#3A3630',
+};
+
 function KindIcon({ category }) {
   const common = { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: ink, strokeWidth: 1.9, strokeLinecap: 'round', strokeLinejoin: 'round' };
   const byCategory = {
@@ -48,8 +66,14 @@ function KindIcon({ category }) {
     system: <><circle cx="12" cy="12" r="8.4" /><path d="M12 8.3v4.5M12 15.7v0" /></>,
   };
   return (
-    <span aria-hidden style={{ flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.6 }}>
-      <svg {...common}>{byCategory[category] || byCategory.system}</svg>
+    <span
+      aria-hidden
+      style={{
+        flex: 'none', width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: `${CATEGORY_ACCENT[category] || CATEGORY_ACCENT.system}55`,
+      }}
+    >
+      <svg {...common} style={{ opacity: 0.75 }}>{byCategory[category] || byCategory.system}</svg>
     </span>
   );
 }

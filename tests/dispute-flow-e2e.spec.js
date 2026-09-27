@@ -181,6 +181,9 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
     // only while organizerMode is on (true here — organizerUser has
     // role='organizer').
     await organizerPage.locator('[data-testid="account-tab-host"]').click();
+    // Account IA pass (2026-09-27) — verifications now behind the
+    // "hostOps" group card, not directly on the Tổ chức tab.
+    await organizerPage.locator('[data-testid="account-group-hostOps"]').click();
     await organizerPage.locator('[data-testid="host-verifications"]').click();
     await expect(organizerPage.locator('[data-testid="verifications-title"]')).toBeVisible({ timeout: 5000 });
 
@@ -234,6 +237,9 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
     // Stage 2 — Admin is its own top-level tab now, independent of
     // organizerMode.
     await adminPage.locator('[data-testid="account-tab-admin"]').click();
+    // Account IA pass (2026-09-27) — disputes now behind the
+    // "adminReview" group card, not directly on the Admin tab.
+    await adminPage.locator('[data-testid="account-group-adminReview"]').click();
     await adminPage.locator('[data-testid="admin-disputes"]').click();
     await expect(adminPage.locator('[data-testid="disputes-title"]')).toBeVisible({ timeout: 5000 });
 

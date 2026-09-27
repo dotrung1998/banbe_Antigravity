@@ -141,10 +141,16 @@ export default function PulseViewer() {
         style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: EDGE_ZONE_PX, zIndex: 1, touchAction: 'none' }}
       />
       <div style={{ padding: '20px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        {/* A1 — the SAME wordmark asset + width Home's own header uses
-            (Home.jsx:353, width 126) — never a second/different logo
-            treatment. Accessible name stays "Banbe Pulse" via `alt`. */}
-        <img src="/banbe-wordmark.png" alt="Banbe Pulse" crossOrigin="anonymous" style={{ width: 126, height: 'auto', display: 'block' }} />
+        {/* A1 (real-device follow-up) — logo FOLLOWED BY visible text
+            "Pulse", one title: the logo alone read as just "banbe" with
+            nothing naming this specific screen. `role="heading"` +
+            `aria-label` make VoiceOver/screen readers announce the whole
+            thing once as "Banbe Pulse" — the logo's own `alt` is now empty
+            (decorative) so it isn't announced a second time on its own. */}
+        <div role="heading" aria-level="1" aria-label="Banbe Pulse" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <img src="/banbe-wordmark.png" alt="" crossOrigin="anonymous" style={{ width: 100, height: 'auto', display: 'block' }} />
+          <span style={{ ...display(20) }}>{T('Pulse', 'Pulse')}</span>
+        </div>
         <span onClick={commitDismiss} data-testid="pulse-close" style={{ fontSize: 22, color: ink, cursor: 'pointer' }}>×</span>
       </div>
 

@@ -135,6 +135,7 @@ struct HomeView: View {
         // shrink-toward-ring transition (see AppState.swift's own comment
         // on storyRingFrames).
         .onPreferenceChange(StoryRingFramePreferenceKey.self) { app.storyRingFrames = $0 }
+        .onPreferenceChange(PulseRingFramePreferenceKey.self) { app.pulseRingFrame = $0 }
     }
 
     /// TASK 4 (2026-09-22 nineteenth follow-up) — real root cause,
@@ -240,7 +241,25 @@ struct HomeView: View {
     // parallel theme state.
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            BanbeLogo(kind: .wordmark, width: 126)
+            HStack(spacing: 10) {
+                BanbeLogo(kind: .wordmark, width: 126)
+                // Home quick event search (2026-09-27) — clear of the
+                // Pulse ring (story row, further down) and the area
+                // control (trailing column, below) — opens the EXISTING
+                // MapExploreView list/filter/event-detail experience with
+                // its own search field focused, never a new screen.
+                Button {
+                    app.openEventSearch()
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 15, weight: .medium))
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(app.palette.ink.opacity(0.75))
+                .accessibilityIdentifier("home.searchButton")
+                .accessibilityLabel(app.T("Tìm sự kiện", "Search events"))
+            }
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
                 HStack(spacing: 8) {
@@ -338,6 +357,16 @@ struct HomeView: View {
                 Button { app.openPulseViewer() } label: {
                     VStack(spacing: 5) {
                         PulseRingGlyph()
+                            // Pulse teaser pass (2026-09-27) — reports the
+                            // RING's own global frame (not the label under
+                            // it) via PulseRingFramePreferenceKey, mirroring
+                            // StoryRingFramePreferenceKey immediately below
+                            // — PulseTeaserBubbleView anchors to this.
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear.preference(key: PulseRingFramePreferenceKey.self, value: geo.frame(in: .global))
+                                }
+                            )
                         Text(app.T("Banbe Pulse", "Banbe Pulse"))
                             .font(.system(size: 9.5)).foregroundStyle(app.palette.ink).lineLimit(1).frame(width: 60)
                     }
@@ -640,6 +669,16 @@ struct StoryRingFramePreferenceKey: PreferenceKey {
     static var defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { _, new in new }
+    }
+}
+
+/// Pulse teaser pass (2026-09-27) — same mechanism as
+/// StoryRingFramePreferenceKey immediately above, for the single Pulse
+/// ring (no dictionary needed — there's only ever one).
+struct PulseRingFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect?
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
+        if let next = nextValue() { value = next }
     }
 }
 

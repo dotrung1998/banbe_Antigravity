@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg, agoLabel } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
@@ -15,18 +15,62 @@ import ActionCenter from './ActionCenter.jsx';
 // (localStorage, matches the "persist seen state per user/version"
 // instruction), and is dismissed immediately by tapping outside it,
 // tapping the Pulse avatar itself (which opens Pulse), or on unmount.
+// Real-device follow-up (2026-09-27) — three bugs fixed here:
+// 1. Timing was 1.7s/2.6s, read as "too fast" on a real device — roughly
+//    doubled (see BUBBLE_STEP_MS).
+// 2. It rendered `position:absolute` against the tiny 60px-wide avatar
+//    column, `bottom:100%` — right above a ring sitting almost flush
+//    against "Sự kiện của bạn" above it, with no clearance of its own to
+//    guarantee it never visually reads as part of that section instead of
+//    the ring. Fixed by measuring the ring's own on-screen rect (a plain
+//    ref + getBoundingClientRect, re-measured on resize/scroll — same
+//    technique MapExplore.jsx's own top-controls measurement already
+//    uses) and rendering the bubble `position:fixed` from that rect,
+//    independent of any ancestor's overflow/stacking — it can never be
+//    clipped by the horizontal-scroll row it used to be nested in, and a
+//    fixed 16px clearance above the ring keeps it visually separate from
+//    whatever renders above.
+// 3. No tap-to-advance existed at all (only tap-outside dismissed).
+// BUBBLE_SEQUENCE_VERSION stays 'v1' here (web already showed this
+// correctly before, just too fast/tight — not the "old key incorrectly
+// suppressing a rollout" case iOS hit).
 const BUBBLE_SEQUENCE_VERSION = 'v1';
-const BUBBLE_STEP_MS = { label: 1700, names: 2600 };
+const BUBBLE_STEP_MS = { label: 3200, names: 4600 };
+const BUBBLE_RING_CLEARANCE = 16;
 
 function pulseBubbleSeenKey(userId) {
   return `banbe_pulse_bubbles_seen_${BUBBLE_SEQUENCE_VERSION}_${userId || 'guest'}`;
 }
 
-function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen, loadPulse }) {
+function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen, loadPulse, ringRef }) {
   const [step, setStep] = useState(-1); // -1 = not started/hidden, 0..3 = the 4 sequence steps
   const [reduceMotion] = useState(
     () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
   );
+  // Bug 3 fix — `document.hidden` (the app backgrounded, or the tab
+  // switched away from in a desktop browser): the sequence pauses rather
+  // than silently burning through steps the user never saw.
+  const [pageVisible, setPageVisible] = useState(() => typeof document === 'undefined' || !document.hidden);
+  useEffect(() => {
+    const onVisibility = () => setPageVisible(!document.hidden);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+  // Bug 2 fix — the ring's own live on-screen rect, remeasured whenever it
+  // could plausibly move (mount, resize, any scroll anywhere — `true` for
+  // the capture-phase option so a scroll on an ancestor container, not
+  // just window, is caught too).
+  const [ringRect, setRingRect] = useState(null);
+  useEffect(() => {
+    const measure = () => { if (ringRef.current) setRingRect(ringRef.current.getBoundingClientRect()); };
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
+    };
+  }, [ringRef, step]);
 
   const dismiss = () => {
     setStep(-1);
@@ -66,22 +110,37 @@ function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen
   // Advances label -> names -> label -> label -> hidden(+seen). Waits out
   // a still-loading fetch before showing the real-names step rather than
   // racing it (advances once `pulseDailyLoading` actually goes false).
+  // Bug 3 fix — a fresh, full-duration timer only ever starts while
+  // `pageVisible`; backgrounding the tab/app clears whatever's pending
+  // (the cleanup below) and this effect simply doesn't reschedule until
+  // `pageVisible` flips back to true, at which point it restarts the
+  // CURRENT step's own timer from its full duration (an intentionally
+  // simple "pause," not literal remaining-time bookkeeping).
   useEffect(() => {
-    if (step < 0 || step > 2) return undefined;
+    if (step < 0 || !pageVisible) return undefined;
     if (step === 0 && pulseDailyLoading) return undefined; // hold on step 0 until data's ready
-    const ms = step === 0 ? BUBBLE_STEP_MS.names : BUBBLE_STEP_MS.label;
-    const id = setTimeout(() => setStep(s => (s < 0 ? s : s + 1)), ms);
+    const ms = step === 3 ? BUBBLE_STEP_MS.label : (step === 0 ? BUBBLE_STEP_MS.names : BUBBLE_STEP_MS.label);
+    const id = setTimeout(() => setStep(s => (s < 0 ? s : (s >= 3 ? -2 : s + 1))), ms);
     return () => clearTimeout(id);
-  }, [step, pulseDailyLoading]);
+  }, [step, pulseDailyLoading, pageVisible]);
 
+  // step reaching -2 is the auto-timeout's own "done" signal (distinct
+  // from -1, tap/outside dismiss) — both end up hidden, but only the
+  // -1 paths need not re-trigger a dismiss() that's already happened.
   useEffect(() => {
-    if (step === 3) {
-      const id = setTimeout(dismiss, BUBBLE_STEP_MS.label);
-      return () => clearTimeout(id);
-    }
-    return undefined;
+    if (step === -2) dismiss();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
+
+  // Bug 3 (tap-to-advance/dismiss) — tapping the bubble itself advances
+  // to the next step immediately (skipping whatever's left of the
+  // current timer); tapping past the last step dismisses, same as
+  // letting it run out on its own.
+  const advanceOrDismiss = () => {
+    if (step < 0) return;
+    if (step >= 3) dismiss();
+    else setStep(s => s + 1);
+  };
 
   // Opening Pulse (tapping the avatar this bubble sits above) dismisses it
   // immediately — never lingers on top of the now-open Pulse viewer.
@@ -102,7 +161,7 @@ function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  if (step < 0) return null;
+  if (step < 0 || !ringRect) return null;
 
   let content;
   if (step === 0) {
@@ -129,14 +188,23 @@ function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen
 
   return (
     <div
+      onClick={(e) => { e.stopPropagation(); advanceOrDismiss(); }}
       data-testid="home-pulse-teaser-bubble"
       role="status"
       aria-live="polite"
       style={{
-        position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 8,
-        background: ink, color: paper, fontSize: 11.5, fontWeight: 600, lineHeight: 1.4,
-        padding: '9px 12px', borderRadius: 12, whiteSpace: 'nowrap', zIndex: 5, pointerEvents: 'auto',
-        boxShadow: '0 6px 18px rgba(27,25,22,0.24)',
+        // Bug 2 fix — `position:fixed` from the ring's own MEASURED rect
+        // (never the tiny avatar column's own layout box), so this floats
+        // above every ancestor's overflow/stacking context, always clear
+        // of "Sự kiện của bạn" and every card — see this component's own
+        // top-of-file doc comment for the full root cause.
+        position: 'fixed',
+        left: ringRect.left + ringRect.width / 2,
+        top: ringRect.top - BUBBLE_RING_CLEARANCE,
+        transform: 'translate(-50%, -100%)',
+        background: ink, color: paper, fontSize: 12.5, fontWeight: 600, lineHeight: 1.5,
+        padding: '11px 14px', borderRadius: 12, maxWidth: 220, zIndex: 45, pointerEvents: 'auto', cursor: 'pointer',
+        boxShadow: '0 6px 18px rgba(27,25,22,0.28)',
         animation: reduceMotion ? 'none' : 'gocFade 0.22s ease both',
       }}
     >
@@ -183,7 +251,7 @@ export const FILTER_DEFS = [
 export default function Home() {
   const {
     state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, isAwaitingConfirmation, toggleFav,
-    goEvent, openArea, toggleLang, toggleTheme, pickFilter, clearFilters, toggleHomeFilter,
+    goEvent, openArea, toggleLang, toggleTheme, pickFilter, clearFilters, toggleHomeFilter, openEventSearch,
     becomeHost, switchToHost,
     canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary, loadHomeLiveEvents,
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
@@ -194,6 +262,7 @@ export default function Home() {
 
   const s = state;
   const hasHosted = s.hasHosted;
+  const pulseRingRef = useRef(null);
   const openSaved = (sv) => (sv.toEvent === 'event' ? goEvent(sv.key) : set({ screen: sv.toEvent, eventKey: sv.key }));
   const heldEv = s.holdDeadline && s.holdDeadline > s.now ? EVENTS.find(e => e.key === s.eventKey) : null;
 
@@ -489,7 +558,25 @@ export default function Home() {
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Home">
       <div style={{ padding: '70px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 126, height: 'auto', display: 'block', margin: '0 0 2px' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 126, height: 'auto', display: 'block', margin: '0 0 2px' }} />
+          {/* Home quick event search (2026-09-27) — clear of the Pulse
+              ring (story row, further down) and the area control
+              (right-side column) — a plain sibling of the logo, left side.
+              Opens the EXISTING MapExplore search/list experience with its
+              input already focused, never a new screen. */}
+          <span
+            onClick={openEventSearch}
+            data-testid="home-search-button"
+            aria-label={T('Tìm sự kiện', 'Search events')}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 999, cursor: 'pointer', color: ink, opacity: 0.75 }}
+          >
+            <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+          </span>
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
           {/* Task 2c (2026-09-21 follow-up) — a quick Appearance (light/dark)
               toggle next to the existing language/area switchers, separated
@@ -563,10 +650,10 @@ export default function Home() {
           data-testid="home-pulse-avatar"
           style={{ flex: 'none', width: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer', position: 'relative' }}
         >
-          {/* A5 — the teaser-bubble sequence, anchored above this avatar
-              (never covering the filter row/cards above it, and never
-              intercepting taps on the avatar itself — see its own `bottom:
-              '100%'` positioning). */}
+          {/* A5 — the teaser-bubble sequence, `position:fixed`-anchored to
+              the ring's own measured rect (`pulseRingRef`) — see that
+              component's own doc comment for why this is no longer a
+              plain `bottom:'100%'` anchored to this column. */}
           <PulseTeaserBubble
             T={T}
             userId={s.user?.id}
@@ -574,6 +661,7 @@ export default function Home() {
             pulseDailyLoading={s.pulseDailyLoading}
             pulseOpen={s.pulseOpen}
             loadPulse={loadPulse}
+            ringRef={pulseRingRef}
           />
           {/* TASK 3 (2026-10-05 fix pass) — a refined multicolor shimmer,
               built from Banbe's own existing dusty-rose/sage gradient
@@ -583,7 +671,7 @@ export default function Home() {
               loop; `prefers-reduced-motion: reduce` (see the <style> tag
               below) disables it, leaving the gradient's own resting frame
               — still colorful, just not moving — as the static fallback. */}
-          <div className="bb-pulse-ring" style={{
+          <div ref={pulseRingRef} className="bb-pulse-ring" style={{
             width: 56, height: 56, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'linear-gradient(150deg, #E7C9C2, #E3CFA6 50%, #C8CBB2)',
           }}>

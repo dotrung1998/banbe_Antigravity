@@ -1,6 +1,21 @@
 import SwiftUI
 import PhotosUI
 
+/// Color-as-wayfinding pass (2026-09-27) — a restrained accent, reusing
+/// the SAME existing profile-palette tokens (`ProfilePalette`,
+/// EditProfileView.swift — already how the personal/organizer card washes
+/// tell those two apart) rather than a new/arbitrary color set. Mirrors
+/// web's `ROW_ACCENT_COLORS` (Account.jsx) value-for-value. Not `private`
+/// — AccountGroupView.swift's own title icon reads this too.
+let ROW_ACCENT_COLORS: [String: Color] = [
+    "team": ProfilePalette.all.first { $0.key == "moss" }!.color,
+    "activity": ProfilePalette.all.first { $0.key == "rose" }!.color,
+    "payments": ProfilePalette.all.first { $0.key == "sand" }!.color,
+    "preferences": ProfilePalette.all.first { $0.key == "ink" }!.color,
+    "hostOps": ProfilePalette.all.first { $0.key == "moss" }!.color,
+    "adminReview": ProfilePalette.all.first { $0.key == "rose" }!.color,
+]
+
 /// Port of src/screens/Account.jsx — profile header with rename, the
 /// going/saved counters, links to messages and preferences, the organizer
 /// mode switch, and sign in/out.
@@ -203,10 +218,12 @@ struct AccountView: View {
             // profile cards on one screen. Scoped to the Cá nhân tab
             // only, matching the web fix.
             if app.accountTab == "personal" {
-            reportsRow(app.T("Số liệu & báo cáo", "Metrics & reports"), identifier: "account.reportsPersonal") {
-                app.openReports(scope: "personal", back: .profile)
-            }
-            teamInvitesAndMemberships
+            // Account IA pass (2026-09-27) — identity card FIRST under
+            // the tab pills (was: reports row, then Team invites/
+            // memberships/event-credit content, THEN this card). Those
+            // moved into the "team"/"activity" AccountGroupView children
+            // below — only their pending COUNTS surface here now
+            // (groupCard's `badge`).
             // TASK D (2026-10-01 UX foundation pass) — the header is
             // now a tappable rounded profile card (editorial style:
             // soft gradient wash from the account's own chosen
@@ -337,56 +354,23 @@ struct AccountView: View {
             // three placements.
             ActionCenterView(items: actionItems, onSeeAll: { app.openVerifications(back: .profile) })
 
-            // TASK 3A (2026-09-22 twenty-first follow-up) — the
-            // "Tin nhắn"/Messages shortcut row removed entirely per this
-            // ticket's own ask; Inbox stays reachable exactly as before
-            // via the bottom dock (BottomTabBar.swift), untouched.
-            VStack(spacing: 0) {
-                row(app.T("Sự kiện đã hoàn thành", "Completed events"), identifier: "account.completedList", icon: "calendar.badge.checkmark", trailing: "\(app.completedEventsCount) ›") { app.goCompletedList() }
-                Divider().overlay(app.palette.rule)
-                // TASK 3B — broader, more accurate label: this screen
-                // holds more than language/theme (see
-                // PreferencesView.swift). Destination (`openPreferences`)
-                // and the right-side summary are unchanged.
-                row(app.T("Tùy chỉnh ứng dụng", "App preferences"),
-                    identifier: "account.preferences", icon: "slider.horizontal.3",
-                    trailing: (app.lang == "en" ? "English" : "Tiếng Việt") + " ▪︎ "
-                        + (app.theme == "dark" ? app.T("Tối", "Dark") : app.T("Sáng", "Light"))) {
-                    app.openPreferences()
-                }
-                Divider().overlay(app.palette.rule)
-                row(app.T("Hoá đơn", "Invoices"),
-                    identifier: "account.invoices", icon: "doc.text", trailing: "›") {
-                    app.openDocuments(kind: "invoice", role: "guest")
-                }
-                Divider().overlay(app.palette.rule)
-                row(app.T("Biên nhận", "Receipts"),
-                    identifier: "account.receipts", icon: "receipt", trailing: "›") {
-                    app.openDocuments(kind: "receipt", role: "guest")
-                }
-                Divider().overlay(app.palette.rule)
-                // Refund MVP (product rule A) — a persistent entry
-                // point, reachable regardless of whether a notification
-                // was ever tapped.
-                row(app.T("Tài khoản thanh toán & nhận hoàn tiền", "Payment & refund accounts"),
-                    identifier: "account.refundAccounts", icon: "banknote", trailing: "›") {
-                    app.openRefundAccounts(back: .profile)
-                }
-                Divider().overlay(app.palette.rule)
-                row(app.T("Hoàn tiền", "Refunds"),
-                    identifier: "account.refunds", icon: "checklist", trailing: "›") {
-                    app.openMyRefunds(back: .profile)
-                }
-                Divider().overlay(app.palette.rule)
-                row(app.T("Bảo mật", "Security"),
-                    identifier: "account.security", icon: "lock.shield",
-                    trailing: "›") {
-                    app.openSecurity()
-                }
+            reportsRow(app.T("Số liệu & báo cáo", "Metrics & reports"), identifier: "account.reportsPersonal") {
+                app.openReports(scope: "personal", back: .profile)
             }
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(.top, 20)
-            .id("account-links")
+
+            // Account IA pass (2026-09-27) — the old single long list of
+            // rows (Completed events / App preferences / Invoices /
+            // Receipts / Payment & refund accounts / Refunds / Security),
+            // plus Team invites/memberships and event credits from
+            // further up, are now FOUR grouped entry cards, each opening
+            // AccountGroupView for that one related flow. Every child
+            // action keeps its EXACT original accessibility identifier/
+            // route (openDocuments/openSecurity/etc., unchanged) — only
+            // WHERE it's reached from moved.
+            groupCard(groupKey: "team", icon: "person.3", label: app.T("Hồ sơ & Team", "Profile & Team"), badge: app.myOrganizerInvites.count, topPadding: 20)
+            groupCard(groupKey: "activity", icon: "calendar.badge.checkmark", label: app.T("Vé & hoạt động", "Tickets & activity"), badge: app.myEventCredits.count)
+            groupCard(groupKey: "payments", icon: "banknote", label: app.T("Thanh toán & giấy tờ", "Payments & documents"))
+            groupCard(groupKey: "preferences", icon: "slider.horizontal.3", label: app.T("Tùy chỉnh", "Preferences"))
 
             // Account extension (2026-09-27, Stage 1) — "organizer mode
             // OFF means host UI is OFF": the whole Tổ chức tab disappears
@@ -399,12 +383,14 @@ struct AccountView: View {
             } // app.accountTab == "personal"
 
             if app.accountTab == "host" {
+            // Account IA pass (2026-09-27) — identity card FIRST (was:
+            // reports row, then this card).
+            orgProfileCard()
             if app.myOrganizerID != nil {
                 reportsRow(app.T("Số liệu & báo cáo", "Metrics & reports"), identifier: "account.reportsHost") {
                     app.openReports(scope: "host", organizerID: app.myOrganizerID, back: .profile)
                 }
             }
-            orgProfileCard()
             hostManagementRows
             } // app.accountTab == "host"
 
@@ -610,6 +596,41 @@ struct AccountView: View {
         .buttonStyle(.plain)
         .padding(.top, 22)
         .accessibilityIdentifier(identifier)
+    }
+
+    // Account IA pass (2026-09-27) — a grouped entry card: icon (accented,
+    // ROW_ACCENT_COLORS) + title + optional badge (a real, un-derived
+    // urgent pending-action COUNT — never buried inside the child screen
+    // only, per this ticket's "preserve urgent pending-action visibility
+    // ... at the group entry" instruction) + chevron, opening the shared
+    // AccountGroupView. `groupKey` doubles as the accent-color lookup AND
+    // the accessibility identifier/route id both platforms share.
+    private func groupCard(groupKey: String, icon: String, label: String, badge: Int = 0, topPadding: CGFloat = 8) -> some View {
+        Button { app.accountGroupKey = groupKey; app.screen = .accountGroup } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 30, height: 30)
+                    .background((ROW_ACCENT_COLORS[groupKey] ?? .clear).opacity(0.33), in: Circle())
+                Text(label).font(.system(size: 14))
+                Spacer()
+                if badge > 0 {
+                    Text("\(badge)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(app.palette.paper)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(BanbeTheme.alert, in: Capsule())
+                        .accessibilityIdentifier("account.group.\(groupKey).badge")
+                }
+                Text("›").font(.system(size: 15))
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(16)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .padding(.top, topPadding)
+        .accessibilityIdentifier("account.group.\(groupKey)")
     }
 
     private func row(_ title: String, identifier: String? = nil, icon: String, trailing: String,
@@ -868,30 +889,21 @@ struct AccountView: View {
     // reachable while organizerMode is on (this whole tab's own
     // visibility rule) — never duplicated in both tabs.
     @ViewBuilder
+    // Account IA pass (2026-09-27) — was an inline 4-row "Quản lý thanh
+    // toán" list; now ONE grouped entry card opening AccountGroupView's
+    // "hostOps" content (same exact child actions/identifiers). Badge =
+    // real outstanding host duties (verifications + refund queue), never
+    // invented.
     private var hostManagementRows: some View {
-        if app.canHost {
-            Text(app.T("Quản lý thanh toán", "Payment management"))
-                .font(.system(size: 11.5, weight: .semibold))
-                .padding(.top, 22)
-            VStack(spacing: 0) {
-                row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"),
-                    identifier: "host.verifications", icon: "checklist", trailing: "›") { app.openVerifications() }
-                Divider().overlay(app.palette.rule)
-                row(app.T("Nhận thanh toán", "Getting paid"),
-                    identifier: "host.payout", icon: "banknote", trailing: "›") { app.openPayout() }
-                Divider().overlay(app.palette.rule)
-                row(app.T("Hoá đơn đã phát hành", "Invoices issued"),
-                    identifier: "host.invoices", icon: "doc.text", trailing: "›") {
-                    app.openDocuments(kind: "invoice", role: "host")
-                }
-                Divider().overlay(app.palette.rule)
-                row(app.T("Biên nhận đã phát hành", "Receipts issued"),
-                    identifier: "host.receipts", icon: "receipt", trailing: "›") {
-                    app.openDocuments(kind: "receipt", role: "host")
-                }
+        Group {
+            if app.canHost {
+                groupCard(
+                    groupKey: "hostOps", icon: "checklist",
+                    label: app.T("Vận hành & thanh toán tổ chức", "Event operations & payments"),
+                    badge: app.verifications.count + app.refundQueue.count,
+                    topPadding: 22
+                )
             }
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(.top, 10)
         }
     }
 
@@ -901,25 +913,13 @@ struct AccountView: View {
     // lost them entirely once that tab started hiding itself for Stage 1.
     // Same actions, same RLS-enforced screens — moved, not cloned.
     @ViewBuilder
+    // Account IA pass (2026-09-27) — same "Bảng quản trị"/"Sự kiện chờ
+    // duyệt" actions, now one grouped entry card. Admin Panel is still
+    // visible only to accountType == "admin" (banbetestadmin@gmail.com,
+    // migration 040) — RLS is the real backstop; openAdminDashboard()
+    // guards again regardless.
     private var adminSection: some View {
-        // Admin Panel — visible only to accountType == "admin"
-        // (banbetestadmin@gmail.com, migration 040), never to a
-        // plain organizer. RLS (v_disputes, resolve_dispute,
-        // payment_audit_log, the 'pay-proof' bucket) is the real
-        // backstop; openAdminDashboard() guards again regardless.
-        Text(app.T("Quản trị", "Admin"))
-            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
-            .padding(.top, 22)
-        VStack(spacing: 0) {
-            row(app.T("Bảng quản trị", "Admin Panel"),
-                identifier: "admin.panel", icon: "exclamationmark.shield", trailing: "›") { app.openAdminDashboard() }
-            // Event submission -> review -> publish — a separate
-            // desk from the payment dispute one above.
-            row(app.T("Sự kiện chờ duyệt", "Pending events"),
-                identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›") { app.openAdminEvents() }
-        }
-        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .padding(.top, 10)
+        groupCard(groupKey: "adminReview", icon: "exclamationmark.shield", label: app.T("Duyệt & kiểm duyệt", "Review & moderation"), topPadding: 22)
     }
 
     /// Host tab's OWN rounded profile card (Stage D) — organizer avatar/
