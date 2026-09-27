@@ -68,6 +68,20 @@ struct EditProfileView: View {
                     field(app.T("Khu vực (không bắt buộc)", "City (optional)"), text: $app.editProfileCity, id: "editProfile.city")
                     field(app.T("Sở thích, cách nhau bởi dấu phẩy", "Interests, comma-separated"), text: $app.editProfileInterests, id: "editProfile.interests")
 
+                    // Organizer Team pass (2026-09-27, Stage 3) — a
+                    // SEPARATE long-form intro; the short bio above is
+                    // untouched.
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(app.T("Giới thiệu chi tiết (không bắt buộc)", "Long-form intro (optional)"))
+                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink)
+                        TextEditor(text: $app.editProfileIntroLong)
+                            .font(.system(size: 13.5)).frame(height: 120)
+                            .accessibilityIdentifier("editProfile.introLong")
+                        Text("\(app.editProfileIntroLong.count)/4000").font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.55))
+                    }
+
+                    SocialLinksEditorView(links: $app.editProfileLinks, open: $app.editProfileLinksOpen, testPrefix: "editProfile.link")
+
                     VStack(alignment: .leading, spacing: 8) {
                         Text(app.T("Bảng màu hồ sơ", "Profile palette")).font(.system(size: 11.5)).foregroundStyle(app.palette.ink)
                         HStack(spacing: 10) {

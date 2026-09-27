@@ -2,13 +2,17 @@ import { useRef } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, display, fieldGlass, alert, inkButton } from '../theme.js';
 import { PROFILE_PALETTES } from '../lib/profileTheme.js';
+import { LINK_PLATFORMS, SocialLinksEditor } from './SocialLinksEditor.jsx';
 
 // TASK D (2026-10-01 UX foundation pass) — the owner's own editable public
 // identity: avatar, handle, display name, bio, city, interests, palette.
 // Reachable by tapping Account's own profile card (Account.jsx).
 
 export default function EditProfile() {
-  const { state, T, backFromEditProfile, set, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile } = useGoc();
+  const {
+    state, T, backFromEditProfile, set, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile,
+    editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink,
+  } = useGoc();
   const s = state;
   const fileRef = useRef(null);
 
@@ -65,6 +69,29 @@ export default function EditProfile() {
           onChange={(v) => set({ editProfileCity: v })} testId="edit-profile-city" />
         <Field label={T('Sở thích, cách nhau bởi dấu phẩy (không bắt buộc)', 'Interests, comma-separated (optional)')} value={s.editProfileInterests}
           onChange={(v) => set({ editProfileInterests: v })} testId="edit-profile-interests" />
+
+        {/* Organizer Team pass (2026-09-27, Stage 3) — a SEPARATE
+            long-form intro, never overwriting the short bio above. Shown
+            as a concise preview with "Đọc thêm" on the public profile. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ fontSize: 11.5, color: ink }}>{T('Giới thiệu chi tiết (không bắt buộc)', 'Long-form intro (optional)')}</span>
+          <textarea
+            value={s.editProfileIntroLong}
+            onChange={editProfileIntroLongType}
+            maxLength={4000}
+            rows={6}
+            data-testid="edit-profile-intro-long"
+            style={{ ...fieldGlass({ padding: '12px 14px', fontSize: 13.5, resize: 'vertical' }), fontFamily: 'inherit' }}
+          />
+          <span style={{ fontSize: 10.5, color: ink, opacity: 0.55, textAlign: 'right' }}>{s.editProfileIntroLong.length}/4000</span>
+        </div>
+
+        <SocialLinksEditor
+          T={T} links={s.editProfileLinks} open={s.editProfileLinksOpen}
+          onToggleOpen={toggleEditProfileLinksOpen} onAdd={addEditProfileLink}
+          onSetField={setEditProfileLink} onRemove={removeEditProfileLink}
+          testPrefix="edit-profile-link"
+        />
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span style={{ fontSize: 11.5, color: ink }}>{T('Bảng màu hồ sơ', 'Profile palette')}</span>

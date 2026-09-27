@@ -53,6 +53,7 @@ import EditProfile from './screens/EditProfile.jsx';
 import PublicProfile from './screens/PublicProfile.jsx';
 import OrganizerProfile from './screens/OrganizerProfile.jsx';
 import Reports from './screens/Reports.jsx';
+import TeamPage from './screens/TeamPage.jsx';
 import RootRefreshIndicator from './screens/RootRefreshIndicator.jsx';
 
 const SCREENS = {
@@ -95,6 +96,7 @@ const SCREENS = {
   publicProfile: PublicProfile,
   organizerProfile: OrganizerProfile,
   reports: Reports,
+  organizerTeam: TeamPage,
 };
 
 // TASK 1 (2026-10-05 fix pass) — the dock and the create-"+" button laid

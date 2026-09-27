@@ -41,6 +41,11 @@ struct Profile: Codable, Identifiable, Hashable {
     var city: String?
     var interests: [String]?
     var profileTheme: String?
+    // Organizer Team pass (2026-09-27, Stage 3) — a SEPARATE long-form
+    // intro (never overwrites `bio` above) + optional social links,
+    // both validated server-side (sanitize_social_links, migration 102).
+    var introLong: String?
+    var socialLinks: [SocialLink]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -63,5 +68,17 @@ struct Profile: Codable, Identifiable, Hashable {
         case city
         case interests
         case profileTheme = "profile_theme"
+        case introLong = "intro_long"
+        case socialLinks = "social_links"
     }
+}
+
+/// Organizer Team pass (2026-09-27, Stage 3) — one entry in either a
+/// personal profile's or an organizer's `social_links` jsonb column.
+/// Server-side validation (sanitize_social_links) is the real boundary;
+/// this is just the shape both sides agree on.
+struct SocialLink: Codable, Hashable, Identifiable {
+    var id: String { platform + url }
+    var platform: String
+    var url: String
 }

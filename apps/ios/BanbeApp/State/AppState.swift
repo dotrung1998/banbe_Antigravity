@@ -19,6 +19,7 @@ enum Screen: String {
     case refundAccounts, myRefunds
     case editProfile, publicProfile, organizerProfile
     case reports
+    case organizerTeam
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -313,7 +314,12 @@ final class AppState: ObservableObject {
     // Personal-vs-organizer hierarchy pass (2026-09-27) — `.organizerProfile`
     // must work for a signed-out visitor (get_organizer_profile is granted
     // to anon, migration 095), same as a shared organizer link on web.
-    static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .login, .policy, .organizerProfile]
+    // Organizer Team pass (2026-09-27, Stage 2) — .publicProfile was
+    // missing despite get_public_profile() being anon-granted (a
+    // pre-existing gap, out of scope in the prior ticket); now directly
+    // in scope, since a signed-out Team page visitor must be able to tap
+    // a member card through to their public profile.
+    static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .login, .policy, .organizerProfile, .organizerTeam, .publicProfile]
 
     // MARK: - Screenshot Catalog (docs/demo-screenshots)
     // Test-only launch flags for `scripts/capture_ios_catalog.sh` /
@@ -864,6 +870,10 @@ final class AppState: ObservableObject {
     @Published var editProfileBio = ""
     @Published var editProfileCity = ""
     @Published var editProfileInterests = ""
+    // Organizer Team pass (2026-09-27, Stage 3).
+    @Published var editProfileIntroLong = ""
+    @Published var editProfileLinks: [SocialLink] = []
+    @Published var editProfileLinksOpen = false
     @Published var editProfileTheme = "default"
     @Published var editProfileError = ""
     @Published var editProfileBusy = false
@@ -904,6 +914,22 @@ final class AppState: ObservableObject {
     // A `ShareLink` binds to this the instant an export (CSV/JSON/PDF)
     // finishes writing its temp file — the native iOS share sheet.
     @Published var reportsExportedFileURL: URL?
+    // Organizer Team pass (2026-09-27, Stage 1) — see AppState+Team.swift.
+    @Published var myOrganizerInvites: [OrganizerMembership] = []
+    @Published var myTeamMemberships: [OrganizerMembership] = []
+    @Published var orgTeamRoster: [OrganizerTeamRosterRow] = []
+    @Published var orgTeamRosterLoading = false
+    @Published var orgTeamInviteHandle = ""
+    @Published var orgTeamInviteRole = ""
+    @Published var orgTeamInviteError = ""
+    @Published var orgTeamInviteBusy = false
+    // Organizer Team pass (2026-09-27, Stage 2) — see AppState+Team.swift.
+    @Published var organizerTeam: OrganizerTeam?
+    @Published var organizerTeamLoading = false
+    @Published var organizerTeamError = ""
+    @Published var organizerTeamBackScreen: Screen = .organizerProfile
+    @Published var organizerTeamOrganizerId = ""
+    @Published var myEventCredits: [EventCreditInvite] = []
     // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
     @Published var pulseDaily: [PulseItem] = []
     @Published var pulseWeekly: [PulseItem] = []
@@ -980,6 +1006,10 @@ final class AppState: ObservableObject {
     @Published var orgRegName = ""
     @Published var orgRegIg = ""
     @Published var orgRegDesc = ""
+    // Organizer Team pass (2026-09-27, Stage 3).
+    @Published var orgRegIntroLong = ""
+    @Published var orgRegLinks: [SocialLink] = []
+    @Published var orgRegLinksOpen = false
     @Published var createName = ""
     @Published var createDesc = ""
     // "Giới thiệu sự kiện" (migration 088) — a separate, longer editorial

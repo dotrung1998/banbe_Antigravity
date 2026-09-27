@@ -4,6 +4,7 @@ import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
 import { APP_STORE_URL } from '../lib/appStore.js';
+import { LongIntroPreview, SocialLinksRow } from './LongIntro.jsx';
 
 // TASK D — "app not installed" fallback (rule D3): a shared /u/<handle>
 // link that doesn't open the native app (no universal-link verification,
@@ -23,7 +24,7 @@ const isMobileBrowser = typeof navigator !== 'undefined' && /iPhone|iPad|Android
 // edit) is OrganizerProfile.jsx, reached from the management page
 // (Dashboard.jsx's "Hồ sơ công khai của tổ chức" button), never from here.
 export default function PublicProfile() {
-  const { state, T, backFromPublicProfile, sharePublicProfile, openEditProfile } = useGoc();
+  const { state, T, backFromPublicProfile, sharePublicProfile, openEditProfile, openOrganizerTeam, goEvent } = useGoc();
   const s = state;
   const [qrOpen, setQrOpen] = useState(false);
   const [qrSrc, setQrSrc] = useState(null);
@@ -106,6 +107,10 @@ export default function PublicProfile() {
         )}
         <span style={{ fontSize: 12.5, color: ink, opacity: 0.75 }}>@{p.handle}{p.city ? ' ▪︎ ' + p.city : ''}</span>
         {p.bio && <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, textAlign: 'center', margin: '4px 0 0' }}>{p.bio}</p>}
+        {/* Organizer Team pass (2026-09-27, Stage 3) — a SEPARATE
+            long-form intro; the short bio above is untouched. */}
+        <LongIntroPreview T={T} text={p.intro_long} />
+        <SocialLinksRow links={p.social_links} />
         {!!(p.interests || []).length && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginTop: 4 }}>
             {p.interests.map(tag => (
@@ -113,7 +118,42 @@ export default function PublicProfile() {
             ))}
           </div>
         )}
+        {/* Organizer Team pass (2026-09-27, Stage 2) — ONLY this profile's
+            OWN opted-in choice (team_badges, get_public_profile 100):
+            accepted AND currently public_visible. Hiding Team association
+            removes this badge (and the event credits below) in the same
+            instant server-side — nothing here is a client-side guess. */}
+        {!!(p.team_badges || []).length && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginTop: 6 }}>
+            {p.team_badges.map(b => (
+              <span
+                key={b.organizer_id}
+                onClick={() => openOrganizerTeam(b.organizer_id, 'profile')}
+                data-testid={`public-profile-team-badge-${b.organizer_id}`}
+                style={{ fontSize: 10.5, fontWeight: 600, color: ink, background: 'rgba(255,255,255,0.7)', padding: '6px 12px', borderRadius: 999, cursor: 'pointer', border: `1px solid ${rule}` }}
+              >
+                {T(`Thành viên của ${b.organizer_name} Team`, `Member of the ${b.organizer_name} Team`)}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Real, explicit, ACCEPTED event contributions only — never derived
+          from ticket attendance/bookings/check-ins. Empty if none. */}
+      {!!(p.credited_events || []).length && (
+        <div style={{ margin: '14px 20px 0' }} data-testid="public-profile-credited-events">
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }}>{T('Đã tham gia tổ chức', 'Helped organize')}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+            {p.credited_events.map(e => (
+              <div key={e.event_id} onClick={() => goEvent(e.event_id)} style={{ ...cardGlass({ padding: '10px 14px', cursor: 'pointer' }) }}>
+                <span style={{ fontSize: 12.5, color: ink }}>{e.event_name}</span>
+                <span style={{ fontSize: 11, color: ink, opacity: 0.6, display: 'block' }}>{e.organizer_name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div onClick={() => setQrOpen(true)} data-testid="public-profile-qr-cta" style={{ margin: '16px 20px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '13px 0', border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer' }}>
         {T('Hiển thị mã QR', 'Show QR code')}

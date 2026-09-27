@@ -170,7 +170,13 @@ private struct OrganizerRow: Decodable {
     let name: String
     let about: String?
     let avatarPath: String?
-    enum CodingKeys: String, CodingKey { case id, name, about, avatarPath = "avatar_path" }
+    // Organizer Team pass (2026-09-27, Stage 3).
+    let introLong: String?
+    let socialLinks: [SocialLink]?
+    enum CodingKeys: String, CodingKey {
+        case id, name, about, avatarPath = "avatar_path"
+        case introLong = "intro_long", socialLinks = "social_links"
+    }
 }
 private struct UUIDRow: Decodable { let id: UUID }
 private struct OrganizerRef: Decodable { let organizerId: String?
@@ -576,7 +582,7 @@ extension AppState {
 
             let organizers: [OrganizerRow] = try await SupabaseService.client
                 .from("organizers")
-                .select("id, name, about, avatar_path")
+                .select("id, name, about, avatar_path, intro_long, social_links")
                 .or("owner_id.eq.\(uid.uuidString),user_id.eq.\(uid.uuidString)")
                 .execute().value
             myOrganizerIDs = organizers.map(\.id)
@@ -590,6 +596,8 @@ extension AppState {
                 // Host tab's own profile card (Stage D, migration 090).
                 myOrganizerID = organizers.first?.id
                 orgRegDesc = organizers.first?.about ?? ""
+                orgRegIntroLong = organizers.first?.introLong ?? ""
+                orgRegLinks = organizers.first?.socialLinks ?? []
                 myOrganizerAvatarPath = organizers.first?.avatarPath ?? ""
                 let events: [IDRow] = try await SupabaseService.client
                     .from("events")
@@ -742,12 +750,20 @@ extension AppState {
                 let name: String
                 let intro: String
                 let avatarPath: String?
+                let introLong: String
+                let socialLinks: [SocialLink]
                 enum CodingKeys: String, CodingKey {
                     case organizerId = "p_organizer_id", name = "p_name", intro = "p_intro", avatarPath = "p_avatar_path"
+                    case introLong = "p_intro_long", socialLinks = "p_social_links"
                 }
             }
+            let links = orgRegLinks.filter { !$0.url.trimmingCharacters(in: .whitespaces).isEmpty }
             let result: [String: JSONValue] = try await SupabaseService.client
-                .rpc("update_organizer_profile", params: Params(organizerId: organizerID, name: orgRegName.trimmingCharacters(in: .whitespaces), intro: orgRegDesc.trimmingCharacters(in: .whitespacesAndNewlines), avatarPath: avatarPath))
+                .rpc("update_organizer_profile", params: Params(
+                    organizerId: organizerID, name: orgRegName.trimmingCharacters(in: .whitespaces),
+                    intro: orgRegDesc.trimmingCharacters(in: .whitespacesAndNewlines), avatarPath: avatarPath,
+                    introLong: orgRegIntroLong, socialLinks: links
+                ))
                 .execute().value
             guard case .bool(true) = result["success"] ?? .bool(false) else {
                 if case .string(let err) = result["error"] ?? .string("") {
@@ -755,6 +771,10 @@ extension AppState {
                         ? T("Tên tổ chức không được để trống (tối đa 80 ký tự).", "Organizer name is required (max 80 chars).")
                         : err == "INVALID_INTRO"
                         ? T("Giới thiệu tối đa 2000 ký tự.", "Introduction is limited to 2000 characters.")
+                        : err == "INTRO_TOO_LONG"
+                        ? T("Giới thiệu dài quá (tối đa 4000 ký tự).", "Intro is too long (4000 characters max).")
+                        : err == "INVALID_LINKS"
+                        ? T("Một liên kết không hợp lệ. Chỉ chấp nhận đường dẫn https://.", "One of the links is invalid. Only https:// links are accepted.")
                         : T("Không thể lưu. Vui lòng thử lại.", "Could not save. Please try again.")
                 }
                 orgProfileSaving = false

@@ -55,6 +55,30 @@ struct OrganizerProfileView: View {
                         .padding(.top, 16)
                         .accessibilityIdentifier("organizerProfile.qrCta")
 
+                    // Organizer Team pass (2026-09-27, Stage 2) — a
+                    // prominent, large tappable row using the organizer's
+                    // own real name (never the founder's personal name —
+                    // that stays governed entirely by the founder's OWN
+                    // personal-profile organizer_mode toggle, unrelated to
+                    // this label). Opens the public Team page
+                    // (get_organizer_team, 098/101) — accepted AND
+                    // public_visible members only.
+                    Button {
+                        Task { await app.openOrganizerTeam(organizerID: org.id ?? "", back: .organizerProfile) }
+                    } label: {
+                        HStack {
+                            Text(app.T("Bởi \(org.name ?? "") Team", "By the \(org.name ?? "") Team")).font(.system(size: 14, weight: .semibold))
+                            Spacer()
+                            Text("›").font(.system(size: 20)).opacity(0.55)
+                        }
+                        .foregroundStyle(app.palette.ink)
+                        .padding(16)
+                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 10)
+                    .accessibilityIdentifier("organizerProfile.teamRow")
+
                     // Owner only — edits organizers.name/about/avatarPath
                     // (migration 090's update_organizer_profile), never
                     // profiles.* / save_profile(). `org.id == app.myOrganizerID`
@@ -154,6 +178,10 @@ struct OrganizerProfileView: View {
             if let about = org.about, !about.isEmpty {
                 Text(about).font(.system(size: 12.5)).multilineTextAlignment(.center).foregroundStyle(app.palette.ink)
             }
+            // Organizer Team pass (2026-09-27, Stage 3) — SEPARATE
+            // long-form intro; `about` above is untouched.
+            LongIntroPreview(text: org.introLong)
+            SocialLinksRow(links: org.socialLinks)
             HStack(spacing: 20) {
                 statView("\(org.eventCount ?? 0)", app.T("Sự kiện", "Events"))
                 statView("\(org.followerCount ?? 0)", app.T("Người theo dõi", "Followers"))
@@ -225,6 +253,18 @@ struct OrganizerProfileView: View {
                     .padding(6)
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .accessibilityIdentifier("organizerProfile.introField")
+                // Organizer Team pass (2026-09-27, Stage 3) — a SEPARATE
+                // long-form intro; orgRegDesc above is untouched.
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(app.T("Giới thiệu chi tiết (không bắt buộc)", "Long-form intro (optional)"))
+                        .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    TextEditor(text: $app.orgRegIntroLong)
+                        .font(.system(size: 13)).frame(minHeight: 100)
+                        .padding(6)
+                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .accessibilityIdentifier("organizerProfile.introLongField")
+                }
+                SocialLinksEditorView(links: $app.orgRegLinks, open: $app.orgRegLinksOpen, testPrefix: "organizerProfile.link")
                 HStack(spacing: 8) {
                     Button {
                         Task {

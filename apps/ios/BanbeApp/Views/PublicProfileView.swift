@@ -38,6 +38,32 @@ struct PublicProfileView: View {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                 } else if let p = app.publicProfile, p.success == true {
                     card(p)
+
+                    // Real, explicit, ACCEPTED event contributions only —
+                    // never derived from ticket attendance/bookings/
+                    // check-ins. Absent entirely if none.
+                    if let credited = p.creditedEvents, !credited.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(app.T("Đã tham gia tổ chức", "Helped organize"))
+                                .font(.system(size: 11.5, weight: .semibold)).opacity(0.7)
+                            ForEach(credited) { ev in
+                                Button { app.goEvent(ev.eventId) } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(ev.eventName).font(.system(size: 12.5))
+                                        Text(ev.organizerName).font(.system(size: 11)).opacity(0.6)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 14).padding(.vertical, 10)
+                                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(app.palette.ink)
+                            }
+                        }
+                        .padding(.top, 14)
+                        .accessibilityIdentifier("publicProfile.creditedEvents")
+                    }
+
                     Button(app.T("Hiển thị mã QR", "Show QR code")) { qrOpen = true }
                         .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                         .frame(maxWidth: .infinity).padding(.vertical, 13)
@@ -118,12 +144,39 @@ struct PublicProfileView: View {
             if let bio = p.bio, !bio.isEmpty {
                 Text(bio).font(.system(size: 12.5)).multilineTextAlignment(.center).foregroundStyle(app.palette.ink)
             }
+            // Organizer Team pass (2026-09-27, Stage 3) — SEPARATE
+            // long-form intro; `bio` above is untouched.
+            LongIntroPreview(text: p.introLong)
+            SocialLinksRow(links: p.socialLinks)
             if let interests = p.interests, !interests.isEmpty {
                 HStack(spacing: 6) {
                     ForEach(interests, id: \.self) { tag in
                         Text(tag).font(.system(size: 10.5, weight: .semibold))
                             .padding(.horizontal, 10).padding(.vertical, 5)
                             .background(Color.white.opacity(0.5), in: Capsule())
+                    }
+                }
+            }
+            // Organizer Team pass (2026-09-27, Stage 2) — ONLY this
+            // profile's OWN opted-in choice (teamBadges): accepted AND
+            // currently public_visible. Hiding Team association removes
+            // this badge (and credited events below) in the same instant
+            // server-side.
+            if let badges = p.teamBadges, !badges.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(badges) { badge in
+                        Button {
+                            Task { await app.openOrganizerTeam(organizerID: badge.organizerId, back: .publicProfile) }
+                        } label: {
+                            Text(app.T("Thành viên của \(badge.organizerName) Team", "Member of the \(badge.organizerName) Team"))
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(Color.white.opacity(0.7), in: Capsule())
+                                .overlay(Capsule().stroke(app.palette.rule))
+                                .foregroundStyle(app.palette.ink)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("publicProfile.teamBadge.\(badge.organizerId)")
                     }
                 }
             }

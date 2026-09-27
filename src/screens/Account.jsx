@@ -72,6 +72,8 @@ export default function Account() {
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary,
     openPaymentDetails, goDashboard,
     loadMyOrgStats, setAccountTab, openPublicProfile, openReports,
+    loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility,
+    loadMyEventCredits, respondToEventCredit,
   } = useGoc();
   const s = state;
   // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Both panes stay
@@ -113,6 +115,12 @@ export default function Account() {
   // hosts') so the ring below reflects real data even when Account is
   // opened directly, without having visited Home first this session.
   useEffect(() => { if (s.user) loadHomeStories(); }, [s.user, loadHomeStories]);
+  // Organizer Team pass (2026-09-27, Stage 1) — this account's own pending
+  // invites/accepted memberships, shown in the Cá nhân tab below.
+  useEffect(() => { if (s.user?.id) loadMyOrganizerMemberships(); }, [s.user?.id, loadMyOrganizerMemberships]);
+  // Organizer Team pass (2026-09-27, Stage 2) — this account's own pending
+  // event-credit invites ("did I really help organize this event").
+  useEffect(() => { if (s.user?.id) loadMyEventCredits(); }, [s.user?.id, loadMyEventCredits]);
   // TASK A (2026-10-01 UX foundation pass) — Account is one of this
   // component's three placements; loads the same canonical sources Home
   // does so the Action Center reflects live server state here too, not a
@@ -236,6 +244,73 @@ export default function Account() {
           card instead. */}
       <div data-testid="account-tab-panel-personal" style={{ display: accountTab === 'personal' ? 'block' : 'none' }}>
       <ReportsRow label={T('Số liệu & báo cáo', 'Metrics & reports')} testId="account-reports-personal" onClick={() => openReports('personal', null, 'profile')} />
+
+      {/* Organizer Team pass (2026-09-27, Stage 1) — a real, pending
+          invite this account was actually sent (organizer_members,
+          migration 098). Accepting does NOT turn on public visibility —
+          that's the separate switch in "Đội ngũ của tôi" below. */}
+      {s.myOrganizerInvites.length > 0 && (
+        <div style={{ margin: '18px 20px 0' }} data-testid="account-team-invites">
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Lời mời Team', 'Team invites')}</span>
+          {s.myOrganizerInvites.map(inv => (
+            <div key={inv.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`team-invite-${inv.id}`}>
+              <span style={{ fontSize: 13, color: ink }}>
+                {T(`${inv.organizers?.name || 'Một tổ chức'} mời bạn làm ${inv.public_role}`, `${inv.organizers?.name || 'An organizer'} invited you as ${inv.public_role}`)}
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div onClick={() => respondToOrganizerInvite(inv.id, true)} data-testid={`team-invite-accept-${inv.id}`} style={{ ...inkButton({ flex: 1, padding: 10, fontSize: 12.5 }) }}>{T('Chấp nhận', 'Accept')}</div>
+                <div onClick={() => respondToOrganizerInvite(inv.id, false)} data-testid={`team-invite-decline-${inv.id}`} style={{ ...fieldGlass({ flex: 1, padding: 10, fontSize: 12.5, textAlign: 'center', cursor: 'pointer' }) }}>{T('Từ chối', 'Decline')}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Each accepted membership's OWN visibility switch — off by default,
+          and the ONLY way it can ever turn on (never the organizer owner). */}
+      {s.myTeamMemberships.length > 0 && (
+        <div style={{ margin: '18px 20px 0' }} data-testid="account-team-memberships">
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đội ngũ của tôi', 'My teams')}</span>
+          {s.myTeamMemberships.map(m => (
+            <div key={m.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`team-membership-${m.id}`}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                <span style={{ fontSize: 13, color: ink }}>{m.organizers?.name || T('Một tổ chức', 'An organizer')}</span>
+                <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{m.public_role}</span>
+              </div>
+              <div
+                onClick={() => setOrganizerMemberVisibility(m.id, !m.public_visible)}
+                data-testid={`team-membership-visibility-${m.id}`}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+              >
+                <span style={{ fontSize: 11, color: ink }}>{T('Hiển thị tôi trong Team', 'Show me in the Team')}</span>
+                <span aria-hidden style={{ flex: 'none', width: 40, height: 24, borderRadius: 12, padding: 3, background: m.public_visible ? ink : 'rgba(27,25,22,0.18)', transition: 'background .15s' }}>
+                  <span style={{ display: 'block', width: 18, height: 18, borderRadius: '50%', background: paper, transform: m.public_visible ? 'translateX(16px)' : 'translateX(0)', transition: 'transform .15s' }} />
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Organizer Team pass (2026-09-27, Stage 2) — a real, explicit,
+          owner-assigned event-organizing credit this account was actually
+          sent. Never derived from bookings/check-ins. */}
+      {s.myEventCredits.length > 0 && (
+        <div style={{ margin: '18px 20px 0' }} data-testid="account-event-credits">
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Ghi nhận đóng góp sự kiện', 'Event-organizing credits')}</span>
+          {s.myEventCredits.map(c => (
+            <div key={c.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`event-credit-${c.id}`}>
+              <span style={{ fontSize: 13, color: ink }}>
+                {T(`${c.organizers?.name || 'Một tổ chức'} ghi nhận bạn đã tổ chức "${c.events?.name || ''}"`, `${c.organizers?.name || 'An organizer'} credited you for organizing "${c.events?.name || ''}"`)}
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div onClick={() => respondToEventCredit(c.id, true)} data-testid={`event-credit-accept-${c.id}`} style={{ ...inkButton({ flex: 1, padding: 10, fontSize: 12.5 }) }}>{T('Chấp nhận', 'Accept')}</div>
+                <div onClick={() => respondToEventCredit(c.id, false)} data-testid={`event-credit-decline-${c.id}`} style={{ ...fieldGlass({ flex: 1, padding: 10, fontSize: 12.5, textAlign: 'center', cursor: 'pointer' }) }}>{T('Từ chối', 'Decline')}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {/* TASK D (2026-10-01 UX foundation pass) — the header is now a
           tappable rounded profile card (editorial style: soft gradient
           wash from the account's own chosen palette, real avatar or a

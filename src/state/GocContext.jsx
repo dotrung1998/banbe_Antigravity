@@ -222,7 +222,13 @@ if (typeof window !== 'undefined') {
 // Every screen a signed-out visitor may ever legitimately be on. Anything
 // else while `!user` gets redirected to 'login' by the guard effect below
 // — the enforcement point for "no guest browsing of any screen" (Task 1).
-const GUEST_ALLOWED_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy', 'organizerProfile']);
+// Organizer Team pass (2026-09-27, Stage 2) — 'publicProfile' was
+// missing here despite get_public_profile() being anon-granted and its
+// own doc comments already claiming signed-out support (a pre-existing
+// gap flagged, out of scope, in the prior ticket's own report) — now
+// directly in scope: "tap a member card to open their personal public
+// profile" must work for a signed-out Team page visitor too.
+const GUEST_ALLOWED_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy', 'organizerProfile', 'organizerTeam', 'publicProfile']);
 // Account extension (2026-09-27, Stage 1) — the internal, organizer-mode-
 // gated management screens: real event creation/editing, the organizer
 // management dashboard, and event check-in. Deliberately EXCLUDES
@@ -500,6 +506,11 @@ const initialState = {
   // TASK D (2026-10-01 UX foundation pass) — shareable profile card.
   editProfileHandle: '', editProfileName: '', editProfileBio: '', editProfileCity: '',
   editProfileInterests: '', editProfileTheme: 'default', editProfileError: '', editProfileBusy: false,
+  // Organizer Team pass (2026-09-27, Stage 3) — a separate long-form
+  // "Giới thiệu" (never overwrites the short bio above) + optional
+  // social links, both validated server-side (sanitize_social_links,
+  // migration 102) regardless of what this form lets through.
+  editProfileIntroLong: '', editProfileLinks: [], editProfileLinksOpen: false,
   // Personal-vs-organizer hierarchy pass (2026-09-27) — this screen is now
   // PERSONAL-ONLY (own display_name, own QR/edit — never an organizer
   // edit/guest-preview affordance; see PublicProfile.jsx's own comment).
@@ -525,6 +536,21 @@ const initialState = {
   reportsData: null, reportsLoading: false, reportsError: '',
   reportsExpanded: new Set(),
   reportsExportBusy: '',
+  // Organizer Team pass (2026-09-27, Stage 1) — real, opt-in organizer
+  // membership (organizer_members, migration 098). `myOrganizerInvites`
+  // is this account's OWN pending invites (any organizer); `myTeamMemberships`
+  // is this account's own ACCEPTED memberships, each with its own
+  // `public_visible` switch; `orgTeamRoster` is the FULL roster (every
+  // status) for whichever organizer the owner is currently managing in
+  // Dashboard — never fetched for an organizer this account doesn't own.
+  myOrganizerInvites: [], myTeamMemberships: [], orgTeamRoster: [], orgTeamRosterLoading: false,
+  orgTeamInviteHandle: '', orgTeamInviteRole: '', orgTeamInviteError: '', orgTeamInviteBusy: false,
+  // Organizer Team pass (2026-09-27, Stage 2) — the public Team page
+  // (get_organizer_team) and this account's own pending event-credit
+  // invites ("did I really help organize this event" — never inferred
+  // from bookings/check-ins).
+  organizerTeam: null, organizerTeamLoading: false, organizerTeamError: '', organizerTeamBack: 'organizerProfile', organizerTeamOrganizerId: '',
+  myEventCredits: [], orgEventCreditAssignBusy: '',
   // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
   pulseDaily: [], pulseWeekly: [], pulseOpen: false, pulseTab: 'daily', pulseOrganizerSheet: null,
   pulseDailyLoading: false, pulseWeeklyLoading: false,
@@ -679,6 +705,10 @@ const initialState = {
   orgRegName: '',
   orgRegIg: '',
   orgRegDesc: '',
+  // Organizer Team pass (2026-09-27, Stage 3) — separate long-form intro
+  // + optional social links for the ORGANIZER (never overwrites
+  // orgRegDesc/organizers.about above).
+  orgRegIntroLong: '', orgRegLinks: [], orgRegLinksOpen: false,
   // Host tab's own profile card (Stage D, 2026-09-26) — this account's
   // organizer row id + its real avatar_path (migration 090). Only one
   // organizer per account is supported (same standing assumption
@@ -1221,7 +1251,7 @@ export function GocProvider({ children }) {
       }
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, locale, theme, prefs_saved, display_name, referral_code, policy_accepted_at, policy_version, auto_email_documents, muted_notification_kinds, handle, avatar_url, bio, city, interests, profile_theme')
+        .select('role, locale, theme, prefs_saved, display_name, referral_code, policy_accepted_at, policy_version, auto_email_documents, muted_notification_kinds, handle, avatar_url, bio, city, interests, profile_theme, intro_long, social_links')
         .eq('id', user.id)
         .maybeSingle();
       const role =
@@ -1256,6 +1286,7 @@ export function GocProvider({ children }) {
           handle: profile?.handle || null, avatarUrl: profile?.avatar_url || null,
           bio: profile?.bio || '', city: profile?.city || '',
           interests: profile?.interests || [], profileTheme: profile?.profile_theme || 'default',
+          introLong: profile?.intro_long || '', socialLinks: profile?.social_links || [],
         },
         ...roleFields,
         referralCode: profile?.referral_code || null, sessionChecked: true,
@@ -1309,13 +1340,14 @@ export function GocProvider({ children }) {
       // returning on a new session.
       const { data: org } = await supabase
         .from('organizers')
-        .select('id, name, about, avatar_path')
+        .select('id, name, about, avatar_path, intro_long, social_links')
         .or(`owner_id.eq.${user.id},user_id.eq.${user.id}`)
         .limit(1)
         .maybeSingle();
       if (org?.name) {
         set({
           orgRegName: org.name, orgRegDesc: org.about || '', hasHosted: true,
+          orgRegIntroLong: org.intro_long || '', orgRegLinks: org.social_links || [],
           myOrganizerId: org.id, myOrganizerAvatarPath: org.avatar_path || '',
         });
       }
@@ -4741,17 +4773,32 @@ export function GocProvider({ children }) {
     editProfileHandle: s.user?.handle || '', editProfileName: s.user?.name || '',
     editProfileBio: s.user?.bio || '', editProfileCity: s.user?.city || '',
     editProfileInterests: (s.user?.interests || []).join(', '), editProfileTheme: s.user?.profileTheme || 'default',
+    editProfileIntroLong: s.user?.introLong || '', editProfileLinks: s.user?.socialLinks || [], editProfileLinksOpen: false,
     editProfileError: '', editProfileBusy: false,
   }), [set, s.user]);
   const backFromEditProfile = useCallback(() => set({ screen: 'profile' }), [set]);
 
+  const editProfileIntroLongType = useCallback((e) => set({ editProfileIntroLong: e.target.value }), [set]);
+  const toggleEditProfileLinksOpen = useCallback(() => set(prev => ({ editProfileLinksOpen: !prev.editProfileLinksOpen })), [set]);
+  const addEditProfileLink = useCallback(() => set(prev => ({
+    editProfileLinks: [...prev.editProfileLinks, { platform: 'website', url: '' }],
+  })), [set]);
+  const setEditProfileLink = useCallback((index, field, value) => set(prev => ({
+    editProfileLinks: prev.editProfileLinks.map((l, i) => i === index ? { ...l, [field]: value } : l),
+  })), [set]);
+  const removeEditProfileLink = useCallback((index) => set(prev => ({
+    editProfileLinks: prev.editProfileLinks.filter((_, i) => i !== index),
+  })), [set]);
+
   const saveProfileFields = useCallback(async (avatarUrlOverride) => {
     set({ editProfileBusy: true, editProfileError: '' });
     const interests = s.editProfileInterests.split(',').map(x => x.trim()).filter(Boolean);
+    const links = s.editProfileLinks.filter(l => l.url.trim());
     const { data, error } = await supabase.rpc('save_profile', {
       p_handle: s.editProfileHandle, p_display_name: s.editProfileName, p_bio: s.editProfileBio,
       p_city: s.editProfileCity, p_interests: interests, p_theme: s.editProfileTheme,
       p_avatar_url: avatarUrlOverride ?? null,
+      p_intro_long: s.editProfileIntroLong, p_social_links: links,
     });
     if (error || data?.success === false) {
       const code = data?.error;
@@ -4760,6 +4807,8 @@ export function GocProvider({ children }) {
         editProfileError: code === 'HANDLE_TAKEN' ? T('Tên người dùng này đã có người dùng.', 'That handle is already taken.')
           : code === 'INVALID_HANDLE' ? T('Tên người dùng chỉ gồm chữ thường, số, dấu gạch dưới (3-24 ký tự).', 'Handle must be lowercase letters/numbers/underscore, 3-24 characters.')
           : code === 'INVALID_NAME' ? T('Vui lòng nhập tên hiển thị.', 'Please enter a display name.')
+          : code === 'INTRO_TOO_LONG' ? T('Giới thiệu quá dài (tối đa 4000 ký tự).', 'Intro is too long (4000 characters max).')
+          : code === 'INVALID_LINKS' ? T('Một liên kết không hợp lệ. Chỉ chấp nhận đường dẫn https://.', 'One of the links is invalid. Only https:// links are accepted.')
           : T('Không thể lưu lúc này. Vui lòng thử lại.', 'Could not save right now. Please try again.'),
       });
       return false;
@@ -4769,10 +4818,11 @@ export function GocProvider({ children }) {
       user: {
         ...prev.user, name: s.editProfileName, handle: data.handle, bio: s.editProfileBio, city: s.editProfileCity,
         interests, profileTheme: s.editProfileTheme, avatarUrl: avatarUrlOverride ?? prev.user?.avatarUrl,
+        introLong: s.editProfileIntroLong, socialLinks: links,
       },
     }));
     return true;
-  }, [set, s.editProfileHandle, s.editProfileName, s.editProfileBio, s.editProfileCity, s.editProfileInterests, s.editProfileTheme, T]);
+  }, [set, s.editProfileHandle, s.editProfileName, s.editProfileBio, s.editProfileCity, s.editProfileInterests, s.editProfileTheme, s.editProfileIntroLong, s.editProfileLinks, T]);
 
   /** Owner-only avatar upload — validated client-side (type/size) before
    * ever reaching Storage; the bucket's own RLS (avatars_owner_write,
@@ -5147,6 +5197,147 @@ export function GocProvider({ children }) {
       set({ reportsExportBusy: '' });
     }
   }, [s.reportsData, set, T]);
+
+  // ---- Organizer Team pass (2026-09-27, Stage 1) ----
+  // organizer_members (migration 098) — see that file's own doc comment
+  // for the full privacy model. Nothing here infers membership from
+  // follows/bookings/check-ins; every row is a real, explicit invite.
+
+  /** This account's OWN pending invites + accepted memberships — a plain
+   * RLS-backed select (organizer_members_select_own), not an RPC; the
+   * table's own RLS already restricts this to rows where user_id = self.
+   * Joins the organizer's real name/avatar for display (organizers is
+   * publicly readable already). */
+  const loadMyOrganizerMemberships = useCallback(async () => {
+    if (!s.user?.id) return;
+    const { data, error } = await supabase
+      .from('organizer_members')
+      .select('id, organizer_id, status, public_role, public_visible, joined_at, organizers(name, avatar_path)')
+      .eq('user_id', s.user.id)
+      .in('status', ['invited', 'accepted'])
+      .order('invited_at', { ascending: false });
+    if (error) { console.warn('loadMyOrganizerMemberships failed:', error); return; }
+    const rows = data || [];
+    set({
+      myOrganizerInvites: rows.filter(r => r.status === 'invited'),
+      myTeamMemberships: rows.filter(r => r.status === 'accepted'),
+    });
+  }, [set, s.user?.id]);
+
+  const respondToOrganizerInvite = useCallback(async (membershipId, accept) => {
+    const { data, error } = await supabase.rpc('respond_to_organizer_invite', { p_membership_id: membershipId, p_accept: accept });
+    if (error || data?.success === false) { console.warn('respondToOrganizerInvite failed:', error || data); return false; }
+    await loadMyOrganizerMemberships();
+    return true;
+  }, [loadMyOrganizerMemberships]);
+
+  /** The member's OWN switch — optimistic, reconciled by the real RPC
+   * result; this is the ONLY path that can ever turn public_visible on. */
+  const setOrganizerMemberVisibility = useCallback(async (membershipId, visible) => {
+    set(prev => ({ myTeamMemberships: prev.myTeamMemberships.map(m => m.id === membershipId ? { ...m, public_visible: visible } : m) }));
+    const { data, error } = await supabase.rpc('set_organizer_member_visibility', { p_membership_id: membershipId, p_visible: visible });
+    if (error || data?.success === false) {
+      console.warn('setOrganizerMemberVisibility failed:', error || data);
+      set(prev => ({ myTeamMemberships: prev.myTeamMemberships.map(m => m.id === membershipId ? { ...m, public_visible: !visible } : m) }));
+    }
+  }, [set]);
+
+  /** Owner/co-owner only — the FULL roster (every status), never shown to
+   * anyone else. Direct select relies on organizer_members_select_owner. */
+  const loadOrgTeamRoster = useCallback(async (organizerId) => {
+    if (!organizerId) return;
+    set({ orgTeamRosterLoading: true });
+    const { data, error } = await supabase
+      .from('organizer_members')
+      .select('id, user_id, status, public_role, public_visible, invited_at, joined_at, profiles!organizer_members_user_id_fkey(handle, display_name, avatar_url)')
+      .eq('organizer_id', organizerId)
+      .order('invited_at', { ascending: false });
+    if (error) { console.warn('loadOrgTeamRoster failed:', error); return set({ orgTeamRosterLoading: false }); }
+    set({ orgTeamRoster: data || [], orgTeamRosterLoading: false });
+  }, [set]);
+
+  const orgTeamInviteHandleType = useCallback((e) => set({ orgTeamInviteHandle: e.target.value, orgTeamInviteError: '' }), [set]);
+  const orgTeamInviteRoleType = useCallback((e) => set({ orgTeamInviteRole: e.target.value }), [set]);
+
+  const inviteOrganizerMember = useCallback(async (organizerId) => {
+    const handle = s.orgTeamInviteHandle.trim();
+    if (!handle) return;
+    set({ orgTeamInviteBusy: true, orgTeamInviteError: '' });
+    const { data, error } = await supabase.rpc('invite_organizer_member', {
+      p_organizer_id: organizerId, p_handle: handle, p_public_role: s.orgTeamInviteRole.trim() || 'Thành viên',
+    });
+    if (error || data?.success === false) {
+      const code = data?.error;
+      set({
+        orgTeamInviteBusy: false,
+        orgTeamInviteError: code === 'USER_NOT_FOUND' ? T('Không tìm thấy người dùng với tên này.', 'No user found with that handle.')
+          : code === 'ALREADY_MEMBER' ? T('Người này đã ở trong đội ngũ hoặc đang chờ phản hồi.', 'This person is already a member or has a pending invite.')
+          : code === 'CANNOT_INVITE_OWNER' ? T('Không thể mời chính chủ sở hữu.', "You can't invite the owner.")
+          : T('Không thể gửi lời mời lúc này. Vui lòng thử lại.', "Couldn't send the invite right now. Please try again."),
+      });
+      return false;
+    }
+    set({ orgTeamInviteBusy: false, orgTeamInviteHandle: '', orgTeamInviteRole: '' });
+    await loadOrgTeamRoster(organizerId);
+    return true;
+  }, [set, s.orgTeamInviteHandle, s.orgTeamInviteRole, loadOrgTeamRoster, T]);
+
+  const removeOrganizerMember = useCallback(async (membershipId, organizerId) => {
+    const { data, error } = await supabase.rpc('remove_organizer_member', { p_membership_id: membershipId });
+    if (error || data?.success === false) { console.warn('removeOrganizerMember failed:', error || data); return false; }
+    await loadOrgTeamRoster(organizerId);
+    return true;
+  }, [loadOrgTeamRoster]);
+
+  // ---- Organizer Team pass (2026-09-27, Stage 2) — public Team page + event credits ----
+
+  /** get_organizer_team (098/101) — PUBLIC/anon-safe: accepted AND
+   * public_visible members only, never a hidden roster/count. Reused
+   * verbatim from the "Bởi <org> Team ›" row (OrganizerProfile.jsx) and a
+   * standalone /team/<id>-style deep link alike. */
+  const openOrganizerTeam = useCallback(async (organizerId, back = 'organizerProfile') => {
+    set({ screen: 'organizerTeam', organizerTeam: null, organizerTeamLoading: true, organizerTeamError: '', organizerTeamBack: back, organizerTeamOrganizerId: organizerId });
+    const { data, error } = await supabase.rpc('get_organizer_team', { p_organizer_id: organizerId });
+    if (error || data?.success === false) {
+      set({ organizerTeamLoading: false, organizerTeamError: T('Không tìm thấy đội ngũ này.', "This Team couldn't be found.") });
+      return;
+    }
+    set({ organizerTeam: data, organizerTeamLoading: false });
+  }, [set, T]);
+  const backFromOrganizerTeam = useCallback(() => set(prev => ({ screen: prev.organizerTeamBack || 'organizerProfile' })), [set]);
+
+  /** This account's OWN pending event-credit invites — a plain RLS-backed
+   * select (event_credits_select_own), joined with the real event's name
+   * for display. Never a credit this account didn't actually receive. */
+  const loadMyEventCredits = useCallback(async () => {
+    if (!s.user?.id) return;
+    const { data, error } = await supabase
+      .from('event_credits')
+      .select('id, event_id, organizer_id, status, events(name), organizers(name)')
+      .eq('user_id', s.user.id)
+      .eq('status', 'invited')
+      .order('created_at', { ascending: false });
+    if (error) { console.warn('loadMyEventCredits failed:', error); return; }
+    set({ myEventCredits: data || [] });
+  }, [set, s.user?.id]);
+
+  const respondToEventCredit = useCallback(async (creditId, accept) => {
+    const { data, error } = await supabase.rpc('respond_to_event_credit', { p_credit_id: creditId, p_accept: accept });
+    if (error || data?.success === false) { console.warn('respondToEventCredit failed:', error || data); return false; }
+    await loadMyEventCredits();
+    return true;
+  }, [loadMyEventCredits]);
+
+  /** Owner/co-owner only — credits a real ACCEPTED team member for a real
+   * event they own. Never the owner "crediting" themselves; never a
+   * stranger who hasn't accepted the Team invite in the first place. */
+  const assignEventCredit = useCallback(async (eventId, userId) => {
+    set({ orgEventCreditAssignBusy: eventId });
+    const { data, error } = await supabase.rpc('assign_event_credit', { p_event_id: eventId, p_user_id: userId });
+    set({ orgEventCreditAssignBusy: '' });
+    if (error || data?.success === false) { console.warn('assignEventCredit failed:', error || data); return false; }
+    return true;
+  }, [set]);
 
   /** Native share sheet (mobile Safari/Chrome) with a clipboard-copy
    * fallback for browsers with no Web Share API (most desktop browsers). */
@@ -6350,11 +6541,14 @@ export function GocProvider({ children }) {
         if (upErr) throw upErr;
         avatarPath = path;
       }
+      const links = s.orgRegLinks.filter(l => l.url.trim());
       const { data, error } = await supabase.rpc('update_organizer_profile', {
         p_organizer_id: s.myOrganizerId,
         p_name: s.orgRegName.trim(),
         p_intro: s.orgRegDesc.trim(),
         p_avatar_path: avatarPath,
+        p_intro_long: s.orgRegIntroLong,
+        p_social_links: links,
       });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error);
@@ -6365,6 +6559,10 @@ export function GocProvider({ children }) {
         ? T('Tên tổ chức không được để trống (tối đa 80 ký tự).', 'Organizer name is required (max 80 chars).')
         : err.message === 'INVALID_INTRO'
         ? T('Giới thiệu tối đa 2000 ký tự.', 'Introduction is limited to 2000 characters.')
+        : err.message === 'INTRO_TOO_LONG'
+        ? T('Giới thiệu dài quá (tối đa 4000 ký tự).', 'Intro is too long (4000 characters max).')
+        : err.message === 'INVALID_LINKS'
+        ? T('Một liên kết không hợp lệ. Chỉ chấp nhận đường dẫn https://.', 'One of the links is invalid. Only https:// links are accepted.')
         : err.message === 'INVALID_IMAGE_TYPE'
         ? T('Ảnh phải là JPEG, PNG hoặc WebP.', 'Photo must be JPEG, PNG, or WebP.')
         : err.message === 'IMAGE_TOO_LARGE'
@@ -6372,7 +6570,15 @@ export function GocProvider({ children }) {
         : (err.message || T('Không thể lưu. Vui lòng thử lại.', 'Could not save. Please try again.'));
       set({ orgProfileSaving: false, orgProfileError: message });
     }
-  }, [set, s.myOrganizerId, s.orgRegName, s.orgRegDesc, s.myOrganizerAvatarPath, T]);
+  }, [set, s.myOrganizerId, s.orgRegName, s.orgRegDesc, s.orgRegIntroLong, s.orgRegLinks, s.myOrganizerAvatarPath, T]);
+
+  const orgRegIntroLongType = useCallback((e) => set({ orgRegIntroLong: e.target.value }), [set]);
+  const toggleOrgRegLinksOpen = useCallback(() => set(prev => ({ orgRegLinksOpen: !prev.orgRegLinksOpen })), [set]);
+  const addOrgRegLink = useCallback(() => set(prev => ({ orgRegLinks: [...prev.orgRegLinks, { platform: 'website', url: '' }] })), [set]);
+  const setOrgRegLink = useCallback((index, field, value) => set(prev => ({
+    orgRegLinks: prev.orgRegLinks.map((l, i) => i === index ? { ...l, [field]: value } : l),
+  })), [set]);
+  const removeOrgRegLink = useCallback((index) => set(prev => ({ orgRegLinks: prev.orgRegLinks.filter((_, i) => i !== index) })), [set]);
 
   /**
    * Stage 1 (2026-09-27 nav/discovery pass) — Account host card's own
@@ -7141,13 +7347,27 @@ export function GocProvider({ children }) {
         if (!landed) reportStaleNotification(n);
         break;
       }
+      // Organizer Team pass (2026-09-27, Stage 1) — the invitee's own
+      // pending invite lives on Account's Cá nhân tab ("Lời mời Team"
+      // section, Account.jsx); the owner's "someone responded" lands back
+      // on their management page, scoped to organizer ownership like
+      // every other organizer-bound kind above.
+      case 'organizer_invite':
+        set({ screen: 'profile', accountTab: 'personal' });
+        break;
+      case 'organizer_invite_response':
+        if (n.data?.organizer_id && s.myOrganizerIds.includes(n.data.organizer_id)) goDashboard('notifications');
+        break;
+      case 'event_credit_invite':
+        set({ screen: 'profile', accountTab: 'personal' });
+        break;
       // 'guest_renamed': category B, informational only, no destination by
       // design — falls to default. markNotificationRead() above is the
       // whole "action."
       default:
         break;
     }
-  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, openVerifications, openPaymentDetails, openDocumentFromNotification, reportStaleNotification, goEvent, goDashboard]);
+  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, s.myOrganizerIds, openVerifications, openPaymentDetails, openDocumentFromNotification, reportStaleNotification, goEvent, goDashboard]);
   /**
    * The organizer's "mark as paid". confirm_payment issues the receipt in
    * the same transaction (migration 024) and notifies the guest, which is
@@ -7344,7 +7564,7 @@ export function GocProvider({ children }) {
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     openAdminEvents, loadPendingEvents, reviewEvent, goEditEvent,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
@@ -7354,7 +7574,7 @@ export function GocProvider({ children }) {
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
-    orgRegNameType, orgRegIgType, orgRegDescType, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
+    orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     geocodeCreateLocation, confirmCreateLocation, skipCreateLocation,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
@@ -7380,7 +7600,7 @@ export function GocProvider({ children }) {
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     openAdminEvents, loadPendingEvents, reviewEvent, goEditEvent,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
@@ -7390,7 +7610,7 @@ export function GocProvider({ children }) {
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
-    orgRegNameType, orgRegIgType, orgRegDescType, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
+    orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     geocodeCreateLocation, confirmCreateLocation, skipCreateLocation,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,

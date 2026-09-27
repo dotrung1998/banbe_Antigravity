@@ -42,6 +42,16 @@ struct PublicProfile: Decodable, Equatable {
     // PublicProfileView can hide it for every visitor while off.
     let organizerMode: Bool?
     var organizer: OrganizerSummary?
+    // Organizer Team pass (2026-09-27, Stage 3) — a SEPARATE long-form
+    // intro (never overwrites `bio`) + optional social links.
+    let introLong: String?
+    let socialLinks: [SocialLink]?
+    // Organizer Team pass (2026-09-27, Stage 2) — this profile's OWN
+    // opted-in Team badges + real, accepted event-organizing credits
+    // (migration 100), both gated server-side on the SAME live
+    // public_visible flag — never a client-side guess.
+    var teamBadges: [PublicProfileTeamBadge]?
+    var creditedEvents: [PublicProfileCreditedEvent]?
 
     enum CodingKeys: String, CodingKey {
         case success, error, id, handle
@@ -52,6 +62,36 @@ struct PublicProfile: Decodable, Equatable {
         case isOrganizer = "is_organizer"
         case organizerMode = "organizer_mode"
         case organizer
+        case introLong = "intro_long"
+        case socialLinks = "social_links"
+        case teamBadges = "team_badges"
+        case creditedEvents = "credited_events"
+    }
+}
+
+struct PublicProfileTeamBadge: Decodable, Equatable, Identifiable {
+    var id: String { organizerId }
+    let organizerId: String
+    let organizerName: String
+    let publicRole: String
+    enum CodingKeys: String, CodingKey {
+        case organizerId = "organizer_id"
+        case organizerName = "organizer_name"
+        case publicRole = "public_role"
+    }
+}
+
+struct PublicProfileCreditedEvent: Decodable, Equatable, Identifiable {
+    var id: String { eventId }
+    let eventId: String
+    let eventName: String
+    let organizerId: String
+    let organizerName: String
+    enum CodingKeys: String, CodingKey {
+        case eventId = "event_id"
+        case eventName = "event_name"
+        case organizerId = "organizer_id"
+        case organizerName = "organizer_name"
     }
 }
 
@@ -73,12 +113,17 @@ struct OrganizerProfile: Decodable, Equatable {
     let eventCount: Int?
     var followerCount: Int?
     var following: Bool?
+    // Organizer Team pass (2026-09-27, Stage 3).
+    let introLong: String?
+    let socialLinks: [SocialLink]?
     enum CodingKeys: String, CodingKey {
         case success, error, id, name, about, verified, following
         case avatarPath = "avatar_path"
         case hostingSinceYear = "hosting_since_year"
         case eventCount = "event_count"
         case followerCount = "follower_count"
+        case introLong = "intro_long"
+        case socialLinks = "social_links"
     }
 }
 
@@ -105,9 +150,12 @@ private struct SaveProfileParams: Encodable {
     let pInterests: [String]
     let pTheme: String
     let pAvatarUrl: String?
+    let pIntroLong: String
+    let pSocialLinks: [SocialLink]
     enum CodingKeys: String, CodingKey {
         case pHandle = "p_handle", pDisplayName = "p_display_name", pBio = "p_bio"
         case pCity = "p_city", pInterests = "p_interests", pTheme = "p_theme", pAvatarUrl = "p_avatar_url"
+        case pIntroLong = "p_intro_long", pSocialLinks = "p_social_links"
     }
 }
 
@@ -119,6 +167,9 @@ extension AppState {
         editProfileCity = user?.city ?? ""
         editProfileInterests = (user?.interests ?? []).joined(separator: ", ")
         editProfileTheme = user?.profileTheme ?? "default"
+        editProfileIntroLong = user?.introLong ?? ""
+        editProfileLinks = user?.socialLinks ?? []
+        editProfileLinksOpen = false
         editProfileError = ""
         editProfileBusy = false
         screen = .editProfile
@@ -131,11 +182,13 @@ extension AppState {
         editProfileError = ""
         defer { editProfileBusy = false }
         let interests = editProfileInterests.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let links = editProfileLinks.filter { !$0.url.trimmingCharacters(in: .whitespaces).isEmpty }
         do {
             let result: SaveProfileResult = try await SupabaseService.client
                 .rpc("save_profile", params: SaveProfileParams(
                     pHandle: editProfileHandle, pDisplayName: editProfileName, pBio: editProfileBio,
-                    pCity: editProfileCity, pInterests: interests, pTheme: editProfileTheme, pAvatarUrl: avatarURLOverride
+                    pCity: editProfileCity, pInterests: interests, pTheme: editProfileTheme, pAvatarUrl: avatarURLOverride,
+                    pIntroLong: editProfileIntroLong, pSocialLinks: links
                 ))
                 .execute().value
             guard result.success == true else {
@@ -144,6 +197,8 @@ extension AppState {
                     case "HANDLE_TAKEN": return T("Tên người dùng này đã có người dùng.", "That handle is already taken.")
                     case "INVALID_HANDLE": return T("Tên người dùng chỉ gồm chữ thường, số, dấu gạch dưới (3-24 ký tự).", "Handle must be lowercase letters/numbers/underscore, 3-24 characters.")
                     case "INVALID_NAME": return T("Vui lòng nhập tên hiển thị.", "Please enter a display name.")
+                    case "INTRO_TOO_LONG": return T("Giới thiệu quá dài (tối đa 4000 ký tự).", "Intro is too long (4000 characters max).")
+                    case "INVALID_LINKS": return T("Một liên kết không hợp lệ. Chỉ chấp nhận đường dẫn https://.", "One of the links is invalid. Only https:// links are accepted.")
                     default: return T("Không thể lưu lúc này. Vui lòng thử lại.", "Could not save right now. Please try again.")
                     }
                 }()
@@ -155,6 +210,8 @@ extension AppState {
             user?.city = editProfileCity
             user?.interests = interests
             user?.profileTheme = editProfileTheme
+            user?.introLong = editProfileIntroLong
+            user?.socialLinks = links
             if let avatarURLOverride { user?.avatarURL = avatarURLOverride.isEmpty ? nil : avatarURLOverride }
             screen = .profile
             return true

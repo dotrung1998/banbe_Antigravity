@@ -11,8 +11,12 @@ export default function Dashboard() {
     state, T, trStatus, stripKm, curEvent, backFromDashboard, goCreate, openAttendance, goEvent, requestVerify, loadHomeLiveEvents,
     loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, openVerifications, uploadEventPhoto,
     loadRealEventsById, goEditEvent, openOrganizerProfile,
+    loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember,
+    assignEventCredit,
   } = useGoc();
   const s = state;
+  const [creditEventKey, setCreditEventKey] = useState('');
+  const [creditUserId, setCreditUserId] = useState('');
   // Event review queue — a real, host-created event isn't in the static
   // demo catalogue, so it's resolved through the same canonical
   // realEventsById cache Home/EventList already use (see loadRealEventsById's
@@ -23,6 +27,11 @@ export default function Dashboard() {
     if (myRealOrgKeys.length) loadRealEventsById(myRealOrgKeys);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myRealOrgKeys.join(','), loadRealEventsById]);
+  // Organizer Team pass (2026-09-27, Stage 1) — the FULL roster (every
+  // status), owner-only (this screen only ever renders for the account's
+  // own organizer).
+  useEffect(() => { if (s.myOrganizerId) loadOrgTeamRoster(s.myOrganizerId); }, [s.myOrganizerId, loadOrgTeamRoster]);
+  const ROLE_STATUS_LABEL = { invited: T('Đang chờ', 'Pending'), accepted: T('Đã tham gia', 'Joined'), declined: T('Đã từ chối', 'Declined'), removed: T('Đã xoá', 'Removed') };
   const myRealEvents = myRealOrgKeys.map(k => s.realEventsById[k]).filter(Boolean);
   const pendingReal = myRealEvents.filter(e => e.status === 'review');
   const needsFixReal = myRealEvents.filter(e => e.status === 'draft' && e.rejectionReason);
@@ -148,6 +157,81 @@ export default function Dashboard() {
           style={{ margin: '16px 22px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '12px 0', borderRadius: 12, cursor: 'pointer', border: '1px solid rgba(27,25,22,0.16)' }}
         >
           {T('Hồ sơ công khai của tổ chức', "Organizer's public profile")}
+        </div>
+      )}
+
+      {/* Organizer Team pass (2026-09-27, Stage 1) — owner-only roster
+          management. Public role is display-only (never authorization —
+          this account's own owner_id/user_id on `organizers` is still the
+          only thing any event/payment/refund/bank action ever checks).
+          The owner can invite/remove but never flip a member's own
+          public_visible switch (that row simply isn't writable from
+          here). */}
+      {s.myOrganizerId && (
+        <div style={{ margin: '16px 22px 0' }} data-testid="dashboard-team-section">
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đội ngũ', 'Team')}</span>
+          <div style={{ ...fieldGlass({ marginTop: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }) }}>
+            <input
+              value={s.orgTeamInviteHandle} onChange={orgTeamInviteHandleType}
+              placeholder={T('Tên người dùng (@handle)', 'Handle (@handle)')}
+              data-testid="dashboard-team-invite-handle"
+              style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: ink }}
+            />
+            <input
+              value={s.orgTeamInviteRole} onChange={orgTeamInviteRoleType}
+              placeholder={T('Vai trò công khai (VD: Điều phối)', 'Public role (e.g. Coordinator)')}
+              data-testid="dashboard-team-invite-role"
+              style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: ink }}
+            />
+            {s.orgTeamInviteError && <span style={{ fontSize: 11.5, color: alert }}>{s.orgTeamInviteError}</span>}
+            <div
+              onClick={s.orgTeamInviteBusy ? undefined : () => inviteOrganizerMember(s.myOrganizerId)}
+              data-testid="dashboard-team-invite-submit"
+              style={{ ...inkButton({ padding: 10, fontSize: 12.5, opacity: s.orgTeamInviteBusy ? 0.6 : 1 }) }}
+            >
+              {s.orgTeamInviteBusy ? T('Đang gửi…', 'Sending…') : T('Mời thành viên', 'Invite member')}
+            </div>
+          </div>
+          {s.orgTeamRoster.filter(m => m.status !== 'removed').map(m => (
+            <div key={m.id} style={{ ...fieldGlass({ marginTop: 8, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`dashboard-team-member-${m.id}`}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                <span style={{ fontSize: 13, color: ink }}>{m.profiles?.display_name || m.profiles?.handle}</span>
+                <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>
+                  {m.public_role} ▪︎ {ROLE_STATUS_LABEL[m.status]}{m.status === 'accepted' && !m.public_visible ? ` ▪︎ ${T('đã ẩn công khai', 'hidden from public')}` : ''}
+                </span>
+              </div>
+              <div onClick={() => removeOrganizerMember(m.id, s.myOrganizerId)} data-testid={`dashboard-team-remove-${m.id}`} style={{ fontSize: 12, color: alert, cursor: 'pointer' }}>
+                {T('Xoá', 'Remove')}
+              </div>
+            </div>
+          ))}
+          {/* Organizer Team pass (2026-09-27, Stage 2) — credits a real,
+              ACCEPTED team member for a real event this account owns.
+              Never the owner's own name; never a stranger who hasn't
+              accepted the Team invite (assign_event_credit itself
+              re-checks both server-side regardless). */}
+          {myRealEvents.length > 0 && s.orgTeamRoster.some(m => m.status === 'accepted') && (
+            <div style={{ ...fieldGlass({ marginTop: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }) }}>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Ghi nhận đóng góp sự kiện', 'Credit an event contribution')}</span>
+              <select value={creditEventKey} onChange={e => setCreditEventKey(e.target.value)} data-testid="dashboard-credit-event-select" style={{ fontSize: 12.5, padding: 8 }}>
+                <option value="">{T('Chọn sự kiện…', 'Choose an event…')}</option>
+                {myRealEvents.map(e => <option key={e.key} value={e.key}>{e.name}</option>)}
+              </select>
+              <select value={creditUserId} onChange={e => setCreditUserId(e.target.value)} data-testid="dashboard-credit-member-select" style={{ fontSize: 12.5, padding: 8 }}>
+                <option value="">{T('Chọn thành viên…', 'Choose a member…')}</option>
+                {s.orgTeamRoster.filter(m => m.status === 'accepted').map(m => (
+                  <option key={m.user_id} value={m.user_id}>{m.profiles?.display_name || m.profiles?.handle}</option>
+                ))}
+              </select>
+              <div
+                onClick={creditEventKey && creditUserId ? async () => { await assignEventCredit(creditEventKey, creditUserId); setCreditEventKey(''); setCreditUserId(''); } : undefined}
+                data-testid="dashboard-credit-submit"
+                style={{ ...inkButton({ padding: 10, fontSize: 12.5, opacity: creditEventKey && creditUserId ? 1 : 0.5 }) }}
+              >
+                {T('Ghi nhận', 'Credit')}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

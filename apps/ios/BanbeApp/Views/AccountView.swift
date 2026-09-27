@@ -99,6 +99,8 @@ struct AccountView: View {
             accountContent
         }
         .task { if app.userID != nil { await app.loadHomeStories() } }
+        .task { if app.userID != nil { await app.loadMyOrganizerMemberships() } }
+        .task { if app.userID != nil { await app.loadMyEventCredits() } }
         // TASK A (2026-10-01 UX foundation pass) — same canonical loaders
         // HomeView's own `.task` calls.
         .task {
@@ -193,6 +195,7 @@ struct AccountView: View {
             reportsRow(app.T("Số liệu & báo cáo", "Metrics & reports"), identifier: "account.reportsPersonal") {
                 app.openReports(scope: "personal", back: .profile)
             }
+            teamInvitesAndMemberships
             // TASK D (2026-10-01 UX foundation pass) — the header is
             // now a tappable rounded profile card (editorial style:
             // soft gradient wash from the account's own chosen
@@ -576,6 +579,88 @@ struct AccountView: View {
     // Cá nhân, unconditionally reachable) per "organizer mode OFF means
     // host UI is OFF": the Tổ chức tab itself is gone while it's off, so
     // the ON/OFF control and any actionable host duty can't live there.
+    // Organizer Team pass (2026-09-27, Stage 1) — a real, pending invite
+    // this account was actually sent (organizer_members, migration 098).
+    // Accepting does NOT turn on public visibility — that's the separate
+    // switch on each accepted membership below.
+    @ViewBuilder
+    private var teamInvitesAndMemberships: some View {
+        if !app.myOrganizerInvites.isEmpty {
+            Text(app.T("Lời mời Team", "Team invites")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            ForEach(app.myOrganizerInvites) { inv in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(app.T("\(inv.organizers?.name ?? "Một tổ chức") mời bạn làm \(inv.publicRole)", "\(inv.organizers?.name ?? "An organizer") invited you as \(inv.publicRole)"))
+                        .font(.system(size: 13))
+                    HStack(spacing: 8) {
+                        InkButton(title: app.T("Chấp nhận", "Accept")) { Task { await app.respondToOrganizerInvite(membershipID: inv.id, accept: true) } }
+                        Button(app.T("Từ chối", "Decline")) { Task { await app.respondToOrganizerInvite(membershipID: inv.id, accept: false) } }
+                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            .frame(maxWidth: .infinity).padding(.vertical, 10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                    }
+                }
+                .padding(14)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 8)
+                .accessibilityIdentifier("team.invite.\(inv.id)")
+            }
+        }
+        if !app.myTeamMemberships.isEmpty {
+            Text(app.T("Đội ngũ của tôi", "My teams")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            ForEach(app.myTeamMemberships) { m in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(m.organizers?.name ?? app.T("Một tổ chức", "An organizer")).font(.system(size: 13))
+                        Text(m.publicRole).font(.system(size: 11)).opacity(0.65)
+                    }
+                    Spacer()
+                    Button {
+                        Task { await app.setOrganizerMemberVisibility(membershipID: m.id, visible: !m.publicVisible) }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(app.T("Hiển thị tôi trong Team", "Show me in the Team")).font(.system(size: 10.5))
+                            ZStack(alignment: m.publicVisible ? .trailing : .leading) {
+                                Capsule().fill(m.publicVisible ? app.palette.ink : app.palette.ink.opacity(0.18)).frame(width: 38, height: 22)
+                                Circle().fill(app.palette.paper).frame(width: 17, height: 17).padding(2.5)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("team.membership.visibility.\(m.id)")
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(14)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 8)
+            }
+        }
+        // Organizer Team pass (2026-09-27, Stage 2) — a real, explicit,
+        // owner-assigned event-organizing credit this account was
+        // actually sent. Never derived from bookings/check-ins.
+        if !app.myEventCredits.isEmpty {
+            Text(app.T("Ghi nhận đóng góp sự kiện", "Event-organizing credits")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            ForEach(app.myEventCredits) { c in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(app.T(
+                        "\(c.organizers?.name ?? "Một tổ chức") ghi nhận bạn đã tổ chức \"\(c.events?.name ?? "")\"",
+                        "\(c.organizers?.name ?? "An organizer") credited you for organizing \"\(c.events?.name ?? "")\""
+                    )).font(.system(size: 13))
+                    HStack(spacing: 8) {
+                        InkButton(title: app.T("Chấp nhận", "Accept")) { Task { await app.respondToEventCredit(creditID: c.id, accept: true) } }
+                        Button(app.T("Từ chối", "Decline")) { Task { await app.respondToEventCredit(creditID: c.id, accept: false) } }
+                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            .frame(maxWidth: .infinity).padding(.vertical, 10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                    }
+                }
+                .padding(14)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 8)
+                .accessibilityIdentifier("eventCredit.\(c.id)")
+            }
+        }
+    }
+
     @ViewBuilder
     private var hostingSection: some View {
         Text(app.T("Tổ chức", "Hosting"))

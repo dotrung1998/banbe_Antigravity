@@ -12,6 +12,8 @@ struct DashboardView: View {
     // instance of this control per event row rather than a single one.
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var photoPickerEventID: String?
+    @State private var creditEventID: String = ""
+    @State private var creditUserID: String = ""
 
     /// Branded from one of this account's real events when it owns any
     /// (myOrgEventKeys), falling back to the open event otherwise.
@@ -132,6 +134,8 @@ struct DashboardView: View {
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("dashboard.organizerPublicProfile")
                             .padding(.top, 16)
+
+                            teamSection(organizerID: organizerID)
                         }
 
                         if !event.orgTrusted && !app.orgVerifyRequested {
@@ -324,6 +328,10 @@ struct DashboardView: View {
             await app.loadMyOrgEventSummaries()
         }
         .task { await app.loadHomeLiveEvents() }
+        // Organizer Team pass (2026-09-27, Stage 1) — owner-only, the FULL
+        // roster (every status); this screen only ever renders for the
+        // account's own organizer.
+        .task { if let organizerID = app.myOrganizerID { await app.loadOrgTeamRoster(organizerID: organizerID) } }
         // TASK A (2026-10-01 UX foundation pass).
         .task {
             await app.loadVerifications()
@@ -343,6 +351,90 @@ struct DashboardView: View {
                 photoPickerEventID = nil
             }
         }
+    }
+
+    private static let statusLabelKeys: [String: (String, String)] = [
+        "invited": ("Đang chờ", "Pending"), "accepted": ("Đã tham gia", "Joined"),
+        "declined": ("Đã từ chối", "Declined"), "removed": ("Đã xoá", "Removed"),
+    ]
+
+    // Organizer Team pass (2026-09-27, Stage 1) — owner-only roster
+    // management. Public role is display-only (never authorization — this
+    // account's own owner_id/user_id on `organizers` is still the only
+    // thing any event/payment/refund/bank action ever checks). The owner
+    // can invite/remove but never flip a member's own public_visible
+    // switch (no control here writes that field at all).
+    @ViewBuilder
+    private func teamSection(organizerID: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(app.T("Đội ngũ", "Team")).font(.system(size: 11.5, weight: .semibold))
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(app.T("Tên người dùng (@handle)", "Handle (@handle)"), text: $app.orgTeamInviteHandle)
+                    .font(.system(size: 13)).accessibilityIdentifier("dashboard.team.inviteHandle")
+                TextField(app.T("Vai trò công khai (VD: Điều phối)", "Public role (e.g. Coordinator)"), text: $app.orgTeamInviteRole)
+                    .font(.system(size: 13)).accessibilityIdentifier("dashboard.team.inviteRole")
+                if !app.orgTeamInviteError.isEmpty {
+                    Text(app.orgTeamInviteError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                }
+                InkButton(title: app.orgTeamInviteBusy ? app.T("Đang gửi…", "Sending…") : app.T("Mời thành viên", "Invite member")) {
+                    Task { await app.inviteOrganizerMember(organizerID: organizerID) }
+                }
+                .disabled(app.orgTeamInviteBusy)
+                .accessibilityIdentifier("dashboard.team.inviteSubmit")
+            }
+            .padding(14)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            ForEach(app.orgTeamRoster.filter { $0.status != "removed" }) { member in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(member.profiles?.displayName ?? member.profiles?.handle ?? "").font(.system(size: 13))
+                        let statusLabel = Self.statusLabelKeys[member.status].map { app.T($0.0, $0.1) } ?? member.status
+                        Text("\(member.publicRole) ▪︎ \(statusLabel)" + (member.status == "accepted" && !member.publicVisible ? " ▪︎ \(app.T("đã ẩn công khai", "hidden from public"))" : ""))
+                            .font(.system(size: 11)).opacity(0.65)
+                    }
+                    Spacer()
+                    Button(app.T("Xoá", "Remove")) {
+                        Task { await app.removeOrganizerMember(membershipID: member.id, organizerID: organizerID) }
+                    }
+                    .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                    .accessibilityIdentifier("dashboard.team.remove.\(member.id)")
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(12)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .accessibilityIdentifier("dashboard.team.member.\(member.id)")
+            }
+
+            // Organizer Team pass (2026-09-27, Stage 2) — credits a real,
+            // ACCEPTED team member for a real event this account owns.
+            let acceptedMembers = app.orgTeamRoster.filter { $0.status == "accepted" }
+            if !app.myOrgEventSummaries.isEmpty, !acceptedMembers.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(app.T("Ghi nhận đóng góp sự kiện", "Credit an event contribution")).font(.system(size: 11.5, weight: .semibold))
+                    Picker(app.T("Sự kiện", "Event"), selection: $creditEventID) {
+                        Text(app.T("Chọn sự kiện…", "Choose an event…")).tag("")
+                        ForEach(app.myOrgEventSummaries, id: \.id) { e in Text(e.name).tag(e.id) }
+                    }
+                    Picker(app.T("Thành viên", "Member"), selection: $creditUserID) {
+                        Text(app.T("Chọn thành viên…", "Choose a member…")).tag("")
+                        ForEach(acceptedMembers) { m in Text(m.profiles?.displayName ?? m.profiles?.handle ?? "").tag(m.userId.uuidString) }
+                    }
+                    InkButton(title: app.T("Ghi nhận", "Credit")) {
+                        guard !creditEventID.isEmpty, let uid = UUID(uuidString: creditUserID) else { return }
+                        Task {
+                            _ = await app.assignEventCredit(eventID: creditEventID, userID: uid)
+                            creditEventID = ""; creditUserID = ""
+                        }
+                    }
+                    .disabled(creditEventID.isEmpty || creditUserID.isEmpty)
+                    .accessibilityIdentifier("dashboard.credit.submit")
+                }
+                .padding(14)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+        }
+        .padding(.top, 16)
     }
 
     @ViewBuilder

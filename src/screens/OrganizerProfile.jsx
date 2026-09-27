@@ -4,6 +4,8 @@ import { useGoc } from '../state/GocContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { paper, ink, rule, alert, display, cardGlass } from '../theme.js';
 import { bg } from '../data/events.js';
+import { SocialLinksEditor } from './SocialLinksEditor.jsx';
+import { LongIntroPreview, SocialLinksRow } from './LongIntro.jsx';
 
 function organizerAvatarUrl(path) {
   if (!path) return '';
@@ -27,6 +29,8 @@ export default function OrganizerProfile() {
   const {
     state, T, backFromOrganizerProfile, shareOrganizerProfile, toggleFollowOrganizer,
     loadOrganizerProfileExtras, goEvent, orgRegNameType, orgRegDescType, saveOrganizerProfile,
+    openOrganizerTeam,
+    orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink,
   } = useGoc();
   const s = state;
   const [qrOpen, setQrOpen] = useState(false);
@@ -104,6 +108,10 @@ export default function OrganizerProfile() {
           {org.verified && <span style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.7 }}>✓ {T('Đã xác minh', 'Verified')}</span>}
         </div>
         {org.about && <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, textAlign: 'center', margin: '4px 0 0' }}>{org.about}</p>}
+        {/* Organizer Team pass (2026-09-27, Stage 3) — a SEPARATE
+            long-form intro; org.about (the short one) is untouched. */}
+        <LongIntroPreview T={T} text={org.intro_long} />
+        <SocialLinksRow links={org.social_links} />
 
         <div style={{ display: 'flex', gap: 20, marginTop: 10 }}>
           <Stat value={org.event_count} label={T('Sự kiện', 'Events')} />
@@ -139,6 +147,22 @@ export default function OrganizerProfile() {
         {T('Hiển thị mã QR tổ chức', "Show the organizer's QR code")}
       </div>
 
+      {/* Organizer Team pass (2026-09-27, Stage 2) — a prominent, large
+          tappable row using the organizer's own real name (never the
+          founder's personal name — that stays governed entirely by the
+          founder's OWN personal-profile organizer_mode toggle, an
+          unrelated mechanism this label never touches). Opens the public
+          Team page (get_organizer_team, 098/101) — accepted AND
+          public_visible members only. */}
+      <div
+        onClick={() => openOrganizerTeam(org.id, 'organizerProfile')}
+        data-testid="organizer-profile-team-row"
+        style={{ ...cardGlass({ margin: '12px 20px 0', padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+      >
+        <span style={{ fontSize: 14, fontWeight: 600, color: ink }}>{T(`Bởi ${org.name} Team`, `By the ${org.name} Team`)}</span>
+        <span aria-hidden style={{ fontSize: 20, color: ink, opacity: 0.55 }}>›</span>
+      </div>
+
       {/* Owner only — edits organizers.name/about/avatar_path (migration
           090's update_organizer_profile), never profiles.* / save_profile().
           `org.id === s.myOrganizerId` gates this, never a personal-profile
@@ -166,6 +190,22 @@ export default function OrganizerProfile() {
                 placeholder={T('Giới thiệu ngắn về bạn/nhóm tổ chức…', 'A short introduction to you/your host team…')}
                 data-testid="organizer-profile-intro-input"
                 style={{ fontSize: 13, color: ink, border: `1px solid ${rule}`, borderRadius: 10, padding: '10px 12px', outline: 'none', resize: 'vertical', lineHeight: 1.5 }}
+              />
+              {/* Organizer Team pass (2026-09-27, Stage 3) — a SEPARATE
+                  long-form intro, never overwriting orgRegDesc above. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T('Giới thiệu chi tiết (không bắt buộc)', 'Long-form intro (optional)')}</span>
+                <textarea
+                  value={s.orgRegIntroLong} onChange={orgRegIntroLongType} rows={5} maxLength={4000}
+                  data-testid="organizer-profile-intro-long-input"
+                  style={{ fontSize: 13, color: ink, border: `1px solid ${rule}`, borderRadius: 10, padding: '10px 12px', outline: 'none', resize: 'vertical', lineHeight: 1.5 }}
+                />
+              </div>
+              <SocialLinksEditor
+                T={T} links={s.orgRegLinks} open={s.orgRegLinksOpen}
+                onToggleOpen={toggleOrgRegLinksOpen} onAdd={addOrgRegLink}
+                onSetField={setOrgRegLink} onRemove={removeOrgRegLink}
+                testPrefix="organizer-profile-link"
               />
               <div style={{ display: 'flex', gap: 8 }}>
                 <span
