@@ -377,6 +377,59 @@ struct DockRow: View {
     }
 }
 
+/// Refresh-indicator fix pass (2026-09-27, follow-up A) — the same
+/// dominant outline coordinates each Glyph below already draws, exposed
+/// standalone (keyed by `Screen`, not by an icon id) so
+/// `RootRefreshIndicator` can `.trim()` a travel segment around the REAL
+/// icon shape instead of a generic circle. A fresh `Path` built here
+/// rather than reaching into each private Glyph struct, so those stay
+/// untouched.
+enum RootTabOutline {
+    static func path(for screen: Screen, size: CGFloat) -> Path {
+        let s = size / 24
+        switch screen {
+        case .home:
+            return Path { p in
+                p.move(to: CGPoint(x: 6 * s, y: 19.5 * s))
+                p.addLine(to: CGPoint(x: 6 * s, y: 10 * s))
+                p.addLine(to: CGPoint(x: 4 * s, y: 11.5 * s))
+                p.addLine(to: CGPoint(x: 12 * s, y: 4 * s))
+                p.addLine(to: CGPoint(x: 20 * s, y: 11.5 * s))
+                p.addLine(to: CGPoint(x: 18 * s, y: 10 * s))
+                p.addLine(to: CGPoint(x: 18 * s, y: 19.5 * s))
+                p.closeSubpath()
+            }
+        case .mapExplore:
+            return Path { p in
+                p.move(to: CGPoint(x: 12 * s, y: 3 * s))
+                p.addCurve(to: CGPoint(x: 6 * s, y: 9.1 * s), control1: CGPoint(x: 8.7 * s, y: 3 * s), control2: CGPoint(x: 6 * s, y: 5.6 * s))
+                p.addCurve(to: CGPoint(x: 12 * s, y: 21 * s), control1: CGPoint(x: 6 * s, y: 13.4 * s), control2: CGPoint(x: 12 * s, y: 21 * s))
+                p.addCurve(to: CGPoint(x: 18 * s, y: 9.1 * s), control1: CGPoint(x: 12 * s, y: 21 * s), control2: CGPoint(x: 18 * s, y: 13.4 * s))
+                p.addCurve(to: CGPoint(x: 12 * s, y: 3 * s), control1: CGPoint(x: 18 * s, y: 5.6 * s), control2: CGPoint(x: 15.3 * s, y: 3 * s))
+                p.closeSubpath()
+            }
+        case .notifications:
+            return Path { p in
+                p.move(to: CGPoint(x: 7 * s, y: 13.1 * s))
+                p.addLine(to: CGPoint(x: 7 * s, y: 8.5 * s))
+                p.addCurve(to: CGPoint(x: 12 * s, y: 3.5 * s), control1: CGPoint(x: 7 * s, y: 5.7 * s), control2: CGPoint(x: 9.2 * s, y: 3.5 * s))
+                p.addCurve(to: CGPoint(x: 17 * s, y: 8.5 * s), control1: CGPoint(x: 14.8 * s, y: 3.5 * s), control2: CGPoint(x: 17 * s, y: 5.7 * s))
+                p.addLine(to: CGPoint(x: 17 * s, y: 13.1 * s))
+                p.addLine(to: CGPoint(x: 18.7 * s, y: 16.3 * s))
+                p.addCurve(to: CGPoint(x: 18 * s, y: 17.4 * s), control1: CGPoint(x: 19 * s, y: 16.9 * s), control2: CGPoint(x: 18.6 * s, y: 17.4 * s))
+                p.addLine(to: CGPoint(x: 6 * s, y: 17.4 * s))
+                p.addCurve(to: CGPoint(x: 5.3 * s, y: 16.3 * s), control1: CGPoint(x: 5.4 * s, y: 17.4 * s), control2: CGPoint(x: 5 * s, y: 16.9 * s))
+                p.closeSubpath()
+            }
+        case .inbox:
+            return RoundedRectangle(cornerRadius: 2.4 * s, style: .continuous)
+                .path(in: CGRect(x: 4.5 * s, y: 7 * s, width: 15 * s, height: 11 * s))
+        default: // .profile — the head circle is the recognizable part.
+            return Circle().path(in: CGRect(x: (12 - 3.8) * s, y: (8 - 3.8) * s, width: 7.6 * s, height: 7.6 * s))
+        }
+    }
+}
+
 private struct TabItemFrameKey: PreferenceKey {
     static var defaultValue: [String: Anchor<CGRect>] = [:]
     static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) {

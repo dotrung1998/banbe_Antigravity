@@ -20,6 +20,24 @@ import { ink, alert, barGlass } from '../theme.js';
 // belonging to. The bell used to be a solid shape UNCONDITIONALLY (no
 // outline variant existed at all), which is the actual "bell stays filled
 // even when Notifications isn't the active tab" bug this fixes.
+// Refresh-indicator fix pass (2026-09-27, follow-up A) — the dominant,
+// single traceable outline for each root tab's icon (same coordinates as
+// that icon's own dominant shape in ICONS below, just exported standalone
+// so App.jsx's pull-to-refresh indicator can `.trim()`-style travel a
+// stroke around the REAL icon shape instead of a generic circle). Keyed
+// by screen name (App.jsx's own DOCK_ORDER values), not by the icon id
+// ICONS itself uses. Each is either a single `<path d>` or a basic shape
+// SVG already supports a `pathLength` attribute on, so the same
+// stroke-dasharray/dashoffset trick works for all five without a manual
+// arc-length calculation.
+export const TAB_OUTLINE_SHAPES = {
+  home: { path: 'M6 19.5 V10 L4 11.5 L12 4 L20 11.5 L18 10 V19.5 Z' },
+  mapExplore: { path: 'M12 3c-3.3 0-6 2.6-6 6.1C6 13.4 12 21 12 21s6-7.6 6-11.9C18 5.6 15.3 3 12 3z' },
+  notifications: { path: 'M12 3.5c-2.8 0-5 2.2-5 5v4.6l-1.6 2.7c-.3.5.1 1.2.7 1.2h11.8c.6 0 1-.7.7-1.2L17 13.1V8.5c0-2.8-2.2-5-5-5z' },
+  inbox: { rect: { x: 4.5, y: 7, width: 15, height: 11, rx: 2.4 } },
+  profile: { circle: { cx: 12, cy: 8, r: 3.8 } },
+};
+
 const ICONS = {
   map: (c, filled) => (
     <svg viewBox="0 0 24 24" width="100%" height="100%">

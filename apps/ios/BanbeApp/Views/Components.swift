@@ -273,6 +273,12 @@ private extension CIImage {
 
 /// Screen scaffold: paper background, the app's own top inset, and a
 /// scrolling body — the shape nearly every web screen has.
+// Matches web's PULL_TRIGGER_PX (App.jsx Shell) for the same "how far is
+// a real pull" feel on both platforms. A free function, not a `static let`
+// on ScreenScaffold itself — stored type properties aren't supported on a
+// generic type.
+private let screenScaffoldPullTriggerDistance: CGFloat = 64
+
 struct ScreenScaffold<Content: View>: View {
     @EnvironmentObject private var app: AppState
     var scroll = true
@@ -298,10 +304,19 @@ struct ScreenScaffold<Content: View>: View {
     // for Map Explore) and gives each scrollable child a stable `.id(...)`
     // — see `HomeView`'s own use of this for its feed cards.
     var scrollPositionID: Binding<String?>? = nil
+    // Refresh-indicator fix pass (2026-09-27, follow-up A) — replaces each
+    // root screen's own plain `.refreshable { await ... }` (whose system
+    // spinner can't be reskinned, see RootRefreshIndicator's own doc
+    // comment). The closure is the exact same reload this screen already
+    // called from `.refreshable` — nothing about WHAT gets reloaded
+    // changes, only how the pull is triggered/drawn. `nil` (every other
+    // screen) means this scaffold behaves exactly as before: no probe
+    // wiring, no indicator overlay.
+    var onRefresh: (() async -> Void)? = nil
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             app.palette.paper.ignoresSafeArea()
             if scroll {
                 ScrollView {
@@ -319,14 +334,34 @@ struct ScreenScaffold<Content: View>: View {
                         }
                     }
                     .background(
-                        tracksBottomBarScroll
-                            ? AnyView(ScaffoldScrollProbe { app.noteScaffoldScroll($0) })
+                        (tracksBottomBarScroll || onRefresh != nil)
+                            ? AnyView(ScaffoldScrollProbe(
+                                onChange: { offsetY in
+                                    if tracksBottomBarScroll { app.noteScaffoldScroll(offsetY) }
+                                    guard onRefresh != nil, !app.rootRefreshing else { return }
+                                    app.rootPullProgress = min(1, max(0, offsetY) / screenScaffoldPullTriggerDistance)
+                                },
+                                onGestureEnded: onRefresh != nil ? {
+                                    guard !app.rootRefreshing else { return }
+                                    guard app.rootPullProgress >= 1, let onRefresh else {
+                                        app.rootPullProgress = 0
+                                        return
+                                    }
+                                    app.runRootRefresh(onRefresh)
+                                } : nil
+                              ))
                             : AnyView(EmptyView())
                     )
                 }
                 .modifier(ScrollPositionIDModifier(id: scrollPositionID))
             } else {
                 content().frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if onRefresh != nil, app.rootPullProgress > 0 || app.rootRefreshing {
+                RootRefreshIndicator(screen: app.screen, progress: app.rootPullProgress, refreshing: app.rootRefreshing)
+                    .padding(.top, 54)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
             }
         }
     }
@@ -367,23 +402,36 @@ private struct ScrollPositionIDModifier: ViewModifier {
 /// change notification fires synchronously as the property mutates,
 /// independent of which RunLoop mode is currently active, which is exactly
 /// why plain UIKit code has never needed this workaround.
-private struct ScaffoldScrollProbe: UIViewRepresentable {
+struct ScaffoldScrollProbe: UIViewRepresentable {
     let onChange: (CGFloat) -> Void
+    // Refresh-indicator fix pass (2026-09-27, follow-up A) — fires once
+    // per real pan-gesture release/cancel on the ancestor UIScrollView
+    // this probe finds, the "did the finger actually let go" signal a pure
+    // `contentOffset` KVO can't give on its own. Added as a SECOND target
+    // on that scroll view's own `panGestureRecognizer` (existing targets —
+    // the ScrollView's own tracking — are untouched; multiple targets on
+    // one UIGestureRecognizer is a normal, supported UIKit pattern), never
+    // a replacement gesture that could compete with native scrolling.
+    var onGestureEnded: (() -> Void)? = nil
 
     func makeUIView(context: Context) -> ProbeView {
         let view = ProbeView()
         view.onChange = onChange
+        view.onGestureEnded = onGestureEnded
         return view
     }
 
     func updateUIView(_ uiView: ProbeView, context: Context) {
         uiView.onChange = onChange
+        uiView.onGestureEnded = onGestureEnded
     }
 
     final class ProbeView: UIView {
         var onChange: ((CGFloat) -> Void)?
+        var onGestureEnded: (() -> Void)?
         private weak var observedScrollView: UIScrollView?
         private var observation: NSKeyValueObservation?
+        private weak var attachedGesture: UIPanGestureRecognizer?
 
         override func didMoveToWindow() { super.didMoveToWindow(); attachIfNeeded() }
         override func didMoveToSuperview() { super.didMoveToSuperview(); attachIfNeeded() }
@@ -407,9 +455,23 @@ private struct ScaffoldScrollProbe: UIViewRepresentable {
                         self?.onChange?(-sv.contentOffset.y)
                     }
                     onChange?(-scrollView.contentOffset.y)
+                    if onGestureEnded != nil {
+                        scrollView.panGestureRecognizer.addTarget(self, action: #selector(handlePanStateChange(_:)))
+                        attachedGesture = scrollView.panGestureRecognizer
+                    }
                     return
                 }
                 responder = candidate.superview
+            }
+        }
+
+        @objc private func handlePanStateChange(_ gesture: UIPanGestureRecognizer) {
+            if gesture.state == .ended || gesture.state == .cancelled { onGestureEnded?() }
+        }
+
+        deinit {
+            if let attachedGesture {
+                attachedGesture.removeTarget(self, action: #selector(handlePanStateChange(_:)))
             }
         }
     }

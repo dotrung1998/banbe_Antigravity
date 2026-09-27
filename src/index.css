@@ -91,6 +91,16 @@ input::placeholder {
   to { transform: rotate(360deg); }
 }
 
+/* Refresh-indicator fix pass (2026-09-27, follow-up A) — travels a fixed-
+   length stroke segment around the refreshing tab's own icon outline
+   (RootRefreshIndicator.jsx), replacing gocSpin's generic circle. Each
+   shape's pathLength is normalized to 100 (see TAB_OUTLINE_SHAPES), so one
+   dashoffset range works for every icon regardless of its real geometry. */
+@keyframes gocRefreshTravel {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -100; }
+}
+
 /* Story viewer progress bar fill (StoryViewer.jsx) — 07-notifications.md Task 3.4. */
 @keyframes gocStoryFill {
   from { width: 0%; }

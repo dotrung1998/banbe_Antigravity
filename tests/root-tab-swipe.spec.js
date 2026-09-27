@@ -40,6 +40,17 @@ test.describe('Root-tab horizontal swipe', () => {
     await page.mouse.up();
 
     await page.waitForSelector('[data-screen-label="MapExplore"]', { timeout: 5000 });
+    // Root-tab-swipe fix pass (2026-09-27, follow-up B) — the destination
+    // screen is now mounted (and its own `data-screen-label` visible) as
+    // soon as the drag reveals it, well before the ~250ms settle actually
+    // flips `state.screen` for real (see App.jsx's own `commitNext`
+    // comment) — intentional, so the real screen/data is there to see
+    // during the drag itself, not a blank canvas. A back-to-back second
+    // gesture started mid-settle would race that flip, exactly as it
+    // would on a real device swiping twice with no pause — this waits out
+    // that same brief window before continuing, same as a real user's own
+    // natural pause between two swipes.
+    await page.waitForTimeout(300);
 
     // On Map, the gesture only engages from a narrow strip near the RIGHT
     // edge (map panning owns the rest of the canvas — see App.jsx's own
@@ -57,6 +68,7 @@ test.describe('Root-tab horizontal swipe', () => {
     await page.mouse.up();
 
     await page.waitForSelector('[data-screen-label="Notifications"]', { timeout: 5000 });
+    await page.waitForTimeout(300);
 
     // From a non-Map root screen, swiping right (mid-screen, no edge
     // restriction) goes back to the PREVIOUS tab (Map) — confirms the

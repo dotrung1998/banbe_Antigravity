@@ -83,6 +83,33 @@ struct InboxView: View {
                                 .listRowInsets(EdgeInsets(top: 0, leading: 24, bottom: 0, trailing: 24))
                                 .listRowSeparatorTint(app.palette.rule)
                                 .listRowBackground(app.palette.paper)
+                                // Refresh-indicator fix pass (2026-09-27,
+                                // follow-up A) — same `ScaffoldScrollProbe`
+                                // ScreenScaffold uses, anchored to this
+                                // FIRST row (a real UITableView cell, so
+                                // walking up from here reliably finds the
+                                // List's own underlying UIScrollView —
+                                // attaching it to the List itself does
+                                // not, since `.background()` there sits
+                                // outside that hierarchy) instead of the
+                                // plain `.refreshable{}` this used to have
+                                // (its system spinner can't be reskinned —
+                                // see RootRefreshIndicator's own comment).
+                                .background(
+                                    thread.id == visibleThreads.first?.id && !isPreview
+                                        ? AnyView(ScaffoldScrollProbe(
+                                            onChange: { offsetY in
+                                                guard !app.rootRefreshing else { return }
+                                                app.rootPullProgress = min(1, max(0, offsetY) / 64)
+                                            },
+                                            onGestureEnded: {
+                                                guard !app.rootRefreshing else { return }
+                                                guard app.rootPullProgress >= 1 else { app.rootPullProgress = 0; return }
+                                                app.runRootRefresh { await app.loadInboxThreads() }
+                                            }
+                                          ))
+                                        : AnyView(EmptyView())
+                                )
                                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                     let archived = app.inboxThreadPrefs[thread.id]?.archived ?? false
                                     Button {
@@ -109,12 +136,13 @@ struct InboxView: View {
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
                     .background(app.palette.paper)
-                    // Stage 2 (2026-09-27 nav/discovery pass) — native
-                    // pull-to-refresh, the SAME real reload this screen's
-                    // own `.task` already calls, never a second/duplicate
-                    // poll.
-                    .refreshable { await app.loadInboxThreads() }
                 }
+            }
+            if app.rootPullProgress > 0 || app.rootRefreshing {
+                RootRefreshIndicator(screen: .inbox, progress: app.rootPullProgress, refreshing: app.rootRefreshing)
+                    .padding(.top, 54)
+                    .allowsHitTesting(false)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
         .task { await app.loadInboxThreads() }
@@ -1053,7 +1081,7 @@ struct NotificationsView: View {
 
     var body: some View {
         ZStack {
-            ScreenScaffold(tracksBottomBarScroll: true) {
+            ScreenScaffold(tracksBottomBarScroll: true, onRefresh: { await app.loadNotifications() }) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .center) {
                         // TASK 2 (2026-09-22 nineteenth follow-up) — "Done"
@@ -1164,10 +1192,6 @@ struct NotificationsView: View {
                 await app.loadNotifications()
                 syncSectionMembership()
             }
-            // Stage 2 (2026-09-27 nav/discovery pass) — native pull-to-
-            // refresh, the SAME real reload `.task` above already calls,
-            // never a second/duplicate poll.
-            .refreshable { await app.loadNotifications() }
             .onChange(of: app.notifications) { _, _ in syncSectionMembership() }
             // BUG 3 (2026-09-22 eighteenth follow-up) — real root cause:
             // `app.modalActionSheetPresented` (BottomTabBarOverlay.swift's

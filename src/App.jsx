@@ -51,6 +51,7 @@ import MapExplore from './screens/MapExplore.jsx';
 import DockCreateButton from './screens/DockCreateButton.jsx';
 import EditProfile from './screens/EditProfile.jsx';
 import PublicProfile from './screens/PublicProfile.jsx';
+import RootRefreshIndicator from './screens/RootRefreshIndicator.jsx';
 
 const SCREENS = {
   splash: Splash,
@@ -147,7 +148,6 @@ function Shell() {
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadMyOrgStats,
     canHost,
   } = useGoc();
-  const Screen = SCREENS[state.screen] || Home;
   const scrollRef = useRef(null);
   const scrollPositions = useRef({});
   const lastScrollTop = useRef(0);
@@ -196,6 +196,24 @@ function Shell() {
   // gesture follows the finger with zero lag instead of chasing a tween.
   const [isSwiping, setIsSwiping] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
+  // Root-tab-swipe fix pass (2026-09-27, follow-up B) — the real cause of
+  // "destination screen is blank/partly missing during the drag, then
+  // slides in AGAIN from the left after release": only the CURRENT
+  // screen was ever rendered/transformed here, so a drag revealed nothing
+  // behind it, and committing changed `state.screen`, which changed
+  // `<Screen key={state.screen}/>`'s own key — forcing React to unmount
+  // the old component and mount a BRAND NEW instance of the destination,
+  // replaying that screen's own CSS mount-in animation (every screen's
+  // root div carries `animation: gocIn ...`) on top of a drag that had
+  // already visually placed it. `swipeNeighbor` (the adjacent screen's
+  // key, or null) makes the render below mount that REAL destination
+  // screen early and move it together with the current one in one shared
+  // transform-based coordinate system (see the render's own CSS Grid
+  // stacking comment) — and since a screen's `key` never changes across
+  // the eventual commit (see endGesture's own comment), React keeps that
+  // SAME instance instead of remounting it, so its `gocIn` animation
+  // plays exactly once, during the reveal, never a second time on release.
+  const [swipeNeighbor, setSwipeNeighbor] = useState(null);
 
   // Each root screen's own real data reload — reuses the SAME loaders each
   // screen's own mount effect already calls, never a second/duplicate
@@ -226,6 +244,20 @@ function Shell() {
       }
       await Promise.all(tasks);
     }
+  };
+
+  // The adjacent screen sits exactly one full container-width away from
+  // the current one, in the direction it's coming from, and slides in as
+  // `swipeX` follows the finger — one shared coordinate system with the
+  // current screen (which uses `swipeX` directly), not an independent
+  // transition.
+  const neighborOffset = (screen) => {
+    const idx = DOCK_ORDER.indexOf(stateRef.current.screen);
+    const nIdx = DOCK_ORDER.indexOf(screen);
+    if (idx === -1 || nIdx === -1) return 0;
+    const width = gestureRef.current.width || window.innerWidth;
+    const sign = nIdx > idx ? 1 : -1;
+    return swipeX + sign * width;
   };
 
   const gotoDockIndex = (idx) => {
@@ -296,6 +328,11 @@ function Shell() {
       if (dx < 0 && !canNext) clamped = dx * 0.25;
       if (dx > 0 && !canPrev) clamped = dx * 0.25;
       setSwipeX(clamped);
+      // Mount the real adjacent screen as soon as a direction is known —
+      // its own existing loader (`.task`/mount effect) starts right away
+      // instead of waiting for the gesture to commit.
+      const neighbor = clamped < 0 && canNext ? DOCK_ORDER[idx + 1] : clamped > 0 && canPrev ? DOCK_ORDER[idx - 1] : null;
+      setSwipeNeighbor(neighbor);
     } else if (g.phase === 'pull') {
       e.preventDefault();
       setIsPulling(true);
@@ -311,10 +348,33 @@ function Shell() {
 
     if (g.phase === 'horizontal') {
       const idx = DOCK_ORDER.indexOf(stateRef.current.screen);
-      if (dx <= -SWIPE_COMMIT_PX && idx !== -1 && idx < DOCK_ORDER.length - 1) gotoDockIndex(idx + 1);
-      else if (dx >= SWIPE_COMMIT_PX && idx > 0) gotoDockIndex(idx - 1);
+      const width = g.width || window.innerWidth;
+      const commitNext = dx <= -SWIPE_COMMIT_PX && idx !== -1 && idx < DOCK_ORDER.length - 1;
+      const commitPrev = dx >= SWIPE_COMMIT_PX && idx > 0;
       setIsSwiping(false);
-      setSwipeX(0);
+      if (commitNext || commitPrev) {
+        // Settle the SAME two already-mounted screens (current + the real
+        // neighbor from onGesturePointerMove) the rest of the way to their
+        // final positions over one real CSS transition — never a second
+        // push/slide transition. Only once that settle finishes does
+        // `state.screen` actually flip (gotoDockIndex); `swipeNeighbor`'s
+        // key never changes across that flip, so the destination screen's
+        // component instance (and its already-completed mount animation)
+        // carries straight through instead of remounting.
+        setSwipeX(commitNext ? -width : width);
+        setTimeout(() => {
+          gotoDockIndex(commitNext ? idx + 1 : idx - 1);
+          // Unanimated reset — the newly-current screen is already sitting
+          // exactly in place, so this swap must not itself visibly move.
+          setIsSwiping(true);
+          setSwipeX(0);
+          setSwipeNeighbor(null);
+          requestAnimationFrame(() => setIsSwiping(false));
+        }, 250);
+      } else {
+        setSwipeX(0);
+        setTimeout(() => setSwipeNeighbor(null), 250);
+      }
     } else if (g.phase === 'pull') {
       setIsPulling(false);
       if (pullDist >= PULL_TRIGGER_PX) {
@@ -346,6 +406,7 @@ function Shell() {
     gestureRef.current.phase = null;
     setIsSwiping(false);
     setSwipeX(0);
+    if (swipeNeighbor) setTimeout(() => setSwipeNeighbor(null), 250);
     if (!refreshing) { setIsPulling(false); setPullDist(0); }
   };
 
@@ -449,11 +510,16 @@ function Shell() {
           touchAction: gestureBlocked ? 'auto' : 'pan-y',
         }}
       >
-        {/* Stage 2 — pull-to-refresh's own native-style progress
-            indicator, pushed down by the pulled distance (or held at
-            PULL_TRIGGER_PX*0.72 while the real reload is in flight); a
-            spinner while refreshing, a friendly line on failure, nothing
-            once settled back to 0. */}
+        {/* Refresh-indicator fix pass (2026-09-27, follow-up A) — the
+            generic circular spinner is gone: this now shows the OUTLINE
+            icon of the tab actually being refreshed (state.screen — this
+            container never renders for mapExplore, see runRefresh's own
+            comment, so screen here is always one of the other four), with
+            a thin stroke traveling around that icon's own outline, not an
+            enclosing circle (RootRefreshIndicator.jsx). Follows pull
+            distance before release, held at PULL_TRIGGER_PX*0.72 (a fixed
+            "travel" position) while the real reload is in flight; a
+            friendly line on failure instead. */}
         {(pullDist > 0 || refreshing || refreshError) && (
           <div
             data-testid="pull-to-refresh-indicator"
@@ -466,20 +532,47 @@ function Shell() {
             {refreshError ? (
               <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, background: paper, borderRadius: 999, padding: '7px 14px', boxShadow: '0 4px 14px rgba(27,25,22,0.16)' }}>{refreshError}</span>
             ) : (
-              <span
-                aria-hidden
-                style={{
-                  width: 22, height: 22, borderRadius: '50%', border: `2.5px solid ${rule}`, borderTopColor: ink,
-                  animation: (refreshing || pullDist >= PULL_TRIGGER_PX) ? 'gocSpin 0.7s linear infinite' : 'none',
-                  transform: (refreshing || pullDist >= PULL_TRIGGER_PX) ? 'none' : `rotate(${Math.min(1, pullDist / PULL_TRIGGER_PX) * 360}deg)`,
-                  boxSizing: 'border-box', background: paper,
-                }}
+              <RootRefreshIndicator
+                screen={state.screen}
+                progress={pullDist / PULL_TRIGGER_PX}
+                refreshing={refreshing}
+                label={T('Đang làm mới', 'Refreshing')}
               />
             )}
           </div>
         )}
-        <div style={{ paddingBottom: showBar ? 92 : 0, transform: (swipeX || pullDist) ? `translate(${swipeX}px, ${pullDist}px)` : undefined, transition: (isSwiping || isPulling) ? 'none' : 'transform 0.25s cubic-bezier(.22,.61,.36,1)' }}>
-          <Screen key={state.screen} />
+        {/* Root-tab-swipe fix pass (2026-09-27, follow-up B) — a CSS Grid
+            "stack" (both children share the same `gridArea`, so the
+            container's own box is sized from content exactly as a plain
+            div's would be with just one child) instead of a single
+            `<Screen key={state.screen}/>`. While `swipeNeighbor` is set,
+            the real destination screen renders here as a SECOND sibling
+            (same array, same parent) instead of nothing — see
+            onGesturePointerMove's own comment for why it's mounted this
+            early. Each screen keeps a stable `key={s}` across the whole
+            drag-then-commit sequence (endGesture never changes it, only
+            drops the old sibling), so React never tears down and remounts
+            the destination the way changing `<Screen key={state.screen}/>`'s
+            own key used to. */}
+        <div style={{ paddingBottom: showBar ? 92 : 0, display: 'grid' }}>
+          {[state.screen, ...(swipeNeighbor ? [swipeNeighbor] : [])].map((s) => {
+            const isCurrent = s === state.screen;
+            const ScreenComp = SCREENS[s] || Home;
+            const off = isCurrent ? swipeX : neighborOffset(s);
+            return (
+              <div
+                key={s}
+                style={{
+                  gridArea: '1 / 1',
+                  transform: (off || (isCurrent && pullDist)) ? `translate(${off}px, ${isCurrent ? pullDist : 0}px)` : undefined,
+                  transition: (isSwiping || isPulling) ? 'none' : 'transform 0.25s cubic-bezier(.22,.61,.36,1)',
+                  pointerEvents: isCurrent ? undefined : 'none',
+                }}
+              >
+                <ScreenComp />
+              </div>
+            );
+          })}
         </div>
         {state.areaAsking && <AreaSheet />}
         {state.askingLocation && <LocationSheet />}

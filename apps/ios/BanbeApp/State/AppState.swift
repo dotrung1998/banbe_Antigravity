@@ -242,6 +242,17 @@ final class AppState: ObservableObject {
     // ScreenScaffold's own scroll-offset tracking via noteScaffoldScroll(),
     // and reset to false on every screen change (see RootView).
     @Published var bottomBarCollapsed: Bool = false
+    // Refresh-indicator fix pass (2026-09-27, follow-up A) — shared pull-
+    // to-refresh state for whichever of the five root tabs is currently on
+    // screen (ScreenScaffold's own custom pull mechanism, replacing plain
+    // `.refreshable{}` so its system spinner can be replaced with
+    // RootRefreshIndicator's icon-outline travel — see that view's own
+    // doc comment for why `.refreshable` itself can't be reskinned). One
+    // shared pair of fields is enough since only one root tab is ever
+    // interactive at a time; each screen still owns its OWN reload
+    // closure, passed to `ScreenScaffold(onRefresh:)`.
+    @Published var rootPullProgress: CGFloat = 0
+    @Published var rootRefreshing = false
     // TASK 1 (2026-09-22 twenty-first follow-up) — the single shared signal
     // `BottomTabBarOverlay.applyVisibility()` (BottomTabBarOverlay.swift)
     // drives for EVERY dock hide/show case (screen change, StoryViewer,
@@ -1620,6 +1631,24 @@ final class AppState: ObservableObject {
     /// entirely when the value wouldn't change, so it can't restart the
     /// same animation mid-flight against itself.
     private var lastScaffoldScrollUpdate = Date.distantPast
+
+    /// Refresh-indicator fix pass (2026-09-27, follow-up A) — the one
+    /// trigger point `ScreenScaffold`'s custom pull gesture and
+    /// `MapExploreView`'s own local pull both call once a real release
+    /// crosses the pull threshold; guards against a second overlapping
+    /// reload the same way `applyOrganizerMode`'s own busy-guard already
+    /// does elsewhere in this file.
+    func runRootRefresh(_ action: @escaping () async -> Void) {
+        guard !rootRefreshing else { return }
+        rootRefreshing = true
+        Task {
+            await action()
+            await MainActor.run {
+                rootRefreshing = false
+                rootPullProgress = 0
+            }
+        }
+    }
 
     func noteScaffoldScroll(_ offsetY: CGFloat) {
         let now = Date()

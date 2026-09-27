@@ -61,7 +61,11 @@ struct HomeView: View {
         // get a stable `.id(...)` — the header/banners/chips are always a
         // small, fixed offset near the top and aren't meaningful restore
         // targets the way "which event card was on screen" is.
-        ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.homeScrollAnchorID) {
+        ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.homeScrollAnchorID, onRefresh: {
+            await app.loadHomeLiveEvents()
+            await app.loadWeekendEvents()
+            if app.userID != nil { await app.loadHomeStories() }
+        }) {
             // Lazy, so only the cards actually on screen fetch their photo —
             // the eager VStack kicked off all ~21 hero downloads at launch
             // and they all fought for the same bandwidth.
@@ -121,14 +125,6 @@ struct HomeView: View {
         // real (non-catalogue) event needs its own fetch for savedStrip to
         // resolve it instead of quietly skipping it.
         .task { await app.loadMissingRealEvents(for: app.favorites + app.attending) }
-        // Stage 2 (2026-09-27 nav/discovery pass) — native pull-to-
-        // refresh, the SAME real reloads the `.task`s above already call,
-        // never a second/duplicate poll.
-        .refreshable {
-            await app.loadHomeLiveEvents()
-            await app.loadWeekendEvents()
-            if app.userID != nil { await app.loadHomeStories() }
-        }
         .onAppear {
             startTickingIfNeeded()
             retryScrollRestoreIfNeeded()

@@ -30,6 +30,19 @@ struct RootView: View {
     // recognizing the same touch).
     @State private var tabSwipeTranslation: CGFloat = 0
     @State private var tabSwipeDirection: String?
+    // Root-tab-swipe fix pass (2026-09-27, follow-up B) — real cause of
+    // "destination screen blank/partly missing during the drag, then
+    // slides in AGAIN from the left after release": only `app.screen`'s
+    // own view was ever rendered/offset here, so a drag revealed nothing
+    // behind it, and committing (`BottomTabBar.goto`) changed `app.screen`,
+    // which is exactly the value `.animation(value: app.screen)` below
+    // watches — replaying the FULL insertion `.transition` on a screen
+    // that had already been dragged into place. Non-nil for exactly the
+    // 0.22s settle window between a committed tab-swipe and the actual
+    // `app.screen` flip — `tabSwipeNeighbor` (below) stays pinned to this
+    // target through that whole window so the real destination view (see
+    // `rootScreensToRender`) doesn't get dropped and re-added mid-settle.
+    @State private var tabSwipeCommittingTarget: Screen?
 
     // How far in from the leading edge a swipe can originate — matches the
     // HIG's own edge-swipe affordance width. `edgeSwipe` below is attached
@@ -179,17 +192,95 @@ struct RootView: View {
                 withTransaction(transaction) { tabSwipeTranslation = dx }
             }
             .onEnded { value in
-                defer { tabSwipeDirection = nil }
-                guard tabSwipeDirection == "horizontal" else { return }
+                guard tabSwipeDirection == "horizontal" else {
+                    tabSwipeDirection = nil
+                    return
+                }
                 let idx = BottomTabBar.dockOrder.firstIndex(of: app.screen)
                 let dx = value.translation.width
+                let width = UIScreen.main.bounds.width
                 if dx <= -tabSwipeCommitDistance, let idx, idx < BottomTabBar.dockOrder.count - 1 {
-                    BottomTabBar.goto(BottomTabBar.dockOrder[idx + 1], app: app)
+                    commitTabSwipe(to: BottomTabBar.dockOrder[idx + 1], settleTranslation: -width)
                 } else if dx >= tabSwipeCommitDistance, let idx, idx > 0 {
-                    BottomTabBar.goto(BottomTabBar.dockOrder[idx - 1], app: app)
+                    commitTabSwipe(to: BottomTabBar.dockOrder[idx - 1], settleTranslation: width)
+                } else {
+                    withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) { tabSwipeTranslation = 0 }
+                    tabSwipeDirection = nil
                 }
-                withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) { tabSwipeTranslation = 0 }
             }
+    }
+
+    /// Settles the CURRENT and NEIGHBOR views (both already mounted — see
+    /// `rootScreensToRender`) the rest of the way to their final positions
+    /// over one real animation, then — only once that finishes — actually
+    /// flips `app.screen` and resets all the swipe state in a single
+    /// unanimated transaction. That ordering is the whole fix: the
+    /// destination view's identity (`tabSwipeCommittingTarget`, mirrored by
+    /// `rootScreensToRender`'s own `id`-stable `ForEach`) never disappears
+    /// and reappears, so SwiftUI never treats it as a fresh insertion and
+    /// never replays its own insertion `.transition` — the "slides in AGAIN"
+    /// bug this fixes. Mirrors `RootView`'s own `isCommittingBack`/
+    /// `.onChange(of: isCommittingBack)` handler exactly, the proven
+    /// pattern already established here for edge-swipe-back.
+    private func commitTabSwipe(to screen: Screen, settleTranslation: CGFloat) {
+        tabSwipeCommittingTarget = screen
+        withAnimation(.easeOut(duration: 0.22)) { tabSwipeTranslation = settleTranslation }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                BottomTabBar.goto(screen, app: app)
+                tabSwipeTranslation = 0
+                tabSwipeDirection = nil
+                tabSwipeCommittingTarget = nil
+            }
+        }
+    }
+
+    /// The real adjacent screen while a horizontal tab-swipe drag is live,
+    /// OR the real destination while a committed swipe is still settling
+    /// (see `commitTabSwipe`) — `nil` the rest of the time, in which case
+    /// `rootScreensToRender` renders exactly `[app.screen]`, identical to
+    /// this file's previous single-screen behavior for every other
+    /// navigation (edge-swipe-back, a plain dock tap, any push/pop).
+    private var tabSwipeNeighbor: Screen? {
+        if let target = tabSwipeCommittingTarget { return target }
+        guard tabSwipeDirection == "horizontal" else { return nil }
+        guard let idx = BottomTabBar.dockOrder.firstIndex(of: app.screen) else { return nil }
+        if tabSwipeTranslation < 0, idx < BottomTabBar.dockOrder.count - 1 { return BottomTabBar.dockOrder[idx + 1] }
+        if tabSwipeTranslation > 0, idx > 0 { return BottomTabBar.dockOrder[idx - 1] }
+        return nil
+    }
+
+    /// `[app.screen]` normally; `[app.screen, neighbor]` while a horizontal
+    /// tab-swipe is live or settling — both real, fully mounted screens
+    /// (never a throwaway/`isPreview` copy: the ticket's own "start its
+    /// existing loader early" ask means the neighbor's normal `.task`/
+    /// `.onAppear` should fire the instant it's revealed, not be suppressed).
+    /// `ForEach(id: \.self)` is what actually preserves the neighbor's
+    /// identity across the commit above: it's present in this array both
+    /// right before AND right after `app.screen` flips to it, so SwiftUI
+    /// never tears it down in between.
+    private var rootScreensToRender: [Screen] {
+        guard BottomTabBar.visibleScreens.contains(app.screen), let neighbor = tabSwipeNeighbor else { return [app.screen] }
+        return [app.screen, neighbor]
+    }
+
+    private func offsetForRootScreen(_ screen: Screen) -> CGFloat {
+        if screen == app.screen {
+            return (isCommittingBack ? UIScreen.main.bounds.width : dragTranslation) + tabSwipeTranslation
+        }
+        // The tab-swipe neighbor only (edge-swipe-back's own peek is a
+        // separate, mutually-exclusive mechanism — see this gesture's own
+        // doc comment) — positioned exactly one screen-width away in the
+        // direction it's coming from, sliding to 0 as `tabSwipeTranslation`
+        // follows the finger, one shared coordinate system with the
+        // current screen above.
+        let width = UIScreen.main.bounds.width
+        guard let idx = BottomTabBar.dockOrder.firstIndex(of: app.screen),
+              let neighborIdx = BottomTabBar.dockOrder.firstIndex(of: screen) else { return tabSwipeTranslation }
+        let sign: CGFloat = neighborIdx > idx ? 1 : -1
+        return tabSwipeTranslation + sign * width
     }
 
     /// BUG 1 fix (2026-09-22 tenth follow-up) — true whenever the
@@ -307,24 +398,37 @@ struct RootView: View {
                 }
             }
 
-            screenView(for: app.screen)
+            // Root-tab-swipe fix pass (2026-09-27, follow-up B) — was a
+            // single `screenView(for: app.screen)`. `rootScreensToRender`
+            // is `[app.screen]` for every navigation except a live/settling
+            // horizontal tab-swipe, where it's briefly `[app.screen,
+            // neighbor]` — see that property's own doc comment for why
+            // this, combined with `ForEach`'s identity-preserving diffing,
+            // is what actually fixes both the blank-neighbor and the
+            // double-slide-in bugs.
+            ForEach(rootScreensToRender, id: \.self) { s in
+                screenView(for: s)
+                // Only the CURRENT screen plays the push/pop cross-fade —
+                // the neighbor is positioned manually (offsetForRootScreen)
+                // and must never independently fade/slide in on its own.
+                .transition(s == app.screen ? .asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .leading)),
+                    removal: .opacity.combined(with: .move(edge: .trailing))
+                ) : .identity)
+                .offset(x: offsetForRootScreen(s))
+                .allowsHitTesting(s == app.screen)
+                .zIndex(s == app.screen ? 1 : 0)
+            }
             // Every screen change — swiped back, tapped back, or pushed
             // forward — cross-fades with a slight horizontal drift instead
-            // of the previous hard cut, which is most of what made it feel
-            // unlike a native push/pop.
-            .transition(.asymmetric(
-                insertion: .opacity.combined(with: .move(edge: .leading)),
-                removal: .opacity.combined(with: .move(edge: .trailing))
-            ))
-            .animation(isCommittingBack || dragTranslation > 0 ? nil : .easeInOut(duration: 0.28), value: app.screen)
-            // Follows the finger 1:1 during the drag, then either finishes
-            // the slide off-screen (commit) or springs back to place
-            // (cancel) — the same two outcomes the system gesture has.
-            // `tabSwipeTranslation` (Stage 2) is added on top — the two
-            // are mutually exclusive in practice (edgeSwipe only ever
-            // engages inside the leading-edge strip tabSwipeGesture itself
-            // excludes), so at most one is ever non-zero at a time.
-            .offset(x: (isCommittingBack ? UIScreen.main.bounds.width : dragTranslation) + tabSwipeTranslation)
+            // of a hard cut, which is most of what made it feel unlike a
+            // native push/pop. Suppressed for a committing tab-swipe too
+            // (its own settle animation already handles the motion, and
+            // `commitTabSwipe`'s later transaction disables animation
+            // entirely for the actual `app.screen` flip) — the same
+            // reasoning `isCommittingBack`/`dragTranslation` already apply
+            // to edge-swipe-back here.
+            .animation(isCommittingBack || dragTranslation > 0 || tabSwipeCommittingTarget != nil ? nil : .easeInOut(duration: 0.28), value: app.screen)
             .simultaneousGesture(tabSwipeGesture)
             // Depth cue on the dragged edge, same as UIKit's pop shadow.
             .shadow(color: .black.opacity(dragProgress * 0.16), radius: 16, x: -6, y: 0)

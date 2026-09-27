@@ -6,6 +6,7 @@ import { liveEventOverrides } from '../lib/countdown.js';
 import { densityHotspot } from '../lib/densityHotspot.js';
 import { FILTER_DEFS } from './Home.jsx';
 import { paper, ink, rule, alert, photoPill, fieldGlass, cardGlass, inkButton } from '../theme.js';
+import RootRefreshIndicator from './RootRefreshIndicator.jsx';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 // Category glyph per FILTER_DEFS key — no icon set exists anywhere else in
@@ -955,13 +956,11 @@ export default function MapExplore() {
               {mapRefreshError ? (
                 <span style={{ fontSize: 11, fontWeight: 600, color: ink, background: paper, borderRadius: 999, padding: '6px 12px', boxShadow: '0 4px 14px rgba(27,25,22,0.16)' }}>{mapRefreshError}</span>
               ) : (
-                <span
-                  aria-hidden
-                  style={{
-                    width: 20, height: 20, borderRadius: '50%', border: `2.5px solid ${rule}`, borderTopColor: ink, boxSizing: 'border-box', background: paper,
-                    animation: (mapRefreshing || mapPullDist >= MAP_PULL_TRIGGER) ? 'gocSpin 0.7s linear infinite' : 'none',
-                    transform: (mapRefreshing || mapPullDist >= MAP_PULL_TRIGGER) ? 'none' : `rotate(${Math.min(1, mapPullDist / MAP_PULL_TRIGGER) * 360}deg)`,
-                  }}
+                <RootRefreshIndicator
+                  screen="mapExplore"
+                  progress={mapPullDist / MAP_PULL_TRIGGER}
+                  refreshing={mapRefreshing}
+                  label={T('Đang làm mới', 'Refreshing')}
                 />
               )}
             </div>

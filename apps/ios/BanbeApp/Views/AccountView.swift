@@ -85,7 +85,17 @@ struct AccountView: View {
     @State private var didAttemptScrollRestore = false
 
     var body: some View {
-        ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.accountScrollAnchorID) {
+        ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.accountScrollAnchorID, onRefresh: {
+            guard app.userID != nil else { return }
+            await app.loadPaymentBookings()
+            await app.loadMyRefunds()
+            if app.canHost {
+                await app.loadVerifications()
+                await app.loadOrganizerHoldingSummary()
+                await app.loadRefundQueue()
+                if app.myOrganizerID != nil { await app.loadMyOrgStats() }
+            }
+        }) {
             LazyVStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Text(app.T("Tài khoản", "Account")).font(BanbeTheme.display(27))
@@ -480,20 +490,6 @@ struct AccountView: View {
         // latest admin approval/cancellation, not a stale snapshot.
         .task(id: app.myOrganizerID) {
             if app.canHost, app.myOrganizerID != nil { await app.loadMyOrgStats() }
-        }
-        // Stage 2 (2026-09-27 nav/discovery pass) — native pull-to-
-        // refresh, the SAME real reloads the `.task`s above already call,
-        // never a second/duplicate poll.
-        .refreshable {
-            guard app.userID != nil else { return }
-            await app.loadPaymentBookings()
-            await app.loadMyRefunds()
-            if app.canHost {
-                await app.loadVerifications()
-                await app.loadOrganizerHoldingSummary()
-                await app.loadRefundQueue()
-                if app.myOrganizerID != nil { await app.loadMyOrgStats() }
-            }
         }
         .onAppear { retryScrollRestoreIfNeeded() }
         .photosPicker(isPresented: $storyLibraryPickerOpen, selection: $storyPhotoItem, matching: .images)

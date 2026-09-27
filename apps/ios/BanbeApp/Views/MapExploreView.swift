@@ -1142,18 +1142,36 @@ struct MapExploreView: View {
                     .onAppear {
                         if ev.id == visibleEvents.last?.id { Task { await app.loadMapEvents(bounds: lastQueriedRegion.map(boundsOf)) } }
                     }
+                    // Refresh-indicator fix pass (2026-09-27, follow-up A)
+                    // — same `ScaffoldScrollProbe` ScreenScaffold's own
+                    // root screens use, anchored to this FIRST row (a real
+                    // UITableView cell, so walking up from here reliably
+                    // finds the List's own underlying UIScrollView) instead
+                    // of the plain `.refreshable{}` this used to have (its
+                    // system spinner can't be reskinned — see
+                    // RootRefreshIndicator's own comment). Reuses the exact
+                    // SAME refetch the removed `.refreshable` called.
+                    .background(
+                        ev.id == visibleEvents.first?.id
+                            ? AnyView(ScaffoldScrollProbe(
+                                onChange: { offsetY in
+                                    guard !app.rootRefreshing else { return }
+                                    app.rootPullProgress = min(1, max(0, offsetY) / 64)
+                                },
+                                onGestureEnded: {
+                                    guard !app.rootRefreshing else { return }
+                                    guard app.rootPullProgress >= 1 else { app.rootPullProgress = 0; return }
+                                    app.runRootRefresh {
+                                        guard let region = lastQueriedRegion else { return }
+                                        boundsChanged = false
+                                        await app.loadMapEvents(bounds: boundsOf(region))
+                                    }
+                                }
+                              ))
+                            : AnyView(EmptyView())
+                    )
                 }
                 .listStyle(.plain)
-                // Stage 2 (2026-09-27 nav/discovery pass) — native pull-
-                // to-refresh on Map's own event list, reusing the SAME
-                // real refetch searchHere()/the infinite-scroll `.onAppear`
-                // above already use (current bounds, no camera/selection
-                // reset), never a second/duplicate poll.
-                .refreshable {
-                    guard let region = lastQueriedRegion else { return }
-                    boundsChanged = false
-                    await app.loadMapEvents(bounds: boundsOf(region))
-                }
                 .onChange(of: visibleEvents.map(\.id)) { _, ids in
                     // Bug 2 (best-effort list-scroll restore): SwiftUI's
                     // List has no pixel scrollTop to round-trip the way a
@@ -1163,6 +1181,13 @@ struct MapExploreView: View {
                     guard pendingScrollToRestoredSelection, let id = selectedId, ids.contains(id) else { return }
                     pendingScrollToRestoredSelection = false
                     proxy.scrollTo(id, anchor: .top)
+                }
+                .overlay(alignment: .top) {
+                    if app.rootPullProgress > 0 || app.rootRefreshing {
+                        RootRefreshIndicator(screen: .mapExplore, progress: app.rootPullProgress, refreshing: app.rootRefreshing)
+                            .padding(.top, 10)
+                            .allowsHitTesting(false)
+                    }
                 }
             }
         }
