@@ -95,7 +95,12 @@ export default function OrganizerProfile() {
         </span>
       </div>
 
-      <div data-testid="organizer-profile-card" style={{ ...cardGlass({ margin: '20px 20px 0', padding: '28px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }) }}>
+      {/* iPhone fix pass (2026-09-27), Item 3 — top margin bumped 20→22 to
+          match the same gap Account.jsx's own profile/org cards already
+          use above their back/share-adjacent rows (an existing spacing
+          value, not a new one), giving this row and the card a touch more
+          breathing room. */}
+      <div data-testid="organizer-profile-card" style={{ ...cardGlass({ margin: '22px 20px 0', padding: '28px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }) }}>
         {avatarSrc ? (
           <img src={avatarSrc} alt="" style={{ width: 88, height: 88, borderRadius: 20, objectFit: 'cover', border: `3px solid ${paper}` }} />
         ) : (
@@ -143,24 +148,28 @@ export default function OrganizerProfile() {
         )}
       </div>
 
-      <div onClick={() => setQrOpen(true)} data-testid="organizer-profile-qr-cta" style={{ margin: '16px 20px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '13px 0', border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer' }}>
-        {T('Hiển thị mã QR tổ chức', "Show the organizer's QR code")}
-      </div>
-
       {/* Organizer Team pass (2026-09-27, Stage 2) — a prominent, large
           tappable row using the organizer's own real name (never the
           founder's personal name — that stays governed entirely by the
           founder's OWN personal-profile organizer_mode toggle, an
           unrelated mechanism this label never touches). Opens the public
           Team page (get_organizer_team, 098/101) — accepted AND
-          public_visible members only. */}
+          public_visible members only.
+          iPhone fix pass (2026-09-27), Item 2 — moved to be the FIRST
+          action directly below the card, ahead of the QR/edit rows below
+          (was after QR) — same row, same real member logic, no
+          duplication, just reordered. */}
       <div
         onClick={() => openOrganizerTeam(org.id, 'organizerProfile')}
         data-testid="organizer-profile-team-row"
-        style={{ ...cardGlass({ margin: '12px 20px 0', padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+        style={{ ...cardGlass({ margin: '16px 20px 0', padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
       >
         <span style={{ fontSize: 14, fontWeight: 600, color: ink }}>{T(`Bởi ${org.name} Team`, `By the ${org.name} Team`)}</span>
         <span aria-hidden style={{ fontSize: 20, color: ink, opacity: 0.55 }}>›</span>
+      </div>
+
+      <div onClick={() => setQrOpen(true)} data-testid="organizer-profile-qr-cta" style={{ margin: '12px 20px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '13px 0', border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer' }}>
+        {T('Hiển thị mã QR tổ chức', "Show the organizer's QR code")}
       </div>
 
       {/* Owner only — edits organizers.name/about/avatar_path (migration

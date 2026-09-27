@@ -74,10 +74,14 @@ export default function PublicProfile() {
         </span>
       </div>
 
+      {/* iPhone fix pass (2026-09-27), Item 3 — top margin bumped 20→22,
+          same existing spacing value Account.jsx's own profile/org cards
+          already use for this exact "gap below a top bar" (not a new
+          token). */}
       <div
         data-testid="public-profile-card"
         style={{
-          ...cardGlass({ margin: '20px 20px 0', padding: '28px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }),
+          ...cardGlass({ margin: '22px 20px 0', padding: '28px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }),
           background: `linear-gradient(165deg, ${paletteColor}CC, ${paletteColor}55)`,
         }}
       >

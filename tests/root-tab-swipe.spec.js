@@ -103,6 +103,56 @@ test.describe('Root-tab horizontal swipe', () => {
     await expect(page.locator('[data-screen-label="Home"]')).toBeVisible();
   });
 
+  // iPhone fix pass (2026-09-27), Item 1 — deterministic regression test
+  // for the real tap-race root cause: `endGesture`'s committed-swipe
+  // branch used to unconditionally apply its own 250ms-delayed
+  // `gotoDockIndex(...)`, with nothing checking whether a newer navigation
+  // (a plain dock tap) had already happened in the meantime. This swipes
+  // Home -> Map (a real committed root-tab swipe, so its 250ms settle
+  // timeout is genuinely pending), then taps Account in the dock BEFORE
+  // that settle fires — a tap must always win over a stale, already-
+  // superseded swipe-settle, never get silently overwritten back to the
+  // swipe's own original destination once the delayed callback finally
+  // runs.
+  test('a dock tap immediately after a swipe commit is not overwritten by the stale settle', async ({ page }) => {
+    await setupToHome(page);
+    await page.waitForSelector('[data-screen-label="Home"]');
+
+    // Land on Notifications first via a plain dock tap (not a swipe) —
+    // avoids Map entirely, whose own native map/filter-sheet layout is a
+    // separate, unrelated case not what this test targets.
+    await page.getByTestId('tab-notifications').click();
+    await page.waitForSelector('[data-screen-label="Notifications"]');
+
+    const box = await appBox(page);
+    const midY = box.y + Math.min(box.height, 600) / 2;
+    const startX = box.x + box.width * 0.6;
+
+    // Swipe left from Notifications -> commits toward Inbox (crosses
+    // SWIPE_COMMIT_PX), whose 250ms settle timeout starts counting down
+    // the instant pointerup fires below.
+    await page.mouse.move(startX, midY);
+    await page.mouse.down();
+    for (let x = startX; x > startX - 160; x -= 20) {
+      await page.mouse.move(x, midY);
+    }
+    await page.mouse.up();
+
+    // Tap Account immediately — well inside the pending 250ms settle
+    // window, with no artificial wait added for it (a real fast-follow
+    // tap, not a slowed-down one this fix would only work around).
+    await page.getByTestId('tab-profile').click();
+
+    // The tap must win outright, immediately...
+    await page.waitForSelector('[data-screen-label="Account"]', { timeout: 2000 });
+    // ...and stay won once the stale swipe-settle timeout actually fires —
+    // this is the real regression: without the fix, Account is reached
+    // for an instant and then silently reverts to Map once that delayed
+    // callback runs ~250ms after the swipe's own pointerup.
+    await page.waitForTimeout(400);
+    await expect(page.locator('[data-screen-label="Account"]')).toBeVisible();
+  });
+
   test('a horizontal drag starting over a horizontal rail does not navigate', async ({ page }) => {
     await setupToHome(page);
     await page.waitForSelector('[data-screen-label="Home"]');

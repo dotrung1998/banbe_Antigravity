@@ -43,6 +43,26 @@ struct RootView: View {
     // target through that whole window so the real destination view (see
     // `rootScreensToRender`) doesn't get dropped and re-added mid-settle.
     @State private var tabSwipeCommittingTarget: Screen?
+    // iPhone fix pass (2026-09-27), Item 1 — the real tap-race root cause:
+    // `commitTabSwipe` used to unconditionally overwrite `app.screen` (and
+    // reset the swipe state) from its own 0.22s-delayed `asyncAfter`
+    // closure, with nothing checking whether some OTHER navigation had
+    // already happened in the meantime. Reproduction: swipe from Home to
+    // Inbox (starts a commit targeting `.inbox`, whose settle callback is
+    // now pending), then — before that 0.22s elapses — tap Account in the
+    // dock. The tap's own `app.goProfile()` sets `screen = .profile`
+    // immediately and synchronously; the STALE swipe-settle callback still
+    // fires 0.22s later and calls `BottomTabBar.goto(.inbox, ...)` (the
+    // target it captured back when the swipe committed), silently
+    // stomping the newer tap and bouncing the user back to Inbox. Same
+    // token idiom `BottomTabBarOverlay.visibilityToken` already uses for
+    // exactly this "a newer thing may have superseded this stale delayed
+    // callback" shape: bumped on EVERY `app.screen` change, from wherever
+    // it comes from (a dock tap, a swipe commit, any other navigation) —
+    // see the `.onChange(of: app.screen)` below — so `commitTabSwipe`'s own
+    // delayed closure can tell whether it's still the most recent
+    // navigation before touching `app.screen` again.
+    @State private var navGeneration: Int = 0
 
     // How far in from the leading edge a swipe can originate — matches the
     // HIG's own edge-swipe affordance width. `edgeSwipe` below is attached
@@ -224,12 +244,22 @@ struct RootView: View {
     /// pattern already established here for edge-swipe-back.
     private func commitTabSwipe(to screen: Screen, settleTranslation: CGFloat) {
         tabSwipeCommittingTarget = screen
+        // iPhone fix pass (2026-09-27), Item 1 — captured BEFORE the settle
+        // delay starts; see `navGeneration`'s own doc comment above for why.
+        let expectedGeneration = navGeneration
         withAnimation(.easeOut(duration: 0.22)) { tabSwipeTranslation = settleTranslation }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
-                BottomTabBar.goto(screen, app: app)
+                // A newer navigation (a dock tap, another swipe, anything
+                // that changed `app.screen`) already happened while this
+                // settle was in flight — that navigation's own destination
+                // must win, so this stale commit only cleans up its own
+                // local visual state and never touches `app.screen` again.
+                if navGeneration == expectedGeneration {
+                    BottomTabBar.goto(screen, app: app)
+                }
                 tabSwipeTranslation = 0
                 tabSwipeDirection = nil
                 tabSwipeCommittingTarget = nil
@@ -667,6 +697,11 @@ struct RootView: View {
         // — e.g. goHome()'s plain `screen = .home`, callable from
         // anywhere, has no auth check of its own.
         .onChange(of: app.screen) { oldScreen, newScreen in
+            // iPhone fix pass (2026-09-27), Item 1 — see `navGeneration`'s
+            // own doc comment (top of this file): every real screen change,
+            // from any source, invalidates any older in-flight
+            // `commitTabSwipe` settle so it can never overwrite this one.
+            navGeneration += 1
             if !app.isSignedIn && !AppState.guestAllowedScreens.contains(newScreen) {
                 app.authMandatory = true
                 app.authReturnScreen = newScreen

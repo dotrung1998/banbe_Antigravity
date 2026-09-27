@@ -47,13 +47,13 @@ struct OrganizerProfileView: View {
                 if app.organizerProfileLoading {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                 } else if let org, org.success == true {
+                    // iPhone fix pass (2026-09-27), Item 3 — slight,
+                    // consistent breathing room between the back/share row
+                    // and this rounded card: 10pt, the same small-gap value
+                    // already used elsewhere in this file (teamRow/editCard
+                    // below), not a new token.
                     card(org)
-                    Button(app.T("Hiển thị mã QR tổ chức", "Show the organizer's QR code")) { qrOpen = true }
-                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
-                        .frame(maxWidth: .infinity).padding(.vertical, 13)
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
-                        .padding(.top, 16)
-                        .accessibilityIdentifier("organizerProfile.qrCta")
+                        .padding(.top, 10)
 
                     // Organizer Team pass (2026-09-27, Stage 2) — a
                     // prominent, large tappable row using the organizer's
@@ -63,6 +63,10 @@ struct OrganizerProfileView: View {
                     // this label). Opens the public Team page
                     // (get_organizer_team, 098/101) — accepted AND
                     // public_visible members only.
+                    // iPhone fix pass (2026-09-27), Item 2 — moved to be
+                    // the FIRST action directly below the card, ahead of
+                    // the QR/edit rows below (was after QR) — same row,
+                    // same real member logic, no duplication.
                     Button {
                         Task { await app.openOrganizerTeam(organizerID: org.id ?? "", back: .organizerProfile) }
                     } label: {
@@ -78,6 +82,13 @@ struct OrganizerProfileView: View {
                     .buttonStyle(.plain)
                     .padding(.top, 10)
                     .accessibilityIdentifier("organizerProfile.teamRow")
+
+                    Button(app.T("Hiển thị mã QR tổ chức", "Show the organizer's QR code")) { qrOpen = true }
+                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                        .frame(maxWidth: .infinity).padding(.vertical, 13)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+                        .padding(.top, 10)
+                        .accessibilityIdentifier("organizerProfile.qrCta")
 
                     // Owner only — edits organizers.name/about/avatarPath
                     // (migration 090's update_organizer_profile), never

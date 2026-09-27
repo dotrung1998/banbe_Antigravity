@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GocProvider, useGoc } from './state/GocContext.jsx';
 import BottomTabBar, { showsBottomBar, DOCK_ORDER, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET } from './screens/BottomTabBar.jsx';
 import { paper, ink, rule } from './theme.js';
@@ -129,9 +129,34 @@ function DockRow({ collapsed, showCreate }) {
         // single transform HERE, on the row that contains both, scales
         // them together as one unit — see BottomTabBar.jsx's own comment
         // at this transform's former call site.
-        transform: `translateX(-50%) scale(${collapsed ? 0.86 : 1})`,
+        // iPhone fix pass (2026-09-27), Item 1 follow-up — real bug found
+        // while writing this ticket's own deterministic test (not
+        // reproducible on iOS, which has no CSS equivalent): the row's
+        // OWN centering/scale used to live on the `transform` shorthand
+        // (`translateX(-50%) scale(...)`), which the `animation: bbIn ...
+        // both` below ALSO drives (a fill-mode of `both` keeps applying
+        // the animation's own `transform` value — here, `bbIn`'s `to`
+        // keyframe, `translateY(0)`, i.e. IDENTITY — for as long as the
+        // element stays mounted, completely overriding this static value
+        // for the same property the instant the 0.28s entrance animation
+        // finishes). Measured directly: after any dock remount (e.g.
+        // returning to a root tab from a non-bar screen) the dock's real
+        // `getComputedStyle().transform` settles to the identity matrix,
+        // not `translateX(-50%) scale(...)` — silently un-centering the
+        // whole 358px-wide row 179px to the right of where `left: 50%`
+        // means it to sit, pushing Inbox/Account off the right edge of a
+        // narrow viewport entirely (confirmed: `tab-profile`'s own real
+        // bounding box lands outside the viewport once this fires).
+        // `translate`/`scale` are their own standalone CSS properties
+        // (not the `transform` shorthand) precisely so this can't
+        // collide with `bbIn`'s own `transform`-only entrance animation —
+        // the two now animate/apply completely independently, and this
+        // row's real center/size can never again be silently overridden
+        // by a completed mount-in animation.
+        translate: '-50% 0',
+        scale: collapsed ? 0.86 : 1,
         transformOrigin: 'center bottom',
-        transition: 'transform 0.28s cubic-bezier(.22,.61,.36,1)',
+        transition: 'scale 0.28s cubic-bezier(.22,.61,.36,1)',
         // Restores with the existing (previously unused) bottom-up "bbIn"
         // keyframe every time this row remounts — e.g. right after the
         // Khu vực sheet (or any other screen that suppresses the dock)
@@ -166,6 +191,24 @@ function Shell() {
   // every callback to `state` itself.
   const stateRef = useRef(state);
   stateRef.current = state;
+  // iPhone fix pass (2026-09-27), Item 1 — the real tap-race root cause:
+  // `endGesture`'s committed-swipe branch (below) used to unconditionally
+  // call `gotoDockIndex(...)` from its own 250ms-delayed `setTimeout`, with
+  // nothing checking whether some OTHER navigation had already happened in
+  // the meantime. Reproduction: swipe from Home to Inbox (that commit's
+  // settle timer is now pending), then — before 250ms elapses — tap
+  // Account in the dock. The tap's own `goProfile()` (BottomTabBar.jsx)
+  // sets `screen: 'profile'` immediately; the STALE swipe-settle timeout
+  // still fires afterward and calls `gotoDockIndex(idx±1)` (the target it
+  // captured back when the swipe committed, e.g. Inbox), silently
+  // stomping the newer tap and bouncing back to Inbox. Bumped on EVERY
+  // `state.screen` change, from wherever it comes from (a dock tap, a
+  // swipe commit, any other navigation), so the delayed callback below can
+  // tell whether it's still the most recent navigation before touching
+  // `state.screen` again — same iOS-side fix (RootView.swift's own
+  // `navGeneration`), same shape on both platforms.
+  const navGenerationRef = useRef(0);
+  useEffect(() => { navGenerationRef.current += 1; }, [state.screen]);
   // Task 1 (2026-09-22 follow-up, 07-notifications.md) — a fullscreen
   // StoryViewer session must suppress the dock entirely, not just visually
   // (it fully unmounts here, so there's nothing left to intercept taps —
@@ -368,8 +411,19 @@ function Shell() {
         // component instance (and its already-completed mount animation)
         // carries straight through instead of remounting.
         setSwipeX(commitNext ? -width : width);
+        // iPhone fix pass (2026-09-27), Item 1 — captured BEFORE the
+        // settle delay starts; see `navGenerationRef`'s own doc comment
+        // above for why.
+        const expectedGeneration = navGenerationRef.current;
         setTimeout(() => {
-          gotoDockIndex(commitNext ? idx + 1 : idx - 1);
+          // A newer navigation (a dock tap, another swipe, anything that
+          // changed `state.screen`) already happened while this settle was
+          // in flight — that navigation's own destination must win, so
+          // this stale commit only cleans up its own local visual state
+          // and never touches `state.screen` again.
+          if (navGenerationRef.current === expectedGeneration) {
+            gotoDockIndex(commitNext ? idx + 1 : idx - 1);
+          }
           // Unanimated reset — the newly-current screen is already sitting
           // exactly in place, so this swap must not itself visibly move.
           setIsSwiping(true);

@@ -37,7 +37,12 @@ struct PublicProfileView: View {
                 if app.publicProfileLoading {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                 } else if let p = app.publicProfile, p.success == true {
+                    // iPhone fix pass (2026-09-27), Item 3 — same slight,
+                    // consistent gap as OrganizerProfileView's own card
+                    // (10pt, an existing small-gap value already used
+                    // elsewhere in this file, not a new token).
                     card(p)
+                        .padding(.top, 10)
 
                     // Real, explicit, ACCEPTED event contributions only —
                     // never derived from ticket attendance/bookings/
