@@ -96,380 +96,7 @@ struct AccountView: View {
                 if app.myOrganizerID != nil { await app.loadMyOrgStats() }
             }
         }) {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text(app.T("Tài khoản", "Account")).font(BanbeTheme.display(27))
-                    Spacer()
-                    Button(app.T("Xong", "Done")) { app.goHome() }
-                        .font(.system(size: 12)).buttonStyle(.plain)
-                }
-
-                HStack(spacing: 6) {
-                    ForEach([("personal", app.T("Cá nhân", "Personal")), ("host", app.T("Tổ chức", "Host"))], id: \.0) { key, label in
-                        Button { app.accountTab = key } label: {
-                            Text(label)
-                                .font(.system(size: 13, weight: .semibold))
-                                .padding(.horizontal, 16).padding(.vertical, 9)
-                                .background(app.accountTab == key ? app.palette.ink : .clear, in: Capsule())
-                                .overlay(Capsule().stroke(app.accountTab == key ? .clear : app.palette.rule, lineWidth: 1))
-                                .foregroundStyle(app.accountTab == key ? app.palette.paper : app.palette.ink)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("account.tab.\(key)")
-                    }
-                }
-                .padding(.top, 16)
-
-                // iPhone fix pass (2026-09-26) — this personal identity
-                // card (and its story ring/"Đổi tên") used to render
-                // regardless of `app.accountTab`, so it also showed on Tổ chức,
-                // right above that tab's own separate organizer card — two
-                // profile cards on one screen. Scoped to the Cá nhân tab
-                // only, matching the web fix.
-                if app.accountTab == "personal" {
-                // TASK D (2026-10-01 UX foundation pass) — the header is
-                // now a tappable rounded profile card (editorial style:
-                // soft gradient wash from the account's own chosen
-                // palette). The story ring/post-story menu keep their own
-                // existing nested tap targets unchanged — a separate
-                // trailing chevron (not the whole card) opens EditProfile.
-                HStack(spacing: 14) {
-                    // Task 3.3 (07-notifications.md) — story ring: bright
-                    // while an active, not-fully-viewed story exists;
-                    // subdued once every active story has been viewed; no
-                    // ring with no active story. Tap opens the viewer only
-                    // when there's something to view.
-                    Button {
-                        if let g = myStoryGroup { app.openStoryViewer(g.organizerId) }
-                    } label: {
-                        ZStack {
-                            if let g = myStoryGroup {
-                                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                                    .strokeBorder(g.allViewed ? Color.clear : BanbeTheme.alert, lineWidth: 2.5)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                                            .strokeBorder(g.allViewed ? app.palette.rule : .clear, lineWidth: 2.5)
-                                    )
-                                    .frame(width: 64, height: 64)
-                            }
-                            if let urlStr = app.user?.avatarURL, let url = URL(string: urlStr) {
-                                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
-                                    .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            } else {
-                                Text(String(app.displayName.prefix(1)).uppercased())
-                                    .font(BanbeTheme.display(22))
-                                    .frame(width: 56, height: 56)
-                                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(myStoryGroup == nil)
-                    .accessibilityIdentifier("account.storyRing")
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(app.displayName).font(BanbeTheme.display(22)).lineLimit(1)
-                            if app.isSignedIn {
-                                Button {
-                                    app.goEditName()
-                                } label: {
-                                    Label(app.T("Đổi tên", "Rename"), systemImage: "pencil")
-                                        .labelStyle(.titleAndIcon)
-                                }
-                                .font(.system(size: 11.5))
-                                .foregroundStyle(app.palette.ink.opacity(0.65))
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        if let handle = app.user?.handle, !handle.isEmpty {
-                            Text("@\(handle)").font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
-                        }
-                        Text(subtitle).font(.system(size: 11)).kerning(0.6)
-                        // Task 3.2 — story creation entry point, hosts only.
-                        // TASK B (2026-10-03) — host-only action, hidden
-                        // while organizerMode is off (current mode, not
-                        // eligibility).
-                        if app.organizerMode {
-                            Menu {
-                                // Task 1 — icons on each row, matching the
-                                // chat composer's "+" menu exactly (same SF
-                                // Symbols) so the two read as one family.
-                                Button {
-                                    storyLibraryPickerOpen = true
-                                } label: {
-                                    Label(app.T("Thư viện ảnh", "Photo library"), systemImage: "photo.on.rectangle")
-                                }
-                                Button {
-                                    storyCameraOpen = true
-                                } label: {
-                                    Label(app.T("Camera", "Camera"), systemImage: "camera")
-                                }
-                            } label: {
-                                Text(app.T("▪︎ Đăng story", "▪︎ Post story"))
-                                    .font(.system(size: 11.5))
-                                    .foregroundStyle(app.palette.ink.opacity(0.65))
-                            }
-                            .accessibilityIdentifier("account.postStory")
-                        }
-                    }
-                    Spacer(minLength: 0)
-                    if app.isSignedIn {
-                        // iPhone fix pass — this used to open EditProfile
-                        // directly; it now opens the same public profile
-                        // page anyone else sees at this account's own
-                        // handle (`isOwnProfile` there is what surfaces its
-                        // own "Chỉnh sửa hồ sơ" row) — editing is one tap
-                        // further in, not the arrow's own destination.
-                        Button {
-                            if let handle = app.user?.handle, !handle.isEmpty {
-                                app.openPublicProfile(handle: handle, back: .profile, context: "personal")
-                            }
-                        } label: {
-                            Image(systemName: "chevron.right").font(.system(size: 16)).foregroundStyle(app.palette.ink.opacity(0.55))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("account.editProfile")
-                    }
-                }
-                .padding(16)
-                .background(
-                    LinearGradient(
-                        colors: [(ProfilePalette.all.first { $0.key == (app.user?.profileTheme ?? "default") }?.color ?? ProfilePalette.all[0].color).opacity(0.35), .clear],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                )
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
-                .padding(.top, 22)
-                .accessibilityIdentifier("account.profileCard")
-                } // app.accountTab == "personal" (profile card)
-
-                if app.accountTab == "personal" {
-                HStack(spacing: 10) {
-                    counter(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going"), icon: "calendar.badge.checkmark", identifier: "account.goingCard") { app.goGoingList() }
-                    counter(value: app.favorites.count, label: app.T("Đã lưu", "Saved"), icon: "bookmark", identifier: "account.savedCard") { app.goSavedList() }
-                }
-                .padding(.top, 22)
-                .id("account-stats")
-
-                // TASK A (2026-10-01 UX foundation pass) — same canonical
-                // Action Center Home/Dashboard show; Account is one of its
-                // three placements.
-                ActionCenterView(items: actionItems, onSeeAll: { app.openVerifications(back: .profile) })
-
-                // TASK 3A (2026-09-22 twenty-first follow-up) — the
-                // "Tin nhắn"/Messages shortcut row removed entirely per this
-                // ticket's own ask; Inbox stays reachable exactly as before
-                // via the bottom dock (BottomTabBar.swift), untouched.
-                VStack(spacing: 0) {
-                    row(app.T("Sự kiện đã hoàn thành", "Completed events"), identifier: "account.completedList", icon: "calendar.badge.checkmark", trailing: "\(app.completedEventsCount) ›") { app.goCompletedList() }
-                    Divider().overlay(app.palette.rule)
-                    // TASK 3B — broader, more accurate label: this screen
-                    // holds more than language/theme (see
-                    // PreferencesView.swift). Destination (`openPreferences`)
-                    // and the right-side summary are unchanged.
-                    row(app.T("Tùy chỉnh ứng dụng", "App preferences"),
-                        identifier: "account.preferences", icon: "slider.horizontal.3",
-                        trailing: (app.lang == "en" ? "English" : "Tiếng Việt") + " ▪︎ "
-                            + (app.theme == "dark" ? app.T("Tối", "Dark") : app.T("Sáng", "Light"))) {
-                        app.openPreferences()
-                    }
-                    Divider().overlay(app.palette.rule)
-                    row(app.T("Hoá đơn", "Invoices"),
-                        identifier: "account.invoices", icon: "doc.text", trailing: "›") {
-                        app.openDocuments(kind: "invoice", role: "guest")
-                    }
-                    Divider().overlay(app.palette.rule)
-                    row(app.T("Biên nhận", "Receipts"),
-                        identifier: "account.receipts", icon: "receipt", trailing: "›") {
-                        app.openDocuments(kind: "receipt", role: "guest")
-                    }
-                    Divider().overlay(app.palette.rule)
-                    // Refund MVP (product rule A) — a persistent entry
-                    // point, reachable regardless of whether a notification
-                    // was ever tapped.
-                    row(app.T("Tài khoản thanh toán & nhận hoàn tiền", "Payment & refund accounts"),
-                        identifier: "account.refundAccounts", icon: "banknote", trailing: "›") {
-                        app.openRefundAccounts(back: .profile)
-                    }
-                    Divider().overlay(app.palette.rule)
-                    row(app.T("Hoàn tiền", "Refunds"),
-                        identifier: "account.refunds", icon: "checklist", trailing: "›") {
-                        app.openMyRefunds(back: .profile)
-                    }
-                    Divider().overlay(app.palette.rule)
-                    row(app.T("Bảo mật", "Security"),
-                        identifier: "account.security", icon: "lock.shield",
-                        trailing: "›") {
-                        app.openSecurity()
-                    }
-                }
-                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .padding(.top, 20)
-                .id("account-links")
-                } // app.accountTab == "personal"
-
-                if app.accountTab == "host" {
-                orgProfileCard()
-
-                Text(app.T("Tổ chức", "Hosting"))
-                    .font(.system(size: 11.5, weight: .semibold))
-                    .padding(.top, 22)
-
-                Button { app.toggleOrganizerMode() } label: {
-                    // TASK 2 (2026-10-05 fix pass) — `.opacity`, not a
-                    // spinner: this toggle's own round-trip is already
-                    // near-instant on a normal connection, and a flashing
-                    // spinner for that would read as jankier than a brief
-                    // dim. `.disabled` below is what actually matters —
-                    // it's the real guard against the double-tap race
-                    // (see toggleOrganizerMode()'s own comment).
-                    HStack(spacing: 12) {
-                        Image(systemName: "person.2.badge.gearshape")
-                            .font(.system(size: 16, weight: .medium))
-                            .frame(width: 22, height: 22)
-                            .opacity(0.72)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(app.T("Chế độ tổ chức", "Organizer mode")).font(.system(size: 14))
-                            Text(app.T("Bật để tạo và quản lý sự kiện. Tắt lúc nào cũng được.",
-                                       "Turn on to create and manage events. Turn it off any time."))
-                                .font(.system(size: 11.5))
-                                .foregroundStyle(app.palette.ink.opacity(0.7))
-                                .multilineTextAlignment(.leading)
-                        }
-                        Spacer(minLength: 0)
-                        // TASK B (2026-10-03 fix pass) — THE visual bug:
-                        // this switch was bound to canHost (eligibility,
-                        // permanently true once a real host), never
-                        // organizerMode (the actual current preference) —
-                        // so it visually looked stuck "on" for any real
-                        // host regardless of what the toggle really did
-                        // underneath. See AppState+Data.swift's
-                        // applyOrganizerMode for the matching state-side
-                        // root cause.
-                        ZStack(alignment: app.organizerMode ? .trailing : .leading) {
-                            Capsule()
-                                .fill(app.organizerMode ? app.palette.ink : app.palette.ink.opacity(0.18))
-                                .frame(width: 44, height: 26)
-                            Circle().fill(app.palette.paper).frame(width: 20, height: 20).padding(3)
-                        }
-                        .animation(.easeInOut(duration: 0.15), value: app.organizerMode)
-                    }
-                    .foregroundStyle(app.palette.ink)
-                    .padding(16)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(app.organizerModeBusy)
-                .opacity(app.organizerModeBusy ? 0.55 : 1)
-                .accessibilityIdentifier("account.organizerToggle")
-                .padding(.top, 10)
-                .id("account-hosting-toggle")
-
-                if !app.organizerModeError.isEmpty {
-                    Text(app.organizerModeError)
-                        .font(.system(size: 12))
-                        .foregroundStyle(BanbeTheme.alert)
-                        .padding(.top, 10)
-                }
-
-                // Root-cause fix (Stage D) — this used to be gated on
-                // `app.organizerMode` (the CURRENT toggle), so turning
-                // organizer mode off hid awaiting-verification/payout/
-                // invoices/receipts entirely, even for a real host with an
-                // actual pending obligation. Gated on `canHost`
-                // (eligibility) instead: these rows now stay reachable
-                // regardless of the switch above, same as the ticket's own
-                // "don't remove access to urgent host refund/dispute
-                // obligations when organizer mode is off" rule.
-                if app.canHost {
-                    VStack(spacing: 0) {
-                        row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"),
-                            identifier: "host.verifications", icon: "checklist", trailing: "›") { app.openVerifications() }
-                        Divider().overlay(app.palette.rule)
-                        row(app.T("Nhận thanh toán", "Getting paid"),
-                            identifier: "host.payout", icon: "banknote", trailing: "›") { app.openPayout() }
-                        Divider().overlay(app.palette.rule)
-                        row(app.T("Hoá đơn đã phát hành", "Invoices issued"),
-                            identifier: "host.invoices", icon: "doc.text", trailing: "›") {
-                            app.openDocuments(kind: "invoice", role: "host")
-                        }
-                        Divider().overlay(app.palette.rule)
-                        row(app.T("Biên nhận đã phát hành", "Receipts issued"),
-                            identifier: "host.receipts", icon: "receipt", trailing: "›") {
-                            app.openDocuments(kind: "receipt", role: "host")
-                        }
-                    }
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .padding(.top, 10)
-                }
-
-                // Admin Panel — visible only to accountType == "admin"
-                // (banbetestadmin@gmail.com, migration 040), never to a
-                // plain organizer. RLS (v_disputes, resolve_dispute,
-                // payment_audit_log, the 'pay-proof' bucket) is the real
-                // backstop; openAdminDashboard() guards again regardless.
-                if app.isAdmin {
-                    Text(app.T("Quản trị", "Admin"))
-                        .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
-                        .padding(.top, 22)
-                    VStack(spacing: 0) {
-                        row(app.T("Bảng quản trị", "Admin Panel"),
-                            identifier: "admin.panel", icon: "exclamationmark.shield", trailing: "›") { app.openAdminDashboard() }
-                        // Event submission -> review -> publish — a separate
-                        // desk from the payment dispute one above.
-                        row(app.T("Sự kiện chờ duyệt", "Pending events"),
-                            identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›") { app.openAdminEvents() }
-                    }
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .padding(.top, 10)
-                }
-
-                // No separate "Xem trang tổ chức của bạn" card here —
-                // orgProfileCard() above is the single entry into that
-                // management page now.
-                if !app.canHost {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(app.T("Tổ chức sự kiện đầu tiên", "Host your first event"))
-                            .font(BanbeTheme.display(19))
-                        Text(app.T(
-                            "Miễn phí hoàn toàn khi banbe còn mới — không phí đăng, không phí giao dịch. Tạo sự kiện đầu tiên để mở trang tổ chức.",
-                            "Completely free while banbe is new — no listing or transaction fees. Create your first event to unlock your host page."
-                        ))
-                        .font(.system(size: 12.5))
-                        .lineSpacing(3)
-                        InkButton(title: app.T("Bắt đầu tổ chức ▪︎ miễn phí", "Start hosting ▪︎ free")) {
-                            app.toggleOrganizerMode()
-                        }
-                    }
-                    .foregroundStyle(app.palette.ink)
-                    .padding(16)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .padding(.top, 10)
-                }
-                } // app.accountTab == "host"
-
-                Button {
-                    if app.isSignedIn { Task { await app.signOut() } } else { app.goLogin() }
-                } label: {
-                    Label(
-                        app.isSignedIn
-                            ? app.T("Đăng xuất", "Sign out")
-                            : app.T("Đăng nhập để lưu sự kiện và nhắn tin", "Sign in to save events and message hosts"),
-                        systemImage: app.isSignedIn ? "rectangle.portrait.and.arrow.right" : "arrow.right.to.line"
-                    )
-                    .labelStyle(.titleAndIcon)
-                }
-                .font(.system(size: 13))
-                .foregroundStyle(app.palette.ink)
-                .buttonStyle(.plain)
-                .accessibilityIdentifier(app.isSignedIn ? "account.signOut" : "account.signIn")
-                .padding(.top, 24)
-                .padding(.bottom, 100)
-            }
-            .foregroundStyle(app.palette.ink)
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
+            accountContent
         }
         .task { if app.userID != nil { await app.loadHomeStories() } }
         // TASK A (2026-10-01 UX foundation pass) — same canonical loaders
@@ -526,6 +153,374 @@ struct AccountView: View {
         .onDisappear { BottomTabBarOverlay.shared.setForcedHidden(false) }
     }
 
+    private var accountContent: some View {
+        LazyVStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(app.T("Tài khoản", "Account")).font(BanbeTheme.display(27))
+                Spacer()
+                Button(app.T("Xong", "Done")) { app.goHome() }
+                    .font(.system(size: 12)).buttonStyle(.plain)
+            }
+
+            HStack(spacing: 6) {
+                ForEach([("personal", app.T("Cá nhân", "Personal")), ("host", app.T("Tổ chức", "Host"))], id: \.0) { key, label in
+                    accountTabButton(key: key, label: label)
+                }
+            }
+            .padding(.top, 16)
+
+            // iPhone fix pass (2026-09-26) — this personal identity
+            // card (and its story ring/"Đổi tên") used to render
+            // regardless of `app.accountTab`, so it also showed on Tổ chức,
+            // right above that tab's own separate organizer card — two
+            // profile cards on one screen. Scoped to the Cá nhân tab
+            // only, matching the web fix.
+            if app.accountTab == "personal" {
+            // TASK D (2026-10-01 UX foundation pass) — the header is
+            // now a tappable rounded profile card (editorial style:
+            // soft gradient wash from the account's own chosen
+            // palette). The story ring/post-story menu keep their own
+            // existing nested tap targets unchanged — a separate
+            // trailing chevron (not the whole card) opens EditProfile.
+            HStack(spacing: 14) {
+                // Task 3.3 (07-notifications.md) — story ring: bright
+                // while an active, not-fully-viewed story exists;
+                // subdued once every active story has been viewed; no
+                // ring with no active story. Tap opens the viewer only
+                // when there's something to view.
+                Button {
+                    if let g = myStoryGroup { app.openStoryViewer(g.organizerId) }
+                } label: {
+                    ZStack {
+                        if let g = myStoryGroup {
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .strokeBorder(g.allViewed ? Color.clear : BanbeTheme.alert, lineWidth: 2.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                        .strokeBorder(g.allViewed ? app.palette.rule : .clear, lineWidth: 2.5)
+                                )
+                                .frame(width: 64, height: 64)
+                        }
+                        if let urlStr = app.user?.avatarURL, let url = URL(string: urlStr) {
+                            AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
+                                .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        } else {
+                            Text(String(app.displayName.prefix(1)).uppercased())
+                                .font(BanbeTheme.display(22))
+                                .frame(width: 56, height: 56)
+                                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(myStoryGroup == nil)
+                .accessibilityIdentifier("account.storyRing")
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(app.displayName).font(BanbeTheme.display(22)).lineLimit(1)
+                        if app.isSignedIn {
+                            Button {
+                                app.goEditName()
+                            } label: {
+                                Label(app.T("Đổi tên", "Rename"), systemImage: "pencil")
+                                    .labelStyle(.titleAndIcon)
+                            }
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(app.palette.ink.opacity(0.65))
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    if let handle = app.user?.handle, !handle.isEmpty {
+                        Text("@\(handle)").font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    }
+                    Text(subtitle).font(.system(size: 11)).kerning(0.6)
+                    // Task 3.2 — story creation entry point, hosts only.
+                    // TASK B (2026-10-03) — host-only action, hidden
+                    // while organizerMode is off (current mode, not
+                    // eligibility).
+                    if app.organizerMode {
+                        Menu {
+                            // Task 1 — icons on each row, matching the
+                            // chat composer's "+" menu exactly (same SF
+                            // Symbols) so the two read as one family.
+                            Button {
+                                storyLibraryPickerOpen = true
+                            } label: {
+                                Label(app.T("Thư viện ảnh", "Photo library"), systemImage: "photo.on.rectangle")
+                            }
+                            Button {
+                                storyCameraOpen = true
+                            } label: {
+                                Label(app.T("Camera", "Camera"), systemImage: "camera")
+                            }
+                        } label: {
+                            Text(app.T("▪︎ Đăng story", "▪︎ Post story"))
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(app.palette.ink.opacity(0.65))
+                        }
+                        .accessibilityIdentifier("account.postStory")
+                    }
+                }
+                Spacer(minLength: 0)
+                if app.isSignedIn {
+                    // iPhone fix pass — this used to open EditProfile
+                    // directly; it now opens the same public profile
+                    // page anyone else sees at this account's own
+                    // handle (`isOwnProfile` there is what surfaces its
+                    // own "Chỉnh sửa hồ sơ" row) — editing is one tap
+                    // further in, not the arrow's own destination.
+                    Button {
+                        if let handle = app.user?.handle, !handle.isEmpty {
+                            app.openPublicProfile(handle: handle, back: .profile)
+                        }
+                    } label: {
+                        Image(systemName: "chevron.right").font(.system(size: 16)).foregroundStyle(app.palette.ink.opacity(0.55))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("account.editProfile")
+                }
+            }
+            .padding(16)
+            .background(
+                LinearGradient(
+                    colors: [(ProfilePalette.all.first { $0.key == (app.user?.profileTheme ?? "default") }?.color ?? ProfilePalette.all[0].color).opacity(0.35), .clear],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+            .padding(.top, 22)
+            .accessibilityIdentifier("account.profileCard")
+            } // app.accountTab == "personal" (profile card)
+
+            if app.accountTab == "personal" {
+            HStack(spacing: 10) {
+                counter(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going"), icon: "calendar.badge.checkmark", identifier: "account.goingCard") { app.goGoingList() }
+                counter(value: app.favorites.count, label: app.T("Đã lưu", "Saved"), icon: "bookmark", identifier: "account.savedCard") { app.goSavedList() }
+            }
+            .padding(.top, 22)
+            .id("account-stats")
+
+            // TASK A (2026-10-01 UX foundation pass) — same canonical
+            // Action Center Home/Dashboard show; Account is one of its
+            // three placements.
+            ActionCenterView(items: actionItems, onSeeAll: { app.openVerifications(back: .profile) })
+
+            // TASK 3A (2026-09-22 twenty-first follow-up) — the
+            // "Tin nhắn"/Messages shortcut row removed entirely per this
+            // ticket's own ask; Inbox stays reachable exactly as before
+            // via the bottom dock (BottomTabBar.swift), untouched.
+            VStack(spacing: 0) {
+                row(app.T("Sự kiện đã hoàn thành", "Completed events"), identifier: "account.completedList", icon: "calendar.badge.checkmark", trailing: "\(app.completedEventsCount) ›") { app.goCompletedList() }
+                Divider().overlay(app.palette.rule)
+                // TASK 3B — broader, more accurate label: this screen
+                // holds more than language/theme (see
+                // PreferencesView.swift). Destination (`openPreferences`)
+                // and the right-side summary are unchanged.
+                row(app.T("Tùy chỉnh ứng dụng", "App preferences"),
+                    identifier: "account.preferences", icon: "slider.horizontal.3",
+                    trailing: (app.lang == "en" ? "English" : "Tiếng Việt") + " ▪︎ "
+                        + (app.theme == "dark" ? app.T("Tối", "Dark") : app.T("Sáng", "Light"))) {
+                    app.openPreferences()
+                }
+                Divider().overlay(app.palette.rule)
+                row(app.T("Hoá đơn", "Invoices"),
+                    identifier: "account.invoices", icon: "doc.text", trailing: "›") {
+                    app.openDocuments(kind: "invoice", role: "guest")
+                }
+                Divider().overlay(app.palette.rule)
+                row(app.T("Biên nhận", "Receipts"),
+                    identifier: "account.receipts", icon: "receipt", trailing: "›") {
+                    app.openDocuments(kind: "receipt", role: "guest")
+                }
+                Divider().overlay(app.palette.rule)
+                // Refund MVP (product rule A) — a persistent entry
+                // point, reachable regardless of whether a notification
+                // was ever tapped.
+                row(app.T("Tài khoản thanh toán & nhận hoàn tiền", "Payment & refund accounts"),
+                    identifier: "account.refundAccounts", icon: "banknote", trailing: "›") {
+                    app.openRefundAccounts(back: .profile)
+                }
+                Divider().overlay(app.palette.rule)
+                row(app.T("Hoàn tiền", "Refunds"),
+                    identifier: "account.refunds", icon: "checklist", trailing: "›") {
+                    app.openMyRefunds(back: .profile)
+                }
+                Divider().overlay(app.palette.rule)
+                row(app.T("Bảo mật", "Security"),
+                    identifier: "account.security", icon: "lock.shield",
+                    trailing: "›") {
+                    app.openSecurity()
+                }
+            }
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.top, 20)
+            .id("account-links")
+            } // app.accountTab == "personal"
+
+            if app.accountTab == "host" {
+            orgProfileCard()
+
+            Text(app.T("Tổ chức", "Hosting"))
+                .font(.system(size: 11.5, weight: .semibold))
+                .padding(.top, 22)
+
+            Button { app.toggleOrganizerMode() } label: {
+                // TASK 2 (2026-10-05 fix pass) — `.opacity`, not a
+                // spinner: this toggle's own round-trip is already
+                // near-instant on a normal connection, and a flashing
+                // spinner for that would read as jankier than a brief
+                // dim. `.disabled` below is what actually matters —
+                // it's the real guard against the double-tap race
+                // (see toggleOrganizerMode()'s own comment).
+                HStack(spacing: 12) {
+                    Image(systemName: "person.2.badge.gearshape")
+                        .font(.system(size: 16, weight: .medium))
+                        .frame(width: 22, height: 22)
+                        .opacity(0.72)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(app.T("Chế độ tổ chức", "Organizer mode")).font(.system(size: 14))
+                        Text(app.T("Bật để tạo và quản lý sự kiện. Tắt lúc nào cũng được.",
+                                   "Turn on to create and manage events. Turn it off any time."))
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(app.palette.ink.opacity(0.7))
+                            .multilineTextAlignment(.leading)
+                    }
+                    Spacer(minLength: 0)
+                    // TASK B (2026-10-03 fix pass) — THE visual bug:
+                    // this switch was bound to canHost (eligibility,
+                    // permanently true once a real host), never
+                    // organizerMode (the actual current preference) —
+                    // so it visually looked stuck "on" for any real
+                    // host regardless of what the toggle really did
+                    // underneath. See AppState+Data.swift's
+                    // applyOrganizerMode for the matching state-side
+                    // root cause.
+                    ZStack(alignment: app.organizerMode ? .trailing : .leading) {
+                        Capsule()
+                            .fill(app.organizerMode ? app.palette.ink : app.palette.ink.opacity(0.18))
+                            .frame(width: 44, height: 26)
+                        Circle().fill(app.palette.paper).frame(width: 20, height: 20).padding(3)
+                    }
+                    .animation(.easeInOut(duration: 0.15), value: app.organizerMode)
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(16)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(app.organizerModeBusy)
+            .opacity(app.organizerModeBusy ? 0.55 : 1)
+            .accessibilityIdentifier("account.organizerToggle")
+            .padding(.top, 10)
+            .id("account-hosting-toggle")
+
+            if !app.organizerModeError.isEmpty {
+                Text(app.organizerModeError)
+                    .font(.system(size: 12))
+                    .foregroundStyle(BanbeTheme.alert)
+                    .padding(.top, 10)
+            }
+
+            // Root-cause fix (Stage D) — this used to be gated on
+            // `app.organizerMode` (the CURRENT toggle), so turning
+            // organizer mode off hid awaiting-verification/payout/
+            // invoices/receipts entirely, even for a real host with an
+            // actual pending obligation. Gated on `canHost`
+            // (eligibility) instead: these rows now stay reachable
+            // regardless of the switch above, same as the ticket's own
+            // "don't remove access to urgent host refund/dispute
+            // obligations when organizer mode is off" rule.
+            if app.canHost {
+                VStack(spacing: 0) {
+                    row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"),
+                        identifier: "host.verifications", icon: "checklist", trailing: "›") { app.openVerifications() }
+                    Divider().overlay(app.palette.rule)
+                    row(app.T("Nhận thanh toán", "Getting paid"),
+                        identifier: "host.payout", icon: "banknote", trailing: "›") { app.openPayout() }
+                    Divider().overlay(app.palette.rule)
+                    row(app.T("Hoá đơn đã phát hành", "Invoices issued"),
+                        identifier: "host.invoices", icon: "doc.text", trailing: "›") {
+                        app.openDocuments(kind: "invoice", role: "host")
+                    }
+                    Divider().overlay(app.palette.rule)
+                    row(app.T("Biên nhận đã phát hành", "Receipts issued"),
+                        identifier: "host.receipts", icon: "receipt", trailing: "›") {
+                        app.openDocuments(kind: "receipt", role: "host")
+                    }
+                }
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 10)
+            }
+
+            // Admin Panel — visible only to accountType == "admin"
+            // (banbetestadmin@gmail.com, migration 040), never to a
+            // plain organizer. RLS (v_disputes, resolve_dispute,
+            // payment_audit_log, the 'pay-proof' bucket) is the real
+            // backstop; openAdminDashboard() guards again regardless.
+            if app.isAdmin {
+                Text(app.T("Quản trị", "Admin"))
+                    .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                    .padding(.top, 22)
+                VStack(spacing: 0) {
+                    row(app.T("Bảng quản trị", "Admin Panel"),
+                        identifier: "admin.panel", icon: "exclamationmark.shield", trailing: "›") { app.openAdminDashboard() }
+                    // Event submission -> review -> publish — a separate
+                    // desk from the payment dispute one above.
+                    row(app.T("Sự kiện chờ duyệt", "Pending events"),
+                        identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›") { app.openAdminEvents() }
+                }
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 10)
+            }
+
+            // No separate "Xem trang tổ chức của bạn" card here —
+            // orgProfileCard() above is the single entry into that
+            // management page now.
+            if !app.canHost {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(app.T("Tổ chức sự kiện đầu tiên", "Host your first event"))
+                        .font(BanbeTheme.display(19))
+                    Text(app.T(
+                        "Miễn phí hoàn toàn khi banbe còn mới — không phí đăng, không phí giao dịch. Tạo sự kiện đầu tiên để mở trang tổ chức.",
+                        "Completely free while banbe is new — no listing or transaction fees. Create your first event to unlock your host page."
+                    ))
+                    .font(.system(size: 12.5))
+                    .lineSpacing(3)
+                    InkButton(title: app.T("Bắt đầu tổ chức ▪︎ miễn phí", "Start hosting ▪︎ free")) {
+                        app.toggleOrganizerMode()
+                    }
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(16)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 10)
+            }
+            } // app.accountTab == "host"
+
+            Button {
+                if app.isSignedIn { Task { await app.signOut() } } else { app.goLogin() }
+            } label: {
+                Label(
+                    app.isSignedIn
+                        ? app.T("Đăng xuất", "Sign out")
+                        : app.T("Đăng nhập để lưu sự kiện và nhắn tin", "Sign in to save events and message hosts"),
+                    systemImage: app.isSignedIn ? "rectangle.portrait.and.arrow.right" : "arrow.right.to.line"
+                )
+                .labelStyle(.titleAndIcon)
+            }
+            .font(.system(size: 13))
+            .foregroundStyle(app.palette.ink)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(app.isSignedIn ? "account.signOut" : "account.signIn")
+            .padding(.top, 24)
+            .padding(.bottom, 100)
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
+    }
+
     private func syncDockHidden() {
         BottomTabBarOverlay.shared.setForcedHidden(storyLibraryPickerOpen || storyCameraOpen || app.storyCreatePreviewImage != nil)
     }
@@ -568,6 +563,26 @@ struct AccountView: View {
                 .padding(.horizontal, 22).padding(.top, 16).padding(.bottom, 34)
             }
         }
+    }
+
+    // Personal-vs-organizer hierarchy pass (2026-09-27) — extracted out of
+    // `body`'s own `ForEach` (a real Swift type-checker timeout once this
+    // ScreenScaffold call gained an `onRefresh:` closure alongside
+    // everything already in `body` — same "unable to type-check this
+    // expression in reasonable time" class of bug BottomTabBar.swift's own
+    // `tabItem` extraction already fixed once).
+    @ViewBuilder
+    private func accountTabButton(key: String, label: String) -> some View {
+        Button { app.accountTab = key } label: {
+            Text(label)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, 16).padding(.vertical, 9)
+                .background(app.accountTab == key ? app.palette.ink : .clear, in: Capsule())
+                .overlay(Capsule().stroke(app.accountTab == key ? .clear : app.palette.rule, lineWidth: 1))
+                .foregroundStyle(app.accountTab == key ? app.palette.paper : app.palette.ink)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("account.tab.\(key)")
     }
 
     // TASK 3C (2026-09-22 twenty-first follow-up) — leading icon on every

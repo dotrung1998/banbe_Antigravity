@@ -287,7 +287,7 @@ export default function Account() {
             destination. */}
         {s.user && (
           <span
-            onClick={() => s.user?.handle && openPublicProfile(s.user.handle, 'profile', { context: 'personal' })}
+            onClick={() => s.user?.handle && openPublicProfile(s.user.handle, 'profile')}
             data-testid="account-edit-profile"
             style={{ flex: 'none', fontSize: 20, color: ink, opacity: 0.55, cursor: 'pointer', alignSelf: 'center' }}>
             ›

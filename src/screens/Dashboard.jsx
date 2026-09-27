@@ -8,9 +8,9 @@ import ActionCenter from './ActionCenter.jsx';
 
 export default function Dashboard() {
   const {
-    state, T, trStatus, stripKm, curEvent, backFromDashboard, switchToGoer, goCreate, openAttendance, goEvent, requestVerify, loadHomeLiveEvents,
+    state, T, trStatus, stripKm, curEvent, backFromDashboard, goCreate, openAttendance, goEvent, requestVerify, loadHomeLiveEvents,
     loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, openVerifications, uploadEventPhoto,
-    loadRealEventsById, goEditEvent, openPublicProfile,
+    loadRealEventsById, goEditEvent, openOrganizerProfile,
   } = useGoc();
   const s = state;
   // Event review queue — a real, host-created event isn't in the static
@@ -110,42 +110,44 @@ export default function Dashboard() {
           <span style={{ fontSize: 14, color: ink, lineHeight: 1 }}>‹</span>
           <img src="/banbe-mark.png" alt="banbe" crossOrigin="anonymous" style={{ height: 34, width: 'auto' }} />
         </div>
-        <span onClick={switchToGoer} style={{ fontSize: 11.5, color: ink, cursor: 'pointer', border: '1px solid rgba(27,25,22,0.16)', padding: '7px 12px', borderRadius: 999 }}>{T('Xem như khách', 'View as goer')}</span>
       </div>
       <div style={{ padding: '16px 22px 0', display: 'flex', gap: 14, alignItems: 'center' }}>
         <div style={bg(ev.img, { flex: 'none', width: 56, height: 56, borderRadius: '50%' })} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
-          <h1 style={{ ...display(24, { margin: 0, lineHeight: 1.2 }) }}>{ev.orgName}</h1>
+          {/* Personal-vs-organizer hierarchy pass (2026-09-27) — the real
+              organizers.name (s.orgRegName, kept in sync by
+              loadMyOrgStats/saveOrganizerProfile) once this account
+              actually has one; the demo-catalogue ev.orgName is only ever
+              a fallback for a never-hosted dev/seed account. */}
+          <h1 style={{ ...display(24, { margin: 0, lineHeight: 1.2 }) }}>{s.orgRegName || ev.orgName}</h1>
+          {/* Real owner, never guessed/invented — this page only ever
+              renders for the signed-in account's OWN organizer, so the
+              viewer IS the owner. Never persisted as part of the name
+              itself ("Team" is display-only text here). */}
+          {s.myOrganizerId && (
+            <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }} data-testid="dashboard-owner-line">
+              {T(`Bởi ${s.user?.name || ''} Team`, `By ${s.user?.name || ''} Team`)}
+            </span>
+          )}
           <span style={{ display: 'inline-block', fontSize: 10, fontWeight: 600, padding: '5px 11px', borderRadius: 999, background: 'transparent', color: ink, border: b.border, width: 'fit-content' }}>{b.label}</span>
         </div>
       </div>
       <div style={{ padding: '14px 22px 0', fontSize: 12.5, color: ink }}>{dashStatsLine}</div>
 
-      {/* Rule 3 (2026-09-27 nav/discovery pass) — this management page's
-          own pair of matching actions on the account's real public
-          organizer page: "Chỉnh sửa" opens it ready to edit name/avatar/
-          intro (the existing owner-only flow already on that page,
-          PublicProfile.jsx's org-edit card — just started open here
-          instead of needing a second tap there); "Xem như khách" opens
-          the exact same page as any visitor sees it (guest preview,
-          client-only — never touches auth or organizer mode). Neither
-          button lives on the personal profile card (Account.jsx). */}
-      {s.user?.handle && (
-        <div style={{ display: 'flex', gap: 10, margin: '16px 22px 0' }}>
-          <div
-            onClick={() => openPublicProfile(s.user.handle, 'dashboard', { context: 'organizer', autoEdit: true })}
-            data-testid="dashboard-edit-org"
-            style={{ flex: 1, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '10px 0', borderRadius: 10, cursor: 'pointer', border: '1px solid rgba(27,25,22,0.16)' }}
-          >
-            {T('Chỉnh sửa', 'Edit')}
-          </div>
-          <div
-            onClick={() => openPublicProfile(s.user.handle, 'dashboard', { context: 'organizer', guestPreview: true })}
-            data-testid="dashboard-view-as-guest"
-            style={{ flex: 1, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '10px 0', borderRadius: 10, cursor: 'pointer', border: '1px solid rgba(27,25,22,0.16)' }}
-          >
-            {T('Xem như khách', 'View as guest')}
-          </div>
+      {/* Personal-vs-organizer hierarchy pass (2026-09-27) — replaces the
+          former "Chỉnh sửa"/"Xem như khách" pair with ONE clear action:
+          opens the organizer's own separate public page
+          (OrganizerProfile.jsx — real avatar/stats/upcoming events/
+          photos, its own shareable /org/<id> link and, for the owner
+          only, its own "Chỉnh sửa hồ sơ tổ chức" entry), never the
+          personal profile editor. Event management controls stay here. */}
+      {s.myOrganizerId && (
+        <div
+          onClick={() => openOrganizerProfile(s.myOrganizerId, 'dashboard')}
+          data-testid="dashboard-organizer-public-profile"
+          style={{ margin: '16px 22px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '12px 0', borderRadius: 12, cursor: 'pointer', border: '1px solid rgba(27,25,22,0.16)' }}
+        >
+          {T('Hồ sơ công khai của tổ chức', "Organizer's public profile")}
         </div>
       )}
 

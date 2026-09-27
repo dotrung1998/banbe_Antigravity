@@ -17,7 +17,7 @@ enum Screen: String {
     case policy
     case mapExplore
     case refundAccounts, myRefunds
-    case editProfile, publicProfile
+    case editProfile, publicProfile, organizerProfile
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -303,7 +303,10 @@ final class AppState: ObservableObject {
     /// Every screen a signed-out visitor may ever legitimately be on —
     /// RootView's guard redirects anything else to .login. The
     /// enforcement point for "no guest browsing of any screen" (Task 1).
-    static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .login, .policy]
+    // Personal-vs-organizer hierarchy pass (2026-09-27) — `.organizerProfile`
+    // must work for a signed-out visitor (get_organizer_profile is granted
+    // to anon, migration 095), same as a shared organizer link on web.
+    static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .login, .policy, .organizerProfile]
 
     // MARK: - Screenshot Catalog (docs/demo-screenshots)
     // Test-only launch flags for `scripts/capture_ios_catalog.sh` /
@@ -857,20 +860,25 @@ final class AppState: ObservableObject {
     @Published var editProfileTheme = "default"
     @Published var editProfileError = ""
     @Published var editProfileBusy = false
+    // Personal-vs-organizer hierarchy pass (2026-09-27) — PERSONAL-ONLY
+    // (own display_name, own QR/edit — never an organizer edit/guest-
+    // preview affordance; see PublicProfileView's own comment).
     @Published var publicProfile: PublicProfile?
     @Published var publicProfileLoading = false
     @Published var publicProfileError = ""
     @Published var publicProfileBackScreen: Screen = .profile
     @Published var publicProfileHandle = ""
-    // Profile-nav fix pass (2026-09-27) — same screen serves three
-    // different entries: the account's own PERSONAL card ("personal",
-    // must never show the org edit/guest-preview pair), and the organizer
-    // MANAGEMENT page's own "Chỉnh sửa"/"Xem như khách" buttons
-    // ("organizer", default — lands here already decided which of those
-    // two states to start in, rather than requiring a second tap).
-    @Published var publicProfileContext = "organizer"
-    @Published var publicProfileGuestPreview = false
-    @Published var publicProfileAutoEdit = false
+    // The organizer's own, separate public profile — a standalone screen,
+    // reachable by organizer id (never the owner's personal handle) so a
+    // shared /org/<id> link works without knowing who owns it.
+    @Published var organizerProfile: OrganizerProfile?
+    @Published var organizerProfileLoading = false
+    @Published var organizerProfileError = ""
+    @Published var organizerProfileBackScreen: Screen = .profile
+    @Published var organizerProfileID = ""
+    @Published var organizerProfileUpcoming: [OrganizerUpcomingEvent] = []
+    @Published var organizerProfilePhotos: [OrganizerPhoto] = []
+    @Published var organizerProfileExtrasLoadedFor = ""
     // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
     @Published var pulseDaily: [PulseItem] = []
     @Published var pulseWeekly: [PulseItem] = []
@@ -2141,6 +2149,7 @@ final class AppState: ObservableObject {
         case .myRefunds: backFromMyRefunds()
         case .editProfile: backFromEditProfile()
         case .publicProfile: backFromPublicProfile()
+        case .organizerProfile: backFromOrganizerProfile()
         default: break
         }
     }
@@ -2187,6 +2196,7 @@ final class AppState: ObservableObject {
         case .myRefunds: return myRefundsBackScreen
         case .editProfile: return .profile
         case .publicProfile: return publicProfileBackScreen
+        case .organizerProfile: return organizerProfileBackScreen
         default: return .home
         }
     }

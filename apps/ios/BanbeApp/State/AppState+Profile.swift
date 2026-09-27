@@ -49,6 +49,42 @@ struct PublicProfile: Decodable, Equatable {
     }
 }
 
+/// Personal-vs-organizer hierarchy pass (2026-09-27) — the organizer's own,
+/// SEPARATE public profile (get_organizer_profile, migration 095), reached
+/// by organizer id — never the owner's personal handle. Mirrors
+/// `PublicProfile.OrganizerSummary` field-for-field (same RPC logic,
+/// migration 091) plus `about`/`avatarPath`, which that nested summary
+/// doesn't carry.
+struct OrganizerProfile: Decodable, Equatable {
+    let success: Bool?
+    let error: String?
+    let id: String?
+    let name: String?
+    let about: String?
+    let avatarPath: String?
+    let verified: Bool?
+    let hostingSinceYear: Int?
+    let eventCount: Int?
+    var followerCount: Int?
+    var following: Bool?
+    enum CodingKeys: String, CodingKey {
+        case success, error, id, name, about, verified, following
+        case avatarPath = "avatar_path"
+        case hostingSinceYear = "hosting_since_year"
+        case eventCount = "event_count"
+        case followerCount = "follower_count"
+    }
+}
+
+/// A concise, real "upcoming events" preview for the organizer profile —
+/// never the demo catalogue.
+struct OrganizerUpcomingEvent: Decodable, Identifiable {
+    let id: String
+    let name: String
+    enum CodingKeys: String, CodingKey { case id, name }
+}
+private struct OrganizerProfilePhotoEventRow: Decodable { let id: String }
+
 private struct SaveProfileResult: Decodable {
     let success: Bool?
     let error: String?
@@ -150,17 +186,17 @@ extension AppState {
     }
     func removeAvatar() async { await saveProfileFields(avatarURLOverride: "") }
 
-    /// Public profile screen — reachable by handle, works for a signed-out
-    /// visitor too (get_public_profile() is granted to anon, migration 079).
-    func openPublicProfile(handle: String, back: Screen = .profile, context: String = "organizer", guestPreview: Bool = false, autoEdit: Bool = false) {
+    /// Personal public profile screen — reachable by handle, works for a
+    /// signed-out visitor too (get_public_profile() is granted to anon,
+    /// migration 079). Personal-only (2026-09-27 hierarchy pass): never
+    /// shows an organizer edit/guest-preview affordance any more — the
+    /// organizer's own public page is `openOrganizerProfile` below.
+    func openPublicProfile(handle: String, back: Screen = .profile) {
         publicProfileBackScreen = back
         publicProfile = nil
         publicProfileLoading = true
         publicProfileError = ""
         publicProfileHandle = handle
-        publicProfileContext = context
-        publicProfileGuestPreview = guestPreview
-        publicProfileAutoEdit = autoEdit
         screen = .publicProfile
         Task { await loadPublicProfile(handle: handle) }
     }
@@ -184,12 +220,28 @@ extension AppState {
     }
     func backFromPublicProfile() { screen = publicProfileBackScreen }
 
+    /// Bumps WHICHEVER of the two screens (personal profile's merged
+    /// organizer summary, or the organizer's own standalone page) currently
+    /// holds this organizer id — never both unconditionally, since only
+    /// one is ever the actual match.
     func toggleFollowOrganizer(_ organizerID: String) async {
-        guard let uid = userID, var org = publicProfile?.organizer else { return }
-        let wasFollowing = org.following
-        org.following.toggle()
-        org.followerCount += wasFollowing ? -1 : 1
-        publicProfile?.organizer = org
+        guard let uid = userID else { return }
+        let matchesPublicProfile = publicProfile?.organizer?.id == organizerID
+        let matchesOrganizerProfile = organizerProfile?.id == organizerID
+        guard matchesPublicProfile || matchesOrganizerProfile else { return }
+        let wasFollowing = matchesPublicProfile ? (publicProfile?.organizer?.following ?? false) : (organizerProfile?.following ?? false)
+        func apply(_ following: Bool) {
+            let sign = following ? 1 : -1
+            if matchesPublicProfile {
+                publicProfile?.organizer?.following = following
+                publicProfile?.organizer?.followerCount += sign
+            }
+            if matchesOrganizerProfile {
+                organizerProfile?.following = following
+                organizerProfile?.followerCount = (organizerProfile?.followerCount ?? 0) + sign
+            }
+        }
+        apply(!wasFollowing)
         do {
             if wasFollowing {
                 _ = try await SupabaseService.client.from("follows")
@@ -200,14 +252,85 @@ extension AppState {
             }
         } catch {
             print("toggleFollowOrganizer failed:", error)
-            org.following = wasFollowing
-            org.followerCount += wasFollowing ? 1 : -1
-            publicProfile?.organizer = org
+            apply(wasFollowing)
         }
     }
 
-    /// https://banbe.app/u/<handle> — the universal link's in-app
-    /// destination. Falls through silently (does nothing) for any other
+    /// The organizer's own, separate public profile — reachable by
+    /// organizer_id (never the owner's personal handle), so a shared
+    /// /org/<id> link resolves without exposing or requiring any personal
+    /// profile field. Fetches only the core stats; the upcoming-events/
+    /// photos "extras" are fetched by loadOrganizerProfileExtras below,
+    /// called from the view's own `.task` regardless of entry path (in-app
+    /// nav or a deep link).
+    func openOrganizerProfile(organizerID: String, back: Screen = .profile) {
+        organizerProfileBackScreen = back
+        organizerProfile = nil
+        organizerProfileLoading = true
+        organizerProfileError = ""
+        organizerProfileID = organizerID
+        organizerProfileExtrasLoadedFor = ""
+        screen = .organizerProfile
+        Task { await loadOrganizerProfile(organizerID: organizerID) }
+    }
+    func loadOrganizerProfile(organizerID: String) async {
+        do {
+            let result: OrganizerProfile = try await SupabaseService.client
+                .rpc("get_organizer_profile", params: ["p_organizer_id": organizerID])
+                .execute().value
+            guard result.success == true else {
+                organizerProfileLoading = false
+                organizerProfileError = T("Không tìm thấy tổ chức này.", "This organizer couldn't be found.")
+                return
+            }
+            organizerProfile = result
+            organizerProfileLoading = false
+        } catch {
+            print("loadOrganizerProfile failed:", error, "organizerID:", organizerID)
+            organizerProfileLoading = false
+            organizerProfileError = T("Không tìm thấy tổ chức này.", "This organizer couldn't be found.")
+        }
+    }
+    func backFromOrganizerProfile() { screen = organizerProfileBackScreen }
+
+    /// Small preview content for the organizer public profile — real
+    /// upcoming events (published, soonest first) and a handful of real
+    /// photos from those same events, never invented. Guarded on
+    /// `organizerProfileExtrasLoadedFor` so returning to an already-loaded
+    /// organizer doesn't re-fetch.
+    func loadOrganizerProfileExtras(organizerID: String) async {
+        guard organizerProfileExtrasLoadedFor != organizerID else { return }
+        organizerProfileExtrasLoadedFor = organizerID
+        do {
+            async let upcomingReq: [OrganizerUpcomingEvent] = SupabaseService.client
+                .from("events").select("id, name")
+                .eq("organizer_id", value: organizerID).eq("status", value: "live")
+                .order("starts_at", ascending: true).limit(5)
+                .execute().value
+            async let photoEventsReq: [OrganizerProfilePhotoEventRow] = SupabaseService.client
+                .from("events").select("id")
+                .eq("organizer_id", value: organizerID).eq("status", value: "live").eq("visibility", value: "public")
+                .execute().value
+            let (upcoming, photoEvents) = try await (upcomingReq, photoEventsReq)
+            organizerProfileUpcoming = upcoming
+            let photoEventIDs = photoEvents.map(\.id)
+            if photoEventIDs.isEmpty {
+                organizerProfilePhotos = []
+            } else {
+                organizerProfilePhotos = try await SupabaseService.client
+                    .from("event_photos").select("id, event_id, storage_path, sort_order")
+                    .in("event_id", values: photoEventIDs)
+                    .order("sort_order", ascending: true).limit(8)
+                    .execute().value
+            }
+        } catch {
+            print("loadOrganizerProfileExtras failed:", error, "organizerID:", organizerID)
+        }
+    }
+
+    /// https://banbe.app/u/<handle> (personal) and .../org/<organizer_id>
+    /// (the organizer's own separate page) — the universal link's in-app
+    /// destinations. Falls through silently (does nothing) for any other
     /// path; RootView/BanbeApp.swift's .onContinueUserActivity handler is
     /// the only caller.
     ///
@@ -220,7 +343,11 @@ extension AppState {
     /// app association. No code here needs to detect or special-case that.
     func handleUniversalLink(_ url: URL) {
         let parts = url.pathComponents.filter { $0 != "/" }
-        guard parts.count == 2, parts[0] == "u" else { return }
-        openPublicProfile(handle: parts[1].lowercased(), back: .home)
+        guard parts.count == 2 else { return }
+        switch parts[0] {
+        case "u": openPublicProfile(handle: parts[1].lowercased(), back: .home)
+        case "org": openOrganizerProfile(organizerID: parts[1], back: .home)
+        default: break
+        }
     }
 }

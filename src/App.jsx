@@ -51,6 +51,7 @@ import MapExplore from './screens/MapExplore.jsx';
 import DockCreateButton from './screens/DockCreateButton.jsx';
 import EditProfile from './screens/EditProfile.jsx';
 import PublicProfile from './screens/PublicProfile.jsx';
+import OrganizerProfile from './screens/OrganizerProfile.jsx';
 import RootRefreshIndicator from './screens/RootRefreshIndicator.jsx';
 
 const SCREENS = {
@@ -91,6 +92,7 @@ const SCREENS = {
   mapExplore: MapExplore,
   editProfile: EditProfile,
   publicProfile: PublicProfile,
+  organizerProfile: OrganizerProfile,
 };
 
 // TASK 1 (2026-10-05 fix pass) — the dock and the create-"+" button laid

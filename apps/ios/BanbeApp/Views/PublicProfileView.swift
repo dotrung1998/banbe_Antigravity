@@ -1,34 +1,16 @@
 import SwiftUI
-import PhotosUI
 
-/// TASK D (2026-10-01 UX foundation pass) — what anyone (signed in or not)
-/// sees at https://banbe.app/u/<handle>. Organizer mode transforms the
-/// SAME card into the organizer presentation (event/follower stats, follow
-/// CTA) rather than a second, conflicting persona.
+/// Personal-vs-organizer hierarchy pass (2026-09-27) — PERSONAL ONLY: what
+/// anyone (signed in or not) sees at https://banbe.app/u/<handle>. Always
+/// leads with profiles.displayName — never organizers.name — and carries
+/// no organizer edit/guest-preview affordance any more; the organizer's own
+/// separate public page (real avatar/stats/upcoming events/photos, its own
+/// shareable /org/<id> link, its own owner-only edit) is
+/// OrganizerProfileView, reached from the management page (DashboardView's
+/// "Hồ sơ công khai của tổ chức" button), never from here.
 struct PublicProfileView: View {
     @EnvironmentObject private var app: AppState
     @State private var qrOpen = false
-    // iPhone fix pass (2026-09-26) — inline editing for the ORGANIZER half
-    // of this same page, mirroring AccountView's own host-tab card exactly
-    // (same orgRegName/orgRegDesc/saveOrganizerProfile — this account has
-    // at most one organizer, app.myOrganizerID). A SEPARATE action from
-    // "Chỉnh sửa hồ sơ" (personal, -> EditProfileView) — never the same,
-    // since they edit different rows in different tables.
-    // Profile-nav fix pass (2026-09-27) — both initial values now come
-    // from which button was tapped to get here (DashboardView's own
-    // "Chỉnh sửa"/"Xem như khách" pair, see AppState.openPublicProfile's
-    // params), so this page opens already in the right state instead of
-    // requiring a second tap once it renders. Still local state after
-    // that — toggled purely client-side, same as before.
-    @State private var orgEditing = false
-    @State private var orgAvatarPickerItem: PhotosPickerItem?
-    @State private var orgAvatarPreviewImage: UIImage?
-    // Stage 1 (2026-09-27 nav/discovery pass) — a client-only "view as
-    // guest" preview for the account's OWN organizer public page: hides
-    // owner-only controls (the edit row below, the personal "Chỉnh sửa hồ
-    // sơ" button) so the owner can see exactly what a visitor sees,
-    // without touching auth, organizerMode, or which account is signed in.
-    @State private var guestPreview = false
 
     private var isOwnProfile: Bool { app.userID != nil && app.publicProfile?.id == app.userID }
 
@@ -52,15 +34,6 @@ struct PublicProfileView: View {
                 }
                 .padding(.top, 16)
 
-                if guestPreview {
-                    Button(app.T("Đang xem như khách ▪︎ Thoát", "Viewing as a guest ▪︎ Exit")) { guestPreview = false }
-                        .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.paper)
-                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .padding(.top, 10)
-                        .accessibilityIdentifier("publicProfile.guestPreviewBanner")
-                }
-
                 if app.publicProfileLoading {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                 } else if let p = app.publicProfile, p.success == true {
@@ -74,34 +47,18 @@ struct PublicProfileView: View {
 
                     // iPhone fix pass — "Chỉnh sửa hồ sơ" beneath "Hiển thị
                     // mã QR", own-profile only (never rendered for a
-                    // visitor viewing someone else's page — the edit RPCs
-                    // themselves are owner/admin-gated server-side
-                    // regardless, same as AccountView's own card).
-                    if isOwnProfile && !guestPreview {
+                    // visitor viewing someone else's page — the edit RPC
+                    // itself is owner-gated server-side regardless). Edits
+                    // profiles fields ONLY — never organizers.name/about/
+                    // avatarPath, which live on the organizer's own
+                    // separate editor now (OrganizerProfileView).
+                    if isOwnProfile {
                         Button(app.T("Chỉnh sửa hồ sơ", "Edit profile")) { app.openEditProfile() }
                             .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                             .frame(maxWidth: .infinity).padding(.vertical, 13)
                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
                             .padding(.top, 10)
                             .accessibilityIdentifier("publicProfile.editPersonal")
-                    }
-
-                    // Organizer's own edit — a SEPARATE action from the
-                    // personal one above; edits organizers.name/about/
-                    // avatar_path only (migration 090's
-                    // update_organizer_profile), never profiles.*.
-                    // `org.id == app.myOrganizerID` — never editing on the
-                    // strength of `isOwnProfile` alone; the one place a
-                    // mismatch would silently edit the WRONG organizer.
-                    // Rule 1 (2026-09-27 nav/discovery pass) — this card
-                    // only belongs on the organizer MANAGEMENT page
-                    // (DashboardView's own "Chỉnh sửa"/"Xem như khách"
-                    // buttons land here already decided which state to
-                    // start in); the account's PERSONAL profile card must
-                    // never show it, even for a host account whose own
-                    // handle carries org data too.
-                    if isOwnProfile, !guestPreview, app.publicProfileContext != "personal", let org = p.organizer, org.id == app.myOrganizerID {
-                        orgEditCard()
                     }
                 } else {
                     Text(app.publicProfileError.isEmpty ? app.T("Không tìm thấy hồ sơ này.", "This profile couldn't be found.") : app.publicProfileError)
@@ -111,10 +68,6 @@ struct PublicProfileView: View {
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 20)
-        }
-        .onAppear {
-            guestPreview = app.publicProfileGuestPreview
-            orgEditing = app.publicProfileAutoEdit
         }
         .sheet(isPresented: $qrOpen) {
             VStack(spacing: 14) {
@@ -145,17 +98,17 @@ struct PublicProfileView: View {
                     .overlay(Text(String((p.displayName ?? p.handle ?? "?").prefix(1)).uppercased()).font(.system(size: 32, weight: .bold)).foregroundStyle(app.palette.paper))
                     .overlay(Circle().stroke(app.palette.paper, lineWidth: 3))
             }
-            // Stage 1 fix — get_public_profile already returned org.name,
-            // but nothing here ever rendered it: this heading used to show
-            // the underlying PERSON's displayName even on their organizer
-            // page, with no organizer name anywhere on the page at all.
-            // "Bởi <personal name>" underneath uses only the public-safe
-            // p.displayName already fetched — never organizers.name again.
-            Text(p.organizer?.name ?? p.displayName ?? "").font(BanbeTheme.display(21))
-            if p.organizer != nil {
-                Text(app.T("Bởi \(p.displayName ?? "")", "By \(p.displayName ?? "")"))
+            // Personal-vs-organizer hierarchy pass — always the PERSON's
+            // own name first (never swapped for organizers.name any more).
+            Text(p.displayName ?? "").font(BanbeTheme.display(21)).accessibilityIdentifier("publicProfile.displayName")
+            // Only when this profile truly owns that organizer — a plain
+            // pointer to who they are, not a second mini-dashboard (event/
+            // follower stats and the follow CTA now live on the
+            // organizer's own separate page, OrganizerProfileView).
+            if let org = p.organizer {
+                Text(app.T("Founder tổ chức: \(org.name)", "Founder of \(org.name)"))
                     .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
-                    .accessibilityIdentifier("publicProfile.orgOwnedBy")
+                    .accessibilityIdentifier("publicProfile.founderLine")
             }
             Text("@\(p.handle ?? "")" + (p.city?.isEmpty == false ? " ▪︎ \(p.city!)" : ""))
                 .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
@@ -171,140 +124,10 @@ struct PublicProfileView: View {
                     }
                 }
             }
-            if let org = p.organizer {
-                HStack(spacing: 20) {
-                    statView("\(org.eventCount)", app.T("Sự kiện", "Events"))
-                    statView("\(org.followerCount)", app.T("Người theo dõi", "Followers"))
-                    if org.verified { statView("✓", app.T("Đã xác minh", "Verified")) }
-                }
-                .padding(.top, 6)
-
-                // iPhone fix pass — derived from the earliest REAL published
-                // event (migration 091), never a fabricated year.
-                Text(org.hostingSinceYear.map { app.T("Tổ chức từ \($0)", "Hosting since \($0)") }
-                     ?? app.T("Chưa có sự kiện công khai nào", "No published events yet"))
-                    .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
-
-                if app.userID != p.id {
-                    Button(org.following ? app.T("Đang theo dõi", "Following") : app.T("Theo dõi", "Follow")) {
-                        Task { await app.toggleFollowOrganizer(org.id) }
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.horizontal, 24).padding(.vertical, 10)
-                    .background(org.following ? Color.clear : app.palette.ink, in: Capsule())
-                    .foregroundStyle(org.following ? app.palette.ink : app.palette.paper)
-                    .overlay(Capsule().stroke(org.following ? app.palette.rule : .clear))
-                    .padding(.top, 6)
-                    .accessibilityIdentifier("publicProfile.follow")
-                }
-            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 28).padding(.horizontal, 22)
         .background(LinearGradient(colors: [paletteColor.opacity(0.8), paletteColor.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .accessibilityIdentifier("publicProfile.card")
-    }
-
-    @ViewBuilder
-    private func statView(_ value: String, _ label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value).font(BanbeTheme.display(17))
-            Text(label).font(.system(size: 10)).foregroundStyle(app.palette.ink.opacity(0.7))
-        }
-    }
-
-    private var organizerAvatarURL: URL? {
-        guard !app.myOrganizerAvatarPath.isEmpty else { return nil }
-        return try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: app.myOrganizerAvatarPath)
-    }
-
-    @ViewBuilder
-    private func orgEditCard() -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if orgEditing {
-                HStack(spacing: 12) {
-                    PhotosPicker(selection: $orgAvatarPickerItem, matching: .images) {
-                        ZStack {
-                            if let orgAvatarPreviewImage {
-                                Image(uiImage: orgAvatarPreviewImage).resizable().scaledToFill()
-                            } else if let url = organizerAvatarURL {
-                                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
-                            } else {
-                                app.palette.field
-                            }
-                        }
-                        .frame(width: 52, height: 52)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                    Text(app.T("Đổi ảnh", "Change photo")).font(.system(size: 12)).underline()
-                }
-                TextField("", text: $app.orgRegName)
-                    .font(.system(size: 14, weight: .semibold))
-                    .padding(9)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .accessibilityIdentifier("publicProfile.orgNameField")
-                TextEditor(text: $app.orgRegDesc)
-                    .font(.system(size: 13))
-                    .frame(minHeight: 80)
-                    .padding(6)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .accessibilityIdentifier("publicProfile.orgIntroField")
-                HStack(spacing: 8) {
-                    Button {
-                        Task {
-                            await app.saveOrganizerProfile(avatarImage: orgAvatarPreviewImage)
-                            orgEditing = false
-                            orgAvatarPreviewImage = nil
-                        }
-                    } label: {
-                        Text(app.orgProfileSaving ? app.T("Đang lưu…", "Saving…") : app.T("Lưu", "Save"))
-                            .font(.system(size: 12.5, weight: .semibold))
-                            .frame(maxWidth: .infinity).padding(.vertical, 10)
-                            .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .foregroundStyle(app.palette.paper)
-                    }
-                    .disabled(app.orgProfileSaving)
-                    .accessibilityIdentifier("publicProfile.orgSave")
-                    Button(app.T("Huỷ", "Cancel")) { orgEditing = false }
-                        .font(.system(size: 12.5, weight: .semibold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 10)
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
-                        .foregroundStyle(app.palette.ink)
-                }
-                if !app.orgProfileError.isEmpty {
-                    Text(app.orgProfileError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
-                }
-            } else {
-                // Stage 1's own "two adjacent actions" requirement —
-                // Chỉnh sửa (left) opens this same inline editor; Xem
-                // như khách (right) is a pure client-side preview toggle
-                // (the banner above), never a real auth/account-mode
-                // change.
-                HStack(spacing: 10) {
-                    Button(app.T("Chỉnh sửa", "Edit")) { orgEditing = true }
-                        .font(.system(size: 12.5, weight: .semibold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 10)
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
-                        .foregroundStyle(app.palette.ink)
-                        .accessibilityIdentifier("publicProfile.editOrg")
-                    Button(app.T("Xem như khách", "View as guest")) { guestPreview = true }
-                        .font(.system(size: 12.5, weight: .semibold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 10)
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
-                        .foregroundStyle(app.palette.ink)
-                        .accessibilityIdentifier("publicProfile.viewAsGuest")
-                }
-            }
-        }
-        .foregroundStyle(app.palette.ink)
-        .padding(16)
-        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .padding(.top, 10)
-        .onChange(of: orgAvatarPickerItem) { _, item in
-            Task {
-                guard let item, let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
-                await MainActor.run { orgAvatarPreviewImage = image }
-            }
-        }
     }
 }

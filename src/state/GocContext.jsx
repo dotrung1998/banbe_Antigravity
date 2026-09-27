@@ -205,10 +205,24 @@ if (typeof window !== 'undefined') {
   if (m) sharedProfileHandle = m[1].toLowerCase();
 }
 
+// Personal-vs-organizer hierarchy pass (2026-09-27) — the organizer
+// profile's own universal-link sibling: https://banbe.app/org/<organizer_id>.
+// A separate path from /u/<handle> on purpose (never that query param
+// either — "?org=" above is already claimed for a shared EVENT's key, a
+// naming trap this deliberately avoids) since organizer.id is its own
+// free-form text slug (e.g. 'org_001'), not a personal handle. Same
+// "read once at module load, before React mounts" pattern as both blocks
+// above.
+let sharedOrganizerId = null;
+if (typeof window !== 'undefined') {
+  const m = window.location.pathname.match(/^\/org\/([a-zA-Z0-9_-]{1,40})\/?$/);
+  if (m) sharedOrganizerId = m[1];
+}
+
 // Every screen a signed-out visitor may ever legitimately be on. Anything
 // else while `!user` gets redirected to 'login' by the guard effect below
 // — the enforcement point for "no guest browsing of any screen" (Task 1).
-const GUEST_ALLOWED_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy']);
+const GUEST_ALLOWED_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy', 'organizerProfile']);
 
 const initialState = {
   screen: 'splash',
@@ -479,15 +493,16 @@ const initialState = {
   // TASK D (2026-10-01 UX foundation pass) — shareable profile card.
   editProfileHandle: '', editProfileName: '', editProfileBio: '', editProfileCity: '',
   editProfileInterests: '', editProfileTheme: 'default', editProfileError: '', editProfileBusy: false,
+  // Personal-vs-organizer hierarchy pass (2026-09-27) — this screen is now
+  // PERSONAL-ONLY (own display_name, own QR/edit — never an organizer
+  // edit/guest-preview affordance; see PublicProfile.jsx's own comment).
   publicProfile: null, publicProfileLoading: false, publicProfileError: '', publicProfileBack: 'profile', publicProfileHandle: '',
-  // Profile-nav fix pass (2026-09-27) — same screen serves three different
-  // entries: the account's own PERSONAL card (must never show the org
-  // edit/guest-preview pair below, even when this account also hosts),
-  // and the organizer MANAGEMENT page's own "Chỉnh sửa"/"Xem như khách"
-  // buttons (which land here already decided which of those two states to
-  // start in, rather than requiring a second tap once the page opens).
-  publicProfileContext: 'organizer', publicProfileGuestPreview: false, publicProfileAutoEdit: false,
   profileLinkCopiedFlash: false,
+  // The organizer's own, separate public profile — a standalone screen,
+  // reachable by organizer id (never the owner's personal handle) so a
+  // shared /org/<id> link works without knowing who owns it.
+  organizerProfile: null, organizerProfileLoading: false, organizerProfileError: '', organizerProfileBack: 'profile', organizerProfileId: '',
+  organizerProfileUpcoming: [], organizerProfilePhotos: [], organizerProfileExtrasLoadedFor: '',
   // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
   pulseDaily: [], pulseWeekly: [], pulseOpen: false, pulseTab: 'daily', pulseOrganizerSheet: null,
   pulseDailyLoading: false, pulseWeeklyLoading: false,
@@ -1002,6 +1017,8 @@ export function GocProvider({ children }) {
         // actual data fetch happens in the mount effect below (needs
         // `supabase.rpc`, not available at this synchronous init point).
         ...(sharedProfileHandle ? { screen: 'publicProfile', publicProfileHandle: sharedProfileHandle, publicProfileLoading: true, publicProfileBack: 'home' } : {}),
+        // Same reasoning, for a shared /org/<id> organizer link.
+        ...(sharedOrganizerId ? { screen: 'organizerProfile', organizerProfileId: sharedOrganizerId, organizerProfileLoading: true, organizerProfileBack: 'home' } : {}),
       };
     } catch {
       return initialState;
@@ -1023,6 +1040,25 @@ export function GocProvider({ children }) {
         return;
       }
       setStateRaw(prev => ({ ...prev, publicProfile: data, publicProfileLoading: false }));
+    });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Same reasoning, for a shared /org/<id> organizer link's already-set
+  // initial screen — the OrganizerProfile screen's own mount effect
+  // separately fetches the upcoming-events/photos "extras" regardless of
+  // entry path (deep link or in-app navigation), so this only needs the
+  // core RPC, same as the /u/<handle> effect above only fetches core.
+  useEffect(() => {
+    if (!sharedOrganizerId) return;
+    let active = true;
+    supabase.rpc('get_organizer_profile', { p_organizer_id: sharedOrganizerId }).then(({ data, error }) => {
+      if (!active) return;
+      if (error || data?.success === false) {
+        setStateRaw(prev => ({ ...prev, organizerProfileLoading: false, organizerProfileError: T('Không tìm thấy tổ chức này.', "This organizer couldn't be found.") }));
+        return;
+      }
+      setStateRaw(prev => ({ ...prev, organizerProfile: data, organizerProfileLoading: false }));
     });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4786,14 +4822,13 @@ export function GocProvider({ children }) {
     return true;
   }, [set, s.user?.id, T]);
 
-  /** Public profile screen — reachable by handle, works for a signed-out
-   * visitor too (get_public_profile() is granted to anon, migration 079). */
-  const openPublicProfile = useCallback(async (handle, back = 'profile', opts = {}) => {
-    const { context = 'organizer', guestPreview = false, autoEdit = false } = opts;
-    set({
-      screen: 'publicProfile', publicProfile: null, publicProfileLoading: true, publicProfileError: '', publicProfileBack: back, publicProfileHandle: handle,
-      publicProfileContext: context, publicProfileGuestPreview: guestPreview, publicProfileAutoEdit: autoEdit,
-    });
+  /** Personal public profile screen — reachable by handle, works for a
+   * signed-out visitor too (get_public_profile() is granted to anon,
+   * migration 079). Personal-only (2026-09-27 hierarchy pass): never
+   * shows an organizer edit/guest-preview affordance any more — the
+   * organizer's own public page is `openOrganizerProfile` below. */
+  const openPublicProfile = useCallback(async (handle, back = 'profile') => {
+    set({ screen: 'publicProfile', publicProfile: null, publicProfileLoading: true, publicProfileError: '', publicProfileBack: back, publicProfileHandle: handle });
     const { data, error } = await supabase.rpc('get_public_profile', { p_handle: handle });
     if (error || data?.success === false) {
       set({ publicProfileLoading: false, publicProfileError: T('Không tìm thấy hồ sơ này.', "This profile couldn't be found.") });
@@ -4803,25 +4838,98 @@ export function GocProvider({ children }) {
   }, [set, T]);
   const backFromPublicProfile = useCallback(() => set(prev => ({ screen: prev.publicProfileBack || 'profile' })), [set]);
 
+  /** The organizer's own, separate public profile — reachable by
+   * organizer_id (never the owner's personal handle), so a shared
+   * /org/<id> link resolves without exposing or requiring any personal
+   * profile field. Fetches only the core stats (get_organizer_profile);
+   * the upcoming-events/photos "extras" are fetched by
+   * loadOrganizerProfileExtras below, called from the screen's own mount
+   * effect regardless of entry path (in-app nav or a deep link). */
+  const openOrganizerProfile = useCallback(async (organizerId, back = 'profile') => {
+    if (!organizerId) return;
+    set({
+      screen: 'organizerProfile', organizerProfile: null, organizerProfileLoading: true, organizerProfileError: '',
+      organizerProfileBack: back, organizerProfileId: organizerId, organizerProfileExtrasLoadedFor: '',
+    });
+    const { data, error } = await supabase.rpc('get_organizer_profile', { p_organizer_id: organizerId });
+    if (error || data?.success === false) {
+      set({ organizerProfileLoading: false, organizerProfileError: T('Không tìm thấy tổ chức này.', "This organizer couldn't be found.") });
+      return;
+    }
+    set({ organizerProfile: data, organizerProfileLoading: false });
+  }, [set, T]);
+  const backFromOrganizerProfile = useCallback(() => set(prev => ({ screen: prev.organizerProfileBack || 'profile' })), [set]);
+
+  /** Small preview content for the organizer public profile — real
+   * upcoming events (published, soonest first) and a handful of real
+   * photos from those same events, never invented. Guarded on
+   * `organizerProfileExtrasLoadedFor` so returning to an already-loaded
+   * organizer (e.g. Back then forward again) doesn't re-fetch. */
+  const loadOrganizerProfileExtras = useCallback(async (organizerId) => {
+    if (!organizerId || s.organizerProfileExtrasLoadedFor === organizerId) return;
+    set({ organizerProfileExtrasLoadedFor: organizerId });
+    const [eventsRes, photoEventsRes] = await Promise.all([
+      supabase.from('events').select(REAL_EVENT_ROW_COLUMNS).eq('organizer_id', organizerId).eq('status', 'live').order('starts_at', { ascending: true }).limit(5),
+      supabase.from('events').select('id').eq('organizer_id', organizerId).eq('status', 'live').eq('visibility', 'public'),
+    ]);
+    const rows = eventsRes.data || [];
+    const photoUrlByEvent = await firstPhotoUrlByEvent(rows.map(r => r.id));
+    const upcoming = rows.map(r => shapeRealEvent(r, { photoUrl: photoUrlByEvent[r.id] }));
+    const photoEventIds = (photoEventsRes.data || []).map(e => e.id);
+    const { data: photos } = photoEventIds.length
+      ? await supabase.from('event_photos').select('id, event_id, storage_path, sort_order').in('event_id', photoEventIds).order('sort_order', { ascending: true }).limit(8)
+      : { data: [] };
+    set({ organizerProfileUpcoming: upcoming, organizerProfilePhotos: photos || [] });
+  }, [set, s.organizerProfileExtrasLoadedFor]);
+
+  /** Native share sheet with a clipboard-copy fallback — same pattern as
+   * sharePublicProfile, a separate organizer-specific URL (never
+   * /u/<handle>) so this can't be mistaken for the owner's personal link. */
+  const shareOrganizerProfile = useCallback(async (organizerId, name) => {
+    const url = `https://banbe.app/org/${organizerId}`;
+    const title = T('Trang tổ chức banbe của ' + (name || ''), (name || '') + '’s banbe organizer page');
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, url });
+        return;
+      }
+    } catch { /* user cancelled the native sheet — not an error */ }
+    try {
+      await navigator.clipboard.writeText(url);
+      set({ profileLinkCopiedFlash: true });
+      setTimeout(() => set({ profileLinkCopiedFlash: false }), 2200);
+    } catch { /* clipboard unavailable — nothing more to do */ }
+  }, [set, T]);
+
   const toggleFollowOrganizer = useCallback(async (organizerId) => {
     if (!s.user?.id || !organizerId) return;
-    const wasFollowing = !!s.publicProfile?.organizer?.following;
+    const wasFollowing = !!(
+      (s.publicProfile?.organizer?.id === organizerId && s.publicProfile.organizer.following)
+      || (s.organizerProfile?.id === organizerId && s.organizerProfile.following)
+    );
     // Optimistic — this is a plain, instantly-reversible social toggle
     // (unlike refund/payment state), reconciled by the real table write
-    // below; reverted on failure.
-    set(prev => (prev.publicProfile?.organizer
-      ? { publicProfile: { ...prev.publicProfile, organizer: { ...prev.publicProfile.organizer, following: !wasFollowing, follower_count: prev.publicProfile.organizer.follower_count + (wasFollowing ? -1 : 1) } } }
-      : {}));
+    // below; reverted on failure. Bumps WHICHEVER of the two screens
+    // (personal profile's merged organizer summary, or the organizer's
+    // own standalone page) currently holds this organizer id — never both
+    // unconditionally, since only one is ever the actual match.
+    const bump = (sign) => (prev) => ({
+      ...(prev.publicProfile?.organizer?.id === organizerId ? {
+        publicProfile: { ...prev.publicProfile, organizer: { ...prev.publicProfile.organizer, following: sign > 0, follower_count: prev.publicProfile.organizer.follower_count + sign } },
+      } : {}),
+      ...(prev.organizerProfile?.id === organizerId ? {
+        organizerProfile: { ...prev.organizerProfile, following: sign > 0, follower_count: prev.organizerProfile.follower_count + sign },
+      } : {}),
+    });
+    set(bump(wasFollowing ? -1 : 1));
     const { error } = wasFollowing
       ? await supabase.from('follows').delete().eq('user_id', s.user.id).eq('organizer_id', organizerId)
       : await supabase.from('follows').insert({ user_id: s.user.id, organizer_id: organizerId });
     if (error) {
       console.warn('toggleFollowOrganizer failed:', error);
-      set(prev => (prev.publicProfile?.organizer
-        ? { publicProfile: { ...prev.publicProfile, organizer: { ...prev.publicProfile.organizer, following: wasFollowing, follower_count: prev.publicProfile.organizer.follower_count + (wasFollowing ? 1 : -1) } } }
-        : {}));
+      set(bump(wasFollowing ? 1 : -1));
     }
-  }, [set, s.user?.id, s.publicProfile]);
+  }, [set, s.user?.id, s.publicProfile, s.organizerProfile]);
 
   /** Native share sheet (mobile Safari/Chrome) with a clipboard-copy
    * fallback for browsers with no Web Share API (most desktop browsers). */
@@ -7019,7 +7127,7 @@ export function GocProvider({ children }) {
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     openAdminEvents, loadPendingEvents, reviewEvent, goEditEvent,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, toggleFollowOrganizer, sharePublicProfile, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
@@ -7055,7 +7163,7 @@ export function GocProvider({ children }) {
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     openAdminEvents, loadPendingEvents, reviewEvent, goEditEvent,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, toggleFollowOrganizer, sharePublicProfile, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,

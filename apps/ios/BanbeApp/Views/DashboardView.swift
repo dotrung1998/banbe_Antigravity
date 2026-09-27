@@ -69,17 +69,30 @@ struct DashboardView: View {
                             }
                             .buttonStyle(.plain)
                             Spacer()
-                            Button(app.T("Xem như khách", "View as goer")) { app.switchToGoer() }
-                                .font(.system(size: 11.5))
-                                .padding(.horizontal, 12).padding(.vertical, 7)
-                                .overlay(Capsule().stroke(app.palette.rule, lineWidth: 1))
-                                .buttonStyle(.plain)
                         }
 
                         HStack(spacing: 14) {
                             CatalogPhoto(path: event.img, height: 56, width: 56, cornerRadius: 28)
                             VStack(alignment: .leading, spacing: 5) {
-                                Text(event.orgName).font(BanbeTheme.display(24))
+                                // Personal-vs-organizer hierarchy pass
+                                // (2026-09-27) — the real organizers.name
+                                // (app.orgRegName, kept in sync by
+                                // loadMyOrgStats/saveOrganizerProfile) once
+                                // this account actually has one; the demo-
+                                // catalogue event.orgName is only ever a
+                                // fallback for a never-hosted dev/seed
+                                // account.
+                                Text(app.orgRegName.isEmpty ? event.orgName : app.orgRegName).font(BanbeTheme.display(24))
+                                // Real owner, never guessed/invented — this
+                                // screen only ever renders for the signed-in
+                                // account's OWN organizer, so the viewer IS
+                                // the owner. Never persisted as part of the
+                                // name itself ("Team" is display-only text).
+                                if app.myOrganizerID != nil {
+                                    Text(app.T("Bởi \(app.displayName) Team", "By \(app.displayName) Team"))
+                                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                                        .accessibilityIdentifier("dashboard.ownerLine")
+                                }
                                 Text(verifyLabel)
                                     .font(.system(size: 10, weight: .semibold))
                                     .padding(.horizontal, 11).padding(.vertical, 5)
@@ -98,38 +111,26 @@ struct DashboardView: View {
                         .font(.system(size: 12.5))
                         .padding(.top, 14)
 
-                        // Rule 3 (2026-09-27 nav/discovery pass) — this
-                        // management page's own pair of matching actions on
-                        // the account's real public organizer page:
-                        // "Chỉnh sửa" opens it ready to edit name/avatar/
-                        // intro (the existing owner-only flow already on
-                        // that page, PublicProfileView's org edit card —
-                        // just started open here instead of needing a
-                        // second tap there); "Xem như khách" opens the
-                        // exact same page as any visitor sees it (guest
-                        // preview, client-only — never touches auth or
-                        // organizer mode). Neither button lives on the
-                        // personal profile card (AccountView).
-                        if let handle = app.user?.handle, !handle.isEmpty {
-                            HStack(spacing: 10) {
-                                Button(app.T("Chỉnh sửa", "Edit")) {
-                                    app.openPublicProfile(handle: handle, back: .dashboard, context: "organizer", autoEdit: true)
-                                }
-                                .font(.system(size: 12.5, weight: .semibold))
-                                .frame(maxWidth: .infinity).padding(.vertical, 10)
-                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
-                                .foregroundStyle(app.palette.ink)
-                                .accessibilityIdentifier("dashboard.editOrg")
-                                Button(app.T("Xem như khách", "View as guest")) {
-                                    app.openPublicProfile(handle: handle, back: .dashboard, context: "organizer", guestPreview: true)
-                                }
-                                .font(.system(size: 12.5, weight: .semibold))
-                                .frame(maxWidth: .infinity).padding(.vertical, 10)
-                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
-                                .foregroundStyle(app.palette.ink)
-                                .accessibilityIdentifier("dashboard.viewAsGuest")
+                        // Personal-vs-organizer hierarchy pass (2026-09-27)
+                        // — replaces the former "Chỉnh sửa"/"Xem như khách"
+                        // pair with ONE clear action: opens the
+                        // organizer's own separate public page
+                        // (OrganizerProfileView — real avatar/stats/
+                        // upcoming events/photos, its own shareable
+                        // /org/<id> link and, for the owner only, its own
+                        // "Chỉnh sửa hồ sơ tổ chức" entry), never the
+                        // personal profile editor. Event management
+                        // controls stay here.
+                        if let organizerID = app.myOrganizerID {
+                            Button(app.T("Hồ sơ công khai của tổ chức", "Organizer's public profile")) {
+                                app.openOrganizerProfile(organizerID: organizerID, back: .dashboard)
                             }
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .frame(maxWidth: .infinity).padding(.vertical, 12)
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+                            .foregroundStyle(app.palette.ink)
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("dashboard.organizerPublicProfile")
                             .padding(.top, 16)
                         }
 
