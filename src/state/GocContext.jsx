@@ -573,6 +573,25 @@ const initialState = {
   createError: '',
   createDesc: '',
   createLoc: '',
+  // Stage 3 (2026-09-27 nav/discovery pass) — Map's own pin audit found
+  // that create_event_draft/resubmit_event_for_review never accepted or
+  // stored coordinates at all (confirmed live: the two most recent REAL
+  // events both had lat=NULL, lng=NULL, unlike every demo-seeded one) —
+  // MapExplore's fetchLiveEvents requires non-null lat/lng for a pin, so
+  // those events could never appear on the map regardless of approval.
+  // `createLocConfirmed` gates submit-time coordinate use: geocoding
+  // `createLoc` (free text) is a best-effort guess, never silently
+  // trusted — only a result the host has actually SEEN and confirmed
+  // (or explicitly skipped) is ever sent as p_lat/p_lng. Reset to false
+  // any time createLoc itself changes (see createLocType) since a stale
+  // confirmation for a since-edited address is worse than none.
+  createLat: null,
+  createLng: null,
+  createLocLabel: '',
+  createLocConfirmed: false,
+  createLocSkipped: false,
+  createGeocoding: false,
+  createGeocodeError: '',
   // Date/time picker fix (Stage B, 2026-09-26) — two canonical native-input
   // values (`<input type="date">`'s own "yyyy-mm-dd", `<input type="time">`'s
   // own "HH:mm") REPLACE the old single free-text `createDate` field this
@@ -4510,7 +4529,13 @@ export function GocProvider({ children }) {
     // that screen's own scroll/map-camera state is preserved for free by
     // App.jsx's existing per-screen `scrollPositions` keying, as long as
     // the screen key it returns to actually matches where the user was.
-    set(prev => ({ screen: 'create', mode: 'host', createEditEventId: null, createSent: false, createError: '', createOriginScreen: prev.screen }));
+    // Stage 3 — never carry a previous session's confirmed coordinates
+    // into an unrelated fresh event, even if `createLoc`'s TEXT happens to
+    // still read the same from before this reset.
+    set(prev => ({
+      screen: 'create', mode: 'host', createEditEventId: null, createSent: false, createError: '', createOriginScreen: prev.screen,
+      createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false, createLocSkipped: false, createGeocodeError: '',
+    }));
   }, [set, s.user, canHost, enableOrganizerMode]);
   const openHeld = useCallback(() => set({ screen: 'confirmed' }), [set]);
   const goHostIntro = useCallback(() => {
@@ -6038,7 +6063,52 @@ export function GocProvider({ children }) {
   const createNameType = useCallback((e) => set({ createName: e.target.value }), [set]);
   const createDescType = useCallback((e) => set({ createDesc: e.target.value }), [set]);
   const createIntroType = useCallback((e) => set({ createIntro: e.target.value }), [set]);
-  const createLocType = useCallback((e) => set({ createLoc: e.target.value }), [set]);
+  const createLocType = useCallback((e) => set({
+    createLoc: e.target.value,
+    // A stale confirmation/resolved point for a since-edited address is
+    // worse than none — see createLocConfirmed's own comment.
+    createLocConfirmed: false, createLocSkipped: false, createLat: null, createLng: null,
+    createLocLabel: '', createGeocodeError: '',
+  }), [set]);
+
+  /**
+   * Stage 3 — the explicit geocoding/confirmation step itself. Free
+   * (Nominatim/OpenStreetMap, no API key), biased to Ho Chi Minh City
+   * since every existing event (demo + real) is there. Never invents a
+   * fallback point on a no-match/network failure — surfaces
+   * `createGeocodeError` instead, so the host can retry or explicitly
+   * skip (createLocSkipped), submitting honestly with no coordinates
+   * rather than a wrong guessed one.
+   */
+  const geocodeCreateLocation = useCallback(async () => {
+    const query = s.createLoc.trim();
+    if (!query) return;
+    set({ createGeocoding: true, createGeocodeError: '', createLocConfirmed: false, createLocSkipped: false });
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query + ', Hồ Chí Minh, Việt Nam')}`;
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!res.ok) throw new Error('GEOCODE_HTTP_' + res.status);
+      const rows = await res.json();
+      const hit = rows?.[0];
+      if (!hit) {
+        set({ createGeocoding: false, createGeocodeError: T('Không tìm thấy vị trí này. Kiểm tra lại hoặc bỏ qua.', "Couldn't find this location. Check it or skip.") });
+        return;
+      }
+      set({
+        createGeocoding: false, createLat: parseFloat(hit.lat), createLng: parseFloat(hit.lon),
+        createLocLabel: hit.display_name || query, createGeocodeError: '',
+      });
+    } catch (err) {
+      console.warn('geocodeCreateLocation failed:', err);
+      set({ createGeocoding: false, createGeocodeError: T('Không thể tìm vị trí lúc này. Kiểm tra kết nối rồi thử lại hoặc bỏ qua.', "Couldn't look up this location right now. Check your connection, retry, or skip.") });
+    }
+  }, [set, s.createLoc, T]);
+
+  const confirmCreateLocation = useCallback(() => set({ createLocConfirmed: true, createLocSkipped: false }), [set]);
+  // An explicit, honest opt-out — never a silent one. Submits with no
+  // coordinates (no pin), same as any pre-094 event; the host can always
+  // come back and resubmit once they have a real address.
+  const skipCreateLocation = useCallback(() => set({ createLocSkipped: true, createLocConfirmed: false, createLat: null, createLng: null, createGeocodeError: '' }), [set]);
   const createEventDateType = useCallback((e) => set({ createEventDate: e.target.value }), [set]);
   const createEventTimeType = useCallback((e) => set({ createEventTime: e.target.value }), [set]);
   const createPriceType = useCallback((e) => set({ createPrice: e.target.value }), [set]);
@@ -6198,6 +6268,12 @@ export function GocProvider({ children }) {
       const intro = s.createIntro.trim();
       if (intro.length > 4000) throw new Error('INVALID_INTRO');
 
+      // Stage 3 — only a coordinate result the host has actually seen and
+      // confirmed is ever sent; skipped/unconfirmed means null (no pin),
+      // never a guessed fallback. See createLocConfirmed's own comment.
+      const lat = s.createLocConfirmed ? s.createLat : null;
+      const lng = s.createLocConfirmed ? s.createLng : null;
+
       let eventId = s.createEditEventId;
       if (s.createEditEventId) {
         const { data, error } = await supabase.rpc('resubmit_event_for_review', {
@@ -6207,6 +6283,7 @@ export function GocProvider({ children }) {
           p_event_date: eventDate, p_event_time: eventTime,
           p_price_vnd: priceVnd, p_capacity: capacity,
           p_included_items: includedItems, p_intro: intro,
+          p_lat: lat, p_lng: lng,
         });
         if (error) throw error;
         if (data?.success === false) throw new Error(data.error);
@@ -6228,6 +6305,7 @@ export function GocProvider({ children }) {
           p_about: s.orgRegDesc.trim(),
           p_included_items: includedItems,
           p_intro: intro,
+          p_lat: lat, p_lng: lng,
         });
         if (error) throw error;
         eventId = data?.id || null;
@@ -6288,6 +6366,12 @@ export function GocProvider({ children }) {
       createEditEventId: eventId, createSent: false, createError: '',
       createName: real.name || '', createCats: real.catKey ? [real.catKey] : [],
       createDesc: real.description || '', createLoc: real.area || '',
+      // Stage 3 — never carry a stale confirmation/point over from
+      // whatever this screen was doing before; resubmit_event_for_review's
+      // own `COALESCE(p_lat, lat)` already preserves this event's real
+      // existing coordinates (if any) when p_lat stays null, so leaving
+      // this unconfirmed here is not a silent loss.
+      createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false, createLocSkipped: false, createGeocodeError: '',
       createEventDate: real.eventDate || '', createEventTime: real.eventTime ? real.eventTime.slice(0, 5) : '',
       createPrice: real.priceVnd ? String(real.priceVnd) : '',
       createSeats: real.capacity ? String(real.capacity) : '',
@@ -6933,6 +7017,7 @@ export function GocProvider({ children }) {
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
+    geocodeCreateLocation, confirmCreateLocation, skipCreateLocation,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
@@ -6968,6 +7053,7 @@ export function GocProvider({ children }) {
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
+    geocodeCreateLocation, confirmCreateLocation, skipCreateLocation,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   ]);

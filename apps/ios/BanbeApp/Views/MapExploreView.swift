@@ -1012,19 +1012,26 @@ struct MapExploreView: View {
     /// Sweep finding (11-realtime-map.md follow-up): the full, unfiltered
     /// set of loaded events that have coordinates to place on the map at
     /// all — the SAME baseline the map's own pins (`body`, above) and
-    /// `selectedEvent`/its clearing effect now use, mirroring web's
-    /// identical `events` (which never even loads rows missing lat/lng, via
-    /// its own SQL query). Only `visibleEvents` (below — the LIST panel)
-    /// is further filtered by category/open-now/distance; selecting is
-    /// deliberately never coupled to that narrower set.
+    /// `selectedEvent`/its clearing effect now use. Only for PINS —
+    /// `visibleEvents` (the LIST panel, below) deliberately does NOT start
+    /// from this any more (Stage 3): a location-less event still belongs
+    /// in the list, just never gets a pin here.
     private var mapEventsWithCoordinates: [MapEventRow] {
         app.mapEvents.filter { $0.lat != nil && $0.lng != nil }
     }
 
     // MARK: - List
 
+    // Stage 3 (2026-09-27 nav/discovery pass) — this used to start from
+    // `mapEventsWithCoordinates` (the PIN-only, coordinate-filtered set),
+    // so an event missing coordinates was silently dropped from the LIST
+    // too, not just denied a pin — the exact "silently omit them from all
+    // discovery" this ticket warns against. Now starts from the raw,
+    // unfiltered `app.mapEvents`: an event without a location still
+    // belongs in the list (see the "no map location" row tag below),
+    // just never gets a marker on the map itself.
     private var visibleEvents: [MapEventRow] {
-        var list = mapEventsWithCoordinates
+        var list = app.mapEvents
         if catFilter != "all" { list = list.filter { effectiveCatKey($0) == catFilter } }
         if openNowOnly { list = list.filter { ($0.seatsRemaining ?? 0) > 0 } }
         if sortByDistance, let coords = app.userCoords {
@@ -1117,6 +1124,15 @@ struct MapExploreView: View {
                             // whether the km figure is DISPLAYED at all.
                             Text(ev.area + (sortByDistance || locationGranted ? distanceSuffix(ev) : ""))
                                 .font(.system(size: 11)).opacity(0.6)
+                            // Stage 3 — an honest "no map location" state
+                            // for an event with no (or not-yet-confirmed)
+                            // coordinates, never a silently-omitted row or
+                            // an invented pin.
+                            if ev.lat == nil || ev.lng == nil {
+                                Text(app.T("Chưa có vị trí trên bản đồ", "No map location yet"))
+                                    .font(.system(size: 10.5)).opacity(0.55)
+                                    .accessibilityIdentifier("map.list.noLocation.\(ev.id)")
+                            }
                         }
                         Spacer()
                     }

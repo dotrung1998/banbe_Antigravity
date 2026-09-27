@@ -352,6 +352,63 @@ struct CreateEventView: View {
         .foregroundStyle(app.palette.ink)
     }
 
+    // Stage 3 (2026-09-27 nav/discovery pass) — explicit location
+    // geocoding/confirmation: a Map pin needs real lat/lng
+    // (MapExploreView's own event query requires it), and
+    // create_event_draft/resubmit_event_for_review used to never accept
+    // or store any at all. Nothing here is invented — either the host
+    // sees and confirms a resolved point, or explicitly skips (submits
+    // with no coordinates, an honest choice instead of a silent gap).
+    @ViewBuilder
+    private func locationConfirmSection() -> some View {
+        if !app.createLoc.trimmingCharacters(in: .whitespaces).isEmpty && !app.createLocConfirmed && !app.createLocSkipped {
+            VStack(alignment: .leading, spacing: 6) {
+                Button {
+                    Task { await app.geocodeCreateLocation() }
+                } label: {
+                    Text(app.createGeocoding ? app.T("Đang tìm vị trí…", "Looking up location…") : app.T("Xác nhận vị trí trên bản đồ", "Confirm location on the map"))
+                        .font(.system(size: 12.5))
+                        .frame(maxWidth: .infinity)
+                        .padding(10)
+                }
+                .disabled(app.createGeocoding)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .foregroundStyle(app.palette.ink)
+
+                if !app.createGeocodeError.isEmpty {
+                    Text(app.createGeocodeError).font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                }
+                if app.createLat != nil && app.createGeocodeError.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(app.createLocLabel).font(.system(size: 11.5)).opacity(0.85)
+                        HStack(spacing: 8) {
+                            Button(app.T("Đúng, xác nhận", "Yes, confirm")) { app.confirmCreateLocation() }
+                                .font(.system(size: 12, weight: .semibold))
+                                .frame(maxWidth: .infinity).padding(8)
+                                .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .foregroundStyle(app.palette.paper)
+                            Button(app.T("Bỏ qua", "Skip")) { app.skipCreateLocation() }
+                                .font(.system(size: 12, weight: .semibold))
+                                .frame(maxWidth: .infinity).padding(8)
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                                .foregroundStyle(app.palette.ink)
+                        }
+                    }
+                    .padding(10)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
+        }
+        if app.createLocConfirmed {
+            Text("✓ " + app.T("Vị trí đã xác nhận — sẽ hiện ghim trên bản đồ.", "Location confirmed — will show a pin on the map."))
+                .font(.system(size: 11)).opacity(0.7).foregroundStyle(app.palette.ink)
+        }
+        if app.createLocSkipped {
+            Text(app.T("Đã bỏ qua vị trí — sự kiện vẫn hiện trong danh sách, chỉ không có ghim trên bản đồ.", "Location skipped — the event still shows in lists, just without a map pin."))
+                .font(.system(size: 11)).opacity(0.7).foregroundStyle(app.palette.ink)
+        }
+    }
+
     private static let vnDateLabelFormatter: DateFormatter = {
         let f = DateFormatter()
         f.timeZone = AppState.vietnamTimeZone
@@ -440,6 +497,18 @@ struct CreateEventView: View {
                                placeholder: app.T("Buổi này có gì?", "What happens?"), text: $app.createDesc)
                     introEditor()
                     BanbeField(label: app.T("Địa điểm", "Location"), placeholder: "Bình Thạnh", text: $app.createLoc)
+                        .onChange(of: app.createLoc) { _, _ in
+                            // A stale confirmation/point for a since-edited
+                            // address is worse than none — see
+                            // createLocConfirmed's own doc comment.
+                            app.createLat = nil
+                            app.createLng = nil
+                            app.createLocLabel = ""
+                            app.createLocConfirmed = false
+                            app.createLocSkipped = false
+                            app.createGeocodeError = ""
+                        }
+                    locationConfirmSection()
                     dateTimeRow()
                     HStack(spacing: 10) {
                         BanbeField(label: app.T("Giá", "Price"), placeholder: "900.000", text: $app.createPrice,

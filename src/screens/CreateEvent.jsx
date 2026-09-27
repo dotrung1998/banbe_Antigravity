@@ -34,6 +34,7 @@ export default function CreateEvent() {
     state, T, trStatus, stripKm, curEvent: ev, createBack,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
+    geocodeCreateLocation, confirmCreateLocation, skipCreateLocation,
     pickCreateCat, pickCreatePalette,
     addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent,
     createSubmit, goEvent, loadHomeLiveEvents,
@@ -315,7 +316,54 @@ export default function CreateEvent() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 14 }}>
           <label style={labelStyle}>{T('Địa điểm', 'Location')}</label>
-          <input value={s.createLoc} onChange={createLocType} placeholder="Bình Thạnh" style={fieldInput} />
+          <input value={s.createLoc} onChange={createLocType} placeholder="Bình Thạnh" style={fieldInput} data-testid="create-location-input" />
+          {/* Stage 3 (2026-09-27 nav/discovery pass) — explicit location
+              geocoding/confirmation: a Map pin needs real lat/lng
+              (MapExplore's own fetchLiveEvents requires it), and
+              create_event_draft/resubmit_event_for_review used to never
+              accept or store any at all. Nothing here is invented —
+              either the host sees and confirms a resolved point, or
+              explicitly skips (submits with no coordinates, same as
+              before this fix, just an honest choice instead of a silent
+              gap). */}
+          {s.createLoc.trim() && !s.createLocConfirmed && !s.createLocSkipped && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 2 }}>
+              <div
+                onClick={s.createGeocoding ? undefined : geocodeCreateLocation}
+                data-testid="create-location-geocode"
+                style={{ ...fieldGlass({ padding: '10px 12px' }), fontSize: 12.5, color: ink, cursor: s.createGeocoding ? 'default' : 'pointer', textAlign: 'center', opacity: s.createGeocoding ? 0.6 : 1 }}
+              >
+                {s.createGeocoding ? T('Đang tìm vị trí…', 'Looking up location…') : T('Xác nhận vị trí trên bản đồ', 'Confirm location on the map')}
+              </div>
+              {s.createGeocodeError && (
+                <p style={{ fontSize: 11, color: alert, margin: 0 }}>{s.createGeocodeError}</p>
+              )}
+              {s.createLat != null && !s.createGeocodeError && (
+                <div style={{ ...cardGlass({ padding: 10 }), display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.85 }}>{s.createLocLabel}</span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <div onClick={confirmCreateLocation} data-testid="create-location-confirm" style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: 600, color: paper, background: ink, padding: '8px 0', borderRadius: 10, cursor: 'pointer' }}>
+                      {T('Đúng, xác nhận', 'Yes, confirm')}
+                    </div>
+                    <div onClick={skipCreateLocation} style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: 600, color: ink, padding: '8px 0', borderRadius: 10, cursor: 'pointer', border: `1px solid ${rule}` }}>
+                      {T('Bỏ qua', 'Skip')}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {!s.createGeocoding && s.createLat == null && !s.createGeocodeError && null}
+            </div>
+          )}
+          {s.createLocConfirmed && (
+            <p style={{ fontSize: 11, color: ink, opacity: 0.7, margin: 0 }} data-testid="create-location-confirmed">
+              ✓ {T('Vị trí đã xác nhận — sẽ hiện ghim trên bản đồ.', 'Location confirmed — will show a pin on the map.')}
+            </p>
+          )}
+          {s.createLocSkipped && (
+            <p style={{ fontSize: 11, color: ink, opacity: 0.7, margin: 0 }}>
+              {T('Đã bỏ qua vị trí — sự kiện vẫn hiện trong danh sách, chỉ không có ghim trên bản đồ.', "Location skipped — the event still shows in lists, just without a map pin.")}
+            </p>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>

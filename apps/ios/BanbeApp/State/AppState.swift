@@ -934,6 +934,25 @@ final class AppState: ObservableObject {
     // items EventDetailView already shows via includedItems.
     @Published var createIntro = ""
     @Published var createLoc = ""
+    // Stage 3 (2026-09-27 nav/discovery pass) — Map's own pin audit found
+    // create_event_draft/resubmit_event_for_review never accepted or
+    // stored coordinates at all (confirmed live: real, non-demo events
+    // both had lat=NULL/lng=NULL, unlike every demo-seeded one).
+    // MapExploreView's own event query requires non-null coordinates for
+    // a pin, so those events could never appear on the map regardless of
+    // approval. `createLocConfirmed` gates submit-time coordinate use:
+    // geocoding `createLoc` is a best-effort guess, never silently
+    // trusted — only a result the host has actually seen and confirmed
+    // (or explicitly skipped) is ever sent. Reset whenever createLoc
+    // itself changes (see CreateEventView's own `.onChange`) since a
+    // stale confirmation for a since-edited address is worse than none.
+    @Published var createLat: Double?
+    @Published var createLng: Double?
+    @Published var createLocLabel = ""
+    @Published var createLocConfirmed = false
+    @Published var createLocSkipped = false
+    @Published var createGeocoding = false
+    @Published var createGeocodeError = ""
     // Date/time picker fix (Stage B, 2026-09-26) — REPLACES the old
     // free-text `createDate` ("11.07 19:00", hand-parsed with a regex and a
     // hardcoded year) with two real Date values, always interpreted in
@@ -1952,6 +1971,15 @@ final class AppState: ObservableObject {
         createSent = false
         createError = ""
         createOriginScreen = screen
+        // Stage 3 — never carry a previous session's confirmed
+        // coordinates into an unrelated fresh event, even if `createLoc`'s
+        // TEXT happens to still read the same from before this reset.
+        createLat = nil
+        createLng = nil
+        createLocLabel = ""
+        createLocConfirmed = false
+        createLocSkipped = false
+        createGeocodeError = ""
         screen = .create
     }
 

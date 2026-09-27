@@ -3,6 +3,7 @@ import Supabase
 import EventKit
 import UIKit
 import Photos
+import CoreLocation
 // BUG (2026-10-08 fix pass) — `withAnimation` (used by applyOrganizerMode
 // below, to smooth the LazyVStack reflow its own state change causes) is a
 // SwiftUI global function; this file only imports it now, not before.
@@ -3507,6 +3508,59 @@ extension AppState {
     /// event (goEditEvent below) goes through resubmit_event_for_review
     /// (UPDATE the SAME row; ownership + `status = 'draft'` enforced
     /// server-side, never a second duplicate event row).
+    /**
+     * Stage 3 — the explicit geocoding/confirmation step itself, via
+     * CLGeocoder (built into iOS, no key/network dependency beyond what
+     * the OS itself provides). Biased to Ho Chi Minh City since every
+     * existing event (demo + real) is there. Never invents a fallback
+     * point on a no-match/failure — surfaces `createGeocodeError`
+     * instead, so the host can retry or explicitly skip
+     * (createLocSkipped), submitting honestly with no coordinates rather
+     * than a wrong guessed one.
+     */
+    func geocodeCreateLocation() async {
+        let query = createLoc.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return }
+        createGeocoding = true
+        createGeocodeError = ""
+        createLocConfirmed = false
+        createLocSkipped = false
+        do {
+            let placemarks = try await CLGeocoder().geocodeAddressString(query + ", Hồ Chí Minh, Việt Nam")
+            guard let placemark = placemarks.first, let location = placemark.location else {
+                createGeocoding = false
+                createGeocodeError = T("Không tìm thấy vị trí này. Kiểm tra lại hoặc bỏ qua.", "Couldn't find this location. Check it or skip.")
+                return
+            }
+            createGeocoding = false
+            createLat = location.coordinate.latitude
+            createLng = location.coordinate.longitude
+            createLocLabel = [placemark.name, placemark.locality, placemark.administrativeArea]
+                .compactMap { $0 }.joined(separator: ", ")
+            createGeocodeError = ""
+        } catch {
+            print("geocodeCreateLocation failed:", error)
+            createGeocoding = false
+            createGeocodeError = T("Không thể tìm vị trí lúc này. Kiểm tra kết nối rồi thử lại hoặc bỏ qua.", "Couldn't look up this location right now. Check your connection, retry, or skip.")
+        }
+    }
+
+    func confirmCreateLocation() {
+        createLocConfirmed = true
+        createLocSkipped = false
+    }
+
+    /// An explicit, honest opt-out — never a silent one. Submits with no
+    /// coordinates (no pin), same as any pre-094 event; the host can
+    /// always come back and resubmit once they have a real address.
+    func skipCreateLocation() {
+        createLocSkipped = true
+        createLocConfirmed = false
+        createLat = nil
+        createLng = nil
+        createGeocodeError = ""
+    }
+
     func submitCreateEvent(
         newImages: [UIImage] = [], coverNewIndex: Int? = nil,
         removeExistingPhotoIDs: [UUID] = [], existingCoverPath: String? = nil
@@ -3534,6 +3588,13 @@ extension AppState {
             }
         }
 
+        // Stage 3 — only a coordinate result the host has actually seen
+        // and confirmed is ever sent; skipped/unconfirmed means nil (no
+        // pin), never a guessed fallback. See createLocConfirmed's own
+        // doc comment.
+        let submitLat = createLocConfirmed ? createLat : nil
+        let submitLng = createLocConfirmed ? createLng : nil
+
         do {
             var eventID: String?
             if let editID = createEditEventId {
@@ -3546,7 +3607,8 @@ extension AppState {
                         location: createLoc.trimmingCharacters(in: .whitespaces),
                         eventDate: eventDate, eventTime: eventTime,
                         priceVnd: Int(priceDigits) ?? 0, capacity: capacity,
-                        intro: createIntro.trimmingCharacters(in: .whitespacesAndNewlines)
+                        intro: createIntro.trimmingCharacters(in: .whitespacesAndNewlines),
+                        lat: submitLat, lng: submitLng
                     ))
                     .execute().value
                 guard case .bool(true) = result["success"] ?? .bool(false) else { throw URLError(.badServerResponse) }
@@ -3572,7 +3634,8 @@ extension AppState {
                             ? "Organizer" : orgRegName.trimmingCharacters(in: .whitespaces),
                         instagram: orgRegIg.trimmingCharacters(in: .whitespaces),
                         about: orgRegDesc.trimmingCharacters(in: .whitespaces),
-                        intro: createIntro.trimmingCharacters(in: .whitespacesAndNewlines)
+                        intro: createIntro.trimmingCharacters(in: .whitespacesAndNewlines),
+                        lat: submitLat, lng: submitLng
                     ))
                     .execute().value
                 eventID = created.id
@@ -3638,6 +3701,17 @@ extension AppState {
         createDesc = real.description ?? ""
         createIntro = real.intro ?? ""
         createLoc = real.area ?? ""
+        // Stage 3 — never carry a stale confirmation/point over from
+        // whatever this screen was doing before; resubmit_event_for_review's
+        // own `COALESCE(p_lat, lat)` already preserves this event's real
+        // existing coordinates (if any) when p_lat stays nil, so leaving
+        // this unconfirmed here is not a silent loss.
+        createLat = nil
+        createLng = nil
+        createLocLabel = ""
+        createLocConfirmed = false
+        createLocSkipped = false
+        createGeocodeError = ""
         createEventDate = real.eventDate.flatMap { AppState.vnDateFormatter.date(from: $0) }
         createEventTime = real.eventTime.flatMap { raw -> Date? in
             let normalized = raw.count == 5 ? raw + ":00" : raw
@@ -3773,6 +3847,8 @@ struct ResubmitEventParams: Encodable {
     let priceVnd: Int
     let capacity: Int
     let intro: String
+    let lat: Double?
+    let lng: Double?
 
     enum CodingKeys: String, CodingKey {
         case eventId = "p_event_id"
@@ -3785,6 +3861,8 @@ struct ResubmitEventParams: Encodable {
         case priceVnd = "p_price_vnd"
         case capacity = "p_capacity"
         case intro = "p_intro"
+        case lat = "p_lat"
+        case lng = "p_lng"
     }
 }
 
@@ -3825,6 +3903,8 @@ struct CreateEventParams: Encodable {
     let instagram: String
     let about: String
     let intro: String
+    let lat: Double?
+    let lng: Double?
 
     enum CodingKeys: String, CodingKey {
         case name = "p_name"
@@ -3839,5 +3919,7 @@ struct CreateEventParams: Encodable {
         case instagram = "p_instagram"
         case about = "p_about"
         case intro = "p_intro"
+        case lat = "p_lat"
+        case lng = "p_lng"
     }
 }

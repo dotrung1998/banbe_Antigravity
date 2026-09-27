@@ -20,18 +20,23 @@ test.describe('Create event — Back returns to the real origin', () => {
   test('dock + from Home returns to Home on Back, not Dashboard', async ({ page }) => {
     await setupToHome(page);
 
-    // Turn organizer mode on from Account > Tổ chức (the pitch button —
-    // no event needed yet) so the dock's own "+" appears.
-    await page.getByText('Tài khoản').first().click();
+    // Locale-agnostic navigation — the shared fast-suite account's own
+    // saved locale can be 'en' (an earlier test flipped it and this
+    // account's own profile.prefs_saved persists it across runs), so
+    // Vietnamese-only text selectors are NOT a safe way to find these
+    // controls; every dock tab/toggle already has a stable testid.
+    await page.getByTestId('tab-profile').click();
     await page.waitForSelector('[data-screen-label="Account"]');
     await page.getByTestId('account-tab-host').click();
-    const pitch = page.getByText('Bắt đầu tổ chức', { exact: false });
+    const toggle = page.getByTestId('organizer-mode-toggle');
+    await expect(toggle).toBeVisible({ timeout: 8000 });
+    const pitch = page.getByText(/Bắt đầu tổ chức|Start hosting/, { exact: false });
     if (await pitch.isVisible().catch(() => false)) {
       await pitch.click();
-      await expect(page.getByTestId('organizer-mode-toggle')).toBeVisible({ timeout: 8000 });
+      await expect(toggle).toBeVisible({ timeout: 8000 });
     }
 
-    await page.getByText('Xong').click();
+    await page.getByTestId('tab-home').click();
     await page.waitForSelector('[data-screen-label="Home"]');
 
     await page.getByTestId('dock-create-button').click();
@@ -54,8 +59,9 @@ test.describe('Create event — Back returns to the real origin', () => {
     // The back label used to name a fixed destination ("Trang tổ chức của
     // bạn"/"Dashboard preview") — now a plain, destination-agnostic "Quay
     // lại", since it can return to any root tab.
-    await expect(page.getByText('Quay lại')).toBeVisible();
-    await page.getByText('Quay lại').click();
+    const backLink = page.getByText(/Quay lại|Back/).first();
+    await expect(backLink).toBeVisible();
+    await backLink.click();
 
     await page.waitForSelector('[data-screen-label="Home"]', { timeout: 8000 });
     await expect(page.locator('[data-screen-label="Dashboard"]')).toHaveCount(0);

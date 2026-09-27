@@ -29,11 +29,17 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
     .from('events')
     .select('id, key, name, cat_key, cat_label, area, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status')
     .eq('status', 'live')
-    .not('lat', 'is', null)
-    .not('lng', 'is', null)
     .order('starts_at', { ascending: true })
     .range(offset, offset + limit - 1);
   if (bounds) {
+    // Stage 3 (2026-09-27 nav/discovery pass) — a real bounds query is
+    // inherently geographic (a lat/lng-less event has no position to test
+    // against a box), so this naturally still excludes those rows —
+    // unlike the UNBOUNDED initial load below, which no longer requires
+    // coordinates at all: an event missing them still belongs in the
+    // list (just with no pin, see the marker-render loop and
+    // `hasLocation` below), never silently dropped from discovery
+    // entirely just because Map couldn't plot it.
     q = q.gte('lat', bounds.south).lte('lat', bounds.north).gte('lng', bounds.west).lte('lng', bounds.east);
   }
   const { data, error } = await q;
@@ -56,6 +62,10 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
       area: row.area || cosmetic?.meta,
       lat: row.lat,
       lng: row.lng,
+      // Stage 3 — a pin requires real coordinates; an event without them
+      // still belongs in the list, just with an honest "no map location"
+      // state instead of an invented point.
+      hasLocation: row.lat != null && row.lng != null,
       seatsRemaining: row.seats_remaining,
       startsAt: row.starts_at,
       price: cosmetic?.price,
@@ -229,6 +239,10 @@ export default function MapExplore() {
     // geometric center that a real user can't actually see. sheetPx here
     // mirrors the exact same math the sheet's own `top: ${sheetTopVh}vh`
     // style uses, so this stays correct across List lớn/List nhỏ/mid-drag.
+    // Stage 3 — an event with no coordinates (see hasLocation) has
+    // nowhere on the map to fly to; still selects it (the compact card
+    // still shows its real info), just skips the camera move.
+    if (!ev.hasLocation) return;
     const sheetPx = window.innerHeight * (1 - mapStripFraction);
     const CARD_ALLOWANCE = 150; // approx. compact card height + gap
     map.flyTo({
@@ -364,6 +378,10 @@ export default function MapExplore() {
       const maplibregl = await import('maplibre-gl');
       if (cancelled) return;
       for (const ev of events) {
+        // Stage 3 — the unbounded list load no longer requires
+        // coordinates (see fetchLiveEvents's own comment); a row without
+        // them just never gets a marker, never an invented position.
+        if (!ev.hasLocation) continue;
         const isSelected = ev.id === selectedId;
         // Follow-up (11-realtime-map.md, "first post-return polling cycle
         // does not reset map state"): a real, confirmed, pre-existing bug —
@@ -489,7 +507,14 @@ export default function MapExplore() {
     if (catFilter !== 'all') list = list.filter(e => e.catKey === catFilter);
     if (openNowOnly) list = list.filter(e => e.seatsRemaining > 0);
     if (sortByDistance && s.userCoords) {
-      list = [...list].sort((a, b) => haversineKm(s.userCoords, a) - haversineKm(s.userCoords, b));
+      // Stage 3 — a no-location event has no real distance to sort by;
+      // sorts after every plottable one rather than a NaN-driven,
+      // effectively-random position.
+      list = [...list].sort((a, b) => {
+        if (a.hasLocation !== b.hasLocation) return a.hasLocation ? -1 : 1;
+        if (!a.hasLocation) return 0;
+        return haversineKm(s.userCoords, a) - haversineKm(s.userCoords, b);
+      });
     }
     return list;
   }, [events, catFilter, openNowOnly, sortByDistance, s.userCoords]);
@@ -970,6 +995,14 @@ export default function MapExplore() {
                       also fixes). */}
                   {(() => { const d = (sortByDistance || locPermission === 'granted') ? distanceLabel(s.userCoords, true, ev) : null; return d ? ` ▪︎ ${d}` : ''; })()}
                 </div>
+                {/* Stage 3 — an honest "no map location" state for an
+                    event with no (or not-yet-confirmed) coordinates,
+                    never a silently-omitted row or an invented pin. */}
+                {!ev.hasLocation && (
+                  <div data-testid={`map-list-item-no-location-${ev.id}`} style={{ fontSize: 10.5, color: ink, opacity: 0.55, marginTop: 2 }}>
+                    {T('Chưa có vị trí trên bản đồ', 'No map location yet')}
+                  </div>
+                )}
               </div>
               {ev.price && <div style={{ fontSize: 12, color: ink, whiteSpace: 'nowrap' }}>{ev.price}</div>}
             </div>
