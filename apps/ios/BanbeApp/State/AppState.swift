@@ -18,6 +18,7 @@ enum Screen: String {
     case mapExplore
     case refundAccounts, myRefunds
     case editProfile, publicProfile, organizerProfile
+    case reports
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -233,6 +234,12 @@ enum InboxViewMode { case active, archived }
 /// the two stay easy to compare; screens read it from the environment.
 @MainActor
 final class AppState: ObservableObject {
+    // Account extension (2026-09-27, Stage 1) — the internal, organizer-
+    // mode-gated management screens: real event creation/editing, the
+    // organizer management dashboard, and event check-in. Deliberately
+    // EXCLUDES verifications/payout/documents/refund-queue screens, which
+    // stay reachable regardless of organizerMode (gated on canHost alone).
+    static let hostOnlyScreens: Set<Screen> = [.dashboard, .create, .attendance]
 
     // MARK: Navigation
     @Published var screen: Screen = .home
@@ -879,6 +886,24 @@ final class AppState: ObservableObject {
     @Published var organizerProfileUpcoming: [OrganizerUpcomingEvent] = []
     @Published var organizerProfilePhotos: [OrganizerPhoto] = []
     @Published var organizerProfileExtrasLoadedFor = ""
+    // Account extension (2026-09-27, Stage 3) — one role-scoped KPI
+    // dashboard (get_account_kpis, migration 097), reused for on-screen
+    // cards, CSV/PDF/JSON export and PNG chart snapshots alike — see
+    // AppState+Reports.swift for the actual fetch/export logic.
+    @Published var reportsScope = "personal"
+    @Published var reportsOrganizerId = ""
+    @Published var reportsBackScreen: Screen = .profile
+    @Published var reportsRangeDays: ReportsRangeDays = .days30
+    @Published var reportsCustomStart: Date = Date()
+    @Published var reportsCustomEnd: Date = Date()
+    @Published var reportsData: AccountKpiReport?
+    @Published var reportsLoading = false
+    @Published var reportsError = ""
+    @Published var reportsExpanded: Set<String> = []
+    @Published var reportsExportBusy = ""
+    // A `ShareLink` binds to this the instant an export (CSV/JSON/PDF)
+    // finishes writing its temp file — the native iOS share sheet.
+    @Published var reportsExportedFileURL: URL?
     // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
     @Published var pulseDaily: [PulseItem] = []
     @Published var pulseWeekly: [PulseItem] = []
@@ -2190,6 +2215,7 @@ final class AppState: ObservableObject {
         case .editProfile: backFromEditProfile()
         case .publicProfile: backFromPublicProfile()
         case .organizerProfile: backFromOrganizerProfile()
+        case .reports: backFromReports()
         default: break
         }
     }
@@ -2237,6 +2263,7 @@ final class AppState: ObservableObject {
         case .editProfile: return .profile
         case .publicProfile: return publicProfileBackScreen
         case .organizerProfile: return organizerProfileBackScreen
+        case .reports: return reportsBackScreen
         default: return .home
         }
     }

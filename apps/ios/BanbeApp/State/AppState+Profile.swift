@@ -36,6 +36,11 @@ struct PublicProfile: Decodable, Equatable {
     let interests: [String]?
     let profileTheme: String?
     let isOrganizer: Bool?
+    // Account extension (2026-09-27, Stage 1) — "organizer mode OFF means
+    // host UI is OFF" reaches the Founder line too: migration 096 exposes
+    // this profile's own real organizer-mode preference read-only, so
+    // PublicProfileView can hide it for every visitor while off.
+    let organizerMode: Bool?
     var organizer: OrganizerSummary?
 
     enum CodingKeys: String, CodingKey {
@@ -45,6 +50,7 @@ struct PublicProfile: Decodable, Equatable {
         case bio, city, interests
         case profileTheme = "profile_theme"
         case isOrganizer = "is_organizer"
+        case organizerMode = "organizer_mode"
         case organizer
     }
 }

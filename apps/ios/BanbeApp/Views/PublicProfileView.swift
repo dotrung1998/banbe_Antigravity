@@ -105,7 +105,10 @@ struct PublicProfileView: View {
             // pointer to who they are, not a second mini-dashboard (event/
             // follower stats and the follow CTA now live on the
             // organizer's own separate page, OrganizerProfileView).
-            if let org = p.organizer {
+            // Account extension (2026-09-27, Stage 1) — hidden for every
+            // visitor (not just the owner) while THIS profile's own
+            // organizer_mode is off (migration 096) — same rule as web.
+            if let org = p.organizer, p.organizerMode == true {
                 Text(app.T("Founder tổ chức: \(org.name)", "Founder of \(org.name)"))
                     .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                     .accessibilityIdentifier("publicProfile.founderLine")

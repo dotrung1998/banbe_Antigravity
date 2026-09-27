@@ -23,7 +23,9 @@ test.describe('Create event — explicit location confirmation', () => {
 
     await page.getByTestId('tab-profile').click();
     await page.waitForSelector('[data-screen-label="Account"]');
-    await page.getByTestId('account-tab-host').click();
+    // Account extension (2026-09-27, Stage 1) — the toggle now lives on
+    // the always-reachable Cá nhân tab (Account's default), not behind
+    // the Tổ chức tab (which only shows once organizer mode is already on).
     const toggle = page.getByTestId('organizer-mode-toggle');
     await expect(toggle).toBeVisible({ timeout: 8000 });
     // Turn organizer mode on (idempotent — the pitch button only shows

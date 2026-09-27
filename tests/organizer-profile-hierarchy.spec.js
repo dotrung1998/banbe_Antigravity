@@ -37,9 +37,12 @@ test.describe('Personal-vs-organizer profile hierarchy', () => {
   async function goToHostTab(page) {
     await page.getByTestId('tab-profile').click();
     await page.waitForSelector('[data-screen-label="Account"]');
+    // Account extension (2026-09-27, Stage 1) — the toggle now lives on
+    // Cá nhân (Account's default tab), not inside Tổ chức; confirms
+    // organizer mode really is on (seeded by beforeEach) before navigating
+    // into the Tổ chức tab itself, which only exists while it's on.
+    await expect(page.getByTestId('organizer-mode-toggle')).toBeVisible({ timeout: 8000 });
     await page.getByTestId('account-tab-host').click();
-    const toggle = page.getByTestId('organizer-mode-toggle');
-    await expect(toggle).toBeVisible({ timeout: 8000 });
   }
 
   test('personal profile shows display_name, a Founder line, and no organizer edit/guest-preview actions', async ({ page }) => {

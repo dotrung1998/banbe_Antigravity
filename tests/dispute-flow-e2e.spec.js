@@ -71,7 +71,7 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
 
   async function loginWithPassword(page, email, password) {
     await setupToHome(page);
-    await page.getByText('Tài khoản').first().click();
+    await page.getByTestId('tab-profile').click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 5000 });
     await page.getByText('Đăng nhập để lưu sự kiện và nhắn tin').click();
     await expect(page.locator('[data-screen-label="Login"]')).toBeVisible({ timeout: 5000 });
@@ -159,7 +159,7 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
       const initialRows = await (await initialBookingsResponse).json();
       const initiallyListed = (initialRows || []).some(r => r.event_id === eventId || r.id === bookingId);
       expect(initiallyListed, `booking ${bookingId} should have been in the pre-resolution fetch: ${JSON.stringify(initialRows)}`).toBe(true);
-      await participantPage.getByText('Tài khoản').first().click();
+      await participantPage.getByTestId('tab-profile').click();
       await expect(participantPage.locator('[data-screen-label="Account"]')).toBeVisible({ timeout: 5000 });
       // Confirms the actual CLIENT-SIDE state (s.attending), not just the
       // network response above — a plain response check can't tell a
@@ -175,9 +175,10 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
     const organizerContext = await browser.newContext();
     const organizerPage = await organizerContext.newPage();
     await loginWithPassword(organizerPage, organizerUser.email, organizerUser.password);
-    await organizerPage.getByText('Tài khoản').first().click();
-    // Stage D — host-only rows now live under the "Tổ chức" account tab.
-    await organizerPage.locator('[data-testid="account-tab-host"]').click();
+    await organizerPage.getByTestId('tab-profile').click();
+    // Account extension (2026-09-27, Stage 1) — host duty rows (like
+    // verifications) moved into the always-reachable Cá nhân tab, so
+    // they're no longer hidden behind organizerMode/the Tổ chức tab.
     await organizerPage.locator('[data-testid="host-verifications"]').click();
     await expect(organizerPage.locator('[data-testid="verifications-title"]')).toBeVisible({ timeout: 5000 });
 
@@ -227,9 +228,10 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
     const adminContext = await browser.newContext();
     const adminPage = await adminContext.newPage();
     await loginWithPassword(adminPage, adminAcct.email, adminAcct.password);
-    await adminPage.getByText('Tài khoản').first().click();
-    // Stage D — admin rows now live under the "Tổ chức" account tab too.
-    await adminPage.locator('[data-testid="account-tab-host"]').click();
+    await adminPage.getByTestId('tab-profile').click();
+    // Stage 2 — Admin is its own top-level tab now, independent of
+    // organizerMode.
+    await adminPage.locator('[data-testid="account-tab-admin"]').click();
     await adminPage.locator('[data-testid="admin-disputes"]').click();
     await expect(adminPage.locator('[data-testid="disputes-title"]')).toBeVisible({ timeout: 5000 });
 

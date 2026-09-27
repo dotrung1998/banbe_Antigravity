@@ -781,6 +781,7 @@ struct RootView: View {
         case .editProfile: EditProfileView()
         case .publicProfile: PublicProfileView()
         case .organizerProfile: OrganizerProfileView()
+        case .reports: ReportsView()
         }
     }
 

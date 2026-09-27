@@ -20,6 +20,25 @@ function organizerAvatarUrl(path) {
 // purpose), so per this ticket's own instruction this is a minimal local
 // inline-SVG set: one stroke weight (1.8), one viewBox (24x24 at 18px),
 // `ink` only — no new colors, no third-party icon set.
+// Account extension (2026-09-27, Stage 3) — the one recognizable "Số liệu
+// & báo cáo" entry point every visible tab gets, near its own top (not
+// buried among the rest of that tab's rows). `scope` here is always the
+// SAME string get_account_kpis (migration 097) expects — never re-derived
+// inside Reports.jsx itself, so what the user tapped is exactly what gets
+// fetched.
+function ReportsRow({ label, onClick, testId }) {
+  return (
+    <div
+      onClick={onClick}
+      data-testid={testId}
+      style={{ ...fieldGlass({ margin: '18px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="checklist" />{label}</span>
+      <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+    </div>
+  );
+}
+
 function RowIcon({ kind, size = 22 }) {
   const glyphSize = Math.round(size * 0.82);
   const common = { width: glyphSize, height: glyphSize, viewBox: '0 0 24 24', fill: 'none', stroke: ink, strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
@@ -52,7 +71,7 @@ export default function Account() {
     loadHomeStories, openStoryViewer, pickStoryFile, cancelStoryCreate, publishStory,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary,
     openPaymentDetails, goDashboard,
-    loadMyOrgStats, setAccountTab, openPublicProfile,
+    loadMyOrgStats, setAccountTab, openPublicProfile, openReports,
   } = useGoc();
   const s = state;
   // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Both panes stay
@@ -66,6 +85,16 @@ export default function Account() {
   // back (Preferences, the public-profile link below, etc.) — see the
   // state's own comment (GocContext.jsx) for the full root cause.
   const accountTab = s.accountTab;
+  // Account extension (2026-09-27, Stage 1/2) — a role change (organizer
+  // mode toggled off elsewhere, an admin demoted, an account switch) can
+  // land this component with `accountTab` pointing at a tab that's no
+  // longer in the list above; the toggle's own redirect (GocContext.jsx,
+  // applyOrganizerMode) covers the direct toggle path, this is the general
+  // safety net for every other path (mount, account switch, server resync).
+  useEffect(() => {
+    if (accountTab === 'host' && !s.organizerMode) setAccountTab('personal');
+    else if (accountTab === 'admin' && s.accountType !== 'admin') setAccountTab('personal');
+  }, [accountTab, s.organizerMode, s.accountType, setAccountTab]);
   const storyFileRef = useRef(null);
   const storyCameraRef = useRef(null);
   // Task 1 (2026-09-21 real-device follow-up) — "Post Story" is now a real
@@ -171,7 +200,17 @@ export default function Account() {
       <div style={{ display: 'flex', gap: 6, padding: '18px 20px 0' }} data-testid="account-tabs">
         {[
           { key: 'personal', label: T('Cá nhân', 'Personal') },
-          { key: 'host', label: T('Tổ chức', 'Host') },
+          // Account extension (2026-09-27, Stage 1) — "organizer mode OFF
+          // means host UI is OFF": Tổ chức only shows while `organizerMode`
+          // (the CURRENT toggle) is actually on, never `canHost`
+          // (eligibility) — a never-hosted account reaches hosting via the
+          // toggle row moved into Cá nhân below, not this tab.
+          ...(isOrganizer ? [{ key: 'host', label: T('Tổ chức', 'Host') }] : []),
+          // Stage 2 — Admin depends only on a server-confirmed role
+          // (`accountType`, set exclusively by syncUser()'s own read of
+          // `profiles.role`/`set_organizer_mode`'s return value — never
+          // client-writable to "admin" by this toggle), never organizerMode.
+          ...(s.accountType === 'admin' ? [{ key: 'admin', label: T('Quản trị', 'Admin') }] : []),
         ].map(tab => (
           <span
             key={tab.key}
@@ -196,6 +235,7 @@ export default function Account() {
           down) — the Tổ chức tab gets its own separate, organizer-only
           card instead. */}
       <div data-testid="account-tab-panel-personal" style={{ display: accountTab === 'personal' ? 'block' : 'none' }}>
+      <ReportsRow label={T('Số liệu & báo cáo', 'Metrics & reports')} testId="account-reports-personal" onClick={() => openReports('personal', null, 'profile')} />
       {/* TASK D (2026-10-01 UX foundation pass) — the header is now a
           tappable rounded profile card (editorial style: soft gradient
           wash from the account's own chosen palette, real avatar or a
@@ -401,6 +441,81 @@ export default function Account() {
         </div>
       </div>
 
+      {/* Account extension (2026-09-27, Stage 1) — "Organizer mode OFF
+          means host UI is OFF": the whole Tổ chức tab disappears while
+          this is off, so the ON/OFF control itself (and any actionable
+          host duty) can't live there any more — moved here, into Cá nhân,
+          which is always reachable. The Tổ chức tab (when it does show)
+          now holds only the organizer identity card + its management
+          entry point (org-profile-card, above/unchanged). */}
+      <div style={{ padding: '22px 20px 0' }}>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Tổ chức', 'Hosting')}</span>
+        {/* TASK 2 (2026-10-05 fix pass) — `organizerModeBusy` (real guard
+            in toggleOrganizerMode/applyOrganizerMode, see GocContext.jsx)
+            mirrored here as `.opacity`/no-op click so a second tap while
+            one request is already in flight visibly does nothing instead
+            of silently queuing a race. */}
+        <div
+          onClick={s.organizerModeBusy ? undefined : toggleOrganizerMode}
+          data-testid="organizer-mode-toggle"
+          aria-disabled={s.organizerModeBusy}
+          style={{ ...fieldGlass({ marginTop: 10, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: s.organizerModeBusy ? 'default' : 'pointer', opacity: s.organizerModeBusy ? 0.55 : 1 }) }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, paddingRight: 12 }}>
+            <RowIcon kind="switch" />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+              <span style={{ fontSize: 14, color: ink }}>{T('Chế độ tổ chức', 'Organizer mode')}</span>
+              <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink, opacity: 0.7 }}>{T('Bật để tạo và quản lý sự kiện. Tắt lúc nào cũng được.', 'Turn on to create and manage events. Turn it off any time.')}</span>
+            </div>
+          </div>
+          <span aria-hidden style={{ flex: 'none', width: 44, height: 26, borderRadius: 13, padding: 3, background: isOrganizer ? ink : 'rgba(27,25,22,0.18)', transition: 'background .15s' }}>
+            <span style={{ display: 'block', width: 20, height: 20, borderRadius: '50%', background: paper, transform: isOrganizer ? 'translateX(18px)' : 'translateX(0)', transition: 'transform .15s' }} />
+          </span>
+        </div>
+        {s.organizerModeError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0' }}>{s.organizerModeError}</p>}
+        {/* Root-cause fix (Stage D) — this stays gated on `canHost`
+            (eligibility), never `isOrganizer`/organizerMode (the CURRENT
+            toggle): these rows must stay reachable regardless of the
+            switch above, per the ticket's own "don't remove access to
+            urgent host refund/dispute obligations when organizer mode is
+            off" rule. */}
+        {canHost && (
+          <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
+            <div onClick={openVerifications} data-testid="host-verifications" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="checklist" />{T('Chờ xác nhận thanh toán', 'Awaiting verification')}</span>
+              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+            </div>
+            <div onClick={openPayout} data-testid="host-payout" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="banknote" />{T('Nhận thanh toán', 'Getting paid')}</span>
+              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+            </div>
+            <div onClick={() => openDocuments('invoice', 'host')} data-testid="host-invoices" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="document" />{T('Hoá đơn đã phát hành', 'Invoices issued')}</span>
+              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+            </div>
+            <div onClick={() => openDocuments('receipt', 'host')} data-testid="host-receipts" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', cursor: 'pointer' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="receipt" />{T('Biên nhận đã phát hành', 'Receipts issued')}</span>
+              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+            </div>
+          </div>
+        )}
+        {/* No separate "Xem trang tổ chức của bạn" card here — org-profile-card
+            (Tổ chức tab, once organizerMode is on) is the single entry into
+            that management page now. This onboarding pitch is for an
+            account that has never hosted (`canHost` false always implies
+            `organizerMode` false too, so it can only ever show in the true
+            "never hosted" case). */}
+        {!canHost && (
+          <div style={{ ...cardGlass({ marginTop: 10, padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 10 }) }}>
+            <span style={{ ...display(19, { lineHeight: 1.3 }) }}>{T('Tổ chức sự kiện đầu tiên', 'Host your first event')}</span>
+            <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, margin: 0 }}>
+              {T('Miễn phí hoàn toàn khi banbe còn mới — không phí đăng, không phí giao dịch. Tạo sự kiện đầu tiên để mở trang tổ chức.', 'Completely free while banbe is new — no listing or transaction fees. Create your first event to unlock your host page.')}
+            </p>
+            <div onClick={toggleOrganizerMode} style={{ ...inkButton({ marginTop: 4, borderRadius: 18, padding: 14, fontSize: 14 }) }}>{T('Bắt đầu tổ chức ▪︎ miễn phí', 'Start hosting ▪︎ free')}</div>
+          </div>
+        )}
+      </div>
+
       {s.user ? (
         <div onClick={logout} style={{ padding: '24px 20px 40px', display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: ink, cursor: 'pointer' }}><RowIcon kind="logout" size={18} />{T('Đăng xuất', 'Sign out')}</div>
       ) : (
@@ -409,6 +524,9 @@ export default function Account() {
       </div>
 
       <div data-testid="account-tab-panel-host" style={{ display: accountTab === 'host' ? 'block' : 'none' }}>
+      {s.myOrganizerId && (
+        <ReportsRow label={T('Số liệu & báo cáo', 'Metrics & reports')} testId="account-reports-host" onClick={() => openReports('host', s.myOrganizerId, 'profile')} />
+      )}
       {/* Host tab's OWN rounded profile card (Stage D) — organizer avatar/
           name/introduction, stored on `organizers` (migration 090), never
           profiles.display_name. Only shown once this account has ever
@@ -464,93 +582,39 @@ export default function Account() {
         </div>
       )}
 
-      <div style={{ padding: '22px 20px 0' }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Tổ chức', 'Hosting')}</span>
-        {/* TASK 2 (2026-10-05 fix pass) — `organizerModeBusy` (real guard
-            in toggleOrganizerMode/applyOrganizerMode, see GocContext.jsx)
-            mirrored here as `.opacity`/no-op click so a second tap while
-            one request is already in flight visibly does nothing instead
-            of silently queuing a race. */}
-        <div
-          onClick={s.organizerModeBusy ? undefined : toggleOrganizerMode}
-          data-testid="organizer-mode-toggle"
-          aria-disabled={s.organizerModeBusy}
-          style={{ ...fieldGlass({ marginTop: 10, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: s.organizerModeBusy ? 'default' : 'pointer', opacity: s.organizerModeBusy ? 0.55 : 1 }) }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, paddingRight: 12 }}>
-            <RowIcon kind="switch" />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-              <span style={{ fontSize: 14, color: ink }}>{T('Chế độ tổ chức', 'Organizer mode')}</span>
-              <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink, opacity: 0.7 }}>{T('Bật để tạo và quản lý sự kiện. Tắt lúc nào cũng được.', 'Turn on to create and manage events. Turn it off any time.')}</span>
-            </div>
-          </div>
-          <span aria-hidden style={{ flex: 'none', width: 44, height: 26, borderRadius: 13, padding: 3, background: isOrganizer ? ink : 'rgba(27,25,22,0.18)', transition: 'background .15s' }}>
-            <span style={{ display: 'block', width: 20, height: 20, borderRadius: '50%', background: paper, transform: isOrganizer ? 'translateX(18px)' : 'translateX(0)', transition: 'transform .15s' }} />
-          </span>
-        </div>
-        {s.organizerModeError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0' }}>{s.organizerModeError}</p>}
-        {/* Root-cause fix (Stage D) — this used to be gated on `isOrganizer`
-            (the CURRENT toggle), so turning organizer mode off hid awaiting-
-            verification/payout/invoices/receipts entirely, even for a real
-            host with an actual pending obligation. Gated on `canHost`
-            (eligibility) instead: these rows now stay reachable regardless
-            of the switch above, same as the ticket's own "don't remove
-            access to urgent host refund/dispute obligations when organizer
-            mode is off" rule. */}
-        {canHost && (
-          <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
-            <div onClick={openVerifications} data-testid="host-verifications" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="checklist" />{T('Chờ xác nhận thanh toán', 'Awaiting verification')}</span>
-              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-            </div>
-            <div onClick={openPayout} data-testid="host-payout" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="banknote" />{T('Nhận thanh toán', 'Getting paid')}</span>
-              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-            </div>
-            <div onClick={() => openDocuments('invoice', 'host')} data-testid="host-invoices" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="document" />{T('Hoá đơn đã phát hành', 'Invoices issued')}</span>
-              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-            </div>
-            <div onClick={() => openDocuments('receipt', 'host')} data-testid="host-receipts" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', cursor: 'pointer' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="receipt" />{T('Biên nhận đã phát hành', 'Receipts issued')}</span>
-              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-            </div>
-          </div>
-        )}
-        {/* No separate "Xem trang tổ chức của bạn" card here — org-profile-card
-            above (its own onClick) is the single entry into that management
-            page now. The onboarding pitch below is for an account that has
-            never hosted (`canHost` false always implies `organizerMode`
-            false too, so it can only ever show in the true "never hosted"
-            case). */}
-        {!canHost && (
-          <div style={{ ...cardGlass({ marginTop: 10, padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 10 }) }}>
-            <span style={{ ...display(19, { lineHeight: 1.3 }) }}>{T('Tổ chức sự kiện đầu tiên', 'Host your first event')}</span>
-            <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, margin: 0 }}>
-              {T('Miễn phí hoàn toàn khi banbe còn mới — không phí đăng, không phí giao dịch. Tạo sự kiện đầu tiên để mở trang tổ chức.', 'Completely free while banbe is new — no listing or transaction fees. Create your first event to unlock your host page.')}
-            </p>
-            <div onClick={toggleOrganizerMode} style={{ ...inkButton({ marginTop: 4, borderRadius: 18, padding: 14, fontSize: 14 }) }}>{T('Bắt đầu tổ chức ▪︎ miễn phí', 'Start hosting ▪︎ free')}</div>
-          </div>
-        )}
-      </div>
-
-      {s.accountType === 'admin' && (
-        <div style={{ padding: '22px 20px 0' }}>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản trị', 'Admin')}</span>
-          <div onClick={openDisputes} data-testid="admin-disputes" style={{ ...fieldGlass({ marginTop: 10, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="alertShield" />{T('Tranh chấp thanh toán', 'Payment disputes')}</span>
-            <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-          </div>
-          {/* Event submission -> review -> publish — a separate desk from
-              the payment dispute one above; don't conflate the two. */}
-          <div onClick={openAdminEvents} data-testid="admin-events" style={{ ...fieldGlass({ marginTop: 8, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="alertShield" />{T('Sự kiện chờ duyệt', 'Pending events')}</span>
-            <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-          </div>
-        </div>
-      )}
       <div style={{ height: 24 }} />
       </div>
+
+      {/* Stage 2 — Admin is its own top-level tab now, independent of
+          organizerMode: these two rows used to sit inside the Tổ chức
+          pane, so an admin who never turned organizer mode on (or turned
+          it off) lost them entirely once that tab started hiding itself
+          for Stage 1. Same actions, same RPC/RLS-enforced screens
+          (openDisputes/openAdminEvents) — moved, not cloned. Still JS-
+          gated on `s.accountType === 'admin'` (not just the CSS
+          display:none the personal/host panes use), so these two rows
+          never even reach the DOM for a non-admin — a real, if secondary,
+          reason on top of RLS/RPC enforcement, and what an existing test
+          (payment-state-machine.spec.js) already asserts by element count. */}
+      {s.accountType === 'admin' && (
+        <div data-testid="account-tab-panel-admin" style={{ display: accountTab === 'admin' ? 'block' : 'none' }}>
+          <ReportsRow label={T('Số liệu & báo cáo', 'Metrics & reports')} testId="account-reports-admin" onClick={() => openReports('admin', null, 'profile')} />
+          <div style={{ padding: '22px 20px 0' }}>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản trị', 'Admin')}</span>
+            <div onClick={openDisputes} data-testid="admin-disputes" style={{ ...fieldGlass({ marginTop: 10, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="alertShield" />{T('Tranh chấp thanh toán', 'Payment disputes')}</span>
+              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+            </div>
+            {/* Event submission -> review -> publish — a separate desk from
+                the payment dispute one above; don't conflate the two. */}
+            <div onClick={openAdminEvents} data-testid="admin-events" style={{ ...fieldGlass({ marginTop: 8, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="alertShield" />{T('Sự kiện chờ duyệt', 'Pending events')}</span>
+              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+            </div>
+          </div>
+          <div style={{ height: 24 }} />
+        </div>
+      )}
     </div>
   );
 }

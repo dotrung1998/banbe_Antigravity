@@ -223,6 +223,13 @@ if (typeof window !== 'undefined') {
 // else while `!user` gets redirected to 'login' by the guard effect below
 // — the enforcement point for "no guest browsing of any screen" (Task 1).
 const GUEST_ALLOWED_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy', 'organizerProfile']);
+// Account extension (2026-09-27, Stage 1) — the internal, organizer-mode-
+// gated management screens: real event creation/editing, the organizer
+// management dashboard, and event check-in. Deliberately EXCLUDES
+// verifications/payout/documents/refund-queue screens, which the ticket's
+// own "don't hide urgent host duties" rule keeps reachable regardless of
+// organizerMode (those stay gated on `canHost` alone, unchanged).
+const HOST_ONLY_SCREENS = new Set(['dashboard', 'create', 'attendance']);
 
 const initialState = {
   screen: 'splash',
@@ -503,6 +510,21 @@ const initialState = {
   // shared /org/<id> link works without knowing who owns it.
   organizerProfile: null, organizerProfileLoading: false, organizerProfileError: '', organizerProfileBack: 'profile', organizerProfileId: '',
   organizerProfileUpcoming: [], organizerProfilePhotos: [], organizerProfileExtrasLoadedFor: '',
+  // Account extension (2026-09-27, Stage 3) — one role-scoped KPI
+  // dashboard, reached from a "Số liệu & báo cáo" row on each visible
+  // Account tab. `reportsScope` is 'personal'|'host'|'admin' (never
+  // inferred from `organizerMode`/`accountType` inside the screen itself —
+  // set explicitly by whichever row opened it, so the RPC call's own
+  // scope always matches what the user actually tapped). `reportsRangeDays`
+  // is 7/30/90 or 'custom' (paired with reportsCustomStart/End, plain
+  // 'YYYY-MM-DD' strings from a native date input). `reportsExpanded` is a
+  // Set of metric keys currently expanded — starts empty (every card
+  // collapsed) per the ticket's own "compact collapsible card" ask.
+  reportsScope: 'personal', reportsOrganizerId: '', reportsBack: 'profile',
+  reportsRangeDays: 30, reportsCustomStart: '', reportsCustomEnd: '',
+  reportsData: null, reportsLoading: false, reportsError: '',
+  reportsExpanded: new Set(),
+  reportsExportBusy: '',
   // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
   pulseDaily: [], pulseWeekly: [], pulseOpen: false, pulseTab: 'daily', pulseOrganizerSheet: null,
   pulseDailyLoading: false, pulseWeeklyLoading: false,
@@ -4427,7 +4449,19 @@ export function GocProvider({ children }) {
     if (data) {
       const confirmed = data === 'organizer' || data === 'admin';
       console.info('[organizerMode] WRITE source=toggle-rpc-success', { old: enabled, new: confirmed, role: data });
-      set({ accountType: data, organizerMode: confirmed, organizerModeError: '', organizerModeBusy: false });
+      // Account extension (2026-09-27, Stage 1) — "back navigation if user
+      // turns OFF while inside an organizer screen": the Tổ chức tab and
+      // every host-only management screen are gone the instant this
+      // resolves `confirmed: false`, so a user sitting inside one (or on
+      // Account's own Tổ chức tab) needs to land somewhere real, not on a
+      // now-unreachable screen. Cá nhân is always visible, so it's the one
+      // safe landing spot. `hasHosted`/eligibility data is untouched —
+      // this only ever redirects, never deletes anything.
+      set(prev => ({
+        accountType: data, organizerMode: confirmed, organizerModeError: '', organizerModeBusy: false,
+        ...(!confirmed && HOST_ONLY_SCREENS.has(prev.screen) ? { screen: 'profile', accountTab: 'personal' } : {}),
+        ...(!confirmed && prev.accountTab === 'host' ? { accountTab: 'personal' } : {}),
+      }));
     } else {
       set({ organizerModeBusy: false });
     }
@@ -4930,6 +4964,189 @@ export function GocProvider({ children }) {
       set(bump(wasFollowing ? 1 : -1));
     }
   }, [set, s.user?.id, s.publicProfile, s.organizerProfile]);
+
+  // ---- Account extension (2026-09-27, Stage 3) — KPI reports ----
+  // One RPC (get_account_kpis, migration 097) serves the on-screen cards,
+  // CSV, PDF and JSON export alike — reusing the SAME fetched payload for
+  // all four, per the ticket's own "reuse one metrics payload" rule, so a
+  // number on screen can never disagree with the same number in an export.
+  const reportsRangeBounds = (rangeDays, customStart, customEnd) => {
+    const now = new Date();
+    if (rangeDays === 'custom' && customStart && customEnd) {
+      return { start: new Date(customStart + 'T00:00:00'), end: new Date(customEnd + 'T23:59:59') };
+    }
+    const days = Number(rangeDays) || 30;
+    return { start: new Date(now.getTime() - days * 86400000), end: now };
+  };
+
+  /** The one real fetch — takes scope/organizerId/range EXPLICITLY rather
+   * than reading them back off `s` right after a `set()` that just changed
+   * them (a stale-closure trap: `s` here is still the PREVIOUS render's
+   * value until React commits) — same reason `openOrganizerProfile` takes
+   * `organizerId` as a parameter instead of reading `s.organizerProfileId`
+   * right after setting it. */
+  const fetchAccountKpis = useCallback(async (scope, organizerId, rangeDays, customStart, customEnd) => {
+    const { start, end } = reportsRangeBounds(rangeDays, customStart, customEnd);
+    set({ reportsLoading: true, reportsError: '' });
+    const { data, error } = await supabase.rpc('get_account_kpis', {
+      p_scope: scope, p_start: start.toISOString(), p_end: end.toISOString(),
+      p_organizer_id: scope === 'host' ? organizerId : null,
+    });
+    if (error || data?.success === false) {
+      console.warn('fetchAccountKpis failed:', error || data);
+      return set({
+        reportsLoading: false, reportsData: null,
+        reportsError: T('Không thể tải số liệu lúc này. Vui lòng thử lại.', "Couldn't load these numbers right now. Please try again."),
+      });
+    }
+    set({ reportsLoading: false, reportsData: data, reportsError: '' });
+  }, [set, T]);
+
+  // Re-fetches with whatever scope/organizer/range are ALREADY committed in
+  // state — safe here (unlike openReports below) because every caller of
+  // this one (range-change, retry) runs on its own render, after the state
+  // it reads was already set by a previous one.
+  const loadAccountKpis = useCallback(() => {
+    fetchAccountKpis(s.reportsScope, s.reportsOrganizerId, s.reportsRangeDays, s.reportsCustomStart, s.reportsCustomEnd);
+  }, [fetchAccountKpis, s.reportsScope, s.reportsOrganizerId, s.reportsRangeDays, s.reportsCustomStart, s.reportsCustomEnd]);
+
+  // Opening this from Cá nhân/Admin needs no organizer id; opening it from
+  // Tổ chức always passes the account's real organizer_id — never guessed,
+  // matching the prior ticket's own "never silently substitute the first
+  // org" rule for a multi-organizer account.
+  const openReports = useCallback((scope, organizerId, back = 'profile') => {
+    set({
+      screen: 'reports', reportsScope: scope, reportsOrganizerId: organizerId || '', reportsBack: back,
+      reportsData: null, reportsError: '', reportsExpanded: new Set(),
+    });
+    fetchAccountKpis(scope, organizerId, s.reportsRangeDays, s.reportsCustomStart, s.reportsCustomEnd);
+  }, [set, fetchAccountKpis, s.reportsRangeDays, s.reportsCustomStart, s.reportsCustomEnd]);
+  const backFromReports = useCallback(() => set(prev => ({ screen: prev.reportsBack || 'profile' })), [set]);
+
+  const setReportsRangeDays = useCallback((days) => {
+    set({ reportsRangeDays: days });
+    fetchAccountKpis(s.reportsScope, s.reportsOrganizerId, days, s.reportsCustomStart, s.reportsCustomEnd);
+  }, [set, fetchAccountKpis, s.reportsScope, s.reportsOrganizerId, s.reportsCustomStart, s.reportsCustomEnd]);
+  const setReportsCustomRange = useCallback((startStr, endStr) => {
+    set({ reportsRangeDays: 'custom', reportsCustomStart: startStr, reportsCustomEnd: endStr });
+    fetchAccountKpis(s.reportsScope, s.reportsOrganizerId, 'custom', startStr, endStr);
+  }, [set, fetchAccountKpis, s.reportsScope, s.reportsOrganizerId]);
+
+  const toggleReportCard = useCallback((key) => set(prev => {
+    const next = new Set(prev.reportsExpanded);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return { reportsExpanded: next };
+  }), [set]);
+  const expandAllReportCards = useCallback(() => set(prev => ({
+    reportsExpanded: new Set((prev.reportsData?.metrics || []).map(m => m.key)),
+  })), [set]);
+  const collapseAllReportCards = useCallback(() => set({ reportsExpanded: new Set() }), [set]);
+
+  // Spreadsheet-injection guard: Excel/Sheets treats a cell starting with
+  // =, +, -, @, tab or CR as a FORMULA — a hostile event/organizer name
+  // ("=cmd|...") could otherwise execute when the host opens their own
+  // export. Prefixing with a bare `'` neutralizes it in every spreadsheet
+  // app while staying invisible in a plain text viewer.
+  const csvCell = (value) => {
+    let str = value == null ? '' : String(value);
+    if (/^[=+\-@\t\r]/.test(str)) str = `'${str}`;
+    if (/[",\n]/.test(str)) str = `"${str.replace(/"/g, '""')}"`;
+    return str;
+  };
+  const downloadTextFile = (filename, content, mime) => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  };
+
+  /** One metric card's own `rows` table as a real CSV — UTF-8 (BOM so Excel
+   * on Windows/macOS reads Vietnamese diacritics correctly), one row per
+   * underlying record, never a second, re-derived set of numbers. */
+  const exportReportCardCsv = useCallback((metricKey) => {
+    const metric = (s.reportsData?.metrics || []).find(m => m.key === metricKey);
+    if (!metric) return;
+    const rows = metric.rows || [];
+    const columns = rows.length ? Object.keys(rows[0]) : ['value'];
+    const lines = [columns.join(',')];
+    if (rows.length) {
+      for (const row of rows) lines.push(columns.map(c => csvCell(row[c])).join(','));
+    } else {
+      lines.push(csvCell(metric.value));
+    }
+    downloadTextFile(`banbe-${metricKey}.csv`, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
+  }, [s.reportsData]);
+
+  const exportReportsJson = useCallback(() => {
+    if (!s.reportsData) return;
+    const payload = {
+      schema_version: 1,
+      role: s.reportsData.scope,
+      range: s.reportsData.range,
+      generated_at: new Date().toISOString(),
+      metrics: s.reportsData.metrics,
+    };
+    downloadTextFile(`banbe-report-${s.reportsData.scope}.json`, JSON.stringify(payload, null, 2), 'application/json');
+  }, [s.reportsData]);
+
+  /** Client-side (jsPDF) — deliberately not a backend render (unlike
+   * invoice/receipt PDFs, api/*-email.js's puppeteer path): this is one
+   * user's own small, on-demand report, not a document another party
+   * relies on receiving unattended. Reuses the SAME fetched metrics —
+   * never a second query — so it can't disagree with the on-screen cards. */
+  const exportReportsPdf = useCallback(async () => {
+    if (!s.reportsData) return;
+    set({ reportsExportBusy: 'pdf' });
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const marginX = 40;
+      let y = 50;
+      try {
+        const img = await new Promise((resolve, reject) => {
+          const im = new Image();
+          im.crossOrigin = 'anonymous';
+          im.onload = () => resolve(im);
+          im.onerror = reject;
+          im.src = '/banbe-wordmark.png';
+        });
+        doc.addImage(img, 'PNG', marginX, y, 63, (63 * img.height) / img.width);
+      } catch { /* logo optional — the report itself still generates without it */ }
+      y += 50;
+      doc.setFontSize(16);
+      const roleLabel = { personal: T('Cá nhân', 'Personal'), host: T('Tổ chức', 'Host'), admin: T('Quản trị', 'Admin') }[s.reportsData.scope] || s.reportsData.scope;
+      doc.text(T(`Báo cáo số liệu — ${roleLabel}`, `KPI report — ${roleLabel}`), marginX, y);
+      y += 20;
+      doc.setFontSize(10);
+      const fmt = (iso) => new Date(iso).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+      doc.text(`${T('Khoảng thời gian', 'Range')}: ${fmt(s.reportsData.range.start)} – ${fmt(s.reportsData.range.end)}`, marginX, y);
+      y += 14;
+      doc.text(`${T('Tạo lúc', 'Generated')}: ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`, marginX, y);
+      y += 24;
+      for (const metric of s.reportsData.metrics) {
+        if (y > 760) { doc.addPage(); y = 50; }
+        doc.setFontSize(12);
+        doc.text(metric.label, marginX, y);
+        doc.setFontSize(11);
+        const displayValue = metric.unit === 'vnd' ? `${Number(metric.value).toLocaleString('vi-VN')} đ` : String(metric.value);
+        doc.text(displayValue, 400, y);
+        y += 16;
+        doc.setFontSize(8);
+        doc.setTextColor(120);
+        doc.text(T('Nguồn: get_account_kpis, dữ liệu thực trên máy chủ', 'Source: get_account_kpis, real server data'), marginX, y);
+        doc.setTextColor(0);
+        y += 18;
+      }
+      doc.save(`banbe-report-${s.reportsData.scope}.pdf`);
+    } catch (e) {
+      console.warn('exportReportsPdf failed:', e);
+      set({ reportsError: T('Không thể tạo PDF lúc này.', "Couldn't generate the PDF right now.") });
+    } finally {
+      set({ reportsExportBusy: '' });
+    }
+  }, [s.reportsData, set, T]);
 
   /** Native share sheet (mobile Safari/Chrome) with a clipboard-copy
    * fallback for browsers with no Web Share API (most desktop browsers). */
@@ -7127,7 +7344,7 @@ export function GocProvider({ children }) {
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     openAdminEvents, loadPendingEvents, reviewEvent, goEditEvent,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
@@ -7163,7 +7380,7 @@ export function GocProvider({ children }) {
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     openAdminEvents, loadPendingEvents, reviewEvent, goEditEvent,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,

@@ -93,8 +93,13 @@ export default function PublicProfile() {
         {/* Only when this profile truly owns that organizer — a plain
             pointer to who they are, not a second mini-dashboard (event/
             follower stats and the follow CTA now live on the organizer's
-            own separate page, OrganizerProfile.jsx). */}
-        {org && (
+            own separate page, OrganizerProfile.jsx). Account extension
+            (2026-09-27, Stage 1) — "organizer mode OFF means host UI is
+            OFF" reaches this line too: hidden for every visitor (not just
+            the owner) while THIS profile's own organizer_mode is off,
+            same real preference Account's own toggle writes (migration
+            096 exposes it read-only here). */}
+        {org && p.organizer_mode && (
           <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }} data-testid="public-profile-founder-line">
             {T(`Founder tổ chức: ${org.name}`, `Founder of ${org.name}`)}
           </span>

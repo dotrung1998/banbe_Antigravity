@@ -1098,6 +1098,18 @@ extension AppState {
             withAnimation(.easeInOut(duration: 0.2)) {
                 accountType = role
                 organizerMode = confirmed
+                // Account extension (2026-09-27, Stage 1) — "back
+                // navigation if user turns OFF while inside an organizer
+                // screen": the Tổ chức tab and every host-only management
+                // screen disappear the instant this lands `confirmed ==
+                // false`, so a user sitting inside one (or on Account's own
+                // Tổ chức tab) needs a real landing spot — Cá nhân is
+                // always visible. `hasHosted`/eligibility is untouched;
+                // this only ever redirects.
+                if !confirmed {
+                    if Self.hostOnlyScreens.contains(screen) { screen = .profile }
+                    if accountTab == "host" { accountTab = "personal" }
+                }
             }
         } catch {
             // Rolling back in silence is what makes the switch look like it

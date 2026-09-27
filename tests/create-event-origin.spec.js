@@ -27,7 +27,9 @@ test.describe('Create event — Back returns to the real origin', () => {
     // controls; every dock tab/toggle already has a stable testid.
     await page.getByTestId('tab-profile').click();
     await page.waitForSelector('[data-screen-label="Account"]');
-    await page.getByTestId('account-tab-host').click();
+    // Account extension (2026-09-27, Stage 1) — the toggle now lives on
+    // the always-reachable Cá nhân tab (Account's default), not behind
+    // the Tổ chức tab (which only shows once organizer mode is already on).
     const toggle = page.getByTestId('organizer-mode-toggle');
     await expect(toggle).toBeVisible({ timeout: 8000 });
     const pitch = page.getByText(/Bắt đầu tổ chức|Start hosting/, { exact: false });

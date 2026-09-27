@@ -118,7 +118,15 @@ struct AccountView: View {
         .task(id: app.myOrganizerID) {
             if app.canHost, app.myOrganizerID != nil { await app.loadMyOrgStats() }
         }
-        .onAppear { retryScrollRestoreIfNeeded() }
+        .onAppear { retryScrollRestoreIfNeeded(); syncAccountTabToRole() }
+        // Account extension (2026-09-27, Stage 1/2) — a role change
+        // (organizer mode toggled off elsewhere, an admin demoted, an
+        // account switch) can leave `app.accountTab` pointing at a tab
+        // that's no longer in `accountTabs`; the toggle's own redirect
+        // (AppState+Data.swift, applyOrganizerMode) covers the direct
+        // toggle path, this is the general safety net for every other one.
+        .onChange(of: app.organizerMode) { _, _ in syncAccountTabToRole() }
+        .onChange(of: app.accountType) { _, _ in syncAccountTabToRole() }
         .photosPicker(isPresented: $storyLibraryPickerOpen, selection: $storyPhotoItem, matching: .images)
         .onChange(of: storyPhotoItem) { _, item in
             Task {
@@ -162,8 +170,14 @@ struct AccountView: View {
                     .font(.system(size: 12)).buttonStyle(.plain)
             }
 
+            // Account extension (2026-09-27, Stage 1) — "organizer mode
+            // OFF means host UI is OFF": the Tổ chức tab itself is gone
+            // while `organizerMode` is off, not just gated content inside
+            // it — `canHost` (eligibility, e.g. `hasHosted`) intentionally
+            // stays out of this condition, see applyOrganizerMode's own
+            // doc comment for why conflating the two was the earlier bug.
             HStack(spacing: 6) {
-                ForEach([("personal", app.T("Cá nhân", "Personal")), ("host", app.T("Tổ chức", "Host"))], id: \.0) { key, label in
+                ForEach(accountTabs, id: \.0) { key, label in
                     accountTabButton(key: key, label: label)
                 }
             }
@@ -176,6 +190,9 @@ struct AccountView: View {
             // profile cards on one screen. Scoped to the Cá nhân tab
             // only, matching the web fix.
             if app.accountTab == "personal" {
+            reportsRow(app.T("Số liệu & báo cáo", "Metrics & reports"), identifier: "account.reportsPersonal") {
+                app.openReports(scope: "personal", back: .profile)
+            }
             // TASK D (2026-10-01 UX foundation pass) — the header is
             // now a tappable rounded profile card (editorial style:
             // soft gradient wash from the account's own chosen
@@ -356,147 +373,33 @@ struct AccountView: View {
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .padding(.top, 20)
             .id("account-links")
+
+            // Account extension (2026-09-27, Stage 1) — "organizer mode
+            // OFF means host UI is OFF": the whole Tổ chức tab disappears
+            // while this is off, so the ON/OFF control itself (and any
+            // actionable host duty) can't live there any more — moved
+            // here, into Cá nhân, which is always reachable. The Tổ chức
+            // tab (when it does show) now holds only the organizer
+            // identity card + its management entry point (orgProfileCard).
+            hostingSection
             } // app.accountTab == "personal"
 
             if app.accountTab == "host" {
+            if app.myOrganizerID != nil {
+                reportsRow(app.T("Số liệu & báo cáo", "Metrics & reports"), identifier: "account.reportsHost") {
+                    app.openReports(scope: "host", organizerID: app.myOrganizerID, back: .profile)
+                }
+            }
             orgProfileCard()
-
-            Text(app.T("Tổ chức", "Hosting"))
-                .font(.system(size: 11.5, weight: .semibold))
-                .padding(.top, 22)
-
-            Button { app.toggleOrganizerMode() } label: {
-                // TASK 2 (2026-10-05 fix pass) — `.opacity`, not a
-                // spinner: this toggle's own round-trip is already
-                // near-instant on a normal connection, and a flashing
-                // spinner for that would read as jankier than a brief
-                // dim. `.disabled` below is what actually matters —
-                // it's the real guard against the double-tap race
-                // (see toggleOrganizerMode()'s own comment).
-                HStack(spacing: 12) {
-                    Image(systemName: "person.2.badge.gearshape")
-                        .font(.system(size: 16, weight: .medium))
-                        .frame(width: 22, height: 22)
-                        .opacity(0.72)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(app.T("Chế độ tổ chức", "Organizer mode")).font(.system(size: 14))
-                        Text(app.T("Bật để tạo và quản lý sự kiện. Tắt lúc nào cũng được.",
-                                   "Turn on to create and manage events. Turn it off any time."))
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(app.palette.ink.opacity(0.7))
-                            .multilineTextAlignment(.leading)
-                    }
-                    Spacer(minLength: 0)
-                    // TASK B (2026-10-03 fix pass) — THE visual bug:
-                    // this switch was bound to canHost (eligibility,
-                    // permanently true once a real host), never
-                    // organizerMode (the actual current preference) —
-                    // so it visually looked stuck "on" for any real
-                    // host regardless of what the toggle really did
-                    // underneath. See AppState+Data.swift's
-                    // applyOrganizerMode for the matching state-side
-                    // root cause.
-                    ZStack(alignment: app.organizerMode ? .trailing : .leading) {
-                        Capsule()
-                            .fill(app.organizerMode ? app.palette.ink : app.palette.ink.opacity(0.18))
-                            .frame(width: 44, height: 26)
-                        Circle().fill(app.palette.paper).frame(width: 20, height: 20).padding(3)
-                    }
-                    .animation(.easeInOut(duration: 0.15), value: app.organizerMode)
-                }
-                .foregroundStyle(app.palette.ink)
-                .padding(16)
-                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .disabled(app.organizerModeBusy)
-            .opacity(app.organizerModeBusy ? 0.55 : 1)
-            .accessibilityIdentifier("account.organizerToggle")
-            .padding(.top, 10)
-            .id("account-hosting-toggle")
-
-            if !app.organizerModeError.isEmpty {
-                Text(app.organizerModeError)
-                    .font(.system(size: 12))
-                    .foregroundStyle(BanbeTheme.alert)
-                    .padding(.top, 10)
-            }
-
-            // Root-cause fix (Stage D) — this used to be gated on
-            // `app.organizerMode` (the CURRENT toggle), so turning
-            // organizer mode off hid awaiting-verification/payout/
-            // invoices/receipts entirely, even for a real host with an
-            // actual pending obligation. Gated on `canHost`
-            // (eligibility) instead: these rows now stay reachable
-            // regardless of the switch above, same as the ticket's own
-            // "don't remove access to urgent host refund/dispute
-            // obligations when organizer mode is off" rule.
-            if app.canHost {
-                VStack(spacing: 0) {
-                    row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"),
-                        identifier: "host.verifications", icon: "checklist", trailing: "›") { app.openVerifications() }
-                    Divider().overlay(app.palette.rule)
-                    row(app.T("Nhận thanh toán", "Getting paid"),
-                        identifier: "host.payout", icon: "banknote", trailing: "›") { app.openPayout() }
-                    Divider().overlay(app.palette.rule)
-                    row(app.T("Hoá đơn đã phát hành", "Invoices issued"),
-                        identifier: "host.invoices", icon: "doc.text", trailing: "›") {
-                        app.openDocuments(kind: "invoice", role: "host")
-                    }
-                    Divider().overlay(app.palette.rule)
-                    row(app.T("Biên nhận đã phát hành", "Receipts issued"),
-                        identifier: "host.receipts", icon: "receipt", trailing: "›") {
-                        app.openDocuments(kind: "receipt", role: "host")
-                    }
-                }
-                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .padding(.top, 10)
-            }
-
-            // Admin Panel — visible only to accountType == "admin"
-            // (banbetestadmin@gmail.com, migration 040), never to a
-            // plain organizer. RLS (v_disputes, resolve_dispute,
-            // payment_audit_log, the 'pay-proof' bucket) is the real
-            // backstop; openAdminDashboard() guards again regardless.
-            if app.isAdmin {
-                Text(app.T("Quản trị", "Admin"))
-                    .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
-                    .padding(.top, 22)
-                VStack(spacing: 0) {
-                    row(app.T("Bảng quản trị", "Admin Panel"),
-                        identifier: "admin.panel", icon: "exclamationmark.shield", trailing: "›") { app.openAdminDashboard() }
-                    // Event submission -> review -> publish — a separate
-                    // desk from the payment dispute one above.
-                    row(app.T("Sự kiện chờ duyệt", "Pending events"),
-                        identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›") { app.openAdminEvents() }
-                }
-                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .padding(.top, 10)
-            }
-
-            // No separate "Xem trang tổ chức của bạn" card here —
-            // orgProfileCard() above is the single entry into that
-            // management page now.
-            if !app.canHost {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(app.T("Tổ chức sự kiện đầu tiên", "Host your first event"))
-                        .font(BanbeTheme.display(19))
-                    Text(app.T(
-                        "Miễn phí hoàn toàn khi banbe còn mới — không phí đăng, không phí giao dịch. Tạo sự kiện đầu tiên để mở trang tổ chức.",
-                        "Completely free while banbe is new — no listing or transaction fees. Create your first event to unlock your host page."
-                    ))
-                    .font(.system(size: 12.5))
-                    .lineSpacing(3)
-                    InkButton(title: app.T("Bắt đầu tổ chức ▪︎ miễn phí", "Start hosting ▪︎ free")) {
-                        app.toggleOrganizerMode()
-                    }
-                }
-                .foregroundStyle(app.palette.ink)
-                .padding(16)
-                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .padding(.top, 10)
-            }
             } // app.accountTab == "host"
+
+            if app.accountTab == "admin" {
+            reportsRow(app.T("Số liệu & báo cáo", "Metrics & reports"), identifier: "account.reportsAdmin") {
+                app.openReports(scope: "admin", back: .profile)
+            }
+            adminSection
+            } // app.accountTab == "admin"
+
 
             Button {
                 if app.isSignedIn { Task { await app.signOut() } } else { app.goLogin() }
@@ -519,6 +422,11 @@ struct AccountView: View {
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 20)
         .padding(.top, 16)
+    }
+
+    private func syncAccountTabToRole() {
+        if app.accountTab == "host" && !app.organizerMode { app.accountTab = "personal" }
+        else if app.accountTab == "admin" && app.accountType != "admin" { app.accountTab = "personal" }
     }
 
     private func syncDockHidden() {
@@ -571,6 +479,17 @@ struct AccountView: View {
     // everything already in `body` — same "unable to type-check this
     // expression in reasonable time" class of bug BottomTabBar.swift's own
     // `tabItem` extraction already fixed once).
+    // Account extension (2026-09-27, Stage 1) — Tổ chức only while
+    // `organizerMode` is actually on (never `canHost`/eligibility); Admin
+    // (Stage 2) only for a server-confirmed admin, independent of
+    // `organizerMode` entirely.
+    private var accountTabs: [(String, String)] {
+        var tabs: [(String, String)] = [("personal", app.T("Cá nhân", "Personal"))]
+        if app.organizerMode { tabs.append(("host", app.T("Tổ chức", "Host"))) }
+        if app.accountType == "admin" { tabs.append(("admin", app.T("Quản trị", "Admin"))) }
+        return tabs
+    }
+
     @ViewBuilder
     private func accountTabButton(key: String, label: String) -> some View {
         Button { app.accountTab = key } label: {
@@ -608,6 +527,28 @@ struct AccountView: View {
         .accessibilityIdentifier(identifier ?? label)
     }
 
+    // Account extension (2026-09-27, Stage 3) — the one recognizable "Số
+    // liệu & báo cáo" entry point every visible tab gets, near its own top.
+    private func reportsRow(_ title: String, identifier: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: "chart.bar.doc.horizontal")
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 22, height: 22)
+                    .opacity(0.72)
+                Text(title).font(.system(size: 14))
+                Spacer()
+                Text("›").font(.system(size: 15))
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(16)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 22)
+        .accessibilityIdentifier(identifier)
+    }
+
     private func row(_ title: String, identifier: String? = nil, icon: String, trailing: String,
                      action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -626,6 +567,157 @@ struct AccountView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(identifier ?? title)
+    }
+
+    // Account extension (2026-09-27, Stage 1) — extracted out of `body`'s
+    // own Cá nhân branch (a real Swift type-checker timeout, same class of
+    // bug `accountContent`'s own extraction already fixed once). Formerly
+    // lived inside `app.accountTab == "host"`; moved here (rendered from
+    // Cá nhân, unconditionally reachable) per "organizer mode OFF means
+    // host UI is OFF": the Tổ chức tab itself is gone while it's off, so
+    // the ON/OFF control and any actionable host duty can't live there.
+    @ViewBuilder
+    private var hostingSection: some View {
+        Text(app.T("Tổ chức", "Hosting"))
+            .font(.system(size: 11.5, weight: .semibold))
+            .padding(.top, 22)
+
+        Button { app.toggleOrganizerMode() } label: {
+            // TASK 2 (2026-10-05 fix pass) — `.opacity`, not a
+            // spinner: this toggle's own round-trip is already
+            // near-instant on a normal connection, and a flashing
+            // spinner for that would read as jankier than a brief
+            // dim. `.disabled` below is what actually matters —
+            // it's the real guard against the double-tap race
+            // (see toggleOrganizerMode()'s own comment).
+            HStack(spacing: 12) {
+                Image(systemName: "person.2.badge.gearshape")
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 22, height: 22)
+                    .opacity(0.72)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(app.T("Chế độ tổ chức", "Organizer mode")).font(.system(size: 14))
+                    Text(app.T("Bật để tạo và quản lý sự kiện. Tắt lúc nào cũng được.",
+                               "Turn on to create and manage events. Turn it off any time."))
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(app.palette.ink.opacity(0.7))
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 0)
+                // TASK B (2026-10-03 fix pass) — THE visual bug:
+                // this switch was bound to canHost (eligibility,
+                // permanently true once a real host), never
+                // organizerMode (the actual current preference) —
+                // so it visually looked stuck "on" for any real
+                // host regardless of what the toggle really did
+                // underneath. See AppState+Data.swift's
+                // applyOrganizerMode for the matching state-side
+                // root cause.
+                ZStack(alignment: app.organizerMode ? .trailing : .leading) {
+                    Capsule()
+                        .fill(app.organizerMode ? app.palette.ink : app.palette.ink.opacity(0.18))
+                        .frame(width: 44, height: 26)
+                    Circle().fill(app.palette.paper).frame(width: 20, height: 20).padding(3)
+                }
+                .animation(.easeInOut(duration: 0.15), value: app.organizerMode)
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(16)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(app.organizerModeBusy)
+        .opacity(app.organizerModeBusy ? 0.55 : 1)
+        .accessibilityIdentifier("account.organizerToggle")
+        .padding(.top, 10)
+        .id("account-hosting-toggle")
+
+        if !app.organizerModeError.isEmpty {
+            Text(app.organizerModeError)
+                .font(.system(size: 12))
+                .foregroundStyle(BanbeTheme.alert)
+                .padding(.top, 10)
+        }
+
+        // Root-cause fix (Stage D) — this stays gated on `app.canHost`
+        // (eligibility), never `app.organizerMode` (the CURRENT toggle):
+        // these rows must stay reachable regardless of the switch above,
+        // per the ticket's own "don't remove access to urgent host
+        // refund/dispute obligations when organizer mode is off" rule.
+        if app.canHost {
+            VStack(spacing: 0) {
+                row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"),
+                    identifier: "host.verifications", icon: "checklist", trailing: "›") { app.openVerifications() }
+                Divider().overlay(app.palette.rule)
+                row(app.T("Nhận thanh toán", "Getting paid"),
+                    identifier: "host.payout", icon: "banknote", trailing: "›") { app.openPayout() }
+                Divider().overlay(app.palette.rule)
+                row(app.T("Hoá đơn đã phát hành", "Invoices issued"),
+                    identifier: "host.invoices", icon: "doc.text", trailing: "›") {
+                    app.openDocuments(kind: "invoice", role: "host")
+                }
+                Divider().overlay(app.palette.rule)
+                row(app.T("Biên nhận đã phát hành", "Receipts issued"),
+                    identifier: "host.receipts", icon: "receipt", trailing: "›") {
+                    app.openDocuments(kind: "receipt", role: "host")
+                }
+            }
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.top, 10)
+        }
+
+        // No separate "Xem trang tổ chức của bạn" card here — orgProfileCard()
+        // (Tổ chức tab, once organizerMode is on) is the single entry into
+        // that management page now. This pitch is for an account that has
+        // never hosted (`canHost` false always implies `organizerMode`
+        // false too, so it can only ever show in the true "never hosted"
+        // case).
+        if !app.canHost {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(app.T("Tổ chức sự kiện đầu tiên", "Host your first event"))
+                    .font(BanbeTheme.display(19))
+                Text(app.T(
+                    "Miễn phí hoàn toàn khi banbe còn mới — không phí đăng, không phí giao dịch. Tạo sự kiện đầu tiên để mở trang tổ chức.",
+                    "Completely free while banbe is new — no listing or transaction fees. Create your first event to unlock your host page."
+                ))
+                .font(.system(size: 12.5))
+                .lineSpacing(3)
+                InkButton(title: app.T("Bắt đầu tổ chức ▪︎ miễn phí", "Start hosting ▪︎ free")) {
+                    app.toggleOrganizerMode()
+                }
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(16)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.top, 10)
+        }
+    }
+
+    // Stage 2 — Admin is its own top-level tab now, independent of
+    // organizerMode: these two rows used to sit inside the Tổ chức pane,
+    // so an admin who never turned organizer mode on (or turned it off)
+    // lost them entirely once that tab started hiding itself for Stage 1.
+    // Same actions, same RLS-enforced screens — moved, not cloned.
+    @ViewBuilder
+    private var adminSection: some View {
+        // Admin Panel — visible only to accountType == "admin"
+        // (banbetestadmin@gmail.com, migration 040), never to a
+        // plain organizer. RLS (v_disputes, resolve_dispute,
+        // payment_audit_log, the 'pay-proof' bucket) is the real
+        // backstop; openAdminDashboard() guards again regardless.
+        Text(app.T("Quản trị", "Admin"))
+            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+            .padding(.top, 22)
+        VStack(spacing: 0) {
+            row(app.T("Bảng quản trị", "Admin Panel"),
+                identifier: "admin.panel", icon: "exclamationmark.shield", trailing: "›") { app.openAdminDashboard() }
+            // Event submission -> review -> publish — a separate
+            // desk from the payment dispute one above.
+            row(app.T("Sự kiện chờ duyệt", "Pending events"),
+                identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›") { app.openAdminEvents() }
+        }
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.top, 10)
     }
 
     /// Host tab's OWN rounded profile card (Stage D) — organizer avatar/

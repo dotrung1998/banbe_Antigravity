@@ -78,7 +78,7 @@ test.describe('VietQR payload', () => {
 test.describe('Payment screens wiring', () => {
   test('organizer-only and admin-only queues stay hidden from a goer', async ({ page }) => {
     await setupToHome(page);
-    await page.getByText('Tài khoản').first().click();
+    await page.getByTestId('tab-profile').click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible();
 
     // A signed-out goer must not see the verification queue or dispute desk:

@@ -122,7 +122,7 @@ test.describe('document rendering', () => {
 test.describe('Account wiring', () => {
   test('offers invoices and receipts as their own rows', async ({ page }) => {
     await setupToHome(page);
-    await page.getByText('Tài khoản').first().click();
+    await page.getByTestId('tab-profile').click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible();
 
     await expect(page.getByTestId('account-invoices')).toBeVisible();
@@ -131,7 +131,7 @@ test.describe('Account wiring', () => {
 
   test('a document list opens from Account and comes back with one tap', async ({ page }) => {
     await setupToHome(page);
-    await page.getByText('Tài khoản').first().click();
+    await page.getByTestId('tab-profile').click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible();
 
     await page.getByTestId('account-receipts').click();
@@ -148,7 +148,7 @@ test.describe('Account wiring', () => {
 
   test('hosting-only payment rows stay hidden for a goer', async ({ page }) => {
     await setupToHome(page);
-    await page.getByText('Tài khoản').first().click();
+    await page.getByTestId('tab-profile').click();
     await expect(page.locator('[data-screen-label="Account"]')).toBeVisible();
 
     // "Getting paid" is meaningless until organizer mode is on, and showing
