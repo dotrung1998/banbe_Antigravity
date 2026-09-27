@@ -412,6 +412,18 @@ function Shell() {
     if (!refreshing) { setIsPulling(false); setPullDist(0); }
   };
 
+  // Refresh-indicator fix pass (2026-09-27, follow-up B) — "dismiss on
+  // ... tab switch": a plain dock TAP (not a swipe-commit, which already
+  // resets these itself) changes `state.screen` directly, and without
+  // this, a pull started on one tab that's still `refreshing` when the
+  // user taps straight to another tab would keep rendering there until
+  // the old tab's own reload happened to resolve.
+  useLayoutEffect(() => {
+    setPullDist(0);
+    setRefreshing(false);
+    setRefreshError('');
+  }, [state.screen]);
+
   useLayoutEffect(() => {
     const el = scrollRef.current;
     const target = scrollPositions.current[state.screen] || 0;

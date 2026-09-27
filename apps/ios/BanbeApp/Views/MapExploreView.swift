@@ -581,6 +581,7 @@ struct MapExploreView: View {
             // the delay elapsed) can never fire `sheetPresented = true`
             // onto whatever's on screen now.
             postDismissRevealTask?.cancel()
+            app.cancelRootPull()
         }
         .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in
             guard !isPreview else { return }
@@ -1154,17 +1155,18 @@ struct MapExploreView: View {
                     .background(
                         ev.id == visibleEvents.first?.id
                             ? AnyView(ScaffoldScrollProbe(
-                                onChange: { offsetY in
-                                    guard !app.rootRefreshing else { return }
-                                    app.rootPullProgress = min(1, max(0, offsetY) / 64)
-                                },
-                                onGestureEnded: {
-                                    guard !app.rootRefreshing else { return }
-                                    guard app.rootPullProgress >= 1 else { app.rootPullProgress = 0; return }
-                                    app.runRootRefresh {
-                                        guard let region = lastQueriedRegion else { return }
-                                        boundsChanged = false
-                                        await app.loadMapEvents(bounds: boundsOf(region))
+                                onChange: { _ in },
+                                onPullPhase: { phase, translationY in
+                                    switch phase {
+                                    case .began: app.beginRootPull()
+                                    case .changed: app.updateRootPull(translationY)
+                                    case .ended:
+                                        app.endRootPull(trigger: {
+                                            guard let region = lastQueriedRegion else { return }
+                                            boundsChanged = false
+                                            await app.loadMapEvents(bounds: boundsOf(region))
+                                        })
+                                    case .cancelled: app.cancelRootPull()
                                     }
                                 }
                               ))

@@ -98,14 +98,14 @@ struct InboxView: View {
                                 .background(
                                     thread.id == visibleThreads.first?.id && !isPreview
                                         ? AnyView(ScaffoldScrollProbe(
-                                            onChange: { offsetY in
-                                                guard !app.rootRefreshing else { return }
-                                                app.rootPullProgress = min(1, max(0, offsetY) / 64)
-                                            },
-                                            onGestureEnded: {
-                                                guard !app.rootRefreshing else { return }
-                                                guard app.rootPullProgress >= 1 else { app.rootPullProgress = 0; return }
-                                                app.runRootRefresh { await app.loadInboxThreads() }
+                                            onChange: { _ in },
+                                            onPullPhase: { phase, translationY in
+                                                switch phase {
+                                                case .began: app.beginRootPull()
+                                                case .changed: app.updateRootPull(translationY)
+                                                case .ended: app.endRootPull(trigger: { await app.loadInboxThreads() })
+                                                case .cancelled: app.cancelRootPull()
+                                                }
                                             }
                                           ))
                                         : AnyView(EmptyView())
@@ -161,7 +161,10 @@ struct InboxView: View {
         // `setForcedHidden(_:)` this pass adds right alongside it.
         .onChange(of: settingsOpen) { _, open in BottomTabBarOverlay.shared.setForcedHidden(open || feedbackOpen) }
         .onChange(of: feedbackOpen) { _, open in BottomTabBarOverlay.shared.setForcedHidden(open || settingsOpen) }
-        .onDisappear { BottomTabBarOverlay.shared.setForcedHidden(false) }
+        .onDisappear {
+            BottomTabBarOverlay.shared.setForcedHidden(false)
+            app.cancelRootPull()
+        }
     }
 
     // Bug 1b (2026-09-21 follow-up) — the 0.3-response spring from the

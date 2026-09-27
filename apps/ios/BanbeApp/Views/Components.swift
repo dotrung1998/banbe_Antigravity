@@ -277,7 +277,7 @@ private extension CIImage {
 // a real pull" feel on both platforms. A free function, not a `static let`
 // on ScreenScaffold itself — stored type properties aren't supported on a
 // generic type.
-private let screenScaffoldPullTriggerDistance: CGFloat = 64
+let screenScaffoldPullTriggerDistance: CGFloat = 64
 
 struct ScreenScaffold<Content: View>: View {
     @EnvironmentObject private var app: AppState
@@ -338,16 +338,14 @@ struct ScreenScaffold<Content: View>: View {
                             ? AnyView(ScaffoldScrollProbe(
                                 onChange: { offsetY in
                                     if tracksBottomBarScroll { app.noteScaffoldScroll(offsetY) }
-                                    guard onRefresh != nil, !app.rootRefreshing else { return }
-                                    app.rootPullProgress = min(1, max(0, offsetY) / screenScaffoldPullTriggerDistance)
                                 },
-                                onGestureEnded: onRefresh != nil ? {
-                                    guard !app.rootRefreshing else { return }
-                                    guard app.rootPullProgress >= 1, let onRefresh else {
-                                        app.rootPullProgress = 0
-                                        return
+                                onPullPhase: onRefresh != nil ? { phase, translationY in
+                                    switch phase {
+                                    case .began: app.beginRootPull()
+                                    case .changed: app.updateRootPull(translationY)
+                                    case .ended: app.endRootPull(trigger: onRefresh!)
+                                    case .cancelled: app.cancelRootPull()
                                     }
-                                    app.runRootRefresh(onRefresh)
                                 } : nil
                               ))
                             : AnyView(EmptyView())
@@ -364,6 +362,11 @@ struct ScreenScaffold<Content: View>: View {
                     .transition(.opacity)
             }
         }
+        // Ticket's own "dismiss on ... tab switch" clause — leaving this
+        // screen (a dock tap, a swipe commit, or Back) clears any pull
+        // progress/refreshing state before the NEXT onRefresh-enabled
+        // screen mounts, so it never inherits a stale indicator.
+        .onDisappear { if onRefresh != nil { app.cancelRootPull() } }
     }
 }
 
@@ -402,36 +405,39 @@ private struct ScrollPositionIDModifier: ViewModifier {
 /// change notification fires synchronously as the property mutates,
 /// independent of which RunLoop mode is currently active, which is exactly
 /// why plain UIKit code has never needed this workaround.
+// Refresh-indicator fix pass (2026-09-27, follow-up B) — `.began` only
+// fires onward to the caller when the gesture is "qualified": the scroll
+// view's own `contentOffset.y` was already at/above the top the instant
+// the finger went down. That's the actual root-cause fix for "icon visible
+// while idle" — the previous version drove `rootPullProgress` straight off
+// raw `contentOffset` KVO, which fires for a momentum bounce past the top,
+// a `.scrollPosition(id:)` restore, or the view's first layout pass, none
+// of which are a real user pull.
+enum ScaffoldPullPhase { case began, changed, ended, cancelled }
+
 struct ScaffoldScrollProbe: UIViewRepresentable {
     let onChange: (CGFloat) -> Void
-    // Refresh-indicator fix pass (2026-09-27, follow-up A) — fires once
-    // per real pan-gesture release/cancel on the ancestor UIScrollView
-    // this probe finds, the "did the finger actually let go" signal a pure
-    // `contentOffset` KVO can't give on its own. Added as a SECOND target
-    // on that scroll view's own `panGestureRecognizer` (existing targets —
-    // the ScrollView's own tracking — are untouched; multiple targets on
-    // one UIGestureRecognizer is a normal, supported UIKit pattern), never
-    // a replacement gesture that could compete with native scrolling.
-    var onGestureEnded: (() -> Void)? = nil
+    var onPullPhase: ((ScaffoldPullPhase, CGFloat) -> Void)? = nil
 
     func makeUIView(context: Context) -> ProbeView {
         let view = ProbeView()
         view.onChange = onChange
-        view.onGestureEnded = onGestureEnded
+        view.onPullPhase = onPullPhase
         return view
     }
 
     func updateUIView(_ uiView: ProbeView, context: Context) {
         uiView.onChange = onChange
-        uiView.onGestureEnded = onGestureEnded
+        uiView.onPullPhase = onPullPhase
     }
 
     final class ProbeView: UIView {
         var onChange: ((CGFloat) -> Void)?
-        var onGestureEnded: (() -> Void)?
+        var onPullPhase: ((ScaffoldPullPhase, CGFloat) -> Void)?
         private weak var observedScrollView: UIScrollView?
         private var observation: NSKeyValueObservation?
         private weak var attachedGesture: UIPanGestureRecognizer?
+        private var pullQualified = false
 
         override func didMoveToWindow() { super.didMoveToWindow(); attachIfNeeded() }
         override func didMoveToSuperview() { super.didMoveToSuperview(); attachIfNeeded() }
@@ -455,7 +461,7 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
                         self?.onChange?(-sv.contentOffset.y)
                     }
                     onChange?(-scrollView.contentOffset.y)
-                    if onGestureEnded != nil {
+                    if onPullPhase != nil {
                         scrollView.panGestureRecognizer.addTarget(self, action: #selector(handlePanStateChange(_:)))
                         attachedGesture = scrollView.panGestureRecognizer
                     }
@@ -466,7 +472,25 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
         }
 
         @objc private func handlePanStateChange(_ gesture: UIPanGestureRecognizer) {
-            if gesture.state == .ended || gesture.state == .cancelled { onGestureEnded?() }
+            guard let scrollView = observedScrollView else { return }
+            switch gesture.state {
+            case .began:
+                // The only place eligibility is decided — a downward pull
+                // that starts anywhere else in the content never qualifies,
+                // matching "begins at the TOP of that tab's own scroll
+                // container" exactly.
+                pullQualified = scrollView.contentOffset.y <= 1
+                if pullQualified { onPullPhase?(.began, 0) }
+            case .changed:
+                guard pullQualified else { return }
+                onPullPhase?(.changed, gesture.translation(in: scrollView).y)
+            case .ended, .cancelled:
+                guard pullQualified else { return }
+                pullQualified = false
+                onPullPhase?(gesture.state == .ended ? .ended : .cancelled, gesture.translation(in: scrollView).y)
+            default:
+                break
+            }
         }
 
         deinit {

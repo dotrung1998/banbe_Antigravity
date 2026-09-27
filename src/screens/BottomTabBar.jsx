@@ -34,8 +34,13 @@ export const TAB_OUTLINE_SHAPES = {
   home: { path: 'M6 19.5 V10 L4 11.5 L12 4 L20 11.5 L18 10 V19.5 Z' },
   mapExplore: { path: 'M12 3c-3.3 0-6 2.6-6 6.1C6 13.4 12 21 12 21s6-7.6 6-11.9C18 5.6 15.3 3 12 3z' },
   notifications: { path: 'M12 3.5c-2.8 0-5 2.2-5 5v4.6l-1.6 2.7c-.3.5.1 1.2.7 1.2h11.8c.6 0 1-.7.7-1.2L17 13.1V8.5c0-2.8-2.2-5-5-5z' },
-  inbox: { rect: { x: 4.5, y: 7, width: 15, height: 11, rx: 2.4 } },
-  profile: { circle: { cx: 12, cy: 8, r: 3.8 } },
+  // Refresh-indicator fix pass (2026-09-27, follow-up B) — a bare rect/
+  // circle read as a generic box/dot, not the dock's own envelope/person;
+  // each is now the real glyph's full outline (body + V flap; head +
+  // shoulders) as one combined path, so RootRefreshIndicator's travel
+  // stroke actually reads as that icon.
+  inbox: { path: 'M6.9 7 H17.1 A2.4 2.4 0 0 1 19.5 9.4 V15.6 A2.4 2.4 0 0 1 17.1 18 H6.9 A2.4 2.4 0 0 1 4.5 15.6 V9.4 A2.4 2.4 0 0 1 6.9 7 Z M5.5 8.2 L12 13.5 L18.5 8.2' },
+  profile: { path: 'M8.2 8a3.8 3.8 0 1 1 7.6 0a3.8 3.8 0 1 1 -7.6 0 M5 19.2c1.3-3.9 4.2-5.8 7-5.8s5.7 1.9 7 5.8' },
 };
 
 const ICONS = {
@@ -284,6 +289,8 @@ export default function BottomTabBar({ collapsed }) {
   // applied (immune to the collapse-scale double-application). `rectsRef`
   // is kept only for `hitTest` below, which maps a real screen-space touch
   // point to an index — that one genuinely needs live pixel rects.
+  const reduceMotionQuery = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
   const placeHighlight = (index, animate) => {
     const el = highlightRef.current;
     if (!el || index == null || !items.length) return;
@@ -291,12 +298,52 @@ export default function BottomTabBar({ collapsed }) {
     // Stage 3 (2026-09-27 nav/discovery pass) — honors Reduce Motion: the
     // spring glide becomes a plain, near-instant snap (still fades in via
     // opacity, which isn't the kind of motion that setting asks to avoid).
-    const reduceMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const reduceMotion = reduceMotionQuery();
     const glide = reduceMotion ? 'transform 0.01s linear' : 'transform 0.32s cubic-bezier(.34,1.56,.64,1)';
-    el.style.transition = animate ? `${glide}, opacity 0.15s ease` : 'opacity 0.15s ease';
+    el.style.transition = animate ? `${glide}, opacity 0.15s ease, width 0.28s cubic-bezier(.34,1.56,.64,1)` : 'opacity 0.15s ease';
     el.style.width = `${pct}%`;
     el.style.transform = `translateX(${index * 100}%)`;
     el.style.opacity = '1';
+  };
+
+  // Dock-drag fix pass (2026-09-27, follow-up B) — the actual root cause of
+  // "dragging the selected region jumps from slot to slot": `onPointerMove`
+  // used to run `hitTest` (nearest-ICON lookup) and only ever call
+  // `placeHighlight(idx, true)` — a discrete, whole-slot placement that
+  // animates via a fixed CSS transition. Nothing in that path reads the
+  // finger's continuous x position; the highlight sits still until the
+  // finger crosses a slot's midpoint, then springs to the next slot. This
+  // is the replacement: a SEPARATE continuous placement path (no CSS
+  // transition, no waiting for a slot boundary) that runs on every
+  // `pointermove`, and interpolates a soft "droplet" bulge — the blob is at
+  // its narrowest (resting width) exactly centered on a slot and at its
+  // widest exactly halfway between two, so it visibly stretches through
+  // the gap instead of teleporting. `placeHighlight` above is now used only
+  // to SETTLE once, on release/tap.
+  const BULGE = 0.5;
+  const placeHighlightLive = (pct) => {
+    const el = highlightRef.current;
+    if (!el || !items.length) return;
+    const slot = 100 / items.length;
+    const clampedPct = Math.max(0, Math.min(100, pct));
+    const idxFloat = Math.max(0, Math.min(items.length - 1, clampedPct / slot));
+    // 0 exactly on a slot's own center, 0.5 exactly between two slots.
+    const fracFromCenter = Math.abs(idxFloat - Math.round(idxFloat));
+    const bulge = 1 + BULGE * Math.sin(Math.min(1, fracFromCenter / 0.5) * (Math.PI / 2));
+    const width = slot * bulge;
+    const centerPct = (idxFloat + 0.5) * slot;
+    const left = Math.max(0, Math.min(100 - width, centerPct - width / 2));
+    el.style.transition = 'opacity 0.15s ease';
+    el.style.width = `${width}%`;
+    el.style.transform = `translateX(${left}%)`;
+    el.style.opacity = '1';
+  };
+
+  const percentForClientX = (clientX) => {
+    const bar = barRef.current;
+    if (!bar) return 0;
+    const box = bar.getBoundingClientRect();
+    return ((clientX - box.left) / box.width) * 100;
   };
 
   const hitTest = (clientX) => {
@@ -320,7 +367,11 @@ export default function BottomTabBar({ collapsed }) {
     const idx = hitTest(e.clientX);
     activeIndexRef.current = idx;
     setActiveIndex(idx);
-    placeHighlight(idx, false);
+    if (reduceMotionQuery()) {
+      placeHighlight(idx, false);
+    } else {
+      placeHighlightLive(percentForClientX(e.clientX));
+    }
   };
 
   const onPointerMove = (e) => {
@@ -329,8 +380,11 @@ export default function BottomTabBar({ collapsed }) {
     if (idx !== activeIndexRef.current) {
       activeIndexRef.current = idx;
       setActiveIndex(idx);
-      placeHighlight(idx, true);
     }
+    // Reduce Motion: a plain non-bouncy snap between slots, never the
+    // continuous stretch (that IS the motion this setting asks to avoid).
+    if (reduceMotionQuery()) placeHighlight(idx, true);
+    else placeHighlightLive(percentForClientX(e.clientX));
   };
 
   // BUG 1 fix: no longer hides the highlight on release — it stays exactly
@@ -343,7 +397,24 @@ export default function BottomTabBar({ collapsed }) {
     if (!draggingRef.current) return;
     draggingRef.current = false;
     const idx = activeIndexRef.current;
+    // Settles the SAME blob smoothly into the existing at-rest look — the
+    // continuous drag placement above never uses this element's normal
+    // transition, so without this final call it would stay stretched/
+    // off-slot instead of visibly relaxing into the selected tab.
+    placeHighlight(idx, true);
     if (idx != null && items[idx]) items[idx].onClick();
+  };
+
+  // Cancelled drag (pointercancel, e.g. an interrupting system gesture)
+  // returns to the tab that was actually active before the drag started —
+  // never commits a navigation.
+  const cancelDrag = () => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    const idx = items.findIndex((it) => it.key === s.screen);
+    activeIndexRef.current = idx === -1 ? null : idx;
+    setActiveIndex(idx === -1 ? null : idx);
+    if (idx !== -1) placeHighlight(idx, true);
   };
 
   return (
@@ -353,7 +424,7 @@ export default function BottomTabBar({ collapsed }) {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
-      onPointerCancel={endDrag}
+      onPointerCancel={cancelDrag}
       style={{
         ...barGlass({}),
         position: 'relative',

@@ -137,6 +137,19 @@ struct BottomTabBar: View {
     // some other way entirely, e.g. a deep link) so the highlight always
     // sits behind whichever tab is actually current.
     @State private var isDragging = false
+    // Dock-drag fix pass (2026-09-27, follow-up B) — the real root cause of
+    // "dragging jumps from slot to slot": the highlight used to be driven
+    // purely by `activeID`/`activeIndex`, a DISCRETE per-tab identity that
+    // only ever changes once `hitTest` crosses into a neighboring item's
+    // frame, then springs there via `withAnimation` — nothing here ever
+    // read the finger's actual continuous x position. `dragIndexFloat` is
+    // that continuous position instead, in "index space" (0 = Home's
+    // center, 1 = Map's, ...), updated on every `onChanged` with NO
+    // animation wrapper so it tracks the finger with zero lag, including
+    // the space BETWEEN two icons. `nil` whenever no drag is live, so the
+    // body falls back to the discrete `activeIndex` (unchanged for a tap
+    // and for `syncActiveToScreen()`'s own resting-state placement).
+    @State private var dragIndexFloat: CGFloat?
 
     private func syncActiveToScreen() {
         guard !isDragging else { return }
@@ -162,7 +175,20 @@ struct BottomTabBar: View {
         return nil
     }
 
-    private var scrubGesture: some Gesture {
+    // Continuous "index space" position for a raw touch x — 0 at Home's own
+    // center, `items.count - 1` at Account's, fractional in between. Clamped
+    // to the two end items' centers (a drag past either edge still reads as
+    // that end, matching `hitTest`'s own edge behavior) rather than the raw
+    // frame edges, so the capsule's CENTER never overshoots past the first/
+    // last icon's own position.
+    private func indexFloat(for x: CGFloat, barWidth: CGFloat) -> CGFloat? {
+        guard !items.isEmpty, barWidth > 0 else { return nil }
+        let tabWidth = barWidth / CGFloat(items.count)
+        let raw = x / tabWidth - 0.5
+        return min(CGFloat(items.count - 1), max(0, raw))
+    }
+
+    private func scrubGesture(barWidth: CGFloat) -> some Gesture {
         // minimumDistance: 0 so this also fires for a plain tap-and-release
         // — a tap that never moves still lands on, and navigates to,
         // whichever tab it started on.
@@ -170,13 +196,20 @@ struct BottomTabBar: View {
             .onChanged { value in
                 isDragging = true
                 let id = hitTest(value.location.x)
-                if id != activeID {
-                    withAnimation(reduceMotion ? .linear(duration: 0.01) : .interactiveSpring()) { activeID = id }
-                }
+                if id != activeID { activeID = id }
+                // No `withAnimation` here, deliberately — this needs to
+                // track the finger with zero lag, the actual fix for
+                // "jumps from slot to slot." Reduce Motion still gets the
+                // continuous tracking (it isn't the bouncy spring that
+                // setting objects to); only the settle below drops its glide.
+                dragIndexFloat = indexFloat(for: value.location.x, barWidth: barWidth)
             }
             .onEnded { value in
                 let id = hitTest(value.location.x)
-                if let id, let item = items.first(where: { $0.id == id }) { item.action() }
+                let settle = { activeID = id; dragIndexFloat = nil }
+                if reduceMotion { settle() } else {
+                    withAnimation(.interpolatingSpring(stiffness: 260, damping: 22)) { settle() }
+                }
                 // BUG 1 fix: leave the highlight exactly where the drag
                 // landed instead of clearing it to nil — it stays lit on
                 // the tab just navigated to. `isDragging = false` hands
@@ -184,6 +217,7 @@ struct BottomTabBar: View {
                 // here since `activeID` already matches (or will match, the
                 // moment `app.screen` catches up via its own onChange).
                 isDragging = false
+                if let id, let item = items.first(where: { $0.id == id }) { item.action() }
             }
     }
 
@@ -250,21 +284,38 @@ struct BottomTabBar: View {
     var body: some View {
         GeometryReader { geo in
         ZStack(alignment: .leading) {
-            // Soft, blurred, darker highlight blob — reuses the ink token
-            // (no new color), not a new tint. Position/width are a live
-            // fraction of `geo.size.width` (see this view's own
-            // `activeIndex` doc comment) — never itemFrames — so this is
-            // correct at the current 340pt bar width, while the "+" button
-            // shrinks it further, and through the collapse/expand
-            // `scaleEffect` on DockRow (GeometryReader always reports this
-            // view's own local, pre-transform size, immune to an ancestor's
-            // scale the way a measured/cached screen-space rect is not).
-            if let activeIndex {
-                let tabWidth = geo.size.width / CGFloat(max(items.count, 1))
+            // Soft, blurred, darker highlight blob. Dock-drag fix pass
+            // (2026-09-27, follow-up B) — `dragIndexFloat` (continuous,
+            // set live by `scrubGesture`) takes over from the discrete
+            // `activeIndex` the instant a drag is live, so this now
+            // interpolates center, width AND corner curvature continuously
+            // between two icons instead of snapping between fixed slots:
+            // at its resting width exactly centered on an icon, stretched
+            // (soft "droplet" bulge) exactly halfway between two, easing
+            // between those two extremes as the raw x position moves.
+            // Position/width are still a live fraction of `geo.size.width`
+            // (see this view's own now-legacy `activeIndex` doc comment
+            // above) — never itemFrames — so this stays correct through the
+            // "+" button appearing/shrinking the row and DockRow's own
+            // collapse/expand `scaleEffect`.
+            if let indexFloat = dragIndexFloat ?? activeIndex.map(CGFloat.init) {
+                let count = max(items.count, 1)
+                let tabWidth = geo.size.width / CGFloat(count)
+                // 0 exactly on an icon's own center, 0.5 exactly between
+                // two icons — the point of maximum stretch.
+                let fracFromCenter = abs(indexFloat - indexFloat.rounded())
+                let bulge = 1 + 0.5 * sin(min(1, fracFromCenter / 0.5) * (.pi / 2))
+                let width = tabWidth * bulge
+                let clampedIndexFloat = min(CGFloat(count - 1), max(0, indexFloat))
+                let center = tabWidth * (clampedIndexFloat + 0.5)
+                let x = min(geo.size.width - width / 2, max(width / 2, center))
+                // A very slight extra corner rounding at the bulge's peak
+                // reads as more "liquid" than a fixed capsule radius that
+                // just stretches uniformly.
                 Capsule()
                     .fill(app.palette.ink.opacity(0.12))
-                    .frame(width: tabWidth, height: barHeight - 10)
-                    .position(x: tabWidth * (CGFloat(activeIndex) + 0.5), y: barHeight / 2)
+                    .frame(width: width, height: (barHeight - 10) * (1 + 0.03 * (bulge - 1)))
+                    .position(x: x, y: barHeight / 2)
                     .blur(radius: 0.5)
                     .allowsHitTesting(false)
             }
@@ -275,6 +326,8 @@ struct BottomTabBar: View {
                 }
             }
         }
+        .contentShape(Rectangle())
+        .gesture(scrubGesture(barWidth: geo.size.width))
         }
         .frame(height: barHeight)
         // Task 1b follow-up: widened from 320 (fit for 4 icons) to fit the
@@ -282,8 +335,6 @@ struct BottomTabBar: View {
         // web bar's own bump. Task 5: widened again, to `Self.barWidth`,
         // as part of the flatter/more-elongated pill shape.
         .frame(maxWidth: Self.barWidth)
-        .contentShape(Rectangle())
-        .gesture(scrubGesture)
         .backgroundPreferenceValue(TabItemFrameKey.self) { anchors in
             GeometryReader { proxy in
                 Color.clear.onAppear { resolveFrames(anchors, proxy) }
@@ -422,10 +473,25 @@ enum RootTabOutline {
                 p.closeSubpath()
             }
         case .inbox:
-            return RoundedRectangle(cornerRadius: 2.4 * s, style: .continuous)
+            // Refresh-indicator fix pass (2026-09-27, follow-up B) — a bare
+            // rounded rectangle reads as a generic box, not the dock's own
+            // envelope; the real glyph (InboxGlyph) is the rect PLUS its V
+            // flap, so this now traces both in one Path (real coordinates,
+            // matching InboxGlyph's `position(x:12*s,y:12.5*s)` frame).
+            var path = RoundedRectangle(cornerRadius: 2.4 * s, style: .continuous)
                 .path(in: CGRect(x: 4.5 * s, y: 7 * s, width: 15 * s, height: 11 * s))
-        default: // .profile — the head circle is the recognizable part.
-            return Circle().path(in: CGRect(x: (12 - 3.8) * s, y: (8 - 3.8) * s, width: 7.6 * s, height: 7.6 * s))
+            path.move(to: CGPoint(x: 5.5 * s, y: 8.2 * s))
+            path.addLine(to: CGPoint(x: 12 * s, y: 13.5 * s))
+            path.addLine(to: CGPoint(x: 18.5 * s, y: 8.2 * s))
+            return path
+        default: // .profile (this function is only ever called for the five root tabs) — same fix:
+            // a bare circle reads as a dot/badge, not a person; the real glyph
+            // (ProfileGlyph) is the head circle PLUS the shoulders curve, so
+            // both are traced here too.
+            var path = Circle().path(in: CGRect(x: (12 - 3.8) * s, y: (8 - 3.8) * s, width: 7.6 * s, height: 7.6 * s))
+            path.move(to: CGPoint(x: 5 * s, y: 19.2 * s))
+            path.addCurve(to: CGPoint(x: 19 * s, y: 19.2 * s), control1: CGPoint(x: 6.3 * s, y: 15.3 * s), control2: CGPoint(x: 17.7 * s, y: 15.3 * s))
+            return path
         }
     }
 }

@@ -1646,6 +1646,46 @@ final class AppState: ObservableObject {
     /// crosses the pull threshold; guards against a second overlapping
     /// reload the same way `applyOrganizerMode`'s own busy-guard already
     /// does elsewhere in this file.
+    // Refresh-indicator fix pass (2026-09-27, follow-up B) — the real state
+    // machine (idle -> pulling -> armed -> refreshing -> idle) driving
+    // `rootPullProgress`/`rootRefreshing`. Every call site (ScreenScaffold,
+    // Inbox's List, Map's list) now goes through these four instead of
+    // poking `rootPullProgress` from a raw `UIScrollView.contentOffset` KVO
+    // callback — the old approach fired on ANY negative offset (a momentum
+    // bounce past the top, a `.scrollPosition(id:)` restore, the very first
+    // layout pass), which is exactly why the icon could appear while a tab
+    // was idle or right after switching to it. `ScaffoldScrollProbe` now
+    // only calls these from its own pan-gesture target, gated on the
+    // gesture having genuinely BEGUN while that scroll view's own
+    // `contentOffset.y` was already at/above the top — so a pull that
+    // started mid-scroll, or any programmatic/momentum offset change, never
+    // reaches this at all.
+    func beginRootPull() {
+        guard !rootRefreshing else { return }
+        rootPullProgress = 0
+    }
+    func updateRootPull(_ translationY: CGFloat) {
+        guard !rootRefreshing else { return }
+        rootPullProgress = min(1, max(0, translationY) / screenScaffoldPullTriggerDistance)
+    }
+    func endRootPull(trigger: @escaping () async -> Void) {
+        guard !rootRefreshing else { return }
+        if rootPullProgress >= 1 {
+            runRootRefresh(trigger)
+        } else {
+            rootPullProgress = 0
+        }
+    }
+    // Also dismisses a genuinely in-flight refresh's indicator — ticket's
+    // own "dismiss on ... tab switch" clause; the underlying reload task
+    // itself is left to finish (its own `defer` in `runRootRefresh` is a
+    // harmless no-op by then), only the affordance on the screen the user
+    // just left is cleared.
+    func cancelRootPull() {
+        rootPullProgress = 0
+        rootRefreshing = false
+    }
+
     func runRootRefresh(_ action: @escaping () async -> Void) {
         guard !rootRefreshing else { return }
         rootRefreshing = true
