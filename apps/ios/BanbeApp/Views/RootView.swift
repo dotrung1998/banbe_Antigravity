@@ -270,20 +270,51 @@ struct RootView: View {
     /// Interactive-back fix pass (2026-09-27) — extracted so `body` can
     /// attach `tabSwipeGesture` conditionally (root dock screens only)
     /// instead of unconditionally; see that call site's own doc comment.
-    @ViewBuilder
+    ///
+    /// iPhone fix pass (2026-09-27, post-ec06c78) — Issues 1 & 2's real,
+    /// shared root cause: the ForEach below gives its CURRENT screen an
+    /// explicit `.zIndex(1)` (needed only to keep it above its own tab-swipe
+    /// NEIGHBOR while both are briefly mounted — see `rootScreensToRender`).
+    /// `.zIndex()` in SwiftUI orders ALL views sharing the same enclosing
+    /// stacking context, and `ForEach`/`Group`/`if` are transparent
+    /// view-builder constructs, not containers — so this zIndex was never
+    /// actually scoped to "current vs. neighbor" the way it looked; it
+    /// compared against EVERY OTHER sibling in RootView's own outer ZStack
+    /// too. Those other siblings (the leading-edge `edgeSwipe` strip,
+    /// `PhotoViewerView`, `ChatPhotoViewerView`, the loading overlay,
+    /// `ToastOverlay`) have no zIndex of their own — an implicit 0 — so the
+    /// CURRENT screen's explicit 1 silently outranked all of them: the
+    /// current screen's own full-bleed content sat ABOVE the edge-swipe
+    /// strip's hit-testing region (swallowing the touch before the
+    /// `.highPriorityGesture` strip could ever see it — Issue 1, "nothing
+    /// moves"), and above `PhotoViewerView` too (rendered, but hidden
+    /// behind the current screen the whole time — Issue 2, "viewer doesn't
+    /// appear... flashes... previous page slides over it": the SECOND that
+    /// screen changes and briefly stops being `app.screen`, its zIndex
+    /// drops to 0, revealing the still-mounted viewer for one frame, before
+    /// the INCOMING screen becomes `app.screen` and claims zIndex 1 right
+    /// back over it). Wrapping the ForEach in its own literal `ZStack` gives
+    /// it a real, separate stacking context: the 0/1 comparison stays
+    /// contained to current-vs-neighbor exactly as intended, and this
+    /// wrapper `ZStack` itself carries no explicit zIndex, so it (and
+    /// everything inside it) reverts to ordinary declaration-order z-order
+    /// against RootView's OTHER siblings — restoring the edge-swipe strip's
+    /// and every overlay's rightful place above it.
     private var rootScreenStack: some View {
-        ForEach(rootScreensToRender, id: \.self) { s in
-            screenView(for: s)
-            // Only the CURRENT screen plays the push/pop cross-fade — the
-            // neighbor is positioned manually (offsetForRootScreen) and
-            // must never independently fade/slide in on its own.
-            .transition(s == app.screen ? .asymmetric(
-                insertion: .opacity.combined(with: .move(edge: .leading)),
-                removal: .opacity.combined(with: .move(edge: .trailing))
-            ) : .identity)
-            .offset(x: offsetForRootScreen(s))
-            .allowsHitTesting(s == app.screen)
-            .zIndex(s == app.screen ? 1 : 0)
+        ZStack {
+            ForEach(rootScreensToRender, id: \.self) { s in
+                screenView(for: s)
+                // Only the CURRENT screen plays the push/pop cross-fade — the
+                // neighbor is positioned manually (offsetForRootScreen) and
+                // must never independently fade/slide in on its own.
+                .transition(s == app.screen ? .asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .leading)),
+                    removal: .opacity.combined(with: .move(edge: .trailing))
+                ) : .identity)
+                .offset(x: offsetForRootScreen(s))
+                .allowsHitTesting(s == app.screen)
+                .zIndex(s == app.screen ? 1 : 0)
+            }
         }
         // Every screen change — swiped back, tapped back, or pushed
         // forward — cross-fades with a slight horizontal drift instead of

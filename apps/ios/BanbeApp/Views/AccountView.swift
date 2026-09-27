@@ -505,6 +505,26 @@ struct AccountView: View {
                 .foregroundStyle(app.accountTab == key ? app.palette.paper : app.palette.ink)
         }
         .buttonStyle(.plain)
+        // iPhone fix pass (2026-09-27, post-ec06c78), Issue 3 — Account
+        // (`.profile`) is a root dock screen, so RootView's own
+        // `tabSwipeGesture` (`DragGesture(minimumDistance: 8)`) is attached
+        // as a `.simultaneousGesture` across this ENTIRE screen, including
+        // this tab row. A `.simultaneousGesture` ancestor and a descendant
+        // Button are each supposed to recognize independently, but a real
+        // tap's own small incidental finger movement — worse mid an active
+        // root-tab cross-fade `.animation`, when SwiftUI is already busy
+        // resolving this same drag recognizer for the transition itself —
+        // can leave the Button's own tap waiting on that ancestor gesture
+        // to first conclude "not a drag" before committing, reading as a
+        // dropped or delayed tap. `.highPriorityGesture(TapGesture())`
+        // gives this row's own tap unconditional priority the instant a
+        // touch ends without crossing tabSwipeGesture's own commit
+        // distance — the same "more specific interaction wins outright"
+        // precedence this file's `edgeSwipe` already establishes over
+        // whatever's underneath it. Assigning the same `app.accountTab`
+        // value the Button's own action also sets is idempotent — never a
+        // double-toggle — so both handlers safely agree.
+        .highPriorityGesture(TapGesture().onEnded { app.accountTab = key })
         .accessibilityIdentifier("account.tab.\(key)")
     }
 
