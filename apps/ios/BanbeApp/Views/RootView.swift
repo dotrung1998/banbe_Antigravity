@@ -237,6 +237,37 @@ struct RootView: View {
         }
     }
 
+    /// Interactive-back fix pass (2026-09-27) — extracted so `body` can
+    /// attach `tabSwipeGesture` conditionally (root dock screens only)
+    /// instead of unconditionally; see that call site's own doc comment.
+    @ViewBuilder
+    private var rootScreenStack: some View {
+        ForEach(rootScreensToRender, id: \.self) { s in
+            screenView(for: s)
+            // Only the CURRENT screen plays the push/pop cross-fade — the
+            // neighbor is positioned manually (offsetForRootScreen) and
+            // must never independently fade/slide in on its own.
+            .transition(s == app.screen ? .asymmetric(
+                insertion: .opacity.combined(with: .move(edge: .leading)),
+                removal: .opacity.combined(with: .move(edge: .trailing))
+            ) : .identity)
+            .offset(x: offsetForRootScreen(s))
+            .allowsHitTesting(s == app.screen)
+            .zIndex(s == app.screen ? 1 : 0)
+        }
+        // Every screen change — swiped back, tapped back, or pushed
+        // forward — cross-fades with a slight horizontal drift instead of
+        // a hard cut, which is most of what made it feel unlike a native
+        // push/pop. Suppressed for a committing tab-swipe too (its own
+        // settle animation already handles the motion, and
+        // `commitTabSwipe`'s later transaction disables animation
+        // entirely for the actual `app.screen` flip) — the same reasoning
+        // `isCommittingBack`/`dragTranslation` already apply to
+        // edge-swipe-back here.
+        .animation(isCommittingBack || dragTranslation > 0 || tabSwipeCommittingTarget != nil ? nil : .easeInOut(duration: 0.28), value: app.screen)
+        .scrollDisabled(isDragTracking || isCommittingBack)
+    }
+
     /// The real adjacent screen while a horizontal tab-swipe drag is live,
     /// OR the real destination while a committed swipe is still settling
     /// (see `commitTabSwipe`) — `nil` the rest of the time, in which case
@@ -406,38 +437,34 @@ struct RootView: View {
             // this, combined with `ForEach`'s identity-preserving diffing,
             // is what actually fixes both the blank-neighbor and the
             // double-slide-in bugs.
-            ForEach(rootScreensToRender, id: \.self) { s in
-                screenView(for: s)
-                // Only the CURRENT screen plays the push/pop cross-fade —
-                // the neighbor is positioned manually (offsetForRootScreen)
-                // and must never independently fade/slide in on its own.
-                .transition(s == app.screen ? .asymmetric(
-                    insertion: .opacity.combined(with: .move(edge: .leading)),
-                    removal: .opacity.combined(with: .move(edge: .trailing))
-                ) : .identity)
-                .offset(x: offsetForRootScreen(s))
-                .allowsHitTesting(s == app.screen)
-                .zIndex(s == app.screen ? 1 : 0)
+            // Interactive-back fix pass (2026-09-27) — root cause of "slow
+            // leading-edge swipe on a PUSHED screen (EventDetail, a Map
+            // detail sheet, CreateEvent, PublicProfile, Reports, …) no
+            // longer reveals the real previous screen": `tabSwipeGesture`
+            // used to attach via `.simultaneousGesture` UNCONDITIONALLY,
+            // for every screen. Its own `onChanged` already no-ops for a
+            // non-root screen (the `BottomTabBar.visibleScreens.contains`
+            // guard at its top), but a merely-inactive gesture RECOGNIZER
+            // still competes for the touch during SwiftUI's own gesture
+            // arbitration — two simultaneous DragGesture recognizers
+            // overlapping the SAME leading-edge strip (this one at
+            // `minimumDistance: 8`, `edgeSwipe` below at `minimumDistance:
+            // 4`) is exactly what made a slow, partial drag there
+            // unreliable, even though `edgeSwipe` is `.highPriorityGesture`
+            // — that only orders recognition relative to gestures on this
+            // same view; the tab-swipe recognizer was somewhere else in
+            // the hierarchy entirely. The real fix is to never even attach
+            // it outside a root dock screen, not just to make its callback
+            // a no-op there.
+            Group {
+                if BottomTabBar.visibleScreens.contains(app.screen) {
+                    rootScreenStack.simultaneousGesture(tabSwipeGesture)
+                } else {
+                    rootScreenStack
+                }
             }
-            // Every screen change — swiped back, tapped back, or pushed
-            // forward — cross-fades with a slight horizontal drift instead
-            // of a hard cut, which is most of what made it feel unlike a
-            // native push/pop. Suppressed for a committing tab-swipe too
-            // (its own settle animation already handles the motion, and
-            // `commitTabSwipe`'s later transaction disables animation
-            // entirely for the actual `app.screen` flip) — the same
-            // reasoning `isCommittingBack`/`dragTranslation` already apply
-            // to edge-swipe-back here.
-            .animation(isCommittingBack || dragTranslation > 0 || tabSwipeCommittingTarget != nil ? nil : .easeInOut(duration: 0.28), value: app.screen)
-            .simultaneousGesture(tabSwipeGesture)
             // Depth cue on the dragged edge, same as UIKit's pop shadow.
             .shadow(color: .black.opacity(dragProgress * 0.16), radius: 16, x: -6, y: 0)
-            // Belt-and-suspenders once a drag is already tracking: keeps a
-            // screen's own ScrollView from also visibly jiggling/scrolling
-            // while it's being dragged sideways. `edgeSwipeZone` below is
-            // what actually keeps the two gestures from arbitrating over the
-            // same touch in the first place.
-            .scrollDisabled(isDragTracking || isCommittingBack)
 
             // The swipe-back gesture itself, confined to a thin strip along
             // the leading edge rather than attached to the whole screen —

@@ -46,6 +46,11 @@ struct Profile: Codable, Identifiable, Hashable {
     // both validated server-side (sanitize_social_links, migration 102).
     var introLong: String?
     var socialLinks: [SocialLink]?
+    // Account regression fix pass (2026-09-27), Item 3 — an admin's OWN
+    // host-UI preference, separate from `role` (migration 103). Defaults
+    // true server-side; optional here only because a row from before this
+    // migration has no such column at all.
+    var organizerModeEnabled: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -70,6 +75,7 @@ struct Profile: Codable, Identifiable, Hashable {
         case profileTheme = "profile_theme"
         case introLong = "intro_long"
         case socialLinks = "social_links"
+        case organizerModeEnabled = "organizer_mode_enabled"
     }
 }
 

@@ -548,32 +548,18 @@ export default function Account() {
           </span>
         </div>
         {s.organizerModeError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0' }}>{s.organizerModeError}</p>}
-        {/* Root-cause fix (Stage D) — this stays gated on `canHost`
-            (eligibility), never `isOrganizer`/organizerMode (the CURRENT
-            toggle): these rows must stay reachable regardless of the
-            switch above, per the ticket's own "don't remove access to
-            urgent host refund/dispute obligations when organizer mode is
-            off" rule. */}
-        {canHost && (
-          <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
-            <div onClick={openVerifications} data-testid="host-verifications" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="checklist" />{T('Chờ xác nhận thanh toán', 'Awaiting verification')}</span>
-              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-            </div>
-            <div onClick={openPayout} data-testid="host-payout" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="banknote" />{T('Nhận thanh toán', 'Getting paid')}</span>
-              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-            </div>
-            <div onClick={() => openDocuments('invoice', 'host')} data-testid="host-invoices" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="document" />{T('Hoá đơn đã phát hành', 'Invoices issued')}</span>
-              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-            </div>
-            <div onClick={() => openDocuments('receipt', 'host')} data-testid="host-receipts" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', cursor: 'pointer' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="receipt" />{T('Biên nhận đã phát hành', 'Receipts issued')}</span>
-              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
-            </div>
-          </div>
-        )}
+        {/* Account regression fix pass (2026-09-27), Item 1 — the actual
+            host-management rows (verifications/payout/invoices/receipts)
+            used to live here too, so Cá nhân showed the full old
+            "Tổ chức" management menu underneath a toggle that was
+            supposed to be the ONLY thing here. They moved to the Tổ chức
+            tab (below, in account-tab-panel-host) — reachable ONLY while
+            organizerMode is actually on, matching that tab's own
+            visibility. Any genuinely URGENT outstanding duty (a pending
+            verification, an overdue refund) still surfaces here via the
+            ActionCenter above, which is gated on `canHost` (eligibility),
+            not `organizerMode` — a neutral actionable notice, never the
+            full menu. */}
         {/* No separate "Xem trang tổ chức của bạn" card here — org-profile-card
             (Tổ chức tab, once organizerMode is on) is the single entry into
             that management page now. This onboarding pitch is for an
@@ -610,15 +596,30 @@ export default function Account() {
       {canHost && s.myOrganizerId && (
         <div
           onClick={() => goDashboard('profile')}
-          style={{ ...cardGlass({ margin: '22px 20px 0', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer' }) }}
+          style={{
+            ...cardGlass({ margin: '22px 20px 0', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer' }),
+            // Account regression fix pass (2026-09-27), Item 4 — same
+            // visual quality as the personal card's own gradient wash
+            // (account-profile-card, above), but a deliberately DIFFERENT
+            // palette (moss, never the account's own chosen `profileTheme`)
+            // so this always reads as a distinct organization identity,
+            // never a second copy of the personal card.
+            background: `linear-gradient(165deg, ${PROFILE_PALETTE_COLORS.moss}66, transparent 70%)`,
+          }}
           data-testid="org-profile-card"
         >
           <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+            {/* Real avatar only — a rounded-SQUARE frame (never the
+                personal card's circular one), so the two are never
+                visually confusable at a glance even before reading any
+                text. A missing avatar falls back to a real monogram
+                (organizer name's own first letter), never a broken
+                image/placeholder icon. */}
             <div style={{ flex: 'none', width: 56, height: 56, borderRadius: 14, overflow: 'hidden' }}>
               {organizerAvatarUrl(s.myOrganizerAvatarPath) ? (
                 <img src={organizerAvatarUrl(s.myOrganizerAvatarPath)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
-                <div style={{ ...fieldGlass({ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }), ...display(20) }}>
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: ink, color: paper, ...display(20) }}>
                   {(s.orgRegName || 'B').trim()[0]?.toUpperCase() || 'B'}
                 </div>
               )}
@@ -629,7 +630,8 @@ export default function Account() {
                   get_public_profile's event_count/hosting_since_year
                   (migration 091, loadMyOrgStats above), so this card and
                   the public page never disagree. null = not loaded yet
-                  (shows nothing rather than a flash of "0 sự kiện"). */}
+                  (shows nothing rather than a flash of "0 sự kiện") — never
+                  a fabricated count either way. */}
               {s.myOrgPublishedEventCount !== null && (
                 <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>
                   {s.myOrgHostingSinceYear
@@ -642,9 +644,11 @@ export default function Account() {
                 the single tap target, opening the real organizer
                 management page (Dashboard.jsx, real upcoming/past events +
                 check-in), NOT the public profile — visiting the public
-                page is Dashboard's own "Xem như khách" button below. This
-                chevron is purely visual, matching the personal profile
-                card's own right-side "›". */}
+                page is Dashboard's own "Hồ sơ công khai của tổ chức"
+                button. This chevron is purely visual, matching the
+                personal profile card's own right-side "›" — an
+                accessible, large tap target (the whole card, not just
+                this glyph). */}
             <span
               aria-hidden
               data-testid="org-profile-view-public"
@@ -654,6 +658,34 @@ export default function Account() {
           {s.orgRegDesc && (
             <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, opacity: 0.85, margin: 0 }}>{s.orgRegDesc}</p>
           )}
+        </div>
+      )}
+
+      {/* Account regression fix pass (2026-09-27), Item 1 — moved here
+          from Cá nhân: real host-management rows, only ever reachable
+          while organizerMode is on (this whole tab's own visibility
+          rule) — never duplicated in both tabs. */}
+      {canHost && (
+        <div style={{ padding: '22px 20px 0' }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản lý thanh toán', 'Payment management')}</span>
+          <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
+            <div onClick={openVerifications} data-testid="host-verifications" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="checklist" />{T('Chờ xác nhận thanh toán', 'Awaiting verification')}</span>
+              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+            </div>
+            <div onClick={openPayout} data-testid="host-payout" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="banknote" />{T('Nhận thanh toán', 'Getting paid')}</span>
+              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+            </div>
+            <div onClick={() => openDocuments('invoice', 'host')} data-testid="host-invoices" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: `1px solid ${rule}`, cursor: 'pointer' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="document" />{T('Hoá đơn đã phát hành', 'Invoices issued')}</span>
+              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+            </div>
+            <div onClick={() => openDocuments('receipt', 'host')} data-testid="host-receipts" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', cursor: 'pointer' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind="receipt" />{T('Biên nhận đã phát hành', 'Receipts issued')}</span>
+              <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+            </div>
+          </div>
         </div>
       )}
 

@@ -176,9 +176,11 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
     const organizerPage = await organizerContext.newPage();
     await loginWithPassword(organizerPage, organizerUser.email, organizerUser.password);
     await organizerPage.getByTestId('tab-profile').click();
-    // Account extension (2026-09-27, Stage 1) — host duty rows (like
-    // verifications) moved into the always-reachable Cá nhân tab, so
-    // they're no longer hidden behind organizerMode/the Tổ chức tab.
+    // Account regression fix pass (2026-09-27), Item 1 — host-management
+    // rows (like verifications) moved back to the Tổ chức tab, reachable
+    // only while organizerMode is on (true here — organizerUser has
+    // role='organizer').
+    await organizerPage.locator('[data-testid="account-tab-host"]').click();
     await organizerPage.locator('[data-testid="host-verifications"]').click();
     await expect(organizerPage.locator('[data-testid="verifications-title"]')).toBeVisible({ timeout: 5000 });
 

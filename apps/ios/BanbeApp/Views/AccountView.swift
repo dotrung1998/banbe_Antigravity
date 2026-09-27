@@ -394,6 +394,7 @@ struct AccountView: View {
                 }
             }
             orgProfileCard()
+            hostManagementRows
             } // app.accountTab == "host"
 
             if app.accountTab == "admin" {
@@ -724,32 +725,16 @@ struct AccountView: View {
                 .padding(.top, 10)
         }
 
-        // Root-cause fix (Stage D) — this stays gated on `app.canHost`
-        // (eligibility), never `app.organizerMode` (the CURRENT toggle):
-        // these rows must stay reachable regardless of the switch above,
-        // per the ticket's own "don't remove access to urgent host
-        // refund/dispute obligations when organizer mode is off" rule.
-        if app.canHost {
-            VStack(spacing: 0) {
-                row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"),
-                    identifier: "host.verifications", icon: "checklist", trailing: "›") { app.openVerifications() }
-                Divider().overlay(app.palette.rule)
-                row(app.T("Nhận thanh toán", "Getting paid"),
-                    identifier: "host.payout", icon: "banknote", trailing: "›") { app.openPayout() }
-                Divider().overlay(app.palette.rule)
-                row(app.T("Hoá đơn đã phát hành", "Invoices issued"),
-                    identifier: "host.invoices", icon: "doc.text", trailing: "›") {
-                    app.openDocuments(kind: "invoice", role: "host")
-                }
-                Divider().overlay(app.palette.rule)
-                row(app.T("Biên nhận đã phát hành", "Receipts issued"),
-                    identifier: "host.receipts", icon: "receipt", trailing: "›") {
-                    app.openDocuments(kind: "receipt", role: "host")
-                }
-            }
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(.top, 10)
-        }
+        // Account regression fix pass (2026-09-27), Item 1 — the real
+        // host-management rows (verifications/payout/invoices/receipts)
+        // used to live here too, so Cá nhân showed the full old
+        // "Tổ chức" management menu underneath a toggle that was supposed
+        // to be the ONLY thing here. They moved to `hostManagementRows`
+        // (Tổ chức tab, below) — reachable ONLY while organizerMode is
+        // actually on. Any genuinely urgent outstanding duty still
+        // surfaces here via ActionCenterView (gated on `canHost`, not
+        // `organizerMode`) — a neutral actionable notice, never the full
+        // menu.
 
         // No separate "Xem trang tổ chức của bạn" card here — orgProfileCard()
         // (Tổ chức tab, once organizerMode is on) is the single entry into
@@ -773,6 +758,38 @@ struct AccountView: View {
             }
             .foregroundStyle(app.palette.ink)
             .padding(16)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.top, 10)
+        }
+    }
+
+    // Account regression fix pass (2026-09-27), Item 1 — moved out of
+    // Cá nhân's `hostingSection`: real host-management rows, only ever
+    // reachable while organizerMode is on (this whole tab's own
+    // visibility rule) — never duplicated in both tabs.
+    @ViewBuilder
+    private var hostManagementRows: some View {
+        if app.canHost {
+            Text(app.T("Quản lý thanh toán", "Payment management"))
+                .font(.system(size: 11.5, weight: .semibold))
+                .padding(.top, 22)
+            VStack(spacing: 0) {
+                row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"),
+                    identifier: "host.verifications", icon: "checklist", trailing: "›") { app.openVerifications() }
+                Divider().overlay(app.palette.rule)
+                row(app.T("Nhận thanh toán", "Getting paid"),
+                    identifier: "host.payout", icon: "banknote", trailing: "›") { app.openPayout() }
+                Divider().overlay(app.palette.rule)
+                row(app.T("Hoá đơn đã phát hành", "Invoices issued"),
+                    identifier: "host.invoices", icon: "doc.text", trailing: "›") {
+                    app.openDocuments(kind: "invoice", role: "host")
+                }
+                Divider().overlay(app.palette.rule)
+                row(app.T("Biên nhận đã phát hành", "Receipts issued"),
+                    identifier: "host.receipts", icon: "receipt", trailing: "›") {
+                    app.openDocuments(kind: "receipt", role: "host")
+                }
+            }
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .padding(.top, 10)
         }
@@ -864,7 +881,20 @@ struct AccountView: View {
             .buttonStyle(.plain)
             .foregroundStyle(app.palette.ink)
             .padding(16)
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            // Account regression fix pass (2026-09-27), Item 4 — same
+            // visual quality as the personal card's own gradient wash
+            // (account.profileCard, above), but a deliberately DIFFERENT
+            // palette (moss, never the account's own chosen profileTheme)
+            // so this always reads as a distinct organization identity,
+            // never a second copy of the personal card.
+            .background(
+                LinearGradient(
+                    colors: [(ProfilePalette.all.first { $0.key == "moss" }?.color ?? ProfilePalette.all[0].color).opacity(0.4), .clear],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
             .padding(.top, 22)
             .accessibilityIdentifier("org.profile.card")
         }

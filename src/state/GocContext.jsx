@@ -266,6 +266,17 @@ const initialState = {
   // slow session check can't get misread as "signed out" and bounce a
   // returning user to Login before their restored session even arrives.
   sessionChecked: false,
+  // Account regression fix pass (2026-09-27) — Item 3's real login race:
+  // onAuthStateChange sets `screen` away from 'login' the instant a session
+  // arrives, but `user` itself isn't set until syncUser's own async
+  // profile/favorites fetches resolve. The mandatory-login guard effect
+  // (below) reacts on every render, so it could see `sessionChecked && !user
+  // && screen no longer 'login'` in that gap and immediately bounce back to
+  // 'login' — leaving a freshly-authenticated session stuck there forever,
+  // since nothing later re-opens it once user does arrive. This flag covers
+  // that gap: set the instant a session is seen, cleared only once syncUser
+  // has actually populated (or failed to populate) `user`.
+  authSyncing: false,
   // Whether this browser has already been through language/theme
   // onboarding once (i.e. localStorage had a saved preferences record) —
   // read by the splash timer to decide whether to route into 'langPick'
@@ -1225,7 +1236,7 @@ export function GocProvider({ children }) {
       if (!active) return;
       if (!user) {
         favoritesUidRef.current = null;
-        set({ user: null, referralCode: null, sessionChecked: true, favorites: [] });
+        set({ user: null, referralCode: null, sessionChecked: true, favorites: [], authSyncing: false });
         return;
       }
       // Stage 1 (retention roadmap P0) — real `favorites` rows, keyed by
@@ -1251,7 +1262,7 @@ export function GocProvider({ children }) {
       }
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, locale, theme, prefs_saved, display_name, referral_code, policy_accepted_at, policy_version, auto_email_documents, muted_notification_kinds, handle, avatar_url, bio, city, interests, profile_theme, intro_long, social_links')
+        .select('role, locale, theme, prefs_saved, display_name, referral_code, policy_accepted_at, policy_version, auto_email_documents, muted_notification_kinds, handle, avatar_url, bio, city, interests, profile_theme, intro_long, social_links, organizer_mode_enabled')
         .eq('id', user.id)
         .maybeSingle();
       const role =
@@ -1259,7 +1270,18 @@ export function GocProvider({ children }) {
         user.user_metadata?.account_type ||
         user.raw_user_meta_data?.account_type ||
         'participant';
-      const canHostNow = role === 'organizer' || role === 'admin';
+      // Account regression fix pass (2026-09-27), Item 3 — the actual bug:
+      // this used to be `role === 'organizer' || role === 'admin'`, which
+      // forced an admin's organizerMode to `true` on EVERY sync
+      // regardless of their own toggle — the real reason the switch
+      // looked permanently stuck on. `role === 'admin'` alone is
+      // eligibility (canHost, computed separately below from this same
+      // field), never the CURRENT preference; for an admin specifically,
+      // that preference now lives in its own column
+      // (organizer_mode_enabled, migration 103), defaulting to true so an
+      // admin who has never touched the toggle keeps seeing the host UI
+      // exactly as before this fix.
+      const canHostNow = role === 'organizer' || (role === 'admin' && profile?.organizer_mode_enabled !== false);
       const displayName = (profile?.display_name || '').trim() || user.user_metadata?.display_name || '';
       // BUG 2 (2026-10-06 fix pass) — see organizerModeBusyRef's own
       // comment above: skip the role-derived fields entirely while a
@@ -1292,6 +1314,7 @@ export function GocProvider({ children }) {
         referralCode: profile?.referral_code || null, sessionChecked: true,
         autoEmailDocuments: profile?.auto_email_documents === true,
         mutedNotificationKinds: profile?.muted_notification_kinds || [],
+        authSyncing: false,
       });
 
       // Proof-of-consent bookkeeping (Task 1, migration 055,
@@ -1384,6 +1407,7 @@ export function GocProvider({ children }) {
           screen: _event === 'PASSWORD_RECOVERY' ? 'resetPassword' : (prev.screen === 'login' ? prev.authReturnScreen : prev.screen),
           loginSent: false,
           loginSentVia: null,
+          authSyncing: true,
         }));
         syncUser(session.user);
       }
@@ -1407,13 +1431,13 @@ export function GocProvider({ children }) {
   // this in the common case, but this effect can fire independently of
   // splash (e.g. a stray screen change right as sessionChecked settles).
   useEffect(() => {
-    if (s.sessionChecked && !s.user && !GUEST_ALLOWED_SCREENS.has(s.screen)) {
+    if (s.sessionChecked && !s.user && !s.authSyncing && !GUEST_ALLOWED_SCREENS.has(s.screen)) {
       set({
         screen: 'login', authMode: 'login', authMandatory: true,
         authReturnScreen: s.screen, authBackScreen: s.screen,
       });
     }
-  }, [s.sessionChecked, s.user, s.screen, set]);
+  }, [s.sessionChecked, s.user, s.authSyncing, s.screen, set]);
 
   useEffect(() => {
     if (!s.user?.id) return;
@@ -4416,7 +4440,15 @@ export function GocProvider({ children }) {
   // real, and organizerMode is a completely separate, freely-togglable
   // preference on top of it.
   const applyOrganizerMode = useCallback(async (enabled) => {
-    if (s.accountType === 'admin') return;
+    // Account regression fix pass (2026-09-27), Item 3 — this used to
+    // `return` here unconditionally for an admin, before ever calling the
+    // RPC: no request, no error, just nothing happening — "the switch
+    // looks stuck." Fixed at the root (set_organizer_mode, migration 103,
+    // now writes a SEPARATE organizer_mode_enabled column for an admin
+    // rather than refusing to touch anything), so an admin now goes
+    // through the exact same call below as everyone else; only the
+    // optimistic `accountType` write differs (never flips an admin away
+    // from 'admin').
     // TASK 2 (2026-10-05 fix pass) — see toggleOrganizerMode's own comment:
     // the actual guard against a double-tap/double-click firing two
     // overlapping requests (both reading the same stale `s.organizerMode`
@@ -4433,9 +4465,14 @@ export function GocProvider({ children }) {
     // ever sees the ref still `false`.
     if (organizerModeBusyRef.current) return;
     organizerModeBusyRef.current = true;
+    const wasAdmin = s.accountType === 'admin';
     const rollback = { organizerMode: s.organizerMode, accountType: s.accountType };
     console.info('[organizerMode] WRITE source=toggle-optimistic', { old: s.organizerMode, new: enabled });
-    set({ organizerMode: enabled, accountType: enabled ? 'organizer' : 'participant', mode: enabled ? 'host' : 'goer', organizerModeError: '', organizerModeBusy: true });
+    set({
+      organizerMode: enabled,
+      accountType: wasAdmin ? 'admin' : (enabled ? 'organizer' : 'participant'),
+      mode: enabled ? 'host' : 'goer', organizerModeError: '', organizerModeBusy: true,
+    });
     // BUG 2 (2026-10-06 fix pass) — full request/response trace, dev
     // console only, never the access token itself (just whether a session
     // exists) or any personal data — this ticket's own explicit ask for
@@ -4479,8 +4516,11 @@ export function GocProvider({ children }) {
     }
     organizerModeBusyRef.current = false;
     if (data) {
-      const confirmed = data === 'organizer' || data === 'admin';
-      console.info('[organizerMode] WRITE source=toggle-rpc-success', { old: enabled, new: confirmed, role: data });
+      // set_organizer_mode (migration 103) now returns jsonb
+      // { role, organizer_mode } instead of a bare role string — the only
+      // way to represent "still admin, but host UI now off" at all.
+      const confirmed = data.organizer_mode === true;
+      console.info('[organizerMode] WRITE source=toggle-rpc-success', { old: enabled, new: confirmed, role: data.role });
       // Account extension (2026-09-27, Stage 1) — "back navigation if user
       // turns OFF while inside an organizer screen": the Tổ chức tab and
       // every host-only management screen are gone the instant this
@@ -4490,7 +4530,7 @@ export function GocProvider({ children }) {
       // safe landing spot. `hasHosted`/eligibility data is untouched —
       // this only ever redirects, never deletes anything.
       set(prev => ({
-        accountType: data, organizerMode: confirmed, organizerModeError: '', organizerModeBusy: false,
+        accountType: data.role, organizerMode: confirmed, organizerModeError: '', organizerModeBusy: false,
         ...(!confirmed && HOST_ONLY_SCREENS.has(prev.screen) ? { screen: 'profile', accountTab: 'personal' } : {}),
         ...(!confirmed && prev.accountTab === 'host' ? { accountTab: 'personal' } : {}),
       }));

@@ -470,7 +470,15 @@ extension AppState {
             if !organizerModeInFlight {
                 let oldMode = organizerMode
                 accountType = profile.role
-                let canHostNow = profile.role == "organizer" || profile.role == "admin"
+                // Account regression fix pass (2026-09-27), Item 3 — this
+                // used to be `profile.role == "organizer" || profile.role
+                // == "admin"`, forcing an admin's organizerMode to `true`
+                // on EVERY session sync regardless of their own toggle.
+                // `role == "admin"` alone is eligibility, never the
+                // CURRENT preference; for an admin that preference now
+                // lives in its own column (organizerModeEnabled,
+                // migration 103), defaulting to true.
+                let canHostNow = profile.role == "organizer" || (profile.role == "admin" && profile.organizerModeEnabled != false)
                 organizerMode = canHostNow
                 mode = canHostNow ? "host" : "goer"
                 #if DEBUG
@@ -1031,7 +1039,15 @@ extension AppState {
     /// real, and organizerMode is a completely separate, freely-togglable
     /// preference on top of it.
     func applyOrganizerMode(_ enabled: Bool) async {
-        guard accountType != "admin" else { return }
+        // Account regression fix pass (2026-09-27), Item 3 — this used to
+        // `return` here unconditionally for an admin, before ever calling
+        // the RPC: no request, no error, just nothing happening — "the
+        // switch looks stuck." Fixed at the root (set_organizer_mode,
+        // migration 103, now writes a SEPARATE organizer_mode_enabled
+        // column for an admin rather than refusing to touch anything), so
+        // an admin now goes through the exact same call below as everyone
+        // else; only the optimistic `accountType` write differs (never
+        // flips an admin away from "admin").
         // TASK 2 (2026-10-05 fix pass) / BUG 1 (2026-10-07 fix pass) — the
         // actual re-entrancy guard against a second tap racing an in-flight
         // call is `organizerModeInFlight` (a plain, non-`@Published` var —
@@ -1070,6 +1086,7 @@ extension AppState {
 
         let rollbackMode = organizerMode
         let rollbackType = accountType
+        let wasAdmin = accountType == "admin"
         #if DEBUG
         print("[organizerMode] WRITE source=toggle-optimistic old=\(rollbackMode) new=\(enabled)")
         #endif
@@ -1089,7 +1106,7 @@ extension AppState {
         // this animation helps even a single, correct transition).
         withAnimation(.easeInOut(duration: 0.2)) {
             organizerMode = enabled
-            accountType = enabled ? "organizer" : "participant"
+            accountType = wasAdmin ? "admin" : (enabled ? "organizer" : "participant")
             mode = enabled ? "host" : "goer"
         }
         organizerModeError = ""
@@ -1105,18 +1122,24 @@ extension AppState {
         #endif
 
         do {
-            let role: String = try await SupabaseService.client
+            // set_organizer_mode (migration 103) now returns jsonb
+            // {role, organizer_mode} instead of a bare role string — the
+            // only way to represent "still admin, but host UI now off."
+            struct SetOrganizerModeResult: Decodable { let role: String; let organizerMode: Bool
+                enum CodingKeys: String, CodingKey { case role, organizerMode = "organizer_mode" }
+            }
+            let result: SetOrganizerModeResult = try await SupabaseService.client
                 .rpc("set_organizer_mode", params: ["p_enabled": enabled])
                 .execute().value
             #if DEBUG
-            print("[organizerMode] response — role=\(role)")
+            print("[organizerMode] response — role=\(result.role) organizer_mode=\(result.organizerMode)")
             #endif
-            let confirmed = (role == "organizer" || role == "admin")
+            let confirmed = result.organizerMode
             #if DEBUG
-            print("[organizerMode] WRITE source=toggle-rpc-success old=\(enabled) new=\(confirmed) role=\(role)")
+            print("[organizerMode] WRITE source=toggle-rpc-success old=\(enabled) new=\(confirmed) role=\(result.role)")
             #endif
             withAnimation(.easeInOut(duration: 0.2)) {
-                accountType = role
+                accountType = result.role
                 organizerMode = confirmed
                 // Account extension (2026-09-27, Stage 1) — "back
                 // navigation if user turns OFF while inside an organizer
