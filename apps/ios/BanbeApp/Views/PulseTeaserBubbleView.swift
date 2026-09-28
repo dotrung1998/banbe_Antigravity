@@ -3,10 +3,20 @@ import SwiftUI
 /// Home Pulse teaser — iOS's own version of `src/screens/Home.jsx`'s
 /// `PulseTeaserBubble`.
 ///
-/// Rendered as a RootView ZStack sibling (never inside HomeView itself),
-/// positioned from `app.pulseRingFrame` — measuring the real ring and
-/// floating above everything from that, so it can never be clipped by
-/// HomeView's ScrollView or sit behind another screen.
+/// This type is the teaser's STATE MACHINE, not its pixels: the 5-step
+/// sequence, its per-step wall-clock timers, the 5-minute repeat rule and
+/// suspend/resume. It has to keep running while Home is not the mounted
+/// screen, so it stays a RootView ZStack sibling, and it publishes
+/// `app.pulseTeaserStep` for `HomeView` to draw.
+///
+/// The visible bubble (`PulseTeaserBubbleContent`, bottom of this file) is
+/// drawn by `HomeView.storyRow`, INSIDE that row's own content — the exact
+/// same scrolling coordinate space as the Pulse ring it points at — so
+/// UIKit moves ring and bubble together as one piece of content. All the
+/// passes documented below describe the older "position a screen-space
+/// overlay from a reported ring frame" designs; the "Same-space pass"
+/// further down supersedes every one of them (and `RingFrameProbe`, which
+/// they were built on, is deleted).
 ///
 /// Positioning pass (2026-09-28): moved from "centered above the ring" to
 /// a comic-style speech bubble BESIDE the ring (to its right, vertically
@@ -122,51 +132,50 @@ import SwiftUI
 /// otherwise unchanged — this only inserts one step's content and
 /// re-numbers the final step.
 ///
-/// Live-tracking pass (2026-09-28, real-device follow-up on top of the
-/// `RingFrameProbe` fix above): that fix got `app.pulseRingFrame` itself
-/// live and current throughout a real touch-drag (confirmed: the ring
-/// visibly tracked the finger correctly at rest AND the KVO callback that
-/// writes it has no throttle/dedupe/dispatch of any kind — see
-/// `RingFrameProbe.ProbeView.reportFrame()`). But the bubble, which used
-/// to consume that value through a plain SwiftUI `.position()` bound to
-/// the `@Published` property, still visibly froze at a fixed screen
+/// Live-tracking pass (2026-09-28, first real-device follow-up on top of
+/// the `RingFrameProbe` fix above): the ring's own reported frame was
+/// correct at rest, but the bubble still visibly froze at a fixed screen
 /// position for the whole duration of an active drag and only caught up
-/// once the drag settled — a RENDER-COMMIT lag, not a data-staleness bug:
-/// a view that merely *observes* an `ObservableObject`'s `@Published`
-/// property (as opposed to owning its own gesture-driven `@State`, which
-/// SwiftUI keeps painting live because it owns that gesture end-to-end)
-/// is not reliably flushed to screen for the duration of a real
-/// interactive `UIScrollView` pan on this codebase's tested real-device/
-/// iOS combination — the exact same bug CLASS the PreferenceKey doc
-/// comments above already diagnosed twice, just one layer deeper (SwiftUI's
-/// own commit scheduling, not data propagation into `app.pulseRingFrame`,
-/// which was already correct here).
+/// once the drag settled. That pass moved the bubble's position out of
+/// SwiftUI's declarative render pipeline and into an imperative
+/// `UIHostingController` frame write, driven from
+/// `AppState.pulseBubbleFrameSink` — set from the same synchronous call
+/// stack as `RingFrameProbe`'s own KVO callback. Real-device follow-up #2
+/// (2026-09-28, this pass) reported the SAME symptom still happening on a
+/// real iPhone, so that whole approach — probe, callback, coordinate
+/// conversion, imperative hosting — is gone rather than patched a fourth
+/// time.
 ///
-/// Fixed by taking the bubble's on-screen POSITION out of SwiftUI's
-/// declarative render pipeline entirely (`PulseBubblePositioningHost`
-/// below): the bubble's visual content is still authored in SwiftUI
-/// (`bubbleContent`, unchanged) and hosted via a plain `UIHostingController`,
-/// but that hosted view's `frame` is set IMPERATIVELY, synchronously, from
-/// `AppState.pulseBubbleFrameSink` — called from the exact same call stack
-/// as `RingFrameProbe`'s own KVO callback in `HomeView.swift` that already
-/// proves (by the ring itself visibly moving live) a raw `UIView.frame`
-/// mutation made synchronously inside that callback paints on the very
-/// next frame regardless of RunLoop mode. Both the ring's frame
-/// (`RingFrameProbe`'s `convert(bounds, to: nil)`) and the bubble's own
-/// frame (`ContainerView.reposition`, also window/`nil`-space, via
-/// `UIScreen.main.bounds`) are computed in the same coordinate space on
-/// every update. The old size-measuring `GeometryReader` + `PreferenceKey`
-/// + `.opacity(measuredForStep == step ? 1 : 0)` dance is gone — sizing
-/// now comes from `UIHostingController.sizeThatFits(in:)`, read
-/// synchronously inside the same imperative `reposition()` call, so
-/// there's no separate "wait a frame for the size preference to arrive"
-/// step to stall on. The off-screen-ring hide/show gate moved the same
-/// way — `ContainerView.reposition` hides the bubble the instant `ring`
-/// stops intersecting `UIScreen.main.bounds`, live, not only re-evaluated
-/// when SwiftUI happens to re-render this view.
+/// Same-space pass (this pass, supersedes every positioning pass above):
+/// the bubble no longer reads the ring's on-screen frame from ANYTHING. It
+/// is now drawn by `HomeView` as part of `storyRow`'s own content — i.e.
+/// inside the exact same scrolling coordinate space as the Pulse ring it
+/// points at (`PulseTeaserBubbleContent` below, placed by `storyRow` in
+/// HomeView.swift) — so UIKit scrolls the ring and the bubble as one piece
+/// of content, on every scroll tick and in every RunLoop mode, with no
+/// callback, no KVO, no `convert(_:to:)` coordinate math and no SwiftUI
+/// render commit anywhere between "the finger moves" and "the bubble
+/// moves". That is a structural guarantee rather than another timing
+/// argument — which is precisely what three rounds of timing arguments
+/// (`PreferenceKey` -> KVO probe -> imperative hosting) failed to deliver
+/// on a real device. `HomeView` keeps the bubble from being clipped by the
+/// horizontal story row with `.scrollClipDisabled()` on that row (iOS 17+,
+/// this project's own deployment target), and nothing needs to be measured:
+/// the anchor is expressed as an alignment guide (the bubble's own bottom
+/// minus the ring's mid-height), so its bottom-leading corner lands on the
+/// ring's center point whatever height the current copy has.
+///
+/// What this view still owns is the part that never had a bug: the 5-step
+/// sequence, its per-step wall-clock timers, the 5-minute repeat rule, and
+/// suspend/resume on background/leaving Home. It deliberately stays a
+/// RootView sibling (RootView.swift) so that machinery keeps running while
+/// Home is not the mounted screen. It now publishes `app.pulseTeaserStep`
+/// for Home to draw from, and hands its two tap actions to Home through
+/// AppState (`pulseTeaserAdvance` / `pulseTeaserOpenPhotos`) — a tap is a
+/// one-off event, never a per-frame one, so a plain closure is immune to
+/// every timing problem this file has had to work around.
 struct PulseTeaserBubbleView: View {
     @EnvironmentObject var app: AppState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var step = -1 // -1 = hidden, 0...4 = the 5 sequence steps
@@ -180,110 +189,51 @@ struct PulseTeaserBubbleView: View {
     private static let repeatInterval: TimeInterval = 1 * 60
 
     var body: some View {
-        Group {
-            // Gated only on non-per-frame conditions (which step, which
-            // screen) — the ring-on-screen intersection test that used to
-            // live here too now happens live, inside
-            // `PulseBubblePositioningHost`'s imperative reposition path,
-            // so it can react to a mid-drag scroll-off exactly when it
-            // happens rather than only on the next SwiftUI re-render.
-            if step >= 0, app.screen == .home {
-                PulseBubblePositioningHost(
-                    app: app,
-                    reduceMotion: reduceMotion,
-                    content: AnyView(
-                        bubbleContent
-                            .onTapGesture { advanceOrDismiss() }
-                            .accessibilityElement(children: .combine)
-                            .accessibilityIdentifier("home.pulseTeaserBubble")
-                    )
-                )
-                .ignoresSafeArea()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Nothing visible lives here any more — the bubble itself is drawn
+        // by `HomeView`, inside the feed's OWN scrolling coordinate space
+        // (see this file's own "Same-space pass" above, and
+        // `PulseTeaserBubbleContent` below). What remains here is the
+        // teaser's STATE MACHINE, which must keep running independently of
+        // Home being the mounted screen — hence the RootView sibling.
+        Color.clear
+            .frame(width: 0, height: 0)
+            // The single value the bubble renders from. `step` only ever
+            // changes on a real state change (a step advance, a tap, a
+            // dismiss) — never once per scroll frame — so a plain
+            // `@Published` read in HomeView is all the bubble needs; there
+            // is no per-scroll-frame value left in this pipeline at all.
+            .onChange(of: step) { _, newStep in app.pulseTeaserStep = newStep }
+            .onChange(of: app.screen) { _, newScreen in
+                if newScreen == .home { reevaluate() } else { suspend() }
             }
-        }
-        .onChange(of: app.screen) { _, newScreen in
-            if newScreen == .home { reevaluate() } else { suspend() }
-        }
-        .onChange(of: app.user?.id) { _, _ in reevaluate() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { reevaluate() } else { suspend() }
-        }
-        .onAppear { reevaluate(); startPolling() }
-        .onDisappear {
-            pollTask?.cancel()
-            pollTask = nil
-            app.pulseBubbleFrameSink = nil
-        }
+            .onChange(of: app.user?.id) { _, _ in reevaluate() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { reevaluate() } else { suspend() }
+            }
+            .onAppear {
+                // The bubble's two tap actions, handed to Home through
+                // AppState (see this file's own "Same-space pass" comment
+                // for why a plain closure is the right mechanism for a
+                // one-off tap).
+                app.pulseTeaserAdvance = { advanceOrDismiss() }
+                app.pulseTeaserOpenPhotos = { openFeaturedPhotos() }
+                reevaluate()
+                startPolling()
+            }
+            .onDisappear {
+                pollTask?.cancel()
+                pollTask = nil
+                app.pulseTeaserStep = -1
+                app.pulseTeaserAdvance = nil
+                app.pulseTeaserOpenPhotos = nil
+            }
     }
 
-    @ViewBuilder
-    private var bubbleContent: some View {
-        Group {
-            if step == 0 {
-                Text(app.T("Top sự kiện hôm nay", "Today's top events"))
-            } else if step == 1 {
-                rankedList(app.pulseDaily, empty: app.T("Chưa có xếp hạng hôm nay", "Nothing ranked yet today"))
-            } else if step == 2 {
-                Text(app.T("Top sự kiện tuần này", "This week's top events"))
-            } else if step == 3 {
-                // Mirrors step 1 exactly (same numbered-list shape, same
-                // empty-state pattern), sourced from `app.pulseWeekly` — the
-                // existing weekly ranking Pulse's own "Tuần này" tab already
-                // loads via `goc_pulse_ranked('weekly')`, never a separate
-                // or invented query.
-                rankedList(app.pulseWeekly, empty: app.T("Chưa có xếp hạng tuần này", "Nothing ranked yet this week"))
-            } else {
-                // Final step — only "Bấm xem thêm" is tappable; tapping it
-                // dismisses the teaser and jumps straight into Pulse's own
-                // existing "Ảnh nổi bật" tab (see `openFeaturedPhotos()`).
-                // A tap anywhere else on the bubble still just
-                // advances/dismisses like every other step, via the
-                // Group-level `.onTapGesture` in `body`.
-                HStack(spacing: 4) {
-                    Text(app.T("Ảnh nổi bật:", "Featured photos:"))
-                    Text(app.T("Bấm xem thêm", "Tap to view"))
-                        .underline()
-                        .onTapGesture { openFeaturedPhotos() }
-                        .accessibilityIdentifier("home.pulseTeaserFeaturedPhotosLink")
-                }
-            }
-        }
-        .font(.system(size: 13, weight: .semibold))
-        .foregroundStyle(app.palette.paper)
-        .multilineTextAlignment(.trailing)
-        .padding(.horizontal, 14).padding(.vertical, 11)
-        .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.22), radius: 10, y: 4)
-        // Comic-bubble pointer — LEFT side, near the BOTTOM of that edge
-        // (positioning pass 2) so its tip lands close to the anchor point
-        // itself (the ring's center) under the new upper-right-quadrant
-        // overlap placement — matches web's equivalent redesign.
-        .overlay(alignment: .bottomLeading) {
-            Triangle()
-                .fill(app.palette.ink)
-                .frame(width: 6, height: 10)
-                .offset(x: -6, y: -8)
-        }
-    }
-
-    /// Shared shape for step 1 (daily) and step 3 (weekly) — a truthful,
-    /// numbered top-3 list, gracefully handling fewer than 3 real results
-    /// (no padding with placeholders) and a genuinely empty ranking (a
-    /// short empty-state line instead of a blank bubble).
-    @ViewBuilder
-    private func rankedList(_ ranking: [PulseItem], empty: String) -> some View {
-        if ranking.isEmpty {
-            Text(empty)
-        } else {
-            VStack(alignment: .trailing, spacing: 3) {
-                ForEach(Array(ranking.prefix(3).enumerated()), id: \.element.id) { i, item in
-                    Text("\(i + 1). \(item.eventName)")
-                        .lineLimit(1)
-                }
-            }
-        }
-    }
+    // The bubble's own content/typography/pointer and its two accessibility
+    // identifiers now live in `PulseTeaserBubbleContent` at the bottom of
+    // this file — same copy, same drawing, rendered by `HomeView` inside
+    // the feed's own scrolling coordinate space (see this file's
+    // "Same-space pass" above).
 
     /// Routes into the SAME existing Pulse viewer every ring tap already
     /// opens, jumped straight to its pre-existing "Ảnh nổi bật" tab —
@@ -399,155 +349,107 @@ struct PulseTeaserBubbleView: View {
     }
 }
 
-/// Live position bridge for the Pulse teaser bubble — see this file's own
-/// "Live-tracking pass" doc comment above `PulseTeaserBubbleView` for the
-/// full root-cause writeup of why this exists (an observed `@Published`
-/// value isn't enough; the SwiftUI render commit itself lags during a real
-/// interactive scroll). This type owns ONLY presentation/geometry — it has
-/// no knowledge of the step sequence, timers, or dismiss logic, all of
-/// which stay in `PulseTeaserBubbleView` untouched.
+/// The teaser's VISIBLE bubble — same copy, same typography, same pointer,
+/// same accessibility identifiers (`home.pulseTeaserBubble` /
+/// `home.pulseTeaserFeaturedPhotosLink`), same tap behaviour as it has
+/// always had; only WHERE it is drawn changed. `HomeView.storyRow` renders
+/// it as part of the story row's own content — i.e. INSIDE the exact same
+/// scrolling coordinate space as the Pulse ring it points at (see this
+/// file's "Same-space pass" above) — so UIKit scrolls the two together as
+/// one piece of content: no callback, no KVO, no `convert(_:to:)`, no
+/// SwiftUI render commit anywhere in between, and therefore no way for the
+/// bubble to sit fixed on screen while the ring keeps moving.
 ///
-/// The representable's own view fills the screen (`.ignoresSafeArea()` +
-/// `.frame(maxWidth: .infinity, maxHeight: .infinity)` at the call site)
-/// and never moves — SwiftUI lays it out exactly once and has no further
-/// reason to touch it, so it can never fight with this type's own
-/// imperative frame-setting. The actual visible bubble is a plain UIKit
-/// subview (`hosting.view`) added directly via `addSubview`, entirely
-/// outside SwiftUI's layout system, whose `frame` this type sets by hand.
-struct PulseBubblePositioningHost: UIViewRepresentable {
-    let app: AppState
-    let reduceMotion: Bool
-    let content: AnyView
+/// Positioning is done entirely by the CALL SITE, in `storyRow`'s content
+/// space, from that row's own layout constants: the bubble's bottom-leading
+/// corner is anchored at the ring's CENTER point and it extends
+/// up-and-trailing from there — for any bubble at least as large as the
+/// ring's own radius (true for every real piece of copy this sequence
+/// shows), that necessarily overlaps exactly the ring's upper-right
+/// quadrant. The caller supplies the leading inset (the ring's mid-X within
+/// the row) and an `.alignmentGuide(.top)` of `bottom - ringMidY`, so this
+/// view's height never has to be measured. The pointer on the bubble's own
+/// LEFT edge stays aimed back at the ring.
+///
+/// Taps: the whole box advances/dismisses the sequence (`onTap`), exactly
+/// as before, and only the final step's "Bấm xem thêm" link opens Pulse
+/// (`onOpenFeaturedPhotos`) — see `PulseTeaserBubbleView`'s own
+/// `advanceOrDismiss()`/`openFeaturedPhotos()` for the logic, which never
+/// moved. Because this is a small overlay on the story row rather than a
+/// full-screen layer, only the box it actually covers intercepts touches:
+/// the ring's other three quadrants stay directly tappable.
+struct PulseTeaserBubbleContent: View {
+    @EnvironmentObject var app: AppState
+    let step: Int
+    let onTap: () -> Void
+    let onOpenFeaturedPhotos: () -> Void
 
-    func makeUIView(context: Context) -> ContainerView {
-        let view = ContainerView()
-        view.reduceMotion = reduceMotion
-        let hosting = UIHostingController(rootView: content)
-        hosting.view.backgroundColor = .clear
-        view.hosting = hosting
-        view.addSubview(hosting.view)
-        view.app = app
-        return view
-    }
-
-    func updateUIView(_ uiView: ContainerView, context: Context) {
-        uiView.reduceMotion = reduceMotion
-        uiView.app = app
-        uiView.updateContent(content)
-    }
-
-    static func dismantleUIView(_ uiView: ContainerView, coordinator: ()) {
-        uiView.tearDown()
-    }
-
-    /// Fills the screen (see this type's own doc comment) and passes
-    /// every touch through to whatever's underneath EXCEPT the one small
-    /// subview (`hosting.view`) actually showing the bubble — the standard
-    /// UIKit "passthrough container" pattern: overriding `hitTest`
-    /// (instead of `point(inside:)`) is what lets `hosting.view` keep
-    /// receiving its own tap gesture while this container itself never
-    /// intercepts anything, preserving both the ring's own tap target
-    /// (the other three quadrants `HomeView` draws) and the bubble's own
-    /// (including the step-3 "Bấm xem thêm" link).
-    final class ContainerView: UIView {
-        var hosting: UIHostingController<AnyView>?
-        var reduceMotion = false
-        weak var app: AppState? {
-            didSet {
-                guard app !== oldValue, let app else { return }
-                registerSink(on: app)
-            }
-        }
-        private var lastRing: CGRect?
-        private var registeredOn: AppState?
-
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            guard window != nil, let app else { return }
-            registerSink(on: app)
-            // First frame, before any live sink callback has fired yet —
-            // `RingFrameProbe` may well have already reported several
-            // times before this bubble ever became eligible to show, so
-            // this is the ring's real, current (if slightly non-live)
-            // position rather than a stale/zero placeholder.
-            if let initial = app.pulseRingFrame { reposition(ring: initial) }
-        }
-
-        private func registerSink(on app: AppState) {
-            guard registeredOn !== app else { return }
-            registeredOn = app
-            app.pulseBubbleFrameSink = { [weak self] rect in
-                self?.reposition(ring: rect)
-            }
-        }
-
-        /// Called by SwiftUI whenever the bubble's CONTENT changes (a step
-        /// advancing, ranked data arriving) — not a per-scroll-frame event,
-        /// so a small crossfade here carries none of this file's own
-        /// "no animation on the live position" ban, which is specifically
-        /// about the frame math below, never touched by an `Animation`.
-        func updateContent(_ newContent: AnyView) {
-            guard let hosting else { return }
-            if reduceMotion {
-                hosting.rootView = newContent
+    var body: some View {
+        Group {
+            if step == 0 {
+                Text(app.T("Top sự kiện hôm nay", "Today's top events"))
+            } else if step == 1 {
+                rankedList(app.pulseDaily, empty: app.T("Chưa có xếp hạng hôm nay", "Nothing ranked yet today"))
+            } else if step == 2 {
+                Text(app.T("Top sự kiện tuần này", "This week's top events"))
+            } else if step == 3 {
+                // Mirrors step 1 exactly (same numbered-list shape, same
+                // empty-state pattern), sourced from `app.pulseWeekly` — the
+                // existing weekly ranking Pulse's own "Tuần này" tab already
+                // loads via `goc_pulse_ranked('weekly')`, never a separate
+                // or invented query.
+                rankedList(app.pulseWeekly, empty: app.T("Chưa có xếp hạng tuần này", "Nothing ranked yet this week"))
             } else {
-                UIView.transition(with: hosting.view, duration: 0.2, options: [.transitionCrossDissolve, .beginFromCurrentState]) {
-                    hosting.rootView = newContent
+                // Final step — only "Bấm xem thêm" is tappable; tapping it
+                // dismisses the teaser and jumps straight into Pulse's own
+                // existing "Ảnh nổi bật" tab. A tap anywhere else on the box
+                // still just advances/dismisses like every other step, via
+                // the box-level `.onTapGesture` below.
+                HStack(spacing: 4) {
+                    Text(app.T("Ảnh nổi bật:", "Featured photos:"))
+                    Text(app.T("Bấm xem thêm", "Tap to view"))
+                        .underline()
+                        .onTapGesture { onOpenFeaturedPhotos() }
+                        .accessibilityIdentifier("home.pulseTeaserFeaturedPhotosLink")
                 }
             }
-            // Re-measure against the LAST known ring rect immediately —
-            // content (hence size) just changed but the ring may not move
-            // again for a while (e.g. the user's finger is at rest between
-            // steps), so this can't wait for the next live sink callback.
-            if let lastRing { reposition(ring: lastRing) }
         }
-
-        func tearDown() {
-            if registeredOn === app { app?.pulseBubbleFrameSink = nil }
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(app.palette.paper)
+        .multilineTextAlignment(.trailing)
+        .padding(.horizontal, 14).padding(.vertical, 11)
+        .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .shadow(color: .black.opacity(0.22), radius: 10, y: 4)
+        // Comic-bubble pointer — LEFT side, near the BOTTOM of that edge
+        // (positioning pass 2) so its tip lands close to the anchor point
+        // itself (the ring's center) under the upper-right-quadrant overlap
+        // placement — matches web's equivalent redesign.
+        .overlay(alignment: .bottomLeading) {
+            Triangle()
+                .fill(app.palette.ink)
+                .frame(width: 6, height: 10)
+                .offset(x: -6, y: -8)
         }
+        .onTapGesture { onTap() }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("home.pulseTeaserBubble")
+    }
 
-        /// Both this and `RingFrameProbe.reportFrame()` compute in the
-        /// same coordinate space — window/`nil` space via `UIScreen.main.
-        /// bounds` here, `convert(bounds, to: nil)` there — on every
-        /// update, matching this ticket's own requirement. No `Animation`/
-        /// `withAnimation` wraps this: the frame is set directly, so the
-        /// bubble's rendered position never lags behind `ring` by more
-        /// than a single display refresh, through active finger-tracking,
-        /// deceleration, and reverse-direction scrolling alike.
-        private func reposition(ring: CGRect) {
-            lastRing = ring
-            guard let hosting else { return }
-            let screen = UIScreen.main.bounds
-            guard ring.width > 0, ring.intersects(screen) else {
-                hosting.view.isHidden = true
-                return
+    /// Shared shape for step 1 (daily) and step 3 (weekly) — a truthful,
+    /// numbered top-3 list, gracefully handling fewer than 3 real results
+    /// (no padding with placeholders) and a genuinely empty ranking (a
+    /// short empty-state line instead of a blank bubble).
+    @ViewBuilder
+    private func rankedList(_ ranking: [PulseItem], empty: String) -> some View {
+        if ranking.isEmpty {
+            Text(empty)
+        } else {
+            VStack(alignment: .trailing, spacing: 3) {
+                ForEach(Array(ranking.prefix(3).enumerated()), id: \.element.id) { i, item in
+                    Text("\(i + 1). \(item.eventName)")
+                        .lineLimit(1)
+                }
             }
-            let margin: CGFloat = 12
-            let maxWidth: CGFloat = 230
-            let fitting = hosting.sizeThatFits(in: CGSize(width: maxWidth, height: .greatestFiniteMagnitude))
-            let width = min(fitting.width > 0 ? fitting.width : 220, maxWidth)
-            let height = fitting.height > 0 ? fitting.height : 40
-            // Anchored so the bubble's own bottom-leading corner sits at
-            // the ring's CENTER point, extending up-and-trailing from
-            // there — see this file's positioning-pass-2 doc comment
-            // (PulseTeaserBubbleView's own header) for why that
-            // necessarily overlaps the ring's upper-right quadrant.
-            // Clamped so the whole box always stays fully inside the
-            // screen instead of a hardcoded guess about size.
-            let maxLeft = max(margin, screen.width - margin - width)
-            let left = min(max(margin, ring.midX), maxLeft)
-            let maxTop = max(margin, screen.height - margin - height)
-            let top = min(max(margin, ring.midY - height), maxTop)
-            hosting.view.isHidden = false
-            hosting.view.frame = CGRect(x: left, y: top, width: width, height: height)
-        }
-
-        override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-            for subview in subviews.reversed() {
-                let converted = subview.convert(point, from: self)
-                if let hit = subview.hitTest(converted, with: event) { return hit }
-            }
-            return nil
         }
     }
 }

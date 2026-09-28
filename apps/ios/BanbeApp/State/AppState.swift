@@ -593,44 +593,41 @@ final class AppState: ObservableObject {
     // time (RootView.swift's ZStack), so this dictionary keeps updating even
     // while visually covered.
     @Published var storyRingFrames: [String: CGRect] = [:]
-    // Pulse teaser pass (2026-09-27) — the Pulse ring's own global frame,
-    // read by `PulseTeaserBubbleView` to position itself against the REAL
-    // ring on screen rather than guessing a fixed offset.
+    // Pulse teaser pass (2026-09-27), reworked by the same-space pass
+    // (2026-09-28, after a second real-device report of the bubble sitting
+    // fixed on screen while the ring scrolled) — the teaser's own sequence
+    // position, published by `PulseTeaserBubbleView` (RootView.swift — it
+    // stays a RootView sibling so its timers keep running while Home isn't
+    // the mounted screen) and rendered by `HomeView.storyRow`, which draws
+    // the bubble INSIDE the story row's own content — the very same
+    // scrolling coordinate space as the Pulse ring it points at — so UIKit
+    // moves the two together with no callback, KVO, coordinate conversion
+    // or SwiftUI render commit in the path. Because of that, this is only
+    // ever written on a real state change (a step advance, a tap, a
+    // dismiss), never once per scroll frame, so a plain `@Published` read
+    // in HomeView is all the bubble needs.
     //
-    // Real-device follow-up (2026-09-28): unlike `storyRingFrames` above,
-    // this is no longer written via a GeometryReader + PreferenceKey —
-    // that mechanism silently stops propagating for the whole duration of
-    // a real touch-drag (RunLoop `.tracking` mode; see `RingFrameProbe` in
-    // Components.swift and `ScaffoldScrollProbe`'s own doc comment for the
-    // full root-cause writeup), which froze this frame stale while the
-    // ring kept moving on screen. `HomeView` now writes here directly from
-    // `RingFrameProbe`'s UIKit-level callback instead.
-    //
-    // Live-tracking follow-up (2026-09-28, this pass): the fix above got
-    // this VALUE live and current throughout a real drag, but a plain
-    // `@Published` read by a SwiftUI view (`PulseTeaserBubbleView`'s old
-    // `.position()`) still visibly froze on screen during the drag itself,
-    // only catching up once the drag settled — ObservableObject-driven
-    // SwiftUI render commits are not reliably flushed to screen for the
-    // duration of a REAL interactive `UIScrollView` pan on this codebase's
-    // tested real-device/iOS combination, even though the underlying
-    // `@Published` value is genuinely current the whole time (confirmed
-    // correct at rest). This is the SAME bug CLASS one layer deeper: fixed
-    // by data (this property), not fixed by render (SwiftUI's own commit
-    // for a plain observed value). `pulseBubbleFrameSink`, set by
-    // `PulseBubblePositioningHost` (PulseTeaserBubbleView.swift) once it
-    // mounts, is called synchronously from the exact same call stack as
-    // this property's own write below, and drives the bubble's on-screen
-    // `UIView.frame` directly/imperatively — bypassing SwiftUI's render
-    // pipeline for the position specifically, the same way the ring itself
-    // (a plain UIKit-scrolled subview, never SwiftUI-observed) already
-    // proves a raw frame mutation paints live regardless of RunLoop mode.
-    // `pulseRingFrame` itself is kept for the bubble's very FIRST frame
-    // (read once in `makeUIView`, before any live sink update has arrived)
-    // and for any other consumer that only needs an occasional, non-live
-    // read of the ring's last-known position.
-    @Published var pulseRingFrame: CGRect?
-    var pulseBubbleFrameSink: ((CGRect) -> Void)?
+    // This REPLACES the previous pair of properties here — `pulseRingFrame`
+    // (the ring's own on-screen frame, measured via the now-deleted
+    // `RingFrameProbe` in Components.swift and written straight from its KVO
+    // callback in HomeView) and `pulseBubbleFrameSink` (an imperative
+    // `UIView.frame` write into a hosted bubble, via the now-deleted
+    // `PulseBubblePositioningHost`). Both were attempts to keep a
+    // screen-positioned overlay in sync with the ring through callbacks,
+    // and both still left the bubble frozen at a fixed screen position
+    // during a real finger-drag; see `PulseTeaserBubbleView`'s own
+    // "Same-space pass" doc comment for the full history. Nothing reads a
+    // ring frame any more, so there is no replacement for them.
+    @Published var pulseTeaserStep: Int = -1
+    /// The two tap actions the bubble calls — `advanceOrDismiss()` (a tap
+    /// anywhere on the bubble) and `openFeaturedPhotos()` (the final step's
+    /// "Bấm xem thêm" link). Both still live in `PulseTeaserBubbleView`,
+    /// which owns the sequence; these are just the handles Home needs to
+    /// reach them without owning (or duplicating) that state machine. A tap
+    /// is a one-off event, never a per-scroll-frame one, so a plain closure
+    /// is immune to every timing problem the positioning code used to fight.
+    var pulseTeaserAdvance: (() -> Void)?
+    var pulseTeaserOpenPhotos: (() -> Void)?
     @Published var storyCreatePreviewImage: UIImage?
     @Published var storyCreateBusy = false
     @Published var storyViewedIds: Set<UUID> = []

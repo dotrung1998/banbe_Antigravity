@@ -135,9 +135,11 @@ struct HomeView: View {
         // shrink-toward-ring transition (see AppState.swift's own comment
         // on storyRingFrames).
         .onPreferenceChange(StoryRingFramePreferenceKey.self) { app.storyRingFrames = $0 }
-        // Pulse ring frame is no longer routed through a PreferenceKey —
-        // see `RingFrameProbe`'s own callback at the ring's `.background`
-        // above for why (real-device RunLoop-mode bug).
+        // The Pulse RING's frame is no longer tracked anywhere at all — no
+        // PreferenceKey, no probe, no `AppState` property. The teaser bubble
+        // is drawn inside `storyRow`'s own content these days, so there is
+        // nothing to keep in sync. See `PulseTeaserBubbleContent`
+        // (PulseTeaserBubbleView.swift) and `storyRow` below.
         // Home search relocation (2026-09-28 follow-up — real-device report:
         // the top-header search icon was still showing on a real iPhone).
         // Root cause: the 2026-09-28 dock/search pass that relocated web's
@@ -367,53 +369,22 @@ struct HomeView: View {
                 Button { app.openPulseViewer() } label: {
                     VStack(spacing: 5) {
                         PulseRingGlyph()
-                            // Pulse teaser pass (2026-09-27) — reports the
-                            // RING's own global frame (not the label under
-                            // it), mirroring StoryRingFramePreferenceKey
-                            // immediately below — PulseTeaserBubbleView
-                            // anchors to this.
-                            //
-                            // Real-device follow-up (2026-09-28): this used
-                            // to go through a GeometryReader + PreferenceKey
-                            // (`PulseRingFramePreferenceKey`, same mechanism
-                            // as `StoryRingFramePreferenceKey` still below),
-                            // which inherits the exact RunLoop-mode
-                            // limitation `ScaffoldScrollProbe`'s own doc
-                            // comment (Components.swift) already diagnosed
-                            // for scroll-offset tracking: PreferenceKey
-                            // values stop propagating for as long as a real
-                            // finger is actively dragging this ScrollView
-                            // (`.tracking` mode), freezing the reported
-                            // frame stale while the ring kept moving for
-                            // real — which is exactly why the teaser bubble
-                            // read as anchored beside the WRONG spot on a
-                            // real device despite correct anchor math on
-                            // paper. Replaced with `RingFrameProbe`
-                            // (Components.swift), which reads the ring's
-                            // real frame straight off UIKit via KVO on the
-                            // ancestor UIScrollView's `contentOffset` —
-                            // immune to RunLoop mode — and writes directly
-                            // into `app.pulseRingFrame`, bypassing the
-                            // PreferenceKey pipeline entirely for this ring.
-                            .background(
-                                RingFrameProbe { rect in
-                                    app.pulseRingFrame = rect
-                                    // Live-tracking follow-up (2026-09-28) —
-                                    // same synchronous call stack, forwarded
-                                    // straight to the bubble's own imperative
-                                    // UIKit positioning (see
-                                    // `pulseBubbleFrameSink`'s doc comment in
-                                    // AppState.swift and
-                                    // `PulseBubblePositioningHost` in
-                                    // PulseTeaserBubbleView.swift) — bypasses
-                                    // SwiftUI's render pipeline for the
-                                    // bubble's on-screen position, which is
-                                    // the part that was still lagging during
-                                    // a live drag even though this property
-                                    // itself was already live.
-                                    app.pulseBubbleFrameSink?(rect)
-                                }
-                            )
+                            // Same-space pass (2026-09-28, this pass): the
+                            // `RingFrameProbe` that used to sit here as this
+                            // glyph's `.background()` — reporting the ring's
+                            // own on-screen frame up to the teaser bubble
+                            // through a callback — is GONE, along with
+                            // `AppState.pulseRingFrame`/`pulseBubbleFrameSink`
+                            // and the whole callback pipeline behind them
+                            // (PreferenceKey -> KVO probe -> imperative
+                            // `UIHostingController` frame writes). Each of
+                            // those still left the bubble frozen at a fixed
+                            // screen position during a real finger-drag. The
+                            // bubble is now drawn INSIDE `storyRow`'s own
+                            // content, in this ring's exact scrolling
+                            // coordinate space — see `PulseTeaserBubbleContent`
+                            // (PulseTeaserBubbleView.swift) and the
+                            // `.overlay` on this row's HStack below.
                         Text(app.T("Banbe Pulse", "Banbe Pulse"))
                             .font(.system(size: 9.5)).foregroundStyle(app.palette.ink).lineLimit(1).frame(width: 60)
                     }
@@ -460,10 +431,86 @@ struct HomeView: View {
                 }
             }
             .padding(.horizontal, 20)
+            // Same-space pass (2026-09-28, this pass) — THE teaser bubble.
+            // It is part of this row's own content, i.e. inside the exact
+            // same scrolling coordinate space as the Pulse ring it points at
+            // (the ring is in the HStack above), so the feed's vertical
+            // scroll AND this row's own horizontal scroll move ring and
+            // bubble together as one piece of content — by construction,
+            // with no callback, KVO, `convert(_:to:)` or SwiftUI render
+            // commit anywhere in between. That is the whole fix for the
+            // real-device report of the bubble sitting fixed on screen while
+            // the ring scrolled: nothing positions it separately from the
+            // ring any more.
+            //
+            // The anchor is this row's own layout constant, never a guess
+            // about the screen: `padding(.horizontal, 20)` above plus half of
+            // the ring's 56x56 glyph (centred in the 60pt-wide `VStack` that
+            // also holds its label — verified at runtime as mid-x 50) is 50,
+            // and the glyph starts at this content's own top, so its mid-y
+            // is 28.
+            //
+            // Two SwiftUI specifics this deliberately works around, both
+            // confirmed on a real accessibility dump of this row rather than
+            // assumed:
+            //  * the bubble gets a DEFINITE 230pt-wide layout box
+            //    (`.frame(width:)`, content leading-aligned inside it) —
+            //    this row's content is only as wide as the rings it holds
+            //    (100pt with Pulse alone), and letting the proposal decide
+            //    squeezed the copy to ~50pt and wrapped it two characters per
+            //    line. The bubble itself still hugs its own copy up to that
+            //    cap: 230 + 50 stays inside even a 375pt-wide iPhone.
+            //  * the bottom edge is put on the anchor with a zero-height
+            //    box (`.frame(height: 0, alignment: .bottom)`, with
+            //    `.fixedSize(vertical:)` so the copy keeps its real height)
+            //    rather than an `.alignmentGuide(.top)` — a guide is ignored
+            //    by `.overlay(alignment:)` here, which is what left the
+            //    bubble's TOP sitting on the ring's centre line instead of
+            //    its bottom. A zero-height box also means the row's own
+            //    height never depends on the bubble's copy, so no step
+            //    advance can nudge the feed below it.
+            .overlay(alignment: .topLeading) {
+                if app.pulseTeaserStep >= 0 {
+                    PulseTeaserBubbleContent(
+                        step: app.pulseTeaserStep,
+                        onTap: { app.pulseTeaserAdvance?() },
+                        onOpenFeaturedPhotos: { app.pulseTeaserOpenPhotos?() }
+                    )
+                    .frame(width: Self.pulseBubbleMaxWidth, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(height: 0, alignment: .bottom)
+                    .padding(.leading, Self.pulseRingMidXInRow)
+                    .padding(.top, Self.pulseRingMidYInRow)
+                }
+            }
         }
+        // The bubble is anchored at the ring's centre and grows UPWARD, so
+        // the tallest copy this sequence shows (the 3-line ranked list)
+        // reaches above the row's own top edge. Without this, the horizontal
+        // scroller would clip it to its own bounds; disabling that clip is
+        // the "not clipped by the horizontal story row" requirement, and it
+        // can only ever affect the bubble itself — nothing else in this row
+        // draws outside it. Still clipped by the feed's own vertical
+        // ScrollView as it scrolls away, exactly like the ring.
+        .scrollClipDisabled()
         .padding(.vertical, 14)
         .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
     }
+
+    /// The Pulse ring's centre point inside `storyRow`'s own content space —
+    /// see that row's own comment for how these two numbers are derived from
+    /// its layout constants (`padding(.horizontal, 20)`, the 60pt-wide ring
+    /// column, and the 56x56 glyph at the top of that column). Named rather
+    /// than inlined so the bubble's anchor and the row that has to satisfy it
+    /// stay visibly in sync.
+    /// The widest any step's copy is allowed to be, i.e. the width of the
+    /// bubble's own layout box in `storyRow` (which is why the copy wraps
+    /// here rather than running off the trailing edge of the screen): the
+    /// bubble's leading edge sits 50pt into the row, so 230 + 50 stays
+    /// inside even a 375pt-wide iPhone.
+    private static let pulseBubbleMaxWidth: CGFloat = 230
+    private static let pulseRingMidXInRow: CGFloat = 50
+    private static let pulseRingMidYInRow: CGFloat = 28
 
     /// Matches the web strip's tag rules: cancelled / past / on hold /
     /// paid / saved, each with its own chip colour.

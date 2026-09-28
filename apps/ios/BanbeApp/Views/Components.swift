@@ -589,142 +589,18 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
     }
 }
 
-/// Pulse-teaser real-device follow-up (2026-09-28) — same root cause as
-/// `ScaffoldScrollProbe`'s own doc comment immediately above, applied to a
-/// SECOND place this codebase was still using the buggy mechanism:
-/// `HomeView`'s Pulse ring reported its own on-screen frame to
-/// `PulseTeaserBubbleView` via a `GeometryReader` + `PreferenceKey`
-/// (`geo.frame(in: .global)`), exactly the pattern `ScaffoldScrollProbe`
-/// replaced for scroll-offset tracking, and it inherits the identical
-/// limitation: PreferenceKey values only propagate while the run loop is
-/// in `.default` mode, but a LIVE touch-drag on Home's own feed runs in
-/// `.tracking` mode. Every time the ring's ANCESTOR ScrollView was being
-/// actively dragged by a real finger — which, unlike a simulator's mouse-
-/// driven scroll, is how virtually every real scroll happens — the
-/// preference simply stopped propagating, freezing `app.pulseRingFrame`
-/// at whatever frame the ring had the last time the run loop was in
-/// `.default` mode (often close to its very first pre-layout/pre-safe-
-/// area frame, since a user can touch and start scrolling within a
-/// fraction of a second of Home appearing). The ring itself kept moving
-/// for real as the feed scrolled; the bubble kept positioning itself off
-/// that stale rect — reading, on a real device, as "beside the wrong
-/// spot" (right-and-lower of the REAL ring) rather than the ring's true,
-/// current upper-right quadrant. This is a timing/propagation-mode
-/// mismatch, not a coordinate-space or view-hierarchy mismatch — the
-/// coordinate space (`.global`) and the anchor math were already correct
-/// on paper, which is exactly why it looked fine on inspection.
-///
-/// Fixed the same way `ScaffoldScrollProbe` already fixed the analogous
-/// bug: observe the ancestor `UIScrollView`'s `contentOffset` via KVO
-/// (fires synchronously in ANY RunLoop mode, including `.tracking`) and
-/// recompute this view's own `convert(bounds, to: nil)` — its real,
-/// current window-space frame — on every tick, reporting straight to a
-/// plain callback instead of through a SwiftUI PreferenceKey. Also
-/// reports on `layoutSubviews`/`didMoveToWindow` so the very first frame
-/// (before any scrolling has happened at all) is real and current too,
-/// never a stale/zero placeholder.
-///
-/// Real-device follow-up #2 (still-far-below-the-ring report on a real
-/// iPhone, after the KVO fix above): the fix above only observed the
-/// FIRST ancestor `UIScrollView` it found while walking up from the probe
-/// (see `ScaffoldScrollProbe`'s identical-looking walk). That's correct
-/// for `ScaffoldScrollProbe`, which sits as the `.background()` of the ONE
-/// ScrollView it needs — but this probe sits on the ring inside
-/// `HomeView.storyRow`, a horizontal `ScrollView` that is ITSELF nested
-/// inside the main vertical feed `ScrollView`. Walking up from the probe
-/// hit the horizontal story-row scroller first and stopped there, so the
-/// KVO observer was attached to the WRONG `UIScrollView` — one whose
-/// `contentOffset` never changes when the user drags the real, outer
-/// vertical feed. During that real `.tracking`-mode drag, neither the
-/// PreferenceKey path (blocked, as above) nor this KVO observer (watching
-/// the wrong scroller) fired, so `app.pulseRingFrame` again froze stale —
-/// reading on a real device as the bubble sitting far below the ring's
-/// true, scrolled position. Fixed by observing EVERY ancestor
-/// `UIScrollView` found while walking all the way up to the window (see
-/// `ProbeView.attachIfNeeded()` below), not just the first.
-struct RingFrameProbe: UIViewRepresentable {
-    let onChange: (CGRect) -> Void
-
-    func makeUIView(context: Context) -> ProbeView {
-        let view = ProbeView()
-        view.onChange = onChange
-        return view
-    }
-
-    func updateUIView(_ uiView: ProbeView, context: Context) {
-        uiView.onChange = onChange
-    }
-
-    final class ProbeView: UIView {
-        var onChange: ((CGRect) -> Void)?
-        // Real-device follow-up (still-below-ring report after this file's
-        // own KVO fix above): unlike `ScaffoldScrollProbe`, which sits as
-        // the `.background()` of the ONE ScrollView it needs to track, this
-        // probe is nested two ScrollViews deep — HomeView's `storyRow` is
-        // itself a horizontal `ScrollView` living INSIDE the main vertical
-        // feed `ScrollView` (`ScreenScaffold`). Walking up and grabbing only
-        // the FIRST ancestor `UIScrollView` (and `return`-ing immediately)
-        // locks onto the horizontal story-row scroller, whose
-        // `contentOffset` never changes when the user drags the real,
-        // outer vertical feed — so the KVO observer this file added never
-        // fires for the drag that actually moves the ring, and
-        // `app.pulseRingFrame` freezes stale exactly like the original
-        // PreferenceKey bug, just via a different mechanism (the fix looked
-        // complete on paper because a mouse-driven simulator scroll or a
-        // momentary re-layout can still trigger a stray `layoutSubviews()`
-        // that happens to look current). Fixed by observing EVERY ancestor
-        // `UIScrollView` found while walking all the way up to the window,
-        // not stopping at the first — so both the inner horizontal
-        // story-row scroll AND the outer vertical feed scroll each
-        // independently trigger a fresh `reportFrame()`.
-        private var observedScrollViews: [UIScrollView] = []
-        private var observations: [NSKeyValueObservation] = []
-        private var attached = false
-
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            attachIfNeeded()
-            reportFrame()
-        }
-
-        override func didMoveToSuperview() {
-            super.didMoveToSuperview()
-            attachIfNeeded()
-        }
-
-        override func layoutSubviews() {
-            super.layoutSubviews()
-            reportFrame()
-        }
-
-        // Walks all the way up from this (otherwise invisible, zero-size)
-        // probe — placed as the ring's own `.background`, so it's always a
-        // descendant of every real `UIScrollView` ancestor between it and
-        // the window — observing EACH `UIScrollView` found along the way
-        // (there can legitimately be more than one, e.g. an inner
-        // horizontal story-row scroller nested inside the outer vertical
-        // feed scroller), rather than stopping at the first.
-        private func attachIfNeeded() {
-            guard !attached, superview != nil else { return }
-            attached = true
-            var responder: UIView? = superview
-            while let candidate = responder {
-                if let scrollView = candidate as? UIScrollView, !observedScrollViews.contains(where: { $0 === scrollView }) {
-                    observedScrollViews.append(scrollView)
-                    observations.append(scrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
-                        self?.reportFrame()
-                    })
-                }
-                responder = candidate.superview
-            }
-        }
-
-        private func reportFrame() {
-            guard window != nil else { return }
-            onChange?(convert(bounds, to: nil))
-        }
-    }
-}
+// Pulse-teaser note (2026-09-28, same-space pass): `RingFrameProbe` used
+// to live here — an invisible probe attached to Home's Pulse ring that
+// KVO-observed every ancestor `UIScrollView`'s `contentOffset` and
+// reported the ring's `convert(bounds, to: nil)` frame up to
+// `app.pulseRingFrame` / `pulseBubbleFrameSink`, which an imperatively
+// hosted bubble then turned into its own `UIView.frame`. It is deleted
+// along with that whole pipeline: on a real device the bubble still sat
+// fixed on screen while the ring scrolled, so the teaser bubble is no
+// longer positioned from any reported frame at all — `HomeView.storyRow`
+// draws it inside the story row's own scrolling coordinate space
+// instead (see `PulseTeaserBubbleContent` in PulseTeaserBubbleView.swift
+// and `PulseTeaserBubbleView`'s own "Same-space pass" writeup).
 
 /// Map search-focus fix (2026-09-28 follow-up) — same invisible-probe idiom
 /// as `ScaffoldScrollProbe` above: SwiftUI has no API for "this `.sheet`'s

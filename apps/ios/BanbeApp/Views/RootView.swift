@@ -649,11 +649,14 @@ struct RootView: View {
 
             if app.loading { loadingOverlay }
 
-            // Pulse teaser pass (2026-09-27) — always in the tree (it's a
-            // no-op Group when not eligible/showing — see its own body),
-            // never gated on `app.pulseOpen`/`app.screen` here, since it
-            // needs to keep observing `app.screen`'s own changes itself to
-            // know when to suspend/resume.
+            // Pulse teaser pass (2026-09-27) — always in the tree (now just
+            // the sequence's state machine/timers on a zero-size invisible
+            // view — the visible bubble is drawn by `HomeView.storyRow`, in
+            // the ring's own scrolling space; see
+            // `PulseTeaserBubbleView`'s own doc comment), never gated on
+            // `app.pulseOpen`/`app.screen` here, since it needs to keep
+            // observing `app.screen`'s own changes itself to know when to
+            // suspend/resume.
             PulseTeaserBubbleView().zIndex(29)
 
             if !app.toasts.isEmpty {
