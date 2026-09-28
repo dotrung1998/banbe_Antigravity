@@ -17,8 +17,17 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
     let catDisplay: String
     let name: String
     let img: String
-    let lat: Double
-    let lng: Double
+    // Real-event-maps-link fix pass (2026-09-28) — was non-optional
+    // `Double`, which is exactly why `fromReal(_:)` used to hardcode
+    // `lat: 0, lng: 0` for every real event: it had no honest value to put
+    // there for an event that may genuinely have no confirmed coordinates
+    // yet (an older event, or one whose host explicitly skipped
+    // confirmation at creation — see `AppState+Data.swift`'s
+    // `skipCreateLocation()`). `nil` now means exactly that — "no
+    // confirmed pin" — and `mapsURL`/`Xem trên bản đồ` below both honor it
+    // instead of silently pointing at 0,0.
+    let lat: Double?
+    let lng: Double?
     // 2026-09-25 fix pass — mutable now (like cancelled/endedHoursAgo
     // below), so `applyingLiveStatus` can overlay the REAL starts_at date
     // on top of the catalogue's static one. See Countdown.liveDateOverrides.
@@ -60,6 +69,16 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
     /// see `meta`'s own comment just above.
     var startDate: Date?
     let locationLabel: String?
+    // Intro/included-parity fix pass (2026-09-28) — `RealEventSummary`
+    // already decoded `intro`/`includedItems` (migrations 087/088), but
+    // `fromReal(_:)` never mapped them into the type Event Detail actually
+    // renders (`included` above stayed a plain `""`, and there was no
+    // `intro` field here at all) — the actual bottleneck for showing a
+    // real event's own introduction/structured Included items. Optional
+    // with a `nil` default so the bundled demo catalogue (`events.json`,
+    // which has neither key) keeps decoding exactly as before.
+    let intro: String?
+    let includedItems: [IncludedItem]?
 
     enum CodingKeys: String, CodingKey {
         case key, catKey, cat, cat2Key, catDisplay, name, img, lat, lng, meta
@@ -68,6 +87,7 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
         case greeting, gallery, orgGallery, orgName, orgIg, orgDesc, orgSince
         case orgCount, orgTrusted, cancelled, cancelledHoursAgo, endedHoursAgo
         case soldOut, inviteOnly, until, untilLabel, startDate, locationLabel
+        case intro, includedItems
     }
 
     /// Absolute URLs for the photos, which the catalogue stores as the web
@@ -89,7 +109,12 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
 
     /// Google Maps directions, same link the web event page opens.
     var mapsURL: URL? {
-        URL(string: "https://www.google.com/maps/search/?api=1&query=\(lat),\(lng)")
+        // Real-event-maps-link fix pass (2026-09-28) — `nil` (no link at
+        // all) for an event with no confirmed coordinates, same honesty
+        // rule web's own `mapsUrl(ev)` (src/data/events.js) already
+        // applies — never a link that silently opens at 0,0.
+        guard let lat, let lng else { return nil }
+        return URL(string: "https://www.google.com/maps/search/?api=1&query=\(lat),\(lng)")
     }
 
     /// Whether this event is still live in the feed (not cancelled, not over).
@@ -139,6 +164,17 @@ struct RealEventSummary: Decodable {
     let id: String
     let name: String
     let area: String?
+    // Real-event-maps-link fix pass (2026-09-28) — was missing entirely:
+    // neither decoded here nor selected in the query that fetches this
+    // type (see that query's own comment), even though `create_event_draft`/
+    // `resubmit_event_for_review` have stored real coordinates since
+    // migration 094. `CatalogEvent.fromReal(_:)` below used to hardcode
+    // `lat: 0, lng: 0` for every real event as a result — Event Detail's
+    // own "open in Google Maps" link pointed at the coast of Africa for
+    // every host-created event, confirmed rather than guessed (see that
+    // computed property's own doc comment for the exact URL it built).
+    let lat: Double?
+    let lng: Double?
     let catKey: String?
     let catLabel: String?
     let startsAt: Date?
@@ -161,11 +197,24 @@ struct RealEventSummary: Decodable {
     // (migration 088) — same two fields web's shapeRealEvent exposes.
     let includedItems: [IncludedItem]?
     let intro: String?
+    // Address-autocomplete fix pass (2026-09-28, migration 105) — lets
+    // `goEditEvent` pre-fill a verified address (and show it as already
+    // confirmed) instead of making the host re-search an address that
+    // was already resolved on a previous submit. Same fields web's own
+    // `shapeRealEvent` decodes.
+    let addressLine: String?
+    let city: String?
+    let postalCode: String?
+    let addressVerified: Bool?
     var organizerName: String = ""
     var photoURL: URL?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, area
+        case id, name, area, lat, lng
+        case addressLine = "address_line"
+        case city
+        case postalCode = "postal_code"
+        case addressVerified = "address_verified"
         case catKey = "cat_key"
         case catLabel = "cat_label"
         case startsAt = "starts_at"
@@ -190,7 +239,10 @@ struct RealEventSummary: Decodable {
     var soldOut: Bool { (seatsRemaining ?? 1) <= 0 }
 }
 
-struct IncludedItem: Decodable, Equatable {
+// `Codable` (not just `Decodable`) and `Hashable` (not just `Equatable`) —
+// needed now that `CatalogEvent` (which conforms to both) holds an array
+// of these (intro/included-parity fix pass, 2026-09-28).
+struct IncludedItem: Codable, Hashable {
     let label: String
     let detail: String
 }
@@ -209,24 +261,49 @@ extension CatalogEvent {
         let endedHoursAgo = real.status == "ended" ? Countdown.hoursAgo(real.startsAt, now: now) : nil
         let cancelledHoursAgo = real.status == "cancelled" ? (Countdown.hoursAgo(real.cancelledAt, now: now) ?? 0) : nil
         let priceLabel = (real.priceVnd ?? 0) > 0 ? EventLabels.vnd(real.priceVnd ?? 0) : "Miễn phí"
+        // Intro/included-parity fix pass (2026-09-28) — `included` mirrors
+        // the legacy derived text web's own `events.included` column holds
+        // (bullet-joined labels), computed client-side since
+        // `RealEventSummary` only decodes the structured `included_items`
+        // (`intro`'s own CodingKeys comment); `includedItems` carries the
+        // full structured list through for Event Detail's own sheet.
+        let items = real.includedItems ?? []
+        let includedSummary = items.map(\.label).joined(separator: " ▪︎ ")
+        let introOrNil: String? = (real.intro?.isEmpty == false) ? real.intro : nil
+        let itemsOrNil: [IncludedItem]? = items.isEmpty ? nil : items
+        // Compiler-perf fix (2026-09-28) — this initializer call already
+        // had 23+ named arguments before this pass added `intro`/
+        // `includedItems`; Swift's type-checker times out trying to infer
+        // types for that many inline expressions at once. Pre-computing
+        // every argument into its own local first (all simple identifiers
+        // below) keeps each inference independent and small instead of one
+        // giant joint one.
+        let metaLabel = [real.catLabel, real.area].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
+        let whenLabel = real.startsAt.map(Countdown.whenLabel) ?? ""
+        let seatsLabel = real.seatsRemaining.map(String.init) ?? ""
+        let seatsLongLabel = real.soldOut ? "Hết chỗ" : (real.seatsRemaining.map { "\($0) chỗ trống" } ?? "")
+        let isUrgent = (real.seatsRemaining ?? 99) <= 5
+        let isCancelled = real.status == "cancelled"
         return CatalogEvent(
             key: real.id, catKey: real.catKey ?? "all", cat: real.catLabel ?? "", cat2Key: nil, catDisplay: real.catLabel ?? "",
-            name: real.name, img: real.photoURL?.absoluteString ?? "", lat: 0, lng: 0,
-            meta: [real.catLabel, real.area].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ▪︎ "),
+            name: real.name, img: real.photoURL?.absoluteString ?? "", lat: real.lat, lng: real.lng,
+            meta: metaLabel,
             where: real.area ?? "",
-            when: real.startsAt.map(Countdown.whenLabel) ?? "",
+            when: whenLabel,
             price: priceLabel,
-            seats: real.seatsRemaining.map(String.init) ?? "",
-            seatsLong: real.soldOut ? "Hết chỗ" : (real.seatsRemaining.map { "\($0) chỗ trống" } ?? ""),
-            urgent: (real.seatsRemaining ?? 99) <= 5,
-            desc: real.description ?? "", included: "",
+            seats: seatsLabel,
+            seatsLong: seatsLongLabel,
+            urgent: isUrgent,
+            desc: real.description ?? "", included: includedSummary,
             host: real.organizerName, hostShort: real.organizerName, greeting: "",
             gallery: [], orgGallery: [], orgName: real.organizerName, orgIg: "", orgDesc: "",
             orgSince: 0, orgCount: 0, orgTrusted: false,
-            cancelled: real.status == "cancelled", cancelledHoursAgo: cancelledHoursAgo, endedHoursAgo: endedHoursAgo,
+            cancelled: isCancelled, cancelledHoursAgo: cancelledHoursAgo, endedHoursAgo: endedHoursAgo,
             soldOut: real.soldOut, inviteOnly: real.visibility == "invite",
             until: nil, untilLabel: "", startDate: real.startsAt,
-            locationLabel: real.area
+            locationLabel: real.area,
+            intro: introOrNil,
+            includedItems: itemsOrNil
         )
     }
 
@@ -241,14 +318,16 @@ extension CatalogEvent {
             // its own realEventsById fetch is in flight — never "Event
             // unavailable" for what may well turn out to be a perfectly
             // real, just-not-yet-fetched event.
-            name: loading ? "" : T("Sự kiện không khả dụng", "Event unavailable"), img: "", lat: 0, lng: 0,
+            name: loading ? "" : T("Sự kiện không khả dụng", "Event unavailable"), img: "", lat: nil, lng: nil,
             meta: "", where: "", when: "", price: "",
             seats: "", seatsLong: "", urgent: false, desc: "", included: "",
             host: "", hostShort: "", greeting: "", gallery: [], orgGallery: [],
             orgName: "", orgIg: "", orgDesc: "", orgSince: 0, orgCount: 0, orgTrusted: false,
             cancelled: false, cancelledHoursAgo: nil, endedHoursAgo: nil,
             soldOut: false, inviteOnly: false, until: nil, untilLabel: "", startDate: nil,
-            locationLabel: nil
+            locationLabel: nil,
+            intro: nil,
+            includedItems: nil
         )
     }
 }
@@ -311,7 +390,11 @@ enum EventLabels {
 /// Distance in km between the user and an event — the same haversine the
 /// web app uses to swap the catalogue's placeholder distance for a real one.
 func haversineKm(from coords: Coordinates?, to event: CatalogEvent) -> Double? {
-    haversineKm(from: coords, toCoords: Coordinates(lat: event.lat, lng: event.lng))
+    // Real-event-maps-link fix pass (2026-09-28) — `event.lat`/`.lng` are
+    // `Double?` now; no distance to compute for an event with no
+    // confirmed coordinates yet.
+    guard let lat = event.lat, let lng = event.lng else { return nil }
+    return haversineKm(from: coords, toCoords: Coordinates(lat: lat, lng: lng))
 }
 
 /// BUG 2 (2026-09-22 tenth follow-up) — the actual coordinate-pair

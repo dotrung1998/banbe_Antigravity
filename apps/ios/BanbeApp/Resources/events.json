@@ -18,6 +18,21 @@
     "urgent": true,
     "desc": "Mười bốn chỗ. Một ga-ra cải tạo ở Bình Thạnh. Minh nấu món gì chợ sáng có.",
     "included": "5 món ▪︎ rượu gạo ▪︎ cà phê",
+    "intro": "Một ga-ra cải tạo ở Bình Thạnh, mười bốn chỗ quanh một cái bàn dài. Minh nấu theo những gì chợ sáng hôm đó có — không thực đơn cố định, không lặp lại tuần trước.\n\nVé bao gồm 5 món, rượu gạo và cà phê.",
+    "includedItems": [
+      {
+        "label": "5 món",
+        "detail": ""
+      },
+      {
+        "label": "rượu gạo",
+        "detail": ""
+      },
+      {
+        "label": "cà phê",
+        "detail": ""
+      }
+    ],
     "host": "Minh, @bepnho.saigon",
     "hostShort": "Minh",
     "greeting": "Chào bạn, mình là Minh. Cứ hỏi thoải mái nhé.",
@@ -90,6 +105,21 @@
     "urgent": true,
     "desc": "Tám chỗ quanh bếp than trên sân thượng. Mai nướng cá theo mùa.",
     "included": "4 món ▪︎ trà ▪︎ tráng miệng",
+    "intro": "Tám chỗ quanh bếp than, trên sân thượng nhà Mai. Cá nướng theo mùa, đổi tuỳ hôm bạn đến.\n\nBao gồm 4 món, trà và tráng miệng.",
+    "includedItems": [
+      {
+        "label": "4 món",
+        "detail": ""
+      },
+      {
+        "label": "trà",
+        "detail": ""
+      },
+      {
+        "label": "tráng miệng",
+        "detail": ""
+      }
+    ],
     "host": "Mai, @comnhamai",
     "hostShort": "Mai",
     "greeting": "Mai đây. Nhà có cầu thang hơi dốc, báo trước nếu cần hỗ trợ nhé.",
@@ -162,6 +192,21 @@
     "urgent": true,
     "desc": "Một bàn, mười sáu người lạ, sáu món. Không ai rời bàn trước món cuối.",
     "included": "6 món ▪︎ rượu vang ▪︎ nước lọc đầy bình",
+    "intro": "Một bàn dài, mười sáu người lạ, sáu món — không ai rời bàn trước món cuối cùng.\n\nBao gồm rượu vang và nước lọc rót đầy suốt bữa.",
+    "includedItems": [
+      {
+        "label": "6 món",
+        "detail": ""
+      },
+      {
+        "label": "rượu vang",
+        "detail": ""
+      },
+      {
+        "label": "nước lọc đầy bình",
+        "detail": ""
+      }
+    ],
     "host": "Bàn Dài",
     "hostShort": "Bàn Dài",
     "greeting": "Bàn Dài xin chào. Ăn chay hay dị ứng gì cứ nhắn.",
@@ -234,6 +279,21 @@
     "urgent": false,
     "desc": "Phở lúc mười một giờ đêm, nước dùng hầm từ trưa. Mười hai ghế nhựa.",
     "included": "1 tô ▪︎ quẩy ▪︎ trà đá",
+    "intro": "Phở lúc mười một giờ đêm. Nước dùng bắc từ trưa, mười hai ghế nhựa, hết là hết.\n\nMột tô, kèm quẩy và trà đá.",
+    "includedItems": [
+      {
+        "label": "1 tô",
+        "detail": ""
+      },
+      {
+        "label": "quẩy",
+        "detail": ""
+      },
+      {
+        "label": "trà đá",
+        "detail": ""
+      }
+    ],
     "host": "Tùng, @phokhuya",
     "hostShort": "Tùng",
     "greeting": "Tùng đây. Đến trễ 15 phút là hết nước béo nha.",
@@ -306,6 +366,17 @@
     "urgent": false,
     "desc": "Bữa tối trong vườn sau nhà, đèn dây và mưa thì dời vô hiên.",
     "included": "5 món ▪︎ cocktail mở màn",
+    "intro": "Bữa tối ngoài trời trong vườn sau nhà — đèn dây giăng ngang, trời mưa thì cả bàn dời vào hiên.\n\nBao gồm 5 món và một ly cocktail mở màn.",
+    "includedItems": [
+      {
+        "label": "5 món",
+        "detail": ""
+      },
+      {
+        "label": "cocktail mở màn",
+        "detail": ""
+      }
+    ],
     "host": "Vườn Sau",
     "hostShort": "Vườn Sau",
     "greeting": "Vườn Sau chào bạn. Tối có muỗi, mình có xịt sẵn.",
@@ -378,6 +449,17 @@
     "urgent": false,
     "desc": "Sàn thép, sân khấu tròn, khói. Bốn mươi phút, không nghỉ. Bộ sưu tập mới của L'Édition, lần đầu ra mắt ngoài cửa hàng.",
     "included": "Welcome drink ▪︎ zine L'Édition №4",
+    "intro": "Sàn thép, sân khấu tròn, bốn mươi phút không nghỉ. L'Édition ra mắt bộ sưu tập mới lần đầu tiên ngoài cửa hàng.\n\nBao gồm welcome drink và số zine L'Édition №4.",
+    "includedItems": [
+      {
+        "label": "Welcome drink",
+        "detail": ""
+      },
+      {
+        "label": "zine L'Édition №4",
+        "detail": ""
+      }
+    ],
     "host": "Rue Miche L'Édition",
     "hostShort": "Rue Miche",
     "greeting": "Rue Miche đây. Có gì cần hỏi về buổi diễn không?",
@@ -450,6 +532,17 @@
     "urgent": false,
     "desc": "Xưởng may mở cửa một buổi chiều. Xem rập, vải, và những mẫu chưa bao giờ bán.",
     "included": "Trà ▪︎ tour xưởng 30 phút",
+    "intro": "Một buổi chiều xưởng may mở cửa — rập, vải, và những mẫu chưa từng được bán ra ngoài, xem tận nơi.\n\nBao gồm trà và một vòng tham quan xưởng 30 phút.",
+    "includedItems": [
+      {
+        "label": "Trà",
+        "detail": ""
+      },
+      {
+        "label": "tour xưởng 30 phút",
+        "detail": ""
+      }
+    ],
     "host": "AEIE Studios",
     "hostShort": "AEIE",
     "greeting": "AEIE đây, hỏi gì cứ nhắn.",
@@ -522,6 +615,21 @@
     "urgent": false,
     "desc": "Thử đồ như một buổi tiệc. Gương, đèn, và một stylist mỗi ba khách.",
     "included": "Stylist ▪︎ đồ uống ▪︎ chỉnh sửa tại chỗ",
+    "intro": "Thử đồ, nhưng như một buổi tiệc: gương, đèn, một stylist cho mỗi ba khách.\n\nBao gồm hỗ trợ từ stylist, đồ uống, và chỉnh sửa tại chỗ.",
+    "includedItems": [
+      {
+        "label": "Stylist",
+        "detail": ""
+      },
+      {
+        "label": "đồ uống",
+        "detail": ""
+      },
+      {
+        "label": "chỉnh sửa tại chỗ",
+        "detail": ""
+      }
+    ],
     "host": "Fanci Club",
     "hostShort": "Fanci",
     "greeting": "Fanci nghe. Size ngoài bảng cứ hỏi, xưởng may được.",
@@ -594,6 +702,17 @@
     "urgent": false,
     "desc": "Drop mới trên sân thượng, mặc thử dưới trời chiều. Bán hết là thôi.",
     "included": "Vào cửa ▪︎ sticker pack",
+    "intro": "Drop mới ra mắt trên sân thượng, mặc thử ngay dưới nắng chiều — số lượng giới hạn, bán hết là thôi.\n\nBao gồm vé vào cửa và một sticker pack.",
+    "includedItems": [
+      {
+        "label": "Vào cửa",
+        "detail": ""
+      },
+      {
+        "label": "sticker pack",
+        "detail": ""
+      }
+    ],
     "host": "Compound Garment",
     "hostShort": "Compound",
     "greeting": "Compound đây. Drop giới hạn, mỗi người hai món thôi nha.",
@@ -666,6 +785,17 @@
     "urgent": false,
     "desc": "Một đêm về vải: bốn nhà thiết kế, một chất liệu, bốn cách cắt.",
     "included": "Talk 40 phút ▪︎ đồ uống",
+    "intro": "Bốn nhà thiết kế, một chất liệu, bốn cách cắt khác nhau — một buổi tối nói về vải, bằng tiếng Việt có phụ đề Anh.\n\nBao gồm phần trò chuyện 40 phút và đồ uống.",
+    "includedItems": [
+      {
+        "label": "Talk 40 phút",
+        "detail": ""
+      },
+      {
+        "label": "đồ uống",
+        "detail": ""
+      }
+    ],
     "host": "Mãi Mãi × banbe",
     "hostShort": "Mãi Mãi",
     "greeting": "Mãi Mãi đây. Buổi này nói tiếng Việt, có phụ đề Anh.",
@@ -738,6 +868,17 @@
     "urgent": false,
     "desc": "Sáu họa sĩ, một màu. Triển lãm nhóm về sự trống, mở cửa một đêm trước công chúng.",
     "included": "Catalogue ▪︎ trò chuyện với giám tuyển",
+    "intro": "Sáu hoạ sĩ cùng vẽ về một màu. Triển lãm nhóm xoay quanh ý niệm về sự trống, mở cửa một đêm trước công chúng.\n\nBao gồm catalogue và một buổi trò chuyện cùng giám tuyển.",
+    "includedItems": [
+      {
+        "label": "Catalogue",
+        "detail": ""
+      },
+      {
+        "label": "trò chuyện với giám tuyển",
+        "detail": ""
+      }
+    ],
     "host": "Nguyen Art Foundation",
     "hostShort": "NAF",
     "greeting": "Xin chào. Đây là kênh của Nguyen Art Foundation.",
@@ -810,6 +951,17 @@
     "urgent": false,
     "desc": "Hai thế hệ sơn mài treo đối diện nhau. Người xem đứng giữa.",
     "included": "Vào cửa ▪︎ tài liệu triển lãm",
+    "intro": "Hai thế hệ làm sơn mài, tranh treo đối diện nhau — người xem đứng giữa, tự so sánh.\n\nBao gồm vé vào cửa và tài liệu triển lãm.",
+    "includedItems": [
+      {
+        "label": "Vào cửa",
+        "detail": ""
+      },
+      {
+        "label": "tài liệu triển lãm",
+        "detail": ""
+      }
+    ],
     "host": "Galerie Quỳnh",
     "hostShort": "Quỳnh",
     "greeting": "Chào bạn, Galerie Quỳnh đây.",
@@ -882,6 +1034,17 @@
     "urgent": false,
     "desc": "Ba mươi tấm ảnh thành phố, không một bóng người. Chụp trong sáu năm.",
     "included": "Vào cửa ▪︎ print khổ nhỏ",
+    "intro": "Ba mươi tấm ảnh chụp thành phố trong sáu năm — không một bóng người trong bất kỳ khung hình nào.\n\nBao gồm vé vào cửa và một bản in khổ nhỏ.",
+    "includedItems": [
+      {
+        "label": "Vào cửa",
+        "detail": ""
+      },
+      {
+        "label": "print khổ nhỏ",
+        "detail": ""
+      }
+    ],
     "host": "Lâm, @khongnguoi",
     "hostShort": "Lâm",
     "greeting": "Lâm đây. Ảnh không bán tại chỗ, chỉ đặt trước.",
@@ -954,6 +1117,21 @@
     "urgent": false,
     "desc": "Một giờ về giấy dó với người làm giấy đời thứ ba. Có mẫu để sờ.",
     "included": "Talk ▪︎ trà ▪︎ mẫu giấy mang về",
+    "intro": "Một giờ nói về giấy dó, cùng người làm giấy đời thứ ba trong gia đình — có mẫu giấy để cầm, để sờ.\n\nBao gồm buổi trò chuyện, trà, và một mẫu giấy mang về.",
+    "includedItems": [
+      {
+        "label": "Talk",
+        "detail": ""
+      },
+      {
+        "label": "trà",
+        "detail": ""
+      },
+      {
+        "label": "mẫu giấy mang về",
+        "detail": ""
+      }
+    ],
     "host": "Zone Publishing",
     "hostShort": "Zone",
     "greeting": "Zone đây. Buổi talk có ghi hình, ngồi hàng sau nếu ngại.",
@@ -1026,6 +1204,13 @@
     "urgent": false,
     "desc": "Triển lãm trong căn hộ tập thể cũ. Mỗi phòng một tác giả, giữ nguyên đồ đạc.",
     "included": "Vào cửa theo khung giờ",
+    "intro": "Triển lãm bên trong một căn hộ tập thể cũ, đồ đạc giữ nguyên như vốn có — mỗi phòng là một tác giả riêng.\n\nVé vào cửa theo khung giờ.",
+    "includedItems": [
+      {
+        "label": "Vào cửa theo khung giờ",
+        "detail": ""
+      }
+    ],
     "host": "Phòng 302",
     "hostShort": "302",
     "greeting": "302 đây. Lên cầu thang bộ, tầng ba, cửa xanh.",
@@ -1098,6 +1283,17 @@
     "urgent": false,
     "desc": "Ba DJ, một buổi chiều, không danh sách nhạc định trước. Đến sớm có chỗ ngồi.",
     "included": "Vào cửa tự do ▪︎ cà phê tính riêng",
+    "intro": "Ba DJ thay nhau chơi suốt một buổi chiều, không playlist định sẵn — đến sớm để có chỗ ngồi.\n\nVào cửa tự do; cà phê tính riêng.",
+    "includedItems": [
+      {
+        "label": "Vào cửa tự do",
+        "detail": ""
+      },
+      {
+        "label": "cà phê tính riêng",
+        "detail": ""
+      }
+    ],
     "host": "Yentown",
     "hostShort": "Yentown",
     "greeting": "Yentown nghe đây.",
@@ -1170,6 +1366,17 @@
     "urgent": false,
     "desc": "Gác gỗ hai mươi chỗ, kèn không micro. Set hai bắt đầu lúc mười giờ.",
     "included": "2 set ▪︎ một đồ uống",
+    "intro": "Một gác gỗ hai mươi chỗ, kèn chơi không cần micro. Set thứ hai bắt đầu lúc mười giờ tối.\n\nBao gồm cả hai set và một đồ uống.",
+    "includedItems": [
+      {
+        "label": "2 set",
+        "detail": ""
+      },
+      {
+        "label": "một đồ uống",
+        "detail": ""
+      }
+    ],
     "host": "Gác, @jazzogac",
     "hostShort": "Gác",
     "greeting": "Gác đây. Set hai đông hơn, thích yên thì đến set một.",
@@ -1242,6 +1449,17 @@
     "urgent": false,
     "desc": "Nghe nhạc từ băng cối qua dàn loa cũ. Không điện thoại trong phòng nghe.",
     "included": "Vào cửa ▪︎ trà nóng",
+    "intro": "Nghe lại nhạc từ băng cối, qua một dàn loa cũ — không điện thoại trong phòng nghe.\n\nBao gồm vé vào cửa và một tách trà nóng.",
+    "includedItems": [
+      {
+        "label": "Vào cửa",
+        "detail": ""
+      },
+      {
+        "label": "trà nóng",
+        "detail": ""
+      }
+    ],
     "host": "Băng Cối",
     "hostShort": "Băng Cối",
     "greeting": "Băng Cối đây. Phòng nghe im lặng tuyệt đối nha.",
@@ -1314,6 +1532,17 @@
     "urgent": false,
     "desc": "Bốn nghệ sĩ, bốn dàn máy, nối dây trực tiếp. Không có bài nào lặp lại.",
     "included": "Vào cửa ▪︎ earplugs miễn phí",
+    "intro": "Bốn nghệ sĩ, bốn dàn máy modular, nối dây và chơi trực tiếp — không bài nào lặp lại đêm đó.\n\nBao gồm vé vào cửa và earplugs miễn phí.",
+    "includedItems": [
+      {
+        "label": "Vào cửa",
+        "detail": ""
+      },
+      {
+        "label": "earplugs miễn phí",
+        "detail": ""
+      }
+    ],
     "host": "OBJoff",
     "hostShort": "OBJoff",
     "greeting": "OBJoff đây, tối đó gặp nhé.",
@@ -1386,6 +1615,17 @@
     "urgent": false,
     "desc": "Một cây đàn, một người chơi, đèn tắt gần hết. Bốn mươi lăm phút.",
     "included": "1 set ▪︎ một ly vang",
+    "intro": "Một cây đàn, một người chơi, đèn tắt gần hết — bốn mươi lăm phút, không micro, không giới thiệu dài dòng.\n\nBao gồm một set và một ly vang.",
+    "includedItems": [
+      {
+        "label": "1 set",
+        "detail": ""
+      },
+      {
+        "label": "một ly vang",
+        "detail": ""
+      }
+    ],
     "host": "Nhà Piano",
     "hostShort": "Nhà Piano",
     "greeting": "Nhà Piano chào bạn. Đến trước 21:45 nhé, vào trễ phải chờ hết bài.",
@@ -1458,6 +1698,17 @@
     "urgent": true,
     "desc": "Sáu chỗ, không đăng công khai. Minh nấu riêng cho vài người quen của người quen.",
     "included": "7 món ▪︎ rượu vang chọn riêng",
+    "intro": "Một bàn riêng, sáu chỗ, không đăng công khai — Minh nấu cho vài người quen của người quen.\n\nBao gồm 7 món và rượu vang chọn riêng cho bữa này.",
+    "includedItems": [
+      {
+        "label": "7 món",
+        "detail": ""
+      },
+      {
+        "label": "rượu vang chọn riêng",
+        "detail": ""
+      }
+    ],
     "host": "Minh, @bepnho.saigon",
     "hostShort": "Minh",
     "greeting": "Bạn được mời vào bàn này. Rủ thêm 1 người cũng được nhé.",

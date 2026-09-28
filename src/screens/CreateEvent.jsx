@@ -34,7 +34,7 @@ export default function CreateEvent() {
     state, T, trStatus, stripKm, curEvent: ev, createBack,
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
-    geocodeCreateLocation, confirmCreateLocation, skipCreateLocation,
+    retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette,
     addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent,
     createSubmit, goEvent, loadHomeLiveEvents,
@@ -316,53 +316,75 @@ export default function CreateEvent() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 14 }}>
           <label style={labelStyle}>{T('Địa điểm', 'Location')}</label>
-          <input value={s.createLoc} onChange={createLocType} placeholder="Bình Thạnh" style={fieldInput} data-testid="create-location-input" />
-          {/* Stage 3 (2026-09-27 nav/discovery pass) — explicit location
-              geocoding/confirmation: a Map pin needs real lat/lng
-              (MapExplore's own fetchLiveEvents requires it), and
-              create_event_draft/resubmit_event_for_review used to never
-              accept or store any at all. Nothing here is invented —
-              either the host sees and confirms a resolved point, or
-              explicitly skips (submits with no coordinates, same as
-              before this fix, just an honest choice instead of a silent
-              gap). */}
-          {s.createLoc.trim() && !s.createLocConfirmed && !s.createLocSkipped && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 2 }}>
-              <div
-                onClick={s.createGeocoding ? undefined : geocodeCreateLocation}
-                data-testid="create-location-geocode"
-                style={{ ...fieldGlass({ padding: '10px 12px' }), fontSize: 12.5, color: ink, cursor: s.createGeocoding ? 'default' : 'pointer', textAlign: 'center', opacity: s.createGeocoding ? 0.6 : 1 }}
-              >
-                {s.createGeocoding ? T('Đang tìm vị trí…', 'Looking up location…') : T('Xác nhận vị trí trên bản đồ', 'Confirm location on the map')}
-              </div>
-              {s.createGeocodeError && (
-                <p style={{ fontSize: 11, color: alert, margin: 0 }}>{s.createGeocodeError}</p>
-              )}
-              {s.createLat != null && !s.createGeocodeError && (
-                <div style={{ ...cardGlass({ padding: 10 }), display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.85 }}>{s.createLocLabel}</span>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <div onClick={confirmCreateLocation} data-testid="create-location-confirm" style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: 600, color: paper, background: ink, padding: '8px 0', borderRadius: 10, cursor: 'pointer' }}>
-                      {T('Đúng, xác nhận', 'Yes, confirm')}
-                    </div>
-                    <div onClick={skipCreateLocation} style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: 600, color: ink, padding: '8px 0', borderRadius: 10, cursor: 'pointer', border: `1px solid ${rule}` }}>
-                      {T('Bỏ qua', 'Skip')}
-                    </div>
-                  </div>
+          <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.75 }}>
+            {T(
+              'Gõ số nhà + tên đường (hoặc tên địa điểm nếu không có số nhà) rồi chọn một gợi ý — cần thiết để đăng sự kiện.',
+              'Type a house number + street (or a venue name if there is no house number), then pick a suggestion — required to publish.'
+            )}
+          </p>
+          {/* Address-autocomplete fix pass (2026-09-28) — replaces the old
+              single-shot "type free text, tap Confirm, get ONE geocode
+              result" flow. `createLocType` (GocContext.jsx) debounces a
+              live Nominatim search as the host types; a real, structured
+              address must be SELECTED from the results below before
+              publishing is possible at all — there is no more "Skip",
+              since this ticket makes a verified address mandatory. */}
+          <input
+            value={s.createLoc} onChange={createLocType}
+            placeholder={T('12 Nguyễn Văn Đậu, hoặc tên địa điểm…', '12 Nguyễn Văn Đậu, or a venue name…')}
+            style={fieldInput} data-testid="create-location-input"
+            autoComplete="off"
+          />
+          {s.createAddressSearching && (
+            <p style={{ fontSize: 11, color: ink, opacity: 0.6, margin: 0 }}>{T('Đang tìm địa chỉ…', 'Searching addresses…')}</p>
+          )}
+          {s.createAddressSearchError && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <p style={{ fontSize: 11, color: alert, margin: 0, flex: 1 }}>{s.createAddressSearchError}</p>
+              <span onClick={retryCreateAddressSearch} data-testid="create-location-retry" style={{ fontSize: 11, fontWeight: 600, color: ink, cursor: 'pointer', textDecoration: 'underline', flexShrink: 0 }}>
+                {T('Thử lại', 'Retry')}
+              </span>
+            </div>
+          )}
+          {s.createAddressSuggestions.length > 0 && (
+            <div style={{ ...cardGlass({ padding: 0 }), overflow: 'hidden' }} data-testid="create-location-suggestions">
+              {s.createAddressSuggestions.map((sug, i) => (
+                <div
+                  key={sug.id}
+                  onClick={() => selectCreateAddressSuggestion(sug)}
+                  data-testid="create-location-suggestion"
+                  style={{
+                    padding: '10px 12px', cursor: 'pointer',
+                    borderTop: i > 0 ? `1px solid ${rule}` : 'none',
+                    display: 'flex', flexDirection: 'column', gap: 2,
+                  }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 600, color: ink }}>
+                    {sug.addressLine}{sug.isVenue ? ' ' + T('(địa điểm)', '(venue)') : ''}
+                  </span>
+                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>
+                    {[sug.district, sug.city, sug.postalCode].filter(Boolean).join(', ')}
+                  </span>
                 </div>
-              )}
-              {!s.createGeocoding && s.createLat == null && !s.createGeocodeError && null}
+              ))}
+              {/* Nominatim's usage policy requires attribution wherever
+                  its results are shown, same as MapExplore's own
+                  MapLibre attribution elsewhere in this app. */}
+              <div style={{ padding: '6px 12px', fontSize: 9.5, color: ink, opacity: 0.45, borderTop: `1px solid ${rule}` }}>
+                © OpenStreetMap contributors
+              </div>
             </div>
           )}
           {s.createLocConfirmed && (
-            <p style={{ fontSize: 11, color: ink, opacity: 0.7, margin: 0 }} data-testid="create-location-confirmed">
-              ✓ {T('Vị trí đã xác nhận — sẽ hiện ghim trên bản đồ.', 'Location confirmed — will show a pin on the map.')}
-            </p>
-          )}
-          {s.createLocSkipped && (
-            <p style={{ fontSize: 11, color: ink, opacity: 0.7, margin: 0 }}>
-              {T('Đã bỏ qua vị trí — sự kiện vẫn hiện trong danh sách, chỉ không có ghim trên bản đồ.', "Location skipped — the event still shows in lists, just without a map pin.")}
-            </p>
+            <div style={{ ...cardGlass({ padding: 10 }), display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="create-location-confirmed">
+              <span style={{ fontSize: 11.5, color: ink, opacity: 0.85 }}>✓ {s.createLocLabel}</span>
+              <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>
+                {T('Sẽ hiện ghim trên bản đồ tại toạ độ này.', 'Will show a map pin at this exact point.')}
+              </span>
+              <div onClick={clearCreateAddressSelection} data-testid="create-location-adjust" style={{ alignSelf: 'flex-start', fontSize: 11, fontWeight: 600, color: ink, cursor: 'pointer', textDecoration: 'underline', opacity: 0.75 }}>
+                {T('Đổi địa chỉ', 'Change address')}
+              </div>
+            </div>
           )}
         </div>
 
@@ -527,6 +549,15 @@ export default function CreateEvent() {
           )}
         </div>
 
+        {/* Address-autocomplete fix pass (2026-09-28) — a visible hint
+            BEFORE the host attempts to submit, not only after a failed
+            attempt (createError below still covers the server-side gate
+            as a backstop). */}
+        {!s.createLocConfirmed && (
+          <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '0 0 10px', textAlign: 'center' }}>
+            {T('Chọn một địa chỉ gợi ý ở trên trước khi đăng.', 'Pick a suggested address above before publishing.')}
+          </p>
+        )}
         {/* No SLA is actually monitored server-side — the previous "duyệt
             trong 48 giờ"/"reviews within 48h" copy promised a turnaround
             time nothing enforced. Accurate instead of reassuring. */}

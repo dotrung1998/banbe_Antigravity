@@ -27,6 +27,14 @@ const rows = EVENTS.map(e => ({
   urgent: e.urgent,
   desc: e.desc,
   included: e.included,
+  // Demo-event Event Introduction pass (2026-09-28) — the generator's own
+  // field whitelist didn't include these at all, so this catalog file was
+  // never going to carry them regardless of what the web source had —
+  // adding them here is the actual fix (not just re-running the
+  // generator); see CatalogEvent.swift's own `intro`/`includedItems`
+  // doc comments for how iOS decodes them.
+  intro: e.intro,
+  includedItems: e.includedItems,
   host: e.host,
   hostShort: e.hostShort,
   greeting: e.greeting,

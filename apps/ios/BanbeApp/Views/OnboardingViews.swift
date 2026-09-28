@@ -193,6 +193,13 @@ struct CreateEventView: View {
     @State private var galleryItems: [StagedGalleryItem] = []
     @State private var coverItemID: String?
     @State private var pickerItems: [PhotosPickerItem] = []
+    /// Address-autocomplete fix pass (2026-09-28) — debounce for the
+    /// location search box, same 500ms/4-char-minimum convention web's
+    /// own `createLocType` (GocContext.jsx) uses. Cancelling the previous
+    /// `Task` on every keystroke is this view's equivalent of web's
+    /// `clearTimeout` — `Task.sleep` throws `CancellationError` when
+    /// cancelled, which the `try?` below simply treats as "never fired."
+    @State private var createAddressSearchTask: Task<Void, Never>?
     @State private var photoError = ""
     @State private var seededForEventID: String?
     @State private var seededExistingIDs: Set<UUID> = []
@@ -351,60 +358,74 @@ struct CreateEventView: View {
         .foregroundStyle(app.palette.ink)
     }
 
-    // Stage 3 (2026-09-27 nav/discovery pass) — explicit location
-    // geocoding/confirmation: a Map pin needs real lat/lng
-    // (MapExploreView's own event query requires it), and
-    // create_event_draft/resubmit_event_for_review used to never accept
-    // or store any at all. Nothing here is invented — either the host
-    // sees and confirms a resolved point, or explicitly skips (submits
-    // with no coordinates, an honest choice instead of a silent gap).
+    // Address-autocomplete fix pass (2026-09-28) — replaces the old
+    // single-shot "type free text, tap Confirm, get ONE geocode result"
+    // flow (mirrors web's identical GocContext.jsx/CreateEvent.jsx
+    // change, same pass). Publishing now REQUIRES a real, selected
+    // address — there is no more "Skip".
     @ViewBuilder
     private func locationConfirmSection() -> some View {
-        if !app.createLoc.trimmingCharacters(in: .whitespaces).isEmpty && !app.createLocConfirmed && !app.createLocSkipped {
-            VStack(alignment: .leading, spacing: 6) {
-                Button {
-                    Task { await app.geocodeCreateLocation() }
-                } label: {
-                    Text(app.createGeocoding ? app.T("Đang tìm vị trí…", "Looking up location…") : app.T("Xác nhận vị trí trên bản đồ", "Confirm location on the map"))
-                        .font(.system(size: 12.5))
-                        .frame(maxWidth: .infinity)
-                        .padding(10)
-                }
-                .disabled(app.createGeocoding)
-                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .foregroundStyle(app.palette.ink)
-
-                if !app.createGeocodeError.isEmpty {
-                    Text(app.createGeocodeError).font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
-                }
-                if app.createLat != nil && app.createGeocodeError.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(app.createLocLabel).font(.system(size: 11.5)).opacity(0.85)
-                        HStack(spacing: 8) {
-                            Button(app.T("Đúng, xác nhận", "Yes, confirm")) { app.confirmCreateLocation() }
-                                .font(.system(size: 12, weight: .semibold))
-                                .frame(maxWidth: .infinity).padding(8)
-                                .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                .foregroundStyle(app.palette.paper)
-                            Button(app.T("Bỏ qua", "Skip")) { app.skipCreateLocation() }
-                                .font(.system(size: 12, weight: .semibold))
-                                .frame(maxWidth: .infinity).padding(8)
-                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
-                                .foregroundStyle(app.palette.ink)
-                        }
-                    }
-                    .padding(10)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
+        if app.createAddressSearching {
+            Text(app.T("Đang tìm địa chỉ…", "Searching addresses…"))
+                .font(.system(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
+        }
+        if !app.createAddressSearchError.isEmpty {
+            HStack(spacing: 8) {
+                Text(app.createAddressSearchError).font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                Spacer(minLength: 0)
+                Button(app.T("Thử lại", "Retry")) { Task { await app.retryCreateAddressSearch() } }
+                    .font(.system(size: 11, weight: .semibold))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(app.palette.ink)
             }
         }
-        if app.createLocConfirmed {
-            Text("✓ " + app.T("Vị trí đã xác nhận — sẽ hiện ghim trên bản đồ.", "Location confirmed — will show a pin on the map."))
-                .font(.system(size: 11)).opacity(0.7).foregroundStyle(app.palette.ink)
+        if !app.createAddressSuggestions.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(app.createAddressSuggestions.enumerated()), id: \.element.id) { index, suggestion in
+                    Button {
+                        app.selectCreateAddressSuggestion(suggestion)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(suggestion.addressLine + (suggestion.isVenue ? " " + app.T("(địa điểm)", "(venue)") : ""))
+                                .font(.system(size: 13, weight: .semibold))
+                            Text([suggestion.district, suggestion.city, suggestion.postalCode].filter { !$0.isEmpty }.joined(separator: ", "))
+                                .font(.system(size: 11.5)).opacity(0.7)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(app.palette.ink)
+                    if index < app.createAddressSuggestions.count - 1 {
+                        Divider().overlay(app.palette.rule)
+                    }
+                }
+                // Nominatim/MapKit attribution — MKLocalSearch results are
+                // Apple's own MapKit data, but this list uses the same
+                // visual convention regardless of provider for consistency
+                // between platforms.
+                Text("© OpenStreetMap contributors")
+                    .font(.system(size: 9.5)).opacity(0.45)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+            }
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
-        if app.createLocSkipped {
-            Text(app.T("Đã bỏ qua vị trí — sự kiện vẫn hiện trong danh sách, chỉ không có ghim trên bản đồ.", "Location skipped — the event still shows in lists, just without a map pin."))
-                .font(.system(size: 11)).opacity(0.7).foregroundStyle(app.palette.ink)
+        if app.createLocConfirmed {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("✓ " + app.createLocLabel).font(.system(size: 11.5)).opacity(0.85)
+                Text(app.T("Sẽ hiện ghim trên bản đồ tại toạ độ này.", "Will show a map pin at this exact point."))
+                    .font(.system(size: 10.5)).opacity(0.6)
+                Button(app.T("Đổi địa chỉ", "Change address")) { app.clearCreateAddressSelection() }
+                    .font(.system(size: 11, weight: .semibold))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(app.palette.ink.opacity(0.75))
+            }
+            .padding(10)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .foregroundStyle(app.palette.ink)
+        } else {
+            Text(app.T("Chọn một địa chỉ gợi ý ở trên — cần thiết để đăng sự kiện.", "Pick a suggested address above — required to publish."))
+                .font(.system(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
         }
     }
 
@@ -495,18 +516,39 @@ struct CreateEventView: View {
                     BanbeField(label: app.T("Mô tả", "Description"),
                                placeholder: app.T("Buổi này có gì?", "What happens?"), text: $app.createDesc)
                     introEditor()
-                    BanbeField(label: app.T("Địa điểm", "Location"), placeholder: "Bình Thạnh", text: $app.createLoc)
-                        .onChange(of: app.createLoc) { _, _ in
-                            // A stale confirmation/point for a since-edited
-                            // address is worse than none — see
-                            // createLocConfirmed's own doc comment.
-                            app.createLat = nil
-                            app.createLng = nil
-                            app.createLocLabel = ""
-                            app.createLocConfirmed = false
-                            app.createLocSkipped = false
-                            app.createGeocodeError = ""
+                    BanbeField(
+                        label: app.T("Địa điểm", "Location"),
+                        placeholder: app.T("12 Nguyễn Văn Đậu, hoặc tên địa điểm…", "12 Nguyễn Văn Đậu, or a venue name…"),
+                        text: $app.createLoc
+                    )
+                    .onChange(of: app.createLoc) { _, newValue in
+                        createAddressSearchTask?.cancel()
+                        // A stale confirmation/point for a since-edited
+                        // address is worse than none — see
+                        // createLocConfirmed's own doc comment.
+                        app.createLat = nil
+                        app.createLng = nil
+                        app.createLocLabel = ""
+                        app.createAddressLine = ""
+                        app.createDistrict = ""
+                        app.createCity = ""
+                        app.createPostalCode = ""
+                        app.createLocConfirmed = false
+                        app.createAddressSuggestions = []
+                        app.createAddressSearchError = ""
+                        let query = newValue.trimmingCharacters(in: .whitespaces)
+                        guard query.count >= 4 else { app.createAddressSearching = false; return }
+                        createAddressSearchTask = Task {
+                            try? await Task.sleep(nanoseconds: 500_000_000)
+                            guard !Task.isCancelled else { return }
+                            await app.searchCreateAddress(query)
                         }
+                    }
+                    Text(app.T(
+                        "Gõ số nhà + tên đường (hoặc tên địa điểm nếu không có số nhà) rồi chọn một gợi ý — cần thiết để đăng sự kiện.",
+                        "Type a house number + street (or a venue name if there is no house number), then pick a suggestion — required to publish."
+                    ))
+                    .font(.system(size: 11)).opacity(0.75).foregroundStyle(app.palette.ink)
                     locationConfirmSection()
                     dateTimeRow()
                     HStack(spacing: 10) {
@@ -565,7 +607,7 @@ struct CreateEventView: View {
                                             ? app.T("Gửi lại để duyệt", "Resubmit for review")
                                             : app.T("Gửi để duyệt", "Submit for review"))),
                           enabled: !app.createName.trimmingCharacters(in: .whitespaces).isEmpty
-                              && !app.createSent && !app.loading,
+                              && app.createLocConfirmed && !app.createSent && !app.loading,
                           cornerRadius: 999) {
                     Task {
                         await app.submitCreateEvent(
@@ -575,6 +617,13 @@ struct CreateEventView: View {
                     }
                 }
                 .padding(.top, 26)
+
+                if !app.createLocConfirmed && !app.createSent {
+                    Text(app.T("Chọn một địa chỉ gợi ý ở trên trước khi đăng.", "Pick a suggested address above before publishing."))
+                        .font(.system(size: 11.5)).opacity(0.7)
+                        .foregroundStyle(app.palette.ink)
+                        .padding(.top, 8)
+                }
 
                 if !app.createError.isEmpty {
                     Text(app.createError)

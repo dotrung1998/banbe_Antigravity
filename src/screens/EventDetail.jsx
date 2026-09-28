@@ -25,7 +25,6 @@ export default function EventDetail() {
   // block above. Plain text only (paragraphs split on a blank line) —
   // never dangerouslySetInnerHTML, so a host's own text can't inject markup.
   const introParagraphs = (ev.intro || '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
-  const [introExpanded, setIntroExpanded] = useState(false);
   // STAGE D (2026-09-25) — real event_photos rows, replacing the static
   // demo `ev.gallery` below.
   useEffect(() => { loadEventPhotos(ev.key); }, [ev.key, loadEventPhotos]);
@@ -281,42 +280,38 @@ export default function EventDetail() {
           <div style={{ fontSize: 12.5, color: ink, marginTop: 6 }}>{T('Bạn có thể mời thêm 1 người.', 'You can bring one +1.')}</div>
         )}
         <p style={{ fontSize: 14, lineHeight: 1.55, color: ink, margin: '20px 0 0' }}>{ev.desc}</p>
-        {introParagraphs.length > 0 && (
-          <div data-testid="event-intro-section" style={{ marginTop: 18 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Giới thiệu sự kiện', 'About this event')}</span>
-            <div style={{ marginTop: 8, overflow: 'hidden', maxHeight: introExpanded ? 'none' : 90, position: 'relative' }}>
-              {(introExpanded ? introParagraphs : introParagraphs.slice(0, 1)).map((p, i) => (
-                <p key={i} style={{ fontSize: 13.5, lineHeight: 1.6, color: ink, margin: i === 0 ? 0 : '10px 0 0', whiteSpace: 'pre-wrap' }}>{p}</p>
-              ))}
-              {!introExpanded && (
-                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 36, background: `linear-gradient(to bottom, transparent, ${paper})` }} />
-              )}
-            </div>
-            {(introExpanded || introParagraphs.length > 1 || introParagraphs[0]?.length > 160) && (
-              <span
-                onClick={() => setIntroExpanded(v => !v)}
-                data-testid="event-intro-toggle"
-                style={{ fontSize: 12.5, fontWeight: 600, color: ink, textDecoration: 'underline', cursor: 'pointer', display: 'inline-block', marginTop: 6 }}
-              >
-                {introExpanded ? T('Thu gọn', 'Show less') : T('Đọc thêm', 'Read more')}
-              </span>
-            )}
-          </div>
-        )}
         <div style={{ marginTop: 22, borderTop: `1px solid ${rule}` }}>
-          {includedItems.length > 0 ? (
-            // The whole section is tappable — opens a sheet with each
-            // item's full label as a heading and its detail beneath.
+          {/* Intro/included-presentation pass (2026-09-28) — was two
+              separate things: an always-visible "Giới thiệu sự kiện"
+              section right here, PLUS a "Bao gồm" row that only became
+              tappable when `includedItems.length > 0` (real events'
+              `included_items` is empty on every row this app currently
+              has — confirmed live — so this never actually triggered for
+              them; only demo events, once they got structured items,
+              would have). Consolidated into ONE tappable row + sheet
+              (intro first, included items below) whenever EITHER exists,
+              matching iOS's own `EventDetailView` exactly — the ticket's
+              own explicit ask: "the SAME tappable... row... Introduction
+              FIRST and... Included... separately below," on both
+              platforms. `ev.included` (legacy flat string) is still the
+              fallback for an event with NEITHER — never a broken empty
+              section. */}
+          {(includedItems.length > 0 || introParagraphs.length > 0) ? (
             <div
               onClick={() => setIncludedSheetOpen(true)}
               data-testid="event-included-section"
+              aria-label={T('Giới thiệu và bao gồm, xem thêm', 'Introduction and included, view more')}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 18, padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13, cursor: 'pointer' }}
             >
               <span style={{ color: ink, flex: 'none' }}>{T('Bao gồm', 'Included')}</span>
               <span style={{ color: ink, textAlign: 'right', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '2px 6px' }}>
-                {includedItems.map((it, i) => (
-                  <span key={i}>{it.label}{i < includedItems.length - 1 ? ' ▪︎' : ''}</span>
-                ))}
+                {includedItems.length > 0 ? (
+                  includedItems.map((it, i) => (
+                    <span key={i}>{it.label}{i < includedItems.length - 1 ? ' ▪︎' : ''}</span>
+                  ))
+                ) : (
+                  <span>{T('Xem thêm', 'View more')}</span>
+                )}
                 <span style={{ opacity: 0.55 }}>›</span>
               </span>
             </div>
@@ -383,16 +378,43 @@ export default function EventDetail() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{ background: paper, width: '100%', maxHeight: '70vh', overflowY: 'auto', borderRadius: '18px 18px 0 0', padding: '20px 22px 34px', display: 'flex', flexDirection: 'column', gap: 16 }}
+            style={{ background: paper, width: '100%', maxHeight: '70vh', overflowY: 'auto', borderRadius: '18px 18px 0 0', padding: '20px 22px 34px', display: 'flex', flexDirection: 'column', gap: 20 }}
           >
             <div style={{ width: 36, height: 4, background: rule, borderRadius: 2, alignSelf: 'center' }} />
-            <span style={{ ...display(18) }}>{T('Bao gồm', 'What’s included')}</span>
-            {includedItems.map((it, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ ...display(15) }}>{it.label}</span>
-                {it.detail && <span style={{ fontSize: 13, lineHeight: 1.55, color: ink }}>{it.detail}</span>}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ ...display(18) }}>{T('Giới thiệu & Bao gồm', 'About & Included')}</span>
+              <span
+                onClick={() => setIncludedSheetOpen(false)}
+                data-testid="event-included-sheet-close"
+                style={{ fontSize: 18, color: ink, cursor: 'pointer', opacity: 0.6 }}
+              >
+                ✕
+              </span>
+            </div>
+            {/* Intro/included-presentation pass (2026-09-28) — intro FIRST,
+                Included items separately below, matching iOS's own sheet
+                exactly. The old truncate-at-90px/"Đọc thêm" toggle is gone
+                — this sheet is already its own scrollable surface, so the
+                full text just shows directly, no expand affordance needed. */}
+            {introParagraphs.length > 0 && (
+              <div data-testid="event-intro-section" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Giới thiệu sự kiện', 'About this event')}</span>
+                {introParagraphs.map((p, i) => (
+                  <p key={i} style={{ fontSize: 13.5, lineHeight: 1.6, color: ink, margin: 0, whiteSpace: 'pre-wrap' }}>{p}</p>
+                ))}
               </div>
-            ))}
+            )}
+            {includedItems.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Bao gồm', 'Included')}</span>
+                {includedItems.map((it, i) => (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ ...display(15) }}>{it.label}</span>
+                    {it.detail && <span style={{ fontSize: 13, lineHeight: 1.55, color: ink }}>{it.detail}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

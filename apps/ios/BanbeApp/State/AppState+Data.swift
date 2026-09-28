@@ -4,6 +4,10 @@ import EventKit
 import UIKit
 import Photos
 import CoreLocation
+// Address-autocomplete fix pass (2026-09-28) — MKLocalSearch, for the
+// Create Event address picker (searchCreateAddress below). Free, no API
+// key, already linked into this app (MapExploreView's own Map()).
+import MapKit
 // BUG (2026-10-08 fix pass) — `withAnimation` (used by applyOrganizerMode
 // below, to smooth the LazyVStack reflow its own state change causes) is a
 // SwiftUI global function; this file only imports it now, not before.
@@ -2685,7 +2689,15 @@ extension AppState {
     /// The columns shapeReal(As)*'s callers all need — same set web's own
     /// REAL_EVENT_ROW_COLUMNS uses (GocContext.jsx), kept as one constant so
     /// loadWeekendEvents and loadRealEventsByID never drift apart.
-    private static let realEventColumns = "id, name, cat_key, cat_label, area, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included_items, intro"
+    ///
+    /// Real-event-maps-link fix pass (2026-09-28) — `lat, lng` were missing
+    /// here despite the doc comment above claiming parity with web's own
+    /// column list, which had the identical gap (fixed there in the same
+    /// pass — GocContext.jsx's `REAL_EVENT_ROW_COLUMNS`). Neither platform
+    /// ever actually fetched a real event's own stored coordinates for its
+    /// Event Detail screen, even though `create_event_draft`/
+    /// `resubmit_event_for_review` have stored them since migration 094.
+    private static let realEventColumns = "id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included_items, intro, address_line, city, postal_code, address_verified"
 
     /// `events.cover_image` (migration 087) always wins over the gallery's
     /// own sort_order-first fallback when a host has explicitly picked one —
@@ -3731,57 +3743,84 @@ extension AppState {
     /// event (goEditEvent below) goes through resubmit_event_for_review
     /// (UPDATE the SAME row; ownership + `status = 'draft'` enforced
     /// server-side, never a second duplicate event row).
-    /**
-     * Stage 3 — the explicit geocoding/confirmation step itself, via
-     * CLGeocoder (built into iOS, no key/network dependency beyond what
-     * the OS itself provides). Biased to Ho Chi Minh City since every
-     * existing event (demo + real) is there. Never invents a fallback
-     * point on a no-match/failure — surfaces `createGeocodeError`
-     * instead, so the host can retry or explicitly skip
-     * (createLocSkipped), submitting honestly with no coordinates rather
-     * than a wrong guessed one.
-     */
-    func geocodeCreateLocation() async {
-        let query = createLoc.trimmingCharacters(in: .whitespaces)
+    /// Address-autocomplete fix pass (2026-09-28) — a live search
+    /// (MKLocalSearch, built into MapKit — no API key), replacing the old
+    /// single-shot CLGeocoder "type free text, tap Confirm, get ONE
+    /// result" flow. Debounced from the UI side (`OnboardingViews.swift`'s
+    /// `.onChange(of: app.createLoc)`, same 500ms/4-char-minimum
+    /// convention web's own `createLocType` uses), so this itself just
+    /// needs stale-response protection: `createAddressSeq` is bumped on
+    /// every call, and a response only applies if it's still current by
+    /// the time the search resolves — same convention this file already
+    /// uses elsewhere for async races (e.g. `realEventsInFlightRef`-style
+    /// guards).
+    func searchCreateAddress(_ rawQuery: String) async {
+        let query = rawQuery.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return }
-        createGeocoding = true
-        createGeocodeError = ""
-        createLocConfirmed = false
-        createLocSkipped = false
+        createAddressSeq += 1
+        let seq = createAddressSeq
+        createAddressSearching = true
+        createAddressSearchError = ""
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = query
+        // Biases (doesn't strictly filter) toward Ho Chi Minh City, since
+        // every existing event (demo + real) is there — same bias the old
+        // CLGeocoder call achieved by appending ", Hồ Chí Minh, Việt Nam"
+        // to the query text.
+        request.region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 10.7769, longitude: 106.7009),
+            span: MKCoordinateSpan(latitudeDelta: 0.5, longitudeDelta: 0.5)
+        )
         do {
-            let placemarks = try await CLGeocoder().geocodeAddressString(query + ", Hồ Chí Minh, Việt Nam")
-            guard let placemark = placemarks.first, let location = placemark.location else {
-                createGeocoding = false
-                createGeocodeError = T("Không tìm thấy vị trí này. Kiểm tra lại hoặc bỏ qua.", "Couldn't find this location. Check it or skip.")
-                return
-            }
-            createGeocoding = false
-            createLat = location.coordinate.latitude
-            createLng = location.coordinate.longitude
-            createLocLabel = [placemark.name, placemark.locality, placemark.administrativeArea]
-                .compactMap { $0 }.joined(separator: ", ")
-            createGeocodeError = ""
+            let response = try await MKLocalSearch(request: request).start()
+            guard seq == createAddressSeq else { return } // a newer search has since started
+            let suggestions = response.mapItems.compactMap(AddressSuggestion.init(mapItem:))
+            createAddressSearching = false
+            createAddressSuggestions = suggestions
+            createAddressSearchError = suggestions.isEmpty
+                ? T("Không tìm thấy địa chỉ nào. Thử ghi rõ số nhà và đường.", "No addresses found. Try including a house number and street.")
+                : ""
         } catch {
-            print("geocodeCreateLocation failed:", error)
-            createGeocoding = false
-            createGeocodeError = T("Không thể tìm vị trí lúc này. Kiểm tra kết nối rồi thử lại hoặc bỏ qua.", "Couldn't look up this location right now. Check your connection, retry, or skip.")
+            guard seq == createAddressSeq else { return }
+            print("searchCreateAddress failed:", error)
+            createAddressSearching = false
+            createAddressSuggestions = []
+            createAddressSearchError = T("Không thể tìm địa chỉ lúc này. Kiểm tra kết nối rồi thử lại.", "Couldn't search addresses right now. Check your connection and retry.")
         }
     }
 
-    func confirmCreateLocation() {
-        createLocConfirmed = true
-        createLocSkipped = false
+    /// Explicit retry — e.g. after a transient network failure, without
+    /// the host needing to retype anything.
+    func retryCreateAddressSearch() async {
+        await searchCreateAddress(createLoc)
     }
 
-    /// An explicit, honest opt-out — never a silent one. Submits with no
-    /// coordinates (no pin), same as any pre-094 event; the host can
-    /// always come back and resubmit once they have a real address.
-    func skipCreateLocation() {
-        createLocSkipped = true
-        createLocConfirmed = false
+    func selectCreateAddressSuggestion(_ suggestion: AddressSuggestion) {
+        createAddressSeq += 1 // invalidate any still-in-flight search
+        createAddressLine = suggestion.addressLine
+        createDistrict = suggestion.district
+        createCity = suggestion.city
+        createPostalCode = suggestion.postalCode
+        createLat = suggestion.lat
+        createLng = suggestion.lng
+        createLocLabel = suggestion.label
+        createLocConfirmed = true
+        createAddressSuggestions = []
+        createAddressSearching = false
+        createAddressSearchError = ""
+    }
+
+    /// "Adjust" — clears the confirmed selection so the host can search
+    /// again, without losing what they'd typed in the box.
+    func clearCreateAddressSelection() {
+        createAddressLine = ""
+        createDistrict = ""
+        createCity = ""
+        createPostalCode = ""
         createLat = nil
         createLng = nil
-        createGeocodeError = ""
+        createLocLabel = ""
+        createLocConfirmed = false
     }
 
     func submitCreateEvent(
@@ -3811,12 +3850,24 @@ extension AppState {
             }
         }
 
-        // Stage 3 — only a coordinate result the host has actually seen
-        // and confirmed is ever sent; skipped/unconfirmed means nil (no
-        // pin), never a guessed fallback. See createLocConfirmed's own
-        // doc comment.
-        let submitLat = createLocConfirmed ? createLat : nil
-        let submitLng = createLocConfirmed ? createLng : nil
+        // Address-autocomplete fix pass (2026-09-28) — client-side mirror
+        // of migration 105's own ADDRESS_NOT_VERIFIED gate, to avoid a
+        // round trip for an obviously-incomplete address (the RPC is the
+        // real gate). `createLocConfirmed` only ever becomes true via
+        // `selectCreateAddressSuggestion` (a real suggestion the host
+        // picked, this session) or `goEditEvent` pre-filling an event that
+        // ALREADY had a verified address — either way every other address
+        // field is guaranteed populated whenever this is true.
+        guard createLocConfirmed,
+              !createAddressLine.trimmingCharacters(in: .whitespaces).isEmpty,
+              !createDistrict.trimmingCharacters(in: .whitespaces).isEmpty,
+              !createCity.trimmingCharacters(in: .whitespaces).isEmpty,
+              let submitLat = createLat, let submitLng = createLng
+        else {
+            loading = false
+            createError = T("Hãy chọn một địa chỉ gợi ý và xác nhận vị trí trên bản đồ trước khi đăng.", "Select a suggested address and confirm its pin before publishing.")
+            return
+        }
 
         do {
             var eventID: String?
@@ -3827,11 +3878,15 @@ extension AppState {
                         name: createName.trimmingCharacters(in: .whitespaces),
                         category: createCats.first ?? "supper",
                         description: createDesc.trimmingCharacters(in: .whitespaces),
-                        location: createLoc.trimmingCharacters(in: .whitespaces),
+                        location: createDistrict.trimmingCharacters(in: .whitespaces),
                         eventDate: eventDate, eventTime: eventTime,
                         priceVnd: Int(priceDigits) ?? 0, capacity: capacity,
                         intro: createIntro.trimmingCharacters(in: .whitespacesAndNewlines),
-                        lat: submitLat, lng: submitLng
+                        lat: submitLat, lng: submitLng,
+                        addressLine: createAddressLine.trimmingCharacters(in: .whitespaces),
+                        city: createCity.trimmingCharacters(in: .whitespaces),
+                        postalCode: createPostalCode.trimmingCharacters(in: .whitespaces),
+                        addressVerified: true
                     ))
                     .execute().value
                 guard case .bool(true) = result["success"] ?? .bool(false) else { throw URLError(.badServerResponse) }
@@ -3848,7 +3903,7 @@ extension AppState {
                         name: createName.trimmingCharacters(in: .whitespaces),
                         category: createCats.first ?? "supper",
                         description: createDesc.trimmingCharacters(in: .whitespaces),
-                        location: createLoc.trimmingCharacters(in: .whitespaces),
+                        location: createDistrict.trimmingCharacters(in: .whitespaces),
                         eventDate: eventDate,
                         eventTime: eventTime,
                         priceVnd: Int(priceDigits) ?? 0,
@@ -3858,7 +3913,11 @@ extension AppState {
                         instagram: orgRegIg.trimmingCharacters(in: .whitespaces),
                         about: orgRegDesc.trimmingCharacters(in: .whitespaces),
                         intro: createIntro.trimmingCharacters(in: .whitespacesAndNewlines),
-                        lat: submitLat, lng: submitLng
+                        lat: submitLat, lng: submitLng,
+                        addressLine: createAddressLine.trimmingCharacters(in: .whitespaces),
+                        city: createCity.trimmingCharacters(in: .whitespaces),
+                        postalCode: createPostalCode.trimmingCharacters(in: .whitespaces),
+                        addressVerified: true
                     ))
                     .execute().value
                 eventID = created.id
@@ -3923,18 +3982,31 @@ extension AppState {
         createCats = real.catKey.map { [$0] } ?? []
         createDesc = real.description ?? ""
         createIntro = real.intro ?? ""
-        createLoc = real.area ?? ""
-        // Stage 3 — never carry a stale confirmation/point over from
-        // whatever this screen was doing before; resubmit_event_for_review's
-        // own `COALESCE(p_lat, lat)` already preserves this event's real
-        // existing coordinates (if any) when p_lat stays nil, so leaving
-        // this unconfirmed here is not a silent loss.
-        createLat = nil
-        createLng = nil
-        createLocLabel = ""
-        createLocConfirmed = false
-        createLocSkipped = false
-        createGeocodeError = ""
+        // Address-autocomplete fix pass (2026-09-28) — an event that
+        // already has a verified address (migration 105) pre-fills it as
+        // ALREADY confirmed — resubmit_event_for_review preserves it via
+        // COALESCE even if this edit session never re-touches it, so
+        // there's no reason to make the host re-search an address that
+        // was already resolved. The search box (`createLoc`) stays empty
+        // either way — it's a live search field now, not a display of the
+        // current value — except for a pre-105 event with no structured
+        // address yet, where seeding it with the old free-text `area` at
+        // least gives the host a starting point to re-search from.
+        let hadVerifiedAddress = real.addressVerified == true
+        createLoc = hadVerifiedAddress ? "" : (real.area ?? "")
+        createLat = real.lat
+        createLng = real.lng
+        createLocLabel = hadVerifiedAddress
+            ? [real.addressLine, real.area, real.city].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+            : ""
+        createAddressLine = real.addressLine ?? ""
+        createDistrict = real.area ?? ""
+        createCity = real.city ?? ""
+        createPostalCode = real.postalCode ?? ""
+        createLocConfirmed = hadVerifiedAddress
+        createAddressSuggestions = []
+        createAddressSearching = false
+        createAddressSearchError = ""
         createEventDate = real.eventDate.flatMap { AppState.vnDateFormatter.date(from: $0) }
         createEventTime = real.eventTime.flatMap { raw -> Date? in
             let normalized = raw.count == 5 ? raw + ":00" : raw
@@ -4072,6 +4144,11 @@ struct ResubmitEventParams: Encodable {
     let intro: String
     let lat: Double?
     let lng: Double?
+    // Address-autocomplete fix pass (2026-09-28, migration 105).
+    let addressLine: String
+    let city: String
+    let postalCode: String
+    let addressVerified: Bool
 
     enum CodingKeys: String, CodingKey {
         case eventId = "p_event_id"
@@ -4086,6 +4163,10 @@ struct ResubmitEventParams: Encodable {
         case intro = "p_intro"
         case lat = "p_lat"
         case lng = "p_lng"
+        case addressLine = "p_address_line"
+        case city = "p_city"
+        case postalCode = "p_postal_code"
+        case addressVerified = "p_address_verified"
     }
 }
 
@@ -4128,6 +4209,11 @@ struct CreateEventParams: Encodable {
     let intro: String
     let lat: Double?
     let lng: Double?
+    // Address-autocomplete fix pass (2026-09-28, migration 105).
+    let addressLine: String
+    let city: String
+    let postalCode: String
+    let addressVerified: Bool
 
     enum CodingKeys: String, CodingKey {
         case name = "p_name"
@@ -4144,5 +4230,9 @@ struct CreateEventParams: Encodable {
         case intro = "p_intro"
         case lat = "p_lat"
         case lng = "p_lng"
+        case addressLine = "p_address_line"
+        case city = "p_city"
+        case postalCode = "p_postal_code"
+        case addressVerified = "p_address_verified"
     }
 }

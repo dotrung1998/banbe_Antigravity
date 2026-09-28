@@ -89,6 +89,42 @@ const STATUS = {
 
 const INVITE_ONLY = { banrieng: true };
 
+// Demo-event Event Introduction pass (2026-09-28) — this static catalogue
+// predates migrations 087/088 ("Bao gồm"/included_items and "Giới thiệu
+// sự kiện"/intro), so demo events had neither field and fell back to the
+// old plain-text "Bao gồm" row on Event Detail. Hand-written per event
+// (not templated/generated — these are meant to read as distinct case
+// studies of editorial voice, per this ticket's own "creativity in tone/
+// structure is welcome" allowance for demo copy specifically), but every
+// sentence is grounded in that SAME event's own existing `desc`/`included`
+// text above (r[12]/r[13]) — no invented performer, menu, amenity, or
+// promise beyond what was already written there. `includedItems` (below,
+// in the EVENTS map) is derived programmatically from the existing
+// `included` string, never re-authored — see that map's own comment.
+const INTRO = {
+  bepnho: 'Một ga-ra cải tạo ở Bình Thạnh, mười bốn chỗ quanh một cái bàn dài. Minh nấu theo những gì chợ sáng hôm đó có — không thực đơn cố định, không lặp lại tuần trước.\n\nVé bao gồm 5 món, rượu gạo và cà phê.',
+  comnha: 'Tám chỗ quanh bếp than, trên sân thượng nhà Mai. Cá nướng theo mùa, đổi tuỳ hôm bạn đến.\n\nBao gồm 4 món, trà và tráng miệng.',
+  bandai: 'Một bàn dài, mười sáu người lạ, sáu món — không ai rời bàn trước món cuối cùng.\n\nBao gồm rượu vang và nước lọc rót đầy suốt bữa.',
+  phokhuya: 'Phở lúc mười một giờ đêm. Nước dùng bắc từ trưa, mười hai ghế nhựa, hết là hết.\n\nMột tô, kèm quẩy và trà đá.',
+  vuonsau: 'Bữa tối ngoài trời trong vườn sau nhà — đèn dây giăng ngang, trời mưa thì cả bàn dời vào hiên.\n\nBao gồm 5 món và một ly cocktail mở màn.',
+  orbit: "Sàn thép, sân khấu tròn, bốn mươi phút không nghỉ. L'Édition ra mắt bộ sưu tập mới lần đầu tiên ngoài cửa hàng.\n\nBao gồm welcome drink và số zine L'Édition №4.",
+  aeie: 'Một buổi chiều xưởng may mở cửa — rập, vải, và những mẫu chưa từng được bán ra ngoài, xem tận nơi.\n\nBao gồm trà và một vòng tham quan xưởng 30 phút.',
+  fanci: 'Thử đồ, nhưng như một buổi tiệc: gương, đèn, một stylist cho mỗi ba khách.\n\nBao gồm hỗ trợ từ stylist, đồ uống, và chỉnh sửa tại chỗ.',
+  compound: 'Drop mới ra mắt trên sân thượng, mặc thử ngay dưới nắng chiều — số lượng giới hạn, bán hết là thôi.\n\nBao gồm vé vào cửa và một sticker pack.',
+  motlop: 'Bốn nhà thiết kế, một chất liệu, bốn cách cắt khác nhau — một buổi tối nói về vải, bằng tiếng Việt có phụ đề Anh.\n\nBao gồm phần trò chuyện 40 phút và đồ uống.',
+  vungtrang: 'Sáu hoạ sĩ cùng vẽ về một màu. Triển lãm nhóm xoay quanh ý niệm về sự trống, mở cửa một đêm trước công chúng.\n\nBao gồm catalogue và một buổi trò chuyện cùng giám tuyển.',
+  sonmai: 'Hai thế hệ làm sơn mài, tranh treo đối diện nhau — người xem đứng giữa, tự so sánh.\n\nBao gồm vé vào cửa và tài liệu triển lãm.',
+  khongnguoi: 'Ba mươi tấm ảnh chụp thành phố trong sáu năm — không một bóng người trong bất kỳ khung hình nào.\n\nBao gồm vé vào cửa và một bản in khổ nhỏ.',
+  noigiay: 'Một giờ nói về giấy dó, cùng người làm giấy đời thứ ba trong gia đình — có mẫu giấy để cầm, để sờ.\n\nBao gồm buổi trò chuyện, trà, và một mẫu giấy mang về.',
+  phong302: 'Triển lãm bên trong một căn hộ tập thể cũ, đồ đạc giữ nguyên như vốn có — mỗi phòng là một tác giả riêng.\n\nVé vào cửa theo khung giờ.',
+  chieucham: 'Ba DJ thay nhau chơi suốt một buổi chiều, không playlist định sẵn — đến sớm để có chỗ ngồi.\n\nVào cửa tự do; cà phê tính riêng.',
+  jazzgac: 'Một gác gỗ hai mươi chỗ, kèn chơi không cần micro. Set thứ hai bắt đầu lúc mười giờ tối.\n\nBao gồm cả hai set và một đồ uống.',
+  bangcoi: 'Nghe lại nhạc từ băng cối, qua một dàn loa cũ — không điện thoại trong phòng nghe.\n\nBao gồm vé vào cửa và một tách trà nóng.',
+  modular: 'Bốn nghệ sĩ, bốn dàn máy modular, nối dây và chơi trực tiếp — không bài nào lặp lại đêm đó.\n\nBao gồm vé vào cửa và earplugs miễn phí.',
+  pianomuon: 'Một cây đàn, một người chơi, đèn tắt gần hết — bốn mươi lăm phút, không micro, không giới thiệu dài dòng.\n\nBao gồm một set và một ly vang.',
+  banrieng: 'Một bàn riêng, sáu chỗ, không đăng công khai — Minh nấu cho vài người quen của người quen.\n\nBao gồm 7 món và rượu vang chọn riêng cho bữa này.',
+};
+
 const ORG_STATS = {
   bepnho: { since: 2021, count: 47 }, comnha: { since: 2023, count: 12 }, bandai: { since: 2022, count: 31 },
   phokhuya: { since: 2024, count: 8 }, vuonsau: { since: 2025, count: 3 },
@@ -216,6 +252,17 @@ export const EVENTS = ROWS.map((r, idx) => {
     when: r[7] + ' ▪︎ ' + r[9],
     price: r[10], seats: 'Còn ' + r[11] + ' chỗ', seatsLong: 'Còn ' + r[11] + ' chỗ', urgent: r[11] <= 5,
     desc: r[12], included: r[13], host: r[14], hostShort: r[15],
+    // Demo-event Event Introduction pass (2026-09-28) — `intro` is hand-
+    // written per event (INTRO lookup above); `includedItems` is derived
+    // PROGRAMMATICALLY from the existing `included` string (r[13]) —
+    // split on its own " ▪︎ " separator into the SAME structured
+    // {label, detail} shape real events use (migration 087), never
+    // re-authored with new content. `detail` stays empty: this flat
+    // string never had a separate detail per item to begin with, and
+    // inventing one would be exactly the kind of fabricated benefit this
+    // ticket says not to add.
+    intro: INTRO[r[0]] || '',
+    includedItems: r[13] ? r[13].split(' ▪︎ ').map(label => ({ label: label.trim(), detail: '' })).filter(it => it.label) : [],
     palette: PALETTES[r[16]], greeting: r[17],
     gallery, orgGallery, orgName: org.name, orgIg: org.ig, orgDesc: org.desc,
     orgSince: orgStat.since, orgCount: orgStat.count, orgTrusted: trusted,

@@ -8,6 +8,13 @@ struct EventDetailView: View {
     @Environment(\.openURL) private var openURL
     @State private var shareStoryMessage: String?
     @State private var shareConfirmOpen = false
+    // Intro/included-parity fix pass (2026-09-28) — "Bao gồm"/Included was
+    // plain, non-tappable text; now opens a sheet showing the event's own
+    // "Giới thiệu sự kiện"/introduction FIRST, then the structured
+    // Included items below it — same content web already has, just
+    // surfaced differently there (an always-visible intro section plus
+    // its own separate included-only sheet) vs. here (one sheet, both).
+    @State private var introIncludedSheetOpen = false
 
     private var event: CatalogEvent { app.currentEvent }
     // STAGE D (2026-09-25) — real event_photos URLs, replacing the static
@@ -91,6 +98,11 @@ struct EventDetailView: View {
             backShareRow
         }
         .sheet(isPresented: $shareConfirmOpen) { shareConfirmSheet }
+        .overlay {
+            if introIncludedSheetOpen {
+                BottomSheet(onDismiss: { introIncludedSheetOpen = false }) { introIncludedSheetContent }
+            }
+        }
         // STAGE D (2026-09-25) — re-fetched whenever the viewed event
         // changes (this view can be reached repeatedly for different
         // events without ever being torn down, e.g. via `goEvent`).
@@ -228,7 +240,13 @@ struct EventDetailView: View {
             // the event's own coordinates less valid) — removed so a
             // story-originated Event Detail shows the same Map action a
             // Home-originated one does, whenever `eventBackScreen == .home`.
-            if app.eventBackScreen == .home {
+            // Real-event-maps-link fix pass (2026-09-28) — `event.lat != nil`
+            // added: a real event with no confirmed coordinates yet (an
+            // older event, or one whose host explicitly skipped
+            // confirmation at creation) has nothing for this action to
+            // open — honest omission instead of a button that silently
+            // no-ops (`openEventOnMap`'s own guard).
+            if app.eventBackScreen == .home, event.lat != nil, event.lng != nil {
                 Button(app.T("▪︎ Xem trên bản đồ", "▪︎ Open in map")) { app.openEventOnMap(event) }
                     .font(.system(size: 11.5))
                     .foregroundStyle(app.palette.ink.opacity(0.65))
@@ -312,7 +330,23 @@ struct EventDetailView: View {
 
             VStack(spacing: 0) {
                 Divider().overlay(app.palette.rule)
-                detailRow(app.T("Bao gồm", "Included"), value: event.included)
+                // Intro/included-parity fix pass (2026-09-28) — was plain
+                // text via `detailRow` with no tap target at all. Only
+                // shown when there's actually something to open (an intro
+                // or at least one structured item) — an event with
+                // neither shows nothing here at all, same as before this
+                // pass for an event whose `included` string was empty
+                // (never a broken empty section).
+                if event.intro != nil || !(event.includedItems?.isEmpty ?? true) {
+                    Button { introIncludedSheetOpen = true } label: {
+                        includedRow
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("event.includedSection")
+                    .accessibilityLabel(app.T("Giới thiệu và bao gồm, xem thêm", "Introduction and included, view more"))
+                } else if !event.included.isEmpty {
+                    detailRow(app.T("Bao gồm", "Included"), value: event.included)
+                }
                 Button { app.goOrganizer() } label: {
                     detailRow(app.T("Người tổ chức", "Organizer"),
                               value: app.T("Ghé", "Visit") + " \(event.orgName) ›")
@@ -420,6 +454,86 @@ struct EventDetailView: View {
         // Without this the gap between the label and the value isn't part
         // of the button at all — tapping the middle of the row did nothing.
         .contentShape(Rectangle())
+    }
+
+    // Intro/included-parity fix pass (2026-09-28) — same visual shape as
+    // `detailRow` above (label left, value right, divider below), but with
+    // an explicit "›" chevron so the row reads as navigable at a glance —
+    // `detailRow` itself has no chevron since most of its callers (Price,
+    // Track record) aren't tappable at all.
+    private var includedRow: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 18) {
+                Text(app.T("Bao gồm", "Included")).font(.system(size: 13))
+                Spacer(minLength: 0)
+                Text(includedRowSummary)
+                    .font(.system(size: 13))
+                    .multilineTextAlignment(.trailing)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .medium))
+                    .opacity(0.45)
+            }
+            .padding(.vertical, 12)
+            .foregroundStyle(app.palette.ink)
+            Divider().overlay(app.palette.rule)
+        }
+        .contentShape(Rectangle())
+    }
+
+    /// The row's own right-aligned preview text — item labels if there are
+    /// any, else a generic "has an introduction" hint (an event can have
+    /// an intro with zero included items, e.g. a free meetup).
+    private var includedRowSummary: String {
+        let items = event.includedItems ?? []
+        if !items.isEmpty { return items.map(\.label).joined(separator: " ▪︎ ") }
+        return app.T("Xem thêm", "View more")
+    }
+
+    private var introIncludedSheetContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text(app.T("Giới thiệu & Bao gồm", "About & Included")).font(BanbeTheme.display(18))
+                Spacer()
+                Button { introIncludedSheetOpen = false } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("event.includedSheet.close")
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if let intro = event.intro {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(app.T("Giới thiệu sự kiện", "About this event"))
+                                .font(.system(size: 11.5, weight: .semibold))
+                            // Paragraph breaks on blank lines, same
+                            // convention web's own `introParagraphs`
+                            // (EventDetail.jsx) uses for the same field.
+                            ForEach(Array(intro.components(separatedBy: "\n\n").enumerated()), id: \.offset) { _, paragraph in
+                                Text(paragraph.trimmingCharacters(in: .whitespacesAndNewlines))
+                                    .font(.system(size: 13.5))
+                                    .lineSpacing(5)
+                            }
+                        }
+                    }
+                    let items = event.includedItems ?? []
+                    if !items.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(app.T("Bao gồm", "Included"))
+                                .font(.system(size: 11.5, weight: .semibold))
+                            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.label).font(.system(size: 13.5, weight: .medium))
+                                    if !item.detail.isEmpty {
+                                        Text(item.detail).font(.system(size: 12.5)).opacity(0.7)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .accessibilityIdentifier("event.includedSheet")
     }
 
     // A completed event has nothing left to reserve — showing "Reserve"

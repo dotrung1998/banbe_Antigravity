@@ -25,6 +25,15 @@ function shapeRealEvent(row, extra = {}) {
     key: row.id,
     name: row.name,
     area: row.area || '',
+    // Real-event-maps-link fix pass (2026-09-28) — `lat`/`lng` were never
+    // fetched here at all (missing from REAL_EVENT_ROW_COLUMNS below),
+    // even though migration 094 has stored them on real events since
+    // 2026-10-08. `shapeRealEventAsCurEvent` then hardcoded `lat: null,
+    // lng: null` regardless — the combination meant a real event's own
+    // Event Detail page could never show a working "open in Google Maps"
+    // link, even for an event with a genuinely confirmed pin.
+    lat: row.lat ?? null,
+    lng: row.lng ?? null,
     catKey: row.cat_key || 'all',
     catLabel: row.cat_label || '',
     startsAt: row.starts_at || null,
@@ -58,10 +67,18 @@ function shapeRealEvent(row, extra = {}) {
     // description, never the same field as the short `description`/
     // "Mô tả" or `included_items`/"Bao gồm" above.
     intro: row.intro || '',
+    // Address-autocomplete fix pass (2026-09-28, migration 105) — lets
+    // goEditEvent pre-fill a verified address (and show it as already
+    // confirmed) instead of making the host re-search an address that
+    // was already resolved on a previous submit.
+    addressLine: row.address_line || '',
+    city: row.city || '',
+    postalCode: row.postal_code || '',
+    addressVerified: !!row.address_verified,
   };
 }
 
-const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included, included_items, intro';
+const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included, included_items, intro, address_line, city, postal_code, address_verified';
 
 /** A real event's own selected `cover_image` (migration 087) resolved to a
  * public URL, falling back to `fallbackUrl` (the first `event_photos` row
@@ -136,7 +153,7 @@ function shapeRealEventAsCurEvent(real) {
   const endedHoursAgo = real.status === 'ended' && startsAt ? Math.max(0, Math.round((Date.now() - startsAt.getTime()) / 3600000)) : null;
   return {
     key: real.key, catKey: real.catKey, cat: real.catLabel || '', cat2Key: null, catDisplay: real.catLabel || '',
-    name: real.name, img: real.photoUrl || '', lat: null, lng: null,
+    name: real.name, img: real.photoUrl || '', lat: real.lat ?? null, lng: real.lng ?? null,
     meta: [real.catLabel, real.area].filter(Boolean).join(' ▪︎ '),
     where: real.area || '',
     when: startsAt ? `${weekdayShort}, ${dayMonth} ▪︎ ${time}` : '',
@@ -674,25 +691,29 @@ const initialState = {
   createError: '',
   createDesc: '',
   createLoc: '',
-  // Stage 3 (2026-09-27 nav/discovery pass) — Map's own pin audit found
-  // that create_event_draft/resubmit_event_for_review never accepted or
-  // stored coordinates at all (confirmed live: the two most recent REAL
-  // events both had lat=NULL, lng=NULL, unlike every demo-seeded one) —
-  // MapExplore's fetchLiveEvents requires non-null lat/lng for a pin, so
-  // those events could never appear on the map regardless of approval.
-  // `createLocConfirmed` gates submit-time coordinate use: geocoding
-  // `createLoc` (free text) is a best-effort guess, never silently
-  // trusted — only a result the host has actually SEEN and confirmed
-  // (or explicitly skipped) is ever sent as p_lat/p_lng. Reset to false
-  // any time createLoc itself changes (see createLocType) since a stale
-  // confirmation for a since-edited address is worse than none.
+  // Address-autocomplete fix pass (2026-09-28) — replaces the old single-
+  // shot "type free text, tap Confirm, get ONE geocode result" flow.
+  // `createLoc` is now purely the live search box's own text; a selected
+  // suggestion's DECOMPOSED fields live separately below so the concise
+  // location line can show the district alone while the full address is
+  // still available for validation/re-editing. `createLocConfirmed` is
+  // the same trust gate migration 094 introduced for lat/lng (never
+  // silently trusting free text), now doubling as the RPCs' own
+  // `p_address_verified` — see submitCreateEvent's own comment. There is
+  // no more "skip" — publishing now REQUIRES a verified address (this
+  // ticket's own explicit requirement), so an unresolved location simply
+  // blocks submit with a clear inline message instead.
   createLat: null,
   createLng: null,
   createLocLabel: '',
+  createAddressLine: '',
+  createDistrict: '',
+  createCity: '',
+  createPostalCode: '',
   createLocConfirmed: false,
-  createLocSkipped: false,
-  createGeocoding: false,
-  createGeocodeError: '',
+  createAddressSuggestions: [],
+  createAddressSearching: false,
+  createAddressSearchError: '',
   // Date/time picker fix (Stage B, 2026-09-26) — two canonical native-input
   // values (`<input type="date">`'s own "yyyy-mm-dd", `<input type="time">`'s
   // own "HH:mm") REPLACE the old single free-text `createDate` field this
@@ -4762,7 +4783,9 @@ export function GocProvider({ children }) {
     // still read the same from before this reset.
     set(prev => ({
       screen: 'create', mode: 'host', createEditEventId: null, createSent: false, createError: '', createOriginScreen: prev.screen,
-      createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false, createLocSkipped: false, createGeocodeError: '',
+      createLoc: '', createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false,
+      createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
+      createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
     }));
   }, [set, s.user, canHost, enableOrganizerMode]);
   const openHeld = useCallback(() => set({ screen: 'confirmed' }), [set]);
@@ -6769,52 +6792,129 @@ export function GocProvider({ children }) {
   const createNameType = useCallback((e) => set({ createName: e.target.value }), [set]);
   const createDescType = useCallback((e) => set({ createDesc: e.target.value }), [set]);
   const createIntroType = useCallback((e) => set({ createIntro: e.target.value }), [set]);
-  const createLocType = useCallback((e) => set({
-    createLoc: e.target.value,
-    // A stale confirmation/resolved point for a since-edited address is
-    // worse than none — see createLocConfirmed's own comment.
-    createLocConfirmed: false, createLocSkipped: false, createLat: null, createLng: null,
-    createLocLabel: '', createGeocodeError: '',
-  }), [set]);
+
+  // Address-autocomplete fix pass (2026-09-28) — same stale-response-
+  // discarding convention this file already uses for refund queues
+  // (refundQueueSeq/refundCenterSeq above): `createAddressSeq` is bumped
+  // on every new search, and a response only gets applied if it's still
+  // the CURRENT search when it resolves. `createAddressTimer` is the
+  // debounce (500ms) — Nominatim's own usage policy is for occasional
+  // lookups, not raw keystroke-rate traffic; debouncing plus this app
+  // having no paid Places key is why this is "a few candidates after a
+  // short pause," not true instant-per-keystroke autocomplete.
+  const createAddressSeq = useRef(0);
+  const createAddressTimer = useRef(null);
 
   /**
-   * Stage 3 — the explicit geocoding/confirmation step itself. Free
-   * (Nominatim/OpenStreetMap, no API key), biased to Ho Chi Minh City
-   * since every existing event (demo + real) is there. Never invents a
-   * fallback point on a no-match/network failure — surfaces
-   * `createGeocodeError` instead, so the host can retry or explicitly
-   * skip (createLocSkipped), submitting honestly with no coordinates
-   * rather than a wrong guessed one.
+   * Nominatim's `addressdetails=1` breakdown -> this app's own candidate
+   * shape. A result with a house number AND a road becomes a normal
+   * street address; one with neither but a real name (a POI/venue tag,
+   * or Nominatim's own `name`) becomes a "verified venue" suggestion —
+   * the ticket's own "support a verified named venue/POI... when a
+   * conventional house number genuinely does not exist" case. A result
+   * with NONE of those (Nominatim only matched a bare district/city, or a
+   * road with no identifying name at all) is filtered out entirely here —
+   * never offered as a selectable suggestion, since it cannot resolve to
+   * a genuinely precise point. Missing district/city also disqualifies a
+   * hit — this app's whole address model requires both.
    */
-  const geocodeCreateLocation = useCallback(async () => {
-    const query = s.createLoc.trim();
-    if (!query) return;
-    set({ createGeocoding: true, createGeocodeError: '', createLocConfirmed: false, createLocSkipped: false });
+  function shapeAddressSuggestion(hit) {
+    const addr = hit.address || {};
+    const houseNumber = (addr.house_number || '').trim();
+    const road = (addr.road || '').trim();
+    const venueName = (hit.name || addr.amenity || addr.shop || addr.tourism || addr.leisure || addr.building || '').trim();
+    const district = (addr.suburb || addr.city_district || addr.quarter || addr.district || addr.town || '').trim();
+    const city = (addr.city || addr.state || addr.province || '').trim();
+    const postalCode = (addr.postcode || '').trim();
+    let addressLine = '';
+    let isVenue = false;
+    if (houseNumber && road) {
+      addressLine = `${houseNumber} ${road}`;
+    } else if (venueName) {
+      addressLine = venueName;
+      isVenue = true;
+    } else {
+      return null;
+    }
+    if (!district || !city) return null;
+    const lat = parseFloat(hit.lat);
+    const lng = parseFloat(hit.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return {
+      id: String(hit.place_id ?? `${lat},${lng}`),
+      addressLine, district, city, postalCode, isVenue, lat, lng,
+      label: hit.display_name || [addressLine, district, city].filter(Boolean).join(', '),
+    };
+  }
+
+  const searchCreateAddress = useCallback(async (query) => {
+    const seq = ++createAddressSeq.current;
+    set({ createAddressSearching: true, createAddressSearchError: '' });
     try {
-      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query + ', Hồ Chí Minh, Việt Nam')}`;
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&q=${encodeURIComponent(query + ', Việt Nam')}`;
       const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (seq !== createAddressSeq.current) return; // a newer search has since started
       if (!res.ok) throw new Error('GEOCODE_HTTP_' + res.status);
       const rows = await res.json();
-      const hit = rows?.[0];
-      if (!hit) {
-        set({ createGeocoding: false, createGeocodeError: T('Không tìm thấy vị trí này. Kiểm tra lại hoặc bỏ qua.', "Couldn't find this location. Check it or skip.") });
-        return;
-      }
+      if (seq !== createAddressSeq.current) return;
+      const suggestions = (rows || []).map(shapeAddressSuggestion).filter(Boolean);
       set({
-        createGeocoding: false, createLat: parseFloat(hit.lat), createLng: parseFloat(hit.lon),
-        createLocLabel: hit.display_name || query, createGeocodeError: '',
+        createAddressSearching: false, createAddressSuggestions: suggestions,
+        createAddressSearchError: suggestions.length ? '' : T(
+          'Không tìm thấy địa chỉ nào. Thử ghi rõ số nhà và đường.',
+          'No addresses found. Try including a house number and street.'
+        ),
       });
     } catch (err) {
-      console.warn('geocodeCreateLocation failed:', err);
-      set({ createGeocoding: false, createGeocodeError: T('Không thể tìm vị trí lúc này. Kiểm tra kết nối rồi thử lại hoặc bỏ qua.', "Couldn't look up this location right now. Check your connection, retry, or skip.") });
+      if (seq !== createAddressSeq.current) return;
+      console.warn('searchCreateAddress failed:', err);
+      set({ createAddressSearching: false, createAddressSuggestions: [], createAddressSearchError: T(
+        'Không thể tìm địa chỉ lúc này. Kiểm tra kết nối rồi thử lại.',
+        "Couldn't search addresses right now. Check your connection and retry."
+      ) });
     }
-  }, [set, s.createLoc, T]);
+  }, [set, T]);
 
-  const confirmCreateLocation = useCallback(() => set({ createLocConfirmed: true, createLocSkipped: false }), [set]);
-  // An explicit, honest opt-out — never a silent one. Submits with no
-  // coordinates (no pin), same as any pre-094 event; the host can always
-  // come back and resubmit once they have a real address.
-  const skipCreateLocation = useCallback(() => set({ createLocSkipped: true, createLocConfirmed: false, createLat: null, createLng: null, createGeocodeError: '' }), [set]);
+  const createLocType = useCallback((e) => {
+    const value = e.target.value;
+    if (createAddressTimer.current) clearTimeout(createAddressTimer.current);
+    // A stale confirmation/resolved point for a since-edited search is
+    // worse than none — see createLocConfirmed's own comment (state init,
+    // above).
+    set({
+      createLoc: value, createLocConfirmed: false, createLat: null, createLng: null,
+      createLocLabel: '', createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
+      createAddressSuggestions: [], createAddressSearchError: '',
+    });
+    const query = value.trim();
+    if (query.length < 4) { set({ createAddressSearching: false }); return; }
+    createAddressTimer.current = setTimeout(() => { searchCreateAddress(query); }, 500);
+  }, [set, searchCreateAddress]);
+
+  /** Explicit retry — e.g. after a transient network failure, without the host needing to retype anything. */
+  const retryCreateAddressSearch = useCallback(() => {
+    const query = s.createLoc.trim();
+    if (query.length < 4) return;
+    searchCreateAddress(query);
+  }, [s.createLoc, searchCreateAddress]);
+
+  const selectCreateAddressSuggestion = useCallback((suggestion) => {
+    if (createAddressTimer.current) clearTimeout(createAddressTimer.current);
+    createAddressSeq.current += 1; // invalidate any still-in-flight search
+    set({
+      createAddressLine: suggestion.addressLine, createDistrict: suggestion.district,
+      createCity: suggestion.city, createPostalCode: suggestion.postalCode,
+      createLat: suggestion.lat, createLng: suggestion.lng,
+      createLocLabel: suggestion.label, createLocConfirmed: true,
+      createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
+    });
+  }, [set]);
+
+  /** "Adjust" — clears the confirmed selection so the host can search again, without losing what they'd typed. */
+  const clearCreateAddressSelection = useCallback(() => set({
+    createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
+    createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false,
+  }), [set]);
   const createEventDateType = useCallback((e) => set({ createEventDate: e.target.value }), [set]);
   const createEventTimeType = useCallback((e) => set({ createEventTime: e.target.value }), [set]);
   const createPriceType = useCallback((e) => set({ createPrice: e.target.value }), [set]);
@@ -6974,22 +7074,32 @@ export function GocProvider({ children }) {
       const intro = s.createIntro.trim();
       if (intro.length > 4000) throw new Error('INVALID_INTRO');
 
-      // Stage 3 — only a coordinate result the host has actually seen and
-      // confirmed is ever sent; skipped/unconfirmed means null (no pin),
-      // never a guessed fallback. See createLocConfirmed's own comment.
-      const lat = s.createLocConfirmed ? s.createLat : null;
-      const lng = s.createLocConfirmed ? s.createLng : null;
+      // Address-autocomplete fix pass (2026-09-28) — client-side mirror of
+      // migration 105's own ADDRESS_NOT_VERIFIED gate, to avoid a round
+      // trip for an obviously-incomplete address (the RPC is the real
+      // gate, same "client check is a nicety" reasoning the included-items/
+      // intro checks just above already follow). `createLocConfirmed` only
+      // ever becomes true via `selectCreateAddressSuggestion` (a real
+      // suggestion the host picked, this session) or `goEditEvent`
+      // pre-filling an event that ALREADY had a verified address — either
+      // way, every other address field is guaranteed populated whenever
+      // this is true, so there's nothing left to separately null-check.
+      if (!s.createLocConfirmed || !s.createAddressLine.trim() || !s.createDistrict.trim() || !s.createCity.trim() || s.createLat == null || s.createLng == null) {
+        throw new Error('ADDRESS_NOT_VERIFIED');
+      }
 
       let eventId = s.createEditEventId;
       if (s.createEditEventId) {
         const { data, error } = await supabase.rpc('resubmit_event_for_review', {
           p_event_id: s.createEditEventId,
           p_name: s.createName.trim(), p_category: s.createCats[0] || 'supper',
-          p_description: s.createDesc.trim(), p_location: s.createLoc.trim(),
+          p_description: s.createDesc.trim(), p_location: s.createDistrict.trim(),
           p_event_date: eventDate, p_event_time: eventTime,
           p_price_vnd: priceVnd, p_capacity: capacity,
           p_included_items: includedItems, p_intro: intro,
-          p_lat: lat, p_lng: lng,
+          p_lat: s.createLat, p_lng: s.createLng,
+          p_address_line: s.createAddressLine.trim(), p_city: s.createCity.trim(),
+          p_postal_code: s.createPostalCode.trim(), p_address_verified: true,
         });
         if (error) throw error;
         if (data?.success === false) throw new Error(data.error);
@@ -7001,7 +7111,7 @@ export function GocProvider({ children }) {
           p_name: s.createName.trim(),
           p_category: s.createCats[0] || 'supper',
           p_description: s.createDesc.trim(),
-          p_location: s.createLoc.trim(),
+          p_location: s.createDistrict.trim(),
           p_event_date: eventDate,
           p_event_time: eventTime,
           p_price_vnd: priceVnd,
@@ -7011,7 +7121,9 @@ export function GocProvider({ children }) {
           p_about: s.orgRegDesc.trim(),
           p_included_items: includedItems,
           p_intro: intro,
-          p_lat: lat, p_lng: lng,
+          p_lat: s.createLat, p_lng: s.createLng,
+          p_address_line: s.createAddressLine.trim(), p_city: s.createCity.trim(),
+          p_postal_code: s.createPostalCode.trim(), p_address_verified: true,
         });
         if (error) throw error;
         eventId = data?.id || null;
@@ -7047,10 +7159,12 @@ export function GocProvider({ children }) {
         ? T('Mỗi mục "Bao gồm" cần tên (tối đa 60 ký tự) và mô tả tối đa 300 ký tự.', 'Each "Included" item needs a label (max 60 chars) and detail under 300 chars.')
         : err.message === 'INVALID_INTRO'
         ? T('Giới thiệu sự kiện tối đa 4000 ký tự.', 'The event introduction is limited to 4000 characters.')
+        : err.message === 'ADDRESS_NOT_VERIFIED'
+        ? T('Hãy chọn một địa chỉ gợi ý và xác nhận vị trí trên bản đồ trước khi đăng.', 'Select a suggested address and confirm its pin before publishing.')
         : (err.message || 'Unable to submit this event.');
       set({ loading: false, createError: message });
     }
-  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
+  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createLat, s.createLng, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
 
   /**
@@ -7071,13 +7185,24 @@ export function GocProvider({ children }) {
       screen: 'create', createOriginScreen: 'dashboard',
       createEditEventId: eventId, createSent: false, createError: '',
       createName: real.name || '', createCats: real.catKey ? [real.catKey] : [],
-      createDesc: real.description || '', createLoc: real.area || '',
-      // Stage 3 — never carry a stale confirmation/point over from
-      // whatever this screen was doing before; resubmit_event_for_review's
-      // own `COALESCE(p_lat, lat)` already preserves this event's real
-      // existing coordinates (if any) when p_lat stays null, so leaving
-      // this unconfirmed here is not a silent loss.
-      createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false, createLocSkipped: false, createGeocodeError: '',
+      createDesc: real.description || '',
+      // Address-autocomplete fix pass (2026-09-28) — an event that
+      // already has a verified address (migration 105) pre-fills it as
+      // ALREADY confirmed — `resubmit_event_for_review` preserves it via
+      // COALESCE even if this edit session never re-touches it, so
+      // there's no reason to make the host re-search an address that was
+      // already resolved. The search box (`createLoc`) itself stays
+      // empty either way — it's a live search field now, not a display
+      // of the current value — except for a pre-105 event with no
+      // structured address yet, where seeding it with the old free-text
+      // `area` at least gives the host a starting point to re-search from.
+      createLoc: real.addressVerified ? '' : (real.area || ''),
+      createLat: real.lat ?? null, createLng: real.lng ?? null,
+      createLocLabel: real.addressVerified ? [real.addressLine, real.area, real.city].filter(Boolean).join(', ') : '',
+      createAddressLine: real.addressLine || '', createDistrict: real.area || '',
+      createCity: real.city || '', createPostalCode: real.postalCode || '',
+      createLocConfirmed: !!real.addressVerified,
+      createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
       createEventDate: real.eventDate || '', createEventTime: real.eventTime ? real.eventTime.slice(0, 5) : '',
       createPrice: real.priceVnd ? String(real.priceVnd) : '',
       createSeats: real.capacity ? String(real.capacity) : '',
@@ -7737,7 +7862,7 @@ export function GocProvider({ children }) {
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
-    geocodeCreateLocation, confirmCreateLocation, skipCreateLocation,
+    searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
@@ -7773,7 +7898,7 @@ export function GocProvider({ children }) {
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
-    geocodeCreateLocation, confirmCreateLocation, skipCreateLocation,
+    searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   ]);

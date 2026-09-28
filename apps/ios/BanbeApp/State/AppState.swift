@@ -1086,26 +1086,33 @@ final class AppState: ObservableObject {
     // write-up, never conflated with createDesc ("Mô tả") or the "Bao gồm"
     // items EventDetailView already shows via includedItems.
     @Published var createIntro = ""
+    // Address-autocomplete fix pass (2026-09-28) — `createLoc` is now
+    // purely the live search box's own text (mirrors web's identical
+    // GocContext.jsx change, same pass). A SELECTED suggestion's
+    // decomposed fields live separately below, so the concise location
+    // line can show just the district while the full structured address
+    // is still available for validation/re-editing. `createLocConfirmed`
+    // is the same trust gate migration 094 introduced for lat/lng (never
+    // silently trusting free text), now doubling as migration 105's own
+    // `p_address_verified` — see `submitCreateEvent`'s own comment. There
+    // is no more "skip" — publishing now REQUIRES a verified address
+    // (this ticket's own explicit requirement); an unresolved location
+    // simply blocks submit with a clear inline message instead.
     @Published var createLoc = ""
-    // Stage 3 (2026-09-27 nav/discovery pass) — Map's own pin audit found
-    // create_event_draft/resubmit_event_for_review never accepted or
-    // stored coordinates at all (confirmed live: real, non-demo events
-    // both had lat=NULL/lng=NULL, unlike every demo-seeded one).
-    // MapExploreView's own event query requires non-null coordinates for
-    // a pin, so those events could never appear on the map regardless of
-    // approval. `createLocConfirmed` gates submit-time coordinate use:
-    // geocoding `createLoc` is a best-effort guess, never silently
-    // trusted — only a result the host has actually seen and confirmed
-    // (or explicitly skipped) is ever sent. Reset whenever createLoc
-    // itself changes (see CreateEventView's own `.onChange`) since a
-    // stale confirmation for a since-edited address is worse than none.
     @Published var createLat: Double?
     @Published var createLng: Double?
     @Published var createLocLabel = ""
+    @Published var createAddressLine = ""
+    @Published var createDistrict = ""
+    @Published var createCity = ""
+    @Published var createPostalCode = ""
     @Published var createLocConfirmed = false
-    @Published var createLocSkipped = false
-    @Published var createGeocoding = false
-    @Published var createGeocodeError = ""
+    @Published var createAddressSuggestions: [AddressSuggestion] = []
+    @Published var createAddressSearching = false
+    @Published var createAddressSearchError = ""
+    /// Stale-response guard for `searchCreateAddress` (AppState+Data.swift)
+    /// — not `@Published`, purely internal bookkeeping the UI never reads.
+    var createAddressSeq = 0
     // Date/time picker fix (Stage B, 2026-09-26) — REPLACES the old
     // free-text `createDate` ("11.07 19:00", hand-parsed with a regex and a
     // hardcoded year) with two real Date values, always interpreted in
@@ -1999,8 +2006,15 @@ final class AppState: ObservableObject {
     /// view; `sheetFraction: 0.72` matches a fresh (non-restored) open's
     /// default "tall" detent.
     func openEventOnMap(_ event: CatalogEvent) {
+        // Real-event-maps-link fix pass (2026-09-28) — `event.lat`/`.lng`
+        // are `Double?` now (an event may genuinely have no confirmed pin
+        // yet); this action makes no sense at all without real
+        // coordinates, so it's a no-op rather than falling back to 0,0.
+        // The caller (EventDetailView's own "Xem trên bản đồ" button) also
+        // hides itself in that case — see that call site's own comment.
+        guard let lat = event.lat, let lng = event.lng else { return }
         mapExploreState = MapExploreState(
-            cameraCenterLat: event.lat, cameraCenterLng: event.lng,
+            cameraCenterLat: lat, cameraCenterLng: lng,
             cameraSpanLat: 0.01, cameraSpanLng: 0.01,
             // Task 6 (2026-09-21 follow-up): mid (0.45), not tall (0.72) —
             // this arrives with an event already selected/its card
@@ -2213,15 +2227,20 @@ final class AppState: ObservableObject {
         createSent = false
         createError = ""
         createOriginScreen = screen
-        // Stage 3 — never carry a previous session's confirmed
-        // coordinates into an unrelated fresh event, even if `createLoc`'s
-        // TEXT happens to still read the same from before this reset.
+        // Never carry a previous session's confirmed address/coordinates
+        // into an unrelated fresh event.
+        createLoc = ""
         createLat = nil
         createLng = nil
         createLocLabel = ""
+        createAddressLine = ""
+        createDistrict = ""
+        createCity = ""
+        createPostalCode = ""
         createLocConfirmed = false
-        createLocSkipped = false
-        createGeocodeError = ""
+        createAddressSuggestions = []
+        createAddressSearching = false
+        createAddressSearchError = ""
         screen = .create
     }
 

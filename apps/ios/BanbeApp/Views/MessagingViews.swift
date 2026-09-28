@@ -29,15 +29,13 @@ struct InboxView: View {
     var isPreview: Bool = false
     @State private var searchOpen = false
     @State private var query = ""
-    @State private var settingsOpen = false
     @State private var feedbackOpen = false
     // Bug 1c (2026-09-21 follow-up) — brings up the keyboard the instant
     // the search field appears, no extra tap needed first.
     @FocusState private var searchFieldFocused: Bool
 
-    // Bug 1b/1c (2026-09-21 follow-up) — ONE shared, noticeably slower
-    // spring for both the settings sheet's entrance and the search field's
-    // reveal, instead of two different speeds for two different controls.
+    // Bug 1b/1c (2026-09-21 follow-up) — a noticeably slower spring for the
+    // search field's reveal than a default SwiftUI animation.
     private static let sheetAnimation = Animation.spring(response: 0.6, dampingFraction: 0.85)
 
     private var effectiveInboxView: InboxViewMode { isPreview ? .active : app.inboxView }
@@ -123,33 +121,28 @@ struct InboxView: View {
             }
         }
         .task { await app.loadInboxThreads() }
-        .overlay {
-            if settingsOpen { settingsSheet }
-        }
         .fullScreenCover(isPresented: $feedbackOpen) { FeedbackFlowView() }
-        // Bug 2a (2026-09-21 follow-up) — the settings sheet and the
-        // feedback flow are both hand-rolled/`.fullScreenCover` content
-        // INSIDE the main window, but BottomTabBarOverlay is a genuinely
-        // separate, always-on-top `UIWindow` (see that file's own doc
-        // comment) that `.inbox` staying in `visibleScreens` never hides on
-        // its own for a same-screen presentation. Reuses the exact
-        // `isHidden`-sync mechanism 4d549f9 already established for
-        // Event Detail (`updateVisibility(for:)`), via the new
-        // `setForcedHidden(_:)` this pass adds right alongside it.
-        .onChange(of: settingsOpen) { _, open in BottomTabBarOverlay.shared.setForcedHidden(open || feedbackOpen) }
-        .onChange(of: feedbackOpen) { _, open in BottomTabBarOverlay.shared.setForcedHidden(open || settingsOpen) }
+        // Bug 2a (2026-09-21 follow-up) — `FeedbackFlowView` is a hand-
+        // rolled `.fullScreenCover` INSIDE the main window, but
+        // BottomTabBarOverlay is a genuinely separate, always-on-top
+        // `UIWindow` (see that file's own doc comment) that `.inbox`
+        // staying in `visibleScreens` never hides on its own for a
+        // same-screen presentation. Reuses the exact `isHidden`-sync
+        // mechanism 4d549f9 already established for Event Detail
+        // (`updateVisibility(for:)`), via `setForcedHidden(_:)`.
+        //
+        // Messaging-settings-menu fix pass (2026-09-28) — the settings
+        // sheet's own half of this (`open || settingsOpen`) is gone along
+        // with `settingsSheet` itself: a native `Menu` (see `header`
+        // below) presents above everything on its own, exactly like
+        // `InboxRow`'s "…" menu and `NotificationsView`'s row menu already
+        // do, so there's nothing left here for the dock overlay to hide.
+        .onChange(of: feedbackOpen) { _, open in BottomTabBarOverlay.shared.setForcedHidden(open) }
         .onDisappear {
             BottomTabBarOverlay.shared.setForcedHidden(false)
             app.cancelRootPull()
         }
     }
-
-    // Bug 1b (2026-09-21 follow-up) — the 0.3-response spring from the
-    // previous pass (matched to the tab bar's own quick scroll-collapse)
-    // read as too fast for a full sheet slide; now uses the shared, slower
-    // `sheetAnimation` instead.
-    private func openSettings() { withAnimation(Self.sheetAnimation) { settingsOpen = true } }
-    private func closeSettings() { withAnimation(Self.sheetAnimation) { settingsOpen = false } }
 
     // Task 1 — "Done" replaced with search + settings icons. Task 5 — each
     // icon-only control gets a small label underneath.
@@ -169,9 +162,8 @@ struct InboxView: View {
             }
             Spacer()
             HStack(spacing: 14) {
-                // Bug 1c (2026-09-21 follow-up) — the SAME shared
-                // `sheetAnimation` timing as the settings sheet, and
-                // `searchFieldFocused` set true right alongside it so the
+                // Bug 1c (2026-09-21 follow-up) — `searchFieldFocused` set
+                // true right alongside the reveal animation so the
                 // keyboard comes up immediately, not on a second tap.
                 iconButton(searchOpen ? "xmark" : "magnifyingglass", label: searchOpen ? app.T("Đóng", "Close") : app.T("Tìm", "Search")) {
                     if searchOpen { query = "" }
@@ -180,8 +172,38 @@ struct InboxView: View {
                 }
                 .accessibilityIdentifier("inbox.searchToggle")
                 if effectiveInboxView == .active {
-                    iconButton("gearshape", label: app.T("Cài đặt", "Settings")) { openSettings() }
-                        .accessibilityIdentifier("inbox.settingsToggle")
+                    // Messaging-settings-menu fix pass (2026-09-28) — was a
+                    // gearshape button opening a hand-rolled dim-overlay +
+                    // sliding-panel sheet (`settingsSheet`, removed). Now a
+                    // native `Menu`, the same tap-only pattern `InboxRow`'s
+                    // "…" (Star/Archive) and `NotificationsView`'s row menu
+                    // already use — one consistent way this app displays a
+                    // short options list, instead of a third, bespoke one
+                    // just for this one entry point.
+                    Menu {
+                        Button {
+                            app.inboxView = .archived
+                        } label: {
+                            Label(app.T("Đã lưu trữ", "Archived"), systemImage: "archivebox")
+                        }
+                        .accessibilityIdentifier("inbox.settings.archived")
+                        Button {
+                            feedbackOpen = true
+                        } label: {
+                            Label(app.T("Gửi phản hồi", "Give feedback"), systemImage: "bubble.left")
+                        }
+                        .accessibilityIdentifier("inbox.settings.feedback")
+                    } label: {
+                        VStack(spacing: 2) {
+                            Image(systemName: "gearshape")
+                                .font(.system(size: 14))
+                                .frame(width: 34, height: 34)
+                                .background(app.palette.field, in: Circle())
+                            Text(app.T("Cài đặt", "Settings")).font(.system(size: 9.5)).opacity(0.7)
+                        }
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .accessibilityIdentifier("inbox.settingsToggle")
                 }
             }
         }
@@ -205,65 +227,6 @@ struct InboxView: View {
         .foregroundStyle(app.palette.ink)
     }
 
-    // Bug 2c — a true full-height bottom sheet: the PAPER BACKGROUND
-    // extends through the bottom safe area (home indicator strip) via
-    // `.ignoresSafeArea` scoped to just that background layer, so there's
-    // no exposed corner/gap below the sheet's rounded top corners, while
-    // the row CONTENT itself stays padded comfortably above the home
-    // indicator through ordinary (non-ignoring) layout.
-    private var settingsSheet: some View {
-        ZStack(alignment: .bottom) {
-            Color.black.opacity(0.55)
-                .ignoresSafeArea()
-                .onTapGesture { closeSettings() }
-                .transition(.opacity)
-
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text(app.T("Cài đặt tin nhắn", "Messaging settings")).font(BanbeTheme.display(18))
-                    Spacer()
-                    Button { closeSettings() } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.plain)
-                }
-                .padding(.bottom, 12)
-                // Bug 1b (2026-09-21 follow-up) — row padding bumped
-                // 13pt -> 22pt: the background now extends through the
-                // safe area (Bug 2c), which left a dead gap below these
-                // two rows since the content itself stayed the same size;
-                // taller tap targets fill that space properly instead of
-                // padding it out with more empty margin.
-                Button {
-                    closeSettings()
-                    app.inboxView = .archived
-                } label: {
-                    Text(app.T("Đã lưu trữ", "Archived")).font(.system(size: 14.5)).frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("inbox.settings.archived")
-                .padding(.vertical, 22)
-                .overlay(Rectangle().fill(app.palette.rule).frame(height: 1), alignment: .top)
-                Button {
-                    closeSettings()
-                    feedbackOpen = true
-                } label: {
-                    Text(app.T("Gửi phản hồi", "Give feedback")).font(.system(size: 14.5)).frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-                .padding(.vertical, 22)
-                .overlay(Rectangle().fill(app.palette.rule).frame(height: 1), alignment: .top)
-                .overlay(Rectangle().fill(app.palette.rule).frame(height: 1), alignment: .bottom)
-            }
-            .foregroundStyle(app.palette.ink)
-            .padding(.horizontal, 22).padding(.top, 18).padding(.bottom, 34)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                app.palette.paper
-                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: 18, topTrailingRadius: 18, style: .continuous))
-                    .ignoresSafeArea(edges: .bottom)
-            )
-            .transition(.move(edge: .bottom))
-        }
-    }
 }
 
 private struct InboxRow: View {
