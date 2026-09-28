@@ -396,7 +396,23 @@ struct HomeView: View {
                             // into `app.pulseRingFrame`, bypassing the
                             // PreferenceKey pipeline entirely for this ring.
                             .background(
-                                RingFrameProbe { rect in app.pulseRingFrame = rect }
+                                RingFrameProbe { rect in
+                                    app.pulseRingFrame = rect
+                                    // Live-tracking follow-up (2026-09-28) —
+                                    // same synchronous call stack, forwarded
+                                    // straight to the bubble's own imperative
+                                    // UIKit positioning (see
+                                    // `pulseBubbleFrameSink`'s doc comment in
+                                    // AppState.swift and
+                                    // `PulseBubblePositioningHost` in
+                                    // PulseTeaserBubbleView.swift) — bypasses
+                                    // SwiftUI's render pipeline for the
+                                    // bubble's on-screen position, which is
+                                    // the part that was still lagging during
+                                    // a live drag even though this property
+                                    // itself was already live.
+                                    app.pulseBubbleFrameSink?(rect)
+                                }
                             )
                         Text(app.T("Banbe Pulse", "Banbe Pulse"))
                             .font(.system(size: 9.5)).foregroundStyle(app.palette.ink).lineLimit(1).frame(width: 60)

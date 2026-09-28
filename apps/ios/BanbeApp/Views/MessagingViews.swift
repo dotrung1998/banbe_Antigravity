@@ -37,22 +37,24 @@ struct InboxView: View {
     // the search field appears, no extra tap needed first.
     @FocusState private var searchFieldFocused: Bool
 
-    // Gesture-arbitration fix pass (2026-09-28) — see
-    // `AppState.horizontalSwipeRowRegionMinY`'s own doc comment. Measured
-    // via `header`'s own `GeometryReader`/preference below, in `.global`
-    // (screen) coordinates — the same space RootView's `tabSwipeGesture`
-    // reads `startLocation` in.
-    @State private var headerBottomY: CGFloat = 0
+    // Gesture-arbitration fix pass (2026-09-28, regression follow-up) —
+    // see `AppState.horizontalSwipeRowFrames`'s own doc comment. Each
+    // currently-rendered row publishes its own `listRowBackground`
+    // `GeometryReader` frame (in `.global`/screen coordinates — the same
+    // space RootView's `tabSwipeGesture` reads `startLocation` in) via
+    // `InboxRowFramePreferenceKey` below; this collects them.
+    @State private var rowFrames: [CGRect] = []
 
-    /// Publishes (or clears) the guarded region for RootView's own
+    /// Publishes (or clears) the guarded row frames for RootView's own
     /// root-tab swipe gesture. Only the real, interactive InboxView copy
     /// does this — the non-interactive edge-swipe-back "peek" (`isPreview`)
     /// never owns the live gesture and must never stomp on the real
     /// screen's own published value. `nil` whenever there are no rows to
-    /// protect (empty state), so tab-swipe still works normally there.
+    /// protect (empty state, or nothing currently rendered), so tab-swipe
+    /// still works normally there.
     private func syncRowSwipeRegion() {
         guard !isPreview else { return }
-        app.horizontalSwipeRowRegionMinY = visibleThreads.isEmpty ? nil : headerBottomY
+        app.horizontalSwipeRowFrames = (visibleThreads.isEmpty || rowFrames.isEmpty) ? nil : rowFrames
     }
 
     // Bug 1b/1c (2026-09-21 follow-up) — ONE shared, noticeably slower
@@ -77,11 +79,6 @@ struct InboxView: View {
             app.palette.paper.ignoresSafeArea()
             VStack(alignment: .leading, spacing: 0) {
                 header
-                    .background(
-                        GeometryReader { geo in
-                            Color.clear.preference(key: InboxRowsRegionMinYPreferenceKey.self, value: geo.frame(in: .global).maxY)
-                        }
-                    )
                 if effectiveInboxView == .archived {
                     Button("‹ " + app.T("Quay lại Tin nhắn", "Back to Messages")) { app.inboxView = .active }
                         .font(.system(size: 12.5)).buttonStyle(.plain)
@@ -105,7 +102,26 @@ struct InboxView: View {
                             InboxRow(thread: thread)
                                 .listRowInsets(EdgeInsets(top: 0, leading: 24, bottom: 0, trailing: 24))
                                 .listRowSeparatorTint(app.palette.rule)
-                                .listRowBackground(app.palette.paper)
+                                // Gesture-arbitration fix pass (2026-09-28,
+                                // regression follow-up) — `listRowBackground`
+                                // (unlike the row's own inset content) spans
+                                // the FULL cell width/height, matching what
+                                // `.swipeActions` itself actually claims for
+                                // this row. Publishing each row's measured
+                                // frame here is what lets RootView's
+                                // `tabSwipeGesture` tell "on this row" apart
+                                // from "in the list but not on any row"
+                                // precisely — see
+                                // `AppState.horizontalSwipeRowFrames`'s own
+                                // doc comment.
+                                .listRowBackground(
+                                    ZStack {
+                                        app.palette.paper
+                                        GeometryReader { geo in
+                                            Color.clear.preference(key: InboxRowFramePreferenceKey.self, value: [geo.frame(in: .global)])
+                                        }
+                                    }
+                                )
                                 // Refresh-indicator fix pass (2026-09-27,
                                 // follow-up A) — same `ScaffoldScrollProbe`
                                 // ScreenScaffold uses, anchored to this
@@ -184,23 +200,25 @@ struct InboxView: View {
         // `setForcedHidden(_:)` this pass adds right alongside it.
         .onChange(of: settingsOpen) { _, open in BottomTabBarOverlay.shared.setForcedHidden(open || feedbackOpen) }
         .onChange(of: feedbackOpen) { _, open in BottomTabBarOverlay.shared.setForcedHidden(open || settingsOpen) }
-        // Gesture-arbitration fix pass (2026-09-28) — keeps
-        // `app.horizontalSwipeRowRegionMinY` in sync with both the header's
-        // own measured position (layout can shift it — search field
-        // opening, Dynamic Type, safe-area changes) and whether there are
-        // any rows to protect at all (empty state must not block tab-swipe).
-        .onPreferenceChange(InboxRowsRegionMinYPreferenceKey.self) { minY in
-            headerBottomY = minY
+        // Gesture-arbitration fix pass (2026-09-28, regression follow-up) —
+        // keeps `app.horizontalSwipeRowFrames` in sync with the CURRENTLY
+        // rendered rows' own measured frames (scrolling, layout changes —
+        // search field opening, Dynamic Type, safe-area changes — and
+        // rows entering/leaving the List's recycled cell set all fire
+        // this) and whether there are any rows to protect at all (empty
+        // state must not block tab-swipe).
+        .onPreferenceChange(InboxRowFramePreferenceKey.self) { frames in
+            rowFrames = frames
             syncRowSwipeRegion()
         }
         .onChange(of: visibleThreads.isEmpty) { _, _ in syncRowSwipeRegion() }
         .onDisappear {
             BottomTabBarOverlay.shared.setForcedHidden(false)
             app.cancelRootPull()
-            // This screen's own row-swipe region no longer applies once
-            // InboxView isn't the visible screen — never leave a stale
-            // guard blocking tab-swipe on whatever screen comes next.
-            if !isPreview { app.horizontalSwipeRowRegionMinY = nil }
+            // This screen's own row frames no longer apply once InboxView
+            // isn't the visible screen — never leave a stale guard
+            // blocking tab-swipe on whatever screen comes next.
+            if !isPreview { app.horizontalSwipeRowFrames = nil }
         }
     }
 
@@ -326,15 +344,20 @@ struct InboxView: View {
     }
 }
 
-/// Gesture-arbitration fix pass (2026-09-28) — reports InboxView's header
-/// bottom edge in `.global` (screen) coordinates, so RootView's own
-/// `tabSwipeGesture` can tell a touch starting inside the List's row region
-/// apart from one starting on the header, without either view needing to
-/// know the other's exact layout constants. See
-/// `AppState.horizontalSwipeRowRegionMinY`'s own doc comment.
-private struct InboxRowsRegionMinYPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+/// Gesture-arbitration fix pass (2026-09-28, regression follow-up) —
+/// reports every currently-rendered Inbox row's own on-screen frame (in
+/// `.global`/screen coordinates), so RootView's own `tabSwipeGesture` can
+/// tell a touch starting INSIDE an actual row apart from one starting
+/// anywhere else on the Inbox screen (header, gaps, below the last row),
+/// without either view needing to know the other's exact layout constants.
+/// Each row publishes its own single-element array; `reduce` concatenates
+/// them into the full set of currently-visible row frames rather than
+/// overwriting (SwiftUI's default `PreferenceKey` reduce behavior is last-
+/// write-wins, which would silently drop every row but one). See
+/// `AppState.horizontalSwipeRowFrames`'s own doc comment.
+private struct InboxRowFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [CGRect] = []
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) { value.append(contentsOf: nextValue()) }
 }
 
 private struct InboxRow: View {

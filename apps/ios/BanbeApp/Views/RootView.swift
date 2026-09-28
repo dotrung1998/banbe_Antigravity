@@ -181,18 +181,22 @@ struct RootView: View {
                         tabSwipeDirection = "vertical"
                         return
                     }
-                    // Gesture-arbitration fix pass (2026-09-28) — see
-                    // `AppState.horizontalSwipeRowRegionMinY`'s own doc
-                    // comment. `startLocation` is read here in this
+                    // Gesture-arbitration fix pass (2026-09-28, regression
+                    // follow-up) — see `AppState.horizontalSwipeRowFrames`'s
+                    // own doc comment (that comment also explains why this
+                    // is row-precise now, not a single Y-band that blocked
+                    // the whole list). `startLocation` is read here in this
                     // gesture's `.local` space, which for `rootScreenStack`
                     // (RootView's own top-level, unoffset container) is the
                     // same as screen/`.global` coordinates — matching the
-                    // space InboxView measures its header in. A touch that
-                    // starts inside the currently-visible List's row region
-                    // is never claimed as horizontal here at all, so a row's
-                    // own native swipe-actions gesture owns it exclusively
-                    // from the first pixel of movement.
-                    if let rowRegionMinY = app.horizontalSwipeRowRegionMinY, value.startLocation.y >= rowRegionMinY {
+                    // space InboxView measures its row frames in. A touch
+                    // that starts INSIDE one of the currently-visible rows'
+                    // own bounds is never claimed as horizontal here at
+                    // all, so that row's own native swipe-actions gesture
+                    // owns it exclusively from the first pixel of movement
+                    // — anywhere else (header, gaps, below the last row)
+                    // falls through to the normal tab-swipe checks below.
+                    if let rowFrames = app.horizontalSwipeRowFrames, rowFrames.contains(where: { $0.contains(value.startLocation) }) {
                         tabSwipeDirection = "vertical"
                         return
                     }

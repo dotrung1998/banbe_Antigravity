@@ -605,7 +605,32 @@ final class AppState: ObservableObject {
     // full root-cause writeup), which froze this frame stale while the
     // ring kept moving on screen. `HomeView` now writes here directly from
     // `RingFrameProbe`'s UIKit-level callback instead.
+    //
+    // Live-tracking follow-up (2026-09-28, this pass): the fix above got
+    // this VALUE live and current throughout a real drag, but a plain
+    // `@Published` read by a SwiftUI view (`PulseTeaserBubbleView`'s old
+    // `.position()`) still visibly froze on screen during the drag itself,
+    // only catching up once the drag settled — ObservableObject-driven
+    // SwiftUI render commits are not reliably flushed to screen for the
+    // duration of a REAL interactive `UIScrollView` pan on this codebase's
+    // tested real-device/iOS combination, even though the underlying
+    // `@Published` value is genuinely current the whole time (confirmed
+    // correct at rest). This is the SAME bug CLASS one layer deeper: fixed
+    // by data (this property), not fixed by render (SwiftUI's own commit
+    // for a plain observed value). `pulseBubbleFrameSink`, set by
+    // `PulseBubblePositioningHost` (PulseTeaserBubbleView.swift) once it
+    // mounts, is called synchronously from the exact same call stack as
+    // this property's own write below, and drives the bubble's on-screen
+    // `UIView.frame` directly/imperatively — bypassing SwiftUI's render
+    // pipeline for the position specifically, the same way the ring itself
+    // (a plain UIKit-scrolled subview, never SwiftUI-observed) already
+    // proves a raw frame mutation paints live regardless of RunLoop mode.
+    // `pulseRingFrame` itself is kept for the bubble's very FIRST frame
+    // (read once in `makeUIView`, before any live sink update has arrived)
+    // and for any other consumer that only needs an occasional, non-live
+    // read of the ring's last-known position.
     @Published var pulseRingFrame: CGRect?
+    var pulseBubbleFrameSink: ((CGRect) -> Void)?
     @Published var storyCreatePreviewImage: UIImage?
     @Published var storyCreateBusy = false
     @Published var storyViewedIds: Set<UUID> = []
@@ -1160,34 +1185,45 @@ final class AppState: ObservableObject {
     /// inventing its own).
     @Published var mapCloseSwipeProgress: CGFloat = 0
 
-    /// Gesture-arbitration fix pass (2026-09-28) — real cause of a
-    /// horizontal swipe-to-reveal on an Inbox row (native `.swipeActions`
-    /// Star/Archive, MessagingViews.swift's `InboxView`) ALSO dragging the
-    /// whole screen into RootView's own root-tab swipe (Home <-> Map <->
-    /// Notifications <-> Inbox <-> Account) at the same time: RootView
-    /// attaches `tabSwipeGesture` via `.simultaneousGesture` on an ANCESTOR
-    /// of the entire screen (`rootScreenStack`), which by definition asks
-    /// SwiftUI to let it recognize side-by-side with whatever's underneath
-    /// — including a List row's own UIKit swipe-actions pan recognizer —
-    /// instead of ever deferring to it. `InboxView` measures its own
-    /// header's bottom edge (in `.global`/screen coordinates, matching the
-    /// coordinate space `tabSwipeGesture` reads `startLocation` in — see
-    /// that gesture's own comment) and publishes it here ONLY while its
-    /// List is non-empty and it isn't the non-interactive edge-swipe-back
-    /// preview copy; `nil` the rest of the time, so this never affects any
-    /// other screen. `tabSwipeGesture` treats any drag whose start point
-    /// falls at or below this Y as "vertical" (its existing escape hatch
-    /// for "this isn't mine") the instant it decides direction — the same
-    /// geometry-at-touch-start approach already used for the leading-edge
-    /// strip and Map's own narrow trailing strip, just sourced from a
-    /// measured value instead of a hardcoded width, since a screen's rows
-    /// fill an irregular, dynamic-type-dependent area a constant can't
-    /// capture. A row therefore owns the ENTIRE drag from the moment it
-    /// starts inside the List — the ancestor gesture never even engages,
-    /// so there is no partial root-tab "preview" to spring back from —
-    /// while a drag starting above this Y (the header) still swipes tabs
-    /// exactly as before.
-    @Published var horizontalSwipeRowRegionMinY: CGFloat?
+    /// Gesture-arbitration fix pass (2026-09-28, regression follow-up) —
+    /// real cause of a horizontal swipe-to-reveal on an Inbox row (native
+    /// `.swipeActions` Star/Archive, MessagingViews.swift's `InboxView`)
+    /// ALSO dragging the whole screen into RootView's own root-tab swipe
+    /// (Home <-> Map <-> Notifications <-> Inbox <-> Account) at the same
+    /// time: RootView attaches `tabSwipeGesture` via `.simultaneousGesture`
+    /// on an ANCESTOR of the entire screen (`rootScreenStack`), which by
+    /// definition asks SwiftUI to let it recognize side-by-side with
+    /// whatever's underneath — including a List row's own UIKit
+    /// swipe-actions pan recognizer — instead of ever deferring to it.
+    ///
+    /// A first pass at this fix published a single Y coordinate (the
+    /// header's bottom edge) and blocked tab-swipe for ANY touch starting
+    /// at or below it — a coarse band covering the whole list region
+    /// (blank gaps, dividers, everything), not just actual rows. On a real
+    /// device that meant swiping Inbox -> any other tab stopped working
+    /// entirely, since the list fills nearly the whole screen below the
+    /// header. This is the fix for that regression: instead of one Y
+    /// cutoff, `InboxView` measures and publishes the CURRENT on-screen
+    /// frame (in `.global`/screen coordinates, matching the coordinate
+    /// space `tabSwipeGesture` reads `startLocation` in — see that
+    /// gesture's own comment) of every visible row's own `List` cell (via
+    /// `listRowBackground`, which — unlike the row's inset content — spans
+    /// the cell's FULL swipeable width, matching what `.swipeActions`
+    /// itself actually claims) as rows appear/scroll/disappear. `nil`
+    /// whenever there are no rows to protect (empty state) or it's the
+    /// non-interactive edge-swipe-back preview copy, so this never affects
+    /// any other screen. `tabSwipeGesture` treats a drag as "vertical"
+    /// (its existing escape hatch for "this isn't mine") only when its
+    /// start point actually falls INSIDE one of these row frames — the
+    /// same geometry-at-touch-start approach already used for the
+    /// leading-edge strip and Map's own narrow trailing strip, just
+    /// row-precise instead of one approximate band. A row therefore owns
+    /// the ENTIRE drag from the moment it starts inside that row's own
+    /// bounds — the ancestor gesture never even engages, so there is no
+    /// partial root-tab "preview" to spring back from — while a drag
+    /// starting anywhere else (header, blank space, gutters, below the
+    /// last row) still swipes tabs exactly as before e56aeb2 ever existed.
+    @Published var horizontalSwipeRowFrames: [CGRect]?
 
     /// Follow-up (11-realtime-map.md, bug 1): a distinct, one-shot signal
     /// from a CONFIRMED close (swipe past the threshold, or the "← Đóng"

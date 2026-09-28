@@ -113,6 +113,77 @@ final class PulseTeaserGeometryUITests: XCTestCase {
                       "After scrolling, bubble (\(bubbleFrame)) reads as far below the ring's CURRENT position (\(ringFrame)) — indicates app.pulseRingFrame did not update live during the drag")
     }
 
+    /// Live-tracking regression coverage (2026-09-28, follow-up on top of
+    /// `testPulseTeaserBubbleStaysAnchoredAfterScrolling` above): that test
+    /// only asserts geometry once, AFTER one drag has fully completed and
+    /// settled — it would not have caught the real-device regression this
+    /// test exists for, where the ring's OWN reported frame
+    /// (`app.pulseRingFrame`) was already live and correct throughout a
+    /// drag, but the bubble's SwiftUI-rendered position still lagged
+    /// behind and only "caught up" once the drag ended, i.e. it was
+    /// already indistinguishable from correct by the time any single
+    /// before/after check ran.
+    ///
+    /// XCUITest has no supported way to read an element's frame WHILE a
+    /// `press(forDuration:thenDragTo:)` gesture is still physically in
+    /// flight (the call blocks until the finger lifts), so this instead
+    /// chases the same failure mode the way the code comments above
+    /// describe it manifesting on a real device — "only catches up (if at
+    /// all) after the drag settles" — by firing a SEQUENCE of several
+    /// small, separate drags (rather than one big one) and asserting the
+    /// geometry contract immediately after EACH one, with no extra
+    /// settle-time pause beyond what the gesture call itself takes. A
+    /// bubble that only re-syncs its position on some coarser cadence than
+    /// "every drag" (e.g. only once some unrelated SwiftUI re-render
+    /// happens to fire) would accumulate visible drift across these
+    /// checks, exactly like scrolling by hand would.
+    func testPulseTeaserBubbleTracksAcrossMultipleIncrementalScrolls() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-banbe.onboarded", "YES"]
+        app.launch()
+        XCTAssertTrue(app.otherElements["screen.home"].waitForExistence(timeout: 15))
+
+        let ring = app.buttons["home.pulseAvatar"]
+        XCTAssertTrue(ring.waitForExistence(timeout: 10))
+
+        let bubble = app.otherElements["home.pulseTeaserBubble"]
+        guard bubble.waitForExistence(timeout: 20) else {
+            throw XCTSkip("Pulse teaser bubble did not show within the wait window this run.")
+        }
+
+        let home = app.otherElements["screen.home"]
+        var checkedAtLeastOnce = false
+
+        // Several SMALL, SEPARATE drags (not one big one) — each one its
+        // own distinct scroll offset, checked immediately on return, with
+        // no extra pause to let anything "catch up" in between.
+        for step in 0..<5 {
+            guard ring.isHittable, bubble.exists else { break }
+
+            let start = home.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.62))
+            let end = home.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.62 - 0.04))
+            start.press(forDuration: 0.02, thenDragTo: end)
+
+            guard ring.isHittable, bubble.exists else { break }
+
+            let ringFrame = ring.frame
+            let bubbleFrame = bubble.frame
+            guard ringFrame.width > 0, bubbleFrame.width > 0 else { continue }
+            checkedAtLeastOnce = true
+
+            let quadrant = CGRect(x: ringFrame.midX, y: ringFrame.minY,
+                                   width: ringFrame.width / 2, height: ringFrame.height / 2)
+            XCTAssertTrue(bubbleFrame.intersects(quadrant),
+                          "After incremental scroll #\(step), expected the bubble (\(bubbleFrame)) to still overlap the ring's CURRENT upper-right quadrant (\(quadrant)) — drift here indicates the bubble is not tracking live, only catching up once settled")
+            XCTAssertLessThanOrEqual(bubbleFrame.minY, ringFrame.maxY + 12,
+                          "After incremental scroll #\(step), bubble (\(bubbleFrame)) reads as far below the ring's CURRENT position (\(ringFrame))")
+        }
+
+        guard checkedAtLeastOnce else {
+            throw XCTSkip("Ring/bubble left screen before any incremental scroll could be checked this run.")
+        }
+    }
+
     /// If the ring scrolls out of view (user scrolls the feed down past
     /// the story row), the bubble must not keep floating, disconnected,
     /// over unrelated content below — it should hide instead.

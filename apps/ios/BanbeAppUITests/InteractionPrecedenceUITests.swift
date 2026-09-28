@@ -107,4 +107,91 @@ final class InteractionPrecedenceUITests: XCTestCase {
                       "One tap on Cá nhân should switch immediately, exactly once")
         XCTAssertFalse(app.buttons["org.profile.card"].exists)
     }
+
+    /// Regression coverage for the e56aeb2 over-correction: that pass's
+    /// touch-start-Y guard (`AppState.horizontalSwipeRowRegionMinY`, now
+    /// `horizontalSwipeRowFrames`) published ONE Y coordinate (the Inbox
+    /// header's bottom edge) and blocked root-tab swipe for ANY touch at
+    /// or below it — a coarse band covering the entire list area, not just
+    /// actual rows — which is why swiping Inbox -> another tab stopped
+    /// working AT ALL on a real device. Signs into the shared fast-suite
+    /// account (the only signed-in fixture this codebase has — Inbox is
+    /// not in `AppState.guestAllowedScreens`, see EventDetailOpenInMapUITests'/
+    /// MapExploreSelectionUITests' own `launchSignedIn()`, mirrored here)
+    /// and swipes starting in the HEADER — never on a row, so this needs
+    /// no seeded/locale-dependent conversation content — asserting it
+    /// still reaches an adjacent root tab exactly as it did before
+    /// e56aeb2 ever existed.
+    func testInboxHeaderSwipeStillNavigatesRootTabs() {
+        let app = launchSignedIn()
+        app.buttons["tab.inbox"].tap()
+        XCTAssertTrue(app.otherElements["screen.inbox"].waitForExistence(timeout: 5))
+
+        // dockOrder is [home, map, notifications, inbox, profile] — a
+        // leftward swipe (negative translation) commits to the NEXT tab,
+        // profile. dy=0.06 lands well inside the header/search-and-
+        // settings row, above where the List's rows begin.
+        let window = app.windows.firstMatch
+        let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06))
+        let end = window.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.06))
+        start.press(forDuration: 0.1, thenDragTo: end)
+
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 5),
+                      "A horizontal swipe starting in Inbox's header (never on a row) should still navigate root tabs, exactly as before the row-swipe guard existed")
+        XCTAssertFalse(app.otherElements["screen.inbox"].exists)
+    }
+
+    /// Companion to the header-space test above: a swipe that starts ON an
+    /// actual Inbox row must be claimed by that row's own native
+    /// `.swipeActions` and must NEVER trigger root-tab navigation — the
+    /// precision half of the e56aeb2 fix-up (a single Y-band can't tell
+    /// these two cases apart; per-row measured frames can). Uses
+    /// `InboxRow`'s existing `inbox.threadRow` accessibility identifier
+    /// (stable, not locale-dependent — the label text itself, e.g.
+    /// "Lưu trữ"/"Archive", is deliberately never asserted here) rather
+    /// than matching any row's display text. Opportunistic like
+    /// `ScreenshotCatalogTests`: the shared account is real backend data,
+    /// so this skips (not fails) if it currently has no conversations.
+    func testInboxRowSwipeNeverTriggersRootTabSwipe() throws {
+        let app = launchSignedIn()
+        app.buttons["tab.inbox"].tap()
+        XCTAssertTrue(app.otherElements["screen.inbox"].waitForExistence(timeout: 5))
+
+        let row = app.buttons["inbox.threadRow"].firstMatch
+        try XCTSkipUnless(row.waitForExistence(timeout: 5),
+                          "Shared test account has no conversations right now — on-row swipe needs a real thread")
+
+        let start = row.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
+        let end = row.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: end)
+
+        XCTAssertTrue(app.otherElements["screen.inbox"].waitForExistence(timeout: 3),
+                      "A swipe starting on a real Inbox row must never trigger root-tab navigation")
+        XCTAssertFalse(app.otherElements["screen.profile"].exists)
+        XCTAssertFalse(app.otherElements["screen.notifications"].exists)
+    }
+
+    @discardableResult
+    private func launchSignedIn() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-banbe.onboarded", "YES"]
+        app.launch()
+
+        if app.otherElements["screen.login"].waitForExistence(timeout: 45) {
+            app.buttons["login.method.password"].tap()
+            let email = app.textFields["login.email"]
+            XCTAssertTrue(email.waitForExistence(timeout: 5))
+            email.tap()
+            email.typeText("doqanh0906+banbe-fast-suite-shared@gmail.com")
+            let password = app.secureTextFields["login.password"]
+            XCTAssertTrue(password.waitForExistence(timeout: 5))
+            password.tap()
+            password.typeText("BanbeE2e!Test1234")
+            app.buttons["login.submit"].tap()
+        }
+
+        XCTAssertTrue(app.otherElements["screen.home"].waitForExistence(timeout: 45),
+                      "Expected to land on Home after sign-in")
+        return app
+    }
 }
