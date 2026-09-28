@@ -602,73 +602,90 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
 // instead (see `PulseTeaserBubbleContent` in PulseTeaserBubbleView.swift
 // and `PulseTeaserBubbleView`'s own "Same-space pass" writeup).
 
-/// Map search-focus fix (2026-09-28 follow-up) — same invisible-probe idiom
-/// as `ScaffoldScrollProbe` above: SwiftUI has no API for "this `.sheet`'s
-/// own system presentation animation has actually finished," so this walks
-/// the real UIKit responder chain to ask for it directly, via
-/// `UIViewController.transitionCoordinator` — the same object UIKit itself
-/// uses to sequence work alongside a view controller transition.
-///
-/// Root cause this exists to fix: a fresh (non-restored) `MapExploreView`
-/// starts with its `.sheet(isPresented:)` already `true` from `init`, so the
-/// sheet's system slide-up-from-bottom transition begins in the SAME commit
-/// that mounts `sheetContent`. Setting `@FocusState` (and therefore
-/// `becomeFirstResponder()`) from that content's own `.onAppear` fires
-/// *during* that in-flight transition — before the search field's hosting
-/// view controller is actually the window's frontmost/active one — and
-/// UIKit silently drops a first-responder request made mid-transition
-/// rather than queuing it. That is a plain iOS/UIKit behavior (not
-/// SwiftUI-specific), so no amount of restructuring `.onAppear`/`.task`
-/// timing inside SwiftUI alone fixes it; it needs to know the transition
-/// really finished, which only UIKit's own `transitionCoordinator` can say
-/// with certainty.
-struct SheetPresentationSettledProbe: UIViewRepresentable {
-    let onSettled: () -> Void
+// Map search-focus fix (2026-09-28, fourth pass) — `SheetPresentationSettledProbe`
+// used to live here: an invisible `UIViewRepresentable` walking the real
+// UIKit responder chain for `UIViewController.transitionCoordinator`, to
+// know when a `.sheet`'s own presentation animation had genuinely finished
+// before requesting `@FocusState` focus on a field inside it. Three
+// consecutive real-device passes refining exactly WHEN/how that probe fired
+// (a bare completion callback, then its return-value-checked fallback, then
+// routing the actual `@FocusState` write through a SwiftUI `.onChange`
+// instead of straight out of the UIKit callback) never once raised the
+// keyboard on a real device — removed, not patched a fourth time, in favor
+// of `.defaultFocus(_:_:)`.
 
-    func makeUIView(context: Context) -> ProbeView {
-        let view = ProbeView()
-        view.onSettled = onSettled
-        view.isHidden = true
-        view.isUserInteractionEnabled = false
-        return view
+/// Map search-focus fix (2026-09-28, fifth pass) — real, CONFIRMED root
+/// cause, isolated with a temporary on-screen debug marker reading
+/// `@FocusState` directly: `.defaultFocus(_:_:)`, then (for elimination) a
+/// bare synchronous `.onAppear { searchFieldFocused = true }` with NO
+/// indirection of any kind, BOTH left the marker provably unfocused on a
+/// real device — proof this was never a timing problem. A genuine user tap
+/// on the exact same field always worked. That combination means
+/// `@FocusState` itself cannot deliver programmatic focus to this
+/// particular field, full stop — while the plain UIKit mechanism a manual
+/// tap already uses (`becomeFirstResponder()`) is proven to work. This
+/// wraps a real `UITextField` directly, driving that exact proven mechanism
+/// ourselves instead of asking SwiftUI's focus abstraction to do something
+/// it has now been shown not to do here. `isFirstResponder` is two-way: a
+/// genuine tap (routed through the `UITextField` itself, exactly like
+/// before) reports back through `textFieldDidBeginEditing`/`textFieldDidEndEditing`,
+/// so this stays a faithful drop-in for `TextField` + `.focused($x)`, not
+/// a one-directional hack.
+struct FocusableTextField: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var isFirstResponder: Bool
+    var placeholder: String
+    var font: UIFont
+
+    func makeUIView(context: Context) -> UITextField {
+        let tf = UITextField()
+        tf.placeholder = placeholder
+        tf.font = font
+        tf.delegate = context.coordinator
+        tf.autocorrectionType = .no
+        tf.returnKeyType = .search
+        tf.addTarget(context.coordinator, action: #selector(Coordinator.editingChanged), for: .editingChanged)
+        return tf
     }
 
-    func updateUIView(_ uiView: ProbeView, context: Context) {
-        uiView.onSettled = onSettled
+    func updateUIView(_ uiView: UITextField, context: Context) {
+        if uiView.text != text { uiView.text = text }
+        if uiView.placeholder != placeholder { uiView.placeholder = placeholder }
+        if isFirstResponder, !uiView.isFirstResponder {
+            // Deferred one tick, same reasoning `ScaffoldScrollProbe`/the
+            // removed `SheetPresentationSettledProbe` already established
+            // elsewhere in this file: calling into UIKit's own responder
+            // machinery from the MIDDLE of a SwiftUI view-update pass is
+            // unreliable; yielding to the next run loop turn first (not a
+            // timed sleep — zero delay) lets this update commit before
+            // UIKit reacts to it.
+            DispatchQueue.main.async { uiView.becomeFirstResponder() }
+        } else if !isFirstResponder, uiView.isFirstResponder {
+            DispatchQueue.main.async { uiView.resignFirstResponder() }
+        }
     }
 
-    final class ProbeView: UIView {
-        var onSettled: (() -> Void)?
-        private var fired = false
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            guard window != nil, !fired else { return }
-            fired = true
-            // Walk the RESPONDER chain (not the view/superview hierarchy —
-            // the presenting/presented `UIViewController` sits above the
-            // SwiftUI-managed view tree, not as a subview ancestor of it) to
-            // find the sheet's own view controller and ask its transition
-            // coordinator (non-nil only while a transition is genuinely
-            // still in flight) for a true completion callback.
-            var responder: UIResponder? = self
-            while let current = responder {
-                if let vc = current as? UIViewController, let coordinator = vc.transitionCoordinator {
-                    coordinator.animate(alongsideTransition: nil) { [weak self] _ in
-                        self?.onSettled?()
-                    }
-                    return
-                }
-                responder = current.next
-            }
-            // No in-flight coordinator found — either the presentation had
-            // already finished by the time this probe's view landed in a
-            // window (e.g. a detent resize re-triggering layout, not a
-            // fresh presentation), or this probe is used somewhere outside
-            // a `.sheet` transition entirely. Either way the field is
-            // already part of the live, interactive hierarchy right now, so
-            // there's nothing left to wait for.
-            DispatchQueue.main.async { [weak self] in self?.onSettled?() }
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        private let parent: FocusableTextField
+        init(_ parent: FocusableTextField) { self.parent = parent }
+
+        @objc func editingChanged(_ sender: UITextField) {
+            parent.text = sender.text ?? ""
+        }
+
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            DispatchQueue.main.async { self.parent.isFirstResponder = true }
+        }
+
+        func textFieldDidEndEditing(_ textField: UITextField) {
+            DispatchQueue.main.async { self.parent.isFirstResponder = false }
+        }
+
+        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            textField.resignFirstResponder()
+            return true
         }
     }
 }

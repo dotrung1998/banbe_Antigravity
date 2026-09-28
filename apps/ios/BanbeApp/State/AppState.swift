@@ -1182,45 +1182,17 @@ final class AppState: ObservableObject {
     /// inventing its own).
     @Published var mapCloseSwipeProgress: CGFloat = 0
 
-    /// Gesture-arbitration fix pass (2026-09-28, regression follow-up) —
-    /// real cause of a horizontal swipe-to-reveal on an Inbox row (native
-    /// `.swipeActions` Star/Archive, MessagingViews.swift's `InboxView`)
-    /// ALSO dragging the whole screen into RootView's own root-tab swipe
-    /// (Home <-> Map <-> Notifications <-> Inbox <-> Account) at the same
-    /// time: RootView attaches `tabSwipeGesture` via `.simultaneousGesture`
-    /// on an ANCESTOR of the entire screen (`rootScreenStack`), which by
-    /// definition asks SwiftUI to let it recognize side-by-side with
-    /// whatever's underneath — including a List row's own UIKit
-    /// swipe-actions pan recognizer — instead of ever deferring to it.
-    ///
-    /// A first pass at this fix published a single Y coordinate (the
-    /// header's bottom edge) and blocked tab-swipe for ANY touch starting
-    /// at or below it — a coarse band covering the whole list region
-    /// (blank gaps, dividers, everything), not just actual rows. On a real
-    /// device that meant swiping Inbox -> any other tab stopped working
-    /// entirely, since the list fills nearly the whole screen below the
-    /// header. This is the fix for that regression: instead of one Y
-    /// cutoff, `InboxView` measures and publishes the CURRENT on-screen
-    /// frame (in `.global`/screen coordinates, matching the coordinate
-    /// space `tabSwipeGesture` reads `startLocation` in — see that
-    /// gesture's own comment) of every visible row's own `List` cell (via
-    /// `listRowBackground`, which — unlike the row's inset content — spans
-    /// the cell's FULL swipeable width, matching what `.swipeActions`
-    /// itself actually claims) as rows appear/scroll/disappear. `nil`
-    /// whenever there are no rows to protect (empty state) or it's the
-    /// non-interactive edge-swipe-back preview copy, so this never affects
-    /// any other screen. `tabSwipeGesture` treats a drag as "vertical"
-    /// (its existing escape hatch for "this isn't mine") only when its
-    /// start point actually falls INSIDE one of these row frames — the
-    /// same geometry-at-touch-start approach already used for the
-    /// leading-edge strip and Map's own narrow trailing strip, just
-    /// row-precise instead of one approximate band. A row therefore owns
-    /// the ENTIRE drag from the moment it starts inside that row's own
-    /// bounds — the ancestor gesture never even engages, so there is no
-    /// partial root-tab "preview" to spring back from — while a drag
-    /// starting anywhere else (header, blank space, gutters, below the
-    /// last row) still swipes tabs exactly as before e56aeb2 ever existed.
-    @Published var horizontalSwipeRowFrames: [CGRect]?
+    // Gesture-arbitration fix pass (2026-09-28) — `horizontalSwipeRowFrames`
+    // used to live here: three successive attempts to let RootView's
+    // `tabSwipeGesture` detect "this touch started on a live Inbox row" via
+    // published row geometry, each fixing a real bug in that detection
+    // (a coarse Y-band, then a coordinate-space mismatch, then a preference-
+    // propagation dead end via `.listRowBackground`) without ever actually
+    // stopping the on-device conflict. Removed for good along with
+    // `.swipeActions` itself — Inbox's Star/Archive now live behind a tap-
+    // only "…" menu (`InboxRow`'s own doc comment, MessagingViews.swift),
+    // which cannot race `tabSwipeGesture` at all, so there is nothing left
+    // here for this property to guard.
 
     /// Follow-up (11-realtime-map.md, bug 1): a distinct, one-shot signal
     /// from a CONFIRMED close (swipe past the threshold, or the "← Đóng"

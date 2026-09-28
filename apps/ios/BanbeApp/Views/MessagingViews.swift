@@ -5,13 +5,11 @@ import UIKit
 /// on either side (as guest, and as organizer of their own events).
 ///
 /// 2026-09-21 follow-up: switched from a plain ScrollView/VStack to a
-/// `List` so Task 2's swipe-left Star/Archive can use SwiftUI's native
-/// `.swipeActions` instead of a hand-rolled drag gesture — the idiomatic,
-/// lower-risk choice here (this app's ScreenScaffold's own scroll-collapse
-/// probe, used elsewhere for the bottom-bar shrink effect, doesn't apply
-/// inside a List the same way; Inbox loses that one shrink-on-scroll nicety,
-/// accepted as a small, deliberate trade-off for a correct native swipe
-/// gesture rather than reimplementing one by hand).
+/// `List` (kept since — see the ScaffoldScrollProbe usage below for why).
+///
+/// Row-swipe-vs-tab-swipe fix pass (2026-09-28, third follow-up) — rows no
+/// longer use `.swipeActions` for Star/Archive; see `InboxRow`'s own doc
+/// comment for why, and for the tap-only "…" menu that replaced it.
 struct InboxView: View {
     @EnvironmentObject var app: AppState
     // TASK 2 (2026-09-22 twenty-first follow-up) — Archived isn't its own
@@ -36,26 +34,6 @@ struct InboxView: View {
     // Bug 1c (2026-09-21 follow-up) — brings up the keyboard the instant
     // the search field appears, no extra tap needed first.
     @FocusState private var searchFieldFocused: Bool
-
-    // Gesture-arbitration fix pass (2026-09-28, regression follow-up) —
-    // see `AppState.horizontalSwipeRowFrames`'s own doc comment. Each
-    // currently-rendered row publishes its own `listRowBackground`
-    // `GeometryReader` frame (in `.global`/screen coordinates — the same
-    // space RootView's `tabSwipeGesture` reads `startLocation` in) via
-    // `InboxRowFramePreferenceKey` below; this collects them.
-    @State private var rowFrames: [CGRect] = []
-
-    /// Publishes (or clears) the guarded row frames for RootView's own
-    /// root-tab swipe gesture. Only the real, interactive InboxView copy
-    /// does this — the non-interactive edge-swipe-back "peek" (`isPreview`)
-    /// never owns the live gesture and must never stomp on the real
-    /// screen's own published value. `nil` whenever there are no rows to
-    /// protect (empty state, or nothing currently rendered), so tab-swipe
-    /// still works normally there.
-    private func syncRowSwipeRegion() {
-        guard !isPreview else { return }
-        app.horizontalSwipeRowFrames = (visibleThreads.isEmpty || rowFrames.isEmpty) ? nil : rowFrames
-    }
 
     // Bug 1b/1c (2026-09-21 follow-up) — ONE shared, noticeably slower
     // spring for both the settings sheet's entrance and the search field's
@@ -102,26 +80,7 @@ struct InboxView: View {
                             InboxRow(thread: thread)
                                 .listRowInsets(EdgeInsets(top: 0, leading: 24, bottom: 0, trailing: 24))
                                 .listRowSeparatorTint(app.palette.rule)
-                                // Gesture-arbitration fix pass (2026-09-28,
-                                // regression follow-up) — `listRowBackground`
-                                // (unlike the row's own inset content) spans
-                                // the FULL cell width/height, matching what
-                                // `.swipeActions` itself actually claims for
-                                // this row. Publishing each row's measured
-                                // frame here is what lets RootView's
-                                // `tabSwipeGesture` tell "on this row" apart
-                                // from "in the list but not on any row"
-                                // precisely — see
-                                // `AppState.horizontalSwipeRowFrames`'s own
-                                // doc comment.
-                                .listRowBackground(
-                                    ZStack {
-                                        app.palette.paper
-                                        GeometryReader { geo in
-                                            Color.clear.preference(key: InboxRowFramePreferenceKey.self, value: [geo.frame(in: .global)])
-                                        }
-                                    }
-                                )
+                                .listRowBackground(app.palette.paper)
                                 // Refresh-indicator fix pass (2026-09-27,
                                 // follow-up A) — same `ScaffoldScrollProbe`
                                 // ScreenScaffold uses, anchored to this
@@ -149,27 +108,6 @@ struct InboxView: View {
                                           ))
                                         : AnyView(EmptyView())
                                 )
-                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                    let archived = app.inboxThreadPrefs[thread.id]?.archived ?? false
-                                    Button {
-                                        Task { archived ? await app.unarchiveThread(thread.id) : await app.archiveThread(thread.id) }
-                                    } label: {
-                                        Label(archived ? app.T("Bỏ lưu trữ", "Unarchive") : app.T("Lưu trữ", "Archive"), systemImage: archived ? "tray.and.arrow.up" : "archivebox")
-                                    }
-                                    .tint(app.palette.ink)
-                                    Button {
-                                        Task { await app.toggleThreadStar(thread.id) }
-                                    } label: {
-                                        // Bug 1a (2026-09-21 follow-up) — was
-                                        // hardcoded "Star" regardless of
-                                        // state; the icon already flipped
-                                        // star/star.fill but the label
-                                        // never followed.
-                                        let starred = app.inboxThreadPrefs[thread.id]?.starred ?? false
-                                        Label(starred ? app.T("Bỏ đánh dấu", "Unstar") : app.T("Gắn sao", "Star"), systemImage: starred ? "star.fill" : "star")
-                                    }
-                                    .tint(BanbeTheme.alert)
-                                }
                         }
                     }
                     .listStyle(.plain)
@@ -200,25 +138,9 @@ struct InboxView: View {
         // `setForcedHidden(_:)` this pass adds right alongside it.
         .onChange(of: settingsOpen) { _, open in BottomTabBarOverlay.shared.setForcedHidden(open || feedbackOpen) }
         .onChange(of: feedbackOpen) { _, open in BottomTabBarOverlay.shared.setForcedHidden(open || settingsOpen) }
-        // Gesture-arbitration fix pass (2026-09-28, regression follow-up) —
-        // keeps `app.horizontalSwipeRowFrames` in sync with the CURRENTLY
-        // rendered rows' own measured frames (scrolling, layout changes —
-        // search field opening, Dynamic Type, safe-area changes — and
-        // rows entering/leaving the List's recycled cell set all fire
-        // this) and whether there are any rows to protect at all (empty
-        // state must not block tab-swipe).
-        .onPreferenceChange(InboxRowFramePreferenceKey.self) { frames in
-            rowFrames = frames
-            syncRowSwipeRegion()
-        }
-        .onChange(of: visibleThreads.isEmpty) { _, _ in syncRowSwipeRegion() }
         .onDisappear {
             BottomTabBarOverlay.shared.setForcedHidden(false)
             app.cancelRootPull()
-            // This screen's own row frames no longer apply once InboxView
-            // isn't the visible screen — never leave a stale guard
-            // blocking tab-swipe on whatever screen comes next.
-            if !isPreview { app.horizontalSwipeRowFrames = nil }
         }
     }
 
@@ -344,22 +266,6 @@ struct InboxView: View {
     }
 }
 
-/// Gesture-arbitration fix pass (2026-09-28, regression follow-up) —
-/// reports every currently-rendered Inbox row's own on-screen frame (in
-/// `.global`/screen coordinates), so RootView's own `tabSwipeGesture` can
-/// tell a touch starting INSIDE an actual row apart from one starting
-/// anywhere else on the Inbox screen (header, gaps, below the last row),
-/// without either view needing to know the other's exact layout constants.
-/// Each row publishes its own single-element array; `reduce` concatenates
-/// them into the full set of currently-visible row frames rather than
-/// overwriting (SwiftUI's default `PreferenceKey` reduce behavior is last-
-/// write-wins, which would silently drop every row but one). See
-/// `AppState.horizontalSwipeRowFrames`'s own doc comment.
-private struct InboxRowFramePreferenceKey: PreferenceKey {
-    static var defaultValue: [CGRect] = []
-    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) { value.append(contentsOf: nextValue()) }
-}
-
 private struct InboxRow: View {
     @EnvironmentObject var app: AppState
     let thread: InboxThread
@@ -371,85 +277,120 @@ private struct InboxRow: View {
     private var starred: Bool { app.inboxThreadPrefs[thread.id]?.starred ?? false }
 
     var body: some View {
-        Button { app.openThread(id: thread.id, eventKey: thread.eventKey, back: .inbox, otherName: thread.name) } label: {
-            HStack(spacing: 16) {
-                // Task 3a — merged avatar: a small badge circle for the
-                // OTHER participant's own photo, overlapping the event
-                // photo's corner — mirrors src/screens/Inbox.jsx.
-                ZStack(alignment: .bottomTrailing) {
-                    CatalogPhoto(path: thread.img, height: 56, width: 56, cornerRadius: 28)
-                    Group {
-                        if let url = thread.otherAvatarURL, let imageURL = URL(string: url) {
-                            AsyncImage(url: imageURL) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
-                                .frame(width: 24, height: 24)
-                                .clipShape(Circle())
-                        } else {
-                            Circle().fill(app.palette.ink)
-                                .overlay(
-                                    Text(String(thread.name.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundStyle(app.palette.paper)
-                                )
-                                .frame(width: 24, height: 24)
+        // Row-swipe-vs-tab-swipe fix pass (2026-09-28, third follow-up) —
+        // real, final fix: `.swipeActions` was abandoned entirely, not
+        // patched a third time. Two independent attempts (a named
+        // coordinate space, then moving the measuring `GeometryReader` off
+        // `.listRowBackground`) each fixed a real, confirmed bug in the
+        // row-vs-tab-swipe detection, and it STILL reproduced on-device,
+        // every row, every time — meaning the underlying approach itself
+        // (an ancestor `.simultaneousGesture` trying to out-guess a `List`
+        // row's own UIKit swipe-actions recognizer purely from SwiftUI,
+        // with no `UIGestureRecognizer.require(toFail:)`-level control
+        // available from pure SwiftUI) can't be made reliable here. Star/
+        // Archive now live behind an explicit tap target (the "…" button
+        // below) instead of a swipe gesture — a `Menu`/`Button` tap never
+        // competes with `RootView.tabSwipeGesture` at all (taps and drags
+        // are different gesture classes; there's nothing left to
+        // arbitrate), so this entire class of bug cannot recur here by
+        // construction, not by another detection heuristic.
+        HStack(spacing: 4) {
+            Button { app.openThread(id: thread.id, eventKey: thread.eventKey, back: .inbox, otherName: thread.name) } label: {
+                HStack(spacing: 16) {
+                    // Task 3a — merged avatar: a small badge circle for the
+                    // OTHER participant's own photo, overlapping the event
+                    // photo's corner — mirrors src/screens/Inbox.jsx.
+                    ZStack(alignment: .bottomTrailing) {
+                        CatalogPhoto(path: thread.img, height: 56, width: 56, cornerRadius: 28)
+                        Group {
+                            if let url = thread.otherAvatarURL, let imageURL = URL(string: url) {
+                                AsyncImage(url: imageURL) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
+                                    .frame(width: 24, height: 24)
+                                    .clipShape(Circle())
+                            } else {
+                                Circle().fill(app.palette.ink)
+                                    .overlay(
+                                        Text(String(thread.name.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundStyle(app.palette.paper)
+                                    )
+                                    .frame(width: 24, height: 24)
+                            }
                         }
+                        .overlay(Circle().stroke(app.palette.paper, lineWidth: 2))
                     }
-                    .overlay(Circle().stroke(app.palette.paper, lineWidth: 2))
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        if unread { Circle().fill(BanbeTheme.alert).frame(width: 7, height: 7) }
-                        // Bug 3 (2026-09-21 follow-up) — a fully-read row's
-                        // name stays bold (still reads as the row's title)
-                        // but lighter-contrast than an unread row's, via
-                        // opacity rather than dropping below the preview
-                        // line's own weight underneath it.
-                        Text(thread.name)
-                            .font(BanbeTheme.display(18))
-                            .fontWeight(.semibold)
-                            .foregroundStyle(app.palette.ink.opacity(unread ? 1 : 0.6))
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            if unread { Circle().fill(BanbeTheme.alert).frame(width: 7, height: 7) }
+                            // Bug 3 (2026-09-21 follow-up) — a fully-read row's
+                            // name stays bold (still reads as the row's title)
+                            // but lighter-contrast than an unread row's, via
+                            // opacity rather than dropping below the preview
+                            // line's own weight underneath it.
+                            Text(thread.name)
+                                .font(BanbeTheme.display(18))
+                                .fontWeight(.semibold)
+                                .foregroundStyle(app.palette.ink.opacity(unread ? 1 : 0.6))
+                        }
+                        Text(thread.snippet)
+                            .font(.system(size: 13, weight: unread ? .semibold : .regular))
+                            .foregroundStyle(app.palette.ink.opacity(unread ? 1 : 0.72))
+                            .lineLimit(1)
                     }
-                    Text(thread.snippet)
-                        .font(.system(size: 13, weight: unread ? .semibold : .regular))
-                        .foregroundStyle(app.palette.ink.opacity(unread ? 1 : 0.72))
-                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    // Bug 1 (2026-09-21 follow-up) — moved off the avatar
+                    // (where it collided with the merged-avatar badge) to the
+                    // row's own far trailing edge instead.
+                    if starred {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(BanbeTheme.alert)
+                    }
                 }
-                Spacer(minLength: 0)
-                // Bug 1 (2026-09-21 follow-up) — moved off the avatar
-                // (where it collided with the merged-avatar badge) to the
-                // row's own far trailing edge instead.
-                if starred {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(BanbeTheme.alert)
-                }
-                // TASK 3 (2026-09-22 nineteenth follow-up) — a subtle
-                // swipe-left affordance, web parity (Inbox.jsx). Purely
-                // visual (no gesture/tap of its own — the real
-                // `.swipeActions` lives on the List row itself, above),
-                // slim/low-opacity so it never competes with the unread
-                // dot/timestamp/avatar/star badge, fading further on an
-                // already-read row.
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(app.palette.ink.opacity(unread ? 0.32 : 0.2))
-                    .accessibilityHidden(true)
+                .padding(.vertical, 14)
+                .contentShape(Rectangle())
             }
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .foregroundStyle(app.palette.ink)
+            // Screenshot Catalog (docs/demo-screenshots) — not unique per row
+            // (every row shares it, matched via `.matching(identifier:)`), the
+            // same convention `chat.attachment` already uses (MessagingViews.swift)
+            // for "any one of these, whichever exists" lookups. "Unread thread
+            // appearance" is captured off the list itself (whatever mix of
+            // read/unread the account currently has), not a second identifier
+            // per read-state — nested SwiftUI accessibility ids on a row this
+            // deep have already proven unreliable to resolve precisely
+            // elsewhere in this suite (see EventDetailOpenInMapUITests' own
+            // comment on `map.selectedCard`).
+            .accessibilityIdentifier("inbox.threadRow")
+
+            // A SIBLING control, not nested inside the row-open `Button`
+            // above (SwiftUI/UIKit don't give a nested button its own
+            // independent tap target reliably) — tapping "…" opens Archive/
+            // Star directly, replacing the old swipe-left affordance.
+            Menu {
+                let archived = app.inboxThreadPrefs[thread.id]?.archived ?? false
+                Button {
+                    Task { archived ? await app.unarchiveThread(thread.id) : await app.archiveThread(thread.id) }
+                } label: {
+                    Label(archived ? app.T("Bỏ lưu trữ", "Unarchive") : app.T("Lưu trữ", "Archive"), systemImage: archived ? "tray.and.arrow.up" : "archivebox")
+                }
+                .accessibilityIdentifier("inbox.thread.archive")
+                Button {
+                    Task { await app.toggleThreadStar(thread.id) }
+                } label: {
+                    Label(starred ? app.T("Bỏ đánh dấu", "Unstar") : app.T("Gắn sao", "Star"), systemImage: starred ? "star.fill" : "star")
+                }
+                .accessibilityIdentifier("inbox.thread.star")
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(app.palette.ink.opacity(0.55))
+                    .frame(width: 32, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("inbox.thread.moreButton")
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(app.palette.ink)
-        // Screenshot Catalog (docs/demo-screenshots) — not unique per row
-        // (every row shares it, matched via `.matching(identifier:)`), the
-        // same convention `chat.attachment` already uses (MessagingViews.swift)
-        // for "any one of these, whichever exists" lookups. "Unread thread
-        // appearance" is captured off the list itself (whatever mix of
-        // read/unread the account currently has), not a second identifier
-        // per read-state — nested SwiftUI accessibility ids on a row this
-        // deep have already proven unreliable to resolve precisely
-        // elsewhere in this suite (see EventDetailOpenInMapUITests' own
-        // comment on `map.selectedCard`).
-        .accessibilityIdentifier("inbox.threadRow")
     }
 }
 
@@ -1048,9 +989,6 @@ struct NotificationsView: View {
     // up to 50 at once), so a plain local Set is enough; nothing here needs
     // a new query.
     @State private var expandedSections: Set<String> = []
-    // BUG 4: the "•••" action menu, open for at most one row's
-    // notification at a time.
-    @State private var menuFor: AppNotification?
     // TASK 2 (2026-09-22 eighteenth follow-up) — real root cause of "cannot
     // reach selection mode": `app.notificationSelectionMode`/
     // `app.selectedNotificationIDs` were added to AppState in a prior pass
@@ -1287,65 +1225,7 @@ struct NotificationsView: View {
                 syncSectionMembership()
             }
             .onChange(of: app.notifications) { _, _ in syncSectionMembership() }
-            // BUG 3 (2026-09-22 eighteenth follow-up) — real root cause:
-            // `app.modalActionSheetPresented` (BottomTabBarOverlay.swift's
-            // own dedicated suppression flag, wired to RootView's
-            // `.onChange` in a prior pass) was NEVER actually toggled by
-            // this exact "•••" sheet — `menuFor` drove the sheet's own
-            // presence but nothing told the overlay window about it.
-            // Mirroring `menuFor`'s presence here covers every terminal
-            // path uniformly (backdrop tap/BottomSheet's own onDismiss,
-            // AND every explicit action row below, which all set
-            // `menuFor = nil` themselves) without duplicating the flag
-            // toggle at each of those call sites individually.
-            .onChange(of: menuFor) { _, current in
-                app.modalActionSheetPresented = current != nil
-            }
-
-            // BUG 4: replaces the old per-row "×" delete with a "•••" menu,
-            // modeled on Facebook's own notification action sheet — but
-            // only the actions this app can actually back for real (no
-            // "Show more"/"Show less": nothing ranks or personalizes this
-            // list; no "Report issue": no generic issue-report mechanism
-            // exists anywhere else in the app to call into — see
-            // 07-notifications.md). Reuses BottomSheet, the same
-            // dim-overlay + sliding-panel component ReasonSheetView already
-            // uses, rather than inventing a new dropdown/floating-menu.
-            if let n = menuFor {
-                BottomSheet(onDismiss: { menuFor = nil }) {
-                    menuRow(n.readAt != nil ? app.T("Đánh dấu chưa đọc", "Mark as unread") : app.T("Đánh dấu đã đọc", "Mark as read")) {
-                        Task {
-                            if n.readAt != nil { await app.markNotificationUnread(n) } else { await app.markNotificationRead(n) }
-                        }
-                        menuFor = nil
-                    }
-                    .accessibilityIdentifier("notification.menu.toggleRead")
-                    Divider().overlay(app.palette.rule)
-                    menuRow(app.T("Tắt loại thông báo này", "Turn off this kind of notification")) {
-                        Task { await app.muteNotificationKind(n.kind) }
-                        menuFor = nil
-                    }
-                    .accessibilityIdentifier("notification.menu.mute")
-                    Divider().overlay(app.palette.rule)
-                    menuRow(app.T("Xoá thông báo này", "Delete this notification"), destructive: true) {
-                        Task { await app.deleteNotification(n) }
-                        menuFor = nil
-                    }
-                    .accessibilityIdentifier("notification.menu.delete")
-                }
-            }
         }
-    }
-
-    private func menuRow(_ label: String, destructive: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 14.5))
-                .foregroundStyle(destructive ? BanbeTheme.alert : app.palette.ink)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 14)
-        }
-        .buttonStyle(.plain)
     }
 
     private func section(_ sec: NotificationSection) -> some View {
@@ -1459,20 +1339,46 @@ struct NotificationsView: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("notification.row")
 
-            // BUG 4: "•••" opens the action menu (delete / toggle read /
-            // mute this kind) instead of deleting directly. Hidden in
-            // selection mode — normal-mode-only per this ticket's own
-            // requirement 1.
+            // Notifications options display fix pass (2026-09-28) — was a
+            // text "•••" `Button` opening a custom `BottomSheet` (needing
+            // its own `app.modalActionSheetPresented` wiring just to hide
+            // the always-on-top dock overlay while it was up). Now the
+            // same tap-only "…" `Menu` pattern `InboxRow` uses for
+            // Star/Archive (MessagingViews.swift, `InboxRow`'s own doc
+            // comment) — a native `Menu` needs no such wiring (it
+            // presents above everything on its own), and this keeps the
+            // two dock-tab row-actions controls visually/behaviorally
+            // identical. Hidden in selection mode — normal-mode-only per
+            // this ticket's own requirement 1.
             if !selectionMode {
-                Button {
-                    menuFor = item
+                Menu {
+                    Button {
+                        Task {
+                            if item.readAt != nil { await app.markNotificationUnread(item) } else { await app.markNotificationRead(item) }
+                        }
+                    } label: {
+                        Label(item.readAt != nil ? app.T("Đánh dấu chưa đọc", "Mark as unread") : app.T("Đánh dấu đã đọc", "Mark as read"), systemImage: item.readAt != nil ? "envelope.badge" : "envelope.open")
+                    }
+                    .accessibilityIdentifier("notification.menu.toggleRead")
+                    Button {
+                        Task { await app.muteNotificationKind(item.kind) }
+                    } label: {
+                        Label(app.T("Tắt loại thông báo này", "Turn off this kind of notification"), systemImage: "bell.slash")
+                    }
+                    .accessibilityIdentifier("notification.menu.mute")
+                    Button(role: .destructive) {
+                        Task { await app.deleteNotification(item) }
+                    } label: {
+                        Label(app.T("Xoá thông báo này", "Delete this notification"), systemImage: "trash")
+                    }
+                    .accessibilityIdentifier("notification.menu.delete")
                 } label: {
-                    Text("•••")
-                        .font(.system(size: 15))
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(app.palette.ink.opacity(0.4))
-                        .padding(6)
+                        .frame(width: 32, height: 44)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
                 .accessibilityIdentifier("notification-menu")
             }
         }

@@ -68,7 +68,15 @@ struct MapExploreView: View {
     // (mirrors `hadRestoredState`'s own one-shot capture), so a later
     // unrelated re-render can't re-focus the field out from under the user.
     @State private var searchQuery = ""
-    @FocusState private var searchFieldFocused: Bool
+    // Map search-focus fix (2026-09-28, fifth pass) — plain `@State`, not
+    // `@FocusState`. See `FocusableTextField`'s own doc comment
+    // (Components.swift) for the confirmed reason: `@FocusState` itself
+    // cannot deliver programmatic focus to this field on a real device, by
+    // any mechanism tried, while `FocusableTextField`'s direct
+    // `becomeFirstResponder()`/`resignFirstResponder()` — the exact plain
+    // UIKit mechanism a manual tap already proven to work — reads and
+    // writes this same plain `Bool` two-way instead.
+    @State private var searchFieldFocused = false
     private let startFocusedOnSearch: Bool
     @State private var initialCenterSet: Bool
     // Defaults to the "tall" snap point (covers most of the screen, leaving
@@ -580,6 +588,13 @@ struct MapExploreView: View {
                 scheduleSheetReveal(after: eventDetailDismissDuration + postDismissRevealDelay)
             } else {
                 centerOnDensityHotspot()
+                // The one-shot FAB intent is consumed unconditionally once
+                // this fresh-open branch runs at all (not by a callback
+                // that fires only once focus actually lands) — the next
+                // `MapExploreView` this app constructs (a later dock-tab
+                // open, another restore) never reads a stale `true` left
+                // over from this one.
+                if startFocusedOnSearch { app.mapExploreFocusSearch = false }
             }
         }
         .onChange(of: app.mapCloseSwipeCancelled) { _, cancelled in
@@ -689,6 +704,17 @@ struct MapExploreView: View {
             sortByDistance: sortByDistance,
             selectedId: selectedId
         )
+        // Search-result-selection fix pass (2026-09-28) — a belt-and-
+        // suspenders clear alongside the `!hadRestoredState` guard on the
+        // focus probe above (that guard's own doc comment has the full
+        // trace): this is the exact moment a navigation-away can leave
+        // `app.mapExploreFocusSearch` stale `true` (set by the FAB, never
+        // reached its own clearing point because the user tapped into
+        // Event Detail first). Clearing it here, unconditionally, means
+        // the very next `MapExploreView` this app ever constructs —
+        // restored or not — starts from a known-clean flag rather than
+        // relying solely on the restored-instance guard to mask it.
+        app.mapExploreFocusSearch = false
         app.goEvent(id)
     }
 
@@ -831,13 +857,38 @@ struct MapExploreView: View {
         let isNewSelection = selectedId != ev.id
         selectedId = ev.id
 
+        // Search-result-selection fix pass (2026-09-28) — a `List` row's
+        // own tap gesture never sends `.focused($searchFieldFocused)` any
+        // "tap outside" signal the way surrounding chrome normally would,
+        // so picking a result while the keyboard was up left it up
+        // indefinitely. Resigning here, at the single shared selection
+        // path (pins and list rows both call this), covers every way a
+        // result can be picked.
+        let wasSearching = searchFieldFocused
+        if wasSearching { searchFieldFocused = false }
+
         // Task 6 (2026-09-21 follow-up) — selecting an event at the tallest
         // detent (0.72 = the sheet itself occupies 72% of the screen, the
         // least visible map) used to leave it there, squeezing the map
         // into a sliver right when its own pin/info card most needs room
         // to be seen. Drops to mid (0.45) only from tall; already being at
         // mid/peek (more map visible than tall) is left alone.
-        if sheetDetent == .fraction(0.72) {
+        //
+        // Search-result-selection fix pass (2026-09-28) — EXCEPT while
+        // actively searching (`wasSearching`): a result picked with the
+        // keyboard open always settles at MID/Level 2, even from PEEK,
+        // matching this ticket's own "move the Map list sheet to its
+        // existing MID/Level 2 snap" — the keyboard just closed (above),
+        // so PEEK (0.12) would otherwise leave almost the whole screen
+        // sitting on a mostly-empty map for a moment. Outside of search,
+        // a plain pin/row tap with the keyboard never open keeps the
+        // original tall-only behavior — no reason to force a bigger sheet
+        // than the user already chose.
+        if wasSearching {
+            if sheetDetent != .fraction(0.45) {
+                withAnimation { sheetDetent = .fraction(0.45) }
+            }
+        } else if sheetDetent == .fraction(0.72) {
             withAnimation { sheetDetent = .fraction(0.45) }
         }
 
@@ -1144,32 +1195,40 @@ struct MapExploreView: View {
             // routing rather than a second search surface. Autofocused on
             // arrival from Home's search button (`startFocusedOnSearch`).
             //
-            // Real-device follow-up (2026-09-28): focus used to be set from
-            // this row's own `.onAppear`, which — for a fresh (non-restored)
-            // open — fires in the SAME commit the sheet's own system
-            // presentation transition starts animating. UIKit silently
-            // drops a `becomeFirstResponder()` made mid-transition, so the
-            // keyboard never appeared on a real device (it happened to have
-            // no visible effect in the simulator's own timing either, but
-            // was never actually verified there — see this pass's own
-            // ticket). Now gated on `SheetPresentationSettledProbe`
-            // (Components.swift) instead: it only fires once the sheet's
-            // OWN `transitionCoordinator` reports the presenting animation
-            // has genuinely finished, so the field is guaranteed to already
-            // be part of the live, interactive hierarchy before focus is
-            // requested. `.padding(.top, 8)` below (new) opens a small,
-            // deliberate gap above this row — this file's own established
-            // ad-hoc spacing scale (8/10/12/14/16, per
-            // .claude/notes/06-design-tokens.md) already uses exactly this
-            // 8pt increment as its row-to-row gap (see the FlowLayout/
-            // "Còn chỗ" rows just below) — so the search field no longer
-            // sits flush against the sheet's own system drag indicator.
+            // Map search-focus fix (2026-09-28, fifth pass) — `FocusableTextField`
+            // (Components.swift), not SwiftUI's own `TextField` +
+            // `@FocusState` — see that type's own doc comment for the full,
+            // CONFIRMED trace of why: a temporary on-screen marker reading
+            // `@FocusState` directly proved it never became `true` on a
+            // real device via any of four different mechanisms tried
+            // (including a bare synchronous `.onAppear` write with zero
+            // indirection), while a manual tap on the same field always
+            // worked. This wraps the real `UITextField` and drives the
+            // exact plain UIKit mechanism that manual tap already proven
+            // to succeed at.
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").font(.system(size: 14)).opacity(0.55)
-                TextField(app.T("Tìm sự kiện theo tên…", "Search events by name…"), text: $searchQuery)
-                    .focused($searchFieldFocused)
-                    .font(.system(size: 14))
-                    .accessibilityIdentifier("map.searchInput")
+                FocusableTextField(
+                    text: $searchQuery,
+                    isFirstResponder: $searchFieldFocused,
+                    placeholder: app.T("Tìm sự kiện theo tên…", "Search events by name…"),
+                    font: .systemFont(ofSize: 14)
+                )
+                // Confirmed-fix follow-up (2026-09-28) — a plain
+                // `UITextField`'s own default intrinsic height is taller
+                // than the SwiftUI `TextField` it replaced (which sized
+                // itself compactly off the 14pt font alone), so the row
+                // grew visibly taller than every other control in this
+                // same `HStack` once swapped in. Pinned back to that
+                // original compact height explicitly, rather than relying
+                // on `UITextField`'s own default sizing.
+                .frame(height: 20)
+                .accessibilityIdentifier("map.searchInput")
+                .onAppear {
+                    if startFocusedOnSearch && !hadRestoredState {
+                        searchFieldFocused = true
+                    }
+                }
                 if !searchQuery.isEmpty {
                     Button { searchQuery = "" } label: {
                         Image(systemName: "xmark.circle.fill").font(.system(size: 14)).opacity(0.45)
@@ -1180,21 +1239,14 @@ struct MapExploreView: View {
             }
             .padding(.horizontal, 12).padding(.vertical, 9)
             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            // `.padding(.top, 8)` opens a small, deliberate gap above this
+            // row — this file's own established ad-hoc spacing scale
+            // (8/10/12/14/16, per .claude/notes/06-design-tokens.md)
+            // already uses exactly this 8pt increment as its row-to-row gap
+            // (see the FlowLayout/"Còn chỗ" rows just below) — so the
+            // search field no longer sits flush against the sheet's own
+            // system drag indicator.
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 10)
-            .background(
-                // One-shot: only mounted at all when this instance actually
-                // arrived via the search FAB (`startFocusedOnSearch`,
-                // captured once at `init` — see its own doc comment), so a
-                // normal Map-dock-tab open, a map pan, a detent change, or a
-                // return from Event Detail never adds this probe and can
-                // never steal focus.
-                startFocusedOnSearch
-                    ? AnyView(SheetPresentationSettledProbe {
-                        searchFieldFocused = true
-                        app.mapExploreFocusSearch = false
-                      })
-                    : AnyView(EmptyView())
-            )
 
             // Task 2a (11-realtime-map.md follow-up): every category is
             // visible up front now — wraps onto as many rows as needed

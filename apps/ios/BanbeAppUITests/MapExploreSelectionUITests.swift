@@ -133,4 +133,100 @@ final class MapExploreSelectionUITests: XCTestCase {
         XCTAssertEqual(waitForAeieMatchCount(app, 2), 2,
                        "BUG: list row and/or card disappeared after returning to All")
     }
+
+    // MARK: - Home search FAB → Map focus / search-selection round trip
+    //
+    // Search-result-selection fix pass (2026-09-28). Real-device gesture/
+    // first-responder timing (this file's own top doc comment already
+    // notes XCUITest's synthetic environment doesn't fully reproduce that)
+    // means a clean run of these is not itself proof the on-device feel is
+    // fixed — only that the state-level contract (keyboard shown/hidden at
+    // the right moments, screen never drops) holds. Not run as part of
+    // this pass (no simulator/device execution).
+
+    @discardableResult
+    private func launchToHomeSignedIn() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-banbe.onboarded", "YES"]
+        app.launch()
+
+        if app.otherElements["screen.login"].waitForExistence(timeout: 45) {
+            app.buttons["login.method.password"].tap()
+            let email = app.textFields["login.email"]
+            XCTAssertTrue(email.waitForExistence(timeout: 5))
+            email.tap()
+            email.typeText("doqanh0906+banbe-fast-suite-shared@gmail.com")
+            let password = app.secureTextFields["login.password"]
+            XCTAssertTrue(password.waitForExistence(timeout: 5))
+            password.tap()
+            password.typeText("BanbeE2e!Test1234")
+            app.buttons["login.submit"].tap()
+        }
+
+        XCTAssertTrue(app.otherElements["screen.home"].waitForExistence(timeout: 45),
+                      "Expected to land on Home after sign-in")
+        return app
+    }
+
+    /// Requirement 1 — the one-shot "focus Map search" intent: tapping
+    /// Home's floating search button must land on Map Explore with the
+    /// keyboard already up, no second tap needed. Guards specifically
+    /// against `SheetPresentationSettledProbe`'s
+    /// `animate(alongsideTransition:completion:)` call silently no-op'ing
+    /// when scheduled too late in the transition's own lifecycle (its
+    /// `Bool` return value was never checked before this pass — see that
+    /// type's own doc comment in Components.swift) — the exact failure
+    /// mode that leaves the field visible but unfocused.
+    func testHomeSearchFabOpensMapWithKeyboardFocused() {
+        let app = launchToHomeSignedIn()
+        app.buttons["home.searchFab"].tap()
+
+        XCTAssertTrue(app.otherElements["screen.mapExplore"].waitForExistence(timeout: 10),
+                      "Expected the search FAB to open Map Explore")
+        XCTAssertTrue(app.textFields["map.searchInput"].waitForExistence(timeout: 5),
+                      "Expected the search field itself to be on screen")
+        XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 8),
+                      "Expected the keyboard to already be up without a second tap on the field")
+    }
+
+    /// Requirement 2 — picking a search result must resign the search
+    /// field's keyboard, and a later return from Event Detail must never
+    /// silently re-focus search (the traced stale-`app.mapExploreFocusSearch`
+    /// bug: a restored `MapExploreView` re-reading that flag and re-
+    /// mounting the focus probe — see the `!hadRestoredState` guard's own
+    /// doc comment at that probe's call site in MapExploreView.swift).
+    /// Opportunistic like `MapExploreSelectionUITests`' own AEIE-based
+    /// test above: skips (not fails) if the shared account's live backend
+    /// doesn't have a matching result right now.
+    func testSearchResultSelectionClosesKeyboardAndStaysClosedAfterEventDetailRoundTrip() throws {
+        let app = launchToHomeSignedIn()
+        app.buttons["home.searchFab"].tap()
+        XCTAssertTrue(app.otherElements["screen.mapExplore"].waitForExistence(timeout: 10))
+
+        let searchField = app.textFields["map.searchInput"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5))
+        searchField.typeText("AEIE")
+
+        let resultRow = app.staticTexts.matching(identifier: "AEIE: Mở Xưởng").firstMatch
+        try XCTSkipUnless(resultRow.waitForExistence(timeout: 10),
+                          "Shared account's live backend has no matching AEIE event right now")
+        resultRow.tap()
+
+        XCTAssertFalse(app.keyboards.element.waitForExistence(timeout: 3),
+                       "Selecting a search result should resign the search field's own focus")
+
+        let cta = app.buttons["map.card.cta"]
+        guard cta.waitForExistence(timeout: 5) else {
+            throw XCTSkip("map.card.cta did not resolve — see this file's own top doc comment on card-identifier flakiness")
+        }
+        cta.tap()
+        XCTAssertTrue(app.otherElements["screen.event"].waitForExistence(timeout: 10),
+                      "Expected the CTA to open Event Detail")
+
+        app.buttons["event.back"].tap()
+        XCTAssertTrue(app.otherElements["screen.mapExplore"].waitForExistence(timeout: 10),
+                      "Expected Back to return to Map Explore")
+        XCTAssertFalse(app.keyboards.element.waitForExistence(timeout: 3),
+                       "Returning from Event Detail must never silently re-focus search")
+    }
 }

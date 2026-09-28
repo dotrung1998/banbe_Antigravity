@@ -141,32 +141,43 @@ final class InteractionPrecedenceUITests: XCTestCase {
         XCTAssertFalse(app.otherElements["screen.inbox"].exists)
     }
 
-    /// Companion to the header-space test above: a swipe that starts ON an
-    /// actual Inbox row must be claimed by that row's own native
-    /// `.swipeActions` and must NEVER trigger root-tab navigation — the
-    /// precision half of the e56aeb2 fix-up (a single Y-band can't tell
-    /// these two cases apart; per-row measured frames can). Uses
+    /// Row-swipe-vs-tab-swipe fix pass (2026-09-28, third and final
+    /// follow-up) — two earlier passes here tried to make a swipe-to-reveal
+    /// gesture on an Inbox row coexist with `RootView.tabSwipeGesture`
+    /// (a named coordinate space, then fixing the row-frame preference
+    /// propagation itself), and each one fixed a real, confirmed bug in
+    /// that detection without ever stopping the conflict on a real device —
+    /// see `InboxRow`'s own doc comment for the conclusion: `.swipeActions`
+    /// was abandoned, not patched again. Star/Archive now live behind a
+    /// tap-only "…" menu (`inbox.thread.moreButton`), which cannot race a
+    /// drag gesture by construction. This replaces the old on-row-SWIPE
+    /// regression test with the tap-equivalent: opening the menu and
+    /// choosing an action must never move the root screen. Uses
     /// `InboxRow`'s existing `inbox.threadRow` accessibility identifier
-    /// (stable, not locale-dependent — the label text itself, e.g.
-    /// "Lưu trữ"/"Archive", is deliberately never asserted here) rather
-    /// than matching any row's display text. Opportunistic like
-    /// `ScreenshotCatalogTests`: the shared account is real backend data,
-    /// so this skips (not fails) if it currently has no conversations.
-    func testInboxRowSwipeNeverTriggersRootTabSwipe() throws {
+    /// (stable, not locale-dependent) rather than matching any row's
+    /// display text. Opportunistic like `ScreenshotCatalogTests`: the
+    /// shared account is real backend data, so this skips (not fails) if
+    /// it currently has no conversations.
+    func testInboxRowMoreMenuRevealsActionsAndNeverTriggersRootTabSwipe() throws {
         let app = launchSignedIn()
         app.buttons["tab.inbox"].tap()
         XCTAssertTrue(app.otherElements["screen.inbox"].waitForExistence(timeout: 5))
 
         let row = app.buttons["inbox.threadRow"].firstMatch
         try XCTSkipUnless(row.waitForExistence(timeout: 5),
-                          "Shared test account has no conversations right now — on-row swipe needs a real thread")
+                          "Shared test account has no conversations right now — the more-menu needs a real thread")
 
-        let start = row.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
-        let end = row.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
-        start.press(forDuration: 0.05, thenDragTo: end)
+        let moreButton = app.buttons["inbox.thread.moreButton"].firstMatch
+        XCTAssertTrue(moreButton.waitForExistence(timeout: 3), "Every row should expose its own tap-only actions menu")
+        moreButton.tap()
+
+        let archiveAction = app.buttons["inbox.thread.archive"].firstMatch
+        let starAction = app.buttons["inbox.thread.star"].firstMatch
+        XCTAssertTrue(archiveAction.waitForExistence(timeout: 3) || starAction.waitForExistence(timeout: 3),
+                      "Tapping \u{201c}\u{2026}\u{201d} must reveal the row's own Archive/Star actions")
 
         XCTAssertTrue(app.otherElements["screen.inbox"].waitForExistence(timeout: 3),
-                      "A swipe starting on a real Inbox row must never trigger root-tab navigation")
+                      "Opening a row's actions menu must never trigger root-tab navigation")
         XCTAssertFalse(app.otherElements["screen.profile"].exists)
         XCTAssertFalse(app.otherElements["screen.notifications"].exists)
     }

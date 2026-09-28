@@ -181,25 +181,14 @@ struct RootView: View {
                         tabSwipeDirection = "vertical"
                         return
                     }
-                    // Gesture-arbitration fix pass (2026-09-28, regression
-                    // follow-up) — see `AppState.horizontalSwipeRowFrames`'s
-                    // own doc comment (that comment also explains why this
-                    // is row-precise now, not a single Y-band that blocked
-                    // the whole list). `startLocation` is read here in this
-                    // gesture's `.local` space, which for `rootScreenStack`
-                    // (RootView's own top-level, unoffset container) is the
-                    // same as screen/`.global` coordinates — matching the
-                    // space InboxView measures its row frames in. A touch
-                    // that starts INSIDE one of the currently-visible rows'
-                    // own bounds is never claimed as horizontal here at
-                    // all, so that row's own native swipe-actions gesture
-                    // owns it exclusively from the first pixel of movement
-                    // — anywhere else (header, gaps, below the last row)
-                    // falls through to the normal tab-swipe checks below.
-                    if let rowFrames = app.horizontalSwipeRowFrames, rowFrames.contains(where: { $0.contains(value.startLocation) }) {
-                        tabSwipeDirection = "vertical"
-                        return
-                    }
+                    // Row-swipe-vs-tab-swipe fix pass (2026-09-28, third
+                    // follow-up) — this used to also treat a touch starting
+                    // inside a live Inbox row as "vertical" (hands off), via
+                    // frames InboxView published. That whole detection layer
+                    // is gone: Inbox rows no longer have a competing swipe
+                    // gesture of their own (Star/Archive moved to a tap-only
+                    // "…" menu — see `InboxRow`'s own doc comment), so there
+                    // is nothing left on Inbox for this gesture to defer to.
                     let width = UIScreen.main.bounds.width
                     let startX = value.startLocation.x
                     // Reserves the SAME leading-edge strip edgeSwipeBack
@@ -345,7 +334,15 @@ struct RootView: View {
         // `isCommittingBack`/`dragTranslation` already apply to
         // edge-swipe-back here.
         .animation(isCommittingBack || dragTranslation > 0 || tabSwipeCommittingTarget != nil ? nil : .easeInOut(duration: 0.28), value: app.screen)
-        .scrollDisabled(isDragTracking || isCommittingBack)
+        // Direction-lock fix pass (2026-09-28) — once `tabSwipeGesture` has
+        // committed to "horizontal" for this touch (see that gesture's own
+        // `onChanged`), the current screen's own ScrollView/List must stop
+        // competing for the same touch, or a real-world diagonal-ish finger
+        // path keeps scrolling vertically at the same time as the locked
+        // horizontal tab-swipe. `tabSwipeDirection` only ever locks in
+        // AFTER the edge-strip checks below have already ruled out an
+        // edge-swipe/Map-panning zone.
+        .scrollDisabled(isDragTracking || isCommittingBack || tabSwipeDirection == "horizontal")
     }
 
     /// The real adjacent screen while a horizontal tab-swipe drag is live,
