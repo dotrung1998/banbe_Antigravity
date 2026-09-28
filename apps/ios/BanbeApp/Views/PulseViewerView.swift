@@ -137,29 +137,46 @@ struct PulseViewerView: View {
             }
             ScrollView {
                 VStack(spacing: 10) {
-                    if loading {
-                        // A3 — the shared Banbe loading GIF while a Pulse
-                        // tab is fetching (BanbeLoadingVisual honors Reduce
-                        // Motion on its own — see that view's doc comment).
-                        BanbeLoadingVisual(size: 64)
-                            .padding(.top, 44)
-                            .accessibilityIdentifier("pulse.loading")
-                    } else if app.pulseTab == .photos {
+                    // White-flash fix (2026-09-28 pass) — root cause
+                    // confirmed by reading this exact branch: the loading
+                    // GIF used to be gated purely on `loading`, which
+                    // discarded a tab's own already-valid, already-loaded
+                    // items the instant a background refresh started
+                    // (`pulseDailyLoading`/`pulseWeeklyLoading`/
+                    // `pulsePhotosLoading` flip true again on every
+                    // `loadPulse`/`loadPulsePhotos` call, even a quiet
+                    // re-fetch of a tab already showing real content) —
+                    // blanking real cards back to a spinner is exactly the
+                    // "flash" this pass fixes. The GIF now shows ONLY when
+                    // there's genuinely nothing displayable yet.
+                    if app.pulseTab == .photos {
                         if app.pulsePhotos.isEmpty {
-                            Text(app.T("Chưa có dữ liệu xếp hạng.", "Nothing ranked yet."))
-                                .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.7))
-                                .padding(.top, 60)
-                                .accessibilityIdentifier("pulse.empty")
+                            if loading {
+                                BanbeLoadingVisual(size: 64)
+                                    .padding(.top, 44)
+                                    .accessibilityIdentifier("pulse.loading")
+                            } else {
+                                Text(app.T("Chưa có dữ liệu xếp hạng.", "Nothing ranked yet."))
+                                    .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.7))
+                                    .padding(.top, 60)
+                                    .accessibilityIdentifier("pulse.empty")
+                            }
                         } else {
                             ForEach(Array(app.pulsePhotos.enumerated()), id: \.element.id) { i, item in
                                 pulsePhotoCard(item, rank: i + 1)
                             }
                         }
                     } else if items.isEmpty {
-                        Text(app.T("Chưa có dữ liệu xếp hạng.", "Nothing ranked yet."))
-                            .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.7))
-                            .padding(.top, 60)
-                            .accessibilityIdentifier("pulse.empty")
+                        if loading {
+                            BanbeLoadingVisual(size: 64)
+                                .padding(.top, 44)
+                                .accessibilityIdentifier("pulse.loading")
+                        } else {
+                            Text(app.T("Chưa có dữ liệu xếp hạng.", "Nothing ranked yet."))
+                                .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.7))
+                                .padding(.top, 60)
+                                .accessibilityIdentifier("pulse.empty")
+                        }
                     } else {
                         ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
                             pulseCard(item, rank: i + 1)
@@ -337,6 +354,18 @@ struct PulseViewerView: View {
         }
         .buttonStyle(.plain)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        // Left-corner-rounding fix (2026-09-28 pass) — real root cause:
+        // `.background(_, in: shape)` only clips the BACKGROUND fill to
+        // that shape, never the view's own content on top of it. The
+        // flush-left 88x88 photo tile (a plain rectangle, `.clipped()`
+        // only clips it to its OWN frame, not to any rounding) was never
+        // actually being clipped to the card's rounded corners at all —
+        // it just happened to look "rounded on the right" because the
+        // text/breakdown columns there never extend flush to that edge to
+        // begin with. Adding `.clipShape` here clips the WHOLE HStack
+        // (including that photo tile) to the same rounded rect the
+        // background already uses, making left/right symmetric.
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityIdentifier("pulse.card")
     }
 
@@ -472,6 +501,9 @@ struct PulseViewerView: View {
         .contentShape(Rectangle())
         .onTapGesture { app.openPulsePhotoSheet(item) }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        // Left-corner-rounding fix — same root cause/fix as `pulseCard`
+        // above: `.background(_, in:)` never clipped the actual content.
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityIdentifier("pulse.photoCard")
     }
 

@@ -126,6 +126,31 @@ export default function MapExplore() {
   // a separate search index — same `events` this screen already loads).
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef(null);
+  // Home quick event search — real-device follow-up (2026-09-28): focusing
+  // via a plain `useEffect` (further down, on mount) fires the `.focus()`
+  // call from a DEFERRED passive-effect flush, scheduled to run after the
+  // browser has already painted — a separate task from the click that
+  // opened this screen. On a real iOS Safari, `.focus()` only pops the
+  // on-screen keyboard when it runs synchronously within the same
+  // user-gesture call stack as the tap that triggered it; called later
+  // (useEffect, setTimeout, a Promise microtask, ...) it silently moves
+  // `document.activeElement` with NO keyboard — exactly the "first tap
+  // does nothing, second (direct, on-the-input) tap brings up the
+  // keyboard" symptom reported. A callback ref fires synchronously during
+  // React's commit phase — still inside the same synchronous flush the
+  // originating click triggered — so focusing there (the instant the
+  // input DOM node itself exists, never a fixed delay/sleep) keeps the
+  // real device's user-gesture trust intact. Guarded by a ref (not state)
+  // so it fires exactly once per mount, never re-focusing on an unrelated
+  // re-render.
+  const searchAutofocusAppliedRef = useRef(false);
+  const setSearchInputRef = useCallback((el) => {
+    searchInputRef.current = el;
+    if (el && restoredRef.current?.focusSearch && !searchAutofocusAppliedRef.current) {
+      searchAutofocusAppliedRef.current = true;
+      el.focus();
+    }
+  }, []);
   // Task 6 (2026-09-21 follow-up) — "Open in Map"'s own snapshot
   // (GocContext.jsx's openEventOnMap) never sets `sheetSnap` (only
   // camera/selectedId), so a genuine MapExplore-to-MapExplore restore
@@ -284,9 +309,10 @@ export default function MapExplore() {
   // mistakenly reusing the exact same snapshot later.
   useEffect(() => {
     if (restored) setMapExploreState(null);
-    // Home quick event search — autofocus the moment this screen paints,
-    // exactly the "focuses input" the ticket asks for.
-    if (restored?.focusSearch) searchInputRef.current?.focus();
+    // Home quick event search — the actual autofocus itself now happens in
+    // `setSearchInputRef` above (a ref callback, fired synchronously the
+    // instant the input mounts, not from this deferred effect) — see that
+    // callback's own comment for why.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -964,14 +990,14 @@ export default function MapExplore() {
             routing rather than a second search surface. Autofocused on
             arrival from Home's search button (see the mount effect
             above). */}
-        <div style={{ padding: '0 16px 10px' }}>
+        <div style={{ padding: 'max(6px, env(safe-area-inset-top, 0px)) 16px 10px' }}>
           <div style={{ ...fieldGlass({}), display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px' }}>
             <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.55, flex: 'none' }}>
               <circle cx="11" cy="11" r="7" />
               <path d="M21 21l-4.35-4.35" />
             </svg>
             <input
-              ref={searchInputRef}
+              ref={setSearchInputRef}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={T('Tìm sự kiện theo tên…', 'Search events by name…')}

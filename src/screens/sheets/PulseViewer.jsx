@@ -1,8 +1,43 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useGoc } from '../../state/GocContext.jsx';
 import { supabase } from '../../lib/supabase.js';
 import { paper, ink, rule, fieldSolid, display, cardGlass } from '../../theme.js';
 import BanbeLoadingVisual from '../BanbeLoadingVisual.jsx';
+
+// White-flash fix (2026-09-28 pass) — root cause confirmed by reading the
+// code, not guessed: each card's thumbnail painted `background: center/
+// cover url(...)` with NO fallback color, so while that specific photo's
+// bytes were still downloading/decoding the tile showed whatever's behind
+// it (the page's own paper background) — a visible blank/white flash,
+// worst on a tab seen for the first time. This hook tracks which photo
+// URLs have actually finished decoding (`HTMLImageElement.decode()`,
+// falling back to `onload` on engines without it) so a card only ever
+// swaps from a neutral, themed placeholder fill to the real photo once
+// the bitmap is genuinely ready — never mid-paint. Scoped to the
+// CURRENTLY active tab's own items only (never "everything") — prefetches
+// exactly the small set of assets the ticket asks for, and skips a URL
+// already marked decoded so switching tabs back and forth never re-fetches
+// identical data.
+function usePulseImageDecode(urls) {
+  const [decoded, setDecoded] = useState(() => new Set());
+  useEffect(() => {
+    let cancelled = false;
+    urls.forEach((url) => {
+      if (!url || decoded.has(url)) return;
+      const img = new Image();
+      const mark = () => {
+        if (cancelled) return;
+        setDecoded((prev) => (prev.has(url) ? prev : new Set(prev).add(url)));
+      };
+      img.src = url;
+      if (img.decode) img.decode().then(mark).catch(mark);
+      else img.onload = mark;
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urls.join('|')]);
+  return decoded;
+}
 
 // A2 (2026-09-27 Pulse/loading UX pass) — the left-edge-swipe-or-X
 // interactive dismiss. `pulseOpen` never touches `state.screen` (Home
@@ -107,7 +142,6 @@ export default function PulseViewer() {
     }
   };
 
-  if (!s.pulseOpen) return null;
   const isPhotoTab = s.pulseTab === 'photos';
   const items = isPhotoTab ? s.pulsePhotos : (s.pulseTab === 'weekly' ? s.pulseWeekly : s.pulseDaily);
   // TASK A5 (2026-10-03 fix pass) — a real bug (a shared request-sequence
@@ -116,6 +150,17 @@ export default function PulseViewer() {
   // was already on its way. Now a genuine, per-tab loading state, so a
   // still-fetching tab never gets misread as a genuinely empty one.
   const loading = isPhotoTab ? s.pulsePhotosLoading : (s.pulseTab === 'weekly' ? s.pulseWeeklyLoading : s.pulseDailyLoading);
+  // White-flash pass — only the currently active tab's own items (never
+  // "everything"), and only their photo URLs (a small, bounded set).
+  const activeTabPhotoUrls = items.map(item => eventPhotoUrl(item.photo_path)).filter(Boolean);
+  const decodedPhotoUrls = usePulseImageDecode(activeTabPhotoUrls);
+
+  // This early return only ever fires for one render right after
+  // `closePulseViewer()` flips `pulseOpen` false and BEFORE App.jsx's own
+  // `{state.pulseOpen && <PulseViewer/>}` unmounts this component on the
+  // next commit — kept purely as a defensive guard, placed after every
+  // hook call above so hook order never depends on it.
+  if (!s.pulseOpen) return null;
 
   const slideX = isCommitting ? window.innerWidth : dragX;
 
@@ -173,30 +218,61 @@ export default function PulseViewer() {
         ))}
       </div>
 
+      {/* White-flash fix (2026-09-28 pass) — the loading GIF is now shown
+          ONLY when there's genuinely nothing displayable yet
+          (`items.length === 0`). A tab that already has valid cached items
+          but is quietly re-fetching in the background (`loading` true)
+          keeps showing them — the old code gated the ENTIRE list on
+          `!loading`, so any background refresh of an already-loaded tab
+          blanked its real content back to the spinner, which is exactly
+          the "flash" this pass fixes, not merely a cosmetic tweak. */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 40px', display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="pulse-list" data-loading={loading ? 'true' : 'false'}>
-        {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 60 }} data-testid="pulse-loading">
-            <BanbeLoadingVisual size={56} />
-          </div>
-        ) : !items.length && (
-          <p style={{ fontSize: 13, color: ink, opacity: 0.7, textAlign: 'center', marginTop: 60 }} data-testid="pulse-empty">
-            {T('Chưa có dữ liệu xếp hạng.', 'Nothing ranked yet.')}
-          </p>
+        {items.length === 0 && (
+          loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 60 }} data-testid="pulse-loading">
+              <BanbeLoadingVisual size={56} />
+            </div>
+          ) : (
+            <p style={{ fontSize: 13, color: ink, opacity: 0.7, textAlign: 'center', marginTop: 60 }} data-testid="pulse-empty">
+              {T('Chưa có dữ liệu xếp hạng.', 'Nothing ranked yet.')}
+            </p>
+          )
         )}
         {/* B1 — same rounded corners on all four sides for every card in
             all three tabs: `cardGlass`'s own `borderRadius: 12` +
             `overflow: 'hidden'` already clips every child (including the
             flush-left photo tile) to that shape — kept as ONE recipe for
             all three lists below rather than three near-duplicates, so a
-            future radius change can't drift between tabs again. */}
-        {!loading && !isPhotoTab && items.map((item, i) => (
+            future radius change can't drift between tabs again.
+            Left-corner-rounding fix (2026-09-28 pass) — real root cause:
+            the flush-left photo tile relied ENTIRELY on the parent's
+            `overflow:hidden` + `borderRadius` to clip it, with no radius
+            of its own. That's normally enough, but this tile ALSO used to
+            paint a bare `background: url(...)` with no fallback color, so
+            before the photo decoded the tile was fully transparent — at
+            that instant nothing was actually being clipped (there was no
+            paint to clip), so any anti-aliasing/compositing seam on the
+            left edge read as square while the right side (never carrying
+            image content flush to that edge) never showed it. Giving the
+            tile its OWN explicit left-only radius (matching the card's)
+            makes the rounding correct and identical regardless of
+            load/decode state — belt-and-suspenders with the parent clip,
+            not a replacement for it. */}
+        {!isPhotoTab && items.map((item, i) => {
+          const photoUrl = eventPhotoUrl(item.photo_path);
+          const photoReady = photoUrl && decodedPhotoUrls.has(photoUrl);
+          return (
           <div
             key={item.event_id}
             onClick={() => openPulseOrganizerSheet(item)}
             data-testid="pulse-card"
             style={{ ...cardGlass({ padding: 0, display: 'flex', overflow: 'hidden', cursor: 'pointer' }) }}
           >
-            <div style={{ width: 88, height: 88, flex: 'none', background: `center/cover url(${eventPhotoUrl(item.photo_path)})` }} />
+            <div style={{
+              width: 88, height: 88, flex: 'none', borderRadius: '12px 0 0 12px',
+              background: photoReady ? `center/cover url(${photoUrl})` : 'none',
+              backgroundColor: fieldSolid,
+            }} />
             <div style={{ flex: 1, minWidth: 0, padding: '10px 10px 10px 14px', display: 'flex', flexDirection: 'column', gap: 3, justifyContent: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: ink, opacity: 0.5 }}>#{i + 1}</span>
@@ -236,14 +312,17 @@ export default function PulseViewer() {
               </span>
             </div>
           </div>
-        ))}
+          );
+        })}
         {/* TASK 4/5 (2026-09-25 fix pass), B4 — ranked photos: rank +
             like/share quick actions live on the card itself now (not just
             inside the popup), each stopping propagation so tapping a
             control never also opens the sheet. Tapping anywhere else on
             the card still opens the photo sheet. */}
-        {!loading && isPhotoTab && items.map((item, i) => {
+        {isPhotoTab && items.map((item, i) => {
           const eng = s.photoEngagement[item.photo_id] || { likeCount: item.like_count, shareCount: item.share_count, likedByMe: false };
+          const photoUrl = eventPhotoUrl(item.photo_path);
+          const photoReady = photoUrl && decodedPhotoUrls.has(photoUrl);
           return (
             <div
               key={item.photo_id}
@@ -251,7 +330,11 @@ export default function PulseViewer() {
               data-testid="pulse-photo-card"
               style={{ ...cardGlass({ padding: 0, display: 'flex', overflow: 'hidden', cursor: 'pointer' }) }}
             >
-              <div style={{ width: 88, height: 88, flex: 'none', position: 'relative', background: `center/cover url(${eventPhotoUrl(item.photo_path)})` }}>
+              <div style={{
+                width: 88, height: 88, flex: 'none', position: 'relative', borderRadius: '12px 0 0 12px',
+                background: photoReady ? `center/cover url(${photoUrl})` : 'none',
+                backgroundColor: fieldSolid,
+              }}>
                 {/* Heart rule (Task 3): rendered ONLY when this user has
                     liked the photo — no outline/placeholder heart otherwise. */}
                 {eng.likedByMe && (

@@ -15,6 +15,20 @@ export const fieldSolid = 'var(--bb-field)';
 // .claude/notes/06-design-tokens.md.
 export const alert = 'var(--bb-alert)';
 
+// Dock scrub-highlight — the translucent capsule that sits BEHIND the
+// active/dragged tab icon in BottomTabBar.jsx. Web-only "solid black blob"
+// bug (2026-09-28 dock pass): the highlight used to be painted with the
+// solid `ink` token above at full element opacity, i.e. fully opaque —
+// since the active tab's own icon is ALSO drawn in `ink`, an opaque ink
+// backdrop of roughly the icon's own size read as a solid blob that
+// visually swallowed the icon into itself instead of sitting behind it.
+// iOS's equivalent (`BottomTabBar.swift`) never had this bug — it already
+// paints its highlight as `app.palette.ink.opacity(0.12)`, a translucent
+// tint, not a solid fill. This is that same 0.12 alpha, ported to CSS via
+// the `--bb-fg-rgb` triplet (index.css) since `ink` itself is a plain hex
+// custom property with no alpha channel to reuse directly.
+export const dockHighlight = 'rgba(var(--bb-fg-rgb), 0.12)';
+
 // Be Vietnam Pro — same geometric, rounded-sans vibe as Poppins (the
 // prototype's stand-in face) but designed for full, clean Vietnamese
 // diacritic coverage, so tone marks sit right at any weight/size.

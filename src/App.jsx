@@ -569,6 +569,7 @@ function Shell() {
     <div data-bb-theme={state.theme} style={{ position: 'fixed', inset: 0, display: 'flex', justifyContent: 'center', background: '#EFEBE0' }}>
       <div
         ref={scrollRef}
+        data-testid="app-scroll-viewport"
         onScroll={handleScroll}
         onPointerDown={onGesturePointerDown}
         onPointerMove={onGesturePointerMove}

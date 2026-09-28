@@ -105,17 +105,22 @@ struct OrganizerProfile: Decodable, Equatable {
     let success: Bool?
     let error: String?
     let id: String?
-    let name: String?
-    let about: String?
-    let avatarPath: String?
+    // DATA FRESHNESS FIX — name/about/avatarPath/introLong/socialLinks are
+    // `var`, same as followerCount/following just below (already mutated in
+    // place by toggleFollowOrganizer), so saveOrganizerProfile can patch
+    // this already-loaded snapshot with exactly what it just wrote to the
+    // DB instead of leaving it stale until the screen is reopened.
+    var name: String?
+    var about: String?
+    var avatarPath: String?
     let verified: Bool?
     let hostingSinceYear: Int?
     let eventCount: Int?
     var followerCount: Int?
     var following: Bool?
     // Organizer Team pass (2026-09-27, Stage 3).
-    let introLong: String?
-    let socialLinks: [SocialLink]?
+    var introLong: String?
+    var socialLinks: [SocialLink]?
     enum CodingKeys: String, CodingKey {
         case success, error, id, name, about, verified, following
         case avatarPath = "avatar_path"

@@ -2,64 +2,83 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg, agoLabel } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
-import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass } from '../theme.js';
+import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass, barGlass } from '../theme.js';
+import { BAR_HEIGHT, BAR_BOTTOM_OFFSET, DOCK_MARGIN } from './BottomTabBar.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import ActionCenter from './ActionCenter.jsx';
 
 // A5 (2026-09-27 Pulse/loading UX pass) — one-at-a-time Banbe-styled
-// speech bubbles above the Home Pulse entry: label -> real top 1/2/3
+// speech bubbles beside the Home Pulse ring: label -> real top 1/2/3
 // event names (fetched via the SAME loadPulse('daily') the Pulse viewer
 // itself uses — never a second/invented ranking source) -> two more
-// labels, then hidden. Plays once per user per `BUBBLE_SEQUENCE_VERSION`
-// (localStorage, matches the "persist seen state per user/version"
-// instruction), and is dismissed immediately by tapping outside it,
+// labels, then hidden. Dismissed immediately by tapping outside it,
 // tapping the Pulse avatar itself (which opens Pulse), or on unmount.
-// Real-device follow-up (2026-09-27) — three bugs fixed here:
-// 1. Timing was 1.7s/2.6s, read as "too fast" on a real device — roughly
-//    doubled (see BUBBLE_STEP_MS).
-// 2. It rendered `position:absolute` against the tiny 60px-wide avatar
-//    column, `bottom:100%` — right above a ring sitting almost flush
-//    against "Sự kiện của bạn" above it, with no clearance of its own to
-//    guarantee it never visually reads as part of that section instead of
-//    the ring. Fixed by measuring the ring's own on-screen rect (a plain
-//    ref + getBoundingClientRect, re-measured on resize/scroll — same
-//    technique MapExplore.jsx's own top-controls measurement already
-//    uses) and rendering the bubble `position:fixed` from that rect,
-//    independent of any ancestor's overflow/stacking — it can never be
-//    clipped by the horizontal-scroll row it used to be nested in, and a
-//    fixed 16px clearance above the ring keeps it visually separate from
-//    whatever renders above.
-// 3. No tap-to-advance existed at all (only tap-outside dismissed).
-// BUBBLE_SEQUENCE_VERSION stays 'v1' here (web already showed this
-// correctly before, just too fast/tight — not the "old key incorrectly
-// suppressing a rollout" case iOS hit).
-const BUBBLE_SEQUENCE_VERSION = 'v1';
+//
+// Timing-rule pass (2026-09-28) — replaced the old "seen once ever"
+// localStorage boolean with a real wall-clock repeat rule: show the
+// sequence the first time an eligible signed-in user views Home, then
+// allow it again 5 minutes after the previous sequence finished/was
+// dismissed. `BUBBLE_SEQUENCE_VERSION` bumped v1 -> v2 specifically so
+// the OLD one-time "seen" key can never be read by this logic again (an
+// old v1 key would otherwise block every user who'd already seen the v1
+// sequence once, forever) — a fresh namespace, not a migration, per this
+// pass's own "clear/ignore any old one-time-seen flag" instruction.
+// Storage now holds an epoch-ms timestamp (`lastShownAt`), not a boolean,
+// checked against `BUBBLE_REPEAT_MS` both on mount and on a lightweight
+// poll while Home stays open — real elapsed time, never a render/tab-
+// switch count. `stepRef` mirrors `step` so the poll (and any stale
+// closure from an earlier render) always reads the CURRENT step, never
+// restarting a sequence that's already showing and never stacking a
+// second one.
+//
+// Positioning pass (2026-09-28) — real root cause of "obscured on web"
+// confirmed by reading the CSS, not guessed: `src/index.css`'s `gocIn`/
+// `bbIn` keyframes ended with an explicit `transform: translateY(0)`,
+// which — combined with every caller's `animation-fill-mode: both` —
+// left a non-`none` transform permanently applied to Home's own root
+// wrapper after its 0.32s entrance animation finished. A non-`none`
+// transform on an ancestor establishes a NEW containing block for
+// `position:fixed` descendants, so this bubble's "fixed" coordinates were
+// silently being resolved against Home's own box instead of the
+// viewport — never a z-index problem. Fixed at the keyframe itself (see
+// index.css); this component's own `position:fixed` + measured-rect
+// anchoring was already structurally correct and needed no changes for
+// that part. Layout itself redone to sit BESIDE the ring (not above it):
+// pointer on the bubble's LEFT edge pointing at the ring, text
+// right-aligned inside the bubble, vertically centered on the ring, and
+// clamped so the whole bubble always stays inside the viewport.
+const BUBBLE_SEQUENCE_VERSION = 'v2';
 const BUBBLE_STEP_MS = { label: 3200, names: 4600 };
-const BUBBLE_RING_CLEARANCE = 16;
+const BUBBLE_RING_GAP = 12;
+const BUBBLE_VIEWPORT_MARGIN = 12;
+const BUBBLE_REPEAT_MS = 5 * 60 * 1000;
 
-function pulseBubbleSeenKey(userId) {
-  return `banbe_pulse_bubbles_seen_${BUBBLE_SEQUENCE_VERSION}_${userId || 'guest'}`;
+function pulseBubbleLastShownKey(userId) {
+  return `banbe_pulse_bubbles_lastshown_${BUBBLE_SEQUENCE_VERSION}_${userId || 'guest'}`;
 }
 
 function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen, loadPulse, ringRef }) {
   const [step, setStep] = useState(-1); // -1 = not started/hidden, 0..3 = the 4 sequence steps
+  const stepRef = useRef(step);
+  useEffect(() => { stepRef.current = step; }, [step]);
   const [reduceMotion] = useState(
     () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
   );
-  // Bug 3 fix — `document.hidden` (the app backgrounded, or the tab
-  // switched away from in a desktop browser): the sequence pauses rather
-  // than silently burning through steps the user never saw.
+  // `document.hidden` (the app backgrounded, or the tab switched away from
+  // in a desktop browser): the sequence pauses rather than silently
+  // burning through steps the user never saw, and is never STARTED while
+  // hidden either (see the repeat-check effect below).
   const [pageVisible, setPageVisible] = useState(() => typeof document === 'undefined' || !document.hidden);
   useEffect(() => {
     const onVisibility = () => setPageVisible(!document.hidden);
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
-  // Bug 2 fix — the ring's own live on-screen rect, remeasured whenever it
-  // could plausibly move (mount, resize, any scroll anywhere — `true` for
-  // the capture-phase option so a scroll on an ancestor container, not
-  // just window, is caught too).
+  // The ring's own live on-screen rect, remeasured whenever it could
+  // plausibly move (mount, resize, any scroll anywhere — `true` for the
+  // capture-phase option so a scroll on an ancestor container, not just
+  // window, is caught too).
   const [ringRect, setRingRect] = useState(null);
   useEffect(() => {
     const measure = () => { if (ringRef.current) setRingRect(ringRef.current.getBoundingClientRect()); };
@@ -74,38 +93,31 @@ function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen
 
   const dismiss = () => {
     setStep(-1);
-    try { window.localStorage.setItem(pulseBubbleSeenKey(userId), '1'); } catch { /* private mode etc. — best-effort only */ }
+    try { window.localStorage.setItem(pulseBubbleLastShownKey(userId), String(Date.now())); } catch { /* private mode etc. — best-effort only */ }
   };
 
-  // Kick off the fetch + sequence once, the first time this mounts on a
-  // fresh Home visit that hasn't already seen it. The seen-flag is written
-  // HERE, immediately — not only once the sequence finishes/dismisses —
-  // per the ticket's own "avoid replaying the entire sequence on every
-  // Home render" instruction: Home unmounts/remounts on every navigation
-  // away and back (App.jsx's plain screen switch), so gating the flag on
-  // full completion would replay the whole thing from step 0 every time a
-  // user left Home and came back before it finished.
-  //
-  // Real bug found while writing this pass's own test, confirmed by
-  // reading (not guessed): `userId` (`s.user?.id`) is still `undefined`
-  // for Home's very first render after sign-in — GocContext's syncUser()
-  // hydrates it asynchronously, the same "resolves a tick after mount"
-  // shape as this session's earlier login-race/booking-load-guard bugs —
-  // so writing the seen-flag unconditionally at mount time was keying it
-  // under a `..._guest` fallback that a later, real-userId mount never
-  // matches, replaying the whole sequence on the very next Home visit.
-  // Fixed by gating on `userId` itself: this effect is a no-op (doesn't
-  // check OR write anything yet) until a real id is available.
+  // Real wall-clock repeat rule: checked immediately on eligibility (a
+  // real userId, Home visible) and re-checked on a light poll so a
+  // sequence starts the instant 5 real minutes have elapsed while Home
+  // stays open — not just on the next mount. Never restarts a sequence
+  // that's already running (`stepRef.current !== -1` guard) and never
+  // fires while the tab/app isn't visible.
   useEffect(() => {
     if (!userId) return;
-    let already = false;
-    try { already = window.localStorage.getItem(pulseBubbleSeenKey(userId)) === '1'; } catch { /* ignore */ }
-    if (already) return;
-    try { window.localStorage.setItem(pulseBubbleSeenKey(userId), '1'); } catch { /* private mode etc. — best-effort only */ }
-    loadPulse('daily');
-    setStep(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+    const tryStart = () => {
+      if (stepRef.current !== -1) return; // already showing — never stack/restart
+      if (typeof document !== 'undefined' && document.hidden) return; // Home not visible
+      let lastShown = 0;
+      try { lastShown = Number(window.localStorage.getItem(pulseBubbleLastShownKey(userId))) || 0; } catch { /* ignore */ }
+      if (Date.now() - lastShown >= BUBBLE_REPEAT_MS) {
+        loadPulse('daily');
+        setStep(0);
+      }
+    };
+    tryStart();
+    const id = setInterval(tryStart, 5000);
+    return () => clearInterval(id);
+  }, [userId, loadPulse]);
 
   // Advances label -> names -> label -> label -> hidden(+seen). Waits out
   // a still-loading fetch before showing the real-names step rather than
@@ -161,6 +173,28 @@ function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
+  // Measured AFTER render (bubble content changes size per step), so the
+  // comic-bubble placement below can clamp against the real box instead of
+  // guessing a fixed width — the anchor is always the real ring element,
+  // never a hardcoded offset. `measuredForStep` gates real visibility: the
+  // very first paint of any new step necessarily uses a stale/estimated
+  // `bubbleSize` (belonging to the PREVIOUS step's content, or the 0×0
+  // initial value), which briefly positions the bubble at the wrong spot
+  // before this effect corrects it one tick later — kept invisible
+  // (`visibility: hidden`, never removed from the DOM) until a real
+  // measurement for the CURRENT step lands, so nothing ever visibly (or,
+  // for a hit-test, interactively) jumps mid-settle.
+  const bubbleRef = useRef(null);
+  const [bubbleSize, setBubbleSize] = useState({ width: 0, height: 0 });
+  const [measuredForStep, setMeasuredForStep] = useState(-1);
+  useEffect(() => {
+    if (bubbleRef.current) {
+      const r = bubbleRef.current.getBoundingClientRect();
+      setBubbleSize({ width: r.width, height: r.height });
+      setMeasuredForStep(step);
+    }
+  }, [step, ringRect]);
+
   if (step < 0 || !ringRect) return null;
 
   let content;
@@ -172,9 +206,9 @@ function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen
     content = pulseDaily.length === 0
       ? <span>{T('Chưa có xếp hạng hôm nay', 'Nothing ranked yet today')}</span>
       : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end' }}>
           {pulseDaily.slice(0, 3).map((item, i) => (
-            <span key={item.event_id} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>
+            <span key={item.event_id} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180, textAlign: 'right' }}>
               {i + 1}. {item.event_name}
             </span>
           ))}
@@ -186,30 +220,48 @@ function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen
     content = <span>{T('Ảnh nổi bật', 'Featured photos')}</span>;
   }
 
+  // Beside-the-ring placement — ideal spot is just to the RIGHT of the
+  // ring, vertically centered on it (pointer on the bubble's own left
+  // edge, see below), then clamped so the whole box always stays fully
+  // inside the viewport rather than a hardcoded guess about screen size.
+  const idealLeft = ringRect.right + BUBBLE_RING_GAP;
+  const maxLeft = Math.max(BUBBLE_VIEWPORT_MARGIN, window.innerWidth - BUBBLE_VIEWPORT_MARGIN - (bubbleSize.width || 220));
+  const left = Math.min(idealLeft, maxLeft);
+  const idealTop = ringRect.top + ringRect.height / 2 - bubbleSize.height / 2;
+  const maxTop = Math.max(BUBBLE_VIEWPORT_MARGIN, window.innerHeight - BUBBLE_VIEWPORT_MARGIN - (bubbleSize.height || 40));
+  const top = Math.min(Math.max(BUBBLE_VIEWPORT_MARGIN, idealTop), maxTop);
+
   return (
     <div
+      ref={bubbleRef}
       onClick={(e) => { e.stopPropagation(); advanceOrDismiss(); }}
       data-testid="home-pulse-teaser-bubble"
       role="status"
       aria-live="polite"
       style={{
-        // Bug 2 fix — `position:fixed` from the ring's own MEASURED rect
-        // (never the tiny avatar column's own layout box), so this floats
-        // above every ancestor's overflow/stacking context, always clear
-        // of "Sự kiện của bạn" and every card — see this component's own
-        // top-of-file doc comment for the full root cause.
+        // `position:fixed` from the ring's own MEASURED rect (never the
+        // tiny avatar column's own layout box or a hardcoded guess), so
+        // this floats above every ancestor's overflow/stacking context —
+        // see this component's own top-of-file doc comment for why this
+        // needed the index.css keyframe fix, not a z-index bump.
         position: 'fixed',
-        left: ringRect.left + ringRect.width / 2,
-        top: ringRect.top - BUBBLE_RING_CLEARANCE,
-        transform: 'translate(-50%, -100%)',
+        left, top,
         background: ink, color: paper, fontSize: 12.5, fontWeight: 600, lineHeight: 1.5,
-        padding: '11px 14px', borderRadius: 12, maxWidth: 220, zIndex: 45, pointerEvents: 'auto', cursor: 'pointer',
+        textAlign: 'right',
+        padding: '11px 14px', borderRadius: 12, maxWidth: 220, zIndex: 45, cursor: 'pointer',
         boxShadow: '0 6px 18px rgba(27,25,22,0.28)',
         animation: reduceMotion ? 'none' : 'gocFade 0.22s ease both',
+        // See `measuredForStep`'s own comment above — invisible and
+        // non-interactive for the one frame before a real measurement for
+        // THIS step exists, so nothing can ever visibly or interactively
+        // settle/jump mid-position-correction.
+        visibility: measuredForStep === step ? 'visible' : 'hidden',
+        pointerEvents: measuredForStep === step ? 'auto' : 'none',
       }}
     >
       {content}
-      <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: `5px solid ${ink}` }} />
+      {/* Comic-bubble pointer — LEFT side, pointing back at the ring. */}
+      <div style={{ position: 'absolute', top: '50%', left: 0, transform: 'translate(-100%, -50%)', width: 0, height: 0, borderTop: '5px solid transparent', borderBottom: '5px solid transparent', borderRight: `6px solid ${ink}` }} />
     </div>
   );
 }
@@ -263,6 +315,35 @@ export default function Home() {
   const s = state;
   const hasHosted = s.hasHosted;
   const pulseRingRef = useRef(null);
+
+  // Home search relocation (2026-09-28 dock/search pass) — the search
+  // entry used to be a small icon in the top header (2026-09-27); moved to
+  // a floating button, lower-right, above the dock (see HomeSearchFab
+  // render near the end of this component). Mirrors App.jsx's own
+  // `handleScroll`/`barCollapsed` hide-on-scroll-down/show-on-scroll-up
+  // convention (same 4px thresholds, same "always show once back at the
+  // top" rule) rather than inventing a new one — that scroll state is
+  // local to App.jsx (screens get no props, only context) so this listens
+  // directly on the same shared scroll viewport
+  // (`[data-testid="app-scroll-viewport"]`, App.jsx) instead of duplicating
+  // it through context.
+  const [searchFabHidden, setSearchFabHidden] = useState(false);
+  const searchScrollTopRef = useRef(0);
+  useEffect(() => {
+    const el = document.querySelector('[data-testid="app-scroll-viewport"]');
+    if (!el) return undefined;
+    searchScrollTopRef.current = el.scrollTop;
+    const onScroll = () => {
+      const top = el.scrollTop;
+      const delta = top - searchScrollTopRef.current;
+      if (top <= 4) setSearchFabHidden(false);
+      else if (delta > 4) setSearchFabHidden(true);
+      else if (delta < -4) setSearchFabHidden(false);
+      searchScrollTopRef.current = top;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
   const openSaved = (sv) => (sv.toEvent === 'event' ? goEvent(sv.key) : set({ screen: sv.toEvent, eventKey: sv.key }));
   const heldEv = s.holdDeadline && s.holdDeadline > s.now ? EVENTS.find(e => e.key === s.eventKey) : null;
 
@@ -556,26 +637,16 @@ export default function Home() {
   const homeHostLink = hasHosted ? () => switchToHost('home') : becomeHost;
 
   return (
+    <>
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Home">
       <div style={{ padding: '70px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 126, height: 'auto', display: 'block', margin: '0 0 2px' }} />
-          {/* Home quick event search (2026-09-27) — clear of the Pulse
-              ring (story row, further down) and the area control
-              (right-side column) — a plain sibling of the logo, left side.
-              Opens the EXISTING MapExplore search/list experience with its
-              input already focused, never a new screen. */}
-          <span
-            onClick={openEventSearch}
-            data-testid="home-search-button"
-            aria-label={T('Tìm sự kiện', 'Search events')}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 999, cursor: 'pointer', color: ink, opacity: 0.75 }}
-          >
-            <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.35-4.35" />
-            </svg>
-          </span>
+          {/* Home quick event search moved OUT of this header (2026-09-28
+              dock/search pass) — see HomeSearchFab below (rendered at the
+              bottom of this component, floating lower-right above the
+              dock). Kept here only as the comment marker for why the slot
+              beside the wordmark is now empty. */}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
           {/* Task 2c (2026-09-21 follow-up) — a quick Appearance (light/dark)
@@ -854,6 +925,66 @@ export default function Home() {
       </div>
       <div onClick={homeHostLink} style={{ padding: '4px 20px 44px', fontSize: 14.5, fontWeight: 600, letterSpacing: '-0.01em', color: ink, cursor: 'pointer' }}>{homeHostLinkLabel} ›</div>
     </div>
+
+    {/* Home search relocation (2026-09-28 dock/search pass) — replaces
+        the old top-header icon (fd5fe61) with a compact floating button,
+        lower-right, stacked ABOVE the dock's own row (not beside it —
+        same vertical band the dock create-"+" tray anchors itself from,
+        `BAR_HEIGHT + BAR_BOTTOM_OFFSET + 14`, DockCreateButton.jsx),
+        which keeps it clear of the "+" button, dock icons and safe-area
+        bottom edge by construction rather than by tuned pixel overlap
+        checks. `position: fixed` — same technique the create-"+" tray
+        and Home's own Pulse teaser bubbles already use for chrome that
+        must never be clipped by an ancestor's scroll/overflow. Reuses
+        `barGlass()` verbatim (same material as the dock/"+" button) per
+        this ticket's own "keep Banbe's existing FAB styling language"
+        instruction — no new visual treatment invented. Same action as
+        before: opens MapExplore with its search input already focused
+        (`openEventSearch`, unchanged). Hides on scroll-down, reappears
+        on scroll-up/at-top (searchFabHidden effect above) so it never
+        sits over content mid-scroll, matching the dock's own existing
+        shrink-on-scroll-down convention instead of a bespoke one.
+        Deliberately rendered as a SIBLING of the root `data-screen-label`
+        div above, not a descendant — that root div's own `animation:
+        gocIn` (see index.css's own doc comment on `gocIn`, which already
+        documents this exact CSS quirk for a different element) makes it
+        an animated-property element, which establishes a containing
+        block for any `position: fixed` DESCENDANT for as long as the
+        animation instance is live — silently repositioning this button
+        relative to Home's own (scrolled, sometimes very tall) content box
+        instead of the real viewport, exactly the "position: fixed"
+        pointer-interception flakiness a first pass of this button hit in
+        Playwright (intercepted by `home-weekend-section` because the
+        button had scrolled off-screen along with the rest of the page).
+        A sibling of that animated div is never one of its descendants, so
+        it can never be captured by that containing block. */}
+    <div
+      onClick={openEventSearch}
+      data-testid="home-search-fab"
+      aria-label={T('Tìm sự kiện', 'Search events')}
+      role="button"
+      style={{
+        ...barGlass({}),
+        position: 'fixed',
+        right: DOCK_MARGIN,
+        bottom: BAR_HEIGHT + BAR_BOTTOM_OFFSET + 14,
+        width: 46, height: 46, borderRadius: '50%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: ink, cursor: 'pointer', zIndex: 20,
+        border: `1px solid ${rule}`,
+        boxShadow: '0 8px 24px rgba(27,25,22,0.18)',
+        transition: 'transform 0.22s cubic-bezier(.22,.61,.36,1), opacity 0.22s ease',
+        transform: searchFabHidden ? 'translateY(16px) scale(0.9)' : 'translateY(0) scale(1)',
+        opacity: searchFabHidden ? 0 : 1,
+        pointerEvents: searchFabHidden ? 'none' : 'auto',
+      }}
+    >
+      <svg width={19} height={19} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="7" />
+        <path d="M21 21l-4.35-4.35" />
+      </svg>
+    </div>
+    </>
   );
 }
 

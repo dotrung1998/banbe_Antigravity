@@ -6634,7 +6634,31 @@ export function GocProvider({ children }) {
       });
       if (error) throw error;
       if (data?.success === false) throw new Error(data.error);
-      set({ orgProfileSaving: false, orgProfileSaved: true, myOrganizerAvatarPath: avatarPath || s.myOrganizerAvatarPath });
+      // DATA FRESHNESS FIX — `organizerProfile` is a one-shot snapshot
+      // fetched by openOrganizerProfile() when this screen was opened;
+      // this RPC call is a real, successful DB write, but nothing was
+      // ever patching that snapshot back afterward. Only
+      // `myOrganizerAvatarPath` (the Account org-card's own source) used
+      // to get refreshed here, so once this screen's local avatarPreview
+      // was cleared post-save it fell back to `organizerProfile.avatar_path`
+      // — the stale pre-save value — until the whole screen was re-opened
+      // (a fresh RPC refetch). Fixed by patching ONLY the fields this save
+      // actually changed onto the already-loaded record in place, rather
+      // than a blanket refetch or leaving a stale local copy around.
+      set(prev => ({
+        orgProfileSaving: false, orgProfileSaved: true,
+        myOrganizerAvatarPath: avatarPath || prev.myOrganizerAvatarPath,
+        organizerProfile: (prev.organizerProfile && prev.organizerProfile.id === prev.myOrganizerId)
+          ? {
+              ...prev.organizerProfile,
+              name: prev.orgRegName.trim(),
+              about: prev.orgRegDesc.trim(),
+              avatar_path: avatarPath || prev.organizerProfile.avatar_path,
+              intro_long: prev.orgRegIntroLong,
+              social_links: links,
+            }
+          : prev.organizerProfile,
+      }));
     } catch (err) {
       console.warn('saveOrganizerProfile failed:', err);
       const message = err.message === 'INVALID_NAME'

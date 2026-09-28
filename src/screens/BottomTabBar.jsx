@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
-import { ink, alert, barGlass } from '../theme.js';
+import { ink, alert, barGlass, dockHighlight } from '../theme.js';
 
 // FEATURE follow-up (623ec1e real-device report): Map/Notifications/Inbox
 // were still hard to tell apart at a glance despite 64f2719's stroke-count
@@ -453,9 +453,20 @@ export default function BottomTabBar({ collapsed }) {
     >
         <div
           ref={highlightRef}
+          data-testid="dock-highlight"
           style={{
             position: 'absolute', top: 8, bottom: 8, left: 0, borderRadius: 999,
-            background: ink, opacity: 0, pointerEvents: 'none',
+            // Web "black blob" bug (2026-09-28 dock pass) — this used to be
+            // solid `background: ink` at full element opacity: since the
+            // ACTIVE tab's own icon is also drawn in `ink`, an opaque ink
+            // backdrop roughly the icon's own size visually swallowed the
+            // icon into itself instead of sitting as a subtle backdrop
+            // behind it. `dockHighlight` is a translucent tint (matches
+            // iOS's already-correct `ink.opacity(0.12)` — iOS never had
+            // this bug). `zIndex: 0` (explicit, not relied-on `auto`) plus
+            // each tab item's own `zIndex: 1` below is what keeps this
+            // element BEHIND the icons regardless of DOM order.
+            background: dockHighlight, opacity: 0, pointerEvents: 'none', zIndex: 0,
             boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.1)', filter: 'blur(0.3px)',
             willChange: 'transform',
           }}

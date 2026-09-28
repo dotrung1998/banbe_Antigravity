@@ -5,6 +5,12 @@
 :root, [data-bb-theme="light"] {
   --bb-bg: #F7F4EC;
   --bb-fg: #1B1916;
+  /* RGB triplet (no alpha) of --bb-fg, for rgba(var(--bb-fg-rgb), a) call
+     sites that need a translucent ink instead of the solid hex above — see
+     BottomTabBar.jsx's dock highlight (theme.js `dockHighlight`), which
+     needs to match iOS's own `app.palette.ink.opacity(0.12)` instead of a
+     fully opaque fill. */
+  --bb-fg-rgb: 27,25,22;
   --bb-ink-deep: #0C0B09;
   --bb-rule: rgba(27,25,22,0.16);
   --bb-field: #EEE8DA;
@@ -25,6 +31,7 @@
 [data-bb-theme="dark"] {
   --bb-bg: #14120E;
   --bb-fg: #F2EDE1;
+  --bb-fg-rgb: 242,237,225;
   --bb-ink-deep: #F2EDE1;
   --bb-rule: rgba(242,237,225,0.20);
   --bb-field: #4A4439;
@@ -64,14 +71,30 @@ input::placeholder {
   min-height: 100vh;
 }
 
+/* Root-cause fix (Pulse teaser positioning pass): the "to" keyframe used
+   to set `transform: translateY(0)` explicitly. Because every caller uses
+   `animation-fill-mode: both`, and `both` holds a keyframe's EXPLICITLY
+   set properties after the animation ends, that left a non-`none`
+   transform (translateY(0) is still "a transform", not "none") applied to
+   the animated element forever after its 0.32s entrance finished. Per the
+   CSS spec, any element with a used transform value other than `none`
+   establishes a new containing block for `position: fixed` descendants —
+   so every `position:fixed` element anywhere inside one of these animated
+   screens (e.g. Home's root wrapper, which uses `gocIn`) was silently
+   being positioned relative to THAT wrapper's box instead of the
+   viewport, not the browser bug it looked like. Dropping the explicit
+   `transform` from "to" keeps the exact same visual motion (interpolates
+   toward the element's own underlying value, which is `none` here) but
+   the `both` fill-mode no longer has an explicit transform to hold onto
+   once the animation completes, so no lingering containing block remains. */
 @keyframes gocIn {
   from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; }
 }
 
 @keyframes bbIn {
   from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; }
 }
 
 @keyframes gocSheetIn {

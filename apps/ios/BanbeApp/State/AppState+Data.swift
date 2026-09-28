@@ -832,6 +832,22 @@ extension AppState {
                 return
             }
             if let avatarPath { myOrganizerAvatarPath = avatarPath }
+            // DATA FRESHNESS FIX — same root cause and fix as web's
+            // saveOrganizerProfile (GocContext.jsx): `organizerProfile` is a
+            // one-shot snapshot fetched by openOrganizerProfile(), never
+            // patched after this real, successful DB write. Only
+            // `myOrganizerAvatarPath` used to get refreshed above, so once
+            // this screen's local avatarPreviewImage was cleared post-save
+            // it fell back to `organizerProfile.avatarPath` — the stale
+            // pre-save value — until the whole screen was reopened. Patches
+            // ONLY the fields this save actually changed, in place.
+            if organizerProfile?.id == organizerID {
+                organizerProfile?.name = orgRegName.trimmingCharacters(in: .whitespaces)
+                organizerProfile?.about = orgRegDesc.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let avatarPath { organizerProfile?.avatarPath = avatarPath }
+                organizerProfile?.introLong = orgRegIntroLong
+                organizerProfile?.socialLinks = links
+            }
             orgProfileSaving = false
         } catch {
             #if DEBUG

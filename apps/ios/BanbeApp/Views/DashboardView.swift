@@ -314,9 +314,24 @@ struct DashboardView: View {
                     .padding(.bottom, 30)
                 }
 
-                InkButton(title: app.T("+ Tạo sự kiện mới", "+ Create new event"), cornerRadius: 0) {
+                // RESTYLE (2026-09-28) — was a full-width, square-cornered
+                // bar (`cornerRadius: 0`, no horizontal padding). Now a
+                // plain `InkButton` at its default cornerRadius (18) — the
+                // same default the "Mời thành viên" button just above
+                // already uses, so shape/typography match by construction,
+                // not a new eyeballed style — inset the same 22pt every
+                // other row on this screen already uses, with extra bottom
+                // breathing room. The VStack it sits in does NOT
+                // `.ignoresSafeArea()` (only the background does, above),
+                // so the home-indicator safe area is already respected;
+                // same tap action and the same screen-level host-only gate
+                // (this whole screen only ever renders for an organizer).
+                InkButton(title: app.T("+ Tạo sự kiện mới", "+ Create new event")) {
                     app.goCreate()
                 }
+                .padding(.horizontal, 22)
+                .padding(.bottom, 14)
+                .accessibilityIdentifier("dashboard.createEvent")
             }
         }
         .task {

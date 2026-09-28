@@ -346,7 +346,22 @@ export default function Dashboard() {
       )}
 
       </div>
-      <div onClick={goCreate} style={{ ...inkButton({ flex: 'none', borderRadius: 0, padding: '18px 0 30px' }) }}>{T('+ Tạo sự kiện mới', '+ Create new event')}</div>
+      {/* RESTYLE (2026-09-28) — this used to be a full-width, square-cornered
+          bar pinned flush to the viewport bottom (`inkButton({ borderRadius: 0 })`,
+          no horizontal inset). Reuses the exact same `inkButton()` style token
+          "Mời thành viên" already uses above (same padding/fontSize, so same
+          corner radius/typography by construction — not a new, eyeballed
+          style), inset from the edges, with real bottom safe-area spacing
+          (`env(safe-area-inset-bottom)`, same pattern ChatPhotoViewer.jsx's
+          bottom bar already uses) instead of a fixed 30px guess. Tap action
+          and the screen-level host-only gate (HOST_ONLY_SCREENS in
+          GocContext.jsx — this whole screen only ever renders for an
+          organizer) are unchanged. */}
+      <div style={{ flex: 'none', padding: '10px 22px calc(env(safe-area-inset-bottom, 0px) + 14px)' }}>
+        <div onClick={goCreate} data-testid="dashboard-create-event" style={{ ...inkButton({ padding: 10, fontSize: 12.5 }) }}>
+          {T('+ Tạo sự kiện mới', '+ Create new event')}
+        </div>
+      </div>
     </div>
   );
 }

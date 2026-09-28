@@ -1,18 +1,39 @@
 import SwiftUI
 
-/// Home Pulse teaser (real-device follow-up, 2026-09-27) — iOS's own
-/// version of `src/screens/Home.jsx`'s `PulseTeaserBubble`. Root cause of
-/// "teaser never appears on iOS", confirmed by grep before writing a single
-/// line here: this view never existed at all — the previous pass built it
-/// only on web. Not a visibility/zIndex/seen-key bug to patch; a missing
-/// feature to build, matching web's sequence/timing/pause/tap-to-advance
-/// behavior as closely as SwiftUI allows.
+/// Home Pulse teaser — iOS's own version of `src/screens/Home.jsx`'s
+/// `PulseTeaserBubble`.
 ///
 /// Rendered as a RootView ZStack sibling (never inside HomeView itself),
 /// positioned from `app.pulseRingFrame` (HomeView's own
-/// `PulseRingFramePreferenceKey`) — the same "measure the real ring, float
-/// above everything from that" fix web's own bug (2) used, so it can never
-/// be clipped by HomeView's ScrollView or sit behind another screen.
+/// `PulseRingFramePreferenceKey`) — measuring the real ring and floating
+/// above everything from that, so it can never be clipped by HomeView's
+/// ScrollView or sit behind another screen.
+///
+/// Positioning pass (2026-09-28): moved from "centered above the ring" to
+/// a comic-style speech bubble BESIDE the ring (to its right, vertically
+/// centered on it), with a triangular pointer on the bubble's own LEFT
+/// edge pointing back at the ring, and text right-aligned inside the
+/// bubble — matching web's equivalent redesign in `Home.jsx`. Clamped so
+/// the bubble always stays fully inside the screen bounds rather than a
+/// hardcoded guess. Also fixes the real "text clipped/covered" cause:
+/// `bubbleSize` used to start at `.zero` and only update a layout pass
+/// AFTER the bubble was already positioned from it (`rect.minY -
+/// clearance - bubbleSize.height / 2` evaluated with a stale/zero height
+/// on the very first frame of every new step, since `bubbleSize` is only
+/// current for the PREVIOUS step's content) — placing the bubble
+/// overlapping the ring/label underneath for one visible frame each time
+/// the content changed. Fixed by keying the preference read so the
+/// visible bubble only renders once a real, non-zero size for the CURRENT
+/// content has been measured (`renderedStep`), rather than positioning
+/// speculatively from a size that belongs to different content.
+///
+/// Timing-rule pass (2026-09-28): replaced the old one-time
+/// `UserDefaults` "seen" flag with a real wall-clock repeat rule — show
+/// once per user the first time they're eligible, then again 5 minutes
+/// after the previous sequence finished/was dismissed. Version bumped
+/// 'v1' -> 'v2' so the OLD one-time key can never be read by this logic
+/// (a stale `true` there would otherwise block every returning user
+/// forever) — a fresh key namespace, not a migration.
 struct PulseTeaserBubbleView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -20,18 +41,18 @@ struct PulseTeaserBubbleView: View {
 
     @State private var step = -1 // -1 = hidden, 0...3 = the 4 sequence steps
     @State private var runningTask: Task<Void, Never>?
+    @State private var pollTask: Task<Void, Never>?
     @State private var bubbleSize: CGSize = .zero
+    @State private var measuredForStep: Int = -1
 
-    // Stays 'v1' — this is iOS's FIRST real implementation, not a
-    // corrected re-roll of a previously-broken one, so there's no old key
-    // to invalidate. (Web's own 'v1' also stays unchanged — its bug was
-    // timing/positioning, not the sequence's content — see that file.)
-    private static let version = "v1"
-    private static func seenKey(_ userId: UUID?) -> String {
-        "banbe.pulseBubblesSeen.\(version).\(userId?.uuidString ?? "guest")"
+    private static let version = "v2"
+    private static func lastShownKey(_ userId: UUID?) -> String {
+        "banbe.pulseBubblesLastShown.\(version).\(userId?.uuidString ?? "guest")"
     }
+    private static let repeatInterval: TimeInterval = 5 * 60
 
-    private var ringClearance: CGFloat { 16 }
+    private var ringGap: CGFloat { 12 }
+    private var viewportMargin: CGFloat { 12 }
 
     var body: some View {
         Group {
@@ -42,9 +63,20 @@ struct PulseTeaserBubbleView: View {
                             Color.clear.preference(key: PulseBubbleSizePreferenceKey.self, value: geo.size)
                         }
                     )
-                    .onPreferenceChange(PulseBubbleSizePreferenceKey.self) { bubbleSize = $0 }
+                    .onPreferenceChange(PulseBubbleSizePreferenceKey.self) { size in
+                        bubbleSize = size
+                        measuredForStep = step
+                    }
                     .frame(maxWidth: 230)
-                    .position(x: rect.midX, y: max(70, rect.minY - ringClearance - bubbleSize.height / 2))
+                    // Only positioned once a size for THIS step's content
+                    // has actually been measured — avoids the one-frame
+                    // "positioned from stale/zero size, overlapping the
+                    // ring" bug documented above. Falls back to a
+                    // reasonable estimate only for that first frame's
+                    // opacity-0 layout pass (never visible, `.opacity`
+                    // transition covers it).
+                    .position(bubblePosition(in: rect, screen: screenBounds))
+                    .opacity(measuredForStep == step ? 1 : 0)
                     .transition(reduceMotion ? .identity : .opacity)
                     .onTapGesture { advanceOrDismiss() }
                     .accessibilityElement(children: .combine)
@@ -59,7 +91,26 @@ struct PulseTeaserBubbleView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { reevaluate() } else { suspend() }
         }
-        .onAppear { reevaluate() }
+        .onAppear { reevaluate(); startPolling() }
+        .onDisappear { pollTask?.cancel(); pollTask = nil }
+    }
+
+    private var screenBounds: CGRect { UIScreen.main.bounds }
+
+    /// Ideal spot is just to the RIGHT of the ring, vertically centered on
+    /// it (the pointer sits on the bubble's own left edge, see
+    /// `bubbleContent`) — clamped so the whole box always stays fully
+    /// inside the screen instead of a hardcoded guess about size.
+    private func bubblePosition(in ring: CGRect, screen: CGRect) -> CGPoint {
+        let width = bubbleSize.width > 0 ? bubbleSize.width : 220
+        let height = bubbleSize.height > 0 ? bubbleSize.height : 40
+        let idealLeft = ring.maxX + ringGap
+        let maxLeft = max(viewportMargin, screen.width - viewportMargin - width)
+        let left = min(idealLeft, maxLeft)
+        let idealTop = ring.midY - height / 2
+        let maxTop = max(viewportMargin, screen.height - viewportMargin - height)
+        let top = min(max(viewportMargin, idealTop), maxTop)
+        return CGPoint(x: left + width / 2, y: top + height / 2)
     }
 
     @ViewBuilder
@@ -74,7 +125,7 @@ struct PulseTeaserBubbleView: View {
                     // no ranking yet.
                     Text(app.T("Chưa có xếp hạng hôm nay", "Nothing ranked yet today"))
                 } else {
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .trailing, spacing: 3) {
                         ForEach(Array(app.pulseDaily.prefix(3).enumerated()), id: \.element.id) { i, item in
                             Text("\(i + 1). \(item.eventName)")
                                 .lineLimit(1)
@@ -89,15 +140,17 @@ struct PulseTeaserBubbleView: View {
         }
         .font(.system(size: 13, weight: .semibold))
         .foregroundStyle(app.palette.paper)
-        .multilineTextAlignment(.leading)
+        .multilineTextAlignment(.trailing)
         .padding(.horizontal, 14).padding(.vertical, 11)
         .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .shadow(color: .black.opacity(0.22), radius: 10, y: 4)
-        .overlay(alignment: .bottom) {
+        // Comic-bubble pointer — LEFT side, pointing back at the ring
+        // (matches web's equivalent redesign in Home.jsx).
+        .overlay(alignment: .leading) {
             Triangle()
                 .fill(app.palette.ink)
-                .frame(width: 10, height: 6)
-                .offset(y: 6)
+                .frame(width: 6, height: 10)
+                .offset(x: -6)
         }
     }
 
@@ -115,18 +168,39 @@ struct PulseTeaserBubbleView: View {
         // simple "pause" semantics as the web fix — not literal
         // remaining-time bookkeeping).
         if step >= 0 { scheduleAdvance(); return }
-        // Case 2: never started this session — only ever begins ONCE per
-        // user/version, ever (UserDefaults, not per-session).
+        maybeStart()
+    }
+
+    /// Real wall-clock repeat rule (2026-09-28 pass): starts the sequence
+    /// the first time an eligible signed-in user is seen (no stored
+    /// timestamp yet), then again once `repeatInterval` (5 minutes) of
+    /// real elapsed time has passed since the previous sequence finished
+    /// or was dismissed. Never fires while a sequence is already showing
+    /// (`step >= 0` guard, checked by every caller) or while Home isn't
+    /// the visible screen/app isn't active.
+    private func maybeStart() {
+        guard step < 0, app.screen == .home, scenePhase == .active else { return }
         guard let userId = app.user?.id else { return }
-        if UserDefaults.standard.bool(forKey: Self.seenKey(userId)) { return }
-        // Written immediately, not only on completion — Home's own view
-        // can be torn down/rebuilt by navigation well before the sequence
-        // finishes; gating on completion would replay it on every later
-        // Home visit (the exact bug this pass's own web-side test caught).
-        UserDefaults.standard.set(true, forKey: Self.seenKey(userId))
+        let lastShown = UserDefaults.standard.object(forKey: Self.lastShownKey(userId)) as? Double ?? 0
+        guard Date().timeIntervalSince1970 - lastShown >= Self.repeatInterval else { return }
         Task { await app.loadPulse(period: .daily) }
         step = 0
         scheduleAdvance()
+    }
+
+    /// Lightweight poll so a sequence starts the instant 5 real minutes
+    /// have elapsed while Home stays continuously open/visible — not only
+    /// on the next mount/screen-change/foreground event. Mirrors web's own
+    /// `setInterval` poll in `Home.jsx`.
+    private func startPolling() {
+        pollTask?.cancel()
+        pollTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard !Task.isCancelled else { return }
+                maybeStart()
+            }
+        }
     }
 
     /// Pauses (cancels any pending advance) without losing the CURRENT
@@ -167,6 +241,9 @@ struct PulseTeaserBubbleView: View {
     private func dismiss() {
         suspend()
         step = -1
+        if let userId = app.user?.id {
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastShownKey(userId))
+        }
     }
 }
 
@@ -175,12 +252,15 @@ private struct PulseBubbleSizePreferenceKey: PreferenceKey {
     static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
 }
 
+/// Points LEFT (apex at the shape's left-middle, base along its right
+/// edge) — used as the comic-bubble pointer on the bubble's own leading
+/// edge, aimed back at the Pulse ring.
 private struct Triangle: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
-        p.move(to: CGPoint(x: rect.midX, y: rect.maxY))
-        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.move(to: CGPoint(x: rect.minX, y: rect.midY))
         p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         p.closeSubpath()
         return p
     }

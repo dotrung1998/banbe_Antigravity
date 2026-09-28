@@ -102,7 +102,7 @@ export default function OrganizerProfile() {
           breathing room. */}
       <div data-testid="organizer-profile-card" style={{ ...cardGlass({ margin: '22px 20px 0', padding: '28px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }) }}>
         {avatarSrc ? (
-          <img src={avatarSrc} alt="" style={{ width: 88, height: 88, borderRadius: 20, objectFit: 'cover', border: `3px solid ${paper}` }} />
+          <img src={avatarSrc} alt="" data-testid="organizer-profile-avatar" style={{ width: 88, height: 88, borderRadius: 20, objectFit: 'cover', border: `3px solid ${paper}` }} />
         ) : (
           <div style={{ width: 88, height: 88, borderRadius: 20, background: ink, color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, fontWeight: 700, border: `3px solid ${paper}` }}>
             {monogram}
@@ -188,7 +188,7 @@ export default function OrganizerProfile() {
                   {avatarSrc && <img src={avatarSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
                 </div>
                 <span onClick={() => avatarInputRef.current?.click()} style={{ fontSize: 12, color: ink, textDecoration: 'underline', cursor: 'pointer' }}>{T('Đổi ảnh', 'Change photo')}</span>
-                <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={onPickAvatar} />
+                <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" data-testid="organizer-profile-avatar-input" style={{ display: 'none' }} onChange={onPickAvatar} />
               </div>
               <input
                 value={s.orgRegName} onChange={orgRegNameType} data-testid="organizer-profile-name-input"

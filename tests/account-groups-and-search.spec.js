@@ -75,10 +75,22 @@ test.describe('Home — quick event search entry', () => {
     await setupToHome(page);
     await expect(page.locator('[data-screen-label="Home"]')).toBeVisible();
 
-    await page.getByTestId('home-search-button').click();
+    await page.getByTestId('home-search-fab').click();
     await page.waitForSelector('[data-screen-label="MapExplore"]');
     const input = page.getByTestId('map-search-input');
+    // Real-device follow-up (2026-09-28) — this must hold with NO second
+    // tap/focus() of any kind on the input anywhere above or below this
+    // line: the single `home-search-fab` click above is the only
+    // interaction that's supposed to be needed. `toBeFocused()` polls
+    // (Playwright's built-in retrying assertion, never a fixed sleep)
+    // until the transition settles and the field is genuinely focused.
     await expect(input).toBeFocused();
+    // Belt-and-suspenders: the real DOM `document.activeElement` itself
+    // (not just Playwright's own focus bookkeeping) is this exact input,
+    // confirmed via polling rather than a one-shot read.
+    await expect.poll(() => page.evaluate(() =>
+      document.activeElement?.getAttribute('data-testid')
+    )).toBe('map-search-input');
 
     // A real, live-loaded event's own name (seeded demo data, migration
     // 020) — never an invented/fabricated result.
