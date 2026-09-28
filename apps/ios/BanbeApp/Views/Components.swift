@@ -623,6 +623,25 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
 /// reports on `layoutSubviews`/`didMoveToWindow` so the very first frame
 /// (before any scrolling has happened at all) is real and current too,
 /// never a stale/zero placeholder.
+///
+/// Real-device follow-up #2 (still-far-below-the-ring report on a real
+/// iPhone, after the KVO fix above): the fix above only observed the
+/// FIRST ancestor `UIScrollView` it found while walking up from the probe
+/// (see `ScaffoldScrollProbe`'s identical-looking walk). That's correct
+/// for `ScaffoldScrollProbe`, which sits as the `.background()` of the ONE
+/// ScrollView it needs — but this probe sits on the ring inside
+/// `HomeView.storyRow`, a horizontal `ScrollView` that is ITSELF nested
+/// inside the main vertical feed `ScrollView`. Walking up from the probe
+/// hit the horizontal story-row scroller first and stopped there, so the
+/// KVO observer was attached to the WRONG `UIScrollView` — one whose
+/// `contentOffset` never changes when the user drags the real, outer
+/// vertical feed. During that real `.tracking`-mode drag, neither the
+/// PreferenceKey path (blocked, as above) nor this KVO observer (watching
+/// the wrong scroller) fired, so `app.pulseRingFrame` again froze stale —
+/// reading on a real device as the bubble sitting far below the ring's
+/// true, scrolled position. Fixed by observing EVERY ancestor
+/// `UIScrollView` found while walking all the way up to the window (see
+/// `ProbeView.attachIfNeeded()` below), not just the first.
 struct RingFrameProbe: UIViewRepresentable {
     let onChange: (CGRect) -> Void
 
@@ -638,8 +657,29 @@ struct RingFrameProbe: UIViewRepresentable {
 
     final class ProbeView: UIView {
         var onChange: ((CGRect) -> Void)?
-        private weak var observedScrollView: UIScrollView?
-        private var observation: NSKeyValueObservation?
+        // Real-device follow-up (still-below-ring report after this file's
+        // own KVO fix above): unlike `ScaffoldScrollProbe`, which sits as
+        // the `.background()` of the ONE ScrollView it needs to track, this
+        // probe is nested two ScrollViews deep — HomeView's `storyRow` is
+        // itself a horizontal `ScrollView` living INSIDE the main vertical
+        // feed `ScrollView` (`ScreenScaffold`). Walking up and grabbing only
+        // the FIRST ancestor `UIScrollView` (and `return`-ing immediately)
+        // locks onto the horizontal story-row scroller, whose
+        // `contentOffset` never changes when the user drags the real,
+        // outer vertical feed — so the KVO observer this file added never
+        // fires for the drag that actually moves the ring, and
+        // `app.pulseRingFrame` freezes stale exactly like the original
+        // PreferenceKey bug, just via a different mechanism (the fix looked
+        // complete on paper because a mouse-driven simulator scroll or a
+        // momentary re-layout can still trigger a stray `layoutSubviews()`
+        // that happens to look current). Fixed by observing EVERY ancestor
+        // `UIScrollView` found while walking all the way up to the window,
+        // not stopping at the first — so both the inner horizontal
+        // story-row scroll AND the outer vertical feed scroll each
+        // independently trigger a fresh `reportFrame()`.
+        private var observedScrollViews: [UIScrollView] = []
+        private var observations: [NSKeyValueObservation] = []
+        private var attached = false
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
@@ -657,21 +697,23 @@ struct RingFrameProbe: UIViewRepresentable {
             reportFrame()
         }
 
-        // Walks up from this (otherwise invisible, zero-size) probe —
-        // placed as the ring's own `.background`, so it's always a
-        // descendant of the actual `UIScrollView` SwiftUI's `ScrollView`
-        // creates — to find and observe that ancestor directly, exactly
-        // as `ScaffoldScrollProbe` does.
+        // Walks all the way up from this (otherwise invisible, zero-size)
+        // probe — placed as the ring's own `.background`, so it's always a
+        // descendant of every real `UIScrollView` ancestor between it and
+        // the window — observing EACH `UIScrollView` found along the way
+        // (there can legitimately be more than one, e.g. an inner
+        // horizontal story-row scroller nested inside the outer vertical
+        // feed scroller), rather than stopping at the first.
         private func attachIfNeeded() {
-            guard observedScrollView == nil else { return }
+            guard !attached, superview != nil else { return }
+            attached = true
             var responder: UIView? = superview
             while let candidate = responder {
-                if let scrollView = candidate as? UIScrollView {
-                    observedScrollView = scrollView
-                    observation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
+                if let scrollView = candidate as? UIScrollView, !observedScrollViews.contains(where: { $0 === scrollView }) {
+                    observedScrollViews.append(scrollView)
+                    observations.append(scrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
                         self?.reportFrame()
-                    }
-                    return
+                    })
                 }
                 responder = candidate.superview
             }

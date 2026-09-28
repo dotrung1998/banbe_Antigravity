@@ -37,6 +37,24 @@ struct InboxView: View {
     // the search field appears, no extra tap needed first.
     @FocusState private var searchFieldFocused: Bool
 
+    // Gesture-arbitration fix pass (2026-09-28) — see
+    // `AppState.horizontalSwipeRowRegionMinY`'s own doc comment. Measured
+    // via `header`'s own `GeometryReader`/preference below, in `.global`
+    // (screen) coordinates — the same space RootView's `tabSwipeGesture`
+    // reads `startLocation` in.
+    @State private var headerBottomY: CGFloat = 0
+
+    /// Publishes (or clears) the guarded region for RootView's own
+    /// root-tab swipe gesture. Only the real, interactive InboxView copy
+    /// does this — the non-interactive edge-swipe-back "peek" (`isPreview`)
+    /// never owns the live gesture and must never stomp on the real
+    /// screen's own published value. `nil` whenever there are no rows to
+    /// protect (empty state), so tab-swipe still works normally there.
+    private func syncRowSwipeRegion() {
+        guard !isPreview else { return }
+        app.horizontalSwipeRowRegionMinY = visibleThreads.isEmpty ? nil : headerBottomY
+    }
+
     // Bug 1b/1c (2026-09-21 follow-up) — ONE shared, noticeably slower
     // spring for both the settings sheet's entrance and the search field's
     // reveal, instead of two different speeds for two different controls.
@@ -59,6 +77,11 @@ struct InboxView: View {
             app.palette.paper.ignoresSafeArea()
             VStack(alignment: .leading, spacing: 0) {
                 header
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(key: InboxRowsRegionMinYPreferenceKey.self, value: geo.frame(in: .global).maxY)
+                        }
+                    )
                 if effectiveInboxView == .archived {
                     Button("‹ " + app.T("Quay lại Tin nhắn", "Back to Messages")) { app.inboxView = .active }
                         .font(.system(size: 12.5)).buttonStyle(.plain)
@@ -161,9 +184,23 @@ struct InboxView: View {
         // `setForcedHidden(_:)` this pass adds right alongside it.
         .onChange(of: settingsOpen) { _, open in BottomTabBarOverlay.shared.setForcedHidden(open || feedbackOpen) }
         .onChange(of: feedbackOpen) { _, open in BottomTabBarOverlay.shared.setForcedHidden(open || settingsOpen) }
+        // Gesture-arbitration fix pass (2026-09-28) — keeps
+        // `app.horizontalSwipeRowRegionMinY` in sync with both the header's
+        // own measured position (layout can shift it — search field
+        // opening, Dynamic Type, safe-area changes) and whether there are
+        // any rows to protect at all (empty state must not block tab-swipe).
+        .onPreferenceChange(InboxRowsRegionMinYPreferenceKey.self) { minY in
+            headerBottomY = minY
+            syncRowSwipeRegion()
+        }
+        .onChange(of: visibleThreads.isEmpty) { _, _ in syncRowSwipeRegion() }
         .onDisappear {
             BottomTabBarOverlay.shared.setForcedHidden(false)
             app.cancelRootPull()
+            // This screen's own row-swipe region no longer applies once
+            // InboxView isn't the visible screen — never leave a stale
+            // guard blocking tab-swipe on whatever screen comes next.
+            if !isPreview { app.horizontalSwipeRowRegionMinY = nil }
         }
     }
 
@@ -287,6 +324,17 @@ struct InboxView: View {
             .transition(.move(edge: .bottom))
         }
     }
+}
+
+/// Gesture-arbitration fix pass (2026-09-28) — reports InboxView's header
+/// bottom edge in `.global` (screen) coordinates, so RootView's own
+/// `tabSwipeGesture` can tell a touch starting inside the List's row region
+/// apart from one starting on the header, without either view needing to
+/// know the other's exact layout constants. See
+/// `AppState.horizontalSwipeRowRegionMinY`'s own doc comment.
+private struct InboxRowsRegionMinYPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 private struct InboxRow: View {

@@ -105,12 +105,28 @@ import SwiftUI
 /// step sequence and 5-minute repeat rule keep running untouched — this
 /// is purely a render-visibility gate, mirroring "hide with the ring"
 /// rather than "dismiss the sequence").
+///
+/// Weekly-ranking + featured-photos deep-link pass (this pass): the
+/// sequence gained a real 4th step (now step 3, after the pre-existing
+/// "Top sự kiện tuần này" title at step 2) that lists the actual weekly
+/// top 3 — mirroring step 0/1's own daily title-then-listing pattern —
+/// sourced from `app.pulseWeekly` (the SAME `goc_pulse_ranked('weekly')`
+/// data Pulse's own "Tuần này" tab already loads, kicked off here too so
+/// it's ready by the time this step is reached, never a separate/fake
+/// query). The final step's copy changed from a bare "Ảnh nổi bật" title
+/// to "Ảnh nổi bật: Bấm xem thêm", with only "Bấm xem thêm" tappable —
+/// tapping it dismisses the teaser and opens the SAME existing Pulse
+/// viewer every ring tap already opens, jumped straight to its
+/// pre-existing "Ảnh nổi bật" tab (`app.pulseTab = .photos`) rather than
+/// a new screen. Sequencing/timing (5-minute repeat, per-step duration,
+/// manual-tap-to-advance) is otherwise unchanged — this only inserts one
+/// step's content and re-numbers the final step.
 struct PulseTeaserBubbleView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var step = -1 // -1 = hidden, 0...3 = the 4 sequence steps
+    @State private var step = -1 // -1 = hidden, 0...4 = the 5 sequence steps
     @State private var runningTask: Task<Void, Never>?
     @State private var pollTask: Task<Void, Never>?
     @State private var bubbleSize: CGSize = .zero
@@ -191,23 +207,30 @@ struct PulseTeaserBubbleView: View {
             if step == 0 {
                 Text(app.T("Top sự kiện hôm nay", "Today's top events"))
             } else if step == 1 {
-                if app.pulseDaily.isEmpty {
-                    // Never invented — a truthful, short empty hint
-                    // instead of placeholder names when there's genuinely
-                    // no ranking yet.
-                    Text(app.T("Chưa có xếp hạng hôm nay", "Nothing ranked yet today"))
-                } else {
-                    VStack(alignment: .trailing, spacing: 3) {
-                        ForEach(Array(app.pulseDaily.prefix(3).enumerated()), id: \.element.id) { i, item in
-                            Text("\(i + 1). \(item.eventName)")
-                                .lineLimit(1)
-                        }
-                    }
-                }
+                rankedList(app.pulseDaily, empty: app.T("Chưa có xếp hạng hôm nay", "Nothing ranked yet today"))
             } else if step == 2 {
                 Text(app.T("Top sự kiện tuần này", "This week's top events"))
+            } else if step == 3 {
+                // Mirrors step 1 exactly (same numbered-list shape, same
+                // empty-state pattern), sourced from `app.pulseWeekly` — the
+                // existing weekly ranking Pulse's own "Tuần này" tab already
+                // loads via `goc_pulse_ranked('weekly')`, never a separate
+                // or invented query.
+                rankedList(app.pulseWeekly, empty: app.T("Chưa có xếp hạng tuần này", "Nothing ranked yet this week"))
             } else {
-                Text(app.T("Ảnh nổi bật", "Featured photos"))
+                // Final step — only "Bấm xem thêm" is tappable; tapping it
+                // dismisses the teaser and jumps straight into Pulse's own
+                // existing "Ảnh nổi bật" tab (see `openFeaturedPhotos()`).
+                // A tap anywhere else on the bubble still just
+                // advances/dismisses like every other step, via the
+                // Group-level `.onTapGesture` in `body`.
+                HStack(spacing: 4) {
+                    Text(app.T("Ảnh nổi bật:", "Featured photos:"))
+                    Text(app.T("Bấm xem thêm", "Tap to view"))
+                        .underline()
+                        .onTapGesture { openFeaturedPhotos() }
+                        .accessibilityIdentifier("home.pulseTeaserFeaturedPhotosLink")
+                }
             }
         }
         .font(.system(size: 13, weight: .semibold))
@@ -226,6 +249,37 @@ struct PulseTeaserBubbleView: View {
                 .frame(width: 6, height: 10)
                 .offset(x: -6, y: -8)
         }
+    }
+
+    /// Shared shape for step 1 (daily) and step 3 (weekly) — a truthful,
+    /// numbered top-3 list, gracefully handling fewer than 3 real results
+    /// (no padding with placeholders) and a genuinely empty ranking (a
+    /// short empty-state line instead of a blank bubble).
+    @ViewBuilder
+    private func rankedList(_ ranking: [PulseItem], empty: String) -> some View {
+        if ranking.isEmpty {
+            Text(empty)
+        } else {
+            VStack(alignment: .trailing, spacing: 3) {
+                ForEach(Array(ranking.prefix(3).enumerated()), id: \.element.id) { i, item in
+                    Text("\(i + 1). \(item.eventName)")
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
+    /// Routes into the SAME existing Pulse viewer every ring tap already
+    /// opens, jumped straight to its pre-existing "Ảnh nổi bật" tab —
+    /// `openPulseViewer()` itself always resets `pulseTab` to `.daily`
+    /// (its own documented "never leave a previous session's rank sitting
+    /// there" rule), so the override here has to happen AFTER that call,
+    /// not before. Dismisses the teaser sequence first so it can't keep
+    /// rendering on top of the Pulse viewer it just opened.
+    private func openFeaturedPhotos() {
+        dismiss()
+        app.openPulseViewer()
+        app.pulseTab = .photos
     }
 
     /// Checked from every place that could make this newly eligible
@@ -258,6 +312,11 @@ struct PulseTeaserBubbleView: View {
         let lastShown = UserDefaults.standard.object(forKey: Self.lastShownKey(userId)) as? Double ?? 0
         guard Date().timeIntervalSince1970 - lastShown >= Self.repeatInterval else { return }
         Task { await app.loadPulse(period: .daily) }
+        // Weekly-ranking step (step 3) reads `app.pulseWeekly` — kicked off
+        // here too, alongside daily, so it's already loading well before
+        // the sequence reaches that step rather than starting a fetch only
+        // once step 2's title is showing.
+        Task { await app.loadPulse(period: .weekly) }
         step = 0
         scheduleAdvance()
     }
@@ -289,27 +348,30 @@ struct PulseTeaserBubbleView: View {
     private func scheduleAdvance() {
         runningTask?.cancel()
         guard step >= 0 else { return }
-        if step == 0, app.pulseDailyLoading {
-            // Hold on step 0 until the real data actually arrives — poll
-            // lightly rather than needing a Combine subscription for one
-            // Bool.
+        // Hold on a title step until ITS OWN data has actually arrived —
+        // step 0 (daily title, gates on `pulseDailyLoading`) and step 2
+        // (weekly title, gates on `pulseWeeklyLoading`) each precede a
+        // listing step that reads that same data. Polls lightly rather
+        // than needing a Combine subscription for one Bool.
+        let stillLoading = (step == 0 && app.pulseDailyLoading) || (step == 2 && app.pulseWeeklyLoading)
+        if stillLoading {
             runningTask = Task {
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 if !Task.isCancelled { scheduleAdvance() }
             }
             return
         }
-        let seconds: Double = step == 0 ? 4.6 : 3.2
+        let seconds: Double = (step == 0 || step == 2) ? 4.6 : 3.2
         runningTask = Task {
             try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             guard !Task.isCancelled else { return }
-            if step >= 3 { dismiss() } else { step += 1; scheduleAdvance() }
+            if step >= 4 { dismiss() } else { step += 1; scheduleAdvance() }
         }
     }
 
     private func advanceOrDismiss() {
         guard step >= 0 else { return }
-        if step >= 3 { dismiss() } else { step += 1; scheduleAdvance() }
+        if step >= 4 { dismiss() } else { step += 1; scheduleAdvance() }
     }
 
     private func dismiss() {

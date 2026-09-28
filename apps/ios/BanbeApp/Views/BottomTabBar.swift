@@ -151,6 +151,44 @@ struct BottomTabBar: View {
     // and for `syncActiveToScreen()`'s own resting-state placement).
     @State private var dragIndexFloat: CGFloat?
 
+    // Motion refinement pass (2026-09-28 follow-up #3, "improve the motion"
+    // ticket) — `dragIndexFloat` above is still the RAW, zero-lag truth (it
+    // has to stay that way: `hitTest`/`activeID`/the eventual `item.action()`
+    // on release all need the finger's real position with no smoothing
+    // layered in). What was missing is a RENDERED position that's allowed to
+    // lag behind that truth: previously the glass shape's `.position()` read
+    // `selectionIndexFloat` (== `dragIndexFloat` while dragging) directly, so
+    // every `onChanged` frame moved the shape to the exact raw value with no
+    // `withAnimation` — one bare assignment per touch sample, which reads as
+    // "teleports frame to frame" rather than "glides," because there is
+    // nothing IN BETWEEN two touch samples for it to visibly travel through.
+    // `renderIndexFloat` is that in-between: a separate `@State` this view
+    // actually draws from, retargeted with `withAnimation(.spring(...))`
+    // every time `selectionIndexFloat` (the target — raw drag position, or
+    // the resting tab once a drag ends) changes, via the `.onChange` below.
+    // SwiftUI's spring animations are interruptible — retargeting one that's
+    // still in flight preserves its current velocity rather than restarting
+    // from rest — so a fast continuous stream of retargets (many per second
+    // while dragging) reads as one continuously-chasing motion, not a series
+    // of separate springs each snapping and stopping. This is what makes the
+    // shape visibly travel toward the finger instead of jumping to it, while
+    // `dragIndexFloat`/`activeID`/hit-testing all still update immediately.
+    @State private var renderIndexFloat: CGFloat?
+    // Directional stretch cue (same pass) — `dragStartX` is the touch x the
+    // CURRENT drag began at (nil whenever no drag is live); the first
+    // `onChanged` sample that has moved meaningfully away from it decides a
+    // direction (leading vs trailing) once, drives `stretchAnchor`, and fires
+    // one quick scale-up/settle pair via `withAnimation` on `stretchScaleX`.
+    // See the real-API verification note above `body` for why this is an
+    // ordinary `.scaleEffect` layered on the real glass view rather than a
+    // native "stretch" primitive — `glassEffect`'s SDK surface has no such
+    // thing (re-verified this pass via the same `strings`-on-SwiftUICore
+    // approach the prior pass used; only hit was an unrelated `.stretch`
+    // layout/alignment case, not anything glass- or drag-related).
+    @State private var dragStartX: CGFloat?
+    @State private var stretchScaleX: CGFloat = 1
+    @State private var stretchAnchor: UnitPoint = .center
+
     // Real Liquid Glass pass (2026-09-28 follow-up #2, real-iPhone report) —
     // the hand-rolled "two overlapping translucent blobs + a fading
     // connector" stand-in from the previous pass is GONE. Root cause of
@@ -230,26 +268,62 @@ struct BottomTabBar: View {
         // whichever tab it started on.
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
-                isDragging = true
+                if !isDragging {
+                    isDragging = true
+                    dragStartX = value.location.x
+                }
+                // Requirement 3 (motion-refinement ticket) — verified, not
+                // just assumed: this only ever updates `activeID`, the
+                // purely COSMETIC "which tab looks lit right now" state (it
+                // feeds `tabItem`'s icon opacity/fill and the glass shape's
+                // TARGET position). It never calls an `item.action()` — that
+                // real navigation commit happens exactly once, below, in
+                // `onEnded`. So pausing over a different tab mid-drag can
+                // and should re-light that tab's icon (that's the whole
+                // point of scrub-to-select — live feedback before commit),
+                // but it cannot and does not commit navigation early. Left
+                // exactly as-is.
                 let id = hitTest(value.location.x)
                 if id != activeID { activeID = id }
-                // No `withAnimation` here, deliberately — this needs to
-                // track the finger with zero lag (the fix for "jumps from
-                // slot to slot" predates this pass and still holds: the
-                // single glass shape below reads this same value). A plain
-                // tap never moves this far from its start, so it lands
-                // already in place by `onEnded` — instant, no glide.
+                // Still no `withAnimation` here, deliberately — this is the
+                // RAW truth (the fix for "jumps from slot to slot" predates
+                // this pass and still holds), read by `hitTest`/`activeID`
+                // above and by the `.onChange(of: selectionIndexFloat)`
+                // below, which is what now actually owns the shape's
+                // rendered, animated travel — see `renderIndexFloat`'s own
+                // doc comment.
                 dragIndexFloat = indexFloat(for: value.location.x, barWidth: barWidth)
+
+                // Directional stretch cue — fires once per drag, the first
+                // sample that's moved meaningfully (4pt) from where this
+                // drag started, so a drag that never really moves (a tap)
+                // never triggers it.
+                if !reduceMotion, let startX = dragStartX, stretchAnchor == .center {
+                    let travel = value.location.x - startX
+                    if abs(travel) > 4 {
+                        stretchAnchor = travel > 0 ? .leading : .trailing
+                        withAnimation(.spring(response: 0.16, dampingFraction: 0.5)) {
+                            stretchScaleX = 1.14
+                        }
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75).delay(0.1)) {
+                            stretchScaleX = 1
+                        }
+                    }
+                }
             }
             .onEnded { value in
                 let id = hitTest(value.location.x)
-                let settle = {
-                    activeID = id
-                    dragIndexFloat = nil
-                }
-                if reduceMotion { settle() } else {
-                    withAnimation(.interpolatingSpring(stiffness: 260, damping: 22)) { settle() }
-                }
+                // Motion refinement pass — plain assignment, no
+                // `withAnimation` wrapper here anymore: the render/glide
+                // animation is centralized in the single
+                // `.onChange(of: selectionIndexFloat)` handler in `body`,
+                // which is what actually springs the shape from wherever
+                // the drag let go to the settled tab (still covers a
+                // cancel/outside-release drag springing back — `id` here is
+                // never past the two end tabs, `hitTest` clamps it, same as
+                // before).
+                activeID = id
+                dragIndexFloat = nil
                 // BUG 1 fix: leave the highlight exactly where the drag
                 // landed instead of clearing it to nil — it stays lit on
                 // the tab just navigated to. `isDragging = false` hands
@@ -257,6 +331,9 @@ struct BottomTabBar: View {
                 // here since `activeID` already matches (or will match, the
                 // moment `app.screen` catches up via its own onChange).
                 isDragging = false
+                dragStartX = nil
+                stretchAnchor = .center
+                stretchScaleX = 1
                 if let id, let item = items.first(where: { $0.id == id }) { item.action() }
             }
     }
@@ -288,13 +365,17 @@ struct BottomTabBar: View {
         return items.firstIndex(where: { $0.id == activeID })
     }
 
-    // Continuous "index space" position the single glass/highlight shape is
-    // drawn at: the live drag position while a drag is in flight, otherwise
-    // wherever `activeIndex` currently rests (a tap, a settle, or a screen
-    // change via `syncActiveToScreen()`). Exactly one source of truth for
-    // "where does the shape go" — see this file's real-Liquid-Glass pass
-    // doc comment above `dragIndexFloat` for why that matters (it's the fix
-    // for the old two-blob approximation's leftover-highlight bug).
+    // Continuous "index space" TARGET position for the single glass/
+    // highlight shape: the live drag position while a drag is in flight,
+    // otherwise wherever `activeIndex` currently rests (a tap, a settle, or
+    // a screen change via `syncActiveToScreen()`). Exactly one source of
+    // truth for "where should the shape end up" — see this file's real-
+    // Liquid-Glass pass doc comment above `dragIndexFloat` for why that
+    // matters (it's the fix for the old two-blob approximation's leftover-
+    // highlight bug). Motion refinement pass: this is a TARGET now, not what
+    // gets rendered directly — `renderIndexFloat` (see its own doc comment
+    // above `dragStartX`) is what the shape actually draws at, chasing this
+    // value via a spring instead of jumping straight to it.
     private var selectionIndexFloat: CGFloat? {
         dragIndexFloat ?? activeIndex.map(CGFloat.init)
     }
@@ -338,13 +419,16 @@ struct BottomTabBar: View {
             // ONE selection shape, period — see the real-Liquid-Glass pass
             // doc comment above `dragIndexFloat` for the bug this structure
             // fixes (the old two-blob approximation's stuck origin-tab
-            // highlight). Position is `selectionIndexFloat` the whole time,
-            // continuous during a drag (zero-lag, matches the finger) and
-            // sprung to the resting tab at settle — still a live fraction
-            // of `geo.size.width` (never `itemFrames`), so this stays
-            // correct through the "+" button appearing/shrinking the row
-            // and DockRow's own collapse/expand `scaleEffect`.
-            if let indexFloat = selectionIndexFloat {
+            // highlight). Position is now `renderIndexFloat` — the RENDERED,
+            // spring-chasing value (see its own doc comment above), not the
+            // raw `selectionIndexFloat` target directly — so the shape
+            // visibly travels toward the finger/target instead of jumping to
+            // it, while still ultimately settling on the exact same resting
+            // position `selectionIndexFloat` would land on. Still a live
+            // fraction of `geo.size.width` (never `itemFrames`), so this
+            // stays correct through the "+" button appearing/shrinking the
+            // row and DockRow's own collapse/expand `scaleEffect`.
+            if let indexFloat = renderIndexFloat {
                 let count = max(items.count, 1)
                 let tabWidth = geo.size.width / CGFloat(count)
                 let clampedIndexFloat = min(CGFloat(count - 1), max(0, indexFloat))
@@ -378,11 +462,23 @@ struct BottomTabBar: View {
                     // genuine system glass material (specular highlight,
                     // refraction, `.interactive()` touch response) instead
                     // of a hand-tinted, blurred capsule standing in for it.
+                    // Directional stretch cue (this pass) — `.scaleEffect`
+                    // applied ON TOP of the real `glassEffect`-decorated
+                    // view below, not a separate shape drawn instead of or
+                    // over it: an ordinary SwiftUI transform of the actual
+                    // glass view, since real `glassEffect`'s API surface has
+                    // no native directional-stretch/morph primitive (see the
+                    // `strings`-verification note above `dragStartX`). Order
+                    // matters: `.scaleEffect` sits BEFORE `.position()` so it
+                    // scales the shape in its own local space (about
+                    // `stretchAnchor`) rather than distorting where its
+                    // center lands on the bar.
                     GlassEffectContainer {
                         Capsule()
                             .fill(.clear)
                             .frame(width: shapeWidth, height: shapeHeight)
                             .glassEffect(.regular.interactive(), in: Capsule())
+                            .scaleEffect(x: stretchScaleX, anchor: stretchAnchor)
                             .position(x: x, y: barHeight / 2)
                     }
                     .allowsHitTesting(false)
@@ -444,12 +540,36 @@ struct BottomTabBar: View {
         // one bottom offset instead of each picking its own independently
         // (the real cause of them reading as two unrelated floating shapes
         // rather than one group).
-        .onAppear { syncActiveToScreen() }
+        .onAppear {
+            syncActiveToScreen()
+            renderIndexFloat = selectionIndexFloat
+        }
         .onChange(of: app.screen) { _, _ in
-            // Stage 3 (2026-09-27 nav/discovery pass) — honors Reduce
-            // Motion: the spring glide becomes a plain, near-instant snap.
-            withAnimation(reduceMotion ? .linear(duration: 0.01) : .interpolatingSpring(stiffness: 260, damping: 22)) {
-                syncActiveToScreen()
+            // Stage 3 (2026-09-27 nav/discovery pass) — plain assignment
+            // now (no `withAnimation` here): the motion-refinement pass
+            // below centralizes ALL of the shape's glide/settle animation
+            // in the single `.onChange(of: selectionIndexFloat)` handler,
+            // so `activeID` changing here just needs to change; whatever
+            // that does to `selectionIndexFloat` is picked up there,
+            // exactly once, instead of two overlapping animation
+            // transactions fighting over the same view.
+            syncActiveToScreen()
+        }
+        // Motion refinement pass (2026-09-28 follow-up #3) — the ONE place
+        // that actually animates `renderIndexFloat` (see its own doc
+        // comment above `dragStartX`): fires on every raw target change,
+        // whether that's a continuous stream of drag samples or a single
+        // discrete jump from a tap/screen-change/settle. Honors Reduce
+        // Motion by assigning directly with no animation at all, same as
+        // this file's other reduceMotion branches.
+        .onChange(of: selectionIndexFloat) { _, newValue in
+            guard let newValue else { renderIndexFloat = nil; return }
+            if reduceMotion {
+                renderIndexFloat = newValue
+            } else {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                    renderIndexFloat = newValue
+                }
             }
         }
         // BUG 3 follow-up (4d137235 real-device report): a `.zIndex()` set

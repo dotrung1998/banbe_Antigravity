@@ -1160,6 +1160,35 @@ final class AppState: ObservableObject {
     /// inventing its own).
     @Published var mapCloseSwipeProgress: CGFloat = 0
 
+    /// Gesture-arbitration fix pass (2026-09-28) — real cause of a
+    /// horizontal swipe-to-reveal on an Inbox row (native `.swipeActions`
+    /// Star/Archive, MessagingViews.swift's `InboxView`) ALSO dragging the
+    /// whole screen into RootView's own root-tab swipe (Home <-> Map <->
+    /// Notifications <-> Inbox <-> Account) at the same time: RootView
+    /// attaches `tabSwipeGesture` via `.simultaneousGesture` on an ANCESTOR
+    /// of the entire screen (`rootScreenStack`), which by definition asks
+    /// SwiftUI to let it recognize side-by-side with whatever's underneath
+    /// — including a List row's own UIKit swipe-actions pan recognizer —
+    /// instead of ever deferring to it. `InboxView` measures its own
+    /// header's bottom edge (in `.global`/screen coordinates, matching the
+    /// coordinate space `tabSwipeGesture` reads `startLocation` in — see
+    /// that gesture's own comment) and publishes it here ONLY while its
+    /// List is non-empty and it isn't the non-interactive edge-swipe-back
+    /// preview copy; `nil` the rest of the time, so this never affects any
+    /// other screen. `tabSwipeGesture` treats any drag whose start point
+    /// falls at or below this Y as "vertical" (its existing escape hatch
+    /// for "this isn't mine") the instant it decides direction — the same
+    /// geometry-at-touch-start approach already used for the leading-edge
+    /// strip and Map's own narrow trailing strip, just sourced from a
+    /// measured value instead of a hardcoded width, since a screen's rows
+    /// fill an irregular, dynamic-type-dependent area a constant can't
+    /// capture. A row therefore owns the ENTIRE drag from the moment it
+    /// starts inside the List — the ancestor gesture never even engages,
+    /// so there is no partial root-tab "preview" to spring back from —
+    /// while a drag starting above this Y (the header) still swipes tabs
+    /// exactly as before.
+    @Published var horizontalSwipeRowRegionMinY: CGFloat?
+
     /// Follow-up (11-realtime-map.md, bug 1): a distinct, one-shot signal
     /// from a CONFIRMED close (swipe past the threshold, or the "← Đóng"
     /// button) — separate from the continuous `mapCloseSwipeProgress`

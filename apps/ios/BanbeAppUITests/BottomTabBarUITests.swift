@@ -144,4 +144,55 @@ final class BottomTabBarUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["screen.notifications"].waitForExistence(timeout: 10),
                       "Rapid tap immediately after a drag release did not navigate")
     }
+
+    /// Motion refinement pass (2026-09-28 follow-up #3) — coverage for two
+    /// of that ticket's requirements: (a) a long pause/hold mid-drag still
+    /// commits correctly to wherever the finger actually is when it lifts,
+    /// and (b) it does NOT get stuck on / snap back to the tab the drag
+    /// started on just because it paused for a while first.
+    ///
+    /// Honest limitation, stated plainly per that ticket's own instruction
+    /// rather than forcing something impractical: XCUITest's public gesture
+    /// API (`XCUICoordinate.press(forDuration:thenDragTo:withVelocity:
+    /// thenHoldForDuration:)`) is synchronous and atomic — it presses, drags
+    /// to the given destination, holds THERE, and only then lifts, all
+    /// before the call returns control to the test. There is no public API
+    /// to hold a continuous touch down, pause over one tab without lifting,
+    /// then keep moving to a DIFFERENT tab and release there — the hold
+    /// destination and the lift/commit point are always the same location.
+    /// So this test cannot itself observe "the app did not navigate to the
+    /// paused-over tab before release" as a separate, intermediate fact when
+    /// release later happens somewhere else — that specific guarantee is
+    /// verified by reading `BottomTabBar.swift`'s `scrubGesture`: `onChanged`
+    /// only ever mutates `activeID`/`dragIndexFloat` (cosmetic state), and
+    /// `item.action()` — the actual navigation commit — is called exactly
+    /// once, only from `onEnded`. This test instead confirms the closest
+    /// thing that IS realistically assertable end to end: a real, extended
+    /// pause (1.5s, long enough to expose any accidental timer-based
+    /// auto-commit or revert-to-origin behavior) mid-drag still lands on the
+    /// correct tab once the finger actually lifts there.
+    func testLongPauseMidDragStillCommitsToReleaseTab() {
+        let app = launchSignedIn()
+        XCTAssertTrue(tab(app, "tab.home").waitForExistence(timeout: 10))
+
+        let home = tab(app, "tab.home")
+        let map = tab(app, "tab.map")
+        let start = home.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let mid = map.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+
+        // Press at Home, drag to Map, hold there for 1.5s (a deliberate
+        // pause), then lift — one continuous touch throughout.
+        start.press(forDuration: 0.1, thenDragTo: mid, withVelocity: .default, thenHoldForDuration: 1.5)
+
+        XCTAssertTrue(app.otherElements["screen.mapExplore"].waitForExistence(timeout: 10),
+                      "A long pause mid-drag before releasing on tab.map should still commit to Map, " +
+                      "not remain on Home or land anywhere else")
+
+        // Confirm the bar is still fully responsive afterward — a stray
+        // "stuck mid-gesture" state would otherwise show up here as a
+        // missed tap rather than as anything the previous assertion caught.
+        tab(app, "tab.profile").tap()
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 10),
+                      "Tab bar did not respond to a normal tap after a long-pause drag")
+    }
 }

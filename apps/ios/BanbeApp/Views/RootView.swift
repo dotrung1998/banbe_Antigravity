@@ -181,6 +181,21 @@ struct RootView: View {
                         tabSwipeDirection = "vertical"
                         return
                     }
+                    // Gesture-arbitration fix pass (2026-09-28) — see
+                    // `AppState.horizontalSwipeRowRegionMinY`'s own doc
+                    // comment. `startLocation` is read here in this
+                    // gesture's `.local` space, which for `rootScreenStack`
+                    // (RootView's own top-level, unoffset container) is the
+                    // same as screen/`.global` coordinates — matching the
+                    // space InboxView measures its header in. A touch that
+                    // starts inside the currently-visible List's row region
+                    // is never claimed as horizontal here at all, so a row's
+                    // own native swipe-actions gesture owns it exclusively
+                    // from the first pixel of movement.
+                    if let rowRegionMinY = app.horizontalSwipeRowRegionMinY, value.startLocation.y >= rowRegionMinY {
+                        tabSwipeDirection = "vertical"
+                        return
+                    }
                     let width = UIScreen.main.bounds.width
                     let startX = value.startLocation.x
                     // Reserves the SAME leading-edge strip edgeSwipeBack

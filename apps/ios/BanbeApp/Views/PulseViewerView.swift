@@ -306,6 +306,13 @@ struct PulseViewerView: View {
             .overlay(Capsule().stroke(app.pulseTab == tab ? .clear : app.palette.rule))
             .buttonStyle(.plain)
             .fixedSize()
+            // Teaser "Ảnh nổi bật: Bấm xem thêm" deep-link pass — lets a UI
+            // test (and any future caller) confirm which tab is actually
+            // selected after jumping straight into this destination, since
+            // the visual selected-state above (ink background) isn't itself
+            // queryable.
+            .accessibilityIdentifier("pulse.tab.\(tab.rawValue)")
+            .accessibilityAddTraits(app.pulseTab == tab ? .isSelected : [])
     }
 
     // 2026-09-25 fix pass — shares a ranked photo via the real native share
