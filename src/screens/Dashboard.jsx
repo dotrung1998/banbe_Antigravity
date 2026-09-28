@@ -113,8 +113,24 @@ export default function Dashboard() {
   // actually ended (live `status`, not just the static catalogue's
   // frozen `endedHoursAgo`) actually drops into `past` and loses its
   // Check-in button below instead of staying "upcoming" forever.
-  const myEvents = (s.myOrgEventKeys.length
-    ? EVENTS.filter(e => s.myOrgEventKeys.includes(e.key))
+  //
+  // Part B audit (2026-09-28) — this used to filter on `myOrgEventKeys`
+  // alone, which is the account-wide UNION of every organizer row this
+  // account owns (deliberately so — it's also the real ownership gate
+  // openNotification()/openVerificationDetail() use for dual-role
+  // accounts, see its own comment in GocContext.jsx). This header,
+  // though, brands ONE organizer (`s.myOrganizerId`, the deterministic
+  // "primary" org above) — so an account seeded with several organizer
+  // rows (migration 020's per-event random assignment; a real user only
+  // ever has one) showed every one of ITS organizers' events here under
+  // just the primary org's name/avatar, even though each event's own
+  // EventDetail "Ghé <organizer>" correctly names its real, distinct
+  // owner (no bad FK — every event's organizer_id was always right).
+  // Narrowed to events whose real organizer_id (myOrgEventOrganizerId)
+  // actually matches the organizer branded above.
+  const myOrgEventKeysForEv = s.myOrgEventKeys.filter(k => s.myOrgEventOrganizerId[k] === s.myOrganizerId);
+  const myEvents = (myOrgEventKeysForEv.length
+    ? EVENTS.filter(e => myOrgEventKeysForEv.includes(e.key))
     : EVENTS.filter(e => e.orgName === ev.orgName)
   ).map(e => {
     const overrides = liveEventOverrides(s.homeLiveEvents[e.key], e);

@@ -588,3 +588,169 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
         }
     }
 }
+
+/// Pulse-teaser real-device follow-up (2026-09-28) — same root cause as
+/// `ScaffoldScrollProbe`'s own doc comment immediately above, applied to a
+/// SECOND place this codebase was still using the buggy mechanism:
+/// `HomeView`'s Pulse ring reported its own on-screen frame to
+/// `PulseTeaserBubbleView` via a `GeometryReader` + `PreferenceKey`
+/// (`geo.frame(in: .global)`), exactly the pattern `ScaffoldScrollProbe`
+/// replaced for scroll-offset tracking, and it inherits the identical
+/// limitation: PreferenceKey values only propagate while the run loop is
+/// in `.default` mode, but a LIVE touch-drag on Home's own feed runs in
+/// `.tracking` mode. Every time the ring's ANCESTOR ScrollView was being
+/// actively dragged by a real finger — which, unlike a simulator's mouse-
+/// driven scroll, is how virtually every real scroll happens — the
+/// preference simply stopped propagating, freezing `app.pulseRingFrame`
+/// at whatever frame the ring had the last time the run loop was in
+/// `.default` mode (often close to its very first pre-layout/pre-safe-
+/// area frame, since a user can touch and start scrolling within a
+/// fraction of a second of Home appearing). The ring itself kept moving
+/// for real as the feed scrolled; the bubble kept positioning itself off
+/// that stale rect — reading, on a real device, as "beside the wrong
+/// spot" (right-and-lower of the REAL ring) rather than the ring's true,
+/// current upper-right quadrant. This is a timing/propagation-mode
+/// mismatch, not a coordinate-space or view-hierarchy mismatch — the
+/// coordinate space (`.global`) and the anchor math were already correct
+/// on paper, which is exactly why it looked fine on inspection.
+///
+/// Fixed the same way `ScaffoldScrollProbe` already fixed the analogous
+/// bug: observe the ancestor `UIScrollView`'s `contentOffset` via KVO
+/// (fires synchronously in ANY RunLoop mode, including `.tracking`) and
+/// recompute this view's own `convert(bounds, to: nil)` — its real,
+/// current window-space frame — on every tick, reporting straight to a
+/// plain callback instead of through a SwiftUI PreferenceKey. Also
+/// reports on `layoutSubviews`/`didMoveToWindow` so the very first frame
+/// (before any scrolling has happened at all) is real and current too,
+/// never a stale/zero placeholder.
+struct RingFrameProbe: UIViewRepresentable {
+    let onChange: (CGRect) -> Void
+
+    func makeUIView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateUIView(_ uiView: ProbeView, context: Context) {
+        uiView.onChange = onChange
+    }
+
+    final class ProbeView: UIView {
+        var onChange: ((CGRect) -> Void)?
+        private weak var observedScrollView: UIScrollView?
+        private var observation: NSKeyValueObservation?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            attachIfNeeded()
+            reportFrame()
+        }
+
+        override func didMoveToSuperview() {
+            super.didMoveToSuperview()
+            attachIfNeeded()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            reportFrame()
+        }
+
+        // Walks up from this (otherwise invisible, zero-size) probe —
+        // placed as the ring's own `.background`, so it's always a
+        // descendant of the actual `UIScrollView` SwiftUI's `ScrollView`
+        // creates — to find and observe that ancestor directly, exactly
+        // as `ScaffoldScrollProbe` does.
+        private func attachIfNeeded() {
+            guard observedScrollView == nil else { return }
+            var responder: UIView? = superview
+            while let candidate = responder {
+                if let scrollView = candidate as? UIScrollView {
+                    observedScrollView = scrollView
+                    observation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
+                        self?.reportFrame()
+                    }
+                    return
+                }
+                responder = candidate.superview
+            }
+        }
+
+        private func reportFrame() {
+            guard window != nil else { return }
+            onChange?(convert(bounds, to: nil))
+        }
+    }
+}
+
+/// Map search-focus fix (2026-09-28 follow-up) — same invisible-probe idiom
+/// as `ScaffoldScrollProbe` above: SwiftUI has no API for "this `.sheet`'s
+/// own system presentation animation has actually finished," so this walks
+/// the real UIKit responder chain to ask for it directly, via
+/// `UIViewController.transitionCoordinator` — the same object UIKit itself
+/// uses to sequence work alongside a view controller transition.
+///
+/// Root cause this exists to fix: a fresh (non-restored) `MapExploreView`
+/// starts with its `.sheet(isPresented:)` already `true` from `init`, so the
+/// sheet's system slide-up-from-bottom transition begins in the SAME commit
+/// that mounts `sheetContent`. Setting `@FocusState` (and therefore
+/// `becomeFirstResponder()`) from that content's own `.onAppear` fires
+/// *during* that in-flight transition — before the search field's hosting
+/// view controller is actually the window's frontmost/active one — and
+/// UIKit silently drops a first-responder request made mid-transition
+/// rather than queuing it. That is a plain iOS/UIKit behavior (not
+/// SwiftUI-specific), so no amount of restructuring `.onAppear`/`.task`
+/// timing inside SwiftUI alone fixes it; it needs to know the transition
+/// really finished, which only UIKit's own `transitionCoordinator` can say
+/// with certainty.
+struct SheetPresentationSettledProbe: UIViewRepresentable {
+    let onSettled: () -> Void
+
+    func makeUIView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.onSettled = onSettled
+        view.isHidden = true
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ uiView: ProbeView, context: Context) {
+        uiView.onSettled = onSettled
+    }
+
+    final class ProbeView: UIView {
+        var onSettled: (() -> Void)?
+        private var fired = false
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard window != nil, !fired else { return }
+            fired = true
+            // Walk the RESPONDER chain (not the view/superview hierarchy —
+            // the presenting/presented `UIViewController` sits above the
+            // SwiftUI-managed view tree, not as a subview ancestor of it) to
+            // find the sheet's own view controller and ask its transition
+            // coordinator (non-nil only while a transition is genuinely
+            // still in flight) for a true completion callback.
+            var responder: UIResponder? = self
+            while let current = responder {
+                if let vc = current as? UIViewController, let coordinator = vc.transitionCoordinator {
+                    coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+                        self?.onSettled?()
+                    }
+                    return
+                }
+                responder = current.next
+            }
+            // No in-flight coordinator found — either the presentation had
+            // already finished by the time this probe's view landed in a
+            // window (e.g. a detent resize re-triggering layout, not a
+            // fresh presentation), or this probe is used somewhere outside
+            // a `.sheet` transition entirely. Either way the field is
+            // already part of the live, interactive hierarchy right now, so
+            // there's nothing left to wait for.
+            DispatchQueue.main.async { [weak self] in self?.onSettled?() }
+        }
+    }
+}

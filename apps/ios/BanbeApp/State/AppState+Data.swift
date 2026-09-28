@@ -420,6 +420,7 @@ extension AppState {
             attending = []
             tickets = [:]
             myOrgEventKeys = []
+            myOrgEventOrganizerID = [:]
             orgRegName = ""
             notifications = []
             toasts = []
@@ -612,11 +613,18 @@ extension AppState {
             // (earliest-created = the owner's "primary" organizer) makes
             // this identity stable across launches instead of silently
             // random — mirrors the same fix in web's `syncUser()`.
+            // Hardening (2026-09-28) — migration 020's seed batch shares one
+            // literal `created_at` across all its rows, so `created_at`
+            // alone doesn't actually break ties by SQL semantics (it was
+            // observed stable, but that's physical row order, never
+            // promised by Postgres). `id` as an explicit secondary sort key
+            // makes this genuinely deterministic, not just observed-stable.
             let organizers: [OrganizerRow] = try await SupabaseService.client
                 .from("organizers")
                 .select("id, name, about, avatar_path, intro_long, social_links")
                 .or("owner_id.eq.\(uid.uuidString),user_id.eq.\(uid.uuidString)")
                 .order("created_at", ascending: true)
+                .order("id", ascending: true)
                 .execute().value
             myOrganizerIDs = organizers.map(\.id)
             if !organizers.isEmpty {
@@ -632,12 +640,18 @@ extension AppState {
                 orgRegIntroLong = organizers.first?.introLong ?? ""
                 orgRegLinks = organizers.first?.socialLinks ?? []
                 myOrganizerAvatarPath = organizers.first?.avatarPath ?? ""
-                let events: [IDRow] = try await SupabaseService.client
+                struct EventIDOrganizer: Decodable { let id: String; let organizerId: String
+                    enum CodingKeys: String, CodingKey { case id; case organizerId = "organizer_id" } }
+                let events: [EventIDOrganizer] = try await SupabaseService.client
                     .from("events")
-                    .select("id")
+                    .select("id, organizer_id")
                     .in("organizer_id", values: organizers.map(\.id))
                     .execute().value
                 myOrgEventKeys = events.map(\.id)
+                // See myOrgEventOrganizerID's own doc comment (AppState.swift)
+                // — Dashboard's branded shelf filters on this; the ownership
+                // gate above (myOrgEventKeys) stays the full union on purpose.
+                myOrgEventOrganizerID = Dictionary(uniqueKeysWithValues: events.map { ($0.id, $0.organizerId) })
                 if !events.isEmpty { hasHosted = true }
             }
         } catch {

@@ -100,4 +100,48 @@ final class BottomTabBarUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 10),
                       "Tab bar tap did not register while the map sheet was open")
     }
+
+    /// Real-Liquid-Glass pass (2026-09-28 follow-up #2) — extends this
+    /// existing harness minimally rather than building a new one, per that
+    /// ticket's own instruction. Covers, end to end through the real app
+    /// (not just the Swift state machine reasoning that was the primary
+    /// verification for this pass): a full first-tab-to-last-tab drag,
+    /// reversing direction mid-drag, and a rapid tap immediately after a
+    /// completed drag/release — the three interaction shapes called out by
+    /// name. This only asserts on the resulting SCREEN (the one observable,
+    /// stable signal from outside the process); it can't itself see whether
+    /// a leftover highlight capsule is on screen (no pixel harness here —
+    /// see this file's own earlier doc comment on why `.any` is used
+    /// instead of relying on inferred UI element traits), so it doesn't
+    /// replace the state-machine reasoning in BottomTabBar.swift's own
+    /// doc comments, only adds a real-device/simulator navigation check on
+    /// top of it.
+    func testDragAcrossAllTabsReversingMidDragThenRapidTapAfterRelease() {
+        let app = launchSignedIn()
+        XCTAssertTrue(tab(app, "tab.home").waitForExistence(timeout: 10))
+
+        let home = tab(app, "tab.home")
+        let map = tab(app, "tab.map")
+        let profile = tab(app, "tab.profile")
+
+        // First tab (Home) -> last tab (Profile), pausing partway back at
+        // Map to reverse direction mid-drag, before continuing on to
+        // Profile and releasing there.
+        let start = home.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let mid = map.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let end = profile.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: mid)
+        mid.press(forDuration: 0.1, thenDragTo: start)
+        start.press(forDuration: 0.1, thenDragTo: end)
+
+        XCTAssertTrue(app.otherElements["screen.profile"].waitForExistence(timeout: 10),
+                      "Drag ending on tab.profile did not land on the profile screen")
+
+        // Rapid tap immediately after a completed drag/release — the
+        // gesture's own `isDragging`/`activeID` bookkeeping must have
+        // already handed back control by the time this lands.
+        tab(app, "tab.notifications").tap()
+        XCTAssertTrue(app.otherElements["screen.notifications"].waitForExistence(timeout: 10),
+                      "Rapid tap immediately after a drag release did not navigate")
+    }
 }

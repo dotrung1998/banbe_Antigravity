@@ -433,6 +433,18 @@ final class AppState: ObservableObject {
     @Published var tickets: [String: Int] = [:]
     @Published var myOrgEventKeys: [String] = []
     @Published var myOrganizerIDs: [String] = []
+    // Part B audit (2026-09-28) — Dashboard-identity-mismatch fix (mirrors
+    // web's GocContext.jsx `myOrgEventOrganizerId`). `myOrgEventKeys` above
+    // stays the full union across every organizer row this account owns
+    // on purpose — it's the real per-event ownership gate elsewhere (the
+    // dual-role-account check in the notification handlers below) — but
+    // DashboardView's own branded "upcoming"/"past" shelf must show only
+    // the ONE organizer it brands (`myOrganizerID`), not every organizer
+    // this account happens to own (only ever produced by migration 020's
+    // per-event-random seed; a real user only ever has one). This maps
+    // each owned event id to its real organizer_id so `myOrgEvents` below
+    // can filter to just the branded organizer's own events.
+    @Published var myOrgEventOrganizerID: [String: String] = [:]
     // Host tab's own profile card (Stage D, migration 090) — this
     // account's single organizer id + its real avatar_path. Only one
     // organizer per account is supported (same standing assumption
@@ -582,10 +594,17 @@ final class AppState: ObservableObject {
     // while visually covered.
     @Published var storyRingFrames: [String: CGRect] = [:]
     // Pulse teaser pass (2026-09-27) — the Pulse ring's own global frame,
-    // same PreferenceKey mechanism as storyRingFrames above (HomeView's
-    // `PulseRingFramePreferenceKey`, `.onPreferenceChange`), read by
-    // `PulseTeaserBubbleView` to position itself against the REAL ring
-    // on screen rather than guessing a fixed offset.
+    // read by `PulseTeaserBubbleView` to position itself against the REAL
+    // ring on screen rather than guessing a fixed offset.
+    //
+    // Real-device follow-up (2026-09-28): unlike `storyRingFrames` above,
+    // this is no longer written via a GeometryReader + PreferenceKey —
+    // that mechanism silently stops propagating for the whole duration of
+    // a real touch-drag (RunLoop `.tracking` mode; see `RingFrameProbe` in
+    // Components.swift and `ScaffoldScrollProbe`'s own doc comment for the
+    // full root-cause writeup), which froze this frame stale while the
+    // ring kept moving on screen. `HomeView` now writes here directly from
+    // `RingFrameProbe`'s UIKit-level callback instead.
     @Published var pulseRingFrame: CGRect?
     @Published var storyCreatePreviewImage: UIImage?
     @Published var storyCreateBusy = false
@@ -1403,12 +1422,21 @@ final class AppState: ObservableObject {
     // (bookable or already happened) — 'review'/'draft' rows show in
     // DashboardView's own separate pending/needsFix sections instead (see
     // myPendingEvents/myNeedsFixEvents below), never mixed into "Upcoming".
+    // Part B audit (2026-09-28) — narrowed to events whose real
+    // organizer_id (myOrgEventOrganizerID) actually matches the ONE
+    // organizer this screen brands (myOrganizerID), not the full
+    // multi-organizer union `myOrgEventKeys` covers — see both
+    // properties' own doc comments. `myOrganizerID == nil` (never signed
+    // in as a real organizer yet) falls through to the untouched
+    // name-matched demo fallback below.
     var myOrgEvents: [CatalogEvent] {
-        if myOrgEventKeys.isEmpty {
+        let scopedKeys = myOrgEventKeys.filter { myOrgEventOrganizerID[$0] == myOrganizerID }
+        if scopedKeys.isEmpty {
             return EventCatalog.all.filter { $0.orgName == currentEvent.orgName }.map(withLive)
         }
-        let catalogOwned = EventCatalog.all.filter { myOrgEventKeys.contains($0.key) }.map(withLive)
+        let catalogOwned = EventCatalog.all.filter { scopedKeys.contains($0.key) }.map(withLive)
         let realOwned = myOrgEventSummaries
+            .filter { scopedKeys.contains($0.id) }
             .filter { $0.status == "live" || $0.status == "ended" || $0.status == "cancelled" }
             .map { CatalogEvent.fromReal($0) }
         return catalogOwned + realOwned

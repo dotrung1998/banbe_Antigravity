@@ -151,27 +151,41 @@ struct BottomTabBar: View {
     // and for `syncActiveToScreen()`'s own resting-state placement).
     @State private var dragIndexFloat: CGFloat?
 
-    // Liquid-glass droplet pass (2026-09-28 follow-up, real-iPhone report) —
-    // the drag highlight used to be a single Capsule that only widened
-    // ("bulge") as it moved, which on a real device still read as "a plain
-    // oval sliding/teleporting," not the intended liquid-glass blob. SwiftUI
-    // (this project's deployment target, iOS 17) has no built-in gooey/
-    // metaball filter the way an SVG blur+contrast filter gives web (see
-    // BottomTabBar.jsx's own goo-layer comment) — `dragAnchorIndex` +
-    // `hasMovedEnough` below drive the CLOSEST practical approximation:
-    // two overlapping translucent blobs (one pinned at the tab this
-    // gesture started from, one following the finger) plus a separate
-    // connecting capsule between them that visibly narrows and fades as
-    // they pull apart — a stand-in for an elastic "neck," not a literal
-    // metaball. `dragAnchorIndex` is captured once, on the FIRST gesture
-    // change past the movement threshold, from `activeIndex` as it stood
-    // BEFORE this gesture's own hit-testing overwrites `activeID` — i.e.
-    // the previously-selected tab, matching "neck stretches back toward
-    // the previously selected tab" rather than wherever the finger first
-    // touched down.
-    @State private var dragAnchorIndex: Int?
-    @State private var hasMovedEnough = false
-    @State private var gestureStartLocation: CGPoint?
+    // Real Liquid Glass pass (2026-09-28 follow-up #2, real-iPhone report) —
+    // the hand-rolled "two overlapping translucent blobs + a fading
+    // connector" stand-in from the previous pass is GONE. Root cause of
+    // that pass's own reported bug ("dark/opaque patch left behind at the
+    // ORIGINAL tab during drag"): the anchor blob (pinned at
+    // `dragAnchorIndex`) was drawn at a constant `opacity(0.12)` for the
+    // ENTIRE drag, with only the connecting neck's opacity fading as the
+    // finger pulled away — so once the neck had visually "detached" you
+    // were left with TWO highlights on screen, the live one under the
+    // finger (correct) and a stuck one back at the origin tab (the bug).
+    //
+    // Replaced with exactly ONE view: a single `.glassEffect(_:in:)` capsule
+    // (real SwiftUI API — see below) whose `.position()` is driven straight
+    // off `selectionIndexFloat`, continuously during a drag and by a spring
+    // at settle, so there is structurally nothing left over anywhere except
+    // wherever that one shape currently sits. No anchor state, no neck, no
+    // "has this drag moved far enough to show the second blob" bookkeeping
+    // — `dragAnchorIndex`/`hasMovedEnough`/`gestureStartLocation` (all
+    // solely in service of the old two-blob approximation) are deleted, not
+    // just unused.
+    //
+    // API verification (this machine, this SDK — not assumed from training
+    // data): Xcode 27 / iPhoneOS27.0 SDK. `strings` over
+    // .../XcodeDefault.xctoolchain/usr/lib/swift/iphoneos/prebuilt-modules/
+    // 27.0/SwiftUICore.swiftmodule/arm64e-apple-ios.swiftmodule (SwiftUI
+    // re-exports SwiftUICore) resolves real, non-fabricated symbols:
+    // `glassEffect`, `glassEffectID`, `glassEffectUnion`,
+    // `glassEffectTransition`, `GlassEffectContainer`, `Glass.regular`,
+    // `Glass.interactive(_:)` — the actual documented iOS 26 Liquid Glass
+    // View-modifier API, not invented names. This project's deployment
+    // target is still iOS 17 (apps/ios/project.yml), so every use below is
+    // gated `if #available(iOS 26.0, *)`; below that (or with Reduce Motion
+    // on) it falls back to a plain translucent capsule — same
+    // `dockHighlight`-equivalent styling the pre-glass code already used,
+    // not a crash and not a second homemade effect.
 
     private func syncActiveToScreen() {
         guard !isDragging else { return }
@@ -217,48 +231,21 @@ struct BottomTabBar: View {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
                 isDragging = true
-                // Captured on the very first change of a gesture, from
-                // `activeIndex` as it stood BEFORE this line's own
-                // hit-testing can move it — the tab this gesture started
-                // from, i.e. the droplet's anchor (see that state's own
-                // doc comment above).
-                if gestureStartLocation == nil {
-                    gestureStartLocation = value.startLocation
-                    dragAnchorIndex = activeIndex
-                }
                 let id = hitTest(value.location.x)
                 if id != activeID { activeID = id }
                 // No `withAnimation` here, deliberately — this needs to
-                // track the finger with zero lag, the actual fix for
-                // "jumps from slot to slot." Reduce Motion still gets the
-                // continuous tracking (it isn't the bouncy spring that
-                // setting objects to); only the settle below drops its glide.
+                // track the finger with zero lag (the fix for "jumps from
+                // slot to slot" predates this pass and still holds: the
+                // single glass shape below reads this same value). A plain
+                // tap never moves this far from its start, so it lands
+                // already in place by `onEnded` — instant, no glide.
                 dragIndexFloat = indexFloat(for: value.location.x, barWidth: barWidth)
-                // Below this much travel, a press still reads as a plain
-                // tap-in-progress — keeps a real tap instant/blob-free (a
-                // plain tap needs no gooey animation) without a separate
-                // tap/drag branch in the commit logic above. Reduce Motion
-                // never engages the two-blob approximation at all (see the
-                // rendering branch in `body`), so this only matters when
-                // motion isn't reduced.
-                if !reduceMotion, !hasMovedEnough, let start = gestureStartLocation {
-                    let dx = value.location.x - start.x
-                    let dy = value.location.y - start.y
-                    if dx * dx + dy * dy > 16 { hasMovedEnough = true }
-                }
             }
             .onEnded { value in
                 let id = hitTest(value.location.x)
                 let settle = {
                     activeID = id
                     dragIndexFloat = nil
-                    // Resets INSIDE the same animation block as the settle
-                    // above so the two-blob approximation crossfades into
-                    // the single settled highlight rather than cutting
-                    // instantly.
-                    hasMovedEnough = false
-                    dragAnchorIndex = nil
-                    gestureStartLocation = nil
                 }
                 if reduceMotion { settle() } else {
                     withAnimation(.interpolatingSpring(stiffness: 260, damping: 22)) { settle() }
@@ -301,6 +288,17 @@ struct BottomTabBar: View {
         return items.firstIndex(where: { $0.id == activeID })
     }
 
+    // Continuous "index space" position the single glass/highlight shape is
+    // drawn at: the live drag position while a drag is in flight, otherwise
+    // wherever `activeIndex` currently rests (a tap, a settle, or a screen
+    // change via `syncActiveToScreen()`). Exactly one source of truth for
+    // "where does the shape go" — see this file's real-Liquid-Glass pass
+    // doc comment above `dragIndexFloat` for why that matters (it's the fix
+    // for the old two-blob approximation's leftover-highlight bug).
+    private var selectionIndexFloat: CGFloat? {
+        dragIndexFloat ?? activeIndex.map(CGFloat.init)
+    }
+
     // Stage 3 (2026-09-27 nav/discovery pass) — extracted out of `body`'s
     // own `ForEach` (a real, confirmed Swift type-checker timeout when
     // this whole modifier chain sat inline there: "unable to type-check
@@ -337,90 +335,72 @@ struct BottomTabBar: View {
     var body: some View {
         GeometryReader { geo in
         ZStack(alignment: .leading) {
-            // Soft, blurred, darker highlight blob. Dock-drag fix pass
-            // (2026-09-27, follow-up B) — `dragIndexFloat` (continuous,
-            // set live by `scrubGesture`) takes over from the discrete
-            // `activeIndex` the instant a drag is live, so this now
-            // interpolates center, width AND corner curvature continuously
-            // between two icons instead of snapping between fixed slots:
-            // at its resting width exactly centered on an icon, stretched
-            // (soft "droplet" bulge) exactly halfway between two, easing
-            // between those two extremes as the raw x position moves.
-            // Position/width are still a live fraction of `geo.size.width`
-            // (see this view's own now-legacy `activeIndex` doc comment
-            // above) — never itemFrames — so this stays correct through the
-            // "+" button appearing/shrinking the row and DockRow's own
-            // collapse/expand `scaleEffect`.
-            if hasMovedEnough, !reduceMotion, let anchorIdx = dragAnchorIndex, let indexFloat = dragIndexFloat {
-                // Two-blob droplet approximation (see `dragAnchorIndex`'s
-                // own doc comment for why this isn't a literal metaball —
-                // SwiftUI/iOS 17 has no built-in gooey filter). One blob
-                // stays pinned at the tab this gesture started from, one
-                // follows the finger; a separate connecting capsule between
-                // their centers narrows and fades as they pull apart,
-                // standing in for an elastic neck that "detaches" once the
-                // drag has traveled far enough — an emergent-looking effect
-                // achieved here by explicit distance-based interpolation,
-                // not a real filter.
+            // ONE selection shape, period — see the real-Liquid-Glass pass
+            // doc comment above `dragIndexFloat` for the bug this structure
+            // fixes (the old two-blob approximation's stuck origin-tab
+            // highlight). Position is `selectionIndexFloat` the whole time,
+            // continuous during a drag (zero-lag, matches the finger) and
+            // sprung to the resting tab at settle — still a live fraction
+            // of `geo.size.width` (never `itemFrames`), so this stays
+            // correct through the "+" button appearing/shrinking the row
+            // and DockRow's own collapse/expand `scaleEffect`.
+            if let indexFloat = selectionIndexFloat {
                 let count = max(items.count, 1)
                 let tabWidth = geo.size.width / CGFloat(count)
-                let anchorX = tabWidth * (CGFloat(anchorIdx) + 0.5)
-                let clampedIndexFloat = min(CGFloat(count - 1), max(0, indexFloat))
-                let dragX = tabWidth * (clampedIndexFloat + 0.5)
-                let blobWidth = tabWidth * 0.62
-                let blobHeight = barHeight - 14
-                let distance = abs(dragX - anchorX)
-                // Beyond ~1.6 slot-widths of travel the neck has fully
-                // "detached" — connects across roughly one dock slot,
-                // matching the reference's "short" elastic neck rather than
-                // staying connected across the whole bar.
-                let maxConnect = tabWidth * 1.6
-                let neckProgress = max(0, 1 - distance / maxConnect)
-                let neckHeight = blobHeight * (0.1 + 0.55 * neckProgress)
-                let neckOpacity = 0.12 * neckProgress
-
-                ZStack {
-                    Capsule()
-                        .fill(app.palette.ink.opacity(neckOpacity))
-                        .frame(width: distance + blobWidth * 0.5, height: neckHeight)
-                        .position(x: (anchorX + dragX) / 2, y: barHeight / 2)
-                    Capsule()
-                        .fill(app.palette.ink.opacity(0.12))
-                        .frame(width: blobWidth, height: blobHeight)
-                        .position(x: anchorX, y: barHeight / 2)
-                    Capsule()
-                        .fill(app.palette.ink.opacity(0.12))
-                        .frame(width: blobWidth, height: blobHeight)
-                        .position(x: dragX, y: barHeight / 2)
-                }
-                .blur(radius: 0.6)
-                .allowsHitTesting(false)
-            } else if let indexFloat = dragIndexFloat ?? activeIndex.map(CGFloat.init) {
-                let count = max(items.count, 1)
-                let tabWidth = geo.size.width / CGFloat(count)
-                // 0 exactly on an icon's own center, 0.5 exactly between
-                // two icons — the point of maximum stretch. This branch now
-                // covers only: a plain tap (never crosses the movement
-                // threshold above), the at-rest/settled state, and the
-                // entire Reduce Motion path — the two-blob approximation
-                // above never engages for any of those, per this ticket's
-                // own "no gooey animation for a simple tap" / Reduce Motion
-                // fallback instructions.
-                let fracFromCenter = abs(indexFloat - indexFloat.rounded())
-                let bulge = 1 + 0.5 * sin(min(1, fracFromCenter / 0.5) * (.pi / 2))
-                let width = tabWidth * bulge
                 let clampedIndexFloat = min(CGFloat(count - 1), max(0, indexFloat))
                 let center = tabWidth * (clampedIndexFloat + 0.5)
-                let x = min(geo.size.width - width / 2, max(width / 2, center))
-                // A very slight extra corner rounding at the bulge's peak
-                // reads as more "liquid" than a fixed capsule radius that
-                // just stretches uniformly.
-                Capsule()
-                    .fill(app.palette.ink.opacity(0.12))
-                    .frame(width: width, height: (barHeight - 10) * (1 + 0.03 * (bulge - 1)))
-                    .position(x: x, y: barHeight / 2)
-                    .blur(radius: 0.5)
+                let shapeWidth = tabWidth * 0.82
+                let shapeHeight = barHeight - 14
+                let x = min(geo.size.width - shapeWidth / 2, max(shapeWidth / 2, center))
+
+                if #available(iOS 26.0, *), !reduceMotion {
+                    // Real Apple Liquid Glass — `Glass.regular.interactive()`
+                    // (an interactive glass responds to touch with its own
+                    // system-drawn highlight/press feedback) applied via
+                    // `.glassEffect(_:in:)`, both real SwiftUICore API
+                    // confirmed present in this SDK (see doc comment above).
+                    // `GlassEffectContainer` is Apple's documented wrapper
+                    // for correct compositing/blending of glass content —
+                    // used here even though there's only one shape, per
+                    // Apple's own guidance to always host glassEffect
+                    // content inside one.
+                    //
+                    // Honest limitation (per this ticket's own instruction
+                    // to state one rather than fake it): this is a single
+                    // shape gliding continuously between tabs, not a
+                    // droplet/elastic-neck morph. Real `glassEffect`'s fluid
+                    // shape-blending (via `glassEffectID`/
+                    // `glassEffectUnion`) is designed for MULTIPLE
+                    // concurrently-visible glass shapes merging into and
+                    // separating from each other — it isn't the right tool
+                    // for "one shape sliding along a track," so no such
+                    // merge/split geometry is attempted here. What IS real:
+                    // genuine system glass material (specular highlight,
+                    // refraction, `.interactive()` touch response) instead
+                    // of a hand-tinted, blurred capsule standing in for it.
+                    GlassEffectContainer {
+                        Capsule()
+                            .fill(.clear)
+                            .frame(width: shapeWidth, height: shapeHeight)
+                            .glassEffect(.regular.interactive(), in: Capsule())
+                            .position(x: x, y: barHeight / 2)
+                    }
                     .allowsHitTesting(false)
+                } else {
+                    // Fallback for Reduce Motion and for any OS below the
+                    // Liquid Glass minimum (deployment target here is still
+                    // iOS 17) — a plain translucent capsule, the same
+                    // `dockHighlight`-equivalent styling this bar used
+                    // before any of the glass/droplet passes. No bulge, no
+                    // blur-as-goo trick: a simple, non-animated-feeling
+                    // highlight that never crashes and never renders
+                    // nothing.
+                    Capsule()
+                        .fill(app.palette.ink.opacity(0.12))
+                        .frame(width: shapeWidth, height: shapeHeight)
+                        .position(x: x, y: barHeight / 2)
+                        .allowsHitTesting(false)
+                }
             }
 
             HStack(spacing: 0) {

@@ -329,6 +329,26 @@ const initialState = {
   tickets: {},
   myOrgEventKeys: [],
   myOrganizerIds: [],
+  // Part B audit (2026-09-28) — Dashboard-identity-mismatch fix. Every
+  // owned organizer row's events are (correctly, deliberately) still
+  // unioned into `myOrgEventKeys` above — that flat list is the real
+  // per-event OWNERSHIP gate used elsewhere (openNotification's/
+  // openVerificationDetail's dual-role-account check, myRealOrgKeys'
+  // review queue) and must keep covering every organizer this account
+  // owns, not just one. But Dashboard's "Sự kiện sắp tới/đã qua" shelf
+  // renders under ONE branded organizer header (`myOrganizerId`, the
+  // deterministic earliest-created "primary" org — see the org fetch
+  // above), and used to list every event in the flat `myOrgEventKeys`
+  // union regardless of which of the account's several organizer rows
+  // actually owned it — so an account seeded (migration 020) with, say,
+  // Vườn Sau AND Phở Khuya AND Compound Garment showed all three
+  // organizers' events under Vườn Sau's own header, while each event's
+  // OWN EventDetail "Ghé <organizer>" correctly resolved its real,
+  // per-event organizer_id join (never wrong — no bad FK here). This map
+  // (event id -> its real organizer_id) lets Dashboard.jsx additionally
+  // filter its branded shelf down to just the currently-shown organizer,
+  // without narrowing the ownership gate itself.
+  myOrgEventOrganizerId: {},
   // Stage 1 (2026-09-27 nav/discovery pass) — Account > Tổ chức's host
   // card own "Tổ chức từ <year> ▪︎ <N> sự kiện" line, same published-
   // events-only rule (status IN live/ended) as get_public_profile's
@@ -1381,11 +1401,20 @@ export function GocProvider({ children }) {
       // ordering deterministically here (earliest-created = the owner's
       // "primary" organizer) makes this identity stable and self-consistent
       // across reloads instead of silently random.
+      // Hardening (2026-09-28) — migration 020's whole seed batch shares one
+      // literal `created_at` (all rows from the same statement), so
+      // `.order('created_at')` alone doesn't actually break ties by SQL
+      // semantics — it happened to come back stable in manual testing, but
+      // that's physical row order, an implementation detail Postgres never
+      // promises to preserve (a VACUUM FULL/rewrite could reshuffle it).
+      // `.order('id')` as an explicit secondary key makes the "primary
+      // organizer" pick genuinely deterministic, not just observed-stable.
       const { data: org } = await supabase
         .from('organizers')
         .select('id, name, about, avatar_path, intro_long, social_links')
         .or(`owner_id.eq.${user.id},user_id.eq.${user.id}`)
         .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
         .limit(1)
         .maybeSingle();
       if (org?.name) {
@@ -1593,10 +1622,16 @@ export function GocProvider({ children }) {
     const organizerIds = (organizers || []).map(o => o.id);
     set({ myOrganizerIds: organizerIds });
     if (organizerIds.length) {
-      const { data: events } = await supabase.from('events').select('id').in('organizer_id', organizerIds);
-      set({ myOrgEventKeys: (events || []).map(e => e.id) });
+      const { data: events } = await supabase.from('events').select('id, organizer_id').in('organizer_id', organizerIds);
+      set({
+        myOrgEventKeys: (events || []).map(e => e.id),
+        // See myOrgEventOrganizerId's own doc comment (initialState) —
+        // Dashboard.jsx's branded shelf filters on this; the ownership
+        // gate above (myOrgEventKeys) stays the full union on purpose.
+        myOrgEventOrganizerId: Object.fromEntries((events || []).map(e => [e.id, e.organizer_id])),
+      });
     } else {
-      set({ myOrgEventKeys: [] });
+      set({ myOrgEventKeys: [], myOrgEventOrganizerId: {} });
     }
   }, [set]);
 

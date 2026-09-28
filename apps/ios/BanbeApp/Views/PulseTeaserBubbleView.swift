@@ -4,10 +4,9 @@ import SwiftUI
 /// `PulseTeaserBubble`.
 ///
 /// Rendered as a RootView ZStack sibling (never inside HomeView itself),
-/// positioned from `app.pulseRingFrame` (HomeView's own
-/// `PulseRingFramePreferenceKey`) — measuring the real ring and floating
-/// above everything from that, so it can never be clipped by HomeView's
-/// ScrollView or sit behind another screen.
+/// positioned from `app.pulseRingFrame` — measuring the real ring and
+/// floating above everything from that, so it can never be clipped by
+/// HomeView's ScrollView or sit behind another screen.
 ///
 /// Positioning pass (2026-09-28): moved from "centered above the ring" to
 /// a comic-style speech bubble BESIDE the ring (to its right, vertically
@@ -58,6 +57,54 @@ import SwiftUI
 /// 'v1' -> 'v2' so the OLD one-time key can never be read by this logic
 /// (a stale `true` there would otherwise block every returning user
 /// forever) — a fresh key namespace, not a migration.
+///
+/// Real-device positioning follow-up (2026-09-28, this pass): pass 2's own
+/// anchor math above (bottom-leading corner at the ring's center) was
+/// already correct on paper — and still is, unchanged here — but a real
+/// iPhone kept showing the bubble beside the WRONG spot (right-and-lower
+/// of the ring's true position) anyway. Root cause was never the anchor
+/// formula or the `.global` coordinate space, both of which check out:
+/// it was a TIMING/propagation-mode bug in how the ring's frame reached
+/// `app.pulseRingFrame` at all. `HomeView` used to report the ring's
+/// frame through a `GeometryReader` + `PreferenceKey`
+/// (`geo.frame(in: .global)`) — SwiftUI PreferenceKey values only
+/// propagate while the run loop is in `.default` mode, but a real finger
+/// actively dragging Home's own feed ScrollView runs that drag in
+/// `.tracking` mode (this exact limitation is already independently
+/// diagnosed in this codebase, see `ScaffoldScrollProbe`'s own doc
+/// comment in Components.swift, for the identical bug on scroll-offset
+/// reporting). So for the entire duration of any real touch-scroll, the
+/// ring's reported frame froze at its last `.default`-mode value —
+/// typically close to its very first, pre-layout/pre-safe-area frame,
+/// since a user can start scrolling within a fraction of a second of
+/// Home appearing — while the ring itself kept moving for real. This
+/// view then positioned the bubble off that stale rect, which is exactly
+/// what "beside the wrong spot" on a real device (vs. a simulator's
+/// mouse-driven scroll, which doesn't reliably trigger the same
+/// tracking-mode RunLoop behavior) looks like. Fixed in `HomeView.swift`:
+/// the ring now reports its frame via `RingFrameProbe` (Components.swift)
+/// — a UIViewRepresentable that reads the ring's real frame off UIKit
+/// directly via KVO on the ancestor UIScrollView's `contentOffset`, which
+/// fires synchronously in ANY RunLoop mode — writing straight into
+/// `app.pulseRingFrame`, bypassing the PreferenceKey pipeline (and its
+/// tracking-mode gap) entirely. Nothing in THIS file's own anchor
+/// math/placement changed.
+///
+/// Off-screen-ring handling (same pass): `RingFrameProbe` now also keeps
+/// `app.pulseRingFrame` live and current WHILE the user scrolls (the old
+/// PreferenceKey path only ever updated between drags before), which
+/// means this view's own `rect` can legitimately describe a ring that has
+/// scrolled fully off the visible screen. Since the ring is Home's own
+/// FIRST story-row item near the very top of the feed, scrolling it out
+/// of view means the user scrolled down past the header entirely — the
+/// bubble must not keep floating over unrelated content below it in that
+/// case. Gated in `body` below: the bubble only renders while `rect`
+/// still intersects the real screen bounds; it hides the instant the
+/// ring scrolls off (either edge) and reappears the instant the ring
+/// scrolls back on, with no separate timer/dismiss-state change (the
+/// step sequence and 5-minute repeat rule keep running untouched — this
+/// is purely a render-visibility gate, mirroring "hide with the ring"
+/// rather than "dismiss the sequence").
 struct PulseTeaserBubbleView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -79,7 +126,7 @@ struct PulseTeaserBubbleView: View {
 
     var body: some View {
         Group {
-            if step >= 0, app.screen == .home, let rect = app.pulseRingFrame, rect.width > 0 {
+            if step >= 0, app.screen == .home, let rect = app.pulseRingFrame, rect.width > 0, rect.intersects(screenBounds) {
                 bubbleContent
                     .background(
                         GeometryReader { geo in

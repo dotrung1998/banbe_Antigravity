@@ -1143,6 +1143,27 @@ struct MapExploreView: View {
             // reuses this screen's own existing list/filter/event-detail
             // routing rather than a second search surface. Autofocused on
             // arrival from Home's search button (`startFocusedOnSearch`).
+            //
+            // Real-device follow-up (2026-09-28): focus used to be set from
+            // this row's own `.onAppear`, which — for a fresh (non-restored)
+            // open — fires in the SAME commit the sheet's own system
+            // presentation transition starts animating. UIKit silently
+            // drops a `becomeFirstResponder()` made mid-transition, so the
+            // keyboard never appeared on a real device (it happened to have
+            // no visible effect in the simulator's own timing either, but
+            // was never actually verified there — see this pass's own
+            // ticket). Now gated on `SheetPresentationSettledProbe`
+            // (Components.swift) instead: it only fires once the sheet's
+            // OWN `transitionCoordinator` reports the presenting animation
+            // has genuinely finished, so the field is guaranteed to already
+            // be part of the live, interactive hierarchy before focus is
+            // requested. `.padding(.top, 8)` below (new) opens a small,
+            // deliberate gap above this row — this file's own established
+            // ad-hoc spacing scale (8/10/12/14/16, per
+            // .claude/notes/06-design-tokens.md) already uses exactly this
+            // 8pt increment as its row-to-row gap (see the FlowLayout/
+            // "Còn chỗ" rows just below) — so the search field no longer
+            // sits flush against the sheet's own system drag indicator.
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").font(.system(size: 14)).opacity(0.55)
                 TextField(app.T("Tìm sự kiện theo tên…", "Search events by name…"), text: $searchQuery)
@@ -1159,13 +1180,21 @@ struct MapExploreView: View {
             }
             .padding(.horizontal, 12).padding(.vertical, 9)
             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .padding(.horizontal, 16).padding(.bottom, 10)
-            .onAppear {
-                if startFocusedOnSearch {
-                    searchFieldFocused = true
-                    app.mapExploreFocusSearch = false
-                }
-            }
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 10)
+            .background(
+                // One-shot: only mounted at all when this instance actually
+                // arrived via the search FAB (`startFocusedOnSearch`,
+                // captured once at `init` — see its own doc comment), so a
+                // normal Map-dock-tab open, a map pan, a detent change, or a
+                // return from Event Detail never adds this probe and can
+                // never steal focus.
+                startFocusedOnSearch
+                    ? AnyView(SheetPresentationSettledProbe {
+                        searchFieldFocused = true
+                        app.mapExploreFocusSearch = false
+                      })
+                    : AnyView(EmptyView())
+            )
 
             // Task 2a (11-realtime-map.md follow-up): every category is
             // visible up front now — wraps onto as many rows as needed

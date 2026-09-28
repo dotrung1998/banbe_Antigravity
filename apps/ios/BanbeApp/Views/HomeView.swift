@@ -135,7 +135,9 @@ struct HomeView: View {
         // shrink-toward-ring transition (see AppState.swift's own comment
         // on storyRingFrames).
         .onPreferenceChange(StoryRingFramePreferenceKey.self) { app.storyRingFrames = $0 }
-        .onPreferenceChange(PulseRingFramePreferenceKey.self) { app.pulseRingFrame = $0 }
+        // Pulse ring frame is no longer routed through a PreferenceKey —
+        // see `RingFrameProbe`'s own callback at the ring's `.background`
+        // above for why (real-device RunLoop-mode bug).
         // Home search relocation (2026-09-28 follow-up — real-device report:
         // the top-header search icon was still showing on a real iPhone).
         // Root cause: the 2026-09-28 dock/search pass that relocated web's
@@ -367,13 +369,34 @@ struct HomeView: View {
                         PulseRingGlyph()
                             // Pulse teaser pass (2026-09-27) — reports the
                             // RING's own global frame (not the label under
-                            // it) via PulseRingFramePreferenceKey, mirroring
-                            // StoryRingFramePreferenceKey immediately below
-                            // — PulseTeaserBubbleView anchors to this.
+                            // it), mirroring StoryRingFramePreferenceKey
+                            // immediately below — PulseTeaserBubbleView
+                            // anchors to this.
+                            //
+                            // Real-device follow-up (2026-09-28): this used
+                            // to go through a GeometryReader + PreferenceKey
+                            // (`PulseRingFramePreferenceKey`, same mechanism
+                            // as `StoryRingFramePreferenceKey` still below),
+                            // which inherits the exact RunLoop-mode
+                            // limitation `ScaffoldScrollProbe`'s own doc
+                            // comment (Components.swift) already diagnosed
+                            // for scroll-offset tracking: PreferenceKey
+                            // values stop propagating for as long as a real
+                            // finger is actively dragging this ScrollView
+                            // (`.tracking` mode), freezing the reported
+                            // frame stale while the ring kept moving for
+                            // real — which is exactly why the teaser bubble
+                            // read as anchored beside the WRONG spot on a
+                            // real device despite correct anchor math on
+                            // paper. Replaced with `RingFrameProbe`
+                            // (Components.swift), which reads the ring's
+                            // real frame straight off UIKit via KVO on the
+                            // ancestor UIScrollView's `contentOffset` —
+                            // immune to RunLoop mode — and writes directly
+                            // into `app.pulseRingFrame`, bypassing the
+                            // PreferenceKey pipeline entirely for this ring.
                             .background(
-                                GeometryReader { geo in
-                                    Color.clear.preference(key: PulseRingFramePreferenceKey.self, value: geo.frame(in: .global))
-                                }
+                                RingFrameProbe { rect in app.pulseRingFrame = rect }
                             )
                         Text(app.T("Banbe Pulse", "Banbe Pulse"))
                             .font(.system(size: 9.5)).foregroundStyle(app.palette.ink).lineLimit(1).frame(width: 60)
@@ -677,16 +700,6 @@ struct StoryRingFramePreferenceKey: PreferenceKey {
     static var defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { _, new in new }
-    }
-}
-
-/// Pulse teaser pass (2026-09-27) — same mechanism as
-/// StoryRingFramePreferenceKey immediately above, for the single Pulse
-/// ring (no dictionary needed — there's only ever one).
-struct PulseRingFramePreferenceKey: PreferenceKey {
-    static var defaultValue: CGRect?
-    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
-        if let next = nextValue() { value = next }
     }
 }
 
