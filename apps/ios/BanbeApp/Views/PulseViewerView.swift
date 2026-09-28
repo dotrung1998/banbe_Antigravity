@@ -50,6 +50,51 @@ struct PulseViewerView: View {
     @State private var isCommitting = false
     private let edgeZoneWidth: CGFloat = 20
 
+    // Loading-GIF pass (same-day real-device follow-up) — root cause of
+    // "GIF never shown during image load/tab switch" on iOS: every
+    // thumbnail here used a bare `AsyncImage(url:){...} placeholder:
+    // {Color.clear}` — a transparent placeholder that only ever avoided a
+    // literal white flash because it sits inside a ZStack with
+    // `app.palette.field` painted first (a themed fallback fill, matching
+    // web's own equivalent fix), never the actual loading asset. The
+    // `loading`-gated `BanbeLoadingVisual` further up this file only ever
+    // covers "this tab has zero ranked items yet" — a data-loading state
+    // — never "these items exist but their photos are still
+    // downloading/decoding," which is the real gap this pass closes.
+    // These two sets track, per photo URL STRING (stable across a
+    // re-render, unlike `AsyncImagePhase` itself), which photos in the
+    // CURRENTLY active tab have finished loading or definitively failed —
+    // used below to gate ONE section-level loader for the whole tab
+    // (never one per thumbnail) and to stop that loader the instant
+    // there's nothing left to wait for.
+    @State private var loadedPhotoURLs: Set<String> = []
+    @State private var erroredPhotoURLs: Set<String> = []
+
+    private func markPhotoLoaded(_ url: String) { loadedPhotoURLs.insert(url) }
+    private func markPhotoErrored(_ url: String) { erroredPhotoURLs.insert(url) }
+
+    /// Only the currently active tab's own items (never "everything") —
+    /// mirrors web's `activeTabPhotoUrls`.
+    private var activeTabPhotoURLs: [String] {
+        let source: [String?] = app.pulseTab == .photos
+            ? app.pulsePhotos.map { eventPhotoURL($0.photoPath) }
+            : items.map { eventPhotoURL($0.photoPath) }
+        return source.compactMap { $0 }
+    }
+    private var anyPhotoReady: Bool { activeTabPhotoURLs.contains { loadedPhotoURLs.contains($0) } }
+    private var allPhotosSettled: Bool {
+        !activeTabPhotoURLs.isEmpty
+            && activeTabPhotoURLs.allSatisfy { loadedPhotoURLs.contains($0) || erroredPhotoURLs.contains($0) }
+    }
+    /// The one gate this pass adds: real items exist, but none of their
+    /// photos have loaded yet, and at least one is still genuinely in
+    /// flight (never spins forever once every photo has settled one way
+    /// or the other — a genuinely broken/empty section falls back to the
+    /// existing per-tile `app.palette.field` fill instead, same as web).
+    private var sectionImagesLoading: Bool {
+        !activeTabPhotoURLs.isEmpty && !anyPhotoReady && !allPhotosSettled
+    }
+
     private var slideOffset: CGFloat {
         isCommitting ? UIScreen.main.bounds.width : dragTranslation
     }
@@ -137,20 +182,36 @@ struct PulseViewerView: View {
             }
             ScrollView {
                 VStack(spacing: 10) {
-                    // White-flash fix (2026-09-28 pass) — root cause
-                    // confirmed by reading this exact branch: the loading
-                    // GIF used to be gated purely on `loading`, which
-                    // discarded a tab's own already-valid, already-loaded
-                    // items the instant a background refresh started
-                    // (`pulseDailyLoading`/`pulseWeeklyLoading`/
-                    // `pulsePhotosLoading` flip true again on every
-                    // `loadPulse`/`loadPulsePhotos` call, even a quiet
-                    // re-fetch of a tab already showing real content) —
-                    // blanking real cards back to a spinner is exactly the
-                    // "flash" this pass fixes. The GIF now shows ONLY when
-                    // there's genuinely nothing displayable yet.
-                    if app.pulseTab == .photos {
-                        if app.pulsePhotos.isEmpty {
+                        // White-flash fix (2026-09-28 pass) — root cause
+                        // confirmed by reading this exact branch: the loading
+                        // GIF used to be gated purely on `loading`, which
+                        // discarded a tab's own already-valid, already-loaded
+                        // items the instant a background refresh started
+                        // (`pulseDailyLoading`/`pulseWeeklyLoading`/
+                        // `pulsePhotosLoading` flip true again on every
+                        // `loadPulse`/`loadPulsePhotos` call, even a quiet
+                        // re-fetch of a tab already showing real content) —
+                        // blanking real cards back to a spinner is exactly the
+                        // "flash" this pass fixes. The GIF now shows ONLY when
+                        // there's genuinely nothing displayable yet.
+                        if app.pulseTab == .photos {
+                            if app.pulsePhotos.isEmpty {
+                                if loading {
+                                    BanbeLoadingVisual(size: 64)
+                                        .padding(.top, 44)
+                                        .accessibilityIdentifier("pulse.loading")
+                                } else {
+                                    Text(app.T("Chưa có dữ liệu xếp hạng.", "Nothing ranked yet."))
+                                        .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.7))
+                                        .padding(.top, 60)
+                                        .accessibilityIdentifier("pulse.empty")
+                                }
+                            } else {
+                                ForEach(Array(app.pulsePhotos.enumerated()), id: \.element.id) { i, item in
+                                    pulsePhotoCard(item, rank: i + 1)
+                                }
+                            }
+                        } else if items.isEmpty {
                             if loading {
                                 BanbeLoadingVisual(size: 64)
                                     .padding(.top, 44)
@@ -162,25 +223,26 @@ struct PulseViewerView: View {
                                     .accessibilityIdentifier("pulse.empty")
                             }
                         } else {
-                            ForEach(Array(app.pulsePhotos.enumerated()), id: \.element.id) { i, item in
-                                pulsePhotoCard(item, rank: i + 1)
+                            ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
+                                pulseCard(item, rank: i + 1)
                             }
                         }
-                    } else if items.isEmpty {
-                        if loading {
-                            BanbeLoadingVisual(size: 64)
-                                .padding(.top, 44)
-                                .accessibilityIdentifier("pulse.loading")
-                        } else {
-                            Text(app.T("Chưa có dữ liệu xếp hạng.", "Nothing ranked yet."))
-                                .font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.7))
-                                .padding(.top, 60)
-                                .accessibilityIdentifier("pulse.empty")
-                        }
-                    } else {
-                        ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
-                            pulseCard(item, rank: i + 1)
-                        }
+                }
+                // Loading-GIF pass — ONE section-level loader for the
+                // whole tab's list (never one per thumbnail), shown only
+                // while genuine items exist but none of their photos have
+                // loaded yet (`sectionImagesLoading`'s own doc comment
+                // above has the exact gate). `.overlay` sizes itself to
+                // match this VStack exactly, so the real cards underneath
+                // stay laid out at their full, already-reserved size —
+                // this only ever visually covers that space, never
+                // replaces it with something a different height, so
+                // lifting it causes no layout jump.
+                .overlay {
+                    if sectionImagesLoading {
+                        app.palette.paper
+                            .overlay(BanbeLoadingVisual(size: 56))
+                            .accessibilityIdentifier("pulse.imagesLoading")
                     }
                 }
                 .padding(20)
@@ -301,8 +363,25 @@ struct PulseViewerView: View {
                 // own eventPhotoByEventId map already uses.
                 ZStack {
                     app.palette.field
+                    // Loading-GIF pass — reports success/failure per photo
+                    // URL into the shared `loadedPhotoURLs`/`erroredPhotoURLs`
+                    // sets above, which gate the ONE section-level loader
+                    // for the whole tab. A still-loading tile shows the
+                    // themed `app.palette.field` fallback fill from the
+                    // previous pass (never a naked/transparent placeholder,
+                    // never a per-tile GIF of its own).
                     if let urlStr = eventPhotoURL(item.photoPath), let url = URL(string: urlStr) {
-                        AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image.resizable().scaledToFill()
+                                    .onAppear { markPhotoLoaded(urlStr) }
+                            case .failure:
+                                Color.clear.onAppear { markPhotoErrored(urlStr) }
+                            default:
+                                Color.clear
+                            }
+                        }
                     }
                 }
                 .frame(width: 88, height: 88)
@@ -436,8 +515,22 @@ struct PulseViewerView: View {
         HStack(spacing: 0) {
             ZStack(alignment: .topTrailing) {
                 app.palette.field
+                // Loading-GIF pass — same success/failure reporting as
+                // `pulseCard` above, into the same shared sets (this tab's
+                // `activeTabPhotoURLs` switches source based on
+                // `app.pulseTab == .photos`, see that computed property).
                 if let urlStr = eventPhotoURL(item.photoPath), let url = URL(string: urlStr) {
-                    AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFill()
+                                .onAppear { markPhotoLoaded(urlStr) }
+                        case .failure:
+                            Color.clear.onAppear { markPhotoErrored(urlStr) }
+                        default:
+                            Color.clear
+                        }
+                    }
                 }
                 // Heart rule (Task 3) — rendered ONLY when this user has
                 // liked the photo, same `heart.fill` asset

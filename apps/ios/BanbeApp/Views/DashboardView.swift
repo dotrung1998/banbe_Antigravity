@@ -36,6 +36,18 @@ struct DashboardView: View {
             .sorted { ($0.endedHoursAgo ?? 0) < ($1.endedHoursAgo ?? 0) }
     }
 
+    /// THIRD STALE-AVATAR SITE (2026-09-28) — this header's round avatar
+    /// used to always be `CatalogPhoto(path: event.img, ...)`, the static
+    /// demo-catalogue event photo, never `app.myOrganizerAvatarPath` (the
+    /// canonical source Account/OrganizerProfileView already read, kept
+    /// fresh in place by saveOrganizerProfile's success branch) — so a
+    /// real host's photo change never showed here at all, stale or not.
+    /// Same pattern as OrganizerProfileView's own `organizerAvatarURL`.
+    private var organizerAvatarURL: URL? {
+        guard app.myOrganizerID != nil, !app.myOrganizerAvatarPath.isEmpty else { return nil }
+        return try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: app.myOrganizerAvatarPath)
+    }
+
     private var verifyLabel: String {
         if event.orgTrusted { return app.T("Đã xác minh", "Verified") }
         return app.orgVerifyRequested ? app.T("Đang xác minh", "Verifying")
@@ -74,7 +86,20 @@ struct DashboardView: View {
                         }
 
                         HStack(spacing: 14) {
-                            CatalogPhoto(path: event.img, height: 56, width: 56, cornerRadius: 28)
+                            // Real organizer avatar when this account has
+                            // one; `event.img`'s demo-catalogue photo is
+                            // only the fallback for a never-hosted
+                            // dev/seed account, same fallback rule the org
+                            // name/stats lines just below already follow.
+                            if let url = organizerAvatarURL {
+                                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
+                                    .frame(width: 56, height: 56)
+                                    .clipShape(Circle())
+                                    .accessibilityIdentifier("dashboard.organizerAvatar")
+                            } else {
+                                CatalogPhoto(path: event.img, height: 56, width: 56, cornerRadius: 28)
+                                    .accessibilityIdentifier("dashboard.organizerAvatarFallback")
+                            }
                             VStack(alignment: .leading, spacing: 5) {
                                 // Personal-vs-organizer hierarchy pass
                                 // (2026-09-27) — the real organizers.name

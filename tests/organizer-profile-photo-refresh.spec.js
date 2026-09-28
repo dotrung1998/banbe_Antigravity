@@ -128,5 +128,21 @@ test.describe('Organizer profile photo refresh (data-freshness fix)', () => {
 
     // The name field also saved and is shown fresh, same in-place patch.
     await expect(page.getByTestId('organizer-profile-name')).toHaveText('Photo Refresh Test Org');
+
+    // THIRD STALE-AVATAR SITE (2026-09-28 fix) — the Dashboard header's own
+    // round avatar next to the org name / "Bởi <org> Team" line used to
+    // always render the static demo event photo (`ev.img`), completely
+    // disconnected from the organizer's real avatar_path — so even though
+    // organizerProfile/myOrganizerAvatarPath were already patched in place
+    // by the previous fix, THIS specific render site never read either one
+    // and stayed on the demo photo forever, stale or not. Navigate back to
+    // Dashboard (still no reload) and assert it now shows the same fresh
+    // photo.
+    await page.locator('text=‹ Quay lại').first().click();
+    await expect(page.locator('[data-screen-label="Organizer dashboard"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('dashboard-organizer-avatar-fallback')).toHaveCount(0);
+    const dashboardAvatar = page.getByTestId('dashboard-organizer-avatar');
+    await expect(dashboardAvatar).toBeVisible({ timeout: 5000 });
+    await expect(dashboardAvatar).toHaveAttribute('src', new RegExp(`organizer-photos/${TEST_ORG_ID}/avatar-`));
   });
 });

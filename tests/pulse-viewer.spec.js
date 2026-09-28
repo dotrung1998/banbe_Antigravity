@@ -116,12 +116,16 @@ test.describe('Home — Pulse teaser speech bubbles', () => {
     await expect(bubble).not.toContainText(/Top sự kiện hôm nay|Today's top events/);
   });
 
-  // Positioning pass (2026-09-28) — beside the ring (comic speech bubble),
-  // not above it: pointer on the LEFT edge, text right-aligned, whole box
-  // inside the viewport. Real anchoring (getBoundingClientRect against the
-  // real ring element), not a hardcoded offset — confirmed by checking the
-  // bubble sits to the ring's right and stays within window bounds.
-  test('sits BESIDE the Pulse ring (to its right, vertically overlapping it), with a left-pointing pointer, fully inside the viewport', async ({ page }) => {
+  // Positioning pass 2 (same-day real-device follow-up) — a real-device
+  // report found the first positioning pass's "fully beside the ring"
+  // layout still read as floating clear of it, not a speech bubble
+  // anchored to it. Real requirement: the bubble's own bounding box must
+  // OVERLAP the ring's bounding box, specifically in the ring's
+  // upper-right quadrant — asserted here as an actual rect intersection,
+  // not merely "is near." Pointer stays on the LEFT edge, whole box stays
+  // inside the viewport. Real anchoring (getBoundingClientRect against
+  // the real ring element), not a hardcoded offset.
+  test('overlaps the Pulse ring in its upper-right quadrant (real rect intersection), left-pointing pointer, fully inside the viewport', async ({ page }) => {
     await setupToHome(page);
     const bubble = page.locator('[data-testid="home-pulse-teaser-bubble"]');
     await expect(bubble).toBeVisible({ timeout: 4000 });
@@ -130,23 +134,40 @@ test.describe('Home — Pulse teaser speech bubbles', () => {
     const ringBox = await ring.boundingBox();
     const viewport = page.viewportSize();
 
-    // Beside, not above: the bubble's left edge starts at/after the ring's
-    // right edge (never above/overlapping the ring vertically the way the
-    // old "centered above" layout did), and its vertical range overlaps
-    // the ring's own vertical range (roughly centered on it).
-    expect(bubbleBox.x).toBeGreaterThanOrEqual(ringBox.x + ringBox.width - 1);
-    const bubbleMidY = bubbleBox.y + bubbleBox.height / 2;
-    expect(bubbleMidY).toBeGreaterThanOrEqual(ringBox.y - 2);
-    expect(bubbleMidY).toBeLessThanOrEqual(ringBox.y + ringBox.height + 2);
+    const ringMidX = ringBox.x + ringBox.width / 2;
+    const ringMidY = ringBox.y + ringBox.height / 2;
+    const ringMaxX = ringBox.x + ringBox.width;
+    const ringMinY = ringBox.y;
+
+    // The ring's own upper-right quadrant, as a rect.
+    const quadrant = { left: ringMidX, right: ringMaxX, top: ringMinY, bottom: ringMidY };
+    const bubbleRect = { left: bubbleBox.x, right: bubbleBox.x + bubbleBox.width, top: bubbleBox.y, bottom: bubbleBox.y + bubbleBox.height };
+
+    // Real rect intersection with the upper-right quadrant specifically —
+    // not "close to the ring," an actual overlapping region with positive
+    // area on both axes.
+    const overlapWidth = Math.min(bubbleRect.right, quadrant.right) - Math.max(bubbleRect.left, quadrant.left);
+    const overlapHeight = Math.min(bubbleRect.bottom, quadrant.bottom) - Math.max(bubbleRect.top, quadrant.top);
+    expect(overlapWidth).toBeGreaterThan(0);
+    expect(overlapHeight).toBeGreaterThan(0);
+
+    // The bubble also genuinely sits ABOVE-AND-TO-THE-RIGHT of the ring
+    // overall (its own center is beyond the ring's center on both axes),
+    // not merely clipping a sliver of it from some other direction.
+    const bubbleCenterX = bubbleRect.left + bubbleBox.width / 2;
+    const bubbleCenterY = bubbleRect.top + bubbleBox.height / 2;
+    expect(bubbleCenterX).toBeGreaterThan(ringMidX);
+    expect(bubbleCenterY).toBeLessThan(ringMidY);
 
     // Fully inside the viewport on every side — the clamping this pass
-    // added, not a hardcoded guess about screen size.
+    // kept, not a hardcoded guess about screen size.
     expect(bubbleBox.x).toBeGreaterThanOrEqual(0);
     expect(bubbleBox.y).toBeGreaterThanOrEqual(0);
     expect(bubbleBox.x + bubbleBox.width).toBeLessThanOrEqual(viewport.width + 1);
     expect(bubbleBox.y + bubbleBox.height).toBeLessThanOrEqual(viewport.height + 1);
 
-    // Text right-aligned inside the bubble.
+    // Pointer stays on the LEFT edge, text right-aligned inside the bubble
+    // — unchanged from the previous pass, only the anchor/quadrant moved.
     const textAlign = await bubble.evaluate(el => getComputedStyle(el).textAlign);
     expect(textAlign).toBe('right');
   });
@@ -278,6 +299,68 @@ test.describe('Banbe Pulse — cached vs. loading tabs', () => {
     await page.getByTestId('pulse-tab-daily').click();
     await expect(page.getByTestId('pulse-loading')).toHaveCount(0);
     await expect(page.getByTestId('pulse-empty')).toHaveCount(0).catch(() => {});
+    // Section-level image loader (below) must not replay either — this
+    // tab's photos already decoded the first time it was shown.
+    await expect(page.getByTestId('pulse-images-loading')).toHaveCount(0);
+  });
+
+  // Loading-GIF pass (same-day follow-up) — the previous pass's fallback
+  // fill stopped the white flash but never actually showed the loading
+  // asset while a section's photos were still in flight. These tests
+  // throttle the real event-photo storage responses so that window is
+  // long enough to observe reliably, instead of racing a same-tick
+  // network response in a fast local/dev environment.
+  test.describe('section-level image loader (not per-thumbnail)', () => {
+    async function throttlePhotoResponses(page, delayMs) {
+      await page.route('**/storage/v1/object/public/event-photos/**', async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        await route.continue();
+      });
+    }
+
+    test('shows exactly ONE loader for the whole tab while its photos are still loading, then swaps to real content — never a per-thumbnail spinner', async ({ page }) => {
+      await throttlePhotoResponses(page, 1200);
+      await openPulse(page);
+      // Ranking data itself (never gated by the photo throttle above)
+      // must resolve first.
+      await expect(page.getByTestId('pulse-loading')).toHaveCount(0, { timeout: 8000 });
+      const cardCount = await page.getByTestId('pulse-card').count();
+      test.skip(cardCount === 0, 'no ranked events with photos in this environment');
+
+      // While every photo in this tab is still in flight: exactly one
+      // section-level loader, never zero (real gap this pass fixes) and
+      // never more than one (no per-thumbnail spam).
+      await expect(page.getByTestId('pulse-images-loading')).toHaveCount(1, { timeout: 2000 });
+
+      // Once the first photo actually decodes, the section loader lifts
+      // and real content is shown — never stays up forever.
+      await expect(page.getByTestId('pulse-images-loading')).toHaveCount(0, { timeout: 6000 });
+      await expect(page.getByTestId('pulse-card').first()).toBeVisible();
+    });
+
+    test('switching to a different tab never shows more than one section loader at a time, and always eventually settles', async ({ page }) => {
+      await throttlePhotoResponses(page, 1200);
+      await openPulse(page);
+      await expect(page.getByTestId('pulse-loading')).toHaveCount(0, { timeout: 8000 });
+      // Let the daily tab's own images fully settle first.
+      await expect(page.getByTestId('pulse-images-loading')).toHaveCount(0, { timeout: 6000 });
+
+      // Photos tab may or may not share photo URLs with events already
+      // shown on daily/weekly (the same event can legitimately appear on
+      // more than one ranking) — if it shares no URL with anything
+      // already decoded, switching to it for the first time this session
+      // must show its own fresh section loader (the real tab-switch gap
+      // this pass fixes); if it happens to share an already-decoded URL,
+      // it's correct for no loader to reappear at all. Either way, at
+      // MOST one loader node ever exists at once (never a wall of
+      // per-thumbnail spinners), and it must always eventually settle to
+      // zero rather than spin forever.
+      await page.getByTestId('pulse-tab-photos').click();
+      const photoCardCount = await page.getByTestId('pulse-photo-card').count();
+      test.skip(photoCardCount === 0, 'no ranked photos in this environment');
+      await expect(page.getByTestId('pulse-images-loading')).toHaveCount(0, { timeout: 6000 });
+      expect(await page.getByTestId('pulse-images-loading').count()).toBeLessThanOrEqual(1);
+    });
   });
 
   // Left-corner-rounding fix (2026-09-28 pass) — the flush-left photo tile

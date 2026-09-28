@@ -596,10 +596,27 @@ extension AppState {
             attending = going
             tickets = counts
 
+            // Part B audit (2026-09-28) — real bug found while
+            // investigating the "Jazz Ở Gác"/"Vườn Sau" organizer-identity
+            // report: an owner who genuinely owns MORE THAN ONE organizers
+            // row (only ever produced by migration 020's seed, which
+            // assigns each of its ~20 demo events' organizer uniformly at
+            // random among just 3 test accounts — a real production
+            // user's own create-event flow always reuses their one
+            // existing organizer row, never inserts a second) had this
+            // query with no ORDER BY at all, so `organizers.first` below —
+            // used for orgRegName/myOrganizerID/avatarPath — was whichever
+            // row Postgres felt like returning, differing between app
+            // launches. Not a database FK error (every event's own
+            // organizer_id is correct). Ordering deterministically here
+            // (earliest-created = the owner's "primary" organizer) makes
+            // this identity stable across launches instead of silently
+            // random — mirrors the same fix in web's `syncUser()`.
             let organizers: [OrganizerRow] = try await SupabaseService.client
                 .from("organizers")
                 .select("id, name, about, avatar_path, intro_long, social_links")
                 .or("owner_id.eq.\(uid.uuidString),user_id.eq.\(uid.uuidString)")
+                .order("created_at", ascending: true)
                 .execute().value
             myOrganizerIDs = organizers.map(\.id)
             if !organizers.isEmpty {

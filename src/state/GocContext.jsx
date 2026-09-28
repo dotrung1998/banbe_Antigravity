@@ -1362,10 +1362,30 @@ export function GocProvider({ children }) {
       // because orgRegName is otherwise only ever filled in locally while
       // filling out the create-event form, never restored for an organizer
       // returning on a new session.
+      // Part B audit (2026-09-28) — real bug found while investigating the
+      // "Jazz Ở Gác"/"Vườn Sau" organizer-identity report: an owner who
+      // genuinely owns MORE THAN ONE organizers row (only ever produced by
+      // migration 020's seed, which assigns each of its ~20 demo events'
+      // organizer uniformly at random among just 3 test accounts — a real
+      // production user's own create-event flow always reuses their one
+      // existing organizer row, never inserts a second) used to hit this
+      // query with no ORDER BY at all. `.limit(1).maybeSingle()` on an
+      // unordered result is whichever row Postgres feels like returning —
+      // it can differ between page loads, and independently of
+      // `loadMyEvents`' OWN unordered `.in('organizer_id', organizerIds)`
+      // events query (below) picking `myOrgEventKeys[0]` for header
+      // branding — so the two could each resolve to a DIFFERENT one of the
+      // owner's organizer rows, showing one org's name next to another
+      // org's event photo. Not a database FK error (every event's own
+      // organizer_id is correct — see .claude/notes for the full audit);
+      // ordering deterministically here (earliest-created = the owner's
+      // "primary" organizer) makes this identity stable and self-consistent
+      // across reloads instead of silently random.
       const { data: org } = await supabase
         .from('organizers')
         .select('id, name, about, avatar_path, intro_long, social_links')
         .or(`owner_id.eq.${user.id},user_id.eq.${user.id}`)
+        .order('created_at', { ascending: true })
         .limit(1)
         .maybeSingle();
       if (org?.name) {

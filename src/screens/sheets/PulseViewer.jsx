@@ -16,27 +16,44 @@ import BanbeLoadingVisual from '../BanbeLoadingVisual.jsx';
 // the bitmap is genuinely ready — never mid-paint. Scoped to the
 // CURRENTLY active tab's own items only (never "everything") — prefetches
 // exactly the small set of assets the ticket asks for, and skips a URL
-// already marked decoded so switching tabs back and forth never re-fetches
-// identical data.
+// already marked decoded/errored so switching tabs back and forth never
+// re-fetches identical data.
+//
+// Loading-GIF pass (same-day follow-up) — the solid fallback fill above
+// stops the literal white flash, but a real-device report correctly
+// pointed out it's NOT the same thing as "show the existing loading
+// asset while a section's images are loading": the fallback fill never
+// shows the actual `BanbeLoadingVisual`/GIF at all for a section whose
+// photos simply haven't decoded yet (as opposed to the tab having zero
+// ranked items, the only case the GIF was ever shown for before this
+// pass). Now also tracks decode FAILURES (`errored`) separately from
+// successes, so a genuinely broken image doesn't leave the section
+// loader spinning forever — see `sectionImagesLoading` below, which is
+// the actual gate this pass adds.
 function usePulseImageDecode(urls) {
   const [decoded, setDecoded] = useState(() => new Set());
+  const [errored, setErrored] = useState(() => new Set());
   useEffect(() => {
     let cancelled = false;
     urls.forEach((url) => {
-      if (!url || decoded.has(url)) return;
+      if (!url || decoded.has(url) || errored.has(url)) return;
       const img = new Image();
-      const mark = () => {
+      const markDecoded = () => {
         if (cancelled) return;
         setDecoded((prev) => (prev.has(url) ? prev : new Set(prev).add(url)));
       };
+      const markErrored = () => {
+        if (cancelled) return;
+        setErrored((prev) => (prev.has(url) ? prev : new Set(prev).add(url)));
+      };
       img.src = url;
-      if (img.decode) img.decode().then(mark).catch(mark);
-      else img.onload = mark;
+      if (img.decode) img.decode().then(markDecoded).catch(markErrored);
+      else { img.onload = markDecoded; img.onerror = markErrored; }
     });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urls.join('|')]);
-  return decoded;
+  return { decoded, errored };
 }
 
 // A2 (2026-09-27 Pulse/loading UX pass) — the left-edge-swipe-or-X
@@ -153,7 +170,23 @@ export default function PulseViewer() {
   // White-flash pass — only the currently active tab's own items (never
   // "everything"), and only their photo URLs (a small, bounded set).
   const activeTabPhotoUrls = items.map(item => eventPhotoUrl(item.photo_path)).filter(Boolean);
-  const decodedPhotoUrls = usePulseImageDecode(activeTabPhotoUrls);
+  const { decoded: decodedPhotoUrls, errored: erroredPhotoUrls } = usePulseImageDecode(activeTabPhotoUrls);
+  // Loading-GIF pass — ONE section-level loader for the whole tab's list,
+  // never one per thumbnail. Gate: the tab has photos to show but NONE of
+  // them have decoded yet (`anyPhotoReady` false) AND at least one is
+  // still genuinely in flight (`allPhotosSettled` false — if every photo
+  // has either decoded or errored, there's nothing left to wait for, so
+  // the loader must not spin forever on a genuinely broken/empty
+  // section; the per-card themed fallback fill from the previous pass
+  // covers that case instead). Recomputed fresh per tab switch, but a
+  // URL already in `decodedPhotoUrls` (kept in this component's own
+  // state for the life of this one Pulse-open session) immediately
+  // counts as ready — so revisiting a tab whose photos already decoded
+  // earlier in this session never replays the loader.
+  const anyPhotoReady = activeTabPhotoUrls.some((u) => decodedPhotoUrls.has(u));
+  const allPhotosSettled = activeTabPhotoUrls.length > 0
+    && activeTabPhotoUrls.every((u) => decodedPhotoUrls.has(u) || erroredPhotoUrls.has(u));
+  const sectionImagesLoading = activeTabPhotoUrls.length > 0 && !anyPhotoReady && !allPhotosSettled;
 
   // This early return only ever fires for one render right after
   // `closePulseViewer()` flips `pulseOpen` false and BEFORE App.jsx's own
@@ -226,7 +259,7 @@ export default function PulseViewer() {
           `!loading`, so any background refresh of an already-loaded tab
           blanked its real content back to the spinner, which is exactly
           the "flash" this pass fixes, not merely a cosmetic tweak. */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 40px', display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="pulse-list" data-loading={loading ? 'true' : 'false'}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 40px', display: 'flex', flexDirection: 'column', gap: 10, position: 'relative' }} data-testid="pulse-list" data-loading={loading ? 'true' : 'false'} data-images-loading={sectionImagesLoading ? 'true' : 'false'}>
         {items.length === 0 && (
           loading ? (
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: 60 }} data-testid="pulse-loading">
@@ -237,6 +270,25 @@ export default function PulseViewer() {
               {T('Chưa có dữ liệu xếp hạng.', 'Nothing ranked yet.')}
             </p>
           )
+        )}
+        {/* Loading-GIF pass (same-day follow-up) — this tab genuinely has
+            ranked items, but none of their photos have decoded yet: show
+            ONE section-level loader for the whole list (never a GIF per
+            thumbnail — see `sectionImagesLoading`'s own comment above for
+            the exact gate). The real cards still render underneath,
+            unchanged, at their own full size (each own 88x88 photo tile +
+            text) — this is a fully OPAQUE overlay (`background: paper`)
+            positioned over that already-laid-out content, so the space is
+            reserved in advance (no layout jump once it lifts) and nothing
+            un-decoded is ever visible through it. The overlay disappears
+            the INSTANT any one photo in the tab decodes, at which point
+            any still-pending thumbnails fall back to the themed solid
+            fill from the previous pass — never a second wave of
+            individual GIFs. */}
+        {items.length > 0 && sectionImagesLoading && (
+          <div style={{ position: 'absolute', inset: 0, background: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5 }} data-testid="pulse-images-loading">
+            <BanbeLoadingVisual size={56} />
+          </div>
         )}
         {/* B1 — same rounded corners on all four sides for every card in
             all three tabs: `cardGlass`'s own `borderRadius: 12` +

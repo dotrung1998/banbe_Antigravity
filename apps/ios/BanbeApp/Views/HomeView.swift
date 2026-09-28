@@ -136,6 +136,24 @@ struct HomeView: View {
         // on storyRingFrames).
         .onPreferenceChange(StoryRingFramePreferenceKey.self) { app.storyRingFrames = $0 }
         .onPreferenceChange(PulseRingFramePreferenceKey.self) { app.pulseRingFrame = $0 }
+        // Home search relocation (2026-09-28 follow-up — real-device report:
+        // the top-header search icon was still showing on a real iPhone).
+        // Root cause: the 2026-09-28 dock/search pass that relocated web's
+        // Home search to a floating button above the dock (src/screens/
+        // Home.jsx, HomeSearchFab) never touched this iOS file at all — its
+        // own commit only mentions the web dock/search fix; the header
+        // button below (`home.searchButton`, 2026-09-27) was never removed
+        // and no iOS equivalent of the floating button was ever added. Fixed
+        // here: header button removed (see `header` below) and replaced with
+        // this `.overlay`, attached to the WHOLE `ScreenScaffold` (this
+        // modifier chain's own receiver), not to anything inside its
+        // `ScrollView` content closure above — so it's a true sibling of the
+        // scrolling feed, at the same view-hierarchy level web's fix put it
+        // at (a sibling of the animated root div, never a descendant of it).
+        // It therefore can never scroll away or get clipped by the feed's
+        // own content, matching this ticket's "outside any scrolling/
+        // animated containing block" requirement.
+        .overlay(alignment: .bottomTrailing) { HomeSearchFabView() }
     }
 
     /// TASK 4 (2026-09-22 nineteenth follow-up) — real root cause,
@@ -243,22 +261,12 @@ struct HomeView: View {
         HStack(alignment: .firstTextBaseline) {
             HStack(spacing: 10) {
                 BanbeLogo(kind: .wordmark, width: 126)
-                // Home quick event search (2026-09-27) — clear of the
-                // Pulse ring (story row, further down) and the area
-                // control (trailing column, below) — opens the EXISTING
-                // MapExploreView list/filter/event-detail experience with
-                // its own search field focused, never a new screen.
-                Button {
-                    app.openEventSearch()
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 15, weight: .medium))
-                        .frame(width: 30, height: 30)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(app.palette.ink.opacity(0.75))
-                .accessibilityIdentifier("home.searchButton")
-                .accessibilityLabel(app.T("Tìm sự kiện", "Search events"))
+                // Home quick event search moved OUT of this header
+                // (2026-09-28 follow-up, real-device report) — see
+                // `HomeSearchFabView`, overlaid on the whole screen from
+                // `body`'s own modifier chain above (floating, lower-right,
+                // above the dock). Kept here only as the comment marker for
+                // why the slot beside the wordmark is now empty.
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
@@ -728,5 +736,61 @@ private struct PulseRingGlyph: View {
     private func startIfEligible() {
         guard !reduceMotion, scenePhase == .active else { rotate = false; return }
         withAnimation(.linear(duration: 7).repeatForever(autoreverses: false)) { rotate = true }
+    }
+}
+
+/// Home search relocation (2026-09-28 follow-up) — the floating, lower-right,
+/// above-the-dock search button, iOS equivalent of web's `HomeSearchFab`
+/// (src/screens/Home.jsx). Overlaid on the WHOLE `ScreenScaffold` from
+/// `HomeView.body`'s own modifier chain (see that call site's doc comment),
+/// never nested inside the ScrollView content closure — so it can't scroll
+/// away or get clipped, matching web's "true sibling, not a descendant of
+/// anything animated/scrolling" fix.
+///
+/// Styling reuses `DockCreateButtonView`'s own verbatim material/stroke/
+/// shadow constants (`.thinMaterial` circle, ink-stroke opacity 0.06, shadow
+/// opacity 0.16/radius 14/y 6) rather than inventing a new floating-button
+/// look — the same "reuse, don't reinvent" fix that button's own doc comment
+/// already applied once in this codebase.
+///
+/// Position reuses the dock's OWN reference constants directly
+/// (`BottomTabBar.barHeight`/`bottomOffset`/`dockMargin`) instead of a new
+/// magic number, offsetting straight up from the dock's own top edge by a
+/// fixed 14pt clearance — the same three constants (and the same `+ 14`
+/// clearance) web's `HomeSearchFab` uses via `BAR_HEIGHT + BAR_BOTTOM_OFFSET
+/// + 14` (BottomTabBar.jsx), so both platforms place it at the identical
+/// relative spot above the dock.
+///
+/// Hide-on-scroll reuses `app.bottomBarCollapsed` — the SAME shared,
+/// already-scroll-driven signal the dock itself shrinks on
+/// (BottomTabBar.swift's `.scaleEffect`) — instead of a second, bespoke
+/// scroll listener the way web's `searchFabHidden` effect had to invent for
+/// itself (web has no equivalent shared signal available to a screen
+/// component; iOS already does, via `ScreenScaffold(tracksBottomBarScroll:
+/// true)`, which `HomeView` already opts into).
+struct HomeSearchFabView: View {
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        Button {
+            app.openEventSearch()
+        } label: {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(app.palette.ink)
+                .frame(width: 46, height: 46)
+                .background(.thinMaterial, in: Circle())
+                .overlay(Circle().strokeBorder(app.palette.ink.opacity(0.06)))
+                .shadow(color: .black.opacity(0.16), radius: 14, x: 0, y: 6)
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(app.bottomBarCollapsed ? 0.9 : 1, anchor: .center)
+        .opacity(app.bottomBarCollapsed ? 0 : 1)
+        .allowsHitTesting(!app.bottomBarCollapsed)
+        .animation(.easeInOut(duration: 0.2), value: app.bottomBarCollapsed)
+        .padding(.trailing, BottomTabBar.dockMargin)
+        .padding(.bottom, BottomTabBar.barHeight + BottomTabBar.bottomOffset + 14)
+        .accessibilityIdentifier("home.searchFab")
+        .accessibilityLabel(app.T("Tìm sự kiện", "Search events"))
     }
 }

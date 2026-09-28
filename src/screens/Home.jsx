@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg, agoLabel } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
@@ -41,16 +42,67 @@ import ActionCenter from './ActionCenter.jsx';
 // transform on an ancestor establishes a NEW containing block for
 // `position:fixed` descendants, so this bubble's "fixed" coordinates were
 // silently being resolved against Home's own box instead of the
-// viewport — never a z-index problem. Fixed at the keyframe itself (see
-// index.css); this component's own `position:fixed` + measured-rect
-// anchoring was already structurally correct and needed no changes for
-// that part. Layout itself redone to sit BESIDE the ring (not above it):
-// pointer on the bubble's LEFT edge pointing at the ring, text
-// right-aligned inside the bubble, vertically centered on the ring, and
-// clamped so the whole bubble always stays inside the viewport.
+// viewport — never a z-index problem. "Fixed" at the keyframe itself
+// (index.css) by dropping the explicit `transform: translateY(0)` from
+// the "to" state.
+//
+// Positioning pass 2 (2026-09-28, same-day real-device follow-up) — the
+// FIRST pass's own fix above did not actually work, confirmed by
+// measuring the real rendered DOM on a live page (getComputedStyle +
+// getBoundingClientRect down the ancestor chain), not re-guessed: Home's
+// own root wrapper's `transform` computed style is STILL a non-`none`
+// matrix (`matrix(1,0,0,1,0,0)`, the IDENTITY matrix, not the keyword
+// `none`) for the ENTIRE lifetime of the mounted screen — well past the
+// animation's own 0.32s duration and confirmed still present multiple
+// seconds later. Root cause: when a CSS animation interpolates the
+// `transform` property between keyframes at all (even when only ONE
+// keyframe — here, `from` — actually declares it), every browser engine
+// computes and serializes the animated value as a matrix for the WHOLE
+// active+"fill: both" duration, including exactly at 100%; it never
+// reverts to the literal keyword `none`, regardless of whether the
+// numeric result is the identity transform. So `animation-fill-mode:
+// both` holds that computed MATRIX (not `none`) on the element forever,
+// which still establishes a new containing block for `position:fixed`
+// descendants per spec — the previous pass's fix (dropping the explicit
+// transform from the "to" keyframe) reduced the interpolated end value to
+// the identity matrix but could not make it compute to `none`, because
+// `transform` is touched by the animation at all. The OLD "beside the
+// ring" test happened to keep passing through this because its own
+// assertions were loose one-sided inequalities (`bubbleBox.x >=
+// ringBox.x + ringBox.width`), which stay true even when the bubble's
+// real on-screen position is offset by a constant (the transformed
+// ancestor's own left edge) — exactly why this pass's new test asserts
+// an actual rect INTERSECTION instead, which a constant offset does
+// break, and did catch this.
+//
+// Actual fix: stop trying to keep `gocIn`/`bbIn` transform-free at every
+// future call site (a whack-a-mole this ticket's own history shows
+// doesn't hold) and instead render this bubble through a REACT PORTAL
+// straight to `document.body` — same architecture iOS already uses
+// (`PulseTeaserBubbleView` is a RootView ZStack SIBLING, never nested
+// inside `HomeView`, see that file's own doc comment). A portal target
+// outside Home's own DOM subtree can never be affected by ANY transform
+// on ANY of Home's ancestors, present or future, closing this entire bug
+// class rather than patching today's one instance of it again.
+//
+// Placement itself: the bubble must visibly OVERLAP the ring's
+// UPPER-RIGHT QUARTER — sit above-and-to-the-right of the ring, its own
+// bottom-left corner anchored at the ring's CENTER point (`ringRect`'s
+// own midpoint, not an edge). Extending up-and-right from that one
+// anchor point necessarily overlaps exactly the ring's upper-right
+// quadrant (x >= ring midX, y <= ring midY) whenever the bubble is at
+// least as wide/tall as the ring's own radius — true for every real
+// piece of copy this sequence ever shows. The pointer stays on the
+// bubble's own LEFT edge (unchanged side), moved from vertically-centered
+// to near the BOTTOM of that edge so its tip lands close to the anchor
+// point itself (the ring's center), keeping "still pointing at the ring"
+// true under the new placement. Still measured off the real ring rect
+// (`getBoundingClientRect`, never a hardcoded offset) and clamped to the
+// viewport exactly as before — only the anchor math and the
+// portal/render-target changed, not the step-sequence/5-minute-repeat
+// logic above.
 const BUBBLE_SEQUENCE_VERSION = 'v2';
 const BUBBLE_STEP_MS = { label: 3200, names: 4600 };
-const BUBBLE_RING_GAP = 12;
 const BUBBLE_VIEWPORT_MARGIN = 12;
 const BUBBLE_REPEAT_MS = 5 * 60 * 1000;
 
@@ -220,18 +272,33 @@ function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen
     content = <span>{T('Ảnh nổi bật', 'Featured photos')}</span>;
   }
 
-  // Beside-the-ring placement — ideal spot is just to the RIGHT of the
-  // ring, vertically centered on it (pointer on the bubble's own left
-  // edge, see below), then clamped so the whole box always stays fully
-  // inside the viewport rather than a hardcoded guess about screen size.
-  const idealLeft = ringRect.right + BUBBLE_RING_GAP;
-  const maxLeft = Math.max(BUBBLE_VIEWPORT_MARGIN, window.innerWidth - BUBBLE_VIEWPORT_MARGIN - (bubbleSize.width || 220));
-  const left = Math.min(idealLeft, maxLeft);
-  const idealTop = ringRect.top + ringRect.height / 2 - bubbleSize.height / 2;
-  const maxTop = Math.max(BUBBLE_VIEWPORT_MARGIN, window.innerHeight - BUBBLE_VIEWPORT_MARGIN - (bubbleSize.height || 40));
-  const top = Math.min(Math.max(BUBBLE_VIEWPORT_MARGIN, idealTop), maxTop);
+  // Upper-right-quadrant overlap placement (positioning pass 2, see the
+  // doc comment above `BUBBLE_SEQUENCE_VERSION`) — the bubble's own
+  // bottom-left corner is anchored at the ring's CENTER point, so it
+  // extends up and to the right from there: horizontally that puts its
+  // left edge at the ring's own horizontal midpoint (never its right
+  // edge), vertically its bottom edge at the ring's own vertical
+  // midpoint (never centered on the ring). That necessarily overlaps the
+  // ring's upper-right quadrant (x in [ringMidX, ringMaxX], y in
+  // [ringMinY, ringMidY]) for any bubble at least as large as the ring's
+  // own radius, which every real piece of copy here is. Still clamped to
+  // the viewport rather than a hardcoded guess about screen size.
+  const ringCenterX = ringRect.left + ringRect.width / 2;
+  const ringCenterY = ringRect.top + ringRect.height / 2;
+  const width = bubbleSize.width || 220;
+  const height = bubbleSize.height || 40;
+  const maxLeft = Math.max(BUBBLE_VIEWPORT_MARGIN, window.innerWidth - BUBBLE_VIEWPORT_MARGIN - width);
+  const left = Math.min(Math.max(BUBBLE_VIEWPORT_MARGIN, ringCenterX), maxLeft);
+  const maxTop = Math.max(BUBBLE_VIEWPORT_MARGIN, window.innerHeight - BUBBLE_VIEWPORT_MARGIN - height);
+  const top = Math.min(Math.max(BUBBLE_VIEWPORT_MARGIN, ringCenterY - height), maxTop);
 
-  return (
+  // Rendered via a REACT PORTAL straight to `document.body` (positioning
+  // pass 2 — see this component's own top-of-file doc comment for the
+  // full root-cause trace of why the previous "just fix the keyframe"
+  // approach was not durable). `document.body` always exists once this
+  // component can render at all (a plain client-side SPA, no SSR here),
+  // so no existence guard is needed.
+  return createPortal(
     <div
       ref={bubbleRef}
       onClick={(e) => { e.stopPropagation(); advanceOrDismiss(); }}
@@ -240,10 +307,11 @@ function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen
       aria-live="polite"
       style={{
         // `position:fixed` from the ring's own MEASURED rect (never the
-        // tiny avatar column's own layout box or a hardcoded guess), so
-        // this floats above every ancestor's overflow/stacking context —
-        // see this component's own top-of-file doc comment for why this
-        // needed the index.css keyframe fix, not a z-index bump.
+        // tiny avatar column's own layout box or a hardcoded guess).
+        // Rendered outside Home's own DOM subtree entirely (see the
+        // `createPortal` call above), so no ancestor of THIS element can
+        // ever establish a containing block for it — never a z-index
+        // bump, never a keyframe-authoring convention to keep honoring.
         position: 'fixed',
         left, top,
         background: ink, color: paper, fontSize: 12.5, fontWeight: 600, lineHeight: 1.5,
@@ -260,11 +328,26 @@ function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen
       }}
     >
       {content}
-      {/* Comic-bubble pointer — LEFT side, pointing back at the ring. */}
-      <div style={{ position: 'absolute', top: '50%', left: 0, transform: 'translate(-100%, -50%)', width: 0, height: 0, borderTop: '5px solid transparent', borderBottom: '5px solid transparent', borderRight: `6px solid ${ink}` }} />
-    </div>
+      {/* Comic-bubble pointer — LEFT side, near the BOTTOM of that edge
+          (positioning pass 2) so its tip lands close to the anchor point
+          itself (the ring's center) under the new upper-right-quadrant
+          overlap placement — still "pointing back at the ring," just
+          anchored to the new corner instead of the vertical middle. */}
+      <div style={{ position: 'absolute', bottom: 10, left: 0, transform: 'translate(-100%, 0)', width: 0, height: 0, borderTop: '5px solid transparent', borderBottom: '5px solid transparent', borderRight: `6px solid ${ink}` }} />
+    </div>,
+    document.body,
   );
 }
+
+// Ring tappability under the new overlap (positioning pass 2): the bubble
+// itself only ever occupies its own measured rect — a real DOM element
+// sized to its content, never a full-screen overlay — so it only ever
+// intercepts pointer events over the specific quadrant it visually
+// overlaps. The ring's OTHER three quadrants (its own avatar element,
+// `home-pulse-avatar`) are never covered by the bubble and stay directly
+// tappable the whole time this teaser is showing; tapping the bubble
+// itself advances/dismisses the teaser sequence (the existing, unchanged
+// behavior), which is a deliberate, separate action from opening Pulse.
 
 // Second, independent chip row (12-home-filters.md) — multi-select,
 // AND-combined with FILTER_DEFS' category row and the area picker, not a

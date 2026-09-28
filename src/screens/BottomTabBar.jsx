@@ -195,6 +195,41 @@ export default function BottomTabBar({ collapsed }) {
   const activeIndexRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(null);
 
+  // Liquid-glass droplet pass (2026-09-28 follow-up, real-iPhone report) —
+  // the drag highlight used to be a SINGLE shape that widened/narrowed
+  // ("bulge") as it moved — visually still "a plain oval sliding/
+  // teleporting," not the intended liquid-glass metaball. This adds a real
+  // two-blob gooey effect for the actual mid-drag state, layered UNDER the
+  // existing single-shape highlight (`highlightRef`/`placeHighlight`/
+  // `placeHighlightLive` above are untouched and still own: the pre-drag
+  // "about to move" bulge before real movement is detected, the settled
+  // at-rest state, and the entire Reduce-Motion path). The two blobs:
+  // `anchorBlobRef`, pinned at the tab that was ACTIVE before this gesture
+  // started (not the tab under the finger at pointerdown — the "neck"
+  // needs to stretch back toward the PREVIOUSLY selected tab specifically),
+  // and `dragBlobRef`, which tracks the finger continuously. Both are
+  // opaque `ink` shapes rendered through a classic SVG "gooey" filter
+  // (blur + contrast-boosting color matrix) — solid pixels close together
+  // visually fuse into one droplet with a stretchy neck; pull them far
+  // enough apart and the neck pinches off on its own, which is exactly the
+  // "short elastic neck… before it detaches" behavior asked for, and it's
+  // an emergent property of the filter, not something hand-animated frame
+  // by frame. The filter's own translucency (matching `dockHighlight`) is
+  // applied via a separate, non-filtered wrapper `opacity` — applying it
+  // to the blobs themselves would break the filter's opaque-source trick.
+  const gooLayerRef = useRef(null);
+  const anchorBlobRef = useRef(null);
+  const dragBlobRef = useRef(null);
+  const pointerStartRef = useRef({ x: 0, y: 0 });
+  const gooEngagedRef = useRef(false);
+  const anchorIndexRef = useRef(null);
+  // Below this many px of pointer travel, a press still reads as a plain
+  // tap-in-progress — keeps a real tap instant/gooey-free (per this
+  // ticket's own "a plain tap still selects immediately with no gooey
+  // animation needed" instruction) without adding a separate tap/drag
+  // branch to the existing commit logic below.
+  const DRAG_MOVE_THRESHOLD = 4;
+
   const measure = () => {
     const bar = barRef.current;
     if (!bar) return;
@@ -339,6 +374,31 @@ export default function BottomTabBar({ collapsed }) {
     el.style.opacity = '1';
   };
 
+  const setGooVisible = (visible) => {
+    const el = gooLayerRef.current;
+    if (!el) return;
+    el.style.opacity = visible ? '1' : '0';
+  };
+
+  const placeAnchorBlob = (index) => {
+    const el = anchorBlobRef.current;
+    if (!el || index == null || !items.length) return;
+    const slot = 100 / items.length;
+    el.style.width = `${slot * 0.82}%`;
+    el.style.left = `${(index + 0.5) * slot}%`;
+    el.style.transform = 'translateX(-50%)';
+  };
+
+  const placeDragBlob = (pct) => {
+    const el = dragBlobRef.current;
+    if (!el || !items.length) return;
+    const slot = 100 / items.length;
+    const clampedPct = Math.max(slot * 0.32, Math.min(100 - slot * 0.32, pct));
+    el.style.width = `${slot * 0.64}%`;
+    el.style.left = `${clampedPct}%`;
+    el.style.transform = 'translateX(-50%)';
+  };
+
   const percentForClientX = (clientX) => {
     const bar = barRef.current;
     if (!bar) return 0;
@@ -364,6 +424,13 @@ export default function BottomTabBar({ collapsed }) {
     measure();
     barRef.current?.setPointerCapture?.(e.pointerId);
     draggingRef.current = true;
+    gooEngagedRef.current = false;
+    pointerStartRef.current = { x: e.clientX, y: e.clientY };
+    // Captured BEFORE this gesture's own hitTest overwrites
+    // `activeIndexRef` — the tab that was selected going into this press,
+    // i.e. where the droplet's neck anchors if this turns into a real
+    // drag (see the goo-layer comment above `gooLayerRef`).
+    anchorIndexRef.current = activeIndexRef.current;
     const idx = hitTest(e.clientX);
     activeIndexRef.current = idx;
     setActiveIndex(idx);
@@ -382,9 +449,29 @@ export default function BottomTabBar({ collapsed }) {
       setActiveIndex(idx);
     }
     // Reduce Motion: a plain non-bouncy snap between slots, never the
-    // continuous stretch (that IS the motion this setting asks to avoid).
-    if (reduceMotionQuery()) placeHighlight(idx, true);
-    else placeHighlightLive(percentForClientX(e.clientX));
+    // continuous stretch/goo (that IS the motion this setting asks to
+    // avoid) — falls straight through to the pre-existing discrete path.
+    if (reduceMotionQuery()) {
+      placeHighlight(idx, true);
+      return;
+    }
+    const dx = e.clientX - pointerStartRef.current.x;
+    const dy = e.clientY - pointerStartRef.current.y;
+    const movedEnough = Math.hypot(dx, dy) > DRAG_MOVE_THRESHOLD;
+    if (movedEnough) {
+      if (!gooEngagedRef.current) {
+        gooEngagedRef.current = true;
+        placeAnchorBlob(anchorIndexRef.current != null ? anchorIndexRef.current : idx);
+        setGooVisible(true);
+        // Hand off from the single-shape bulge to the two-blob droplet —
+        // hidden, not unmounted, so it's already correctly positioned and
+        // just needs an opacity fade back in once the gesture settles.
+        if (highlightRef.current) highlightRef.current.style.opacity = '0';
+      }
+      placeDragBlob(percentForClientX(e.clientX));
+    } else {
+      placeHighlightLive(percentForClientX(e.clientX));
+    }
   };
 
   // BUG 1 fix: no longer hides the highlight on release — it stays exactly
@@ -397,6 +484,14 @@ export default function BottomTabBar({ collapsed }) {
     if (!draggingRef.current) return;
     draggingRef.current = false;
     const idx = activeIndexRef.current;
+    if (gooEngagedRef.current) {
+      // Droplet fully detaches and merges into the destination tab: fade
+      // the two-blob layer out while the classic single-shape highlight
+      // (already hidden, mid-drag) crossfades back in via `placeHighlight`
+      // below — a settle, not a hard cut.
+      setGooVisible(false);
+      gooEngagedRef.current = false;
+    }
     // Settles the SAME blob smoothly into the existing at-rest look — the
     // continuous drag placement above never uses this element's normal
     // transition, so without this final call it would stay stretched/
@@ -411,6 +506,10 @@ export default function BottomTabBar({ collapsed }) {
   const cancelDrag = () => {
     if (!draggingRef.current) return;
     draggingRef.current = false;
+    if (gooEngagedRef.current) {
+      setGooVisible(false);
+      gooEngagedRef.current = false;
+    }
     const idx = items.findIndex((it) => it.key === s.screen);
     activeIndexRef.current = idx === -1 ? null : idx;
     setActiveIndex(idx === -1 ? null : idx);
@@ -451,6 +550,49 @@ export default function BottomTabBar({ collapsed }) {
         // prop for API compatibility with existing call sites/tests.
       }}
     >
+        <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true" focusable="false">
+          <filter id="bb-dock-goo" x="-60%" y="-60%" width="220%" height="220%">
+            {/* Classic "gooey" filter: blur softens/merges nearby opaque
+                shapes, the color matrix's steep alpha slope (20/-9) then
+                sharpens the result back to a crisp edge everywhere except
+                where two blurred shapes actually overlap — that overlap
+                region is the elastic "neck." stdDeviation is tuned to
+                connect across roughly one dock slot's width so the neck
+                visibly pinches off once the finger travels much further
+                than that, rather than staying connected across the whole
+                bar. */}
+            <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="bb-goo-blur" />
+            <feColorMatrix in="bb-goo-blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9" result="bb-goo-sharp" />
+          </filter>
+        </svg>
+        <div
+          ref={gooLayerRef}
+          data-testid="dock-goo-layer"
+          style={{
+            position: 'absolute', top: 8, bottom: 8, left: 0, right: 0,
+            opacity: 0, pointerEvents: 'none', zIndex: 0,
+            transition: 'opacity 0.16s ease',
+          }}
+        >
+          {/* Translucency (matches `dockHighlight`) is applied HERE, on a
+              plain unfiltered wrapper — applying it directly to the blobs
+              below would feed the goo filter semi-transparent source
+              pixels and break its opaque-shape contrast trick. */}
+          <div style={{ position: 'absolute', inset: 0, opacity: 0.16 }}>
+            <div style={{ position: 'absolute', inset: 0, filter: 'url(#bb-dock-goo)', isolation: 'isolate' }}>
+              <div
+                ref={anchorBlobRef}
+                data-testid="dock-goo-anchor"
+                style={{ position: 'absolute', top: 0, height: '100%', borderRadius: 999, background: ink, willChange: 'left, width' }}
+              />
+              <div
+                ref={dragBlobRef}
+                data-testid="dock-goo-drag"
+                style={{ position: 'absolute', top: 0, height: '100%', borderRadius: 999, background: ink, willChange: 'left, width' }}
+              />
+            </div>
+          </div>
+        </div>
         <div
           ref={highlightRef}
           data-testid="dock-highlight"

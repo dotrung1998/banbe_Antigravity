@@ -15,7 +15,31 @@ import SwiftUI
 /// edge pointing back at the ring, and text right-aligned inside the
 /// bubble — matching web's equivalent redesign in `Home.jsx`. Clamped so
 /// the bubble always stays fully inside the screen bounds rather than a
-/// hardcoded guess. Also fixes the real "text clipped/covered" cause:
+/// hardcoded guess.
+///
+/// Positioning pass 2 (2026-09-28, same-day real-device follow-up): the
+/// pass above put the bubble fully BESIDE the ring (left edge at the
+/// ring's own trailing edge), which on a real device read as floating
+/// clear of the ring rather than a speech bubble anchored to it. Real
+/// requirement: the bubble must visibly OVERLAP the ring's UPPER-RIGHT
+/// QUARTER. Fixed by anchoring the bubble's own bottom-leading corner at
+/// the ring's CENTER point (`rect.midX`/`rect.midY`, not an edge) and
+/// letting it extend up-and-trailing from there — for any bubble at
+/// least as large as the ring's own radius (true for every real piece of
+/// copy this sequence shows), that necessarily overlaps exactly the
+/// ring's upper-right quadrant. The pointer moved from vertically
+/// centered on the leading edge to near its BOTTOM, so its tip still
+/// lands close to the anchor point (the ring's center) under the new
+/// placement — same side, same "still pointing at the ring" contract.
+/// Still measured off the real ring rect via `app.pulseRingFrame`, never
+/// a hardcoded offset, and clamped to `UIScreen.main.bounds` exactly as
+/// before — only the anchor math and pointer alignment changed, not the
+/// step-sequence/5-minute-repeat logic below. Ring tappability: this view
+/// is a plain SwiftUI overlay sized to its own measured content, not a
+/// full-screen hit-test layer, so it only ever intercepts touches over
+/// the specific quadrant it visually overlaps — the ring's other three
+/// quadrants (`HomeView`'s own Pulse avatar) stay directly tappable.
+/// Also fixes the real "text clipped/covered" cause:
 /// `bubbleSize` used to start at `.zero` and only update a layout pass
 /// AFTER the bubble was already positioned from it (`rect.minY -
 /// clearance - bubbleSize.height / 2` evaluated with a stale/zero height
@@ -51,7 +75,6 @@ struct PulseTeaserBubbleView: View {
     }
     private static let repeatInterval: TimeInterval = 5 * 60
 
-    private var ringGap: CGFloat { 12 }
     private var viewportMargin: CGFloat { 12 }
 
     var body: some View {
@@ -97,19 +120,21 @@ struct PulseTeaserBubbleView: View {
 
     private var screenBounds: CGRect { UIScreen.main.bounds }
 
-    /// Ideal spot is just to the RIGHT of the ring, vertically centered on
-    /// it (the pointer sits on the bubble's own left edge, see
-    /// `bubbleContent`) — clamped so the whole box always stays fully
-    /// inside the screen instead of a hardcoded guess about size.
+    /// Anchored so the bubble's own bottom-leading corner sits at the
+    /// ring's CENTER point, extending up-and-trailing from there — see
+    /// this file's positioning-pass-2 doc comment above for why that
+    /// necessarily overlaps the ring's upper-right quadrant. Clamped so
+    /// the whole box always stays fully inside the screen instead of a
+    /// hardcoded guess about size. `.position(x:,y:)` takes the view's
+    /// CENTER point, so the returned point is offset by half the
+    /// (clamped) width/height from the corner anchor above.
     private func bubblePosition(in ring: CGRect, screen: CGRect) -> CGPoint {
         let width = bubbleSize.width > 0 ? bubbleSize.width : 220
         let height = bubbleSize.height > 0 ? bubbleSize.height : 40
-        let idealLeft = ring.maxX + ringGap
         let maxLeft = max(viewportMargin, screen.width - viewportMargin - width)
-        let left = min(idealLeft, maxLeft)
-        let idealTop = ring.midY - height / 2
+        let left = min(max(viewportMargin, ring.midX), maxLeft)
         let maxTop = max(viewportMargin, screen.height - viewportMargin - height)
-        let top = min(max(viewportMargin, idealTop), maxTop)
+        let top = min(max(viewportMargin, ring.midY - height), maxTop)
         return CGPoint(x: left + width / 2, y: top + height / 2)
     }
 
@@ -144,13 +169,15 @@ struct PulseTeaserBubbleView: View {
         .padding(.horizontal, 14).padding(.vertical, 11)
         .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .shadow(color: .black.opacity(0.22), radius: 10, y: 4)
-        // Comic-bubble pointer — LEFT side, pointing back at the ring
-        // (matches web's equivalent redesign in Home.jsx).
-        .overlay(alignment: .leading) {
+        // Comic-bubble pointer — LEFT side, near the BOTTOM of that edge
+        // (positioning pass 2) so its tip lands close to the anchor point
+        // itself (the ring's center) under the new upper-right-quadrant
+        // overlap placement — matches web's equivalent redesign.
+        .overlay(alignment: .bottomLeading) {
             Triangle()
                 .fill(app.palette.ink)
                 .frame(width: 6, height: 10)
-                .offset(x: -6)
+                .offset(x: -6, y: -8)
         }
     }
 

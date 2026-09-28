@@ -111,4 +111,52 @@ test.describe('Home — quick event search entry', () => {
     await page.getByTestId('map-back').click();
     await expect(page.locator('[data-screen-label="Home"]')).toBeVisible();
   });
+
+  // Real-device follow-up (2026-09-28) — the OLD top-header search icon
+  // (data-testid="home-search-button", beside the wordmark) was reported
+  // still visible on a real iPhone after the dock/search relocation commit.
+  // Turned out the web fix itself was already correct (the icon really is
+  // gone, replaced by `home-search-fab`) — the real gap was iOS, which never
+  // got touched at all (see apps/ios/BanbeApp/Views/HomeView.swift). This
+  // negative assertion guards the web side against ever silently
+  // reintroducing that old element, and confirms the fab is a true
+  // fixed-position sibling unaffected by Home's own scroll position — the
+  // exact containing-block bug class (a transform-holding ancestor from an
+  // animation's fill-mode) already found once in this codebase for the
+  // Pulse teaser bubble (see Home.jsx's own PulseTeaserBubble doc comment).
+  test('old header search icon is gone, and the floating fab is unaffected by Home scroll', async ({ page }) => {
+    await setupToHome(page);
+    await expect(page.locator('[data-screen-label="Home"]')).toBeVisible();
+
+    // Negative assertion — a regression can't silently reintroduce the old
+    // header icon without this failing.
+    await expect(page.getByTestId('home-search-button')).toHaveCount(0);
+
+    const fab = page.getByTestId('home-search-fab');
+    await expect(fab).toBeVisible();
+    const scrollViewport = page.locator('[data-testid="app-scroll-viewport"]');
+
+    // A small scroll (below the 4px hide-on-scroll-down threshold, see
+    // Home.jsx's own searchFabHidden effect) must leave the fab's on-screen
+    // rect completely unchanged — it is `position: fixed` against the
+    // viewport, never against Home's own (scrolled) content box.
+    const before = await fab.boundingBox();
+    await scrollViewport.evaluate((el) => { el.scrollTop = 2; });
+    const afterTinyScroll = await fab.boundingBox();
+    expect(afterTinyScroll).toEqual(before);
+
+    // A real scroll-down hides it (intentional hide/reveal-on-scroll
+    // behavior, matching the dock's own shrink-on-scroll-down convention —
+    // see Home.jsx's own doc comment on searchFabHidden) — but scrolling
+    // back to the top must restore the EXACT same fixed rect, not a
+    // position drifted by however far the content itself scrolled.
+    await scrollViewport.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await expect(fab).toHaveCSS('opacity', '0');
+    await scrollViewport.evaluate((el) => { el.scrollTop = 0; });
+    await expect(fab).toBeVisible();
+    // The reveal itself is a 0.22s CSS transition (translateY/scale/opacity
+    // — see Home.jsx's own searchFabHidden style) — poll rather than a
+    // single immediate read, so this doesn't race a mid-transition frame.
+    await expect.poll(() => fab.boundingBox()).toEqual(before);
+  });
 });

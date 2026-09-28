@@ -5,6 +5,20 @@ import { liveEventOverrides } from '../lib/countdown.js';
 import { paper, ink, rule, alert, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
 import ActionCenter from './ActionCenter.jsx';
+import { supabase } from '../lib/supabase.js';
+
+// THIRD STALE-AVATAR SITE (2026-09-28) — this header's round avatar next to
+// the org name / "Bởi <org> Team" line used to always be `bg(ev.img, ...)`,
+// i.e. the STATIC demo-catalogue event photo — never the organizer's own
+// real `avatar_path` at all, on either the stale OR the fresh case. Same
+// canonical source/helper Account.jsx and OrganizerProfile.jsx already use
+// (`s.myOrganizerAvatarPath`, kept fresh in place by saveOrganizerProfile's
+// success branch), so a real host photo change now shows here too, without
+// re-deriving a second copy of the URL logic.
+function organizerAvatarUrl(path) {
+  if (!path) return '';
+  return supabase.storage.from('organizer-photos').getPublicUrl(path).data.publicUrl;
+}
 
 export default function Dashboard() {
   const {
@@ -121,7 +135,22 @@ export default function Dashboard() {
         </div>
       </div>
       <div style={{ padding: '16px 22px 0', display: 'flex', gap: 14, alignItems: 'center' }}>
-        <div style={bg(ev.img, { flex: 'none', width: 56, height: 56, borderRadius: '50%' })} />
+        {/* Real organizer avatar when this account actually has one
+            (canonical `s.myOrganizerAvatarPath`, same source as the
+            Account card / Profile tổ chức / public organizer profile) —
+            `ev.img`'s demo-catalogue photo is only ever the fallback for a
+            never-hosted dev/seed account, same fallback rule the org
+            name/stats lines above already follow. */}
+        {s.myOrganizerId && organizerAvatarUrl(s.myOrganizerAvatarPath) ? (
+          <img
+            src={organizerAvatarUrl(s.myOrganizerAvatarPath)}
+            alt=""
+            data-testid="dashboard-organizer-avatar"
+            style={{ flex: 'none', width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }}
+          />
+        ) : (
+          <div data-testid="dashboard-organizer-avatar-fallback" style={bg(ev.img, { flex: 'none', width: 56, height: 56, borderRadius: '50%' })} />
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
           {/* Personal-vs-organizer hierarchy pass (2026-09-27) — the real
               organizers.name (s.orgRegName, kept in sync by
