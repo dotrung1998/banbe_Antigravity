@@ -30,10 +30,20 @@ export default function Documents() {
         'No receipts yet. One appears when an organizer confirms your payment.')
     : T('Chưa có hoá đơn nào.', 'No invoices yet.');
 
+  // Sub-section-of-a-group back-navigation fix (2026-09-29) — this used to
+  // hardcode both the label AND the destination to "Tài khoản"/"Account"
+  // regardless of where the screen was actually opened from, skipping the
+  // "Thanh toán & giấy tờ"/"Payments & documents" group page (AccountGroup.jsx)
+  // it's really nested under. Same VI/EN wording that group page's own
+  // title already uses, not new copy.
+  const backLabel = s.documentsBack === 'accountGroup'
+    ? T('Thanh toán & giấy tờ', 'Payments & documents')
+    : T('Tài khoản', 'Account');
+
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Documents">
       <div onClick={backFromDocuments} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="documents-back">
-        ‹ {T('Tài khoản', 'Account')}
+        ‹ {backLabel}
       </div>
       <div style={{ padding: '14px 22px 0' }}>
         <h1 style={{ ...display(24, { margin: 0 }) }} data-testid="documents-title">{title}</h1>

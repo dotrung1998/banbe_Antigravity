@@ -34,7 +34,12 @@ struct VerificationsView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.verificationsBack == .notifications ? app.T("Thông báo", "Notifications") : app.T("Tài khoản", "Account")) { app.screen = app.verificationsBack }
+                // Sub-section-of-a-group back-navigation fix (2026-09-29,
+                // second pass) — label now also distinguishes the
+                // "hostOps" group page (AccountGroupView, where this is
+                // now correctly routed back to) from a plain "Account",
+                // matching that group's own title text.
+                BackLink(label: app.backLabel(for: app.verificationsBack)) { app.screen = app.verificationsBack }
                     .padding(.top, 8)
                     .accessibilityIdentifier("verifications.back")
 

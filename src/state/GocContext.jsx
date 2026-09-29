@@ -453,6 +453,12 @@ const initialState = {
   // behavior) or 'confirmed' (the ticket screen's own "Xem Receipt").
   // backFromDocument() reads this instead of a single hardcoded target.
   documentBack: 'documents',
+  // Sub-section-of-a-group back-navigation fix (2026-09-29) — same idea as
+  // documentBack above, but for the LIST screen itself: which screen
+  // opened it (defaults to 'accountGroup', its only real entry point
+  // today — see openDocuments' own comment). backFromDocuments() reads
+  // this instead of a single hardcoded 'profile'.
+  documentsBack: 'accountGroup',
   // Same documentBack/paymentBack pattern, extended (07-notifications.md's
   // 2026-09-18 follow-up) so every screen openNotification() can route to
   // remembers "opened from Notifications" and returns there specifically —
@@ -3740,8 +3746,16 @@ export function GocProvider({ children }) {
       s.payoutMomo, s.payoutNote, s.payoutAddress, s.payoutTaxCode]);
 
   // ---- the documents themselves ----
-  const openDocuments = useCallback((kind, role = 'guest') => {
-    set({ screen: 'documents', documentsKind: kind, documentsRole: role, documents: [], documentsError: '' });
+  // Sub-section-of-a-group back-navigation fix (2026-09-29) — mirrors the
+  // same fix on iOS (AppState.swift's `documentsListBack`): every current
+  // caller of openDocuments (AccountGroup.jsx's Invoices/Receipts rows) is
+  // reached FROM the "payments" AccountGroup page, so `backFromDocuments`
+  // hardcoding `screen: 'profile'` skipped a level, landing on Account's
+  // root instead of back on Payments & documents. `back` records the real
+  // origin, defaulting to 'accountGroup' since that's this screen's only
+  // real entry point today.
+  const openDocuments = useCallback((kind, role = 'guest', back = 'accountGroup') => {
+    set({ screen: 'documents', documentsKind: kind, documentsRole: role, documents: [], documentsError: '', documentsBack: back });
   }, [set]);
 
   const loadDocuments = useCallback(async () => {
@@ -3791,7 +3805,7 @@ export function GocProvider({ children }) {
 
   const openDocument = useCallback((id, backTo = 'documents') => set({ screen: 'documentView', documentId: id, documentBack: backTo }), [set]);
   const backFromDocument = useCallback(() => set(prev => ({ screen: prev.documentBack || 'documents' })), [set]);
-  const backFromDocuments = useCallback(() => set({ screen: 'profile' }), [set]);
+  const backFromDocuments = useCallback(() => set(prev => ({ screen: prev.documentsBack || 'profile' })), [set]);
 
   const currentDocument = useMemo(
     () => s.documents.find(d => d.id === s.documentId) || null,

@@ -61,40 +61,59 @@ struct HomeView: View {
         // get a stable `.id(...)` — the header/banners/chips are always a
         // small, fixed offset near the top and aren't meaningful restore
         // targets the way "which event card was on screen" is.
-        ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.homeScrollAnchorID, onRefresh: {
-            await app.loadHomeLiveEvents()
-            await app.loadWeekendEvents()
-            await app.loadDiscoveryEvents()
-            if app.userID != nil { await app.loadHomeStories() }
-        }) {
-            // Lazy, so only the cards actually on screen fetch their photo —
-            // the eager VStack kicked off all ~21 hero downloads at launch
-            // and they all fought for the same bandwidth.
-            LazyVStack(alignment: .leading, spacing: 0) {
-                header
-                // TASK A (2026-10-01 UX foundation pass) — replaces the old
-                // fixed four-banner `paymentBanners` block: one unified,
-                // priority-sorted, 3-card-capped Action Center covering both
-                // roles this account can hold. heldEvent itself stays in use
-                // for tagging the "Your events" strip further down.
-                ActionCenterView(items: actionItems, onSeeAll: { app.goNotifications() })
-                if !app.savedStrip.isEmpty { savedStrip }
-                storyRow
-                filterTabs
-                homeExtraFilterChips
-                if app.feed.isEmpty {
-                    emptyState
-                } else {
-                    ForEach(app.feed) { event in
-                        EventCard(event: event)
-                            .id(event.key)
+        // Pull-to-refresh header fix (2026-09-29 follow-up) — matches
+        // Messages: `header` is now a sibling ABOVE `ScreenScaffold`, not the
+        // first item inside the content it offsets during a pull, so it
+        // never moves/shifts — only the feed below it does.
+        // Opaque-header fix (2026-09-29 follow-up, real-device report:
+        // overlapping headers during a swipe-back transition) — `header`
+        // used to inherit `ScreenScaffold`'s own opaque `app.palette.paper`
+        // background for free, since it was rendered INSIDE that scroll
+        // content. Pulled out as a sibling above it, `header` itself paints
+        // nothing behind its text — transparent — so mid-transition, the
+        // OTHER screen sitting behind this one in RootView's swipe ZStack
+        // showed straight through it. Matches InboxView's own
+        // `ZStack { app.palette.paper.ignoresSafeArea(); VStack { header; ... } }`
+        // shape exactly, which never had this bug.
+        ZStack {
+            app.palette.paper.ignoresSafeArea()
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.homeScrollAnchorID, refreshIndicatorTopPadding: 16, onRefresh: {
+                await app.loadHomeLiveEvents()
+                await app.loadWeekendEvents()
+                await app.loadDiscoveryEvents()
+                if app.userID != nil { await app.loadHomeStories() }
+            }) {
+                // Lazy, so only the cards actually on screen fetch their photo —
+                // the eager VStack kicked off all ~21 hero downloads at launch
+                // and they all fought for the same bandwidth.
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    // TASK A (2026-10-01 UX foundation pass) — replaces the old
+                    // fixed four-banner `paymentBanners` block: one unified,
+                    // priority-sorted, 3-card-capped Action Center covering both
+                    // roles this account can hold. heldEvent itself stays in use
+                    // for tagging the "Your events" strip further down.
+                    ActionCenterView(items: actionItems, onSeeAll: { app.goNotifications() })
+                    if !app.savedStrip.isEmpty { savedStrip }
+                    storyRow
+                    filterTabs
+                    homeExtraFilterChips
+                    if app.feed.isEmpty {
+                        emptyState
+                    } else {
+                        ForEach(app.feed) { event in
+                            EventCard(event: event)
+                                .id(event.key)
+                        }
+                        footer
                     }
-                    footer
+                    weekendSection
+                    hostLink
                 }
-                weekendSection
-                hostLink
+                .padding(.bottom, 100)
             }
-            .padding(.bottom, 100)
+        }
         }
         .task {
             guard app.userID != nil else { return }
@@ -268,9 +287,29 @@ struct HomeView: View {
     // style. Wired to the SAME `toggleTheme` Preferences already uses — no
     // parallel theme state.
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
+        // Alignment changed from `.firstTextBaseline` to `.center` (2026-09-29
+        // follow-up, wordmark doubled in size) — baseline alignment anchors a
+        // non-text view's BOTTOM to the text baseline, so as the wordmark
+        // image grows taller it pushes upward past the row's top and can
+        // clip the quick-switch row on the trailing side along with it.
+        // Centering keeps every sibling vertically centered in the row
+        // regardless of the wordmark's height, so the lang/area/theme
+        // buttons stay fully visible at any wordmark size.
+        HStack(alignment: .center) {
             HStack(spacing: 10) {
-                BanbeLogo(kind: .wordmark, width: 126)
+                BanbeLogo(kind: .wordmark, width: BanbeLogo.headerWordmarkWidth)
+                // Home-specific label (2026-09-29, restyled 2026-09-29
+                // follow-up) — Notifications/Messages/Account each got the
+                // SAME wordmark placed before their own title (this pass),
+                // so Home's own copy now says which section it is too,
+                // in the SAME font/color those titles use
+                // (`BanbeTheme.display`/full ink, not a small dim label) —
+                // kept in this same leading `HStack`, before the `Spacer`,
+                // so the language/area/theme controls on the trailing side
+                // don't move at all.
+                Text(app.T("chính", "home"))
+                    .font(BanbeTheme.display(27))
+                    .foregroundStyle(app.palette.ink)
                 // Home quick event search moved OUT of this header
                 // (2026-09-28 follow-up, real-device report) — see
                 // `HomeSearchFabView`, overlaid on the whole screen from
@@ -281,22 +320,25 @@ struct HomeView: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
                 HStack(spacing: 8) {
-                    // Task 1 (2026-09-21 follow-up) — bumped 11pt -> 13pt,
-                    // just enough to read/tap more easily without
-                    // unbalancing the rest of the header row.
-                    // Task 3 (2026-09-22 twelfth follow-up) — area/appearance
-                    // brought up to the SAME 13pt/semibold + padded hit-area
-                    // as language, matching web's Home.jsx parity fix.
-                    Button(app.T("English", "Tiếng Việt")) { app.toggleLang() }
-                        .font(.system(size: 13, weight: .semibold))
-                        .padding(.vertical, 4)
+                    // Bolder/larger + bigger hit-area (2026-09-29 follow-up)
+                    // — bumped 13pt/semibold -> 15pt/bold and 4pt -> 7pt
+                    // vertical padding on all three quick-switch buttons for
+                    // easier tapping.
+                    Button(app.T("EN", "VN")) { app.toggleLang() }
+                        .font(.system(size: 15, weight: .bold))
+                        .padding(.vertical, 7)
                         .accessibilityIdentifier("header.lang")
                     Text("▪").font(.system(size: 9)).opacity(0.4)
-                    Button("banbe ▪︎ \(app.currentArea.key == "all" ? "Sài Gòn" : app.currentArea.label) ▾") {
+                    // "banbe ▪︎" prefix dropped (2026-09-29 follow-up) — was
+                    // crowding out the actual region name; the button's own
+                    // accessibility identifier and action already make it
+                    // unambiguous which control this is without a label
+                    // prefix repeating the app's own name.
+                    Button("\(app.currentArea.key == "all" ? "Sài Gòn" : app.currentArea.label) ▾") {
                         app.openArea()
                     }
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.vertical, 4)
+                    .font(.system(size: 15, weight: .bold))
+                    .padding(.vertical, 7)
                     .accessibilityIdentifier("header.area")
                     Text("▪").font(.system(size: 9)).opacity(0.4)
                     // No `toggleTheme()` exists on iOS — Preferences.swift's
@@ -307,8 +349,8 @@ struct HomeView: View {
                     Button(app.theme == "dark" ? app.T("Sáng", "Light") : app.T("Tối", "Dark")) {
                         app.pickTheme(app.theme == "dark" ? "light" : "dark")
                     }
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.vertical, 4)
+                    .font(.system(size: 15, weight: .bold))
+                    .padding(.vertical, 7)
                     .accessibilityIdentifier("header.theme")
                 }
             }
@@ -475,6 +517,19 @@ struct HomeView: View {
             //    its bottom. A zero-height box also means the row's own
             //    height never depends on the bubble's copy, so no step
             //    advance can nudge the feed below it.
+            // Repositioned (2026-09-29 follow-up, reverted second pass) —
+            // growing fully leftward from the ring's centre (previous pass)
+            // ran the box off the LEFT edge of the screen entirely (the
+            // ring sits only ~70pt from the screen's own left edge, nowhere
+            // near enough room for a 230pt-wide box to grow into), clipping
+            // the longest copy. Back to growing UP-RIGHT (box's leading
+            // edge anchored near the ring, content left-aligned — plenty of
+            // screen width in that direction) but shifted 20pt further
+            // LEFT than the ring's exact centre so the box overlaps the
+            // ring slightly, per this pass's own explicit request. Tail
+            // unchanged, at the bubble's own bottom-leading corner
+            // (`Triangle`'s own `.overlay(alignment: .bottomLeading)` in
+            // PulseTeaserBubbleContent).
             .overlay(alignment: .topLeading) {
                 if app.pulseTeaserStep >= 0 {
                     PulseTeaserBubbleContent(
@@ -485,7 +540,7 @@ struct HomeView: View {
                     .frame(width: Self.pulseBubbleMaxWidth, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(height: 0, alignment: .bottom)
-                    .padding(.leading, Self.pulseRingMidXInRow)
+                    .padding(.leading, Self.pulseRingMidXInRow - 20)
                     .padding(.top, Self.pulseRingMidYInRow)
                 }
             }
@@ -499,7 +554,17 @@ struct HomeView: View {
         // draws outside it. Still clipped by the feed's own vertical
         // ScrollView as it scrolls away, exactly like the ring.
         .scrollClipDisabled()
-        .padding(.vertical, 14)
+        // Extra top clearance (2026-09-29 follow-up, real-device report) —
+        // the teaser bubble grows upward from the ring's centre (see the
+        // comment above) and, when little/nothing renders above this row
+        // (e.g. an empty Action Center), had no room to grow into: it
+        // reached above this screen's own header and rendered over the
+        // "home" title. This row (Pulse ring + its bubble) is shifted down
+        // by that much extra so the bubble's tallest content (the 3-line
+        // ranked list) is always fully clear of the header above, without
+        // changing the bubble's own top-left/pointer-at-bottom-left design.
+        .padding(.top, 65)
+        .padding(.bottom, 14)
         .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
     }
 
@@ -516,7 +581,11 @@ struct HomeView: View {
     /// inside even a 375pt-wide iPhone.
     private static let pulseBubbleMaxWidth: CGFloat = 230
     private static let pulseRingMidXInRow: CGFloat = 50
-    private static let pulseRingMidYInRow: CGFloat = 28
+    // Shifted down from the ring's own vertical centre (28) so the
+    // bubble's bottom (it grows UPWARD from this anchor) now dips down
+    // just enough to barely overlap the "Banbe Pulse" label under the
+    // ring, per this pass's explicit request.
+    private static let pulseRingMidYInRow: CGFloat = 10
 
     /// Matches the web strip's tag rules: cancelled / past / on hold /
     /// paid / saved, each with its own chip colour.

@@ -1441,6 +1441,9 @@ struct MapExploreView: View {
                     )
                 }
                 .listStyle(.plain)
+                // Pull-to-refresh hold fix (2026-09-29) — see
+                // `AppState.rootPullContentOffset`'s own doc comment.
+                .offset(y: app.rootPullContentOffset)
                 .onChange(of: visibleEvents.map(\.id)) { _, ids in
                     // Bug 2 (best-effort list-scroll restore): SwiftUI's
                     // List has no pixel scrollTop to round-trip the way a

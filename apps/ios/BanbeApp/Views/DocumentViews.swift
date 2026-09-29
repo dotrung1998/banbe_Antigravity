@@ -27,6 +27,15 @@ struct DocumentsView: View {
             : app.T("Hoá đơn cho những chỗ bạn đã đặt.", "Invoices for the spots you booked.")
     }
 
+    // Sub-section-of-a-group back-navigation fix (2026-09-29) — this used
+    // to hardcode both the label AND the destination to "Tài khoản"/
+    // "Account" regardless of where the screen was actually opened from,
+    // skipping the "Thanh toán & giấy tờ"/"Payments & documents" group
+    // page (AccountGroupView) it's really nested under. Same VI/EN wording
+    // that group page's own title already uses (`AccountGroupView.title`),
+    // not new copy.
+    private var backLabel: String { app.backLabel(for: app.documentsListBack) }
+
     private var emptyText: String {
         isReceipt
             ? app.T("Chưa có biên nhận nào. Biên nhận xuất hiện khi người tổ chức xác nhận đã nhận tiền.",
@@ -37,7 +46,7 @@ struct DocumentsView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Tài khoản", "Account")) { app.screen = .profile }
+                BackLink(label: backLabel) { app.screen = app.documentsListBack }
                     .padding(.top, 8)
                     .accessibilityIdentifier("documents.back")
 

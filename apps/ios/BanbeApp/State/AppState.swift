@@ -364,6 +364,15 @@ final class AppState: ObservableObject {
     // Home, Map, Inbox, or Account.
     @Published var createOriginScreen: Screen = .home
     @Published var eventListMode: EventListMode = .going
+    // Sub-section-of-a-group back-navigation fix (2026-09-29, second pass)
+    // — same `documentsListBack`-style convention: `.eventList` is shared
+    // by three entry points (Going/Saved, from AccountView's own root
+    // counters — correctly `.profile`; Completed events, from
+    // AccountGroupView's "activity" group page — was incorrectly always
+    // `.profile` too, skipping that group page). Each `goXList()` function
+    // now sets this explicitly instead of `backFromEventList()` hardcoding
+    // one target for all three.
+    @Published var eventListBack: Screen = .profile
 
     // MARK: Preferences (persisted per-device and, once signed in, per-account)
     @Published var lang: String = UserDefaults.standard.string(forKey: "banbe.lang") ?? "vi" {
@@ -858,6 +867,18 @@ final class AppState: ObservableObject {
     // goBack()/backTargetScreen read this instead of a single hardcoded
     // target.
     @Published var documentBack: Screen = .documents
+    // Sub-section-of-a-group back-navigation fix (2026-09-29) — `.documents`
+    // (the Invoices/Receipts LIST, opened from AccountGroupView's
+    // "payments" group page) used to hardcode its own back button AND
+    // `goBack()`/`backTargetScreen` straight to `.profile` (Account's own
+    // root), skipping the "Thanh toán & giấy tờ"/"Payments & documents"
+    // group page it was actually opened from — both the explicit back
+    // button and the edge-swipe-back gesture landed one level too far up.
+    // Same `documentBack`-style back-target convention, just for the LIST
+    // screen instead of the single-document viewer. Defaults to
+    // `.accountGroup` since that's this screen's only real entry point
+    // today (see `openDocuments`'s own doc comment).
+    @Published var documentsListBack: Screen = .accountGroup
     // Same documentBack/paymentBack pattern, extended (07-notifications.md's
     // 2026-09-18 follow-up) so every screen openNotification() can route to
     // remembers "opened from Notifications" and returns there specifically
@@ -1912,7 +1933,12 @@ final class AppState: ObservableObject {
         if rootPullProgress >= 1 {
             runRootRefresh(trigger)
         } else {
-            rootPullProgress = 0
+            // Pull-to-refresh hold fix (2026-09-29) — an insufficient pull
+            // (released before crossing the trigger distance) now springs
+            // back instead of snapping instantly; matches the genuine
+            // completion spring-back below instead of being the one case
+            // left unanimated.
+            withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.86)) { rootPullProgress = 0 }
         }
     }
     // Also dismisses a genuinely in-flight refresh's indicator — ticket's
@@ -1925,14 +1951,32 @@ final class AppState: ObservableObject {
         rootRefreshing = false
     }
 
+    // Pull-to-refresh hold fix (2026-09-29) — the actual scrollable
+    // content (not just the indicator overlay) reads this to offset
+    // itself: follows the pull 1:1 up to the trigger distance while
+    // dragging (`rootPullProgress`), then HOLDS at that same distance for
+    // the WHOLE `rootRefreshing` duration — previously nothing held the
+    // content down at all, so it sprang back to its resting position the
+    // instant the finger released, well before the actual reload had
+    // finished, which is what read as "the screen still shifts upward [[
+    // right after releasing]] and [only then] the loading icon appears."
+    // Every screen using `ScaffoldScrollProbe` (ScreenScaffold, InboxView,
+    // MapExploreView's own list) applies this to its own scrollable
+    // content, one shared definition so they can't drift apart.
+    var rootPullContentOffset: CGFloat {
+        rootRefreshing ? screenScaffoldPullTriggerDistance : rootPullProgress * screenScaffoldPullTriggerDistance
+    }
+
     func runRootRefresh(_ action: @escaping () async -> Void) {
         guard !rootRefreshing else { return }
         rootRefreshing = true
         Task {
             await action()
             await MainActor.run {
-                rootRefreshing = false
-                rootPullProgress = 0
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+                    rootRefreshing = false
+                    rootPullProgress = 0
+                }
             }
         }
     }
@@ -2284,10 +2328,10 @@ final class AppState: ObservableObject {
     // polling), so without this a dispute resolved against the guest by an
     // admin in a different session never clears this list until the app
     // relaunches.
-    func goGoingList() { eventListMode = .going; screen = .eventList; Task { await loadMyEvents() } }
-    func goSavedList() { eventListMode = .saved; screen = .eventList }
-    func goCompletedList() { eventListMode = .completed; screen = .eventList }
-    func backFromEventList() { screen = .profile }
+    func goGoingList(back: Screen = .profile) { eventListMode = .going; eventListBack = back; screen = .eventList; Task { await loadMyEvents() } }
+    func goSavedList(back: Screen = .profile) { eventListMode = .saved; eventListBack = back; screen = .eventList }
+    func goCompletedList(back: Screen = .accountGroup) { eventListMode = .completed; eventListBack = back; screen = .eventList }
+    func backFromEventList() { screen = eventListBack }
 
     func goReserve() {
         guard isSignedIn else { return requireAuth(returnTo: .reserve, backTo: .event) }
@@ -2461,14 +2505,26 @@ final class AppState: ObservableObject {
         case .hostIntro: goProfile()
         case .create: createBack()
         case .attendance: screen = attendanceBack
-        case .preferences, .editName, .security: screen = .profile
+        // Sub-section-of-a-group back-navigation fix (2026-09-29, second
+        // pass) — `.preferences`/`.security` are only ever reached from
+        // AccountGroupView's "preferences" group page, so `.profile`
+        // skipped that group page, same class of bug as `.documents`'s own
+        // fix. `.editName` is genuinely different — it's opened directly
+        // from AccountView's own root identity card (goEditName(), see its
+        // own comment), never from a group page, so `.profile` stays
+        // correct there and is kept as its own case.
+        case .preferences, .security: screen = .accountGroup
+        case .editName: screen = .profile
         case .login: screen = authBackScreen
         case .confirmed: screen = confirmedBack
         case .refunded, .notifications: goHome()
         case .paymentDetails: screen = paymentDetailsBackTarget
         case .billing: screen = .paymentDetails
-        case .payout: screen = .profile
-        case .documents: screen = .profile
+        // Sub-section-of-a-group back-navigation fix (2026-09-29, second
+        // pass) — `.payout` is only ever reached from AccountGroupView's
+        // "hostOps" group page (its own only call site, openPayout()).
+        case .payout: screen = .accountGroup
+        case .documents: screen = documentsListBack
         case .documentView: screen = documentBack
         case .verifications: screen = verificationsBack
         case .disputes, .adminEvents: screen = .profile
@@ -2504,6 +2560,37 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The title AccountGroupView shows for a given group key — pulled out
+    /// so a `BackLink` label can say "Payments & documents"/"Tickets &
+    /// activity"/etc. instead of a generic "Account" whenever the actual
+    /// back target is a specific group page. AccountGroupView's own
+    /// `title` computed property calls this too, so the two never drift.
+    func accountGroupTitle(for key: String?) -> String {
+        switch key {
+        case "team": return T("Hồ sơ & Team", "Profile & Team")
+        case "activity": return T("Vé & hoạt động", "Tickets & activity")
+        case "payments": return T("Thanh toán & giấy tờ", "Payments & documents")
+        case "preferences": return T("Tùy chỉnh", "Preferences")
+        case "hostOps": return T("Vận hành & thanh toán tổ chức", "Event operations & payments")
+        case "adminReview": return T("Duyệt & kiểm duyệt", "Review & moderation")
+        default: return ""
+        }
+    }
+
+    /// The label a `BackLink`/back button should show for a given
+    /// destination screen — so every subsection's back button names the
+    /// section it's actually returning to (2026-09-29 follow-up: several
+    /// subsections under Account hardcoded "Account" even when their real
+    /// back target, via a `backScreen`/`goBack()` target, was a specific
+    /// group page).
+    func backLabel(for target: Screen) -> String {
+        switch target {
+        case .accountGroup: return accountGroupTitle(for: accountGroupKey)
+        case .notifications: return T("Thông báo", "Notifications")
+        default: return T("Tài khoản", "Account")
+        }
+    }
+
     /// Where goBack() would land, computed without any of its side effects
     /// (no mutation, no network calls) — lets RootView render that screen
     /// peeking in behind the current one while an edge swipe is in
@@ -2517,7 +2604,7 @@ final class AppState: ObservableObject {
         // (just drops back to the active list), never jumps straight to
         // `inboxBack`.
         case .inbox: return inboxView == .archived ? .inbox : inboxBack
-        case .eventList: return .profile
+        case .eventList: return eventListBack
         case .event: return eventBackScreen
         case .organizer, .reserve: return .event
         case .chat: return chatBack == .inbox || chatBack == .notifications ? chatBack : .organizer
@@ -2525,14 +2612,15 @@ final class AppState: ObservableObject {
         case .hostIntro: return .profile
         case .create: return createOriginScreen
         case .attendance: return attendanceBack
-        case .preferences, .editName, .security: return .profile
+        case .preferences, .security: return .accountGroup
+        case .editName: return .profile
         case .login: return authBackScreen
         case .confirmed: return confirmedBack
         case .refunded, .notifications: return .home
         case .paymentDetails: return paymentDetailsBackTarget
         case .billing: return .paymentDetails
-        case .payout: return .profile
-        case .documents: return .profile
+        case .payout: return .accountGroup
+        case .documents: return documentsListBack
         case .documentView: return documentBack
         case .verifications: return verificationsBack
         case .disputes, .adminEvents: return .profile

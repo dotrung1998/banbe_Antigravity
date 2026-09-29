@@ -2044,8 +2044,13 @@ extension AppState {
         case "organizer_invite_response":
             // The host's own roster management lives inline on their
             // Dashboard (DashboardView.swift's own Team section) — no
-            // separate screen to route to.
-            goDashboard()
+            // separate screen to route to. `back: .notifications` added
+            // (2026-09-29 follow-up) — this was the only `openNotification`
+            // branch that left `dashboardBack` untouched, so Dashboard's
+            // own back button/swipe-back silently fell through to a stale
+            // target instead of returning to the bell, unlike every sibling
+            // branch here which threads `back: .notifications` through.
+            goDashboard(back: .notifications)
         case "event_credit_invite":
             if let eventId = notification.data["event_id"]?.stringValue {
                 Task {

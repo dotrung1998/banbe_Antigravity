@@ -108,18 +108,39 @@ struct AccountView: View {
     @State private var didAttemptScrollRestore = false
 
     var body: some View {
-        ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.accountScrollAnchorID, onRefresh: {
-            guard app.userID != nil else { return }
-            await app.loadPaymentBookings()
-            await app.loadMyRefunds()
-            if app.canHost {
-                await app.loadVerifications()
-                await app.loadOrganizerHoldingSummary()
-                await app.loadRefundQueue()
-                if app.myOrganizerID != nil { await app.loadMyOrgStats() }
+        // Pull-to-refresh header fix (2026-09-29 follow-up) — Messages'
+        // header (title + icon buttons) never moves during a pull-to-refresh,
+        // only its List shifts/reveals the indicator underneath; Account's
+        // title row used to be the FIRST item inside `accountContent`, i.e.
+        // inside the very content `ScreenScaffold` offsets while pulling, so
+        // it visibly slid down too. `accountHeader` is now a true sibling,
+        // above `ScreenScaffold` entirely, exactly like InboxView's own
+        // `VStack { header; List {...} }` shape — only the Personal/Host/
+        // Admin tab pills and everything below now belong to the scrollable,
+        // offsettable content.
+        // Opaque-header fix (2026-09-29 follow-up, real-device report:
+        // overlapping headers during a swipe-back transition) — see
+        // HomeView's own identical fix for the full explanation:
+        // `accountHeader` lost the opaque `app.palette.paper` background it
+        // used to inherit for free from being inside `ScreenScaffold`.
+        ZStack {
+            app.palette.paper.ignoresSafeArea()
+        VStack(alignment: .leading, spacing: 0) {
+            accountHeader
+            ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.accountScrollAnchorID, refreshIndicatorTopPadding: 24, onRefresh: {
+                guard app.userID != nil else { return }
+                await app.loadPaymentBookings()
+                await app.loadMyRefunds()
+                if app.canHost {
+                    await app.loadVerifications()
+                    await app.loadOrganizerHoldingSummary()
+                    await app.loadRefundQueue()
+                    if app.myOrganizerID != nil { await app.loadMyOrgStats() }
+                }
+            }) {
+                accountContent
             }
-        }) {
-            accountContent
+        }
         }
         .task { if app.userID != nil { await app.loadHomeStories() } }
         .task { if app.userID != nil { await app.loadMyOrganizerMemberships() } }
@@ -189,15 +210,38 @@ struct AccountView: View {
         .onDisappear { BottomTabBarOverlay.shared.setForcedHidden(false) }
     }
 
+    /// Pulled out of `accountContent` (2026-09-29 follow-up) so it's a fixed
+    /// sibling above `ScreenScaffold`, not part of the content that shifts
+    /// during a pull-to-refresh. Carries its own copy of `accountContent`'s
+    /// shared `foregroundStyle`/`padding` since it's no longer inside that
+    /// modifier chain.
+    private var accountHeader: some View {
+        // Alignment changed from `.firstTextBaseline` to `.center`
+        // (2026-09-29 follow-up, wordmark doubled in size) — baseline
+        // alignment anchors the wordmark's bottom to the title's text
+        // baseline, so a taller wordmark pushes upward and can clip
+        // against the row's top; centering keeps the title and "Done"
+        // button fully visible at any wordmark size, matching
+        // Messages/Notifications which already use `.center` here.
+        HStack(alignment: .center) {
+            // "banbe" wordmark parity fix (2026-09-29, follow-up:
+            // placed BEFORE the title, inline in the same row — not
+            // as its own row above it) — matches Home's own header
+            // wordmark (HomeView.swift); Notifications/Messages got
+            // the same addition in this pass.
+            BanbeLogo(kind: .wordmark, width: BanbeLogo.headerWordmarkWidth)
+            Text(app.T("Tài khoản", "Account")).font(BanbeTheme.display(27))
+            Spacer()
+            Button(app.T("Xong", "Done")) { app.goHome() }
+                .font(.system(size: 12)).buttonStyle(.plain)
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
+    }
+
     private var accountContent: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(app.T("Tài khoản", "Account")).font(BanbeTheme.display(27))
-                Spacer()
-                Button(app.T("Xong", "Done")) { app.goHome() }
-                    .font(.system(size: 12)).buttonStyle(.plain)
-            }
-
             // Account extension (2026-09-27, Stage 1) — "organizer mode
             // OFF means host UI is OFF": the Tổ chức tab itself is gone
             // while `organizerMode` is off, not just gated content inside
@@ -209,7 +253,6 @@ struct AccountView: View {
                     accountTabButton(key: key, label: label)
                 }
             }
-            .padding(.top, 16)
 
             // iPhone fix pass (2026-09-26) — this personal identity
             // card (and its story ring/"Đổi tên") used to render

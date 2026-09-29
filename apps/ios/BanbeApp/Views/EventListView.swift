@@ -17,13 +17,15 @@ struct EventListView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 10) {
-                    Button { app.backFromEventList() } label: {
-                        Text("‹").font(.system(size: 15))
-                    }
-                    .buttonStyle(.plain)
-                    Text(app.eventListTitle).font(BanbeTheme.display(24))
-                }
+                // Back-button label fix (2026-09-29 follow-up) — was a bare
+                // "‹" with no destination name at all; now names the actual
+                // target (Account, or the group page this list is nested
+                // under, e.g. "Tickets & activity" for Completed events),
+                // same convention as PreferencesView/SecurityView/PayoutView.
+                BackLink(label: app.backLabel(for: app.eventListBack)) { app.backFromEventList() }
+                Text(app.eventListTitle)
+                    .font(BanbeTheme.display(24))
+                    .padding(.top, 10)
 
                 let events = app.eventListEvents
                 if events.isEmpty {

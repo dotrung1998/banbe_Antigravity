@@ -12,17 +12,9 @@ import SwiftUI
 struct AccountGroupView: View {
     @EnvironmentObject var app: AppState
 
-    private var title: String {
-        switch app.accountGroupKey {
-        case "team": return app.T("Hồ sơ & Team", "Profile & Team")
-        case "activity": return app.T("Vé & hoạt động", "Tickets & activity")
-        case "payments": return app.T("Thanh toán & giấy tờ", "Payments & documents")
-        case "preferences": return app.T("Tùy chỉnh", "Preferences")
-        case "hostOps": return app.T("Vận hành & thanh toán tổ chức", "Event operations & payments")
-        case "adminReview": return app.T("Duyệt & kiểm duyệt", "Review & moderation")
-        default: return ""
-        }
-    }
+    // Kept on AppState (`accountGroupTitle(for:)`) so back-button labels
+    // elsewhere can show the same text without drifting from this title.
+    private var title: String { app.accountGroupTitle(for: app.accountGroupKey) }
 
     private var titleIcon: String {
         switch app.accountGroupKey {
@@ -206,9 +198,12 @@ struct AccountGroupView: View {
             Divider().overlay(app.palette.rule)
             row(app.T("Biên nhận", "Receipts"), identifier: "account.receipts", icon: "receipt", trailing: "›") { app.openDocuments(kind: "receipt", role: "guest") }
             Divider().overlay(app.palette.rule)
-            row(app.T("Tài khoản thanh toán & nhận hoàn tiền", "Payment & refund accounts"), identifier: "account.refundAccounts", icon: "banknote", trailing: "›") { app.openRefundAccounts(back: .profile) }
+            // Sub-section-of-a-group back-navigation fix (2026-09-29,
+            // second pass) — was `back: .profile`, skipping this group
+            // page (same class of bug as `.documents`'s own fix).
+            row(app.T("Tài khoản thanh toán & nhận hoàn tiền", "Payment & refund accounts"), identifier: "account.refundAccounts", icon: "banknote", trailing: "›") { app.openRefundAccounts(back: .accountGroup) }
             Divider().overlay(app.palette.rule)
-            row(app.T("Hoàn tiền", "Refunds"), identifier: "account.refunds", icon: "checklist", trailing: "›") { app.openMyRefunds(back: .profile) }
+            row(app.T("Hoàn tiền", "Refunds"), identifier: "account.refunds", icon: "checklist", trailing: "›") { app.openMyRefunds(back: .accountGroup) }
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
@@ -231,7 +226,10 @@ struct AccountGroupView: View {
     @ViewBuilder
     private var hostOpsContent: some View {
         VStack(spacing: 0) {
-            row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"), identifier: "host.verifications", icon: "checklist", trailing: "›") { app.openVerifications() }
+            // Sub-section-of-a-group back-navigation fix (2026-09-29,
+            // second pass) — was the default `back: .profile`, skipping
+            // this group page.
+            row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"), identifier: "host.verifications", icon: "checklist", trailing: "›") { app.openVerifications(back: .accountGroup) }
             Divider().overlay(app.palette.rule)
             row(app.T("Nhận thanh toán", "Getting paid"), identifier: "host.payout", icon: "banknote", trailing: "›") { app.openPayout() }
             Divider().overlay(app.palette.rule)

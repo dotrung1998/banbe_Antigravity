@@ -111,6 +111,9 @@ struct InboxView: View {
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
                     .background(app.palette.paper)
+                    // Pull-to-refresh hold fix (2026-09-29) — see
+                    // `AppState.rootPullContentOffset`'s own doc comment.
+                    .offset(y: app.rootPullContentOffset)
                 }
             }
             if app.rootPullProgress > 0 || app.rootRefreshing {
@@ -148,6 +151,13 @@ struct InboxView: View {
     // icon-only control gets a small label underneath.
     private var header: some View {
         HStack(alignment: .center) {
+            // "banbe" wordmark parity fix (2026-09-29, follow-up: placed
+            // BEFORE the title, inline in the same row — not as its own
+            // row above it) — matches Home's own header wordmark
+            // (HomeView.swift). Hidden while the search field is showing.
+            if !searchOpen {
+                BanbeLogo(kind: .wordmark, width: BanbeLogo.headerWordmarkWidth)
+            }
             if searchOpen {
                 TextField(app.T("Tìm cuộc trò chuyện…", "Search conversations…"), text: $query)
                     .font(.system(size: 13.5))
@@ -1082,80 +1092,109 @@ struct NotificationsView: View {
         ].filter { !$0.items.isEmpty }
     }
 
-    var body: some View {
-        ZStack {
-            ScreenScaffold(tracksBottomBarScroll: true, onRefresh: { await app.loadNotifications() }) {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .center) {
-                        // TASK 2 (2026-09-22 nineteenth follow-up) — "Done"
-                        // removed entirely from normal mode (this screen is
-                        // reached from the dock's own Notifications tab,
-                        // same as InboxView — no separate "done" affordance
-                        // needed there either). Search input replaces the
-                        // title exactly mirroring InboxView's own
-                        // search-open state.
-                        if searchOpen {
-                            TextField(app.T("Tìm thông báo…", "Search notifications…"), text: $query)
-                                .font(.system(size: 13.5))
-                                .padding(.horizontal, 14).padding(.vertical, 10)
-                                .background(app.palette.field, in: Capsule())
-                                .foregroundStyle(app.palette.ink)
-                                .focused($searchFieldFocused)
-                                // TASK 1 (2026-09-22 twentieth follow-up) —
-                                // same transition InboxView's own search
-                                // field uses, not a bespoke one.
-                                .transition(.opacity.combined(with: .move(edge: .trailing)))
-                        } else if selectionMode {
-                            Text(app.T("Đang chọn", "Selecting")).font(BanbeTheme.display(27))
-                        } else {
-                            Text(app.T("Thông báo", "Notifications")).font(BanbeTheme.display(27))
-                        }
-                        Spacer()
-                        // TASK 2 (2026-09-22 twentieth follow-up) — the two
-                        // right-side slots persist across selection mode
-                        // (never removed/reinserted at a different spot in
-                        // the header) and their CONTENT crossfades via
-                        // `.id` + `.transition(.opacity)` under the shared
-                        // spring, so Search/Select morph into Select
-                        // all/Cancel in place instead of jumping the layout.
-                        HStack(spacing: 14) {
-                            if selectionMode {
-                                iconButton("checklist", label: app.T("Chọn tất cả", "Select all")) {
-                                    app.selectedNotificationIDs = Set(app.notifications.map(\.id))
-                                }
-                                .id("select-all")
-                                .accessibilityIdentifier("notifications.selectAll")
-                                .transition(.opacity)
-                            } else {
-                                iconButton(searchOpen ? "xmark" : "magnifyingglass", label: searchOpen ? app.T("Đóng", "Close") : app.T("Tìm", "Search")) {
-                                    if searchOpen { query = "" }
-                                    withAnimation(Self.sheetAnimation) { searchOpen.toggle() }
-                                    searchFieldFocused = searchOpen
-                                }
-                                .id("search")
-                                .accessibilityIdentifier("notifications.searchToggle")
-                                .transition(.opacity)
-                            }
-                            if selectionMode {
-                                iconButton("xmark", label: app.T("Huỷ", "Cancel"), tint: BanbeTheme.alert) {
-                                    withAnimation(Self.sheetAnimation) { exitSelectionMode() }
-                                }
-                                .id("cancel")
-                                .accessibilityIdentifier("notifications.selection.cancel")
-                                .transition(.opacity)
-                            } else if !app.notifications.isEmpty {
-                                iconButton("checkmark.circle", label: app.T("Chọn", "Select")) {
-                                    withAnimation(Self.sheetAnimation) { app.notificationSelectionMode = true }
-                                }
-                                .id("select")
-                                .accessibilityIdentifier("notifications.selectMode")
-                                .transition(.opacity)
-                            }
-                        }
-                        .animation(Self.sheetAnimation, value: selectionMode)
+    // Pulled out of the scrollable body (2026-09-29 follow-up) so this row
+    // is a fixed sibling ABOVE `ScreenScaffold`, matching Messages/InboxView
+    // where the title + icon buttons never move during a pull-to-refresh —
+    // only the sections below shift/reveal the indicator underneath.
+    private var notificationsHeader: some View {
+        HStack(alignment: .center) {
+            // "banbe" wordmark parity fix (2026-09-29, follow-
+            // up: placed BEFORE the title, inline in the same
+            // row — not as its own row above it) — matches
+            // Home's own header wordmark (HomeView.swift).
+            // Hidden while the search field is showing (there's
+            // no room, and the field itself already reads as
+            // this screen's own content).
+            if !searchOpen {
+                BanbeLogo(kind: .wordmark, width: BanbeLogo.headerWordmarkWidth)
+            }
+            // TASK 2 (2026-09-22 nineteenth follow-up) — "Done"
+            // removed entirely from normal mode (this screen is
+            // reached from the dock's own Notifications tab,
+            // same as InboxView — no separate "done" affordance
+            // needed there either). Search input replaces the
+            // title exactly mirroring InboxView's own
+            // search-open state.
+            if searchOpen {
+                TextField(app.T("Tìm thông báo…", "Search notifications…"), text: $query)
+                    .font(.system(size: 13.5))
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(app.palette.field, in: Capsule())
+                    .foregroundStyle(app.palette.ink)
+                    .focused($searchFieldFocused)
+                    // TASK 1 (2026-09-22 twentieth follow-up) —
+                    // same transition InboxView's own search
+                    // field uses, not a bespoke one.
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+            } else if selectionMode {
+                Text(app.T("Đang chọn", "Selecting")).font(BanbeTheme.display(27))
+            } else {
+                Text(app.T("Thông báo", "Notifications")).font(BanbeTheme.display(27))
+            }
+            Spacer()
+            // TASK 2 (2026-09-22 twentieth follow-up) — the two
+            // right-side slots persist across selection mode
+            // (never removed/reinserted at a different spot in
+            // the header) and their CONTENT crossfades via
+            // `.id` + `.transition(.opacity)` under the shared
+            // spring, so Search/Select morph into Select
+            // all/Cancel in place instead of jumping the layout.
+            HStack(spacing: 14) {
+                if selectionMode {
+                    iconButton("checklist", label: app.T("Chọn tất cả", "Select all")) {
+                        app.selectedNotificationIDs = Set(app.notifications.map(\.id))
                     }
-                    .padding(.bottom, selectionMode ? 8 : 14)
+                    .id("select-all")
+                    .accessibilityIdentifier("notifications.selectAll")
+                    .transition(.opacity)
+                } else {
+                    iconButton(searchOpen ? "xmark" : "magnifyingglass", label: searchOpen ? app.T("Đóng", "Close") : app.T("Tìm", "Search")) {
+                        if searchOpen { query = "" }
+                        withAnimation(Self.sheetAnimation) { searchOpen.toggle() }
+                        searchFieldFocused = searchOpen
+                    }
+                    .id("search")
+                    .accessibilityIdentifier("notifications.searchToggle")
+                    .transition(.opacity)
+                }
+                if selectionMode {
+                    iconButton("xmark", label: app.T("Huỷ", "Cancel"), tint: BanbeTheme.alert) {
+                        withAnimation(Self.sheetAnimation) { exitSelectionMode() }
+                    }
+                    .id("cancel")
+                    .accessibilityIdentifier("notifications.selection.cancel")
+                    .transition(.opacity)
+                } else if !app.notifications.isEmpty {
+                    iconButton("checkmark.circle", label: app.T("Chọn", "Select")) {
+                        withAnimation(Self.sheetAnimation) { app.notificationSelectionMode = true }
+                    }
+                    .id("select")
+                    .accessibilityIdentifier("notifications.selectMode")
+                    .transition(.opacity)
+                }
+            }
+            .animation(Self.sheetAnimation, value: selectionMode)
+        }
+        .padding(.bottom, selectionMode ? 8 : 14)
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 24)
+        .padding(.top, 16)
+    }
 
+    var body: some View {
+        // Opaque-header fix (2026-09-29 follow-up, real-device report:
+        // overlapping headers during a swipe-back transition) — see
+        // HomeView's own identical fix for the full explanation:
+        // `notificationsHeader` lost the opaque `app.palette.paper`
+        // background it used to inherit for free from being inside
+        // `ScreenScaffold`.
+        ZStack {
+        app.palette.paper.ignoresSafeArea()
+        VStack(alignment: .leading, spacing: 0) {
+            notificationsHeader
+            ZStack {
+            ScreenScaffold(tracksBottomBarScroll: true, refreshIndicatorTopPadding: 16, onRefresh: { await app.loadNotifications() }) {
+                VStack(alignment: .leading, spacing: 0) {
                     if selectionMode, !app.selectedNotificationIDs.isEmpty {
                         HStack {
                             Spacer()
@@ -1196,6 +1235,8 @@ struct NotificationsView: View {
                 syncSectionMembership()
             }
             .onChange(of: app.notifications) { _, _ in syncSectionMembership() }
+            }
+        }
         }
     }
 

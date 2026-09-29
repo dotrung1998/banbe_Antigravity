@@ -277,10 +277,16 @@ extension AppState {
 
     // MARK: - The documents
 
-    func openDocuments(kind: String, role: String) {
+    // Sub-section-of-a-group back-navigation fix (2026-09-29) — `back`
+    // records where to return to (see `documentsListBack`'s own doc
+    // comment, AppState.swift); every current call site is a row inside
+    // AccountGroupView's "payments" group page, so the default matches
+    // that without every caller needing to pass it explicitly.
+    func openDocuments(kind: String, role: String, back: Screen = .accountGroup) {
         documentsKind = kind
         documentsRole = role
         documents = []
+        documentsListBack = back
         screen = .documents
         Task { await loadDocuments() }
     }

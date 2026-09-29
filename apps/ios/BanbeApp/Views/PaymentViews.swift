@@ -962,7 +962,13 @@ struct PayoutView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Tài khoản", "Account")) { app.screen = .profile }
+                // Sub-section-of-a-group back-navigation fix (2026-09-29,
+                // second pass) — was hardcoded to `.profile`, skipping the
+                // "Vận hành & thanh toán tổ chức"/"Event operations &
+                // payments" group page this is actually opened from
+                // (AccountGroupView). `goBack()` already routes `.payout`
+                // to `.accountGroup` correctly.
+                BackLink(label: app.backLabel(for: app.backTargetScreen)) { app.goBack() }
                     .padding(.top, 8)
 
                 Text(app.T("Nhận thanh toán", "Getting paid"))

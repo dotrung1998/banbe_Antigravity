@@ -8,7 +8,13 @@ struct PreferencesView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Tài khoản", "Account")) { app.screen = .profile }
+                // Sub-section-of-a-group back-navigation fix (2026-09-29,
+                // second pass) — was hardcoded to `.profile`, skipping the
+                // "Tùy chỉnh"/"Preferences" group page this is actually
+                // opened from (AccountGroupView). `goBack()` already routes
+                // `.preferences` to `.accountGroup` correctly — reused
+                // here instead of a second hardcoded target.
+                BackLink(label: app.backLabel(for: app.backTargetScreen)) { app.goBack() }
 
                 Text(app.T("Ngôn ngữ & hiển thị", "Language & appearance"))
                     .font(BanbeTheme.display(27))

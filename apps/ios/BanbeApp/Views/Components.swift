@@ -141,6 +141,11 @@ struct BanbeLogo: View {
         case wordmarkSmall = "banbe-wordmark-sm"
     }
 
+    /// Shared width for the inline wordmark placed before a section title
+    /// (Account, Home, Messages, Notifications) so it reads as one uniform
+    /// mark across every section rather than a different size per screen.
+    static let headerWordmarkWidth: CGFloat = 112
+
     let kind: Kind
     var width: CGFloat?
     var height: CGFloat?
@@ -411,6 +416,20 @@ struct ScreenScaffold<Content: View>: View {
     // changes, only how the pull is triggered/drawn. `nil` (every other
     // screen) means this scaffold behaves exactly as before: no probe
     // wiring, no indicator overlay.
+    // Pull-refresh-indicator-position fix (2026-09-29) — this was a single
+    // hardcoded `54` shared by every scaffold-based screen, tuned for a
+    // single-row header (a bare title, optionally with icon buttons on the
+    // same line — Inbox, Notifications, Map). AccountView has a SECOND
+    // header row below its title (the Personal/Host/Admin tab pills,
+    // `.padding(.top, 16)` + the pills themselves), so the same constant
+    // landed the indicator mid-way into that row instead of just under the
+    // title, looking visually offset compared to every other screen.
+    // Screens with an extra header row now pass their own larger value
+    // instead of this shared default. Declared BEFORE `onRefresh` so a
+    // multi-line trailing-closure call site (`onRefresh: { ... })`) doesn't
+    // need this argument threaded in after it — Swift requires labeled
+    // arguments in declaration order.
+    var refreshIndicatorTopPadding: CGFloat = 54
     var onRefresh: (() async -> Void)? = nil
     @ViewBuilder var content: () -> Content
 
@@ -451,12 +470,18 @@ struct ScreenScaffold<Content: View>: View {
                     )
                 }
                 .modifier(ScrollPositionIDModifier(id: scrollPositionID))
+                // Pull-to-refresh hold fix (2026-09-29) — see
+                // `AppState.rootPullContentOffset`'s own doc comment: holds
+                // the content down at the pulled position for the WHOLE
+                // refresh duration instead of springing back the instant
+                // the finger releases.
+                .offset(y: onRefresh != nil ? app.rootPullContentOffset : 0)
             } else {
                 content().frame(maxWidth: .infinity, alignment: .leading)
             }
             if onRefresh != nil, app.rootPullProgress > 0 || app.rootRefreshing {
                 RootRefreshIndicator(screen: app.screen, progress: app.rootPullProgress, refreshing: app.rootRefreshing)
-                    .padding(.top, 54)
+                    .padding(.top, refreshIndicatorTopPadding)
                     .allowsHitTesting(false)
                     .transition(.opacity)
             }

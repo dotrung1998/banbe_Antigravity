@@ -18,6 +18,18 @@ struct RootView: View {
     @State private var dragTranslation: CGFloat = 0
     @State private var isCommittingBack = false
     @State private var isDragTracking = false
+    // Overlapping-headers fix (2026-09-29 follow-up, real-device report) —
+    // the delayed `app.goBack()` in `.onChange(of: isCommittingBack)` below
+    // used to fire against whatever `app.screen` happened to be 0.22s
+    // later, not the screen this swipe actually started on. A specific
+    // notification row (`organizer_invite_response`, the only
+    // `openNotification` branch that writes `screen =` synchronously with
+    // no `Task` indirection) could race a fast edge-swipe-back and change
+    // `app.screen` out from under it mid-gesture, so `goBack()` then
+    // navigated from the WRONG screen — producing two different "current
+    // screen" computations mid-swipe and the reported header overlap.
+    // Captured once, when the drag first crosses its own start threshold.
+    @State private var swipeStartScreen: Screen?
 
     // Stage 2 (2026-09-27 nav/discovery pass) — root-tab swipe: a
     // left/right horizontal drag on a root screen (BottomTabBar.
@@ -92,6 +104,7 @@ struct RootView: View {
                 if !isDragTracking {
                     guard app.canSwipeBack else { return }
                     isDragTracking = true
+                    swipeStartScreen = app.screen
                 }
                 guard isDragTracking else { return }
                 var transaction = Transaction()
@@ -337,38 +350,6 @@ struct RootView: View {
                 .zIndex(s == app.screen ? 1 : 0)
             }
         }
-        // Accidental-tap-during-swipe fix (2026-09-29, third follow-up) —
-        // mirrors `isScreenLevelSwipeActive` out to `AppState` (same idiom
-        // as `mapCloseSwipeProgress`) so `SwipeSafeButton` (Components.swift)
-        // can defer to it: measuring "was there a real swipe" AT THE ROW
-        // itself keeps failing (see `AppState.isRootSwipeActive`'s own doc
-        // comment for the full history of why), because a row's own
-        // gesture measurement is fooled by the SAME live `.offset()` this
-        // view applies to drag it around. This value is computed from the
-        // ANCESTOR gesture's own state — never itself offset — so it's
-        // immune to that.
-        .onChange(of: isScreenLevelSwipeActive) { _, active in
-            if active { app.isRootSwipeActive = true } else { app.isRootSwipeActive = false }
-        }
-        // Every screen change — swiped back, tapped back, or pushed
-        // forward — cross-fades with a slight horizontal drift instead of
-        // a hard cut, which is most of what made it feel unlike a native
-        // push/pop. Suppressed for a committing tab-swipe too (its own
-        // settle animation already handles the motion, and
-        // `commitTabSwipe`'s later transaction disables animation
-        // entirely for the actual `app.screen` flip) — the same reasoning
-        // `isCommittingBack`/`dragTranslation` already apply to
-        // edge-swipe-back here.
-        .animation(isCommittingBack || dragTranslation > 0 || tabSwipeCommittingTarget != nil ? nil : .easeInOut(duration: 0.28), value: app.screen)
-        // Direction-lock fix pass (2026-09-28) — once `tabSwipeGesture` has
-        // committed to "horizontal" for this touch (see that gesture's own
-        // `onChanged`), the current screen's own ScrollView/List must stop
-        // competing for the same touch, or a real-world diagonal-ish finger
-        // path keeps scrolling vertically at the same time as the locked
-        // horizontal tab-swipe. `tabSwipeDirection` only ever locks in
-        // AFTER the edge-strip checks below have already ruled out an
-        // edge-swipe/Map-panning zone.
-        .scrollDisabled(isScreenLevelSwipeActive)
     }
 
     /// Single shared source of truth for "is a screen-level swipe (tab-
@@ -569,6 +550,31 @@ struct RootView: View {
             // the hierarchy entirely. The real fix is to never even attach
             // it outside a root dock screen, not just to make its callback
             // a no-op there.
+            // Stuck-`app.isRootSwipeActive` fix (2026-09-29, fourth pass —
+            // reproduces on an ORDINARY single swipe-back, not a race) —
+            // `.onChange(of: isScreenLevelSwipeActive)` (the ONE place that
+            // mirrors this out to `app.isRootSwipeActive`, which every
+            // `SwipeSafeButton` app-wide reads), `.animation(value:
+            // app.screen)`, and `.scrollDisabled(...)` USED to live on
+            // `rootScreenStack` itself, INSIDE the `if/else` below. A plain
+            // SwiftUI `if/else` in a ViewBuilder compiles to
+            // `_ConditionalContent`, so switching branches — e.g. exactly
+            // when `app.screen` crosses from a non-dock screen (Event
+            // Detail) to a dock screen (Home) at the end of a swipe-back —
+            // is a full identity change: SwiftUI tears down the previous
+            // branch's `rootScreenStack` instance, `.onChange` handler and
+            // all, and mounts a brand-new one for the other branch.
+            // `.onChange` never fires for a view's own initial value, so
+            // the reset-to-false this same transition was supposed to
+            // trigger never happens — `app.isRootSwipeActive` is stuck
+            // `true` forever, silently no-op'ing every `SwipeSafeButton`
+            // anywhere on the newly-arrived screen (the dock is a separate
+            // always-on-top `UIWindow` and never reads this, so it alone
+            // kept working). Fixed by hoisting these three modifiers OUT of
+            // `rootScreenStack` and onto this `Group` instead — the `Group`
+            // itself has stable identity across the branch switch (only
+            // ITS content changes), so its own `.onChange` keeps observing
+            // continuously right through this transition.
             Group {
                 if BottomTabBar.visibleScreens.contains(app.screen) {
                     rootScreenStack.simultaneousGesture(tabSwipeGesture)
@@ -576,6 +582,11 @@ struct RootView: View {
                     rootScreenStack
                 }
             }
+            .onChange(of: isScreenLevelSwipeActive) { _, active in
+                if active { app.isRootSwipeActive = true } else { app.isRootSwipeActive = false }
+            }
+            .animation(isCommittingBack || dragTranslation > 0 || tabSwipeCommittingTarget != nil ? nil : .easeInOut(duration: 0.28), value: app.screen)
+            .scrollDisabled(isScreenLevelSwipeActive)
             // Depth cue on the dragged edge, same as UIKit's pop shadow.
             .shadow(color: .black.opacity(dragProgress * 0.16), radius: 16, x: -6, y: 0)
 
@@ -603,6 +614,25 @@ struct RootView: View {
             // `canSwipeBack` is false lets that touch fall through to
             // whatever's really underneath, same fix shape as
             // `tabSwipeGesture`'s own conditional attach just above.
+            // Reverted (2026-09-29 follow-up, third pass) — tried always
+            // mounting this strip and gating `.allowsHitTesting` on
+            // `app.canSwipeBack` instead, to keep an in-flight gesture's
+            // hosting view stable across a screen change (see git history
+            // for that attempt's own reasoning). Real-device result: WORSE,
+            // not better — broadly unresponsive buttons across Home,
+            // Notifications, and Messages, not just the edge strip. That
+            // matches this file's OWN documented finding for
+            // `tabSwipeGesture` above: a merely-ATTACHED, inactive gesture
+            // recognizer still competes for touches during SwiftUI's
+            // arbitration, `allowsHitTesting` or not — it isn't scoped to
+            // just this view's own narrow bounds the way plain hit-testing
+            // is. Back to the proven conditional-mount shape (never attach
+            // the recognizer at all while `canSwipeBack` is false); the
+            // orphaned-gesture stuck-flag risk this was trying to close is
+            // instead covered by the `.onChange(of: app.screen)` fallback
+            // reset above (`isDragTracking = false`, etc.) — a plain @State
+            // reset, not a gesture-attachment change, so it can't reintroduce
+            // this or the `CreateEventReviewSheet` arbitration bug.
             if app.canSwipeBack {
                 Color.clear
                     .contentShape(Rectangle())
@@ -787,7 +817,14 @@ struct RootView: View {
                     // screen would double-navigate — every OTHER screen's
                     // swipe-back still goes through this generic path
                     // exactly as before, unaffected.
-                    if app.screen != .mapExplore { app.goBack() }
+                    // Only navigate back from the screen this swipe actually
+                    // started on — if something else already changed
+                    // `app.screen` mid-gesture (see the doc comment on
+                    // `swipeStartScreen`), that navigation already happened
+                    // and calling `goBack()` here would send the user
+                    // somewhere unrelated to either screen.
+                    if app.screen != .mapExplore, app.screen == swipeStartScreen { app.goBack() }
+                    swipeStartScreen = nil
                     isCommittingBack = false
                     // The offset formula falls back to dragTranslation once
                     // isCommittingBack flips back off — leaving it at the
@@ -876,6 +913,46 @@ struct RootView: View {
             // touches in its band on screens the bar was never meant to
             // show on.
             BottomTabBarOverlay.shared.updateVisibility(for: newScreen)
+            // Stuck-Home-interaction fix (2026-09-29 follow-up, real-device
+            // report: event cards AND the search FAB both permanently
+            // unresponsive after a swipe-back, fixed only by reloading the
+            // screen) — `isDragTracking` resets ONLY inside `edgeSwipe`'s
+            // own `onEnded` (see `swipeStartScreen`'s doc comment above),
+            // which can never fire if the leading-edge swipe-strip — mounted
+            // only while `app.canSwipeBack` is true for the CURRENT screen
+            // — is torn out of the hierarchy mid-recognition: e.g. a second
+            // swipe attempt starts on that strip just before the FIRST
+            // swipe's already-scheduled `goBack()` flips `app.screen` out
+            // from under it. With no fallback, `isDragTracking` (and
+            // therefore `app.isRootSwipeActive`, which every
+            // `SwipeSafeButton` on the newly-arrived screen checks on every
+            // press) was stuck `true` forever. A genuine screen change is
+            // proof any legitimate gesture's job is already done, so it's
+            // safe to force these back to their rest state here regardless
+            // of how they got left.
+            isDragTracking = false
+            isCommittingBack = false
+            dragTranslation = 0
+            swipeStartScreen = nil
+            // Same fallback for `tabSwipeGesture` (2026-09-29 follow-up,
+            // "all screens have the same problem" — not just Home/edge-
+            // swipe-back) — `tabSwipeDirection`'s only resets are inside
+            // its OWN `onChanged`/`onEnded`, and it's attached
+            // conditionally too (`BottomTabBar.visibleScreens.contains
+            // (app.screen)`, further down in this body) for its own
+            // documented, unrelated reason (a merely-attached, inactive
+            // recognizer still wins gesture arbitration on non-dock
+            // screens). The exact same orphaning shape applies: if
+            // `app.screen` changes to a non-dock screen (e.g. a
+            // notification's own tap handler navigating straight to
+            // `.dashboard`) while a horizontal tab-swipe is mid-drag on a
+            // dock screen, this gesture's hosting modifier is removed
+            // before its `onEnded` fires, and `tabSwipeDirection` stuck at
+            // "horizontal" keeps `isScreenLevelSwipeActive`/
+            // `app.isRootSwipeActive` stuck true just the same — on
+            // WHATEVER screen is current at the time, not just Home.
+            tabSwipeDirection = nil
+            tabSwipeTranslation = 0
         }
         // Task 1 (2026-09-22 follow-up, 07-notifications.md) — StoryViewer
         // opens over Home/Profile WITHOUT a `Screen` change (it's an

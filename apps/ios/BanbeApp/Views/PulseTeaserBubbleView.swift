@@ -143,11 +143,15 @@ struct PulseTeaserBubbleContent: View {
             in: RoundedRectangle(cornerRadius: 12, style: .continuous)
         )
         .shadow(color: .black.opacity(0.22), radius: 10, y: 4)
+        // Tail repositioned (2026-09-29 follow-up) — was a sideways,
+        // left-pointing wedge sticking out of the bubble's left EDGE; now a
+        // downward-pointing tail sitting at the bubble's bottom-LEFT
+        // CORNER instead (`Triangle`'s own path flipped to match).
         .overlay(alignment: .bottomLeading) {
             Triangle()
                 .fill(app.palette.ink)
-                .frame(width: 6, height: 10)
-                .offset(x: -6, y: -8)
+                .frame(width: 12, height: 7)
+                .offset(x: 6, y: 3)
         }
         .onTapGesture { onTap() }
         .accessibilityElement(children: .combine)
@@ -169,12 +173,14 @@ struct PulseTeaserBubbleContent: View {
     }
 }
 
+/// Points DOWN (flat edge on top, apex at the bottom) — was a sideways,
+/// left-pointing wedge (apex at `minX, midY`, flat edge on the right).
 private struct Triangle: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
         path.closeSubpath()
         return path
     }

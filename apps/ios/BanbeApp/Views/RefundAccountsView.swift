@@ -83,7 +83,7 @@ struct RefundAccountsView: View {
     var body: some View {
         ScreenScaffold(scroll: false) {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Tài khoản", "Account")) { app.backFromRefundAccounts() }
+                BackLink(label: app.backLabel(for: app.refundAccountsBackScreen)) { app.backFromRefundAccounts() }
 
                 Text(app.T("Tài khoản nhận hoàn tiền", "Refund accounts"))
                     .font(BanbeTheme.display(24)).padding(.top, 14)

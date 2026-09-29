@@ -24,7 +24,7 @@ struct MyRefundsView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Tài khoản", "Account")) { app.backFromMyRefunds() }
+                BackLink(label: app.backLabel(for: app.myRefundsBackScreen)) { app.backFromMyRefunds() }
 
                 Text(app.T("Hoàn tiền", "Refunds")).font(BanbeTheme.display(24)).padding(.top, 14)
                 Text(app.T("Các khoản hoàn tiền đang cần xử lý của bạn.", "Your refund claims that are still active."))
