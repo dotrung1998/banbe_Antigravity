@@ -552,11 +552,28 @@ struct RootView: View {
             // tap — e.g. a back-button link whose hit area happens to graze
             // this strip) never recognizes at all, so it still reaches
             // whatever's underneath normally.
-            Color.clear
-                .contentShape(Rectangle())
-                .frame(width: edgeSwipeZoneWidth)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .highPriorityGesture(edgeSwipe)
+            //
+            // Review-sheet-swipe-back fix (2026-09-29 follow-up) — this
+            // strip used to be attached UNCONDITIONALLY, relying only on
+            // `edgeSwipe`'s own internal `canSwipeBack` check to no-op.
+            // Exactly the class of bug this file's own tabSwipeGesture
+            // comment above already documents: a merely-inactive gesture
+            // RECOGNIZER still wins arbitration for any touch starting in
+            // this strip, so `CreateEventReviewSheet`'s own local
+            // swipe-back gesture (see its doc comment) never even saw a
+            // touch that started at the actual screen edge — it just did
+            // nothing, which read as "swipe-back stopped working
+            // entirely." Not attaching this gesture at all while
+            // `canSwipeBack` is false lets that touch fall through to
+            // whatever's really underneath, same fix shape as
+            // `tabSwipeGesture`'s own conditional attach just above.
+            if app.canSwipeBack {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .frame(width: edgeSwipeZoneWidth)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                    .highPriorityGesture(edgeSwipe)
+            }
 
             // Names the current screen for UI tests, the same way the web
             // screens carry a data-screen-label attribute for Playwright.

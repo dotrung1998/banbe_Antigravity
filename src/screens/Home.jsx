@@ -576,11 +576,45 @@ export default function Home() {
         until: overrides.until ?? null,
         untilLabel: overrides.untilLabel ?? '',
         agoLabel,
+        // Home-visibility fix (2026-09-29) — see `feed`'s own comment below
+        // for the full root-cause: kept only to sort real events among
+        // THEMSELVES chronologically before merging into the feed, never
+        // read past that point.
+        startsAtRaw: e.startsAt || null,
       };
     }), [s.discoveryEvents]);
 
   const demoted = e => (e.cancelled && (e.cancelledHoursAgo == null || e.cancelledHoursAgo >= 2)) ? 1 : 0;
-  const feed = useMemo(() => [...EVENTS, ...discoveryShaped]
+  // Home-visibility fix (2026-09-29) — real root cause of "an approved
+  // event doesn't show on Home," CONFIRMED by directly querying the real
+  // anon-key Home/Map queries against the live project (not guessed): the
+  // event WAS already being returned by `loadDiscoveryEvents()` and WAS
+  // already passing every filter below (visibility/category/area all
+  // defaulted to "show everything") — RLS, status naming and the
+  // date/timezone handling were never the bug. The actual defect: this
+  // array used to be `[...EVENTS, ...discoveryShaped]` with NO chronological
+  // sort at all (only `demoted` below, which is a stable no-op for two
+  // non-cancelled events) — every real event was unconditionally appended
+  // AFTER all ~20 hardcoded static demo events, in whatever order Supabase
+  // happened to return them. A newly-approved real event was technically
+  // present in the DOM, just buried at the very bottom of a long list of
+  // unrelated demo cards — indistinguishable from "missing" for anyone who
+  // didn't scroll that far, which is exactly what was reported. Fixed by
+  // sorting real events chronologically among themselves (soonest first)
+  // and placing that sorted group AHEAD of the static catalogue, rather
+  // than reordering the static catalogue's own long-established internal
+  // order (a separate, riskier change this pass does not attempt — the
+  // static catalogue runs on its own simulated "today," see events.js's own
+  // `TODAY` constant, and re-deriving its order from that is out of scope
+  // here). `demoted` (cancelled sinks) still applies across the WHOLE
+  // merged list afterward, unchanged.
+  const realEventsSorted = useMemo(() => [...discoveryShaped].sort((a, b) => {
+    if (!a.startsAtRaw && !b.startsAtRaw) return 0;
+    if (!a.startsAtRaw) return 1;
+    if (!b.startsAtRaw) return -1;
+    return new Date(a.startsAtRaw) - new Date(b.startsAtRaw);
+  }), [discoveryShaped]);
+  const feed = useMemo(() => [...realEventsSorted, ...EVENTS]
     .map(withLive)
     .filter(e => !e.inviteOnly && (s.filter === 'all' || e.catKey === s.filter || e.cat2Key === s.filter) && curArea.match(e))
     .filter(e => !s.filterAttending || isGoing(e.key))
@@ -606,7 +640,7 @@ export default function Home() {
         goingLabel: trStatus('Đang tham gia' + ((s.tickets[e.key] || 1) > 1 ? ' ▪︎ ' + s.tickets[e.key] + ' vé' : '')),
         saveLabel: saved ? T('Đã lưu', 'Saved') : T('Lưu', 'Save'),
       };
-    }), [discoveryShaped, s.filter, s.filterAttending, s.filterNotConfirmed, s.filterSaved, s.filterSoldOut, s.filterUpcoming, s.filterEnded, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, isAwaitingConfirmation, trStatus, stripKm, T]);
+    }), [realEventsSorted, s.filter, s.filterAttending, s.filterNotConfirmed, s.filterSaved, s.filterSoldOut, s.filterUpcoming, s.filterEnded, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, isAwaitingConfirmation, trStatus, stripKm, T]);
 
   // Retention roadmap P1 ("Cuối tuần này") — reuses the SAME district
   // (curArea) and category (s.filter) picks already driving the main feed

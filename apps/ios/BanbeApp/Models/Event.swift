@@ -58,6 +58,17 @@ struct MapEventRow: Codable, Identifiable, Hashable {
     var priceVnd: Int
     var seatsRemaining: Int?
     var status: String
+    // Real-cover-photo fix (2026-10-19) — see MapExploreView.swift's
+    // `coverURL(for:)`: this event's own `events.cover_image` (migration
+    // 087), needed so the map card/pin can show ITS OWN photo instead of
+    // falling back to `EventCatalog.find(_:)`, which always resolves to
+    // the FIRST demo catalogue event for any real (non-demo) event id.
+    var coverImage: String?
+    // Keyword-search fix (migration 108) — same idea as web's identical
+    // MapExplore.jsx change: a search term now also matches this event's
+    // own `keywords` (category-derived by default when a host leaves the
+    // field blank at creation), not just its literal name/district.
+    var keywords: [String]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -70,6 +81,8 @@ struct MapEventRow: Codable, Identifiable, Hashable {
         case priceVnd = "price_vnd"
         case seatsRemaining = "seats_remaining"
         case status
+        case coverImage = "cover_image"
+        case keywords
     }
 }
 

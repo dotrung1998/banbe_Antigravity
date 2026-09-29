@@ -30,10 +30,17 @@ struct BottomSheet<Content: View>: View {
 struct AreaSheetView: View {
     @EnvironmentObject var app: AppState
 
+    // Region-count fix (2026-09-29) — this used to count ONLY the static
+    // demo catalogue, never `app.discoveryEvents` (real, organizer-created,
+    // admin-approved rows) — same root cause and fix as web's identical
+    // AreaSheet.jsx bug. Deduped against the static catalogue by key, same
+    // as `AppState.feed` already does.
     private func count(_ area: AreaOption) -> String {
         if area.key == "danang" { return "Sắp có" }
-        let n = EventCatalog.all.filter { area.match($0) && $0.isOpen && !$0.inviteOnly }.count
-        return "\(n) sự kiện"
+        let realKeys = Set(EventCatalog.all.map(\.key))
+        let realOpen = app.discoveryEvents.filter { !realKeys.contains($0.key) && area.match($0) && $0.isOpen && !$0.inviteOnly }.count
+        let staticOpen = EventCatalog.all.filter { area.match($0) && $0.isOpen && !$0.inviteOnly }.count
+        return "\(realOpen + staticOpen) sự kiện"
     }
 
     var body: some View {

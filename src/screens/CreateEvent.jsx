@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
-import { EVENTS, CREATE_PALETTES, bg } from '../data/events.js';
-import { liveEventOverrides } from '../lib/countdown.js';
+import { EVENTS, CREATE_PALETTES, bg, mapsUrl } from '../data/events.js';
+import { liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
 import { supabase } from '../lib/supabase.js';
 import { parseExcelOrZipPackage } from '../lib/excelEventImport.js';
+import { formatVnd } from '../lib/paymentDocument.js';
 import { paper, ink, rule, FACE, display, fieldGlass, cardGlass, alert } from '../theme.js';
 
 const IMPORT_FIELD_LABELS = {
@@ -33,7 +34,7 @@ export default function CreateEvent() {
   const {
     state, T, trStatus, stripKm, curEvent: ev, createBack,
     orgRegNameType, orgRegIgType, orgRegDescType,
-    createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
+    createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette,
     addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent,
@@ -52,6 +53,14 @@ export default function CreateEvent() {
   const [items, setItems] = useState([]); // { kind, id?, file?, url, storagePath? }[]
   const [coverKey, setCoverKey] = useState(null); // items[i]'s own url, used as a stable key
   const [photoError, setPhotoError] = useState('');
+  // "Review before submitting" step (task 1) — a plain local bool, not a
+  // second screen/route: every field it shows already lives in the global
+  // store (`s.create*`) or this component's own `items`/`coverKey` state,
+  // so toggling back to the form loses nothing — there is no separate
+  // draft to reconcile. Only the review step's own explicit "Xác nhận và
+  // gửi" button ever calls createSubmit; the form's own primary button
+  // only ever opens this step.
+  const [reviewOpen, setReviewOpen] = useState(false);
   const fileInputRef = useRef(null);
   const seededForEventId = useRef(null);
   const seededExistingIds = useRef([]); // event_photos ids present when this edit session was seeded
@@ -272,7 +281,7 @@ export default function CreateEvent() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 22 }}>
-          <label style={labelStyle}>{T('Tên sự kiện', 'Event name')}</label>
+          <label style={labelStyle}>{T('Tên sự kiện', 'Event name')} <span style={{ color: alert }}>*</span></label>
           <input value={s.createName} onChange={createNameType} placeholder="Bếp Nhỏ №13" style={fieldInput} />
         </div>
 
@@ -292,6 +301,22 @@ export default function CreateEvent() {
               );
             })}
           </div>
+        </div>
+
+        {/* Keyword-search fix (migration 108) — so this event actually
+            surfaces in Map's search box for terms beyond its literal
+            name/district. Left blank, submission defaults it to the
+            category label(s) picked just above (never silently empty). */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 20 }}>
+          <label style={labelStyle}>{T('Từ khoá tìm kiếm', 'Search keywords')}</label>
+          <input
+            value={s.createKeywords} onChange={createKeywordsType}
+            placeholder={T('vd. tiệc tối, rượu vang, ẩm thực Việt', 'e.g. supper club, wine, Vietnamese food')}
+            style={fieldInput}
+          />
+          <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.75 }}>
+            {T('Cách nhau bằng dấu phẩy — để trống sẽ tự dùng danh mục đã chọn ở trên.', 'Comma-separated — left blank, the category picked above is used instead.')}
+          </p>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 20 }}>
@@ -315,7 +340,7 @@ export default function CreateEvent() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 14 }}>
-          <label style={labelStyle}>{T('Địa điểm', 'Location')}</label>
+          <label style={labelStyle}>{T('Địa điểm', 'Location')} <span style={{ color: alert }}>*</span></label>
           <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.75 }}>
             {T(
               'Gõ số nhà + tên đường (hoặc tên địa điểm nếu không có số nhà) rồi chọn một gợi ý — cần thiết để đăng sự kiện.',
@@ -417,6 +442,19 @@ export default function CreateEvent() {
           </div>
         </div>
 
+        {/* Photo-management cleanup (task 1, screenshot 1 follow-up) — a
+            clean vertical list, one row per photo, replacing the old
+            4-column grid where remove/reorder/cover controls were tiny
+            absolutely-positioned pills stacked on top of each other and on
+            top of the thumbnail itself. Each row's own thumbnail is a
+            fixed, stable 64x64 square (same `bg()` cover-fit helper
+            EventDetail's own photo strip uses — matches its presentation,
+            just laid out as a row instead of a horizontal strip since this
+            view also needs room for per-photo controls). Remove/reorder/
+            set-cover are the SAME actions the old grid had (this data model
+            has no drag-and-drop reordering — only up/down-swap — so nothing
+            new was invented), just given their own normal flex-row space
+            instead of overlapping the photo. */}
         <div style={{ marginTop: 22 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <span style={{ fontSize: 11.5, color: ink }}>{T('Hình ảnh', 'Photos')}</span>
@@ -426,36 +464,64 @@ export default function CreateEvent() {
             ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple
             style={{ display: 'none' }} onChange={onPickPhotos}
           />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6, marginTop: 10 }}>
-            {photos.map((p, i) => (
-              <div key={p.url} style={{ position: 'relative', aspectRatio: '1', borderRadius: 12, overflow: 'hidden' }}>
-                <div style={bg(p.url, { width: '100%', height: '100%' })} />
-                <span
-                  onClick={() => removePhoto(i)}
-                  style={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 999, background: 'rgba(12,12,12,0.55)', color: '#fff', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                >×</span>
-                {i > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+            {photos.map((p, i) => {
+              const isCover = p.url === coverKey;
+              return (
+                <div key={p.url} data-testid={`create-photo-row-${i}`} style={{ ...fieldGlass({ padding: 8, display: 'flex', alignItems: 'center', gap: 10 }) }}>
+                  <div style={{ position: 'relative', flex: 'none', width: 64, height: 64, borderRadius: 10, overflow: 'hidden' }}>
+                    <div style={bg(p.url, { width: '100%', height: '100%' })} />
+                    {isCover && (
+                      <span style={{ position: 'absolute', bottom: 0, left: 0, right: 0, fontSize: 8.5, fontWeight: 700, textAlign: 'center', padding: '2px 0', background: ink, color: paper }}>
+                        {T('Ảnh bìa', 'Cover')}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                    <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{T(`Ảnh ${i + 1}`, `Photo ${i + 1}`)}</span>
+                    <span
+                      onClick={() => setCoverKey(p.url)}
+                      data-testid={`create-photo-set-cover-${i}`}
+                      style={{
+                        fontSize: 11, fontWeight: 600, cursor: isCover ? 'default' : 'pointer', alignSelf: 'flex-start',
+                        padding: '4px 10px', borderRadius: 999, border: `1px solid ${isCover ? 'transparent' : 'rgba(27,25,22,0.16)'}`,
+                        background: isCover ? ink : 'transparent', color: isCover ? paper : ink,
+                      }}
+                    >
+                      {isCover ? T('Đang là ảnh bìa', 'Currently the cover') : T('Đặt làm ảnh bìa', 'Set as cover')}
+                    </span>
+                  </div>
+                  {/* Reorder — up/down, not left/right (this is a vertical
+                      list now); disabled (not hidden) at the ends so the
+                      control layout never jumps between rows. */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 'none' }}>
+                    <span
+                      onClick={i === 0 ? undefined : () => setItems(prev => { const next = [...prev]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next; })}
+                      data-testid={`create-photo-move-up-${i}`}
+                      style={{ width: 26, height: 26, borderRadius: 8, background: paper, border: `1px solid ${rule}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: i === 0 ? 'default' : 'pointer', opacity: i === 0 ? 0.3 : 1, fontSize: 13, color: ink }}
+                    >↑</span>
+                    <span
+                      onClick={i === photos.length - 1 ? undefined : () => setItems(prev => { const next = [...prev]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; return next; })}
+                      data-testid={`create-photo-move-down-${i}`}
+                      style={{ width: 26, height: 26, borderRadius: 8, background: paper, border: `1px solid ${rule}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: i === photos.length - 1 ? 'default' : 'pointer', opacity: i === photos.length - 1 ? 0.3 : 1, fontSize: 13, color: ink }}
+                    >↓</span>
+                  </div>
                   <span
-                    onClick={() => setItems(prev => { const next = [...prev]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next; })}
-                    style={{ position: 'absolute', top: 4, left: 4, width: 20, height: 20, borderRadius: 999, background: 'rgba(12,12,12,0.55)', color: '#fff', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                  >‹</span>
-                )}
-                <span
-                  onClick={() => setCoverKey(p.url)}
-                  style={{
-                    position: 'absolute', bottom: 4, left: 4, right: 4, fontSize: 9, fontWeight: 600, textAlign: 'center',
-                    padding: '3px 4px', borderRadius: 8, cursor: 'pointer',
-                    background: p.url === coverKey ? ink : 'rgba(247,244,236,0.85)', color: p.url === coverKey ? paper : ink,
-                  }}
-                >{p.url === coverKey ? T('Ảnh bìa', 'Cover') : T('Đặt làm ảnh bìa', 'Set as cover')}</span>
-              </div>
-            ))}
+                    onClick={() => removePhoto(i)}
+                    data-testid={`create-photo-remove-${i}`}
+                    style={{ width: 26, height: 26, borderRadius: 999, background: 'rgba(12,12,12,0.06)', color: alert, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}
+                  >×</span>
+                </div>
+              );
+            })}
             {photos.length < MAX_PHOTOS && (
               <div
                 onClick={() => fileInputRef.current?.click()}
-                style={{ aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: 12, background: paper, border: `1px dashed ${ink}` }}
+                data-testid="create-photo-add"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', borderRadius: 12, padding: '14px 0', background: paper, border: `1px dashed ${ink}` }}
               >
-                <span style={{ fontSize: 18, color: ink }}>+</span>
+                <span style={{ fontSize: 16, color: ink }}>+</span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: ink }}>{T('Thêm ảnh', 'Add photo')}</span>
               </div>
             )}
           </div>
@@ -561,14 +627,253 @@ export default function CreateEvent() {
         {/* No SLA is actually monitored server-side — the previous "duyệt
             trong 48 giờ"/"reviews within 48h" copy promised a turnaround
             time nothing enforced. Accurate instead of reassuring. */}
-        <div onClick={() => createSubmit(newFilesInOrder, coverIndex, { removePhotoIds: removedExistingIds, existingCoverPath })} style={createBtnStyle}>
+        {/* "Review before submitting" step (task 1) — this button now only
+            OPENS the review step below; only that step's own "Xác nhận và
+            gửi" ever actually submits. Still gated on the same
+            createName/createSent checks the old direct-submit button used. */}
+        <div
+          onClick={s.createName.trim() && !s.createSent ? () => setReviewOpen(true) : undefined}
+          data-testid="create-open-review"
+          style={createBtnStyle}
+        >
           {s.createSent
             ? T('Đã gửi, đang chờ Banbe duyệt', 'Submitted, waiting for Banbe to review')
-            : (s.createEditEventId ? T('Gửi lại để duyệt', 'Resubmit for review') : T('Gửi để duyệt', 'Submit for review'))}
+            : T('Xem lại trước khi gửi', 'Review before submitting')}
         </div>
         {s.createError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createError}</p>}
         {s.createMediaError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createMediaError}</p>}
         <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: '12px auto 0', textAlign: 'center', maxWidth: '23ch' }}>{T('Hoàn toàn miễn phí: không phí đăng, không phí giao dịch, không phí ẩn.', 'Completely free: no listing fee, no transaction fee, no hidden fees.')}</p>
+      </div>
+      {reviewOpen && (
+        <ReviewStep
+          T={T}
+          trStatus={trStatus}
+          stripKm={stripKm}
+          s={s}
+          items={items}
+          coverKey={coverKey}
+          createCatLabel={createCatLabel}
+          onBack={() => setReviewOpen(false)}
+          onConfirm={() => createSubmit(newFilesInOrder, coverIndex, { removePhotoIds: removedExistingIds, existingCoverPath, defaultKeywordsLabel: createCatLabel })}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Review before submitting" step (task 1) — TWO tabs (2026-09-29 follow-up):
+ * "Nội bộ" (private/host) shows EXACTLY the fields that will be sent (title,
+ * gallery order + cover marker, description/intro, full resolved address,
+ * date/time, capacity, price, category, included items), the original
+ * content of this screen; "Xem trước công khai" (public preview) renders
+ * the SAME draft data shaped the way a normal viewer would see it on the
+ * real Event Detail page (`EventDetail.jsx`) once approved — same "district
+ * ▪︎ live km ▪︎ long date ▪︎ time" where-line format, same price-or-"Miễn
+ * phí" rule, same cover/gallery — so a host can sanity-check the public
+ * result before ever submitting. Both tabs share one back/confirm footer;
+ * only the explicit "Xác nhận và gửi" tap (available from either tab)
+ * calls createSubmit. Rendered as a full-screen overlay over CreateEvent's
+ * own scroll container rather than a separate route, so there is no
+ * navigation/back-stack state to reconcile.
+ */
+function ReviewStep({ T, trStatus, stripKm, s, items, coverKey, createCatLabel, onBack, onConfirm }) {
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [tab, setTab] = useState('private');
+  const dateLabel = [s.createEventDate, s.createEventTime].filter(Boolean).join(' ▪︎ ') || T('Chưa chọn', 'Not set');
+  const priceLabel = s.createPrice.trim() || T('Miễn phí', 'Free');
+  const seatsLabel = s.createSeats.trim() || T('Chưa nhập', 'Not set');
+  const addressLabel = s.createLocLabel || [s.createAddressLine, s.createDistrict, s.createCity].filter(Boolean).join(', ') || T('Chưa xác nhận địa chỉ', 'Address not confirmed');
+  const includedItems = (s.createIncludedItems || []).filter(it => (it.label || '').trim());
+
+  // Same parsing createSubmit itself uses (GocContext.jsx) — the public
+  // preview's price must match exactly what gets persisted and later
+  // rendered on the real Event Detail page, not a re-guess of the raw
+  // free-text field.
+  const priceVndDraft = parseInt((s.createPrice.match(/[\d.]+/) || ['0'])[0].replace(/\./g, ''), 10) || 0;
+  const publicPriceLabel = priceVndDraft > 0 ? formatVnd(priceVndDraft) : T('Miễn phí', 'Free');
+  const draftDateObj = (s.createEventDate && s.createEventTime) ? new Date(`${s.createEventDate}T${s.createEventTime}`) : null;
+  const { dayLong, time: draftTimeLabel } = draftDateObj && !Number.isNaN(draftDateObj.getTime()) ? formatVnEventDate(draftDateObj) : {};
+  // Same shape shapeRealEventAsCurEvent builds for a real event's `where`
+  // (district ▪︎ live-km placeholder ▪︎ long date ▪︎ time) — stripKm below
+  // replaces the placeholder with a real computed distance once location
+  // is available, or strips it entirely, same contract as everywhere else.
+  const publicWhereRaw = [s.createDistrict || '', draftDateObj ? '0,0 km từ bạn' : null, dayLong, draftTimeLabel].filter(Boolean).join(' ▪︎ ');
+  const publicWhere = trStatus(stripKm(publicWhereRaw, { lat: s.createLat, lng: s.createLng }));
+  const publicMapsUrl = (s.createLat != null && s.createLng != null) ? mapsUrl({ lat: s.createLat, lng: s.createLng }) : null;
+  const publicSeatsLabel = s.createSeats.trim() ? T(`Còn ${s.createSeats.trim()} chỗ`, `${s.createSeats.trim()} seats left`) : '';
+  const coverItem = items.find(p => p.url === coverKey) || items[0];
+  const galleryRest = items.filter(p => p !== coverItem);
+
+  const row = (label, value) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '12px 0', borderBottom: `1px solid ${rule}` }}>
+      <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>{label}</span>
+      <span style={{ fontSize: 13.5, color: ink, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{value}</span>
+    </div>
+  );
+
+  const tabBtn = (key, label) => (
+    <div
+      onClick={() => setTab(key)}
+      data-testid={`create-review-tab-${key}`}
+      style={{
+        flex: 1, textAlign: 'center', fontSize: 12.5, fontWeight: 600, padding: '10px 0', cursor: 'pointer',
+        color: tab === key ? paper : ink,
+        background: tab === key ? ink : 'transparent',
+        borderRadius: 999,
+      }}
+    >
+      {label}
+    </div>
+  );
+
+  return (
+    <div
+      data-testid="create-review-step"
+      style={{ position: 'fixed', inset: 0, background: paper, zIndex: 40, display: 'flex', flexDirection: 'column', animation: 'gocIn 0.25s cubic-bezier(.22,.61,.36,1) both' }}
+    >
+      <div onClick={onBack} data-testid="create-review-back" style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer', flex: 'none' }}>
+        ‹ {T('Quay lại chỉnh sửa', 'Back to edit')}
+      </div>
+      <div style={{ padding: '14px 22px 0', flex: 'none' }}>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Xem lại trước khi gửi', 'Review before submitting')}</span>
+        <div style={{ display: 'flex', gap: 6, marginTop: 14, padding: 3, background: 'rgba(27,25,22,0.06)', borderRadius: 999 }}>
+          {tabBtn('private', T('Nội bộ (Host)', 'Private (Host)'))}
+          {tabBtn('public', T('Xem trước công khai', 'Public preview'))}
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 22px 24px' }}>
+        {tab === 'private' ? (
+          <>
+            <h1 style={{ ...display(24, { margin: '4px 0 0' }) }}>{s.createName.trim() || T('(Chưa đặt tên)', '(Untitled)')}</h1>
+
+            <div style={{ ...cardGlass({ marginTop: 18, padding: '4px 16px', display: 'flex', flexDirection: 'column' }) }}>
+              {row(T('Danh mục', 'Category'), createCatLabel)}
+              {row(T('Từ khoá tìm kiếm', 'Search keywords'), s.createKeywords.trim() || T(`(Tự dùng danh mục) ${createCatLabel}`, `(Defaults to category) ${createCatLabel}`))}
+              {row(T('Ngày & giờ', 'Date & time'), dateLabel)}
+              {row(T('Địa chỉ', 'Address'), addressLabel)}
+              {row(T('Số chỗ', 'Capacity'), seatsLabel)}
+              {row(T('Giá vé', 'Price'), priceLabel)}
+              {s.createDesc.trim() && row(T('Mô tả', 'Description'), s.createDesc.trim())}
+              {s.createIntro.trim() && row(T('Giới thiệu sự kiện', 'Event introduction'), s.createIntro.trim())}
+            </div>
+
+            {includedItems.length > 0 && (
+              <div style={{ marginTop: 22 }}>
+                <span style={{ fontSize: 11.5, color: ink }}>{T('Bao gồm', 'Included')}</span>
+                <div style={{ ...cardGlass({ marginTop: 10, padding: '4px 16px', display: 'flex', flexDirection: 'column' }) }}>
+                  {includedItems.map((it, i) => (
+                    <div key={i} style={{ padding: '10px 0', borderBottom: i < includedItems.length - 1 ? `1px solid ${rule}` : 'none' }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{it.label.trim()}</span>
+                      {it.detail?.trim() && <p style={{ fontSize: 12.5, color: ink, margin: '2px 0 0' }}>{it.detail.trim()}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {items.length > 0 && (
+              <div style={{ marginTop: 22 }}>
+                <span style={{ fontSize: 11.5, color: ink }}>{T('Thứ tự ảnh', 'Photo order')}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+                  {items.map((p, i) => (
+                    <div key={p.url} style={{ ...fieldGlass({ padding: 8, display: 'flex', alignItems: 'center', gap: 10 }) }}>
+                      <div style={{ position: 'relative', flex: 'none', width: 56, height: 56, borderRadius: 10, overflow: 'hidden' }}>
+                        <div style={bg(p.url, { width: '100%', height: '100%' })} />
+                      </div>
+                      <span style={{ fontSize: 12.5, color: ink }}>
+                        {p.url === coverKey ? T('Ảnh bìa', 'Cover photo') : T(`Ảnh ${i + 1}`, `Photo ${i + 1}`)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {coverItem && (
+              <div style={{ position: 'relative', width: '100%', aspectRatio: '1 / 1', borderRadius: 16, overflow: 'hidden', marginTop: 4 }}>
+                <div style={bg(coverItem.url, { width: '100%', height: '100%' })} />
+              </div>
+            )}
+            <span style={{ fontSize: 12, color: ink, opacity: 0.7, marginTop: 14, display: 'block' }}>{createCatLabel}</span>
+            <h1 style={{ ...display(26, { margin: '4px 0 0' }) }}>{s.createName.trim() || T('(Chưa đặt tên)', '(Untitled)')}</h1>
+            {publicMapsUrl ? (
+              <a href={publicMapsUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: ink, textDecoration: 'underline', marginTop: 6, display: 'block' }}>
+                {publicWhere} ↗
+              </a>
+            ) : (
+              <div style={{ fontSize: 13, color: ink, marginTop: 6 }}>{publicWhere || T('Chưa xác nhận địa chỉ', 'Address not confirmed')}</div>
+            )}
+            {publicSeatsLabel && <div style={{ fontSize: 13, color: ink, marginTop: 4 }}>{publicSeatsLabel}</div>}
+
+            {s.createIntro.trim() && (
+              <p style={{ fontSize: 13.5, lineHeight: 1.6, color: ink, marginTop: 18, whiteSpace: 'pre-wrap' }}>{s.createIntro.trim()}</p>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 22, paddingTop: 14, borderTop: `1px solid ${rule}` }}>
+              <span style={{ fontSize: 13, color: ink }}>{T('Giá vé', 'Price')}</span>
+              <span style={{ ...display(19) }}>{publicPriceLabel}</span>
+            </div>
+
+            {includedItems.length > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <span style={{ fontSize: 11.5, color: ink }}>{T('Bao gồm', 'Included')}</span>
+                <div style={{ ...cardGlass({ marginTop: 10, padding: '4px 16px', display: 'flex', flexDirection: 'column' }) }}>
+                  {includedItems.map((it, i) => (
+                    <div key={i} style={{ padding: '10px 0', borderBottom: i < includedItems.length - 1 ? `1px solid ${rule}` : 'none' }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: ink }}>{it.label.trim()}</span>
+                      {it.detail?.trim() && <p style={{ fontSize: 12.5, color: ink, margin: '2px 0 0' }}>{it.detail.trim()}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {s.createDesc.trim() && (
+              <p style={{ fontSize: 13, lineHeight: 1.6, color: ink, marginTop: 18, whiteSpace: 'pre-wrap' }}>{s.createDesc.trim()}</p>
+            )}
+
+            {galleryRest.length > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <span style={{ fontSize: 11.5, color: ink }}>{T('Ảnh', 'Photos')}</span>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10, overflowX: 'auto' }}>
+                  {galleryRest.map(p => (
+                    <div key={p.url} style={{ position: 'relative', flex: 'none', width: 96, height: 96, borderRadius: 12, overflow: 'hidden' }}>
+                      <div style={bg(p.url, { width: '100%', height: '100%' })} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Confirm — the ONLY call site that actually submits, available from
+          either tab. A local `confirmBusy` disables the button for the
+          duration of this ONE click (on top of GocContext's own synchronous
+          createSubmitInFlightRef guard), matching this screen's own
+          "createSent" style-dimming convention rather than inventing a
+          new one. */}
+      <div style={{ flex: 'none', padding: '10px 22px 40px' }}>
+        <div
+          onClick={confirmBusy || s.createSent ? undefined : async () => { setConfirmBusy(true); await onConfirm(); setConfirmBusy(false); }}
+          data-testid="create-review-confirm"
+          style={{
+            fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 16, borderRadius: 999,
+            background: confirmBusy || s.createSent ? 'rgba(27,25,22,0.16)' : ink,
+            color: confirmBusy || s.createSent ? ink : paper,
+            cursor: confirmBusy || s.createSent ? 'default' : 'pointer',
+          }}
+        >
+          {s.createSent
+            ? T('Đã gửi, đang chờ Banbe duyệt', 'Submitted, waiting for Banbe to review')
+            : T('Xác nhận và gửi', 'Confirm & submit')}
+        </div>
+        {s.createError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createError}</p>}
       </div>
     </div>
   );

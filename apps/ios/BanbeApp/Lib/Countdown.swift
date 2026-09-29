@@ -46,9 +46,12 @@ enum Countdown {
     private static let vnWeekdayShort = ["CN", "Th 2", "Th 3", "Th 4", "Th 5", "Th 6", "Th 7"]
     private static let vnWeekdayLong = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"]
 
-    private struct VnEventDate { let weekdayShort: String, dayMonth: String, dayLong: String, time: String }
+    // Not `private` — `CatalogEvent.fromReal` (address-format fix,
+    // 2026-09-29) needs the same district/km/long-date/time shape the
+    // static catalogue and `liveDateOverrides` below already build with it.
+    struct VnEventDate { let weekdayShort: String, dayMonth: String, dayLong: String, time: String }
 
-    private static func formatVnEventDate(_ date: Date) -> VnEventDate {
+    static func formatVnEventDate(_ date: Date) -> VnEventDate {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = .current
         let c = cal.dateComponents([.weekday, .day, .month, .hour, .minute], from: date)

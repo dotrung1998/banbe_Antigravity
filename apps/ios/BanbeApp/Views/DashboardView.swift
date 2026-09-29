@@ -14,6 +14,15 @@ struct DashboardView: View {
     @State private var photoPickerEventID: String?
     @State private var creditEventID: String = ""
     @State private var creditUserID: String = ""
+    /// Remaining-resubmission-attempts hint's own next-eligible-time
+    /// display (migration 107) — plain locale-default formatting, same as
+    /// web's `Date.toLocaleString()`.
+    static let nextEligibleFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
 
     /// Branded from one of this account's real events when it owns any
     /// (myOrgEventKeys), falling back to the open event otherwise.
@@ -211,29 +220,37 @@ struct DashboardView: View {
                                         }
                                         Text(row.rejectionReason ?? "")
                                             .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.8))
+                                        // Remaining-resubmission-attempts
+                                        // surfacing (migration 107) — a
+                                        // banbe PRODUCT POLICY limit (2 per
+                                        // rolling 24h), never phrased as a
+                                        // legal/Ticketbox requirement.
+                                        if let resubmissionStatus = app.resubmissionStatusByEvent[row.id] {
+                                            Text(resubmissionStatus.remaining > 0
+                                                 ? app.T("Còn \(resubmissionStatus.remaining) lần gửi lại trong 24 giờ.", "\(resubmissionStatus.remaining) resubmission(s) left in the next 24h.")
+                                                 : app.T("Đã hết lượt gửi lại. Thử lại sau \(DashboardView.nextEligibleFormatter.string(from: resubmissionStatus.nextEligibleAt ?? Date())).",
+                                                         "Resubmission limit reached. Try again after \(DashboardView.nextEligibleFormatter.string(from: resubmissionStatus.nextEligibleAt ?? Date()))."))
+                                                .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                                                .accessibilityIdentifier("dashboard.resubmitRemaining.\(row.id)")
+                                        }
                                         Button(app.T("Sửa & gửi lại", "Fix & resubmit")) { app.goEditEvent(row) }
                                             .font(.system(size: 11, weight: .semibold))
                                             .padding(.horizontal, 10).padding(.vertical, 6)
                                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule, lineWidth: 1))
                                             .buttonStyle(.plain)
+                                            .opacity(app.resubmissionStatusByEvent[row.id]?.remaining == 0 ? 0.4 : 1)
+                                            .disabled(app.resubmissionStatusByEvent[row.id]?.remaining == 0)
                                             .accessibilityIdentifier("dashboard.resubmit.\(row.id)")
                                     }
                                     .padding(.vertical, 13).padding(.horizontal, 16)
                                     .accessibilityIdentifier("dashboard.needsFix.\(row.id)")
+                                    .task(id: row.id) { await app.loadResubmissionStatus(row.id) }
                                     if row.id != app.myNeedsFixEvents.last?.id || !app.myPendingEvents.isEmpty {
                                         Divider().overlay(app.palette.rule)
                                     }
                                 }
                                 ForEach(app.myPendingEvents, id: \.id) { row in
-                                    HStack {
-                                        Text(row.name).font(BanbeTheme.display(15))
-                                        Spacer()
-                                        Text(app.T("Đang chờ Banbe duyệt", "Waiting for Banbe to review"))
-                                            .font(.system(size: 10.5, weight: .semibold))
-                                            .foregroundStyle(app.palette.ink.opacity(0.65))
-                                    }
-                                    .padding(.vertical, 13).padding(.horizontal, 16)
-                                    .accessibilityIdentifier("dashboard.pending.\(row.id)")
+                                    PendingEventRow(row: row)
                                     if row.id != app.myPendingEvents.last?.id { Divider().overlay(app.palette.rule) }
                                 }
                             }
@@ -492,6 +509,74 @@ struct DashboardView: View {
         .disabled(busy)
         .simultaneousGesture(TapGesture().onEnded { photoPickerEventID = eventID })
         .accessibilityIdentifier("dashboard.addPhoto.\(eventID)")
+    }
+}
+
+/// A pending ('review') event's own row — the event name/status plus an
+/// owner-only withdrawal control (migration 107, `withdraw_event_
+/// submission`). iOS port of web's identical Dashboard.jsx withdraw UI:
+/// requires a non-empty reason + this explicit confirm step; never deletes
+/// the event row, only moves it back to editable ('draft') so
+/// `goEditEvent`'s existing edit-and-resubmit path can reuse the SAME
+/// event id afterwards.
+private struct PendingEventRow: View {
+    @EnvironmentObject var app: AppState
+    let row: RealEventSummary
+    @State private var withdrawing = false
+    @State private var reasonDraft = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(row.name).font(BanbeTheme.display(15))
+                Spacer()
+                Text(app.T("Đang chờ Banbe duyệt", "Waiting for Banbe to review"))
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(app.palette.ink.opacity(0.65))
+            }
+            if withdrawing {
+                VStack(alignment: .leading, spacing: 6) {
+                    TextField(app.T("Lý do rút lại sự kiện…", "Reason for withdrawing…"), text: $reasonDraft)
+                        .font(.system(size: 12))
+                        .padding(8)
+                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .accessibilityIdentifier("dashboard.withdrawReason.\(row.id)")
+                    if !app.withdrawEventError.isEmpty {
+                        Text(app.withdrawEventError).font(.system(size: 10.5)).foregroundStyle(BanbeTheme.alert)
+                    }
+                    HStack(spacing: 8) {
+                        Button(app.T("Xác nhận rút lại", "Confirm withdrawal")) {
+                            Task {
+                                let ok = await app.withdrawEventSubmission(row.id, reason: reasonDraft)
+                                if ok { withdrawing = false; reasonDraft = "" }
+                            }
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(app.palette.paper)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(BanbeTheme.alert, in: RoundedRectangle(cornerRadius: 12))
+                        .opacity(app.withdrawEventBusy ? 0.6 : 1)
+                        .disabled(app.withdrawEventBusy)
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("dashboard.withdrawConfirm.\(row.id)")
+
+                        Button(app.T("Huỷ", "Cancel")) { withdrawing = false; reasonDraft = ""; app.withdrawEventError = "" }
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(app.palette.ink.opacity(0.6))
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("dashboard.withdrawCancel.\(row.id)")
+                    }
+                }
+            } else {
+                Button(app.T("Rút lại sự kiện", "Withdraw submission")) { withdrawing = true }
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(app.palette.ink.opacity(0.6))
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("dashboard.withdraw.\(row.id)")
+            }
+        }
+        .padding(.vertical, 13).padding(.horizontal, 16)
+        .accessibilityIdentifier("dashboard.pending.\(row.id)")
     }
 }
 

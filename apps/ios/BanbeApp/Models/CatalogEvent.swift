@@ -206,11 +206,15 @@ struct RealEventSummary: Decodable {
     let city: String?
     let postalCode: String?
     let addressVerified: Bool?
+    // Keyword-search fix (migration 108) — same field web's identical
+    // `shapeRealEvent` decodes; lets `goEditEvent` pre-fill the keywords
+    // field on a resubmit instead of losing whatever was set before.
+    let keywords: [String]?
     var organizerName: String = ""
     var photoURL: URL?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, area, lat, lng
+        case id, name, area, lat, lng, keywords
         case addressLine = "address_line"
         case city
         case postalCode = "postal_code"
@@ -279,6 +283,25 @@ extension CatalogEvent {
         // below) keeps each inference independent and small instead of one
         // giant joint one.
         let metaLabel = [real.catLabel, real.area].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
+        // Venue/address parity fix (task 2, reworked per user follow-up
+        // 2026-09-29) — same fix as web's identical `shapeRealEventAsCurEvent`
+        // (GocContext.jsx): first pass surfaced the raw street address here,
+        // but that read differently from every demo event's own "district ▪︎
+        // live km ▪︎ long date ▪︎ time" line and broke `stripKm()`'s live-
+        // distance injection (no " ▪︎ X,X km" segment for it to find). Now
+        // built in the same shape the static catalogue uses — district + a
+        // live-km placeholder (stripKm replaces the number once a real
+        // distance is computable, or strips the segment if not) + the
+        // long-form Vietnamese date/time. The verified street address is
+        // still real, never-fabricated data, just exposed via `mapsUrl`'s
+        // own real lat/lng rather than spelled out in this label, matching
+        // how demo events (with no street-level text at all) present theirs.
+        let whereLabel: String = {
+            let dayLong = real.startsAt.map { Countdown.formatVnEventDate($0).dayLong }
+            let timeLabel = real.startsAt.map { Countdown.formatVnEventDate($0).time }
+            let kmSegment = real.startsAt != nil ? "0,0 km từ bạn" : nil
+            return [real.area, kmSegment, dayLong, timeLabel].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
+        }()
         let whenLabel = real.startsAt.map(Countdown.whenLabel) ?? ""
         let seatsLabel = real.seatsRemaining.map(String.init) ?? ""
         let seatsLongLabel = real.soldOut ? "Hết chỗ" : (real.seatsRemaining.map { "\($0) chỗ trống" } ?? "")
@@ -288,7 +311,7 @@ extension CatalogEvent {
             key: real.id, catKey: real.catKey ?? "all", cat: real.catLabel ?? "", cat2Key: nil, catDisplay: real.catLabel ?? "",
             name: real.name, img: real.photoURL?.absoluteString ?? "", lat: real.lat, lng: real.lng,
             meta: metaLabel,
-            where: real.area ?? "",
+            where: whereLabel,
             when: whenLabel,
             price: priceLabel,
             seats: seatsLabel,

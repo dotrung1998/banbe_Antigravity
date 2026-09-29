@@ -64,6 +64,7 @@ struct HomeView: View {
         ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.homeScrollAnchorID, onRefresh: {
             await app.loadHomeLiveEvents()
             await app.loadWeekendEvents()
+            await app.loadDiscoveryEvents()
             if app.userID != nil { await app.loadHomeStories() }
         }) {
             // Lazy, so only the cards actually on screen fetch their photo —
@@ -121,6 +122,11 @@ struct HomeView: View {
         // Retention roadmap P1 ("Cuối tuần này") — public info, same as
         // loadHomeLiveEvents above (runs for every visitor).
         .task { await app.loadWeekendEvents() }
+        // Home-visibility fix (2026-09-29) — public info, same as
+        // loadWeekendEvents above (runs for every visitor); this is what
+        // actually populates `app.feed` with real events at all (see
+        // `discoveryEvents`'s own doc comment on AppState.swift).
+        .task { await app.loadDiscoveryEvents() }
         // Blocker fix (retention roadmap follow-up) — a saved/attending
         // real (non-catalogue) event needs its own fetch for savedStrip to
         // resolve it instead of quietly skipping it.

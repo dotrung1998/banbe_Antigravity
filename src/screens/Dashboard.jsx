@@ -26,11 +26,17 @@ export default function Dashboard() {
     loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, openVerifications, uploadEventPhoto,
     loadRealEventsById, goEditEvent, openOrganizerProfile,
     loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember,
-    assignEventCredit,
+    assignEventCredit, withdrawEventSubmission, loadResubmissionStatus,
   } = useGoc();
   const s = state;
   const [creditEventKey, setCreditEventKey] = useState('');
   const [creditUserId, setCreditUserId] = useState('');
+  // Withdrawal (migration 107) — a plain inline reason prompt, one at a
+  // time (never more than one pending event's own withdraw form open),
+  // matching this screen's existing "Sửa & gửi lại" inline-action style
+  // rather than introducing a separate modal component.
+  const [withdrawTargetKey, setWithdrawTargetKey] = useState(null);
+  const [withdrawReasonDraft, setWithdrawReasonDraft] = useState('');
   // Event review queue — a real, host-created event isn't in the static
   // demo catalogue, so it's resolved through the same canonical
   // realEventsById cache Home/EventList already use (see loadRealEventsById's
@@ -49,6 +55,14 @@ export default function Dashboard() {
   const myRealEvents = myRealOrgKeys.map(k => s.realEventsById[k]).filter(Boolean);
   const pendingReal = myRealEvents.filter(e => e.status === 'review');
   const needsFixReal = myRealEvents.filter(e => e.status === 'draft' && e.rejectionReason);
+  // Remaining-resubmission-attempts surfacing (migration 107) — fetched
+  // once per event that actually has something to resubmit, so the "N
+  // attempts left" hint is visible BEFORE a host hits the limit, not just
+  // as an error after a blocked 3rd attempt.
+  useEffect(() => {
+    needsFixReal.forEach(e => { if (!(e.key in s.resubmissionStatusByEvent)) loadResubmissionStatus(e.key); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsFixReal.map(e => e.key).join(','), loadResubmissionStatus]);
   // STAGE C (2026-09-25) — the real "add a photo to one of my own events"
   // flow; see uploadEventPhoto's own doc comment (GocContext.jsx).
   const photoInputRef = useRef(null);
@@ -306,15 +320,78 @@ export default function Dashboard() {
                   <span style={{ fontSize: 10.5, fontWeight: 600, color: alert }}>{T('Cần chỉnh sửa', 'Needs fixing')}</span>
                 </div>
                 <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.8, margin: 0 }}>{e.rejectionReason}</p>
-                <span onClick={() => goEditEvent(e.key)} data-testid={`dashboard-resubmit-${e.key}`} style={{ fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', alignSelf: 'flex-start', cursor: 'pointer' }}>
+                {/* Remaining-resubmission-attempts surfacing (migration 107,
+                    task 1's own "surface remaining attempts + next eligible
+                    timestamp" requirement) — a banbe PRODUCT POLICY limit
+                    (2 successful resubmissions per rolling 24h), never
+                    phrased as a legal/Ticketbox requirement. */}
+                {s.resubmissionStatusByEvent[e.key] && (
+                  <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }} data-testid={`dashboard-resubmit-remaining-${e.key}`}>
+                    {s.resubmissionStatusByEvent[e.key].remaining > 0
+                      ? T(`Còn ${s.resubmissionStatusByEvent[e.key].remaining} lần gửi lại trong 24 giờ.`, `${s.resubmissionStatusByEvent[e.key].remaining} resubmission(s) left in the next 24h.`)
+                      : T(`Đã hết lượt gửi lại. Thử lại sau ${new Date(s.resubmissionStatusByEvent[e.key].nextEligibleAt).toLocaleString()}.`, `Resubmission limit reached. Try again after ${new Date(s.resubmissionStatusByEvent[e.key].nextEligibleAt).toLocaleString()}.`)}
+                  </span>
+                )}
+                <span
+                  onClick={s.resubmissionStatusByEvent[e.key]?.remaining === 0 ? undefined : () => goEditEvent(e.key)}
+                  data-testid={`dashboard-resubmit-${e.key}`}
+                  style={{ fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', alignSelf: 'flex-start', cursor: 'pointer', opacity: s.resubmissionStatusByEvent[e.key]?.remaining === 0 ? 0.4 : 1 }}
+                >
                   {T('Sửa & gửi lại', 'Fix & resubmit')}
                 </span>
               </div>
             ))}
             {pendingReal.map((e, i) => (
-              <div key={e.key} data-testid={`dashboard-pending-${e.key}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', padding: '13px 16px', borderBottom: i < pendingReal.length - 1 ? `1px solid ${rule}` : 'none' }}>
-                <span style={{ ...display(15) }}>{e.name}</span>
-                <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Đang chờ Banbe duyệt', 'Waiting for Banbe to review')}</span>
+              <div key={e.key} data-testid={`dashboard-pending-${e.key}`} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '13px 16px', borderBottom: i < pendingReal.length - 1 ? `1px solid ${rule}` : 'none' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                  <span style={{ ...display(15) }}>{e.name}</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Đang chờ Banbe duyệt', 'Waiting for Banbe to review')}</span>
+                </div>
+                {/* Owner-only withdrawal (migration 107,
+                    withdraw_event_submission) — requires a non-empty reason
+                    + this explicit confirm step; never deletes the event
+                    row, only moves it back to editable ('draft') so
+                    goEditEvent's existing edit-and-resubmit path can reuse
+                    the SAME event id afterwards. */}
+                {withdrawTargetKey === e.key ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <input
+                      value={withdrawReasonDraft}
+                      onChange={ev => setWithdrawReasonDraft(ev.target.value)}
+                      placeholder={T('Lý do rút lại sự kiện…', 'Reason for withdrawing…')}
+                      data-testid={`dashboard-withdraw-reason-${e.key}`}
+                      style={{ fontSize: 12, padding: '8px 10px', borderRadius: 10, border: `1px solid ${rule}` }}
+                    />
+                    {s.withdrawEventError && <span style={{ fontSize: 10.5, color: alert }}>{s.withdrawEventError}</span>}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <span
+                        onClick={async () => {
+                          const ok = await withdrawEventSubmission(e.key, withdrawReasonDraft);
+                          if (ok) { setWithdrawTargetKey(null); setWithdrawReasonDraft(''); }
+                        }}
+                        data-testid={`dashboard-withdraw-confirm-${e.key}`}
+                        style={{ fontSize: 11, fontWeight: 600, color: paper, background: alert, borderRadius: 12, padding: '6px 10px', cursor: 'pointer', opacity: s.withdrawEventBusy ? 0.6 : 1 }}
+                      >
+                        {T('Xác nhận rút lại', 'Confirm withdrawal')}
+                      </span>
+                      <span
+                        onClick={() => { setWithdrawTargetKey(null); setWithdrawReasonDraft(''); }}
+                        data-testid={`dashboard-withdraw-cancel-${e.key}`}
+                        style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.6, cursor: 'pointer', padding: '6px 4px' }}
+                      >
+                        {T('Huỷ', 'Cancel')}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <span
+                    onClick={() => { setWithdrawTargetKey(e.key); setWithdrawReasonDraft(''); }}
+                    data-testid={`dashboard-withdraw-${e.key}`}
+                    style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.6, alignSelf: 'flex-start', cursor: 'pointer' }}
+                  >
+                    {T('Rút lại sự kiện', 'Withdraw submission')}
+                  </span>
+                )}
               </div>
             ))}
           </div>

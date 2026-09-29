@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useGoc, resolveCoverUrl, firstPhotoUrlByEvent } from '../state/GocContext.jsx';
 import { supabase } from '../lib/supabase.js';
-import { findEvent, haversineKm, distanceLabel } from '../data/events.js';
+import { findEvent, isCosmeticCatalogMatch, haversineKm, distanceLabel } from '../data/events.js';
 import { liveEventOverrides } from '../lib/countdown.js';
+import { formatVnd } from '../lib/paymentDocument.js';
 import { densityHotspot } from '../lib/densityHotspot.js';
 import { FILTER_DEFS } from './Home.jsx';
 import { paper, ink, rule, alert, photoPill, fieldGlass, cardGlass, inkButton } from '../theme.js';
@@ -45,7 +46,7 @@ const SHEET_SNAPS = { tall: 0.30, mid: 0.58, peek: 0.86 }; // fraction of viewpo
 async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
   let q = supabase
     .from('events')
-    .select('id, key, name, cat_key, cat_label, area, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status')
+    .select('id, key, name, cat_key, cat_label, area, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, keywords')
     .eq('status', 'live')
     .order('starts_at', { ascending: true })
     .range(offset, offset + limit - 1);
@@ -62,8 +63,30 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
   }
   const { data, error } = await q;
   if (error) { console.warn('Failed to load map events:', error); return []; }
-  return (data || []).map(row => {
-    const cosmetic = findEvent(row.id);
+  const rows = data || [];
+
+  // Real-cover-photo fix (2026-10-19): `findEvent(row.id)` ALWAYS returns
+  // something — it falls back to `EVENTS[0]` (`EVENTS.find(...) ||
+  // EVENTS[0]`, src/data/events.js) when `row.id` isn't one of the static
+  // demo catalogue's own hardcoded keys. Every organizer-created real event
+  // has a freshly generated id (create_event_draft, migration 085) that can
+  // never match a demo key, so `cosmetic` used to silently resolve to the
+  // FIRST demo catalogue event for every real event — and `img:
+  // cosmetic?.img` below then painted that one demo event's cover photo
+  // onto every real event's map card/pin, regardless of which event was
+  // actually selected. Root-cause fix: only treat `cosmetic` as real
+  // cosmetic data when it's a genuine match, and resolve the map card's own
+  // image the SAME way Home/EventDetail already do for a real row —
+  // `resolveCoverUrl(row.cover_image, firstPhotoUrl)` (GocContext.jsx,
+  // migration 087's `cover_image` falling back to the first `event_photos`
+  // row by sort_order) — never the static catalogue for a row that isn't
+  // actually in it.
+  const realIds = rows.filter(row => !isCosmeticCatalogMatch(row.id)).map(row => row.id);
+  const fallbackPhotoByEvent = await firstPhotoUrlByEvent(realIds);
+
+  return rows.map(row => {
+    const isCosmeticMatch = isCosmeticCatalogMatch(row.id);
+    const cosmetic = isCosmeticMatch ? findEvent(row.id) : null;
     // 2026-09-25 fix pass (Task 0 audit) — real bug: `when` below used to
     // be the static catalogue's own frozen `cosmetic.when` verbatim (the
     // comment here used to claim that was "not reformatted from starts_at
@@ -78,6 +101,12 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
       catKey: row.cat_key || cosmetic?.catKey || 'all',
       name: row.name || cosmetic?.name,
       area: row.area || cosmetic?.meta,
+      // Keyword-search fix — real events' own `keywords` (migration 108,
+      // populated at create/resubmit time, defaulting to the event's
+      // category labels when the host leaves the field blank) plus the
+      // demo catalogue's own derived `keywords` for a cosmetic-match row,
+      // so a search term can match on more than just the literal name/area.
+      keywords: row.keywords?.length ? row.keywords : (cosmetic?.keywords || []),
       lat: row.lat,
       lng: row.lng,
       // Stage 3 — a pin requires real coordinates; an event without them
@@ -86,8 +115,23 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
       hasLocation: row.lat != null && row.lng != null,
       seatsRemaining: row.seats_remaining,
       startsAt: row.starts_at,
-      price: cosmetic?.price,
-      img: cosmetic?.img,
+      // Map price bug fix (2026-09-29) — root cause: this was ALWAYS
+      // `cosmetic?.price` (the static demo catalogue's own hand-written
+      // price string), never the real row's own `price_vnd` (already
+      // fetched in the SELECT above, but never used before this fix) —
+      // for any real, non-cosmetic-matching event this rendered the FIRST
+      // demo catalogue event's own price ("900.000₫", `EVENTS[0]` =
+      // "bepnho"), the exact bug reported: a real event created at 0 VND
+      // showed "900.000đ" on Map while correctly showing "Miễn phí"/Free
+      // on Event Detail (which reads the real row through a completely
+      // different, already-correct path, GocContext.jsx's
+      // `shapeRealEventAsCurEvent`). `price_vnd` itself is a real, valid
+      // 0 for a genuinely free event — NOT "missing" — so this checks
+      // `> 0`, never a bare truthiness/`||` check that would treat 0 the
+      // same as null/undefined. Same convention Home.jsx's own
+      // `discoveryShaped` mapping already uses for a real event's price.
+      price: row.price_vnd > 0 ? formatVnd(row.price_vnd) : 'Miễn phí',
+      img: isCosmeticMatch ? cosmetic?.img : resolveCoverUrl(row.cover_image, fallbackPhotoByEvent[row.id]),
       when: dateOverrides?.when || cosmetic?.when,
       urgent: row.seats_remaining != null && row.seats_remaining <= 5,
       isNew: (dateOverrides?.until ?? cosmetic?.until) != null && (dateOverrides?.until ?? cosmetic?.until) <= 1,
@@ -427,10 +471,17 @@ export default function MapExplore() {
     let list = events;
     if (catFilter !== 'all') list = list.filter(e => e.catKey === catFilter);
     if (openNowOnly) list = list.filter(e => e.seatsRemaining > 0);
-    // Home quick event search — real events only, matched by name/area;
-    // ANDed with the filters above, never a replacement for them.
+    // Home quick event search — matched by name/area/keywords; ANDed with
+    // the filters above, never a replacement for them. Keyword search fix
+    // (migration 108) — a search term now also matches an event's own
+    // `keywords` (category-derived by default when a host leaves the
+    // field blank at creation), not just its literal name/district.
     const q = searchQuery.trim().toLowerCase();
-    if (q) list = list.filter(e => e.name?.toLowerCase().includes(q) || e.area?.toLowerCase().includes(q));
+    if (q) list = list.filter(e =>
+      e.name?.toLowerCase().includes(q)
+      || e.area?.toLowerCase().includes(q)
+      || (e.keywords || []).some(k => k?.toLowerCase().includes(q))
+    );
     if (sortByDistance && s.userCoords) {
       // Stage 3 — a no-location event has no real distance to sort by;
       // sorts after every plottable one rather than a NaN-driven,

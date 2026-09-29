@@ -1077,7 +1077,7 @@ extension AppState {
         do {
             var filter = SupabaseService.client
                 .from("events")
-                .select("id, cat_key, name, area, lat, lng, starts_at, price_vnd, seats_remaining, status")
+                .select("id, cat_key, name, area, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords")
                 .eq("status", value: "live")
             if let bounds {
                 filter = filter
@@ -1089,6 +1089,27 @@ extension AppState {
                 .limit(60)
                 .execute().value
             mapEvents = rows
+
+            // Real-cover-photo fix (2026-10-19) — root cause: MapExploreView
+            // used to render `EventCatalog.find(ev.id)?.img` unconditionally
+            // for the selected-event card and the list/pin rows.
+            // `EventCatalog.find` always returns SOMETHING (falls back to
+            // `.all.first`, its own doc comment says so, mirroring web's
+            // `findEvent()`) — so for any organizer-created real event
+            // (an id that can never match a demo catalogue key), it
+            // silently resolved to the FIRST demo event's own photo, which
+            // is exactly the "wrong event's cover photo on the map"
+            // real-device report. Fixed by resolving each REAL event's own
+            // `cover_image` (falling back to its first `event_photos` row,
+            // same as web's `resolveCoverUrl`/`firstPhotoUrlByEvent`) here,
+            // once per load, so the view layer never needs the static
+            // catalogue at all for a real event's photo.
+            let realIds = rows.filter { EventCatalog.find($0.id)?.key != $0.id }.map(\.id)
+            var urls = await firstPhotoURLByEvent(realIds)
+            for row in rows {
+                if let url = resolveCoverURL(row.coverImage) { urls[row.id] = url }
+            }
+            mapEventCoverURLs = urls
         } catch {
             print("Failed to load map events:", error)
         }
@@ -2697,7 +2718,7 @@ extension AppState {
     /// ever actually fetched a real event's own stored coordinates for its
     /// Event Detail screen, even though `create_event_draft`/
     /// `resubmit_event_for_review` have stored them since migration 094.
-    private static let realEventColumns = "id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included_items, intro, address_line, city, postal_code, address_verified"
+    private static let realEventColumns = "id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included_items, intro, address_line, city, postal_code, address_verified, keywords"
 
     /// `events.cover_image` (migration 087) always wins over the gallery's
     /// own sort_order-first fallback when a host has explicitly picked one —
@@ -2855,6 +2876,46 @@ extension AppState {
         } catch {
             print("loadWeekendEvents failed:", error)
             weekendEvents = []
+        }
+    }
+
+    /// Home-visibility fix (2026-09-29) — iOS port of web's identical
+    /// `loadDiscoveryEvents` (GocContext.jsx): every real, publicly-visible
+    /// event (`status IN ('live','cancelled','ended')`, `visibility =
+    /// 'public'` — 'review'/'draft' never included, so pending/withdrawn
+    /// stays hidden exactly as intended), not narrowed to this weekend.
+    /// This is the array `feed` (below) was missing entirely before this
+    /// fix — see this property's own doc comment on `AppState.swift`.
+    func loadDiscoveryEvents() async {
+        discoveryEventsLoading = true
+        defer { discoveryEventsLoading = false }
+        do {
+            let rows: [RealEventSummary] = try await SupabaseService.client
+                .from("events").select(Self.realEventColumns)
+                .eq("visibility", value: "public")
+                .in("status", values: ["live", "cancelled", "ended"])
+                .order("starts_at", ascending: true)
+                .limit(300)
+                .execute().value
+            let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
+            async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
+            async let orgRows = organizerNames(for: organizerIDs)
+            let photos = await photoMap
+            let orgNameByID = await orgRows
+
+            var shaped: [CatalogEvent] = []
+            for row in rows {
+                var r = row
+                r.photoURL = resolveCoverURL(row.coverImage) ?? photos[row.id]
+                if let orgId = row.organizerId { r.organizerName = orgNameByID[orgId] ?? "" }
+                let event = CatalogEvent.fromReal(r)
+                shaped.append(event)
+                realEventsByID[row.id] = event
+            }
+            discoveryEvents = shaped
+        } catch {
+            print("loadDiscoveryEvents failed:", error)
+            discoveryEvents = []
         }
     }
 
@@ -3823,11 +3884,21 @@ extension AppState {
         createLocConfirmed = false
     }
 
+    /// resubmit_event_for_review's own returned `error` code (migration
+    /// 107), e.g. "RESUBMISSION_LIMIT_REACHED" — thrown so the catch block
+    /// below can map it to the same user-facing message web's
+    /// createSubmit/GocContext.jsx uses for the identical code.
+    struct ResubmitEventError: Error { let code: String }
+
     func submitCreateEvent(
         newImages: [UIImage] = [], coverNewIndex: Int? = nil,
-        removeExistingPhotoIDs: [UUID] = [], existingCoverPath: String? = nil
+        removeExistingPhotoIDs: [UUID] = [], existingCoverPath: String? = nil,
+        defaultKeywordsLabel: String = ""
     ) async {
         guard !createName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        guard !submitCreateEventInFlight else { return }
+        submitCreateEventInFlight = true
+        defer { submitCreateEventInFlight = false }
         loading = true
         createError = ""
         createMediaError = ""
@@ -3869,6 +3940,32 @@ extension AppState {
             return
         }
 
+        // "Bao gồm" item validation — mirrors migration 087's own server-
+        // side gate (max 3, label 1-60, detail <=300) exactly the way web's
+        // identical `createSubmit` does (GocContext.jsx); the RPC is the
+        // real gate, this only avoids a round trip for an obviously-
+        // invalid client state.
+        let includedItemsPayload = createIncludedItems
+            .map { IncludedItem(label: $0.label.trimmingCharacters(in: .whitespaces), detail: $0.detail.trimmingCharacters(in: .whitespaces)) }
+            .filter { !$0.label.isEmpty }
+        guard includedItemsPayload.allSatisfy({ $0.label.count <= 60 && $0.detail.count <= 300 }) else {
+            loading = false
+            createError = T("Mỗi mục \"Bao gồm\" cần tên (tối đa 60 ký tự) và mô tả tối đa 300 ký tự.", "Each \"Included\" item needs a label (max 60 chars) and detail under 300 chars.")
+            return
+        }
+
+        // Keyword-search fix (migration 108) — mirrors web's identical
+        // `createSubmit` default: a blank keywords field defaults to the
+        // event's own selected category label(s) (`defaultKeywordsLabel`,
+        // computed by the caller from the SAME `categories`/`createCats`
+        // the review sheet already shows — never a second, separate
+        // category->label mapping).
+        let trimmedKeywords = createKeywords.trimmingCharacters(in: .whitespaces)
+        let keywordsPayload: [String] = (trimmedKeywords.isEmpty ? defaultKeywordsLabel : trimmedKeywords)
+            .components(separatedBy: trimmedKeywords.isEmpty ? " ▪︎ " : ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
         do {
             var eventID: String?
             if let editID = createEditEventId {
@@ -3882,6 +3979,7 @@ extension AppState {
                         eventDate: eventDate, eventTime: eventTime,
                         priceVnd: Int(priceDigits) ?? 0, capacity: capacity,
                         intro: createIntro.trimmingCharacters(in: .whitespacesAndNewlines),
+                        includedItems: includedItemsPayload,
                         lat: submitLat, lng: submitLng,
                         addressLine: createAddressLine.trimmingCharacters(in: .whitespaces),
                         city: createCity.trimmingCharacters(in: .whitespaces),
@@ -3889,8 +3987,17 @@ extension AppState {
                         addressVerified: true
                     ))
                     .execute().value
-                guard case .bool(true) = result["success"] ?? .bool(false) else { throw URLError(.badServerResponse) }
-                eventID = editID
+                if case .bool(true) = result["success"] ?? .bool(false) {
+                    eventID = editID
+                } else {
+                    // Surface migration 107's specific error code (e.g.
+                    // RESUBMISSION_LIMIT_REACHED) instead of a generic
+                    // "server error" — mirrors web's identical mapping
+                    // (GocContext.jsx's createSubmit catch block).
+                    let code: String
+                    if case .string(let s)? = result["error"] { code = s } else { code = "" }
+                    throw ResubmitEventError(code: code)
+                }
             } else {
                 if !canHost { await applyOrganizerMode(true) }
                 struct CreatedEvent: Decodable {
@@ -3913,6 +4020,7 @@ extension AppState {
                         instagram: orgRegIg.trimmingCharacters(in: .whitespaces),
                         about: orgRegDesc.trimmingCharacters(in: .whitespaces),
                         intro: createIntro.trimmingCharacters(in: .whitespacesAndNewlines),
+                        includedItems: includedItemsPayload,
                         lat: submitLat, lng: submitLng,
                         addressLine: createAddressLine.trimmingCharacters(in: .whitespaces),
                         city: createCity.trimmingCharacters(in: .whitespaces),
@@ -3937,6 +4045,28 @@ extension AppState {
                 }
             }
 
+            // Keyword-search fix (migration 108) — a separate, additive RPC
+            // rather than a new param on create_event_draft/
+            // resubmit_event_for_review (both already large, multiply-
+            // extended functions this pass deliberately doesn't touch):
+            // owner-checked, SECURITY DEFINER, does one thing. Best-effort
+            // — a failure here shouldn't block the event submission
+            // itself, which already succeeded above.
+            if let eventID {
+                struct SetKeywordsParams: Encodable {
+                    let eventId: String
+                    let keywords: [String]
+                    enum CodingKeys: String, CodingKey { case eventId = "p_event_id", keywords = "p_keywords" }
+                }
+                do {
+                    let _: JSONValue = try await SupabaseService.client
+                        .rpc("set_event_keywords", params: SetKeywordsParams(eventId: eventID, keywords: keywordsPayload))
+                        .execute().value
+                } catch {
+                    print("set_event_keywords failed:", error)
+                }
+            }
+
             if let eventID, !newImages.isEmpty || !removeExistingPhotoIDs.isEmpty || (existingCoverPath?.isEmpty == false) {
                 let (uploaded, failed, _) = await reconcileEventMedia(
                     eventID: eventID, newImages: newImages, coverNewIndex: coverNewIndex,
@@ -3957,10 +4087,37 @@ extension AppState {
             await loadMyOrgEventSummaries()
         } catch {
             loading = false
-            createError = T(
-                "Không thể gửi sự kiện lúc này. Vui lòng thử lại.",
-                "Could not submit this event right now. Please try again."
-            )
+            // Migration 107's specific error codes surfaced with the SAME
+            // user-facing copy web's createSubmit (GocContext.jsx) uses —
+            // both are a banbe PRODUCT POLICY limit (2 resubmissions per
+            // rolling 24h), never phrased as a legal/Ticketbox requirement.
+            // `create_event_draft`'s RAISE EXCEPTION messages arrive as a
+            // PostgrestError whose own `message` starts with the code;
+            // `resubmit_event_for_review`'s arrives as `ResubmitEventError`.
+            let code: String
+            if let resubmitError = error as? ResubmitEventError {
+                code = resubmitError.code
+            } else if let postgrestError = error as? PostgrestError {
+                code = postgrestError.message
+            } else {
+                code = ""
+            }
+            if code.contains("RESUBMISSION_LIMIT_REACHED") {
+                createError = T(
+                    "Bạn đã gửi lại tối đa 2 lần trong 24 giờ qua. Vui lòng thử lại sau.",
+                    "You've already resubmitted this event twice in the last 24 hours. Please try again later."
+                )
+            } else if code.contains("DUPLICATE_PENDING_EVENT") {
+                createError = T(
+                    "Sự kiện này đã đang chờ duyệt. Hãy sửa & gửi lại sự kiện đó thay vì tạo mới.",
+                    "This event is already pending review. Edit and resubmit it instead of creating a new one."
+                )
+            } else {
+                createError = T(
+                    "Không thể gửi sự kiện lúc này. Vui lòng thử lại.",
+                    "Could not submit this event right now. Please try again."
+                )
+            }
         }
     }
 
@@ -4014,7 +4171,79 @@ extension AppState {
         }
         createPrice = real.priceVnd.map(String.init) ?? ""
         createSeats = real.capacity.map(String.init) ?? ""
+        createIncludedItems = real.includedItems ?? []
+        createKeywords = (real.keywords ?? []).joined(separator: ", ")
         screen = .create
+    }
+
+    /// Owner-only withdrawal of a PENDING ('review') submission (migration
+    /// 107, `withdraw_event_submission`) — iOS port of web's identical
+    /// `withdrawEventSubmission` (GocContext.jsx). Requires a non-empty
+    /// reason (the RPC re-enforces this). Preserves the event row: the RPC
+    /// moves it to 'draft', same status a rejection uses, with
+    /// `withdrawal_reason`/`withdrawn_at` recorded separately from
+    /// `rejection_reason`. Never touches the resubmission counter.
+    @discardableResult
+    func withdrawEventSubmission(_ eventId: String, reason: String) async -> Bool {
+        let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            withdrawEventError = T("Vui lòng nhập lý do rút lại.", "Please enter a reason to withdraw.")
+            return false
+        }
+        withdrawEventBusy = true
+        withdrawEventError = ""
+        struct Params: Encodable { let pEventId: String; let pReason: String
+            enum CodingKeys: String, CodingKey { case pEventId = "p_event_id", pReason = "p_reason" } }
+        struct Result: Decodable { let success: Bool; let error: String? }
+        do {
+            let result: Result = try await SupabaseService.client
+                .rpc("withdraw_event_submission", params: Params(pEventId: eventId, pReason: trimmed))
+                .execute().value
+            withdrawEventBusy = false
+            guard result.success else {
+                withdrawEventError = result.error == "NOT_PENDING"
+                    ? T("Sự kiện này không còn ở trạng thái chờ duyệt.", "This event is no longer pending review.")
+                    : result.error == "REASON_REQUIRED"
+                    ? T("Vui lòng nhập lý do rút lại.", "Please enter a reason to withdraw.")
+                    : T("Không thể rút lại lúc này.", "Unable to withdraw this submission right now.")
+                return false
+            }
+            // Reflect the new 'draft' status locally without a full reload.
+            await loadMyOrgEventSummaries()
+            return true
+        } catch {
+            withdrawEventBusy = false
+            withdrawEventError = T("Không thể rút lại lúc này.", "Unable to withdraw this submission right now.")
+            return false
+        }
+    }
+
+    /// Read-only "N attempts left" / "next eligible at" lookup (migration
+    /// 107, `get_event_resubmission_status`) — iOS port of web's
+    /// `loadResubmissionStatus`. A banbe PRODUCT POLICY limit (2 successful
+    /// resubmissions per rolling 24h), never a legal/Ticketbox requirement.
+    func loadResubmissionStatus(_ eventId: String) async {
+        struct Params: Encodable { let pEventId: String
+            enum CodingKeys: String, CodingKey { case pEventId = "p_event_id" } }
+        struct Result: Decodable {
+            let success: Bool
+            let remainingAttempts: Int?
+            let nextEligibleAt: Date?
+            enum CodingKeys: String, CodingKey {
+                case success, remainingAttempts = "remaining_attempts", nextEligibleAt = "next_eligible_at"
+            }
+        }
+        do {
+            let result: Result = try await SupabaseService.client
+                .rpc("get_event_resubmission_status", params: Params(pEventId: eventId))
+                .execute().value
+            guard result.success else { return }
+            resubmissionStatusByEvent[eventId] = ResubmissionStatus(
+                remaining: result.remainingAttempts ?? 2, nextEligibleAt: result.nextEligibleAt
+            )
+        } catch {
+            print("get_event_resubmission_status failed:", error)
+        }
     }
 
     // ---- admin event review queue (event submission -> review -> publish) ----
@@ -4113,6 +4342,13 @@ extension AppState {
     }
 }
 
+/// `get_event_resubmission_status`'s own remaining-attempts/next-eligible
+/// result, cached per event id on `AppState.resubmissionStatusByEvent`.
+struct ResubmissionStatus {
+    let remaining: Int
+    let nextEligibleAt: Date?
+}
+
 /// A generic RPC's jsonb reply where the exact value type per key varies
 /// (a plain `[String: String]`/`[String: Bool]` can't decode a mixed
 /// `{success, status}` or `{success, error}` response). Only the couple of
@@ -4142,6 +4378,7 @@ struct ResubmitEventParams: Encodable {
     let priceVnd: Int
     let capacity: Int
     let intro: String
+    let includedItems: [IncludedItem]
     let lat: Double?
     let lng: Double?
     // Address-autocomplete fix pass (2026-09-28, migration 105).
@@ -4161,6 +4398,7 @@ struct ResubmitEventParams: Encodable {
         case priceVnd = "p_price_vnd"
         case capacity = "p_capacity"
         case intro = "p_intro"
+        case includedItems = "p_included_items"
         case lat = "p_lat"
         case lng = "p_lng"
         case addressLine = "p_address_line"
@@ -4207,6 +4445,7 @@ struct CreateEventParams: Encodable {
     let instagram: String
     let about: String
     let intro: String
+    let includedItems: [IncludedItem]
     let lat: Double?
     let lng: Double?
     // Address-autocomplete fix pass (2026-09-28, migration 105).
@@ -4228,6 +4467,7 @@ struct CreateEventParams: Encodable {
         case instagram = "p_instagram"
         case about = "p_about"
         case intro = "p_intro"
+        case includedItems = "p_included_items"
         case lat = "p_lat"
         case lng = "p_lng"
         case addressLine = "p_address_line"

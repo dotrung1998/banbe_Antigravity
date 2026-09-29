@@ -943,7 +943,17 @@ struct MapExploreView: View {
             // Button-vs-ancestor-gesture precedence — this never fires for
             // either.
             HStack(alignment: .top, spacing: 10) {
-                if let path = cosmetic?.img {
+                // Real-cover-photo fix (2026-10-19) — see loadMapEvents'
+                // own comment (AppState+Data.swift): `cosmetic?.img` here
+                // always resolved to the FIRST demo catalogue event's photo
+                // for any real event, since `EventCatalog.find` never
+                // returns nil. `app.mapEventCoverURLs` is this event's own
+                // resolved `cover_image`/first-`event_photos` URL, checked
+                // first; `cosmetic?.img` remains only for an actual demo
+                // catalogue event (id genuinely matches a bundled entry).
+                if let url = app.mapEventCoverURLs[ev.id] {
+                    CatalogPhoto(path: url.absoluteString, height: 64, width: 64, cornerRadius: 10)
+                } else if let path = cosmetic?.img {
                     CatalogPhoto(path: path, height: 64, width: 64, cornerRadius: 10)
                 }
                 VStack(alignment: .leading, spacing: 2) {
@@ -958,9 +968,20 @@ struct MapExploreView: View {
                     Text([cosmeticLive?.when, ev.area].compactMap { $0 }.joined(separator: " ▪︎ "))
                         .font(.system(size: 11)).opacity(0.65).lineLimit(1)
                     HStack {
-                        if let price = cosmetic?.price {
-                            Text(price).font(.system(size: 13, weight: .semibold))
-                        }
+                        // Map price bug fix (2026-09-29) — same root cause
+                        // as web's identical fix (MapExplore.jsx): this was
+                        // ALWAYS `cosmetic?.price` (the static demo
+                        // catalogue's own price string), never `ev.priceVnd`
+                        // (already decoded on `MapEventRow` — see that
+                        // struct's own `cover_image` fix comment from the
+                        // previous pass) — for any real event this showed
+                        // the FIRST demo catalogue event's price
+                        // ("900.000₫") regardless of the real event's own
+                        // price, including a genuinely free (0 VND) one.
+                        // `> 0`, never a bare truthiness check, so a real 0
+                        // correctly reads as "Miễn phí"/Free, not "missing".
+                        Text(ev.priceVnd > 0 ? EventLabels.vnd(ev.priceVnd) : app.T("Miễn phí", "Free"))
+                            .font(.system(size: 13, weight: .semibold))
                         Spacer()
                         Text(isSoldOut(ev) ? app.T("Hết chỗ", "Sold out") : app.T("Còn chỗ", "Available"))
                             .font(.system(size: 11, weight: .semibold))
@@ -1152,11 +1173,20 @@ struct MapExploreView: View {
         var list = app.mapEvents
         if catFilter != "all" { list = list.filter { effectiveCatKey($0) == catFilter } }
         if openNowOnly { list = list.filter { ($0.seatsRemaining ?? 0) > 0 } }
-        // Home quick event search (2026-09-27) — a by-name/area text
-        // filter, ANDed with the filters above; never a second search
-        // index (same `app.mapEvents` this screen already loads).
+        // Home quick event search (2026-09-27) — a by-name/area/keywords
+        // text filter, ANDed with the filters above; never a second search
+        // index (same `app.mapEvents` this screen already loads). Keyword-
+        // search fix (migration 108) — mirrors web's identical MapExplore.jsx
+        // change: also matches an event's own `keywords`, not just its
+        // literal name/district.
         let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if !q.isEmpty { list = list.filter { $0.name.lowercased().contains(q) || $0.area.lowercased().contains(q) } }
+        if !q.isEmpty {
+            list = list.filter {
+                $0.name.lowercased().contains(q)
+                || $0.area.lowercased().contains(q)
+                || ($0.keywords ?? []).contains { $0.lowercased().contains(q) }
+            }
+        }
         if sortByDistance, let coords = app.userCoords {
             list.sort { distanceKm(coords, $0) ?? .greatestFiniteMagnitude < distanceKm(coords, $1) ?? .greatestFiniteMagnitude }
         }
@@ -1293,7 +1323,13 @@ struct MapExploreView: View {
                         // photo path is joined back from the bundled catalogue
                         // by id, same as the price/img join the web build does
                         // in MapExplore.jsx's fetchLiveEvents().
-                        if let path = EventCatalog.find(ev.id)?.img {
+                        // Real-cover-photo fix (2026-10-19) — same root
+                        // cause/fix as `selectedCard` above: prefer this
+                        // event's own resolved real photo before ever
+                        // falling back to the static demo catalogue join.
+                        if let url = app.mapEventCoverURLs[ev.id] {
+                            CatalogPhoto(path: url.absoluteString, height: 52, width: 52, cornerRadius: 10)
+                        } else if let path = EventCatalog.find(ev.id)?.img {
                             CatalogPhoto(path: path, height: 52, width: 52, cornerRadius: 10)
                         }
                         VStack(alignment: .leading, spacing: 2) {

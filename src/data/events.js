@@ -263,6 +263,17 @@ export const EVENTS = ROWS.map((r, idx) => {
     // ticket says not to add.
     intro: INTRO[r[0]] || '',
     includedItems: r[13] ? r[13].split(' ▪︎ ').map(label => ({ label: label.trim(), detail: '' })).filter(it => it.label) : [],
+    // Keyword-search fix (migration 108) — same idea as the real-event
+    // backfill (that migration's own UPDATE): as many DERIVED keywords as
+    // can be reconstructed from fields this row already has (category,
+    // district, every word of the name, each "Bao gồm" item, host name),
+    // never hand-authored/invented new content. Deduped, case preserved
+    // (MapExplore's own search lowercases both sides before comparing).
+    keywords: Array.from(new Set([
+      r[2], r[5], org.name,
+      ...r[3].split(/\s+/),
+      ...(r[13] ? r[13].split(' ▪︎ ').map(s => s.trim()) : []),
+    ].filter(Boolean))),
     palette: PALETTES[r[16]], greeting: r[17],
     gallery, orgGallery, orgName: org.name, orgIg: org.ig, orgDesc: org.desc,
     orgSince: orgStat.since, orgCount: orgStat.count, orgTrusted: trusted,
@@ -288,6 +299,22 @@ export const EVENTS = ROWS.map((r, idx) => {
 
 export function findEvent(key) {
   return EVENTS.find(e => e.key === key) || EVENTS[0];
+}
+
+/**
+ * Whether `key` is a GENUINE static demo-catalogue event id, as opposed to
+ * a real, organizer-created event's id (a generated slug that can never
+ * appear in `EVENTS`). Extracted (2026-10-19, map cover-photo fix pass)
+ * so callers that need to know "is `findEvent(key)`'s result real cosmetic
+ * data, or just its `EVENTS[0]` fallback" — MapExplore.jsx's
+ * `fetchLiveEvents()`, iOS's mirrored check — have one shared, unit-
+ * testable predicate instead of re-deriving `EVENTS.some(...)` inline at
+ * each call site. `findEvent(key)` itself always returns SOMETHING (falls
+ * back to `EVENTS[0]`), which is exactly the root cause this predicate
+ * exists to let callers guard against.
+ */
+export function isCosmeticCatalogMatch(key) {
+  return EVENTS.some(e => e.key === key);
 }
 
 export const CREATE_PALETTES = [

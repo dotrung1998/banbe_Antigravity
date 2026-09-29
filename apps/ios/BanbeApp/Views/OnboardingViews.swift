@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UIKit
 
 /// Port of src/screens/Splash.jsx — the wordmark, the tagline, and a
 /// spinner; tapping (or waiting) moves on to the language picker.
@@ -204,6 +205,11 @@ struct CreateEventView: View {
     @State private var seededForEventID: String?
     @State private var seededExistingIDs: Set<UUID> = []
     @State private var dateTimeSheetOpen = false
+    // "Review before submitting" step (task 1) — a plain local bool, same
+    // reasoning as web's `reviewOpen` (CreateEvent.jsx): every field it
+    // shows already lives in `app.create*`/this view's own `galleryItems`/
+    // `coverItemID` state, so dismissing it loses nothing.
+    @State private var reviewOpen = false
 
     private var removedExistingIDs: [UUID] {
         let kept = Set(galleryItems.compactMap { if case .existing(let id, _) = $0.kind { return id }; return nil })
@@ -247,6 +253,14 @@ struct CreateEventView: View {
         if coverItemID == item.id { coverItemID = galleryItems.first?.id }
     }
 
+    /// Photo-management cleanup (task 1, screenshot 1 follow-up) — a clean
+    /// vertical list, one row per photo, replacing the old 4-column
+    /// `LazyVGrid` where remove/cover controls were tiny overlapping
+    /// buttons stacked on the thumbnail itself (matches web's identical
+    /// redesign, CreateEvent.jsx). Same underlying actions as before
+    /// (remove, set-cover, and now up/down reorder using the SAME array-
+    /// swap `galleryItems` already supported nothing new is invented here)
+    /// — just laid out so nothing overlaps the photo or another control.
     @ViewBuilder
     private func gallerySection() -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -255,9 +269,10 @@ struct CreateEventView: View {
                 Spacer()
                 Text("\(galleryItems.count)/\(maxPhotos)").font(.system(size: 10.5))
             }
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                ForEach(galleryItems) { item in
-                    ZStack(alignment: .topTrailing) {
+            VStack(spacing: 8) {
+                ForEach(Array(galleryItems.enumerated()), id: \.element.id) { index, item in
+                    let isCover = item.id == coverItemID
+                    HStack(spacing: 10) {
                         Group {
                             if let image = item.image {
                                 Image(uiImage: image).resizable().scaledToFill()
@@ -265,41 +280,88 @@ struct CreateEventView: View {
                                 AsyncImage(url: item.url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
                             }
                         }
-                        .frame(maxWidth: .infinity)
-                        .aspectRatio(1, contentMode: .fill)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(alignment: .bottom) {
+                            if isCover {
+                                Text(app.T("Ảnh bìa", "Cover"))
+                                    .font(.system(size: 8.5, weight: .bold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 2)
+                                    .background(app.palette.ink)
+                                    .foregroundStyle(app.palette.paper)
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(app.T("Ảnh \(index + 1)", "Photo \(index + 1)"))
+                                .font(.system(size: 11.5)).opacity(0.65)
+                            Button { coverItemID = item.id } label: {
+                                Text(isCover ? app.T("Đang là ảnh bìa", "Currently the cover") : app.T("Đặt làm ảnh bìa", "Set as cover"))
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .padding(.horizontal, 10).padding(.vertical, 4)
+                                    .background(isCover ? app.palette.ink : .clear, in: Capsule())
+                                    .overlay(Capsule().stroke(isCover ? .clear : app.palette.rule, lineWidth: 1))
+                                    .foregroundStyle(isCover ? app.palette.paper : app.palette.ink)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isCover)
+                        }
+                        Spacer(minLength: 0)
+
+                        VStack(spacing: 4) {
+                            Button {
+                                guard index > 0 else { return }
+                                galleryItems.swapAt(index - 1, index)
+                            } label: {
+                                Image(systemName: "chevron.up").font(.system(size: 11, weight: .semibold))
+                                    .frame(width: 26, height: 26)
+                                    .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(app.palette.rule))
+                            }
+                            .buttonStyle(.plain)
+                            .opacity(index == 0 ? 0.3 : 1)
+                            .disabled(index == 0)
+
+                            Button {
+                                guard index < galleryItems.count - 1 else { return }
+                                galleryItems.swapAt(index, index + 1)
+                            } label: {
+                                Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold))
+                                    .frame(width: 26, height: 26)
+                                    .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(app.palette.rule))
+                            }
+                            .buttonStyle(.plain)
+                            .opacity(index == galleryItems.count - 1 ? 0.3 : 1)
+                            .disabled(index == galleryItems.count - 1)
+                        }
+                        .foregroundStyle(app.palette.ink)
 
                         Button { removeGalleryItem(item) } label: {
                             Image(systemName: "xmark")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 20, height: 20)
-                                .background(Color.black.opacity(0.55), in: Circle())
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(BanbeTheme.alert)
+                                .frame(width: 26, height: 26)
+                                .background(BanbeTheme.alert.opacity(0.08), in: Circle())
                         }
-                        .padding(4)
-
-                        VStack {
-                            Spacer()
-                            Button { coverItemID = item.id } label: {
-                                Text(item.id == coverItemID ? app.T("Ảnh bìa", "Cover") : app.T("Đặt làm ảnh bìa", "Set as cover"))
-                                    .font(.system(size: 9, weight: .semibold))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 3)
-                                    .background(item.id == coverItemID ? app.palette.ink : app.palette.paper.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
-                                    .foregroundStyle(item.id == coverItemID ? app.palette.paper : app.palette.ink)
-                            }
-                            .padding(4)
-                        }
+                        .buttonStyle(.plain)
                     }
+                    .padding(8)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 if galleryItems.count < maxPhotos {
                     PhotosPicker(selection: $pickerItems, maxSelectionCount: maxPhotos - galleryItems.count, matching: .images) {
-                        Image(systemName: "plus")
-                            .foregroundStyle(app.palette.ink)
-                            .frame(maxWidth: .infinity)
-                            .aspectRatio(1, contentMode: .fill)
-                            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(app.palette.ink, style: StrokeStyle(lineWidth: 1, dash: [4])))
+                        HStack(spacing: 8) {
+                            Image(systemName: "plus")
+                            Text(app.T("Thêm ảnh", "Add photo")).font(.system(size: 12.5, weight: .semibold))
+                        }
+                        .foregroundStyle(app.palette.ink)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(app.palette.ink, style: StrokeStyle(lineWidth: 1, dash: [4])))
                     }
                 }
             }
@@ -354,6 +416,58 @@ struct CreateEventView: View {
                 .onChange(of: app.createIntro) { _, newValue in
                     if newValue.count > 4000 { app.createIntro = String(newValue.prefix(4000)) }
                 }
+        }
+        .foregroundStyle(app.palette.ink)
+    }
+
+    // "Bao gồm" item-editing parity fix (2026-09-29) — iOS's CreateEventView
+    // previously had no editing UI for this field at all, unlike web's
+    // CreateEvent.jsx (`addCreateIncludedItem`/`removeCreateIncludedItem`/
+    // `setCreateIncludedItem`) — a real, reported gap: a host filling this
+    // in on iOS had nowhere to put it, and the review screen correctly
+    // showed nothing because there was genuinely nothing to show. Up to 3
+    // items, same as the server-side cap (migration 087).
+    @ViewBuilder
+    private func includedItemsEditor() -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(app.T("Bao gồm", "Included")).font(.system(size: 11.5))
+            ForEach(Array(app.createIncludedItems.enumerated()), id: \.offset) { index, item in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        TextField(
+                            app.T("Tên (vd. 5 món)", "Label (e.g. 5 courses)"),
+                            text: Binding(
+                                get: { item.label },
+                                set: { app.setCreateIncludedItemLabel(index, $0) }
+                            )
+                        )
+                        .font(.system(size: 13.5))
+                        Button {
+                            app.removeCreateIncludedItem(at: index)
+                        } label: {
+                            Image(systemName: "xmark").font(.system(size: 11)).opacity(0.6)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    TextField(
+                        app.T("Mô tả (không bắt buộc)", "Detail (optional)"),
+                        text: Binding(
+                            get: { item.detail },
+                            set: { app.setCreateIncludedItemDetail(index, $0) }
+                        )
+                    )
+                    .font(.system(size: 12.5))
+                    .opacity(0.8)
+                }
+                .padding(10)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            if app.createIncludedItems.count < 3 {
+                Button { app.addCreateIncludedItem() } label: {
+                    Text(app.T("+ Thêm mục", "+ Add item")).font(.system(size: 12.5, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+            }
         }
         .foregroundStyle(app.palette.ink)
     }
@@ -472,6 +586,56 @@ struct CreateEventView: View {
     }
 
     var body: some View {
+        // Swipe-to-back "blank white space" fix (2026-09-29) — this used
+        // to present CreateEventReviewSheet via `.fullScreenCover`, which
+        // replaces the ENTIRE window content: nothing from this screen
+        // exists behind it to reveal while dragging, only whatever blank
+        // color the system shows there. Now an ordinary ZStack overlay
+        // instead — CreateEventView's own form (below) stays mounted and
+        // live underneath at all times, exactly like web's identical
+        // `{reviewOpen && <ReviewStep/>}` sibling-overlay pattern
+        // (CreateEvent.jsx) — so dragging the review sheet to the right
+        // reveals the REAL, live create-event form underneath, not a
+        // placeholder.
+        ZStack(alignment: .leading) {
+            createFormBody
+            if reviewOpen {
+                CreateEventReviewSheet(
+                    categories: categories,
+                    galleryItems: galleryItems,
+                    coverItemID: coverItemID,
+                    dateLabel: {
+                        if let date = app.createEventDate, let time = app.createEventTime {
+                            return "\(Self.vnDateLabelFormatter.string(from: date)) ▪︎ \(Self.vnTimeLabelFormatter.string(from: time))"
+                        }
+                        return app.T("Chưa chọn", "Not set")
+                    }(),
+                    onBack: { withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = false } },
+                    onConfirm: {
+                        // Keyword-search fix (migration 108) — same
+                        // default-to-category-label(s) fallback web's
+                        // identical `createCatLabel` provides, computed
+                        // here (not duplicated in AppState) since
+                        // `categories` already lives on this view.
+                        let picked = app.createCats.isEmpty ? ["supper"] : app.createCats
+                        let defaultKeywordsLabel = picked.compactMap { key in categories.first(where: { $0.key == key }).map { app.T($0.vi, $0.en) } }.joined(separator: " ▪︎ ")
+                        await app.submitCreateEvent(
+                            newImages: newImagesInOrder, coverNewIndex: coverNewIndex,
+                            removeExistingPhotoIDs: removedExistingIDs, existingCoverPath: existingCoverPath,
+                            defaultKeywordsLabel: defaultKeywordsLabel
+                        )
+                    }
+                )
+                .environmentObject(app)
+                .transition(.move(edge: .trailing))
+                .zIndex(1)
+            }
+        }
+        .onChange(of: reviewOpen) { _, open in app.isCreateReviewOpen = open }
+        .onDisappear { app.isCreateReviewOpen = false }
+    }
+
+    private var createFormBody: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
                 // Stage 1 fix — this used to name a fixed destination,
@@ -512,14 +676,16 @@ struct CreateEventView: View {
 
                 group(app.T("Sự kiện", "Event")) {
                     BanbeField(label: app.T("Tên sự kiện", "Event name"),
-                               placeholder: app.T("Tên sự kiện của bạn", "Your event name"), text: $app.createName)
+                               placeholder: app.T("Tên sự kiện của bạn", "Your event name"), text: $app.createName,
+                               required: true)
                     BanbeField(label: app.T("Mô tả", "Description"),
                                placeholder: app.T("Buổi này có gì?", "What happens?"), text: $app.createDesc)
                     introEditor()
                     BanbeField(
                         label: app.T("Địa điểm", "Location"),
                         placeholder: app.T("12 Nguyễn Văn Đậu, hoặc tên địa điểm…", "12 Nguyễn Văn Đậu, or a venue name…"),
-                        text: $app.createLoc
+                        text: $app.createLoc,
+                        required: true
                     )
                     .onChange(of: app.createLoc) { _, newValue in
                         createAddressSearchTask?.cancel()
@@ -574,6 +740,28 @@ struct CreateEventView: View {
                             .buttonStyle(.plain)
                         }
                     }
+
+                    // Keyword-search fix (migration 108) — so this event
+                    // actually surfaces in Map's search box for terms
+                    // beyond its literal name/district. Left blank,
+                    // submission defaults it to the category label(s)
+                    // picked just above (never silently empty).
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(app.T("Từ khoá tìm kiếm", "Search keywords")).font(.system(size: 11.5))
+                        TextField(
+                            app.T("vd. tiệc tối, rượu vang, ẩm thực Việt", "e.g. supper club, wine, Vietnamese food"),
+                            text: $app.createKeywords
+                        )
+                        .font(.system(size: 14))
+                        Text(app.T(
+                            "Cách nhau bằng dấu phẩy — để trống sẽ tự dùng danh mục đã chọn ở trên.",
+                            "Comma-separated — left blank, the category picked above is used instead."
+                        ))
+                        .font(.system(size: 11)).opacity(0.75)
+                    }
+                    .foregroundStyle(app.palette.ink)
+
+                    includedItemsEditor()
                 }
 
                 gallerySection()
@@ -600,21 +788,24 @@ struct CreateEventView: View {
                 // "duyệt sự kiện đầu tiên trong 48 giờ"/"reviews your first
                 // event within 48 hours" copy promised a turnaround time
                 // nothing enforced. Accurate instead of reassuring.
+                // "Review before submitting" step (task 1) — this button now
+                // only OPENS the review sheet; only that sheet's own
+                // "Xác nhận và gửi" ever actually calls submitCreateEvent.
                 InkButton(title: app.createSent
                           ? app.T("Đã gửi, đang chờ Banbe duyệt", "Submitted, waiting for Banbe to review")
-                          : (app.loading ? app.T("Đang gửi…", "Submitting…")
-                                         : (app.createEditEventId != nil
-                                            ? app.T("Gửi lại để duyệt", "Resubmit for review")
-                                            : app.T("Gửi để duyệt", "Submit for review"))),
+                          : app.T("Xem lại trước khi gửi", "Review before submitting"),
                           enabled: !app.createName.trimmingCharacters(in: .whitespaces).isEmpty
                               && app.createLocConfirmed && !app.createSent && !app.loading,
                           cornerRadius: 999) {
-                    Task {
-                        await app.submitCreateEvent(
-                            newImages: newImagesInOrder, coverNewIndex: coverNewIndex,
-                            removeExistingPhotoIDs: removedExistingIDs, existingCoverPath: existingCoverPath
-                        )
-                    }
+                    // Keyboard-stays-up fix (2026-09-29) — opening the review
+                    // used to rely on `.fullScreenCover` implicitly resigning
+                    // first responder (a new modal context takes it away for
+                    // free); now that it's a plain overlay in the SAME view
+                    // hierarchy (see `body`'s own doc comment), nothing does
+                    // that automatically, so any focused text field stayed
+                    // focused — and the keyboard visible — underneath it.
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = true }
                 }
                 .padding(.top, 26)
 
@@ -662,6 +853,417 @@ struct CreateEventView: View {
     }
 }
 
+/// "Review before submitting" step (task 1) — TWO tabs (2026-09-29
+/// follow-up, matching web's identical CreateEvent.jsx `ReviewStep`
+/// change): "Nội bộ" (private/host) shows EXACTLY the fields that will be
+/// sent (title, gallery order + cover marker, description/intro, full
+/// resolved address, date/time, capacity, price, category, included
+/// items) — the original content of this screen; "Xem trước công khai"
+/// (public preview) renders the SAME draft data shaped the way a normal
+/// viewer would see it on the real Event Detail page (`EventDetailView`)
+/// once approved — same "district ▪︎ live km ▪︎ long date ▪︎ time"
+/// where-line format (via the shared `app.stripKm`/`app.trStatus`), same
+/// price-or-"Miễn phí" rule, same cover/gallery. Both tabs share one
+/// back/confirm footer; only the explicit "Xác nhận và gửi" tap (available
+/// from either tab) calls `submitCreateEvent`. A `.fullScreenCover`, not a
+/// second screen in the nav stack — there is no back-stack state to
+/// reconcile.
+private struct CreateEventReviewSheet: View {
+    @EnvironmentObject var app: AppState
+    @Environment(\.openURL) private var openURL
+    let categories: [(key: String, vi: String, en: String)]
+    let galleryItems: [StagedGalleryItem]
+    let coverItemID: String?
+    let dateLabel: String
+    // Swipe-to-back "blank white space" fix (2026-09-29) — this sheet is no
+    // longer a `.fullScreenCover` (see `CreateEventView.body`'s own doc
+    // comment), so there's no system presentation left to call
+    // `@Environment(\.dismiss)` on; the parent instead owns `reviewOpen`
+    // and hands down this closure, exactly like web's `ReviewStep(onBack)`.
+    let onBack: () -> Void
+    let onConfirm: () async -> Void
+    @State private var confirmBusy = false
+    private enum Tab { case privateTab, publicTab }
+    @State private var tab: Tab = .privateTab
+    // `swipeAxisLocked` is decided once per gesture, the first time its
+    // translation is unambiguous either way, and never re-decided mid-
+    // gesture — a genuine up/down swipe is locked out entirely (offset
+    // stays exactly 0, no diagonal drift) rather than only mostly ignored,
+    // which is what "steady" means here: one axis moves, or none does.
+    @State private var swipeBackOffset: CGFloat = 0
+    @State private var swipeAxisLocked: Bool?
+    // Vertical-scroll lock fix (2026-09-29 follow-up) — once a drag is
+    // confirmed horizontal, the ScrollView below is disabled for the rest
+    // of that gesture, so moving a finger up/down mid-swipe can no longer
+    // also scroll the content underneath at the same time (the two
+    // gestures fighting each other was the reported "issues").
+    @State private var scrollLockedForSwipe = false
+
+    private var categoryLabel: String {
+        let picked = app.createCats.isEmpty ? ["supper"] : app.createCats
+        return picked.compactMap { key in categories.first(where: { $0.key == key }).map { app.T($0.vi, $0.en) } }.joined(separator: " ▪︎ ")
+    }
+    private var addressLabel: String {
+        if !app.createLocLabel.isEmpty { return app.createLocLabel }
+        let parts = [app.createAddressLine, app.createDistrict, app.createCity].filter { !$0.isEmpty }
+        return parts.isEmpty ? app.T("Chưa xác nhận địa chỉ", "Address not confirmed") : parts.joined(separator: ", ")
+    }
+    // "Bao gồm" review parity fix (2026-09-29) — CreateEventView now has a
+    // real editing UI for this (`includedItemsEditor()`), so the review
+    // step shows exactly what was entered, same trimmed/non-empty-label
+    // filter `submitCreateEvent`'s own validation applies.
+    private var reviewIncludedItems: [IncludedItem] {
+        app.createIncludedItems
+            .map { IncludedItem(label: $0.label.trimmingCharacters(in: .whitespaces), detail: $0.detail.trimmingCharacters(in: .whitespaces)) }
+            .filter { !$0.label.isEmpty }
+    }
+
+    private var publicPriceVnd: Int { Int(app.createPrice.filter { $0.isNumber }) ?? 0 }
+    private var publicPriceLabel: String { publicPriceVnd > 0 ? EventLabels.vnd(publicPriceVnd) : app.T("Miễn phí", "Free") }
+    private var publicSeatsLabel: String {
+        let seats = app.createSeats.trimmingCharacters(in: .whitespaces)
+        return seats.isEmpty ? "" : app.T("Còn \(seats) chỗ", "\(seats) seats left")
+    }
+    // Merges the two VN-timezone-picked Date/time values into ONE Date
+    // whose components read back correctly under the DEVICE's own local
+    // calendar, so `Countdown.formatVnEventDate` (which reads `.current`)
+    // shows the same wall-clock digits the host actually picked in
+    // EventDateTimeSheet, regardless of the device's own timezone setting.
+    private var mergedStartsAt: Date? {
+        guard let d = app.createEventDate, let t = app.createEventTime else { return nil }
+        var vnCal = Calendar(identifier: .gregorian); vnCal.timeZone = AppState.vietnamTimeZone
+        let dc = vnCal.dateComponents([.year, .month, .day], from: d)
+        let tc = vnCal.dateComponents([.hour, .minute], from: t)
+        var comps = DateComponents()
+        comps.year = dc.year; comps.month = dc.month; comps.day = dc.day
+        comps.hour = tc.hour; comps.minute = tc.minute
+        return Calendar(identifier: .gregorian).date(from: comps)
+    }
+    // Same shape `CatalogEvent.fromReal`'s `whereLabel` builds for a real
+    // event — district ▪︎ live-km placeholder ▪︎ long date ▪︎ time — so the
+    // preview matches the actual Event Detail page exactly.
+    private var publicWhereLabel: String {
+        let startsAt = mergedStartsAt
+        let d = startsAt.map(Countdown.formatVnEventDate)
+        let kmSegment = startsAt != nil ? "0,0 km từ bạn" : nil
+        let raw = [app.createDistrict, kmSegment, d?.dayLong, d?.time].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
+        let previewCoords: Coordinates? = (app.createLat != nil && app.createLng != nil) ? Coordinates(lat: app.createLat!, lng: app.createLng!) : nil
+        let stripped = raw.replacingOccurrences(of: #" ▪︎ \d+[.,]\d+ km(?: từ bạn| away)?"#, with: "", options: .regularExpression)
+        guard app.located == true, let previewCoords, let km = haversineKm(from: app.userCoords, toCoords: previewCoords) else { return app.trStatus(stripped) }
+        let kmStr = String(format: "%.1f", km).replacingOccurrences(of: ".", with: ",")
+        return app.trStatus(raw.replacingOccurrences(of: #"\d+[.,]\d+(?= km)"#, with: kmStr, options: .regularExpression))
+    }
+    private var publicMapsURL: URL? {
+        guard let lat = app.createLat, let lng = app.createLng else { return nil }
+        return URL(string: "https://www.google.com/maps/search/?api=1&query=\(lat),\(lng)")
+    }
+
+    @ViewBuilder
+    private func row(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label).font(.system(size: 10.5)).opacity(0.6)
+            Text(value).font(.system(size: 13.5)).lineLimit(nil)
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .bottom) { Divider().overlay(app.palette.rule) }
+    }
+
+    // Same visual shape as `EventDetailView`'s own `detailRow`/`includedRow`
+    // (label left, value right, divider below, optional chevron) — the
+    // public preview tab must look like the real page, not invent its own.
+    @ViewBuilder
+    private func previewDetailRow(_ label: String, _ value: String, chevron: Bool) -> some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 18) {
+                Text(label).font(.system(size: 13))
+                Spacer(minLength: 0)
+                Text(value).font(.system(size: 13)).multilineTextAlignment(.trailing)
+                if chevron {
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .medium)).opacity(0.45)
+                }
+            }
+            .padding(.vertical, 12)
+            .foregroundStyle(app.palette.ink)
+            Divider().overlay(app.palette.rule)
+        }
+    }
+
+    @ViewBuilder
+    private func tabButton(_ target: Tab, _ label: String) -> some View {
+        Button { tab = target } label: {
+            Text(label)
+                .font(.system(size: 12.5, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(tab == target ? app.palette.ink : Color.clear, in: RoundedRectangle(cornerRadius: 999, style: .continuous))
+                .foregroundStyle(tab == target ? app.palette.paper : app.palette.ink)
+        }
+        .buttonStyle(.plain)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                BackLink(label: app.T("Quay lại chỉnh sửa", "Back to edit")) { onBack() }
+                    .padding(.top, 16)
+
+                Text(app.T("Xem lại trước khi gửi", "Review before submitting"))
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .padding(.top, 14)
+
+                HStack(spacing: 6) {
+                    tabButton(.privateTab, app.T("Nội bộ (Host)", "Private (Host)"))
+                    tabButton(.publicTab, app.T("Xem trước công khai", "Public preview"))
+                }
+                .padding(3)
+                .background(app.palette.ink.opacity(0.06), in: RoundedRectangle(cornerRadius: 999, style: .continuous))
+                .padding(.top, 14)
+            }
+            .padding(.horizontal, 22)
+            .foregroundStyle(app.palette.ink)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if tab == .privateTab {
+                        Text(app.createName.trimmingCharacters(in: .whitespaces).isEmpty ? app.T("(Chưa đặt tên)", "(Untitled)") : app.createName)
+                            .font(BanbeTheme.display(24))
+                            .padding(.top, 4)
+
+                        VStack(alignment: .leading, spacing: 0) {
+                            row(app.T("Danh mục", "Category"), categoryLabel)
+                            row(app.T("Ngày & giờ", "Date & time"), dateLabel)
+                            row(app.T("Địa chỉ", "Address"), addressLabel)
+                            row(app.T("Số chỗ", "Capacity"), app.createSeats.isEmpty ? app.T("Chưa nhập", "Not set") : app.createSeats)
+                            row(app.T("Giá vé", "Price"), app.createPrice.isEmpty ? app.T("Miễn phí", "Free") : app.createPrice)
+                            if !app.createDesc.trimmingCharacters(in: .whitespaces).isEmpty {
+                                row(app.T("Mô tả", "Description"), app.createDesc.trimmingCharacters(in: .whitespaces))
+                            }
+                            if !app.createIntro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                row(app.T("Giới thiệu sự kiện", "Event introduction"), app.createIntro.trimmingCharacters(in: .whitespacesAndNewlines))
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 18)
+                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                        if !reviewIncludedItems.isEmpty {
+                            Text(app.T("Bao gồm", "Included")).font(.system(size: 11.5)).padding(.top, 22)
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(Array(reviewIncludedItems.enumerated()), id: \.offset) { index, item in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.label).font(.system(size: 13.5, weight: .semibold))
+                                        if !item.detail.isEmpty {
+                                            Text(item.detail).font(.system(size: 12.5)).opacity(0.8)
+                                        }
+                                    }
+                                    .padding(.vertical, 10)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .overlay(alignment: .bottom) {
+                                        if index < reviewIncludedItems.count - 1 { Divider().overlay(app.palette.rule) }
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 10)
+                            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+
+                        if !galleryItems.isEmpty {
+                            Text(app.T("Thứ tự ảnh", "Photo order")).font(.system(size: 11.5)).padding(.top, 22)
+                            VStack(spacing: 8) {
+                                ForEach(Array(galleryItems.enumerated()), id: \.element.id) { index, item in
+                                    HStack(spacing: 10) {
+                                        Group {
+                                            if let image = item.image {
+                                                Image(uiImage: image).resizable().scaledToFill()
+                                            } else {
+                                                AsyncImage(url: item.url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
+                                            }
+                                        }
+                                        .frame(width: 56, height: 56)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                        Text(item.id == coverItemID ? app.T("Ảnh bìa", "Cover photo") : app.T("Ảnh \(index + 1)", "Photo \(index + 1)"))
+                                            .font(.system(size: 12.5))
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(8)
+                                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+                            }
+                            .padding(.top, 10)
+                        }
+                    } else {
+                        let coverItem = galleryItems.first(where: { $0.id == coverItemID }) ?? galleryItems.first
+                        if let coverItem {
+                            Group {
+                                if let image = coverItem.image {
+                                    Image(uiImage: image).resizable().scaledToFill()
+                                } else {
+                                    AsyncImage(url: coverItem.url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .aspectRatio(1, contentMode: .fill)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .clipped()
+                            .padding(.top, 4)
+                        }
+
+                        Text(categoryLabel).font(.system(size: 12)).opacity(0.7).padding(.top, 14)
+                        Text(app.createName.trimmingCharacters(in: .whitespaces).isEmpty ? app.T("(Chưa đặt tên)", "(Untitled)") : app.createName)
+                            .font(BanbeTheme.display(26))
+                            .padding(.top, 4)
+
+                        if let publicMapsURL {
+                            Button { openURL(publicMapsURL) } label: {
+                                Text(publicWhereLabel + " ↗").font(.system(size: 13)).underline()
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 6)
+                        } else {
+                            Text(publicWhereLabel.isEmpty ? app.T("Chưa xác nhận địa chỉ", "Address not confirmed") : publicWhereLabel)
+                                .font(.system(size: 13))
+                                .padding(.top, 6)
+                        }
+                        if !publicSeatsLabel.isEmpty {
+                            Text(publicSeatsLabel).font(.system(size: 13)).padding(.top, 4)
+                        }
+
+                        // Standard-layout fix (2026-09-29) — matches the
+                        // REAL `EventDetailView`'s exact field order
+                        // (category/name/where/seats/description, THEN a
+                        // divider-topped block of Included → Organizer →
+                        // Track record → Price), which this preview had
+                        // drifted from (price/Included were both above the
+                        // description, and there was no Organizer row at
+                        // all). Description here is `createDesc` ("Mô tả"),
+                        // the same field the real event's own `ev.desc`
+                        // comes from — never `createIntro` ("Giới thiệu sự
+                        // kiện"), a separate field the real page doesn't
+                        // show on the main body either.
+                        if !app.createDesc.trimmingCharacters(in: .whitespaces).isEmpty {
+                            Text(app.createDesc.trimmingCharacters(in: .whitespaces))
+                                .font(.system(size: 14)).lineSpacing(4).padding(.top, 20)
+                        }
+
+                        VStack(spacing: 0) {
+                            Divider().overlay(app.palette.rule)
+                            if !reviewIncludedItems.isEmpty {
+                                previewDetailRow(
+                                    app.T("Bao gồm", "Included"),
+                                    reviewIncludedItems.map(\.label).joined(separator: " ▪︎ "),
+                                    chevron: true
+                                )
+                            }
+                            previewDetailRow(
+                                app.T("Người tổ chức", "Organizer"),
+                                app.T("Ghé", "Visit") + " " + (app.orgRegName.trimmingCharacters(in: .whitespaces).isEmpty ? "Organizer" : app.orgRegName.trimmingCharacters(in: .whitespaces)) + " ›",
+                                chevron: false
+                            )
+                            // No "Track record" row: that only ever shows
+                            // for an ALREADY-established organizer (20+ past
+                            // events, `orgTrusted`) — a brand-new draft
+                            // never has one yet, same as the real page.
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(app.T("Giá", "Price")).font(.system(size: 13))
+                                Spacer()
+                                Text(publicPriceLabel).font(BanbeTheme.display(23))
+                            }
+                            .padding(.top, 16)
+                        }
+                        .padding(.top, 22)
+
+                        let restPhotos = galleryItems.filter { $0.id != coverItem?.id }
+                        if !restPhotos.isEmpty {
+                            Text(app.T("Hình ảnh", "Photos")).font(.system(size: 11.5)).padding(.top, 18)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(restPhotos, id: \.id) { item in
+                                        Group {
+                                            if let image = item.image {
+                                                Image(uiImage: image).resizable().scaledToFill()
+                                            } else {
+                                                AsyncImage(url: item.url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
+                                            }
+                                        }
+                                        .frame(width: 96, height: 96)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    }
+                                }
+                            }
+                            .padding(.top, 10)
+                        }
+                    }
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(.horizontal, 22)
+                .padding(.bottom, 16)
+            }
+            .scrollDisabled(scrollLockedForSwipe)
+
+            // Confirm — the ONLY call site that actually submits, available
+            // from either tab. Local `confirmBusy` disables the button for
+            // this ONE tap on top of `AppState.submitCreateEventInFlight`'s
+            // own synchronous guard.
+            VStack(alignment: .leading, spacing: 0) {
+                InkButton(
+                    title: app.createSent
+                        ? app.T("Đã gửi, đang chờ Banbe duyệt", "Submitted, waiting for Banbe to review")
+                        : (confirmBusy ? app.T("Đang gửi…", "Submitting…") : app.T("Xác nhận và gửi", "Confirm & submit")),
+                    enabled: !confirmBusy && !app.createSent,
+                    cornerRadius: 999
+                ) {
+                    Task { confirmBusy = true; await onConfirm(); confirmBusy = false }
+                }
+
+                if !app.createError.isEmpty {
+                    Text(app.createError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert).padding(.top, 12)
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.bottom, 40)
+            .padding(.top, 10)
+        }
+        .background(app.palette.paper.ignoresSafeArea())
+        .offset(x: swipeBackOffset)
+        // `.simultaneousGesture` so the ScrollView above can still start a
+        // vertical scroll on an ambiguous/actually-vertical drag — once
+        // THIS gesture locks onto horizontal, `scrollLockedForSwipe`
+        // disables that ScrollView outright for the rest of the gesture,
+        // so a wobble up/down mid-swipe can no longer also scroll the
+        // content underneath at the same time.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 12, coordinateSpace: .local)
+                .onChanged { value in
+                    if swipeAxisLocked == nil {
+                        swipeAxisLocked = abs(value.translation.width) > abs(value.translation.height)
+                        if swipeAxisLocked == true { scrollLockedForSwipe = true }
+                    }
+                    guard swipeAxisLocked == true else { return }
+                    swipeBackOffset = max(0, value.translation.width)
+                }
+                .onEnded { value in
+                    let wasHorizontal = swipeAxisLocked == true
+                    swipeAxisLocked = nil
+                    scrollLockedForSwipe = false
+                    guard wasHorizontal else { return }
+                    if swipeBackOffset > 110 || value.predictedEndTranslation.width > 280 {
+                        // Hand off to the parent's own `.move(edge: .trailing)`
+                        // removal transition (identical motion to a plain
+                        // BackLink tap) rather than compositing that
+                        // transition's animated offset on top of whatever
+                        // manual `swipeBackOffset` the drag left behind.
+                        swipeBackOffset = 0
+                        onBack()
+                    } else {
+                        withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.86)) { swipeBackOffset = 0 }
+                    }
+                }
+        )
+    }
+}
+
 /// Date/time picker fix (Stage B, 2026-09-26) — ONE sheet, a graphical
 /// native calendar directly above a native wheel time picker, both forced
 /// to Asia/Ho_Chi_Minh via `.environment(\.timeZone, ...)` so the digits
@@ -679,13 +1281,24 @@ struct EventDateTimeSheet: View {
 
     @State private var draftDate: Date
     @State private var draftTime: Date
+    // Month-navigation snap-back fix (2026-09-29) — the graphical
+    // DatePicker below used to take `in: Date()...` directly, which calls
+    // `Date()` fresh on every `body` re-evaluation (e.g. every tick while
+    // scrubbing the wheel time picker below it). SwiftUI treats that as the
+    // picker's valid range genuinely changing each render, which resets its
+    // internal displayed-month scroll position back to today — exactly the
+    // "jumps back to the current month" bug. Frozen once at init instead,
+    // so the range argument is stable for the sheet's whole lifetime.
+    private let minSelectableDate: Date
 
     init(date: Binding<Date?>, time: Binding<Date?>) {
         self._date = date
         self._time = time
         let calendar = Self.vnCalendar
-        self._draftDate = State(initialValue: date.wrappedValue ?? calendar.startOfDay(for: Date()))
+        let today = calendar.startOfDay(for: Date())
+        self._draftDate = State(initialValue: date.wrappedValue ?? today)
         self._draftTime = State(initialValue: time.wrappedValue ?? Date())
+        self.minSelectableDate = today
     }
 
     private static var vnCalendar: Calendar = {
@@ -698,7 +1311,7 @@ struct EventDateTimeSheet: View {
         NavigationStack {
             VStack(spacing: 0) {
                 DatePicker(
-                    "", selection: $draftDate, in: Date()...,
+                    "", selection: $draftDate, in: minSelectableDate...,
                     displayedComponents: [.date]
                 )
                 .datePickerStyle(.graphical)

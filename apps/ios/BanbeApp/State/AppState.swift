@@ -483,6 +483,18 @@ final class AppState: ObservableObject {
     // Retention roadmap P1 — Home's "Cuối tuần này" section.
     @Published var weekendEvents: [CatalogEvent] = []
     @Published var weekendEventsLoading = false
+    // Home-visibility fix (2026-09-29) — root cause of "an approved real
+    // event never shows on Home" on iOS, confirmed by grepping this whole
+    // file/HomeView.swift before assuming: unlike web (GocContext.jsx's
+    // `discoveryEvents`/`loadDiscoveryEvents`), iOS's `feed` (below) was
+    // built ONLY from `EventCatalog.all` — the static demo catalogue —
+    // with no real-event data source merged in AT ALL. `weekendEvents`
+    // above only covers THIS weekend; any real event outside that narrow
+    // window (including one submitted/approved on any other day) could
+    // never appear on Home no matter its status. This is the iOS port of
+    // web's identical `discoveryEvents`/`loadDiscoveryEvents`.
+    @Published var discoveryEvents: [CatalogEvent] = []
+    @Published var discoveryEventsLoading = false
     // Event review queue (event submission -> review -> publish) — this
     // account's own REAL (non-catalogue) events, raw (status, rejection
     // reason, submitted/reviewed timestamps included) rather than shaped
@@ -543,6 +555,16 @@ final class AppState: ObservableObject {
     @Published var now = Date()
     @Published var reserveError = ""
     @Published var loading = false
+    // submitCreateEvent's own synchronous submit-in-flight guard (task 1) —
+    // plain, non-`@Published` (same reasoning as `organizerModeInFlight`,
+    // 17-ux-foundation-release.md's 2026-10-07 fix pass): a repeated tap on
+    // the submit button can fire its second call before SwiftUI has
+    // re-rendered `loading`'s new value, so only a synchronously-readable
+    // flag actually stops it. This is a NICETY, not the real guard —
+    // migration 107's server-side duplicate-pending-event check and atomic
+    // row lock are what actually make a duplicate/concurrent submission
+    // impossible.
+    var submitCreateEventInFlight = false
     @Published var calAdded = false
     // Bug 3 (15-organizer-checkin.md follow-up): the event the calendar
     // picker confirmation dialog is currently open for, or nil when closed.
@@ -1086,6 +1108,21 @@ final class AppState: ObservableObject {
     // write-up, never conflated with createDesc ("Mô tả") or the "Bao gồm"
     // items EventDetailView already shows via includedItems.
     @Published var createIntro = ""
+    // "Bao gồm" item-editing parity fix (2026-09-29) — mirrors web's
+    // identical `createIncludedItems` (GocContext.jsx): up to 3 { label,
+    // detail } items, sent as `p_included_items` to the same
+    // create_event_draft/resubmit_event_for_review RPCs. iOS previously
+    // had no editing UI for this at all, so it never had anywhere to keep
+    // the state either — every real event created on iOS silently
+    // submitted an empty included list even when the host clearly
+    // intended one (this was a real, reported gap, not a placeholder).
+    @Published var createIncludedItems: [IncludedItem] = []
+    // Keyword-search fix (migration 108) — mirrors web's identical
+    // `createKeywords` (GocContext.jsx): free-text, comma-separated. Left
+    // blank, `submitCreateEvent` defaults it to the event's own selected
+    // category label(s), so an event is never left with nothing to match
+    // on beyond its literal name/district in Map's search box.
+    @Published var createKeywords = ""
     // Address-autocomplete fix pass (2026-09-28) — `createLoc` is now
     // purely the live search box's own text (mirrors web's identical
     // GocContext.jsx change, same pass). A SELECTED suggestion's
@@ -1145,6 +1182,12 @@ final class AppState: ObservableObject {
     /// live and the catalogue's are not.
     @Published var mapEvents: [MapEventRow] = []
     @Published var mapEventsLoading = true
+    // Real-cover-photo fix (2026-10-19) — resolved cover-photo URL per
+    // event id, keyed by `MapEventRow.id`, populated by `loadMapEvents()`.
+    // MapExploreView reads this instead of `EventCatalog.find(ev.id)?.img`,
+    // which always falls back to the FIRST demo catalogue event's photo
+    // for any real (non-demo) event id — see loadMapEvents' own comment.
+    @Published var mapEventCoverURLs: [String: URL] = [:]
     /// Mirrors `locationService.authorizationStatus` as a `@Published` so
     /// the compass button's opacity (full vs. the app's 0.16 disabled
     /// token) updates the instant permission changes, granted or revoked.
@@ -1483,6 +1526,15 @@ final class AppState: ObservableObject {
         return catalogOwned + realOwned
     }
 
+    // Withdrawal (migration 107) + resubmission-limit surfacing — iOS
+    // port of web's identical GocContext.jsx state (withdrawEventBusy/
+    // withdrawEventError/resubmissionStatusByEvent). A banbe PRODUCT
+    // POLICY limit (2 successful resubmissions per rolling 24h), never a
+    // legal/Ticketbox requirement.
+    @Published var withdrawEventBusy = false
+    @Published var withdrawEventError = ""
+    @Published var resubmissionStatusByEvent: [String: ResubmissionStatus] = [:]
+
     /// Real submissions still awaiting an admin decision.
     var myPendingEvents: [RealEventSummary] { myOrgEventSummaries.filter { $0.status == "review" } }
     /// Real submissions an admin sent back for correction (rejection_reason set).
@@ -1493,10 +1545,23 @@ final class AppState: ObservableObject {
     /// The home feed — same filter and ordering as src/screens/Home.jsx:
     /// invite-only events never appear, and cancelled ones sink to the end.
     var feed: [CatalogEvent] {
+        // Home-visibility fix (2026-09-29) — `discoveryEvents` (real,
+        // organizer-created events, see its own doc comment) is placed
+        // AHEAD of the static demo catalogue, mirroring web's identical
+        // fix (Home.jsx's `realEventsSorted`/`feed`) — real events were
+        // previously not merged in at all; now they're not merely appended
+        // after ~20 unrelated demo cards either, which would have made a
+        // newly-approved event technically present but practically
+        // undiscoverable. `discoveryEvents` already arrives sorted
+        // chronologically (the query's own `order("starts_at")`). Deduped
+        // by key against the static catalogue defensively, even though a
+        // real event's generated id can't structurally collide with one.
+        let realKeys = Set(EventCatalog.all.map(\.key))
+        let combined = discoveryEvents.filter { !realKeys.contains($0.key) } + EventCatalog.all
         // Split into intermediate steps — Swift's type-checker couldn't
         // resolve the original single chained expression (this many
         // `.filter` closures in one statement) in reasonable time.
-        let categoryAndArea = EventCatalog.all
+        let categoryAndArea = combined
             .map(withLive)
             .filter { !$0.inviteOnly }
             .filter { filter == "all" || $0.catKey == filter || $0.cat2Key == filter }
@@ -2241,7 +2306,30 @@ final class AppState: ObservableObject {
         createAddressSuggestions = []
         createAddressSearching = false
         createAddressSearchError = ""
+        createIncludedItems = []
+        createKeywords = ""
         screen = .create
+    }
+
+    // "Bao gồm" item editing (mirrors web's addCreateIncludedItem/
+    // removeCreateIncludedItem/setCreateIncludedItem, GocContext.jsx) —
+    // same cap (3) migration 087 itself enforces server-side; this only
+    // avoids a round trip for an obviously-full list.
+    func addCreateIncludedItem() {
+        guard createIncludedItems.count < 3 else { return }
+        createIncludedItems.append(IncludedItem(label: "", detail: ""))
+    }
+    func removeCreateIncludedItem(at index: Int) {
+        guard createIncludedItems.indices.contains(index) else { return }
+        createIncludedItems.remove(at: index)
+    }
+    func setCreateIncludedItemLabel(_ index: Int, _ value: String) {
+        guard createIncludedItems.indices.contains(index) else { return }
+        createIncludedItems[index] = IncludedItem(label: value, detail: createIncludedItems[index].detail)
+    }
+    func setCreateIncludedItemDetail(_ index: Int, _ value: String) {
+        guard createIncludedItems.indices.contains(index) else { return }
+        createIncludedItems[index] = IncludedItem(label: createIncludedItems[index].label, detail: value)
     }
 
     func goHostIntro() {
@@ -2304,9 +2392,23 @@ final class AppState: ObservableObject {
         }
     }
 
+    // Review-sheet-swipe-back destination fix (2026-09-29) — `CreateEventReviewSheet`
+    // is no longer a `.fullScreenCover` (see its own doc comment), so
+    // it's now inside the SAME `.create` screen hierarchy this root-level
+    // edge-swipe gesture already owns. Without this flag, an edge swipe
+    // while the review sheet is open was captured by THIS gesture first
+    // (`.highPriorityGesture`) and ran `createBack()` — popping the whole
+    // Create Event screen, past the review sheet AND its edit form, back
+    // to wherever Create was opened from — instead of the review sheet's
+    // own local swipe-back gesture, which correctly just closes the
+    // review sheet back to the edit form. Set by `CreateEventView` itself
+    // whenever its `reviewOpen` changes.
+    @Published var isCreateReviewOpen = false
+
     var canSwipeBack: Bool {
         switch screen {
         case .splash, .langPick, .themePick, .home, .login: return false
+        case .create: return !isCreateReviewOpen
         default: return true
         }
     }

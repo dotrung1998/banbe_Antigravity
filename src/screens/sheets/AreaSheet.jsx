@@ -11,8 +11,21 @@ export default function AreaSheet() {
   // source prototype. Must match the Home feed's own filter exactly (it also
   // excludes invite-only events) — otherwise the count promises more events
   // than a user picking that area will actually ever see in the list.
+  //
+  // Region-count fix (2026-09-29) — this used to count ONLY the static
+  // demo catalogue (`EVENTS`), never `state.discoveryEvents` (real,
+  // organizer-created, admin-approved rows) — so a newly-approved real
+  // event was correctly shown in Home's own feed for that district, but
+  // never counted here, making this button's number stale/wrong the
+  // moment any real event existed. `a.match(e)` only ever reads `e.meta`
+  // (a Vietnamese district substring check), so a real row is checked via
+  // the same predicate against a `{ meta: e.area }` stand-in rather than a
+  // second, parallel district-matching implementation.
+  const realLiveEvents = (s.discoveryEvents || []).filter(e => e.status === 'live');
   const areas = AREAS.map(a => {
-    const n = EVENTS.filter(e => a.match(e) && !e.cancelled && e.endedHoursAgo == null && !e.inviteOnly).length;
+    const staticN = EVENTS.filter(e => a.match(e) && !e.cancelled && e.endedHoursAgo == null && !e.inviteOnly).length;
+    const realN = realLiveEvents.filter(e => a.match({ meta: e.area || '' })).length;
+    const n = staticN + realN;
     return {
       key: a.key,
       label: a.label,

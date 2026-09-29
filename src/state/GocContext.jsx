@@ -75,10 +75,15 @@ function shapeRealEvent(row, extra = {}) {
     city: row.city || '',
     postalCode: row.postal_code || '',
     addressVerified: !!row.address_verified,
+    // Keyword-search fix (migration 108) — free-text keywords a search on
+    // Map matches against, in addition to name/district. Defaults to the
+    // event's own category label(s) at create/resubmit time when a host
+    // leaves the field blank — never silently empty.
+    keywords: Array.isArray(row.keywords) ? row.keywords : [],
   };
 }
 
-const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included, included_items, intro, address_line, city, postal_code, address_verified';
+const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included, included_items, intro, address_line, city, postal_code, address_verified, keywords';
 
 /** A real event's own selected `cover_image` (migration 087) resolved to a
  * public URL, falling back to `fallbackUrl` (the first `event_photos` row
@@ -88,7 +93,7 @@ const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, lat, lng, st
  * can set ANY staged photo as cover) — this is what makes the card,
  * EventDetail and the admin review queue all show the SAME chosen cover
  * instead of whichever photo happens to sort first. */
-function resolveCoverUrl(coverImagePath, fallbackUrl) {
+export function resolveCoverUrl(coverImagePath, fallbackUrl) {
   if (!coverImagePath) return fallbackUrl || null;
   const relative = coverImagePath.replace(/^event-photos\//, '');
   return supabase.storage.from('event-photos').getPublicUrl(relative).data.publicUrl;
@@ -97,8 +102,9 @@ function resolveCoverUrl(coverImagePath, fallbackUrl) {
 /** event_photos rows for `eventIds` -> { [event_id]: first public photo URL },
  * same batching + bucket-name-doubling defensive strip loadNotifications'
  * own eventPhotoByEventId uses (see that function's comment). Shared here
- * so loadWeekendEvents and loadRealEventsById don't each reimplement it. */
-async function firstPhotoUrlByEvent(eventIds) {
+ * so loadWeekendEvents, loadRealEventsById and MapExplore's own
+ * fetchLiveEvents don't each reimplement it. */
+export async function firstPhotoUrlByEvent(eventIds) {
   if (!eventIds.length) return {};
   const { data } = await supabase
     .from('event_photos').select('event_id, storage_path, sort_order')
@@ -149,13 +155,27 @@ function mergePhotoEngagement(existing, rows) {
  */
 function shapeRealEventAsCurEvent(real) {
   const startsAt = real.startsAt ? new Date(real.startsAt) : null;
-  const { weekdayShort, dayMonth, time } = startsAt ? formatVnEventDate(startsAt) : {};
+  const { weekdayShort, dayMonth, dayLong, time } = startsAt ? formatVnEventDate(startsAt) : {};
   const endedHoursAgo = real.status === 'ended' && startsAt ? Math.max(0, Math.round((Date.now() - startsAt.getTime()) / 3600000)) : null;
   return {
     key: real.key, catKey: real.catKey, cat: real.catLabel || '', cat2Key: null, catDisplay: real.catLabel || '',
     name: real.name, img: real.photoUrl || '', lat: real.lat ?? null, lng: real.lng ?? null,
     meta: [real.catLabel, real.area].filter(Boolean).join(' ▪︎ '),
-    where: real.area || '',
+    // Venue/address parity fix (task 2, then reworked per user follow-up
+    // 2026-09-29) — first pass surfaced the raw street address here, but
+    // that reads differently from every demo event's own "district ▪︎ live
+    // km ▪︎ long date ▪︎ time" line and broke the shared `stripKm()` live-
+    // distance injection (no " ▪︎ X,X km" segment for it to find). Now
+    // built in the exact same shape the static catalogue's own `where`
+    // uses (`data/events.js`'s ROWS mapping) — district + a live-km
+    // placeholder segment (stripKm replaces the number once a real
+    // distance is computable, or strips the whole segment if not — same
+    // contract as every other event) + the long-form Vietnamese date/time.
+    // The verified street address is still real data (never fabricated,
+    // never copied from a demo event) but is exposed via `mapsUrl(ev)`'s
+    // own real lat/lng, not spelled out in this label — matching how the
+    // demo events (which also have no street-level text) present theirs.
+    where: [real.area, startsAt ? '0,0 km từ bạn' : null, dayLong, time].filter(Boolean).join(' ▪︎ '),
     when: startsAt ? `${weekdayShort}, ${dayMonth} ▪︎ ${time}` : '',
     price: real.priceVnd ? formatVnd(real.priceVnd) : 'Miễn phí',
     seats: real.seatsRemaining != null ? String(real.seatsRemaining) : '',
@@ -734,6 +754,11 @@ const initialState = {
   // { label, detail } items, validated the same way (length/count) the
   // server does — client-side is a UX nicety, the RPC is the real gate.
   createIncludedItems: [],
+  // Keyword-search fix (migration 108) — free-text, comma-separated
+  // keywords so an event surfaces in Map's search box beyond a literal
+  // name/district match. Left blank, createSubmit defaults it to the
+  // event's own selected category labels (never silently empty).
+  createKeywords: '',
   createMediaError: '',
   // "Giới thiệu sự kiện" (migration 088) — a separate, longer host-written
   // editorial description, never conflated with createDesc ("Mô tả") or
@@ -797,6 +822,11 @@ const initialState = {
   // "Sự kiện của bạn" strip, EventList's Saved/Going/Completed lists and
   // the weekend section — one lookup, not three copies of the same query.
   realEventsById: {},
+  // Withdrawal (migration 107) + resubmission-limit surfacing — see
+  // withdrawEventSubmission/loadResubmissionStatus below.
+  withdrawEventBusy: false,
+  withdrawEventError: '',
+  resubmissionStatusByEvent: {},
   invited: [],
   orgVerifyRequested: false,
   attendanceEventKey: null,
@@ -1858,6 +1888,12 @@ export function GocProvider({ children }) {
   // and EventList both mounting) — see toggleFav's own in-flight-dedupe
   // reasoning for why a ref, not state.
   const realEventsInFlightRef = useRef(new Set());
+
+  // createSubmit's own synchronous submit-in-flight guard (task 1) — a ref,
+  // not state, for the same reason: a repeated tap fires its second click
+  // handler before React has re-rendered the button with a "busy" state,
+  // so only a synchronously-readable value stops it.
+  const createSubmitInFlightRef = useRef(false);
 
   /**
    * The canonical real-event lookup by id, shared by Home's "Sự kiện của
@@ -6792,6 +6828,7 @@ export function GocProvider({ children }) {
   const createNameType = useCallback((e) => set({ createName: e.target.value }), [set]);
   const createDescType = useCallback((e) => set({ createDesc: e.target.value }), [set]);
   const createIntroType = useCallback((e) => set({ createIntro: e.target.value }), [set]);
+  const createKeywordsType = useCallback((e) => set({ createKeywords: e.target.value }), [set]);
 
   // Address-autocomplete fix pass (2026-09-28) — same stale-response-
   // discarding convention this file already uses for refund queues
@@ -7042,7 +7079,21 @@ export function GocProvider({ children }) {
    */
   const createSubmit = useCallback(async (photoFiles = [], coverIndex = 0, mediaOpts = {}) => {
     if (!s.createName.trim()) return;
-    const { removePhotoIds = [], existingCoverPath = '' } = mediaOpts;
+    // Client-side submit-in-flight guard (task 1) — a SYNCHRONOUS,
+    // non-reactive check-and-set, same pattern this app's own organizer-
+    // mode toggle uses for the identical "repeated tap before the first
+    // call resolves" problem (see 17-ux-foundation-release.md's
+    // `organizerModeInFlight`) — a plain `@Published`/state-backed flag set
+    // via `set()` only takes effect on the NEXT render, which is too late
+    // to stop a second synchronous click handled before that render lands.
+    // This is a NICETY, not the real guard: migration 107's server-side
+    // duplicate-pending-event check (create_event_draft) and its atomic
+    // `FOR UPDATE` row lock (resubmit_event_for_review) are what actually
+    // make a duplicate/concurrent submission impossible — this only avoids
+    // the round trip (and the confusing double-toast) for the common case.
+    if (createSubmitInFlightRef.current) return;
+    createSubmitInFlightRef.current = true;
+    const { removePhotoIds = [], existingCoverPath = '', defaultKeywordsLabel = '' } = mediaOpts;
     set({ loading: true, createError: '', createMediaError: '' });
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -7073,6 +7124,16 @@ export function GocProvider({ children }) {
       // same client-side-is-a-nicety/RPC-is-the-real-gate reasoning above.
       const intro = s.createIntro.trim();
       if (intro.length > 4000) throw new Error('INVALID_INTRO');
+
+      // Keyword-search fix (migration 108) — a blank keywords field
+      // defaults to the event's own selected category label(s)
+      // (`defaultKeywordsLabel`, resolved by the caller from the SAME
+      // `createCatLabel` the review screen already shows — never a second,
+      // separate category->label mapping), so an event is never left with
+      // literally nothing to match on beyond its name/district.
+      const keywords = s.createKeywords.trim()
+        ? s.createKeywords.split(',').map(k => k.trim()).filter(Boolean)
+        : defaultKeywordsLabel.split(' ▪︎ ').map(k => k.trim()).filter(Boolean);
 
       // Address-autocomplete fix pass (2026-09-28) — client-side mirror of
       // migration 105's own ADDRESS_NOT_VERIFIED gate, to avoid a round
@@ -7139,6 +7200,19 @@ export function GocProvider({ children }) {
         if (data?.organizer_id) set({ myOrganizerId: data.organizer_id });
       }
 
+      // Keyword-search fix (migration 108) — a separate, additive RPC
+      // rather than a new param on create_event_draft/resubmit_event_for_review
+      // (both already large, multiply-extended functions this pass
+      // deliberately doesn't touch): owner-checked, SECURITY DEFINER,
+      // does one thing. Best-effort — a failure here shouldn't block the
+      // event submission itself, which already succeeded above.
+      if (eventId) {
+        const { error: keywordsError } = await supabase.rpc('set_event_keywords', {
+          p_event_id: eventId, p_keywords: keywords,
+        });
+        if (keywordsError) console.warn('set_event_keywords failed:', keywordsError);
+      }
+
       let mediaNote = '';
       if (eventId && (photoFiles.length || removePhotoIds.length || existingCoverPath)) {
         const { uploaded, failed } = await reconcileEventMedia(eventId, {
@@ -7161,10 +7235,21 @@ export function GocProvider({ children }) {
         ? T('Giới thiệu sự kiện tối đa 4000 ký tự.', 'The event introduction is limited to 4000 characters.')
         : err.message === 'ADDRESS_NOT_VERIFIED'
         ? T('Hãy chọn một địa chỉ gợi ý và xác nhận vị trí trên bản đồ trước khi đăng.', 'Select a suggested address and confirm its pin before publishing.')
+        // Migration 107's atomic resubmission-limit rejection — a banbe
+        // product policy (2 successful resubmissions per rolling 24h),
+        // never phrased as a legal/Ticketbox requirement.
+        : err.message?.startsWith('RESUBMISSION_LIMIT_REACHED')
+        ? T('Bạn đã gửi lại tối đa 2 lần trong 24 giờ qua. Vui lòng thử lại sau.', "You've already resubmitted this event twice in the last 24 hours. Please try again later.")
+        // Migration 107's duplicate-pending-event guard — surfaced as an
+        // actionable message rather than a raw Postgres exception string.
+        : err.message?.startsWith('DUPLICATE_PENDING_EVENT')
+        ? T('Sự kiện này đã đang chờ duyệt. Hãy sửa & gửi lại sự kiện đó thay vì tạo mới.', 'This event is already pending review. Edit and resubmit it instead of creating a new one.')
         : (err.message || 'Unable to submit this event.');
       set({ loading: false, createError: message });
+    } finally {
+      createSubmitInFlightRef.current = false;
     }
-  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createLat, s.createLng, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
+  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createLat, s.createLng, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
 
   /**
@@ -7216,9 +7301,72 @@ export function GocProvider({ children }) {
       // row's own includedItems closes that gap.
       createIncludedItems: Array.isArray(real.includedItems) ? real.includedItems.map(it => ({ label: it.label || '', detail: it.detail || '' })) : [],
       createIntro: real.intro || '',
+      createKeywords: Array.isArray(real.keywords) ? real.keywords.join(', ') : '',
     });
     loadEventPhotos(eventId);
   }, [set, s.realEventsById, loadEventPhotos]);
+
+  /**
+   * Owner-only withdrawal of a PENDING ('review') submission (migration
+   * 107, `withdraw_event_submission`). Requires a non-empty reason (the RPC
+   * itself re-enforces this — this is only the client-side prompt).
+   * Preserves the event row (never deletes/recreates it): the RPC moves it
+   * to 'draft', the same status a rejection uses, with `withdrawal_reason`/
+   * `withdrawn_at` recorded separately from `rejection_reason` so a
+   * Dashboard row can tell the two apart. Does NOT touch the resubmission
+   * counter — withdrawing itself never counts against the 2-per-24h limit
+   * (a banbe product policy, not a legal/Ticketbox requirement — see the
+   * migration's own comment). After a successful withdrawal, `goEditEvent`
+   * re-uses the SAME event id to edit-and-resubmit, exactly like a
+   * rejection's "Sửa & gửi lại" already does.
+   */
+  const withdrawEventSubmission = useCallback(async (eventId, reason) => {
+    const trimmed = (reason || '').trim();
+    if (!trimmed) { set({ withdrawEventError: T('Vui lòng nhập lý do rút lại.', 'Please enter a reason to withdraw.') }); return false; }
+    set({ withdrawEventBusy: true, withdrawEventError: '' });
+    try {
+      const { data, error } = await supabase.rpc('withdraw_event_submission', {
+        p_event_id: eventId, p_reason: trimmed,
+      });
+      if (error) throw error;
+      if (data?.success === false) {
+        const message = data.error === 'NOT_PENDING'
+          ? T('Sự kiện này không còn ở trạng thái chờ duyệt.', 'This event is no longer pending review.')
+          : data.error === 'REASON_REQUIRED'
+          ? T('Vui lòng nhập lý do rút lại.', 'Please enter a reason to withdraw.')
+          : T('Không thể rút lại lúc này.', 'Unable to withdraw this submission right now.');
+        set({ withdrawEventBusy: false, withdrawEventError: message });
+        return false;
+      }
+      // Reflect the new 'draft' status locally without a full reload —
+      // same cache `goEditEvent`/loadRealEventsById already write into.
+      set(prev => ({
+        withdrawEventBusy: false,
+        realEventsById: prev.realEventsById[eventId]
+          ? { ...prev.realEventsById, [eventId]: { ...prev.realEventsById[eventId], status: 'draft', rejectionReason: '' } }
+          : prev.realEventsById,
+      }));
+      return true;
+    } catch (err) {
+      console.warn('withdraw_event_submission failed:', err);
+      set({ withdrawEventBusy: false, withdrawEventError: T('Không thể rút lại lúc này.', 'Unable to withdraw this submission right now.') });
+      return false;
+    }
+  }, [set, T]);
+
+  /**
+   * Read-only "N attempts left" / "next eligible at" lookup (migration 107,
+   * `get_event_resubmission_status`) — surfaced on Dashboard next to the
+   * "Sửa & gửi lại" action so an organizer sees the limit BEFORE hitting it,
+   * not just as an error after a 3rd attempt is rejected. This is a banbe
+   * product policy (2 successful resubmissions per event per rolling 24h),
+   * never described to the organizer as a legal or Ticketbox requirement.
+   */
+  const loadResubmissionStatus = useCallback(async (eventId) => {
+    const { data, error } = await supabase.rpc('get_event_resubmission_status', { p_event_id: eventId });
+    if (error || data?.success === false) { console.warn('get_event_resubmission_status failed:', error || data?.error); return; }
+    set(prev => ({ resubmissionStatusByEvent: { ...prev.resubmissionStatusByEvent, [eventId]: { remaining: data.remaining_attempts, nextEligibleAt: data.next_eligible_at } } }));
+  }, [set]);
 
   // ---- attendance ----
   // The guest list is real bookings for this event (not the old fake
@@ -7848,7 +7996,7 @@ export function GocProvider({ children }) {
     loadMyRefunds, openRefundAccounts, backFromRefundAccounts, openMyRefunds, backFromMyRefunds,
     loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
-    openAdminEvents, loadPendingEvents, reviewEvent, goEditEvent,
+    openAdminEvents, loadPendingEvents, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
@@ -7861,7 +8009,7 @@ export function GocProvider({ children }) {
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
-    createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
+    createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
@@ -7884,7 +8032,7 @@ export function GocProvider({ children }) {
     loadMyRefunds, openRefundAccounts, backFromRefundAccounts, openMyRefunds, backFromMyRefunds,
     loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
-    openAdminEvents, loadPendingEvents, reviewEvent, goEditEvent,
+    openAdminEvents, loadPendingEvents, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
@@ -7897,7 +8045,7 @@ export function GocProvider({ children }) {
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
-    createNameType, createDescType, createIntroType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
+    createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,

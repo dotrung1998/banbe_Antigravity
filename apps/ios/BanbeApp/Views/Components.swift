@@ -280,13 +280,24 @@ struct BanbeField: View {
     @Binding var text: String
     var secure = false
     var keyboard: UIKeyboardType = .default
+    // Required-field marker fix (2026-09-29) — a red "*" next to a field's
+    // label, matching web's identical CreateEvent.jsx change, so a host
+    // can tell before tapping "Review before submitting" which fields
+    // actually block it (event name, confirmed address) rather than
+    // finding out only from the error message afterward.
+    var required = false
 
     @EnvironmentObject private var app: AppState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             if let label {
-                Text(label).font(.system(size: 11.5)).foregroundStyle(app.palette.ink)
+                HStack(spacing: 3) {
+                    Text(label).font(.system(size: 11.5)).foregroundStyle(app.palette.ink)
+                    if required {
+                        Text("*").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                    }
+                }
             }
             Group {
                 if secure {
