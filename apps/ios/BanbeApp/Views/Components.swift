@@ -700,3 +700,51 @@ struct FocusableTextField: UIViewRepresentable {
         }
     }
 }
+
+/// Accidental-tap-during-swipe fix (2026-09-29 follow-up) — a plain
+/// `Button`'s own touch tracking only checks "did the release land inside
+/// my bounds," not "how far did the touch travel to get there." A
+/// full-width row/card swiped 60+pt horizontally (a slow tab-swipe or
+/// edge-swipe-back that starts on it) still releases geometrically inside
+/// that SAME row, so the row's tap fires exactly as if it had been a
+/// clean, stationary tap — confirmed the real cause after the earlier
+/// `.allowsHitTesting` fix (RootView.swift) didn't fully close this:
+/// hit-testing only gates NEW touches, but the Button's own touch tracking
+/// already began at touch-DOWN, before `tabSwipeDirection`/`isDragTracking`
+/// had any value to gate on — a later state change can't retroactively
+/// un-claim a touch a control already started tracking.
+///
+/// `SwipeSafeButton` is a drop-in `Button` replacement (same
+/// `action`/`label` initializer shape, so most call sites are a one-word
+/// rename) that tracks TOTAL PATH DISTANCE via its own `.simultaneousGesture`
+/// — never competing for gesture priority with anything (so it categorically
+/// cannot affect scrolling or the tab-swipe/edge-swipe-back gestures
+/// themselves) — and only invokes `action` when that distance stayed under
+/// a small, deliberate threshold. `.accessibilityAddTraits(.isButton)`
+/// keeps VoiceOver's "Button" semantics, which a plain gesture-driven View
+/// doesn't get for free the way a real `Button` does.
+struct SwipeSafeButton<Label: View>: View {
+    let action: () -> Void
+    @ViewBuilder let label: () -> Label
+    @State private var maxDragDistance: CGFloat = 0
+    // Any real swipe crosses this within its first few points; an
+    // ordinary tap (even a slightly imprecise one) never does.
+    private let cancelThreshold: CGFloat = 12
+
+    var body: some View {
+        label()
+            .contentShape(Rectangle())
+            .accessibilityAddTraits(.isButton)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        maxDragDistance = max(maxDragDistance, max(abs(value.translation.width), abs(value.translation.height)))
+                    }
+                    .onEnded { _ in
+                        let distance = maxDragDistance
+                        maxDragDistance = 0
+                        if distance < cancelThreshold { action() }
+                    }
+            )
+    }
+}

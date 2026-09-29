@@ -335,7 +335,7 @@ struct HomeView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 10) {
                     ForEach(app.savedStrip) { event in
-                        Button { app.goEvent(event.key) } label: {
+                        SwipeSafeButton { app.goEvent(event.key) } label: {
                             VStack(alignment: .leading, spacing: 7) {
                                 ZStack(alignment: .topLeading) {
                                     CatalogPhoto(path: event.img, height: 96, width: 152, cornerRadius: 12)
@@ -372,7 +372,7 @@ struct HomeView: View {
     private var storyRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 14) {
-                Button { app.openPulseViewer() } label: {
+                SwipeSafeButton { app.openPulseViewer() } label: {
                     VStack(spacing: 5) {
                         PulseRingGlyph()
                             // Same-space pass (2026-09-28, this pass): the
@@ -398,7 +398,7 @@ struct HomeView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("home.pulseAvatar")
                 ForEach(app.homeStories) { group in
-                    Button { app.openStoryViewer(group.organizerId, originRect: app.storyRingFrames[group.organizerId]) } label: {
+                    SwipeSafeButton { app.openStoryViewer(group.organizerId, originRect: app.storyRingFrames[group.organizerId]) } label: {
                         VStack(spacing: 5) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 15, style: .continuous)
@@ -545,7 +545,7 @@ struct HomeView: View {
             HStack(spacing: 20) {
                 ForEach(filters, id: \.key) { filter in
                     let active = app.filter == filter.key
-                    Button { app.pickFilter(filter.key) } label: {
+                    SwipeSafeButton { app.pickFilter(filter.key) } label: {
                         VStack(spacing: 6) {
                             Text(app.T(filter.vi, filter.en))
                                 .font(.system(size: 12.5, weight: active ? .semibold : .regular))
@@ -593,7 +593,7 @@ struct HomeView: View {
         ]
         return FlowLayout(spacing: 8, lineSpacing: 8) {
             ForEach(chips, id: \.key) { chip in
-                Button { app.toggleHomeFilter(chip.key) } label: {
+                SwipeSafeButton { app.toggleHomeFilter(chip.key) } label: {
                     Text(app.T(chip.vi, chip.en))
                         .font(.system(size: 12, weight: chip.active ? .bold : .regular))
                         .padding(.horizontal, 12).padding(.vertical, 6)
@@ -685,7 +685,7 @@ struct HomeView: View {
     }
 
     private var hostLink: some View {
-        Button {
+        SwipeSafeButton {
             if app.hasHosted { app.switchToHost() } else { app.goHostIntro() }
         } label: {
             Text((app.hasHosted
@@ -708,7 +708,7 @@ struct EventCard: View {
     @EnvironmentObject private var app: AppState
 
     var body: some View {
-        Button { app.goEvent(event.key) } label: {
+        SwipeSafeButton { app.goEvent(event.key) } label: {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .topTrailing) {
                     CatalogPhoto(path: event.img, height: 272, cornerRadius: 14)
@@ -719,7 +719,7 @@ struct EventCard: View {
                             )
                             .frame(height: 58)
                         }
-                    Button { app.toggleFavorite(event.key) } label: {
+                    SwipeSafeButton { app.toggleFavorite(event.key) } label: {
                         PhotoChip(
                             text: app.isSaved(event.key) ? app.T("Đã lưu", "Saved") : app.T("Lưu", "Save"),
                             background: app.isSaved(event.key) ? BanbeTheme.Chip.going : app.palette.paper.opacity(0.62),
@@ -854,7 +854,7 @@ struct HomeSearchFabView: View {
     @EnvironmentObject private var app: AppState
 
     var body: some View {
-        Button {
+        SwipeSafeButton {
             app.openEventSearch()
         } label: {
             Image(systemName: "magnifyingglass")
