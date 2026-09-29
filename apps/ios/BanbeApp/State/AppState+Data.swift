@@ -1077,12 +1077,12 @@ extension AppState {
         do {
             var filter = SupabaseService.client
                 .from("events")
-                // Keyword-search rollback (2026-09-29) — migration 108 was
-                // never applied to the live database; requesting a column
-                // that doesn't exist yet fails the whole query (every real
-                // event vanished from Map, not just new ones). Re-add
-                // `, keywords` only after confirming that migration is live.
-                .select("id, cat_key, name, area, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image")
+                // Keyword-search fix (migration 108) — re-enabled
+                // 2026-09-29 after confirming (a live, read-only query
+                // against the real database) migration 108 is actually
+                // deployed. See `realEventColumns`'s own doc comment for
+                // why this was briefly reverted.
+                .select("id, cat_key, name, area, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords")
                 .eq("status", value: "live")
             if let bounds {
                 filter = filter
@@ -2723,13 +2723,13 @@ extension AppState {
     /// ever actually fetched a real event's own stored coordinates for its
     /// Event Detail screen, even though `create_event_draft`/
     /// `resubmit_event_for_review` have stored them since migration 094.
-    // Keyword-search rollback (2026-09-29) — migration 108 was never
-    // applied to the live database (see its own doc comment); requesting a
-    // column that doesn't exist yet fails the WHOLE query, which is what
-    // made every real event vanish from Home/Map/discovery, not just new
-    // ones. Reverted until someone with real deploy access applies that
-    // migration — re-add `, keywords` here only after confirming it's live.
-    private static let realEventColumns = "id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included_items, intro, address_line, city, postal_code, address_verified"
+    // Keyword-search fix (migration 108) — re-enabled 2026-09-29 after
+    // confirming (a live, read-only query against the real database, not
+    // assumed) migration 108 is actually deployed: the `keywords` column
+    // exists and is populated. See git history for why this was briefly
+    // reverted — requesting a column that doesn't exist yet fails the
+    // WHOLE query, not just that field.
+    private static let realEventColumns = "id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included_items, intro, address_line, city, postal_code, address_verified, keywords"
 
     /// `events.cover_image` (migration 087) always wins over the gallery's
     /// own sort_order-first fallback when a host has explicitly picked one —

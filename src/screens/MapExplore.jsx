@@ -46,14 +46,10 @@ const SHEET_SNAPS = { tall: 0.30, mid: 0.58, peek: 0.86 }; // fraction of viewpo
 async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
   let q = supabase
     .from('events')
-    // Keyword-search rollback (2026-09-29) — see REAL_EVENT_ROW_COLUMNS's
-    // own doc comment (GocContext.jsx): migration 108 was never applied to
-    // the live database, and requesting a column that doesn't exist yet
-    // fails the WHOLE query (silently treated as "no events" by this
-    // function's own error handling below) — this is what made every real
-    // event vanish from Map, not just new ones. Re-add `, keywords` only
-    // after confirming migration 108 is actually live.
-    .select('id, key, name, cat_key, cat_label, area, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image')
+    // Keyword-search fix (migration 108) — re-enabled 2026-09-29, see
+    // REAL_EVENT_ROW_COLUMNS's own doc comment (GocContext.jsx) for why it
+    // was briefly reverted and how its return was verified.
+    .select('id, key, name, cat_key, cat_label, area, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, keywords')
     .eq('status', 'live')
     .order('starts_at', { ascending: true })
     .range(offset, offset + limit - 1);

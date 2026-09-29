@@ -83,20 +83,13 @@ function shapeRealEvent(row, extra = {}) {
   };
 }
 
-// Keyword-search rollback (2026-09-29) — migration 108 (which adds this
-// `keywords` column) was never actually applied to the live database (no
-// supabase CLI/psql/DB connection available from this environment to run
-// it — see that migration's own doc comment). Requesting a column that
-// doesn't exist yet doesn't just omit it: PostgREST fails the ENTIRE query
-// with an error, and every caller of this constant treats a query error as
-// "no rows" (see e.g. fetchLiveEvents's own `if (error) { ...; return []; }`)
-// — so adding `, keywords` here silently made EVERY real event vanish from
-// Home/Map/discovery/my-org-events, not just newly created ones, the exact
-// regression reported. Reverted until someone with real deploy access
-// actually applies migration 108 — re-add `keywords` here (and to
-// MapExplore.jsx's own separate `.select()`) only after confirming it's
-// live.
-const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included, included_items, intro, address_line, city, postal_code, address_verified';
+// Keyword-search fix (migration 108) — re-enabled 2026-09-29 after
+// confirming (a live, read-only query against the real database, not
+// assumed) that migration 108 has actually been deployed: the `keywords`
+// column exists and is populated. See this constant's own git history for
+// why it was briefly reverted — requesting a column that doesn't exist yet
+// fails the ENTIRE query, not just that field.
+const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included, included_items, intro, address_line, city, postal_code, address_verified, keywords';
 
 /** A real event's own selected `cover_image` (migration 087) resolved to a
  * public URL, falling back to `fallbackUrl` (the first `event_photos` row
