@@ -127,7 +127,7 @@ struct LoginView: View {
                 .padding(.top, 16)
 
                 if auth.codeSent {
-                    BanbeField(label: nil, placeholder: app.T("Mã 6 số", "6-digit code"),
+                    BanbeField(label: nil, placeholder: app.T("Mã 8 số", "8-digit code"),
                                text: $code, keyboard: .numberPad)
                         .padding(.top, 22)
                 } else {
