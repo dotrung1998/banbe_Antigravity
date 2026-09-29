@@ -1232,6 +1232,27 @@ final class AppState: ObservableObject {
     /// inventing its own).
     @Published var mapCloseSwipeProgress: CGFloat = 0
 
+    // Accidental-tap-during-swipe fix (2026-09-29, third follow-up) —
+    // `SwipeSafeButton` (Components.swift) needs to know whether an actual
+    // screen-level swipe (tab-swipe or edge-swipe-back) is/was in
+    // progress, but can't reliably measure that itself: `DragGesture`
+    // measured in `.local` space is fooled because the CONTENT is being
+    // offset live, 1:1 with the finger, during the very swipe it's trying
+    // to detect (relative to the row's own moving frame, the touch barely
+    // displaces); `.global` space fixed that but broke ScrollView, because
+    // any raw `DragGesture` attached at the row competes with the
+    // ScrollView's own pan gesture; `onLongPressGesture`'s built-in
+    // `maximumDistance` avoids the ScrollView conflict but has no
+    // coordinate-space parameter at all, so it's ALSO fooled by the same
+    // "content chasing the finger" effect `.local` was. RootView's OWN
+    // swipe-tracking gestures don't have this problem — they're attached
+    // to an ANCESTOR that ISN'T itself being offset, so they measure real
+    // screen-space movement correctly by construction. This is that
+    // already-correct signal, mirrored out (same idiom as
+    // `mapCloseSwipeProgress` above) so a row anywhere can defer to it
+    // instead of re-deriving its own possibly-fooled measurement.
+    @Published var isRootSwipeActive: Bool = false
+
     // Gesture-arbitration fix pass (2026-09-28) — `horizontalSwipeRowFrames`
     // used to live here: three successive attempts to let RootView's
     // `tabSwipeGesture` detect "this touch started on a live Inbox row" via

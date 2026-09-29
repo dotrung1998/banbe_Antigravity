@@ -781,6 +781,24 @@ struct MapExploreView: View {
             let delayNanoseconds = UInt64(delay * 1_000_000_000)
             try? await Task.sleep(nanoseconds: delayNanoseconds)
             guard !Task.isCancelled else { return }
+            // Tab-swipe/isActive race fix (2026-09-29) — this used to
+            // reveal unconditionally once its own timer elapsed, regardless
+            // of whether this instance was even the genuinely active
+            // screen yet. A restored snapshot left over from an earlier
+            // Event-Detail visit, combined with this view ALSO being
+            // mounted early as a tab-swipe NEIGHBOR (deliberately, to
+            // preload data — see `isActive`'s own doc comment), meant this
+            // timer could fire mid-drag, or even after an aborted swipe
+            // sprang back to the previous screen, popping the sheet up in
+            // a state totally disconnected from the actual screen
+            // transition — the reported "sheet overlaps the previous
+            // screen"/"jumbled" glitch. If not active yet, do nothing here
+            // — `isActive`'s own `.onChange` handler reveals it once the
+            // transition genuinely finishes instead. Never regresses the
+            // ordinary "return from Event Detail" case this was built for:
+            // `isActive` defaults/settles `true` immediately whenever this
+            // view isn't a tab-swipe neighbor at all.
+            guard isActive else { return }
             sheetPresented = true
             // ANIMATION REQUIREMENT: the restore-only "bubble" spring —
             // fires at the exact same moment the sheet/card reveal, for

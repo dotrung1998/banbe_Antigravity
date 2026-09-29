@@ -258,7 +258,15 @@ private struct InboxRow: View {
         // arbitrate), so this entire class of bug cannot recur here by
         // construction, not by another detection heuristic.
         HStack(spacing: 4) {
-            Button { app.openThread(id: thread.id, eventKey: thread.eventKey, back: .inbox, otherName: thread.name) } label: {
+            // Accidental-tap-during-navigation fix (2026-09-29) — a
+            // SEPARATE issue from the row-swipe-actions-vs-tab-swipe
+            // conflict this file's own comment above already solved: a
+            // deliberate tap/swipe that navigated TO Inbox could leave the
+            // finger resting on/near this first row the instant the
+            // screen arrives, and a plain `Button` only checks "did
+            // release land inside my bounds," not travel distance — see
+            // `SwipeSafeButton`'s own doc comment (Components.swift).
+            SwipeSafeButton { app.openThread(id: thread.id, eventKey: thread.eventKey, back: .inbox, otherName: thread.name) } label: {
                 HStack(spacing: 16) {
                     // Task 3a — merged avatar: a small badge circle for the
                     // OTHER participant's own photo, overlapping the event
@@ -1263,7 +1271,16 @@ struct NotificationsView: View {
         // 5: selection must not depend on the three-dot menu).
         let selected = app.selectedNotificationIDs.contains(item.id)
         return HStack(alignment: .top, spacing: 10) {
-            Button {
+            // Accidental-tap-during-navigation fix (2026-09-29) — a
+            // deliberate tap that opened Notifications (a dock tap, a
+            // completed/aborted tab-swipe) could leave the finger
+            // resting on/near this first row the instant the screen
+            // arrives; a plain `Button`'s own touch tracking only checks
+            // "did release land inside my bounds," not "how far did the
+            // touch travel to get here" — see `SwipeSafeButton`'s own doc
+            // comment (Components.swift) for the full root-cause writeup,
+            // confirmed there first on Home's identical rows.
+            SwipeSafeButton {
                 if selectionMode { toggleSelected(item.id) } else { app.openNotification(item) }
             } label: {
                 HStack(alignment: .top, spacing: 10) {

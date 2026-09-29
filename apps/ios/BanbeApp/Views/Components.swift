@@ -716,35 +716,82 @@ struct FocusableTextField: UIViewRepresentable {
 ///
 /// `SwipeSafeButton` is a drop-in `Button` replacement (same
 /// `action`/`label` initializer shape, so most call sites are a one-word
-/// rename) that tracks TOTAL PATH DISTANCE via its own `.simultaneousGesture`
-/// — never competing for gesture priority with anything (so it categorically
-/// cannot affect scrolling or the tab-swipe/edge-swipe-back gestures
-/// themselves) — and only invokes `action` when that distance stayed under
-/// a small, deliberate threshold. `.accessibilityAddTraits(.isButton)`
+/// rename) that only invokes `action` when the touch stayed within a
+/// small, deliberate distance of where it started — see the current
+/// implementation note below for how (this went through two broken
+/// approaches first; both are kept here as history since the same
+/// mistakes are easy to reach for again). `.accessibilityAddTraits(.isButton)`
 /// keeps VoiceOver's "Button" semantics, which a plain gesture-driven View
 /// doesn't get for free the way a real `Button` does.
+///
+/// Coordinate-space bug (2026-09-29, first follow-up — this is why the
+/// very first version never actually blocked anything): the original drag
+/// gesture measured translation in `.local` coordinate space — relative to
+/// THIS ROW'S OWN frame. But during a tab-swipe/edge-swipe-back, the
+/// screen this row lives in is ITSELF being offset live, 1:1 with the
+/// finger (`RootView`'s `offsetForRootScreen`) — so relative to the row's
+/// own (also moving) local frame, the touch barely displaced at all, no
+/// matter how far the swipe actually travelled on screen.
+///
+/// Scroll-breaking bug (2026-09-29, second follow-up): fixing the above by
+/// switching to `.global` coordinate space with a raw
+/// `DragGesture(minimumDistance: 0...1)` attached via `.simultaneousGesture`
+/// then broke Home's vertical scrolling entirely (Notifications' shorter,
+/// gappier rows happened to mostly dodge it, making it look "fixed" there
+/// by luck) — a raw `DragGesture` recognizing that early is a known
+/// SwiftUI/UIScrollView interaction where the scroll view's own pan
+/// gesture defers to content that claims the touch first, even under
+/// `.simultaneousGesture`; tuning the minimum distance up only made this
+/// LESS likely, not impossible, and Home's large, near-full-bleed cards
+/// meant almost every scroll attempt started on top of one.
+///
+/// `.onLongPressGesture(minimumDuration: 0, maximumDistance:)` replaced
+/// the raw `DragGesture` next — the gesture class SwiftUI/UIKit actually
+/// engineered for "press that cancels itself once the touch travels too
+/// far," which is why it coexists with scrolling where a raw `DragGesture`
+/// didn't. But it has no coordinate-space parameter at all (unlike
+/// `DragGesture`, which at least lets you ask for `.global`) — its
+/// built-in `maximumDistance` check is ALSO measured against this row's
+/// own (live-offset-during-a-swipe) local frame, so it was fooled by the
+/// exact same "content chasing the finger" effect as the very first
+/// version, just via a different mechanism — confirmed after it still let
+/// a swipe-then-release open a Home card into Event Detail.
+///
+/// Final fix (2026-09-29, third follow-up): stopped trying to measure
+/// swipe distance at the row at all. `RootView`'s OWN screen-level swipe
+/// gestures don't have this problem — they're attached to an ANCESTOR
+/// that ISN'T itself being offset, so they detect a real horizontal swipe
+/// correctly, by construction. This defers to that already-correct signal
+/// (`AppState.isRootSwipeActive`, mirrored from `RootView` — see its own
+/// doc comment) instead of re-deriving a second, row-local measurement
+/// that keeps being foolable in new ways. `sawSwipeDuringPress` latches
+/// `true` the moment that signal goes true ANYWHERE during this press
+/// (via the `.onChange` below, independent of whatever order this row's
+/// own `onLongPressGesture` callbacks happen to fire in relative to
+/// RootView's gesture — no race to get right), and is what `perform`
+/// actually checks, not a live/instantaneous read that could lose a race
+/// against `RootView` resetting its own state right at release.
 struct SwipeSafeButton<Label: View>: View {
     let action: () -> Void
     @ViewBuilder let label: () -> Label
-    @State private var maxDragDistance: CGFloat = 0
-    // Any real swipe crosses this within its first few points; an
-    // ordinary tap (even a slightly imprecise one) never does.
-    private let cancelThreshold: CGFloat = 12
+    @EnvironmentObject private var app: AppState
+    @State private var sawSwipeDuringPress = false
 
     var body: some View {
         label()
             .contentShape(Rectangle())
             .accessibilityAddTraits(.isButton)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        maxDragDistance = max(maxDragDistance, max(abs(value.translation.width), abs(value.translation.height)))
-                    }
-                    .onEnded { _ in
-                        let distance = maxDragDistance
-                        maxDragDistance = 0
-                        if distance < cancelThreshold { action() }
-                    }
-            )
+            .onLongPressGesture(minimumDuration: 0, maximumDistance: 12, perform: {
+                if !sawSwipeDuringPress { action() }
+            }, onPressingChanged: { pressing in
+                // Reset at the START of a new press to whatever's
+                // currently true (almost always `false` — a swipe hasn't
+                // had time to lock in yet at touch-down), never carried
+                // over stale from a previous, unrelated press.
+                if pressing { sawSwipeDuringPress = app.isRootSwipeActive }
+            })
+            .onChange(of: app.isRootSwipeActive) { _, active in
+                if active { sawSwipeDuringPress = true }
+            }
     }
 }

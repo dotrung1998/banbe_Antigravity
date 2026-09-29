@@ -333,9 +333,22 @@ struct RootView: View {
                 // gesture — an ordinary tap (never crosses either
                 // gesture's own recognition threshold) is completely
                 // unaffected.
-                .allowsHitTesting(s == app.screen && tabSwipeDirection != "horizontal" && !isDragTracking && !isCommittingBack)
+                .allowsHitTesting(s == app.screen && !isScreenLevelSwipeActive)
                 .zIndex(s == app.screen ? 1 : 0)
             }
+        }
+        // Accidental-tap-during-swipe fix (2026-09-29, third follow-up) —
+        // mirrors `isScreenLevelSwipeActive` out to `AppState` (same idiom
+        // as `mapCloseSwipeProgress`) so `SwipeSafeButton` (Components.swift)
+        // can defer to it: measuring "was there a real swipe" AT THE ROW
+        // itself keeps failing (see `AppState.isRootSwipeActive`'s own doc
+        // comment for the full history of why), because a row's own
+        // gesture measurement is fooled by the SAME live `.offset()` this
+        // view applies to drag it around. This value is computed from the
+        // ANCESTOR gesture's own state — never itself offset — so it's
+        // immune to that.
+        .onChange(of: isScreenLevelSwipeActive) { _, active in
+            if active { app.isRootSwipeActive = true } else { app.isRootSwipeActive = false }
         }
         // Every screen change — swiped back, tapped back, or pushed
         // forward — cross-fades with a slight horizontal drift instead of
@@ -355,7 +368,17 @@ struct RootView: View {
         // horizontal tab-swipe. `tabSwipeDirection` only ever locks in
         // AFTER the edge-strip checks below have already ruled out an
         // edge-swipe/Map-panning zone.
-        .scrollDisabled(isDragTracking || isCommittingBack || tabSwipeDirection == "horizontal")
+        .scrollDisabled(isScreenLevelSwipeActive)
+    }
+
+    /// Single shared source of truth for "is a screen-level swipe (tab-
+    /// swipe or edge-swipe-back) currently in progress or still settling,"
+    /// used for both this screen's own hit-testing/scroll-disabling AND
+    /// (mirrored into `AppState.isRootSwipeActive`) for `SwipeSafeButton`
+    /// elsewhere in the app — one definition, not two that could drift
+    /// apart.
+    private var isScreenLevelSwipeActive: Bool {
+        tabSwipeDirection == "horizontal" || isDragTracking || isCommittingBack
     }
 
     /// The real adjacent screen while a horizontal tab-swipe drag is live,
