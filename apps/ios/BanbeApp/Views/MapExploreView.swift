@@ -112,6 +112,22 @@ struct MapExploreView: View {
     // centering) so a mid-drag preview — including one the user aborts —
     // can never race the real instance for the one-shot snapshot.
     private let isPreview: Bool
+    // Sheet-reveal-timing fix (2026-09-29) — this instance is mounted
+    // EARLY, the moment it becomes the tab-swipe neighbor (RootView's own
+    // `rootScreensToRender` doc comment: deliberately real/mounted, not an
+    // `isPreview` throwaway, so its data starts loading right away) — but
+    // that used to mean its own `.sheet` auto-presented (see `sheetPresented`
+    // init below) and animated up WHILE the swipe was still mid-drag, well
+    // before the screen transition itself had finished — the reported "the
+    // sheet list appears immediately... before the swipe to the map is
+    // fully completed." `isActive` is `false` for exactly that not-yet-
+    // committed window (and for the non-interactive edge-swipe-back peek
+    // copy) and only becomes `true` once RootView's `s == app.screen`
+    // really flips — same SwiftUI-preserved instance throughout, per
+    // `rootScreensToRender`'s own identity-preserving `ForEach`, so
+    // `.onChange(of: isActive)` below fires exactly once, exactly when the
+    // transition genuinely finishes.
+    private let isActive: Bool
     // Restore-only "bubble" spring: 0 right after a restored construction
     // (sheet content starts very slightly scaled down/offset), animated to
     // 1 exactly once in `.task` below via an interpolating spring (a touch
@@ -196,16 +212,21 @@ struct MapExploreView: View {
     /// `.presentationDetents` selection — the sheet's native slide-up-from-
     /// bottom presentation animation then plays directly TO the saved
     /// detent, not to the default one first.
-    init(restored: MapExploreState?, isPreview: Bool = false, startFocusedOnSearch: Bool = false) {
+    init(restored: MapExploreState?, isPreview: Bool = false, startFocusedOnSearch: Bool = false, isActive: Bool = true) {
         hadRestoredState = restored != nil
         self.isPreview = isPreview
+        self.isActive = isActive
         self.startFocusedOnSearch = startFocusedOnSearch
         restoreBubbleProgress = restored != nil ? 0 : 1
         // Bug 2 follow-up: a fresh open has nothing to wait for — reveal
         // immediately, as before. A restored instance starts hidden; `.task`
         // reveals it only after `eventDetailDismissDuration +
-        // postDismissRevealDelay` has elapsed.
-        _sheetPresented = State(initialValue: restored == nil)
+        // postDismissRevealDelay` has elapsed. Sheet-reveal-timing fix
+        // (2026-09-29): NOT active yet (a live tab-swipe neighbor, or the
+        // non-interactive edge-swipe-back peek) also starts hidden,
+        // regardless of `restored` — `.onChange(of: isActive)` below reveals
+        // it the moment that changes, never early.
+        _sheetPresented = State(initialValue: restored == nil && isActive)
         if let restored {
             _cameraPosition = State(initialValue: .region(MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: restored.cameraCenterLat, longitude: restored.cameraCenterLng),
@@ -437,6 +458,17 @@ struct MapExploreView: View {
             // "genuinely gone" — the same race the web build hit and fixed
             // the same way.
             if !app.mapEventsLoading, let id = selectedId, !ids.contains(id) { selectedId = nil }
+        }
+        // Sheet-reveal-timing fix (2026-09-29) — see `isActive`'s own doc
+        // comment. Fires exactly once, exactly when a tab-swipe that
+        // brought this screen into view actually finishes (RootView flips
+        // `app.screen` to it) — never early/mid-drag. Guards
+        // `!sheetPresented` so this can't fight the OTHER, unrelated
+        // places that already manage `sheetPresented` for their own timing
+        // (restore-reveal, close-swipe cancel/confirm).
+        .onChange(of: isActive) { _, active in
+            guard active, !sheetPresented else { return }
+            withAnimation(.easeOut(duration: 0.26)) { sheetPresented = true }
         }
         .onChange(of: sheetDetent) { _, _ in
             // Bug 1 (camera half): re-applies the region shift (not a full

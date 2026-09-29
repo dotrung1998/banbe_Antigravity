@@ -311,7 +311,7 @@ struct RootView: View {
     private var rootScreenStack: some View {
         ZStack {
             ForEach(rootScreensToRender, id: \.self) { s in
-                screenView(for: s)
+                screenView(for: s, isActive: s == app.screen)
                 // Only the CURRENT screen plays the push/pop cross-fade — the
                 // neighbor is positioned manually (offsetForRootScreen) and
                 // must never independently fade/slide in on its own.
@@ -320,7 +320,20 @@ struct RootView: View {
                     removal: .opacity.combined(with: .move(edge: .trailing))
                 ) : .identity)
                 .offset(x: offsetForRootScreen(s))
-                .allowsHitTesting(s == app.screen)
+                // Accidental-tap-during-swipe fix (2026-09-29) — this used to
+                // stay `true` for the CURRENT screen through an entire, slow
+                // edge-swipe-back or tab-swipe drag, so a deliberate swipe
+                // that happened to end (finger lift) over a button/row still
+                // fired that row's own tap — the exact "accidentally
+                // triggers items on the home screen or notifications"
+                // report. Once a drag has committed to an actual swipe
+                // gesture (tab-swipe locked "horizontal", or an edge-swipe-
+                // back drag/settle in progress), the screen being dragged
+                // away stops accepting touches for the rest of that
+                // gesture — an ordinary tap (never crosses either
+                // gesture's own recognition threshold) is completely
+                // unaffected.
+                .allowsHitTesting(s == app.screen && tabSwipeDirection != "horizontal" && !isDragTracking && !isCommittingBack)
                 .zIndex(s == app.screen ? 1 : 0)
             }
         }
@@ -499,7 +512,7 @@ struct RootView: View {
                 // so an Organizer -> Event Detail edge-swipe still peeks at
                 // real Event Detail content here, not nothing.
                 if !eventDetailFromStory {
-                    screenView(for: app.backTargetScreen, isPreview: true)
+                    screenView(for: app.backTargetScreen, isPreview: true, isActive: false)
                         .offset(x: peekOffset)
                         .overlay(Color.black.opacity((1 - dragProgress) * 0.1))
                         .allowsHitTesting(false)
@@ -890,9 +903,12 @@ struct RootView: View {
     /// switch instead of keeping two copies in sync. `isPreview` only ever
     /// matters to the `.mapExplore` case (see its own call site's comment)
     /// — every other screen ignores it, so this stays a one-line addition
-    /// rather than a second switch to keep in sync.
+    /// rather than a second switch to keep in sync. `isActive` similarly
+    /// only matters to `.mapExplore` (see `MapExploreView`'s own doc
+    /// comment on its `isActive` parameter) — sheet-reveal-timing fix,
+    /// 2026-09-29.
     @ViewBuilder
-    private func screenView(for screen: Screen, isPreview: Bool = false) -> some View {
+    private func screenView(for screen: Screen, isPreview: Bool = false, isActive: Bool = true) -> some View {
         switch screen {
         case .splash: SplashView()
         case .langPick: LangPickView()
@@ -903,7 +919,7 @@ struct RootView: View {
         // in a later `.task` — so the very first frame this switch draws
         // already shows the restored camera/detent/filters/selection
         // instead of flashing the defaults for a frame first.
-        case .mapExplore: MapExploreView(restored: app.mapExploreState, isPreview: isPreview, startFocusedOnSearch: app.mapExploreFocusSearch)
+        case .mapExplore: MapExploreView(restored: app.mapExploreState, isPreview: isPreview, startFocusedOnSearch: app.mapExploreFocusSearch, isActive: isActive)
         case .home: HomeView()
         case .profile: AccountView()
         // TASK 2 (2026-09-22 twenty-first follow-up) — see InboxView's own
