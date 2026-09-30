@@ -410,7 +410,20 @@ private struct BottomTabBarOverlayRoot: View {
         // window/visibility lifecycle (see DockCreateButtonView's own doc
         // comment for why that lives here instead of a second floating
         // UIWindow) — only the internal composition changed.
-        ZStack {
+        // BUG FIX (dock-jump-on-tray-open pass) — `alignment: .bottom` here
+        // (was the ZStack default, `.center`) is the other half of the fix:
+        // DockRow no longer requests `maxHeight: .infinity` (see its own
+        // doc comment, BottomTabBar.swift), so it now reports its own
+        // fixed intrinsic height and this ZStack places it flush against
+        // ITS OWN bottom edge — which is the window's bottom edge, which
+        // `bandFrame(in:)`/`setDockCreateTrayOpen` always keep pinned to
+        // the physical screen's bottom edge (`y + height == bounds.height`)
+        // in BOTH the small band frame and the full-screen tray frame.
+        // DockRow's on-screen position is therefore anchored to a
+        // coordinate that is invariant to the window's own height, instead
+        // of being re-derived from a "fill then self-align" computation
+        // that changes when the window resizes.
+        ZStack(alignment: .bottom) {
             DockRow()
                 .offset(y: app.dockVisible ? 0 : 40)
                 .opacity(app.dockVisible ? 1 : 0)

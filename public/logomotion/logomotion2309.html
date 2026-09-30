@@ -2,14 +2,81 @@
 <html>
 <head>
 <meta charset="UTF-8">
+<!-- Splash geometry fix (2026-09-30) — WKWebView (and a plain mobile
+     browser) falls back to Safari's legacy ~980px "desktop site" virtual
+     viewport for any page with no viewport meta tag at all, which made
+     `window.innerWidth/innerHeight` inside `resizeCanvas()` (below) report
+     numbers wildly larger than this view's REAL ~280x174 frame — on top
+     of `makeResponsive`'s own `isResp` flag being off (see below), this
+     is the second half of "why is there blank space around the
+     animation." -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>banbe logomotion</title>
 <script src="vendor/createjs.min.js"></script>
 <script src="logomotion2309.js"></script>
 <style>
-	html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+	/* Splash geometry fix — flex-centers the (now correctly scaled, see
+	   below) animation container in case the destination viewport's own
+	   aspect ratio isn't a pixel-exact match for the authored 1288x800
+	   (1.61) stage, so any leftover margin is split evenly instead of
+	   pinned to one corner (the previous `position` default effectively
+	   put it top-left). */
+	html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; height: 100%; }
+	body { display: flex; align-items: center; justify-content: center; }
 </style>
 <script>
 var canvas, stage, exportRoot, anim_container, dom_overlay_container, fnStartAnimation;
+// Completion-gating fix (2026-09-30) — `handleComplete`'s own
+// `postMessage({type:"logomotion-ready"})` below fires on ASSET LOAD
+// (the CreateJS `LoadQueue`'s "complete" event), not on the animation
+// having actually finished playing — SplashView/Splash.jsx must not
+// confuse the two. This is the REAL completion signal: fired once, the
+// first tick where the timeline's own `currentFrame` reaches its last
+// frame, read from `exportRoot.totalFrames`/`lib.properties.fps` at
+// runtime (never a guessed/hardcoded duration) — matches
+// `lib.Stage.prototype.getDuration()`/`getTimelinePosition()` already
+// defined further down this same file (logomotion2309.js), reused here
+// rather than re-deriving the same math a second way.
+var motionCompleteFired = false;
+function notifyMotionComplete() {
+	if (motionCompleteFired) return;
+	motionCompleteFired = true;
+	var payload = { type: "logomotion-complete" };
+	// Web host (Splash.jsx's <iframe>).
+	if (window.parent && window.parent !== window) {
+		try { window.parent.postMessage(payload, "*"); } catch (e) {}
+	}
+	// iOS host (LogomotionView.swift's WKScriptMessageHandler, registered
+	// for the "logomotionBridge" message name).
+	try {
+		if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.logomotionBridge) {
+			window.webkit.messageHandlers.logomotionBridge.postMessage(payload);
+		}
+	} catch (e) {}
+}
+function watchForCompletion() {
+	if (motionCompleteFired || !exportRoot) return;
+	var total = exportRoot.totalFrames;
+	if (total && exportRoot.currentFrame >= total - 1) {
+		notifyMotionComplete();
+		// Hold on the completed final frame rather than looping a second
+		// time while the host (SplashView/Splash.jsx) is still waiting on
+		// bootstrap/session readiness before it can act on this signal —
+		// `exportRoot`'s timeline defaults to `loop = true` (see this
+		// file's own doc comment on `fnStartAnimation`), so without this
+		// it would otherwise keep cycling forever underneath whatever the
+		// host does next. Stage has already advanced+rendered this exact
+		// tick (its own Ticker listener runs before this one, registered
+		// first in `fnStartAnimation`), so the frame on screen right now
+		// IS the correct final frame.
+		createjs.Ticker.removeEventListener("tick", stage);
+		createjs.Ticker.removeEventListener("tick", watchForCompletion);
+	}
+}
+function prefersReducedMotion() {
+	try { return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
+	catch (e) { return false; }
+}
 function init() {
 	canvas = document.getElementById("canvas");
 	anim_container = document.getElementById("animation_container");
@@ -39,10 +106,50 @@ function handleComplete(evt, comp) {
 		stage.addChild(exportRoot);
 		createjs.Ticker.framerate = lib.properties.fps;
 		createjs.Ticker.addEventListener("tick", stage);
+		// Fires once, the tick after the timeline's own last frame is
+		// reached — not a `setTimeout`/guessed duration. `exportRoot`'s
+		// timeline defaults to `loop = true` (this file, further down:
+		// `if (loop == null) { loop = true; }`), so without this listener
+		// there is no other "finished" event to hook — it would just
+		// silently wrap back to frame 0 forever.
+		createjs.Ticker.addEventListener("tick", watchForCompletion);
 	};
-	AdobeAn.makeResponsive(false, 'both', false, 1, [canvas, anim_container, dom_overlay_container]);
-	AdobeAn.compositionLoaded(lib.properties.id);
-	fnStartAnimation();
+	// Splash geometry fix (2026-09-30) — root cause of the reported blank
+	// space/clipping: this call's first argument (`isResp`) used to be
+	// `false`, which disables `resizeCanvas()`'s ENTIRE scaling branch
+	// (see `an.makeResponsive` below in logomotion2309.js — the function
+	// still ran once and wired the `resize` listener, but with `isResp`
+	// false the computed scale ratio is always exactly 1, i.e. never
+	// actually fit to the real viewport). The stage was rendering at its
+	// full native 1288x800 authored size inside a ~280x174 host view the
+	// entire time, with `overflow:hidden` silently cropping the rest.
+	// `true` here (plus `isScale:true`, `scaleType:1` = "Math.min" /
+	// CSS `object-fit: contain" math) makes it actually compute and apply
+	// a real fit-to-viewport scale, both shrinking (this view) and
+	// growing (e.g. an iPad), uniformly, no distortion, no cropping.
+	if (prefersReducedMotion()) {
+		// Accessibility (Reduce Motion) — render exactly one static frame,
+		// never start the ticker, and report completion immediately so a
+		// reduced-motion user is never blocked on an animation that will
+		// never play. Still goes through the same real fit-to-viewport
+		// scaling fix below (a static frame should still look right, not
+		// just skip cropping-cleanup entirely).
+		AdobeAn.makeResponsive(true, 'both', true, 1, [canvas, anim_container, dom_overlay_container]);
+		AdobeAn.compositionLoaded(lib.properties.id);
+		stage.addChild(exportRoot);
+		stage.update();
+		notifyMotionComplete();
+	} else {
+		AdobeAn.makeResponsive(true, 'both', true, 1, [canvas, anim_container, dom_overlay_container]);
+		AdobeAn.compositionLoaded(lib.properties.id);
+		fnStartAnimation();
+	}
+	// Asset-load signal (pre-existing) — fires as soon as the CreateJS
+	// LoadQueue finishes downloading images/spritesheets, i.e. right here,
+	// well BEFORE the timeline has played to its end. Kept, unchanged
+	// name, so any existing "ready to mount" use of it elsewhere is
+	// unaffected — `logomotion-complete` (above) is the NEW, separate,
+	// animation-finished signal this fix adds.
 	if (window.parent && window.parent !== window) {
 		try { window.parent.postMessage({ type: "logomotion-ready" }, "*"); } catch (e) {}
 	}
@@ -50,7 +157,7 @@ function handleComplete(evt, comp) {
 </script>
 </head>
 <body onload="init();" style="margin:0px;">
-	<div id="animation_container" style="background-color:rgba(255, 255, 255, 0.00); width:1288px; height:800px">
+	<div id="animation_container" style="background-color:rgba(255, 255, 255, 0.00); width:1288px; height:800px; position:relative; flex-shrink:0;">
 		<canvas id="canvas" width="1288" height="800" style="position: absolute; display: block; background-color:rgba(255, 255, 255, 0.00);"></canvas>
 		<div id="dom_overlay_container" style="pointer-events:none; overflow:hidden; width:1288px; height:800px; position: absolute; left: 0px; top: 0px; display: block;">
 		</div>

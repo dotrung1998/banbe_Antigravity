@@ -29,6 +29,19 @@ final class AuthViewModel: ObservableObject {
 
     var isSignedIn: Bool { session != nil }
 
+    /// Splash completion-gating fix (2026-09-30) — true once the FIRST auth
+    /// event (of any kind — almost always `.initialSession`, the cold-
+    /// launch session restore) has actually been processed. Web's
+    /// equivalent is `GocContext.jsx`'s `sessionChecked`
+    /// (09-auth-onboarding.md's `postAuthDestination(prev)` explicitly
+    /// treats `!prev.sessionChecked` as "don't decide signed-out yet" for
+    /// exactly this reason). Before this fix, iOS's `SplashView` had no
+    /// equivalent at all — its fixed 2.6s `Task.sleep` could fire
+    /// `dismissSplash(isSignedIn:)` before `authStateChanges`'s first event
+    /// ever arrived, reading `isSignedIn` as `false` for an actually-signed-
+    /// in account on a slow cold start and wrongly forcing them to Login.
+    @Published var sessionChecked = false
+
     private var authListenerTask: Task<Void, Never>?
 
     init() {
@@ -54,6 +67,7 @@ final class AuthViewModel: ObservableObject {
                     self.profile = nil
                     self.isLocked = false
                 }
+                self.sessionChecked = true
             }
         }
     }

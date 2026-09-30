@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink } from '../theme.js';
 
@@ -12,7 +13,25 @@ const LOGOMOTION_WIDTH = 280;
 const LOGOMOTION_HEIGHT = Math.round((LOGOMOTION_WIDTH / 1288) * 800);
 
 export default function Splash() {
-  const { dismissSplash } = useGoc();
+  const { dismissSplash, notifyLogomotionComplete } = useGoc();
+  const iframeRef = useRef(null);
+
+  // Completion-gating fix (2026-09-30) — `logomotion2309.html` posts a
+  // distinct `{type:"logomotion-complete"}` message (separate from its
+  // pre-existing `"logomotion-ready"`, which fires on asset load, not on
+  // the animation having actually played through) the instant its
+  // timeline reaches its last frame. Source-validated against this exact
+  // iframe's own `contentWindow` (never a bare origin/type check alone) so
+  // an unrelated same-origin postMessage elsewhere in the app can't
+  // spoof this; cleaned up on unmount.
+  useEffect(() => {
+    function onMessage(event) {
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      if (event.data?.type === 'logomotion-complete') notifyLogomotionComplete();
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [notifyLogomotionComplete]);
 
   return (
     <div
@@ -24,6 +43,7 @@ export default function Splash() {
       data-screen-label="Splash"
     >
       <iframe
+        ref={iframeRef}
         title="banbe"
         src="/logomotion/logomotion2309.html"
         scrolling="no"

@@ -44,6 +44,13 @@ struct Event: Codable, Identifiable, Hashable {
     }
 }
 
+/// Search-matcher fix (Issue 2) — a dedicated join struct rather than
+/// reusing `AppState+Team.swift`'s `EventCreditOrganizerJoin` (which is
+/// `Decodable`-only): `MapEventRow` itself is `Codable` (both directions),
+/// and Swift's synthesized `Encodable` conformance requires every stored
+/// property's type to be `Encodable` too.
+struct MapEventOrganizerJoin: Codable, Hashable { let name: String? }
+
 /// A narrower projection of `events`, used only by the map explore screen
 /// (11-realtime-map.md) — needs `cat_key` (for the pin glyph) which `Event`
 /// above doesn't carry, and skips fields the map has no use for.
@@ -69,6 +76,18 @@ struct MapEventRow: Codable, Identifiable, Hashable {
     // own `keywords` (category-derived by default when a host leaves the
     // field blank at creation), not just its literal name/district.
     var keywords: [String]?
+    // Search-matcher fix (Issue 2) — mirrors MapExplore.jsx's identical
+    // additions: category DISPLAY label, city, organizer name and
+    // description/intro text, all folded into the one canonical search
+    // document `Search.swift`'s `buildEventSearchDoc` builds, so the text
+    // search box surfaces everything the category chip does regardless of
+    // whether `keywords` happens to be populated for a given row.
+    var catLabel: String?
+    var city: String?
+    var description: String?
+    var intro: String?
+    var organizers: MapEventOrganizerJoin?
+    var organizerName: String? { organizers?.name }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -83,6 +102,11 @@ struct MapEventRow: Codable, Identifiable, Hashable {
         case status
         case coverImage = "cover_image"
         case keywords
+        case catLabel = "cat_label"
+        case city
+        case description
+        case intro
+        case organizers
     }
 }
 

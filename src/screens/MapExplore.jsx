@@ -5,6 +5,7 @@ import { findEvent, isCosmeticCatalogMatch, haversineKm, distanceLabel } from '.
 import { liveEventOverrides } from '../lib/countdown.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { densityHotspot } from '../lib/densityHotspot.js';
+import { buildEventSearchDoc, matchesSearchQuery } from '../lib/search.js';
 import { FILTER_DEFS } from './Home.jsx';
 import { paper, ink, rule, alert, photoPill, fieldGlass, cardGlass, inkButton } from '../theme.js';
 import RootRefreshIndicator from './RootRefreshIndicator.jsx';
@@ -49,7 +50,12 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
     // Keyword-search fix (migration 108) — re-enabled 2026-09-29, see
     // REAL_EVENT_ROW_COLUMNS's own doc comment (GocContext.jsx) for why it
     // was briefly reverted and how its return was verified.
-    .select('id, key, name, cat_key, cat_label, area, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, keywords')
+    // Search-matcher fix (Issue 2) — `cat_label`, `description`, `intro`
+    // and the event's own organizer name are now selected too, so the
+    // search document built below (`buildEventSearchDoc`) can include
+    // category/organizer/description text regardless of whether
+    // `keywords` happens to be populated for a given row.
+    .select('id, key, name, cat_key, cat_label, area, city, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)')
     .eq('status', 'live')
     .order('starts_at', { ascending: true })
     .range(offset, offset + limit - 1);
@@ -102,8 +108,17 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
     return {
       id: row.id,
       catKey: row.cat_key || cosmetic?.catKey || 'all',
+      // Search-matcher fix (Issue 2) — previously never attached to this
+      // screen's event objects at all (only `cat_key` was), so the search
+      // document below had no category DISPLAY text to match against
+      // ("Supper Club") independent of `keywords`.
+      catLabel: row.cat_label || cosmetic?.catLabel,
       name: row.name || cosmetic?.name,
       area: row.area || cosmetic?.meta,
+      city: row.city,
+      organizerName: row.organizers?.name,
+      description: row.description,
+      intro: row.intro,
       // Keyword-search fix — real events' own `keywords` (migration 108,
       // populated at create/resubmit time, defaulting to the event's
       // category labels when the host leaves the field blank) plus the
@@ -470,21 +485,31 @@ export default function MapExplore() {
   // in its own dependency array, which is evaluated at render time — a
   // real "Cannot access before initialization" TDZ error surfaced this,
   // not a guess) — see each memo's own doc comment for what/why.
+  // Search-matcher fix (Issue 2) — one normalized search document per
+  // event, recomputed only when the fetched `events` list itself changes
+  // (a new poll/bounds fetch), never on every keystroke. This is what
+  // guarantees "Supp" surfaces every event the "Supper club" category
+  // chip does: the document always includes the category label/key +
+  // bilingual aliases (`CATEGORY_SEARCH_ALIASES`), independent of whether
+  // that event's own `keywords` column happens to be populated.
+  const eventSearchDocs = useMemo(() => {
+    const docs = new Map();
+    for (const e of events) docs.set(e.id, buildEventSearchDoc(e));
+    return docs;
+  }, [events]);
+
   const visibleEvents = useMemo(() => {
     let list = events;
     if (catFilter !== 'all') list = list.filter(e => e.catKey === catFilter);
     if (openNowOnly) list = list.filter(e => e.seatsRemaining > 0);
-    // Home quick event search — matched by name/area/keywords; ANDed with
-    // the filters above, never a replacement for them. Keyword search fix
-    // (migration 108) — a search term now also matches an event's own
-    // `keywords` (category-derived by default when a host leaves the
-    // field blank at creation), not just its literal name/district.
-    const q = searchQuery.trim().toLowerCase();
-    if (q) list = list.filter(e =>
-      e.name?.toLowerCase().includes(q)
-      || e.area?.toLowerCase().includes(q)
-      || (e.keywords || []).some(k => k?.toLowerCase().includes(q))
-    );
+    // Home quick event search — matched against the canonical search
+    // document (name/category/area/city/organizer/description/keywords),
+    // ANDed with the filters above, never a replacement for them.
+    // Normalized (case + Vietnamese-accent-insensitive, đ/d folded),
+    // multi-token AND, substring/prefix — see src/lib/search.js.
+    if (searchQuery.trim()) {
+      list = list.filter(e => matchesSearchQuery(eventSearchDocs.get(e.id) || '', searchQuery));
+    }
     if (sortByDistance && s.userCoords) {
       // Stage 3 — a no-location event has no real distance to sort by;
       // sorts after every plottable one rather than a NaN-driven,
@@ -496,7 +521,7 @@ export default function MapExplore() {
       });
     }
     return list;
-  }, [events, catFilter, openNowOnly, searchQuery, sortByDistance, s.userCoords]);
+  }, [events, catFilter, openNowOnly, searchQuery, sortByDistance, s.userCoords, eventSearchDocs]);
 
   // B1 — the ONE filtered event-id set the list below and the map's own
   // markers (the draw effect right after this) both key off, so they can

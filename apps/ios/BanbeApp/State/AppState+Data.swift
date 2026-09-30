@@ -1114,7 +1114,12 @@ extension AppState {
                 // against the real database) migration 108 is actually
                 // deployed. See `realEventColumns`'s own doc comment for
                 // why this was briefly reverted.
-                .select("id, cat_key, name, area, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords")
+                // Search-matcher fix (Issue 2) — mirrors MapExplore.jsx's
+                // identical select addition (cat_label/city/description/
+                // intro/organizers(name)) so the search document built by
+                // `Search.buildEventSearchDoc` has category/organizer/
+                // description text available regardless of `keywords`.
+                .select("id, cat_key, cat_label, name, area, city, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)")
                 .eq("status", value: "live")
             if let bounds {
                 filter = filter
@@ -4053,11 +4058,23 @@ extension AppState {
         // computed by the caller from the SAME `categories`/`createCats`
         // the review sheet already shows — never a second, separate
         // category->label mapping).
+        // Search-matcher fix (Issue 2) — mirrors web's identical
+        // `createSubmit` fix: organizer-typed keywords now SUPPLEMENT the
+        // category default instead of REPLACING it (previously a non-blank
+        // `createKeywords` field dropped the category terms entirely — a
+        // real root cause of "insufficient" keyword coverage found via the
+        // live-DB audit, see .claude/notes/19-map-search-keywords.md).
         let trimmedKeywords = createKeywords.trimmingCharacters(in: .whitespaces)
-        let keywordsPayload: [String] = (trimmedKeywords.isEmpty ? defaultKeywordsLabel : trimmedKeywords)
-            .components(separatedBy: trimmedKeywords.isEmpty ? " ▪︎ " : ",")
+        let categoryKeywords = defaultKeywordsLabel
+            .components(separatedBy: " ▪︎ ")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
+        let organizerKeywords = trimmedKeywords.isEmpty ? [] : trimmedKeywords
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        var seenKeywords = Set<String>()
+        let keywordsPayload: [String] = (categoryKeywords + organizerKeywords).filter { seenKeywords.insert($0).inserted }.prefix(20).map { $0 }
 
         do {
             var eventID: String?

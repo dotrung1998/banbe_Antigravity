@@ -1225,17 +1225,16 @@ struct MapExploreView: View {
         if openNowOnly { list = list.filter { ($0.seatsRemaining ?? 0) > 0 } }
         // Home quick event search (2026-09-27) — a by-name/area/keywords
         // text filter, ANDed with the filters above; never a second search
-        // index (same `app.mapEvents` this screen already loads). Keyword-
-        // search fix (migration 108) — mirrors web's identical MapExplore.jsx
-        // change: also matches an event's own `keywords`, not just its
-        // literal name/district.
-        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if !q.isEmpty {
-            list = list.filter {
-                $0.name.lowercased().contains(q)
-                || $0.area.lowercased().contains(q)
-                || ($0.keywords ?? []).contains { $0.lowercased().contains(q) }
-            }
+        // index (same `app.mapEvents` this screen already loads).
+        // Search-matcher fix (Issue 2) — now matches the SAME canonical
+        // search document the category chip's own coverage is built from
+        // (`SearchMatch.buildDoc`, mirrors web's `src/lib/search.js`):
+        // category label/key + aliases, area, city, organizer name,
+        // description/intro, and `keywords` as a supplement — never
+        // dependent on `keywords` alone. Normalized (case + Vietnamese-
+        // accent-insensitive, đ/d folded), multi-token AND, substring.
+        if !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            list = list.filter { SearchMatch.matches(doc: SearchMatch.buildDoc(for: $0), query: searchQuery) }
         }
         if sortByDistance, let coords = app.userCoords {
             list.sort { distanceKm(coords, $0) ?? .greatestFiniteMagnitude < distanceKm(coords, $1) ?? .greatestFiniteMagnitude }

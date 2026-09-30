@@ -325,6 +325,14 @@ const initialState = {
   // slow session check can't get misread as "signed out" and bounce a
   // returning user to Login before their restored session even arrives.
   sessionChecked: false,
+  // Splash completion-gating fix (2026-09-30) — set once by Splash.jsx's
+  // `message` listener when the logomotion iframe reports it has finished
+  // one real animation cycle (`logomotion-complete`, distinct from the
+  // pre-existing `logomotion-ready` asset-load signal — see
+  // `public/logomotion/logomotion2309.html`'s own doc comment). The splash
+  // auto-advance effect below waits on this instead of only ever firing on
+  // a fixed timer.
+  logomotionComplete: false,
   // Account regression fix pass (2026-09-27) — Item 3's real login race:
   // onAuthStateChange sets `screen` away from 'login' the instant a session
   // arrives, but `user` itself isn't set until syncUser's own async
@@ -2273,20 +2281,41 @@ export function GocProvider({ children }) {
     return () => { active = false; clearInterval(interval); };
   }, [set, s.user?.id]);
 
+  // Completion-gating fix (2026-09-30) — this used to be the ONLY way
+  // Splash ever auto-advanced, a flat 2.6s timer with no relationship to
+  // the logomotion animation's own real length. It's now a bounded
+  // FALLBACK (bumped 2.6s -> 6s, past the animation's real expected
+  // duration) so a WebView/iframe load failure or missing asset can't
+  // strand the user on Splash forever — the real gate is the
+  // `s.logomotionComplete` effect right below, which normally fires
+  // first and clears this timer before it ever runs.
   const splashTimer = useRef(null);
-  useEffect(() => {
-    splashTimer.current = setTimeout(() => {
-      setStateRaw(prev => {
-        if (prev.screen !== 'splash') return prev;
-        // First-ever visit still goes through language/theme regardless of
-        // auth — the mandatory-login gate applies once that's done
-        // (finishOnboarding), not before.
-        if (!prev.hasOnboarded) return { ...prev, screen: 'langPick' };
-        return { ...prev, ...postAuthDestination(prev) };
-      });
-    }, 2600);
-    return () => clearTimeout(splashTimer.current);
+  const splashAdvance = useCallback(() => {
+    setStateRaw(prev => {
+      if (prev.screen !== 'splash') return prev;
+      // First-ever visit still goes through language/theme regardless of
+      // auth — the mandatory-login gate applies once that's done
+      // (finishOnboarding), not before.
+      if (!prev.hasOnboarded) return { ...prev, screen: 'langPick' };
+      return { ...prev, ...postAuthDestination(prev) };
+    });
   }, []);
+  useEffect(() => {
+    splashTimer.current = setTimeout(splashAdvance, 6000);
+    return () => clearTimeout(splashTimer.current);
+  }, [splashAdvance]);
+  // Completion-gating fix (2026-09-30) — advances as soon as the
+  // logomotion iframe reports one real completed animation cycle, instead
+  // of only ever on the fixed timer above. Reduce Motion doesn't need its
+  // own branch here — Splash.jsx's `prefers-reduced-motion` check makes
+  // the iframe itself fire `logomotion-complete` immediately in that case
+  // (see `logomotion2309.html`'s `prefersReducedMotion()`).
+  useEffect(() => {
+    if (!s.logomotionComplete) return;
+    clearTimeout(splashTimer.current);
+    splashAdvance();
+  }, [s.logomotionComplete, splashAdvance]);
+  const notifyLogomotionComplete = useCallback(() => set({ logomotionComplete: true }), [set]);
   const dismissSplash = useCallback(() => {
     clearTimeout(splashTimer.current);
     set(prev => {
@@ -7245,15 +7274,26 @@ export function GocProvider({ children }) {
       const intro = s.createIntro.trim();
       if (intro.length > 4000) throw new Error('INVALID_INTRO');
 
-      // Keyword-search fix (migration 108) — a blank keywords field
-      // defaults to the event's own selected category label(s)
-      // (`defaultKeywordsLabel`, resolved by the caller from the SAME
-      // `createCatLabel` the review screen already shows — never a second,
-      // separate category->label mapping), so an event is never left with
-      // literally nothing to match on beyond its name/district.
-      const keywords = s.createKeywords.trim()
+      // Keyword-search fix (migration 108) — the event's own selected
+      // category label(s) (`defaultKeywordsLabel`, resolved by the caller
+      // from the SAME `createCatLabel` the review screen already shows —
+      // never a second, separate category->label mapping) are always
+      // included, so an event is never left with literally nothing to
+      // match on beyond its name/district.
+      // Search-matcher fix (Issue 2) — previously a non-blank
+      // `createKeywords` field REPLACED the category default entirely
+      // (`s.createKeywords.trim() ? ... : defaultKeywordsLabel...`), which
+      // is a real root cause of "insufficient" keyword coverage: an
+      // organizer who typed their own keywords (e.g. person names, a
+      // vibe word) silently lost the category terms from `keywords`
+      // altogether. Organizer-entered keywords now SUPPLEMENT the category
+      // default, never replace it — deduped, same 20-item cap
+      // `set_event_keywords` (migration 108) already enforces server-side.
+      const categoryKeywords = defaultKeywordsLabel.split(' ▪︎ ').map(k => k.trim()).filter(Boolean);
+      const organizerKeywords = s.createKeywords.trim()
         ? s.createKeywords.split(',').map(k => k.trim()).filter(Boolean)
-        : defaultKeywordsLabel.split(' ▪︎ ').map(k => k.trim()).filter(Boolean);
+        : [];
+      const keywords = Array.from(new Set([...categoryKeywords, ...organizerKeywords])).slice(0, 20);
 
       // Address-autocomplete fix pass (2026-09-28) — client-side mirror of
       // migration 105's own ADDRESS_NOT_VERIFIED gate, to avoid a round
@@ -8146,7 +8186,7 @@ export function GocProvider({ children }) {
     loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
-    switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
+    switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
@@ -8182,7 +8222,7 @@ export function GocProvider({ children }) {
     loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
-    switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
+    switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,

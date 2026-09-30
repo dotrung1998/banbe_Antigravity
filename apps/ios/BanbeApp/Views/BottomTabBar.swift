@@ -645,7 +645,22 @@ struct DockRow: View {
         // together on scroll instead of only the dock visibly resizing
         // while the "+" stayed full size beside it.
         .scaleEffect(app.bottomBarCollapsed ? 0.86 : 1, anchor: .bottom)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        // BUG FIX (dock-jump-on-tray-open pass) — this used to be
+        // `.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)`,
+        // which made DockRow greedily fill however much height its
+        // container PROPOSES and then self-align `.bottom` within that
+        // proposed rectangle. `BottomTabBarOverlay.setDockCreateTrayOpen`
+        // grows the hosting window's own frame from a small dock band to
+        // full-screen while the tray is open — a real change in the height
+        // proposed to this view — and `.bottom`-aligning within a rectangle
+        // whose HEIGHT just changed is exactly what visibly shifted the
+        // dock upward (see BottomTabBarOverlayRoot's own ZStack below for
+        // the other half of this fix: `alignment: .bottom` there anchors
+        // DockRow to the ZStack's/window's bottom edge directly instead).
+        // Only `maxWidth: .infinity` is kept, so DockRow still spans the
+        // window's full width for horizontal centering — height is now
+        // purely DockRow's own intrinsic size, never a proposed fill.
+        .frame(maxWidth: .infinity)
     }
 }
 

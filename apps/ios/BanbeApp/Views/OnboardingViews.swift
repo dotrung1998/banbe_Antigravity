@@ -4,17 +4,58 @@ import UIKit
 
 /// Port of src/screens/Splash.jsx — the logomotion animation and the
 /// tagline; tapping (or waiting) moves on to the language picker.
+///
+/// Completion-gating fix (2026-09-30) — the AUTOMATIC advance (and,
+/// through it, the FaceID lock prompt/login/home destination
+/// `dismissSplash` routes to) now waits for BOTH the logomotion animation
+/// to report one real completed cycle (`animationComplete`, via
+/// `LogomotionView`'s new `onComplete`) AND session/bootstrap readiness
+/// (`auth.sessionChecked` — see that property's own doc comment for the
+/// real race this closes). A bounded fallback timer (`fallbackFired`)
+/// covers a WebView load failure/missing asset so a broken animation can
+/// never hang the splash forever — it proceeds exactly as if completion
+/// had fired normally. Reduce Motion skips waiting on the animation
+/// signal entirely (the html/js itself also skips playing it — see
+/// `logomotion2309.html`'s `prefersReducedMotion()` — this is belt-and-
+/// suspenders for the native side of the same rule).
+/// Tap-to-dismiss is deliberately NOT gated on any of this — it's an
+/// explicit user action, and this app's existing product behavior already
+/// lets an impatient tap skip the whole splash instantly; only the
+/// unattended/automatic path and whatever it gates (FaceID, in
+/// `RootView.swift`) must wait for real completion.
+/// Cold-launch only by construction, not something this fix needs to
+/// re-derive: `AppState.init()` sets `screen = .splash` exactly once, at
+/// app launch, and nothing else ever re-assigns `.splash` — returning from
+/// background never remounts this view or replays the animation.
 struct SplashView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var auth: AuthViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var animationComplete = false
+    @State private var fallbackFired = false
+    @State private var dismissed = false
 
     private static let logomotionAspect: CGFloat = 800.0 / 1288.0
+    // A few seconds past the real ~ (totalFrames / 24fps) authored
+    // duration (a handful of seconds at 24fps per `lib.properties.fps` /
+    // `exportRoot.totalFrames`, logomotion2309.js) — long enough that a
+    // healthy load/play never hits it, short enough that a genuinely
+    // broken WebView load doesn't strand the user on the splash screen.
+    private static let fallbackTimeout: UInt64 = 6_000_000_000
+
+    /// Both real signals this screen waits on for the AUTOMATIC path —
+    /// Reduce Motion (or the animation's own real completion, or the
+    /// bounded fallback) AND session bootstrap being done.
+    private var readyToAdvance: Bool {
+        (reduceMotion || animationComplete || fallbackFired) && auth.sessionChecked
+    }
 
     var body: some View {
         ZStack {
             app.palette.paper.ignoresSafeArea()
             VStack(spacing: 0) {
-                LogomotionView()
+                LogomotionView(onComplete: { animationComplete = true })
                     .frame(width: 280, height: 280 * Self.logomotionAspect)
                 Text("bạn mới mỗi tuần")
                     .font(.system(size: 14))
@@ -23,11 +64,25 @@ struct SplashView: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { app.dismissSplash(isSignedIn: auth.isSignedIn) }
+        .onTapGesture { advance(force: true) }
+        .onChange(of: animationComplete) { _, _ in advance(force: false) }
+        .onChange(of: auth.sessionChecked) { _, _ in advance(force: false) }
         .task {
-            try? await Task.sleep(nanoseconds: 2_600_000_000)
-            if app.screen == .splash { app.dismissSplash(isSignedIn: auth.isSignedIn) }
+            try? await Task.sleep(nanoseconds: Self.fallbackTimeout)
+            fallbackFired = true
+            advance(force: false)
         }
+    }
+
+    /// `force: true` is the explicit-tap path (always dismisses, no
+    /// gating). `force: false` is every automatic call site — only
+    /// actually advances once `readyToAdvance` is true; harmless to call
+    /// speculatively (from either `onChange`) before that.
+    private func advance(force: Bool) {
+        guard app.screen == .splash, !dismissed else { return }
+        guard force || readyToAdvance else { return }
+        dismissed = true
+        app.dismissSplash(isSignedIn: auth.isSignedIn)
     }
 }
 
