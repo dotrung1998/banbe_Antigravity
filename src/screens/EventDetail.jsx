@@ -1,14 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { bg, mapsUrl } from '../data/events.js';
-import { supabase } from '../lib/supabase.js';
 import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
-
-function eventPhotoUrl(path) {
-  const relative = path.replace(/^event-photos\//, '');
-  return supabase.storage.from('event-photos').getPublicUrl(relative).data.publicUrl;
-}
 
 export default function EventDetail() {
   const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useGoc();
@@ -33,7 +27,7 @@ export default function EventDetail() {
   // comment in GocContext.jsx). Every photo here belongs to THIS event, so
   // eventId is just ev.key, but it travels per-photo like Organizer.jsx's
   // gallery does, for the same shape both screens hand to openPhoto.
-  const realPhotos = (s.eventPhotos || []).map(p => ({ id: p.id, url: eventPhotoUrl(p.storage_path), eventId: ev.key }));
+  const realPhotos = (s.eventPhotos || []).filter(p => p.url).map(p => ({ id: p.id, url: p.url, eventId: ev.key }));
   const [shareStoryMsg, setShareStoryMsg] = useState('');
   // BUG 4 fix (2026-09-22 follow-up) — "Chia sẻ lên Story" used to publish
   // immediately on tap; per this ticket's own instruction, a real

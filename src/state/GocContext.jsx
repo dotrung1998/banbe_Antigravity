@@ -125,7 +125,35 @@ const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, lat, lng, st
  * instead of whichever photo happens to sort first. */
 export function resolveCoverUrl(coverImagePath, fallbackUrl) {
   if (!coverImagePath) return fallbackUrl || null;
+  // Strict invite-only events (migration 113) — a private-bucket path
+  // can't be resolved synchronously (createSignedUrl is a network call);
+  // every call site that can actually reach one (EventDetail, CreateEvent
+  // preview) uses resolveEventPhotoUrlAsync below instead. Discovery
+  // surfaces that call this SYNC helper (Home cards, Organizer profile,
+  // Pulse) never legitimately hold a private-bucket path in the first
+  // place, since invite-only events are excluded from all of them — this
+  // is a defensive fallback, not the real gate.
+  if (coverImagePath.startsWith('event-photos-private/')) return fallbackUrl || null;
   const relative = coverImagePath.replace(/^event-photos\//, '');
+  return supabase.storage.from('event-photos').getPublicUrl(relative).data.publicUrl;
+}
+
+/** Async counterpart of resolveCoverUrl — the ONLY correct way to resolve
+ * an 'event-photos-private/…' storage_path (a real network call, signed
+ * and RLS-checked via is_event_host()/has_event_invite_access()/
+ * is_platform_admin(), migration 113). Public paths still resolve via the
+ * cheap synchronous getPublicUrl() building block. 1-hour signed URL —
+ * long enough for one screen visit, short enough that a leaked link
+ * (screenshot, cached tab) doesn't stay valid indefinitely. */
+export async function resolveEventPhotoUrlAsync(storagePath) {
+  if (!storagePath) return null;
+  if (storagePath.startsWith('event-photos-private/')) {
+    const relative = storagePath.replace(/^event-photos-private\//, '');
+    const { data, error } = await supabase.storage.from('event-photos-private').createSignedUrl(relative, 3600);
+    if (error) { if (import.meta.env?.DEV) console.warn('resolveEventPhotoUrlAsync signed-url failed:', error); return null; }
+    return data.signedUrl;
+  }
+  const relative = storagePath.replace(/^event-photos\//, '');
   return supabase.storage.from('event-photos').getPublicUrl(relative).data.publicUrl;
 }
 
@@ -142,8 +170,7 @@ export async function firstPhotoUrlByEvent(eventIds) {
   const byEvent = {};
   for (const p of data || []) {
     if (byEvent[p.event_id]) continue;
-    const relativePath = p.storage_path.replace(/^event-photos\//, '');
-    byEvent[p.event_id] = supabase.storage.from('event-photos').getPublicUrl(relativePath).data.publicUrl;
+    byEvent[p.event_id] = await resolveEventPhotoUrlAsync(p.storage_path);
   }
   return byEvent;
 }
@@ -810,6 +837,14 @@ const initialState = {
   createEventTime: '',
   createPrice: '',
   createSeats: '',
+  // Strict invite-only events (migration 113) — 'public' | 'invite'.
+  // Deliberately separate from `events.approval` (instant/manual, not yet
+  // exposed in this form): visibility is who can even see/book the event;
+  // approval is whether a booking still needs the host's manual OK. An
+  // invite-only event is not auto-approved by being private — set_event_
+  // visibility() never touches `approval`, and admin review (085) still
+  // applies to every event regardless of visibility.
+  createVisibility: 'public',
   createPhotos: 0,
   // Real cover/gallery + structured "Bao gồm" (migration 087) — the actual
   // picked File objects live in CreateEvent.jsx's OWN local component state
@@ -1869,8 +1904,15 @@ export function GocProvider({ children }) {
       .from('event_photos').select('id, storage_path, sort_order')
       .eq('event_id', eventId).order('sort_order', { ascending: true });
     if (error) { if (import.meta.env?.DEV) console.warn('loadEventPhotos failed:', error); }
-    set({ eventPhotos: data || [], eventPhotosLoading: false });
-    loadPhotoEngagement((data || []).map(p => p.id));
+    // Strict invite-only events (migration 113) — resolve each row's
+    // display URL HERE (already async) rather than at every render-time
+    // consumer (EventDetail.jsx, CreateEvent.jsx's edit-seed effect),
+    // which is what lets an invite-only event's private-bucket photos
+    // resolve via a real signed URL instead of a broken/blocked public one.
+    const rows = data || [];
+    const withUrls = await Promise.all(rows.map(async p => ({ ...p, url: await resolveEventPhotoUrlAsync(p.storage_path) })));
+    set({ eventPhotos: withUrls, eventPhotosLoading: false });
+    loadPhotoEngagement(rows.map(p => p.id));
   }, [set, loadPhotoEngagement]);
 
   /** STAGE B (2026-09-25) — Organizer.jsx's real photo library, replacing
@@ -5110,7 +5152,7 @@ export function GocProvider({ children }) {
       createCountryCode: '', createStateProvince: '', createNeighborhood: '',
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
       createEventDate: '', createEventTime: '', createPrice: '', createSeats: '',
-      createIncludedItems: [], createIntro: '', createKeywords: '',
+      createIncludedItems: [], createIntro: '', createKeywords: '', createVisibility: 'public',
     }));
   }, [set, s.user, canHost, enableOrganizerMode]);
   const openHeld = useCallback(() => set({ screen: 'confirmed' }), [set]);
@@ -5357,9 +5399,13 @@ export function GocProvider({ children }) {
       return false;
     }
     set(prev => ({ eventPhotoUploadBusy: { ...prev.eventPhotoUploadBusy, [eventId]: true }, eventPhotoUploadError: '' }));
+    // Strict invite-only events (migration 113) — same bucket-routing
+    // decision as reconcileEventMedia; a recap photo added to an
+    // invite-only event after the fact must not land in the public bucket.
+    const bucketId = s.realEventsById[eventId]?.visibility === 'invite' ? 'event-photos-private' : 'event-photos';
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const path = `${eventId}/${Date.now()}.${ext}`;
-    const { error: upErr } = await supabase.storage.from('event-photos').upload(path, file, { upsert: true, contentType: file.type });
+    const { error: upErr } = await supabase.storage.from(bucketId).upload(path, file, { upsert: true, contentType: file.type });
     if (upErr) {
       console.warn('uploadEventPhoto storage failed:', upErr);
       set(prev => ({ eventPhotoUploadBusy: { ...prev.eventPhotoUploadBusy, [eventId]: false }, eventPhotoUploadError: T('Không thể tải ảnh lên. Vui lòng thử lại.', 'Could not upload the image. Please try again.') }));
@@ -5369,7 +5415,7 @@ export function GocProvider({ children }) {
     // seed rows already use (event_photos.storage_path, migration 010) —
     // every read path (eventPhotoUrl/organizerPhotoUrl/etc.) already
     // strips this prefix defensively either way.
-    const { error: rowErr } = await supabase.from('event_photos').insert({ event_id: eventId, storage_path: `event-photos/${path}`, sort_order: 0 });
+    const { error: rowErr } = await supabase.from('event_photos').insert({ event_id: eventId, storage_path: `${bucketId}/${path}`, sort_order: 0 });
     if (rowErr) {
       console.warn('uploadEventPhoto row failed:', rowErr);
       set(prev => ({ eventPhotoUploadBusy: { ...prev.eventPhotoUploadBusy, [eventId]: false }, eventPhotoUploadError: T('Không thể lưu ảnh. Vui lòng thử lại.', 'Could not save the photo. Please try again.') }));
@@ -5381,7 +5427,7 @@ export function GocProvider({ children }) {
     }));
     setTimeout(() => set(prev => ({ eventPhotoUploaded: { ...prev.eventPhotoUploaded, [eventId]: false } })), 1800);
     return true;
-  }, [set, s.user?.id, T]);
+  }, [set, s.user?.id, s.realEventsById, T]);
 
   /** Personal public profile screen — reachable by handle, works for a
    * signed-out visitor too (get_public_profile() is granted to anon,
@@ -5901,8 +5947,12 @@ export function GocProvider({ children }) {
         .in('event_id', eventIds).order('sort_order', { ascending: true });
       for (const p of photos || []) {
         if (!eventPhotoByEventId[p.event_id]) {
-          const relativePath = p.storage_path.replace(/^event-photos\//, '');
-          eventPhotoByEventId[p.event_id] = supabase.storage.from('event-photos').getPublicUrl(relativePath).data.publicUrl;
+          // Strict invite-only events (migration 113) — a notification
+          // thumbnail can legitimately belong to an invite-only event
+          // (e.g. the recipient's own booking confirmation), so this must
+          // resolve through the same async/private-bucket-aware helper,
+          // not a bare getPublicUrl() that would silently 403 on it.
+          eventPhotoByEventId[p.event_id] = await resolveEventPhotoUrlAsync(p.storage_path);
         }
       }
     }
@@ -7390,6 +7440,7 @@ export function GocProvider({ children }) {
     return { createCats: cats };
   }), [set]);
   const pickCreatePalette = useCallback((key) => set({ createPalette: key }), [set]);
+  const pickCreateVisibility = useCallback((v) => set({ createVisibility: v === 'invite' ? 'invite' : 'public' }), [set]);
   const tapPhotoSlot = useCallback((index) => set(prev => ({ createPhotos: index < prev.createPhotos ? prev.createPhotos : Math.min(8, prev.createPhotos + 1) })), [set]);
 
   // ---- structured "Bao gồm" (migration 087) — up to 3 { label, detail } ----
@@ -7453,13 +7504,21 @@ export function GocProvider({ children }) {
    * single cover write — never rolls back the event row itself on a
    * partial media failure (see this function's own prior history above).
    */
-  const reconcileEventMedia = useCallback(async (eventId, { newFiles = [], coverIndex = -1, removeIds = [], existingCoverPath = '' } = {}) => {
+  const reconcileEventMedia = useCallback(async (eventId, { newFiles = [], coverIndex = -1, removeIds = [], existingCoverPath = '', visibility = 'public' } = {}) => {
+    // Strict invite-only events (migration 113) — an invite-only event's
+    // photos go to the SEPARATE, genuinely private 'event-photos-private'
+    // bucket (RLS-gated by host/admin/invited-status), never the public
+    // 'event-photos' bucket whose getPublicUrl() bypasses RLS entirely.
+    // Public events are completely unaffected (same bucket/path as always).
+    const bucketId = visibility === 'invite' ? 'event-photos-private' : 'event-photos';
     let removed = 0;
     for (const photoId of removeIds) {
       const row = (s.eventPhotos || []).find(p => p.id === photoId);
       if (row?.storage_path) {
-        const relative = row.storage_path.replace(/^event-photos\//, '');
-        await supabase.storage.from('event-photos').remove([relative]);
+        const [rowBucket, ...rest] = row.storage_path.split('/');
+        const bucket = rowBucket === 'event-photos-private' ? 'event-photos-private' : 'event-photos';
+        const relative = bucket === rowBucket ? rest.join('/') : row.storage_path.replace(/^event-photos\//, '');
+        await supabase.storage.from(bucket).remove([relative]);
       }
       const { error } = await supabase.from('event_photos').delete().eq('id', photoId);
       if (!error) removed++;
@@ -7472,9 +7531,9 @@ export function GocProvider({ children }) {
       if (file.size > 50 * 1024 * 1024) continue;
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
       const path = `${eventId}/${Date.now()}-${i}.${ext}`;
-      const { error: upErr } = await supabase.storage.from('event-photos').upload(path, file, { upsert: true, contentType: file.type });
+      const { error: upErr } = await supabase.storage.from(bucketId).upload(path, file, { upsert: true, contentType: file.type });
       if (upErr) { console.warn('reconcileEventMedia storage failed:', upErr); continue; }
-      const storagePath = `event-photos/${path}`;
+      const storagePath = `${bucketId}/${path}`;
       const { error: rowErr } = await supabase.from('event_photos').insert({ event_id: eventId, storage_path: storagePath, sort_order: i });
       if (rowErr) { console.warn('reconcileEventMedia row failed:', rowErr); continue; }
       uploaded++;
@@ -7664,12 +7723,25 @@ export function GocProvider({ children }) {
           p_event_id: eventId, p_keywords: keywords,
         });
         if (keywordsError) console.warn('set_event_keywords failed:', keywordsError);
+
+        // Strict invite-only events (migration 113) — same "separate,
+        // additive RPC" pattern as set_event_keywords just above, not a
+        // new positional param on create_event_draft/resubmit_event_for_
+        // review. Best-effort like keywords: a failure here shouldn't
+        // block a submission that already succeeded, but IS surfaced as a
+        // non-fatal note since visibility is a real privacy setting, not
+        // cosmetic metadata.
+        const { error: visibilityError } = await supabase.rpc('set_event_visibility', {
+          p_event_id: eventId, p_visibility: s.createVisibility,
+        });
+        if (visibilityError) console.warn('set_event_visibility failed:', visibilityError);
       }
 
       let mediaNote = '';
       if (eventId && (photoFiles.length || removePhotoIds.length || existingCoverPath)) {
         const { uploaded, failed } = await reconcileEventMedia(eventId, {
           newFiles: photoFiles, coverIndex, removeIds: removePhotoIds, existingCoverPath,
+          visibility: s.createVisibility,
         });
         if (failed > 0) {
           mediaNote = uploaded > 0
@@ -7775,6 +7847,7 @@ export function GocProvider({ children }) {
       createEventDate: real.eventDate || '', createEventTime: real.eventTime ? real.eventTime.slice(0, 5) : '',
       createPrice: real.priceVnd ? String(real.priceVnd) : '',
       createSeats: real.capacity ? String(real.capacity) : '',
+      createVisibility: real.visibility || 'public',
       // Root-cause fix (Stage A media-parity pass, 2026-09-26): this used
       // to leave createIncludedItems at whatever the PREVIOUS screen visit
       // left behind (often []), and createSubmit always sends the current
@@ -8224,6 +8297,15 @@ export function GocProvider({ children }) {
         // this app's own event-cancellation UX language elsewhere.
         if (n.data?.event_id) goEvent(n.data.event_id);
         break;
+      case 'event_invite':
+        // Strict invite-only events (migration 113) — straight to the
+        // event itself; events_select_invited RLS already lets this
+        // recipient load it (a pending invite is enough), and EventDetail
+        // shows its own accept/decline banner once there by querying
+        // event_invites for the signed-in user directly (never trusts
+        // notification.data for the invite's live status).
+        if (n.data?.event_id) goEvent(n.data.event_id);
+        break;
       case 'refund_marked_sent':
         // Guest-facing: the host reported sending the refund — straight
         // back to the same booking's Payment screen, where the new
@@ -8495,7 +8577,7 @@ export function GocProvider({ children }) {
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
-    pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
+    pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
@@ -8531,7 +8613,7 @@ export function GocProvider({ children }) {
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
-    pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
+    pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   ]);
 

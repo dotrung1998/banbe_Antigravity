@@ -37,7 +37,7 @@ export default function CreateEvent() {
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
-    pickCreateCat, pickCreatePalette,
+    pickCreateCat, pickCreatePalette, pickCreateVisibility,
     addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent,
     createSubmit, goEvent, loadHomeLiveEvents,
     goCreate, goHome, goDashboard, goProfile,
@@ -86,9 +86,12 @@ export default function CreateEvent() {
     if (s.eventPhotosLoading) return;
     seededForEventId.current = s.createEditEventId;
     const real = s.realEventsById[s.createEditEventId];
-    const seeded = (s.eventPhotos || []).map(p => ({
-      kind: 'existing', id: p.id, storagePath: p.storage_path,
-      url: supabase.storage.from('event-photos').getPublicUrl(p.storage_path.replace(/^event-photos\//, '')).data.publicUrl,
+    // Strict invite-only events (migration 113) — loadEventPhotos already
+    // resolves each row's display url (public getPublicUrl or a private-
+    // bucket signed url), so this no longer needs its own synchronous
+    // (and, for a private path, simply wrong) getPublicUrl() call.
+    const seeded = (s.eventPhotos || []).filter(p => p.url).map(p => ({
+      kind: 'existing', id: p.id, storagePath: p.storage_path, url: p.url,
     }));
     setItems(seeded);
     seededExistingIds.current = seeded.map(it => it.id);
@@ -473,6 +476,44 @@ export default function CreateEvent() {
         </div>
         {attemptedReview && fieldErrors.seats && <p style={{ fontSize: 11, color: alert, margin: '6px 0 0' }}>{T('Hãy nhập số chỗ lớn hơn 0.', 'Please enter a number of seats greater than 0.')}</p>}
 
+        {/* Strict invite-only events (migration 113) — Public vs Invite-Only
+            is deliberately a peer of every other form field here, not a
+            separate "advanced" section: it changes who can even discover
+            the event, so it needs the same visibility a host gives price/
+            capacity. Kept separate from approval mode (not exposed in this
+            form at all) and from admin review — see set_event_visibility's
+            own migration comment: private is not auto-approved. */}
+        <div style={{ marginTop: 18 }}>
+          <label style={labelStyle}>{T('Quyền riêng tư', 'Privacy')}</label>
+          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+            {[
+              { key: 'public', vi: 'Công khai', en: 'Public' },
+              { key: 'invite', vi: 'Chỉ mời', en: 'Invite-only' },
+            ].map(opt => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => pickCreateVisibility(opt.key)}
+                data-testid={`create-visibility-${opt.key}`}
+                style={{
+                  flex: 1, padding: '10px 12px', borderRadius: 10,
+                  border: `1px solid ${s.createVisibility === opt.key ? ink : rule}`,
+                  background: s.createVisibility === opt.key ? ink : 'transparent',
+                  color: s.createVisibility === opt.key ? paper : ink,
+                  fontSize: 13, cursor: 'pointer',
+                }}
+              >
+                {T(opt.vi, opt.en)}
+              </button>
+            ))}
+          </div>
+          <p style={{ fontSize: 11, color: ink, opacity: 0.6, margin: '6px 0 0' }}>
+            {s.createVisibility === 'invite'
+              ? T('Chỉ người được mời mới thấy và đặt được sự kiện này. Bạn vẫn cần được banbe duyệt.', 'Only invited people can see or book this event. It still needs banbe approval.')
+              : T('Ai cũng có thể tìm thấy và đặt sự kiện này.', 'Anyone can discover and book this event.')}
+          </p>
+        </div>
+
         {/* Photo-management cleanup (task 1, screenshot 1 follow-up) — a
             clean vertical list, one row per photo, replacing the old
             4-column grid where remove/reorder/cover controls were tiny
@@ -825,6 +866,7 @@ function ReviewStep({ T, trStatus, stripKm, s, items, coverKey, createCatLabel, 
               {row(T('Địa chỉ', 'Address'), addressLabel)}
               {row(T('Số chỗ', 'Capacity'), seatsLabel)}
               {row(T('Giá vé', 'Price'), priceLabel)}
+              {row(T('Quyền riêng tư', 'Privacy'), s.createVisibility === 'invite' ? T('Chỉ mời', 'Invite-only') : T('Công khai', 'Public'))}
               {s.createDesc.trim() && row(T('Mô tả', 'Description'), s.createDesc.trim())}
               {s.createIntro.trim() && row(T('Giới thiệu sự kiện', 'Event introduction'), s.createIntro.trim())}
             </div>

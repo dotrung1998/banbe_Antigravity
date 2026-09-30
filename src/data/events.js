@@ -52,9 +52,18 @@ const ROWS = [
   ['bangcoi','music','Nhạc','Băng Cối','1mW5YR-nCRRNhP0AVkzTzLcTTVKgJZorn','Quận 3','3,6','Th 6, 10.07','Thứ Sáu, 10 tháng 7','20:00','180.000₫',22,'Nghe nhạc từ băng cối qua dàn loa cũ. Không điện thoại trong phòng nghe.','Vào cửa ▪︎ trà nóng','Băng Cối','Băng Cối','slate','Băng Cối đây. Phòng nghe im lặng tuyệt đối nha.'],
   ['modular','music','Nhạc','Đêm Modular','1Xv5FpSs4sW2wbYuxC0pVpIkgOK18acNU','Quận 4','3,0','Th 7, 11.07','Thứ Bảy, 11 tháng 7','21:30','200.000₫',27,'Bốn nghệ sĩ, bốn dàn máy, nối dây trực tiếp. Không có bài nào lặp lại.','Vào cửa ▪︎ earplugs miễn phí','OBJoff','OBJoff','slate','OBJoff đây, tối đó gặp nhé.'],
   ['pianomuon','music','Nhạc','Piano Muộn','1CAFKmNPymRS9P7vNRnPGxHwPYf0SXorw','Quận 1','5,2','CN, 12.07','Chủ Nhật, 12 tháng 7','22:00','300.000₫',11,'Một cây đàn, một người chơi, đèn tắt gần hết. Bốn mươi lăm phút.','1 set ▪︎ một ly vang','Nhà Piano','Nhà Piano','slate','Nhà Piano chào bạn. Đến trước 21:45 nhé, vào trễ phải chờ hết bài.'],
-
-  ['banrieng','supper','Supper club','Bàn Riêng','1koPFwcKRxI9VlbBZCJSdwLW_xya9YJU5','Bình Thạnh','2,1','Th 4, 15.07','Thứ Tư, 15 tháng 7','19:30','1.500.000₫',4,'Sáu chỗ, không đăng công khai. Minh nấu riêng cho vài người quen của người quen.','7 món ▪︎ rượu vang chọn riêng','Minh, @bepnho.saigon','Minh','ember','Bạn được mời vào bàn này. Rủ thêm 1 người cũng được nhé.'],
 ];
+// Strict invite-only events (2026-10-25): this static, unauthenticated
+// demo catalogue used to also carry a 'banrieng' row, gated only by a
+// client-side `INVITE_ONLY` map + an `s.invited` array that was never
+// actually populated anywhere (dead state — always `[]`) — meaning ANY
+// user navigating directly to it (saved-list, deep link) got the full
+// "private" demo content for free, exactly the "grant all users demo
+// access" bug this pass was asked to close. Removed here; the real
+// invite-only demo event with the same id already exists as a genuine
+// `events` row (migration 020) and now goes through the real
+// RLS/event_invites/claim_seats authorization this migration added —
+// nothing invented, no separate demo auth model to maintain.
 
 
 const ORG = {
@@ -86,8 +95,6 @@ const STATUS = {
   motlop: { endedHoursAgo: 74 },
   fanci: { soldOut: true },
 };
-
-const INVITE_ONLY = { banrieng: true };
 
 // Demo-event Event Introduction pass (2026-09-28) — this static catalogue
 // predates migrations 087/088 ("Bao gồm"/included_items and "Giới thiệu
@@ -122,7 +129,6 @@ const INTRO = {
   bangcoi: 'Nghe lại nhạc từ băng cối, qua một dàn loa cũ — không điện thoại trong phòng nghe.\n\nBao gồm vé vào cửa và một tách trà nóng.',
   modular: 'Bốn nghệ sĩ, bốn dàn máy modular, nối dây và chơi trực tiếp — không bài nào lặp lại đêm đó.\n\nBao gồm vé vào cửa và earplugs miễn phí.',
   pianomuon: 'Một cây đàn, một người chơi, đèn tắt gần hết — bốn mươi lăm phút, không micro, không giới thiệu dài dòng.\n\nBao gồm một set và một ly vang.',
-  banrieng: 'Một bàn riêng, sáu chỗ, không đăng công khai — Minh nấu cho vài người quen của người quen.\n\nBao gồm 7 món và rượu vang chọn riêng cho bữa này.',
 };
 
 const ORG_STATS = {
@@ -278,7 +284,7 @@ export const EVENTS = ROWS.map((r, idx) => {
     gallery, orgGallery, orgName: org.name, orgIg: org.ig, orgDesc: org.desc,
     orgSince: orgStat.since, orgCount: orgStat.count, orgTrusted: trusted,
     cancelled: !!st.cancelled, cancelledHoursAgo: st.cancelledHoursAgo != null ? st.cancelledHoursAgo : null, endedHoursAgo: st.endedHoursAgo != null ? st.endedHoursAgo : null,
-    soldOut: !!st.soldOut, inviteOnly: !!INVITE_ONLY[r[0]],
+    soldOut: !!st.soldOut, inviteOnly: false,
     cat2Key: (CAT2[r[0]] || {}).key || null, catDisplay: r[2] + (CAT2[r[0]] ? ' ▪︎ ' + CAT2[r[0]].label : ''),
     until, untilLabel: until != null ? untilLabel(until) : '', agoLabel,
     // Bug 3 (15-organizer-checkin.md follow-up): "Add to Calendar" needs a

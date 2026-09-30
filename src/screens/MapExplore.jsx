@@ -57,6 +57,14 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
     // `keywords` happens to be populated for a given row.
     .select('id, key, name, cat_key, cat_label, area, city, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, country_code, state_province, neighborhood, organizers(name)')
     .eq('status', 'live')
+    // Strict invite-only events (2026-10-25): unlike loadWeekendEvents/
+    // loadDiscoveryEvents (GocContext.jsx), this query never filtered
+    // visibility at all — a real invite-only event would have shown up
+    // on the Map for anyone. RLS (migration 113) is the actual backstop
+    // now, but this list should stay honest client-side too: an invitee
+    // sees their own invite-only event on the Map through EventDetail/
+    // deep link, never through discovery search.
+    .eq('visibility', 'public')
     .order('starts_at', { ascending: true })
     .range(offset, offset + limit - 1);
   if (bounds) {
