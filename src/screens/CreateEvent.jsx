@@ -19,6 +19,7 @@ const IMPORT_FIELD_LABELS = {
 };
 
 const MAX_PHOTOS = 8;
+const MIN_PHOTOS = 3;
 const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_PHOTO_BYTES = 50 * 1024 * 1024; // event-photos bucket's own cap, migration 005
 
@@ -39,6 +40,7 @@ export default function CreateEvent() {
     pickCreateCat, pickCreatePalette,
     addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent,
     createSubmit, goEvent, loadHomeLiveEvents,
+    goCreate, goHome, goDashboard, goProfile,
   } = useGoc();
   const s = state;
 
@@ -61,6 +63,15 @@ export default function CreateEvent() {
   // gửi" button ever calls createSubmit; the form's own primary button
   // only ever opens this step.
   const [reviewOpen, setReviewOpen] = useState(false);
+  // TASK 3 (event creation validation pass) — required-field errors only
+  // render after a real attempt to proceed (never on first paint of a
+  // blank form), same "show after attempt" convention the address hint
+  // below already follows for `createLocConfirmed`.
+  const [attemptedReview, setAttemptedReview] = useState(false);
+  // TASK 3 (event creation validation pass) — the post-submission chooser;
+  // opened only by a real createSubmit() success (see ReviewStep's
+  // onConfirm below), never merely because the request finished.
+  const [successChooserOpen, setSuccessChooserOpen] = useState(false);
   const fileInputRef = useRef(null);
   const seededForEventId = useRef(null);
   const seededExistingIds = useRef([]); // event_photos ids present when this edit session was seeded
@@ -188,6 +199,22 @@ export default function CreateEvent() {
   const coverItem = items.find(it => it.url === coverKey) || null;
   const coverIndex = coverItem?.kind === 'new' ? newFilesInOrder.indexOf(coverItem.file) : -1;
   const existingCoverPath = coverItem?.kind === 'existing' ? coverItem.storagePath : '';
+  // TASK 3 (event creation validation pass) — these five are genuinely
+  // required (not decorative asterisks): each is checked here, blocks
+  // opening Review, and re-checked at Review's own "Xác nhận và gửi" (a
+  // host can still get here via Review's own Back). `photos` already
+  // excludes removed items (splice, not a soft-delete flag) and only ever
+  // holds locally-staged/already-uploaded ones — there's nothing "failed/
+  // in-progress" to separately exclude before a real upload attempt exists.
+  const fieldErrors = {
+    desc: !s.createDesc.trim(),
+    dateTime: !s.createEventDate || !s.createEventTime,
+    seats: !(parseInt(s.createSeats, 10) > 0),
+    cats: s.createCats.length === 0,
+    included: !s.createIncludedItems.some(it => (it.label || '').trim()),
+    photos: photos.length < MIN_PHOTOS || photos.length > MAX_PHOTOS,
+  };
+  const hasFieldErrors = Object.values(fieldErrors).some(Boolean);
   // 2026-09-25 fix pass (Task 0 audit) — this screen can be reached
   // directly (not only via Home, which is the only other place that calls
   // this), so `s.homeLiveEvents` can't be assumed already populated; same
@@ -287,7 +314,7 @@ export default function CreateEvent() {
 
         <div style={{ marginTop: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontSize: 11.5, color: ink }}>{T('Danh mục', 'Category')}</span>
+            <span style={{ fontSize: 11.5, color: ink }}>{T('Danh mục', 'Category')} <span style={{ color: alert }}>*</span></span>
             <span style={{ fontSize: 10.5, color: ink }}>{T('Tối đa 2 danh mục', 'Max 2 categories')}</span>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
@@ -301,6 +328,7 @@ export default function CreateEvent() {
               );
             })}
           </div>
+          {attemptedReview && fieldErrors.cats && <p style={{ fontSize: 11, color: alert, margin: '6px 0 0' }}>{T('Hãy chọn ít nhất một danh mục.', 'Please pick at least one category.')}</p>}
         </div>
 
         {/* Keyword-search fix (migration 108) — so this event actually
@@ -320,8 +348,9 @@ export default function CreateEvent() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 20 }}>
-          <label style={labelStyle}>{T('Mô tả', 'Description')}</label>
+          <label style={labelStyle}>{T('Mô tả', 'Description')} <span style={{ color: alert }}>*</span></label>
           <input value={s.createDesc} onChange={createDescType} placeholder={T('Mười bốn chỗ. Một ga-ra cải tạo…', 'Fourteen seats. A converted garage…')} style={fieldInput} />
+          {attemptedReview && fieldErrors.desc && <p style={{ fontSize: 11, color: alert, margin: 0 }}>{T('Hãy nhập mô tả.', 'Please enter a description.')}</p>}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 20 }}>
@@ -415,7 +444,7 @@ export default function CreateEvent() {
 
         <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={labelStyle}>{T('Ngày', 'Date')}</label>
+            <label style={labelStyle}>{T('Ngày', 'Date')} <span style={{ color: alert }}>*</span></label>
             <input
               type="date" value={s.createEventDate} onChange={createEventDateType}
               min={new Date().toISOString().slice(0, 10)}
@@ -423,13 +452,14 @@ export default function CreateEvent() {
             />
           </div>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={labelStyle}>{T('Giờ', 'Time')}</label>
+            <label style={labelStyle}>{T('Giờ', 'Time')} <span style={{ color: alert }}>*</span></label>
             <input
               type="time" value={s.createEventTime} onChange={createEventTimeType}
               data-testid="create-event-time" style={fieldInput}
             />
           </div>
         </div>
+        {attemptedReview && fieldErrors.dateTime && <p style={{ fontSize: 11, color: alert, margin: '6px 0 0' }}>{T('Hãy chọn ngày và giờ diễn ra.', 'Please pick a date and time.')}</p>}
 
         <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -437,10 +467,11 @@ export default function CreateEvent() {
             <input value={s.createPrice} onChange={createPriceType} placeholder="500.000₫" style={fieldInput} />
           </div>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <label style={labelStyle}>{T('Số chỗ', 'Seats')}</label>
+            <label style={labelStyle}>{T('Số chỗ', 'Seats')} <span style={{ color: alert }}>*</span></label>
             <input value={s.createSeats} onChange={createSeatsType} placeholder="14" style={fieldInput} />
           </div>
         </div>
+        {attemptedReview && fieldErrors.seats && <p style={{ fontSize: 11, color: alert, margin: '6px 0 0' }}>{T('Hãy nhập số chỗ lớn hơn 0.', 'Please enter a number of seats greater than 0.')}</p>}
 
         {/* Photo-management cleanup (task 1, screenshot 1 follow-up) — a
             clean vertical list, one row per photo, replacing the old
@@ -457,8 +488,8 @@ export default function CreateEvent() {
             instead of overlapping the photo. */}
         <div style={{ marginTop: 22 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontSize: 11.5, color: ink }}>{T('Hình ảnh', 'Photos')}</span>
-            <span style={{ fontSize: 10.5, color: ink }}>{photos.length}/{MAX_PHOTOS}</span>
+            <span style={{ fontSize: 11.5, color: ink }}>{T('Hình ảnh', 'Photos')} <span style={{ color: alert }}>*</span></span>
+            <span style={{ fontSize: 10.5, color: ink }}>{photos.length}/{MAX_PHOTOS} ({T(`tối thiểu ${MIN_PHOTOS}`, `min ${MIN_PHOTOS}`)})</span>
           </div>
           <input
             ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple
@@ -526,11 +557,16 @@ export default function CreateEvent() {
             )}
           </div>
           {photoError && <p style={{ fontSize: 11.5, color: alert, margin: '8px 0 0' }}>{photoError}</p>}
+          {!photoError && attemptedReview && fieldErrors.photos && (
+            <p style={{ fontSize: 11.5, color: alert, margin: '8px 0 0' }}>
+              {T(`Cần tối thiểu ${MIN_PHOTOS} và tối đa ${MAX_PHOTOS} ảnh khả dụng.`, `Minimum ${MIN_PHOTOS}, maximum ${MAX_PHOTOS} available photos.`)}
+            </p>
+          )}
         </div>
 
         <div style={{ marginTop: 22 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontSize: 11.5, color: ink }}>{T('Bao gồm', 'Included')}</span>
+            <span style={{ fontSize: 11.5, color: ink }}>{T('Bao gồm', 'Included')} <span style={{ color: alert }}>*</span></span>
             <span style={{ fontSize: 10.5, color: ink }}>{T('Tối đa 3 mục', 'Up to 3 items')}</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
@@ -557,6 +593,7 @@ export default function CreateEvent() {
               <span onClick={addCreateIncludedItem} style={{ fontSize: 12.5, color: ink, fontWeight: 600, cursor: 'pointer' }}>+ {T('Thêm mục', 'Add item')}</span>
             )}
           </div>
+          {attemptedReview && fieldErrors.included && <p style={{ fontSize: 11, color: alert, margin: '6px 0 0' }}>{T('Hãy thêm ít nhất một mục Bao gồm.', 'Please add at least one Included item.')}</p>}
         </div>
 
         <div style={{ marginTop: 22 }}>
@@ -581,16 +618,16 @@ export default function CreateEvent() {
           <p style={{ fontSize: 11, lineHeight: 1.55, color: ink, margin: '12px 0 0' }}>{T('Sự kiện mới sẽ ở trạng thái chờ duyệt. Một tài khoản admin riêng của banbe sẽ kiểm tra trước khi mở bán.', 'New events enter review. A separate banbe admin account approves them before they go live.')}</p>
         </div>
 
-        {/* Excel bulk-create — real .xlsx template (public/templates/), not
-            a renamed CSV, generated by scripts/generate-template.js (the
-            SAME generator that produces the iOS-bundled copy). Upload
-            parses it (src/lib/excelEventImport.js) and only fills the form
-            above — never creates or submits an event by itself. */}
+        {/* Excel bulk-create upload — parses a filled-in .xlsx/.zip
+            (src/lib/excelEventImport.js) and only fills the form above,
+            never creates or submits an event by itself. TASK 3 (event
+            creation validation pass) — the "Download the Excel template"
+            link that used to sit above this is removed per this ticket's
+            own instruction; the upload/parse path itself is untouched and
+            still fully functional for anyone with their own filled-in copy
+            of the template (still generated by scripts/generate-template.js
+            for the iOS-bundled copy, which is unaffected). */}
         <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <a
-            href="/templates/banbe_event_template.xlsx" download
-            style={{ fontSize: 12.5, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
-          >{T('Tải mẫu Excel để tạo hàng loạt', 'Download the Excel template for bulk creation')}</a>
           <input
             ref={importInputRef} type="file" accept=".xlsx,.zip" style={{ display: 'none' }} onChange={onImportFile}
           />
@@ -630,9 +667,16 @@ export default function CreateEvent() {
         {/* "Review before submitting" step (task 1) — this button now only
             OPENS the review step below; only that step's own "Xác nhận và
             gửi" ever actually submits. Still gated on the same
-            createName/createSent checks the old direct-submit button used. */}
+            createName/createSent checks the old direct-submit button used.
+            TASK 3 (event creation validation pass) — also blocked while any
+            required field above is missing; a first click on an invalid
+            form flips `attemptedReview` (surfacing every field-level error
+            above) instead of opening Review at all. */}
         <div
-          onClick={s.createName.trim() && !s.createSent ? () => setReviewOpen(true) : undefined}
+          onClick={s.createSent ? undefined : () => {
+            if (!s.createName.trim() || hasFieldErrors) { setAttemptedReview(true); return; }
+            setReviewOpen(true);
+          }}
           data-testid="create-open-review"
           style={createBtnStyle}
         >
@@ -654,7 +698,33 @@ export default function CreateEvent() {
           coverKey={coverKey}
           createCatLabel={createCatLabel}
           onBack={() => setReviewOpen(false)}
-          onConfirm={() => createSubmit(newFilesInOrder, coverIndex, { removePhotoIds: removedExistingIds, existingCoverPath, defaultKeywordsLabel: createCatLabel })}
+          // TASK 3 (event creation validation pass) — defense-in-depth:
+          // Review's own fields are read-only display, but re-check here
+          // too rather than trust that nothing changed between opening
+          // Review and this tap (e.g. a state update from elsewhere). Only
+          // a REAL RPC-confirmed success (createSubmit's own return value,
+          // not just "the request finished") opens the post-submission
+          // chooser — a failure leaves Review open with data intact and
+          // s.createError already showing, never the chooser.
+          onConfirm={async () => {
+            if (!s.createName.trim() || hasFieldErrors) { setReviewOpen(false); setAttemptedReview(true); return; }
+            const ok = await createSubmit(newFilesInOrder, coverIndex, { removePhotoIds: removedExistingIds, existingCoverPath, defaultKeywordsLabel: createCatLabel });
+            if (ok) { setReviewOpen(false); setSuccessChooserOpen(true); }
+          }}
+        />
+      )}
+      {successChooserOpen && (
+        <SubmitSuccessChooser
+          T={T}
+          onCreateAnother={() => {
+            setSuccessChooserOpen(false);
+            setItems([]); setCoverKey(null); setPhotoError(''); setAttemptedReview(false);
+            seededExistingIds.current = [];
+            goCreate();
+          }}
+          onGoHome={() => { setSuccessChooserOpen(false); goHome(); }}
+          onViewPending={() => { setSuccessChooserOpen(false); goDashboard('create'); }}
+          onGoAccount={() => { setSuccessChooserOpen(false); goProfile(); }}
         />
       )}
     </div>
@@ -876,6 +946,55 @@ function ReviewStep({ T, trStatus, stripKm, s, items, coverKey, createCatLabel, 
         {s.createError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0', textAlign: 'center' }}>{s.createError}</p>}
       </div>
     </div>
+  );
+}
+
+/**
+ * TASK 3 (event creation validation pass) — the post-submission chooser.
+ * Uses the real native `<dialog>` element (`showModal()`), not a hand-rolled
+ * overlay imitating a platform picker — this ticket's own instruction is a
+ * "supported platform API," and `<dialog>` is the browser's own native
+ * modal primitive (top-layer rendering, native Escape-to-cancel via the
+ * `cancel` event, native focus trapping) — closest web equivalent to
+ * iOS's `UIAlertController`/`confirmationDialog`. Only ever mounted by a
+ * REAL createSubmit() success (see CreateEvent's own `onConfirm`) — a
+ * failed submission never reaches this component at all.
+ */
+function SubmitSuccessChooser({ T, onCreateAnother, onGoHome, onViewPending, onGoAccount }) {
+  const dialogRef = useRef(null);
+  useEffect(() => { dialogRef.current?.showModal(); }, []);
+  const rowBtnStyle = {
+    fontSize: 14, fontWeight: 600, textAlign: 'left', padding: '13px 14px', borderRadius: 12,
+    background: 'transparent', border: `1px solid ${rule}`, color: ink, cursor: 'pointer', width: '100%',
+  };
+  return (
+    <dialog
+      ref={dialogRef}
+      data-testid="submit-success-chooser"
+      // Native Escape-to-cancel — this ticket's own instruction: "On
+      // cancellation of the chooser, default to the pending-events
+      // destination" (an unambiguous success outcome, not a dead end).
+      onCancel={(e) => { e.preventDefault(); onViewPending(); }}
+      // A native `<dialog>` doesn't auto-close on a backdrop click; this
+      // treats a click landing on the dialog's own backdrop box (not its
+      // inner content, which is a normal-flow child that fully occupies
+      // its own box) the same as Escape — same destination, same reasoning.
+      onClick={(e) => { if (e.target === dialogRef.current) onViewPending(); }}
+      style={{ border: 'none', borderRadius: 18, padding: 0, maxWidth: 320, width: '88%', background: paper, color: ink }}
+    >
+      <div style={{ padding: 22 }}>
+        <p style={{ ...display(18, { margin: '0 0 4px' }) }}>{T('Đã gửi sự kiện!', 'Event submitted!')}</p>
+        <p style={{ fontSize: 12.5, color: ink, opacity: 0.75, margin: '0 0 18px' }}>
+          {T('Đang chờ Banbe duyệt. Bạn muốn làm gì tiếp theo?', 'Waiting for Banbe to review. What would you like to do next?')}
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button onClick={onCreateAnother} data-testid="submit-chooser-create-another" style={rowBtnStyle}>{T('Tạo sự kiện khác', 'Create another event')}</button>
+          <button onClick={onViewPending} data-testid="submit-chooser-pending" style={rowBtnStyle}>{T('Xem sự kiện đang chờ duyệt', 'View pending events')}</button>
+          <button onClick={onGoHome} data-testid="submit-chooser-home" style={rowBtnStyle}>{T('Về Trang chủ', 'Go to Home')}</button>
+          <button onClick={onGoAccount} data-testid="submit-chooser-account" style={rowBtnStyle}>{T('Về Tài khoản', 'Go to Account')}</button>
+        </div>
+      </div>
+    </dialog>
   );
 }
 

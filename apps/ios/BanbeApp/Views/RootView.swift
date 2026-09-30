@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PhotosUI
 
 /// Top-level screen switch and sheet host — the iOS equivalent of the
 /// SCREENS map and sheet layer in src/App.jsx. One screen shows at a time,
@@ -752,12 +753,12 @@ struct RootView: View {
             // overlay, don't add another competing floating UIWindow"
             // instruction — see that file's doc comment.
             //
-            // TASK 1 (2026-10-05 fix pass) — the tray THAT BUTTON opens
-            // (DockCreateTrayView) lives here instead, in this main
-            // window's own ZStack — see that view's own doc comment for
-            // why (it needs to dim/cover the real screen, which the dock's
-            // small band-sized overlay window cannot do).
-            if app.dockCreateTrayOpen { DockCreateTrayView().zIndex(28) }
+            // TASK 1 (dock "+" native-menu pass) — the "+" now opens a
+            // native SwiftUI `Menu` directly inside that same overlay
+            // window (see DockCreateButtonView's own doc comment for why
+            // that's safe: a `Menu`'s popover needs no full-screen scrim,
+            // unlike the old custom tray this replaced), so there's
+            // nothing left to host here.
 
             // BUG 3 follow-up (this session's real-device report on
             // 80c1ac3): BottomTabBar used to render HERE, as a ZStack
@@ -996,6 +997,46 @@ struct RootView: View {
         .onChange(of: app.areaAsking) { _, open in
             BottomTabBarOverlay.shared.setAreaSheetOpen(open)
         }
+        // TASK 1 (dock "+" native-menu pass) — story creation's photo/
+        // camera picker + Retake/Use-photo preview, centralized here
+        // (used to be attached to AccountView only, with its three
+        // trigger flags as local @State there). Both AccountView's own
+        // "Đăng story" menu and the dock "+" menu (DockCreateButtonView,
+        // a different view entirely, in BottomTabBarOverlay's separate
+        // window) now just flip these AppState flags — ONE presenter,
+        // reachable from any screen, no second upload pipeline. See the
+        // "PhotosPicker inside Menu swallowing taps" comment this reuses
+        // (AccountView.swift) — the picker's presentation still can't live
+        // directly inside a Menu row, so it's attached at this root level.
+        .photosPicker(isPresented: $app.storyLibraryPickerOpen, selection: $app.storyPhotoItem, matching: .images)
+        .onChange(of: app.storyPhotoItem) { _, item in
+            Task {
+                guard let item, let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
+                await MainActor.run { app.storyCreatePreviewImage = image }
+                app.storyPhotoItem = nil
+            }
+        }
+        .fullScreenCover(isPresented: $app.storyCameraOpen) {
+            CameraPicker { image in
+                app.storyCameraOpen = false
+                app.storyCreatePreviewImage = image
+            }
+            .ignoresSafeArea()
+        }
+        .fullScreenCover(isPresented: Binding(get: { app.storyCreatePreviewImage != nil }, set: { if !$0 { app.storyCreatePreviewImage = nil } })) {
+            StoryCreatePreviewView()
+        }
+        // Same reasoning as AccountView's own removed `syncDockHidden()`:
+        // BottomTabBarOverlay is a separate always-on-top UIWindow that
+        // sits above a `.photosPicker`/`.fullScreenCover` presentation
+        // unless explicitly told to hide.
+        .onChange(of: app.storyLibraryPickerOpen) { _, _ in syncStoryDockHidden() }
+        .onChange(of: app.storyCameraOpen) { _, _ in syncStoryDockHidden() }
+        .onChange(of: app.storyCreatePreviewImage != nil) { _, _ in syncStoryDockHidden() }
+    }
+
+    private func syncStoryDockHidden() {
+        BottomTabBarOverlay.shared.setForcedHidden(app.storyLibraryPickerOpen || app.storyCameraOpen || app.storyCreatePreviewImage != nil)
     }
 
     /// The SCREENS map, factored out so both the current screen and the
@@ -1064,7 +1105,13 @@ struct RootView: View {
     private var loadingOverlay: some View {
         ZStack {
             app.palette.paper.opacity(0.9).ignoresSafeArea()
-            VStack(spacing: 14) {
+            // TASK 2 (loading GIF placement pass) — was `spacing: 14`; the
+            // GIF's own rotating bounds sat close enough to the label below
+            // that they could visually cover it. `BanbeTheme.LoadingVisual.
+            // reservationGap` reserves real layout space for that gap (a
+            // real VStack spacing value, not a non-reflowing offset), so
+            // this label position is guaranteed clear.
+            VStack(spacing: BanbeTheme.LoadingVisual.reservationGap) {
                 // A4 (Pulse/loading UX pass, 2026-09-27) — the shared
                 // Banbe loading GIF while a seat-reservation request is
                 // pending, replacing the plain mark+spinner this used

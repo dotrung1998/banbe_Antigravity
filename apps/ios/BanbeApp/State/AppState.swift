@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import UIKit
 import CoreLocation
+import PhotosUI
 import Supabase
 
 /// Which screen is showing. The web app (src/App.jsx) keys one screen at a
@@ -427,14 +428,6 @@ final class AppState: ObservableObject {
     // toggleFavorite()'s own comment.
     var favoriteToggleInFlight: Set<String> = []
     @Published var hasHosted = false
-    // TASK 1 (2026-10-05 fix pass) — whether the dock "+"'s creation tray
-    // is open. Lives on AppState (not local @State in DockCreateButtonView)
-    // because the tray itself renders in RootView's own main-window ZStack
-    // (see that file), a different view entirely from the button that
-    // opens it (DockCreateButtonView, inside BottomTabBarOverlay's separate
-    // UIWindow) — both need to read/drive the same boolean.
-    @Published var dockCreateTrayOpen = false
-
     // MARK: Feed state
     @Published var favorites: [String] = []
     @Published var following: [String] = []
@@ -516,6 +509,10 @@ final class AppState: ObservableObject {
     @Published var adminEventsLoading = false
     @Published var adminEventBusy: String?
     @Published var adminEventError = ""
+    // TASK 5 (Account badges pass) — count-only sibling of `adminEvents`,
+    // powering the "adminReview" group-card badge; see
+    // `loadPendingEventsCount()`'s own comment.
+    @Published var pendingEventsCount = 0
 
     // MARK: Location
     @Published var located: Bool?
@@ -661,6 +658,16 @@ final class AppState: ObservableObject {
     var pulseTeaserOpenPhotos: (() -> Void)?
     @Published var storyCreatePreviewImage: UIImage?
     @Published var storyCreateBusy = false
+    // TASK 1 (dock "+" native-menu pass) — moved up from AccountView's own
+    // local @State so both AccountView's "Đăng story" menu AND the dock
+    // "+" menu (DockCreateButtonView, a different view entirely, inside
+    // BottomTabBarOverlay's separate UIWindow) can drive the same
+    // picker/camera trigger; the actual `.photosPicker`/`.fullScreenCover`
+    // presentation is attached once, centrally, in RootView so it works
+    // regardless of which screen/menu set the flag.
+    @Published var storyLibraryPickerOpen = false
+    @Published var storyCameraOpen = false
+    @Published var storyPhotoItem: PhotosPickerItem?
     @Published var storyViewedIds: Set<UUID> = []
     // Cached by loadHomeStories()/currentOrganizerIds() — iOS has no
     // upfront-loaded organizer-id list the way web's GocContext.jsx does,
@@ -792,6 +799,12 @@ final class AppState: ObservableObject {
     @Published var editNameValue = ""
     @Published var editNameError = ""
     @Published var editNameSaving = false
+    // TASK 4 (Reserve→edit-name pass) — where `goEditName()` was actually
+    // called from (Account's own "Đổi tên" sets this to `.profile`;
+    // ReserveView's "Đổi trong Tài khoản" sets it to `.reserve`), read by
+    // `saveDisplayName()`, `EditNameView`'s Back link, and `goBack()`/
+    // `backTargetScreen` below. Mirrors `createOriginScreen`'s own pattern.
+    @Published var editNameReturnScreen: Screen = .profile
 
     // MARK: Attendance / check-in
     @Published var attendanceEventKey: String?
@@ -2357,6 +2370,23 @@ final class AppState: ObservableObject {
         createSent = false
         createError = ""
         createOriginScreen = screen
+        // TASK 3 (event creation validation pass) — "Create another event"
+        // (the post-submission chooser, CreateEventView) reuses this SAME
+        // function, and unlike every previous caller (always arriving here
+        // from a genuinely different screen), it can now fire while
+        // `.create` is ALREADY showing — no view teardown, so nothing else
+        // would otherwise clear the previous event's own name/description/
+        // date/price/seats/category/intro. Reset all of them here, not
+        // just the address/edit-id/included-items fields this already
+        // cleared, so "Create another" truly starts blank.
+        createName = ""
+        createCats = []
+        createDesc = ""
+        createEventDate = nil
+        createEventTime = nil
+        createPrice = ""
+        createSeats = ""
+        createIntro = ""
         // Never carry a previous session's confirmed address/coordinates
         // into an unrelated fresh event.
         createLoc = ""
@@ -2509,12 +2539,14 @@ final class AppState: ObservableObject {
         // pass) — `.preferences`/`.security` are only ever reached from
         // AccountGroupView's "preferences" group page, so `.profile`
         // skipped that group page, same class of bug as `.documents`'s own
-        // fix. `.editName` is genuinely different — it's opened directly
-        // from AccountView's own root identity card (goEditName(), see its
-        // own comment), never from a group page, so `.profile` stays
-        // correct there and is kept as its own case.
+        // fix.
         case .preferences, .security: screen = .accountGroup
-        case .editName: screen = .profile
+        // TASK 4 (Reserve→edit-name pass) — `.editName` is now reachable
+        // from more than one place (AccountView's own root identity card,
+        // AND ReserveView's "Đổi trong Tài khoản"), so its back target is
+        // no longer always `.profile` — `editNameReturnScreen` (set by
+        // `goEditName()`, see its own comment) tracks whichever one it was.
+        case .editName: screen = editNameReturnScreen
         case .login: screen = authBackScreen
         case .confirmed: screen = confirmedBack
         case .refunded, .notifications: goHome()
@@ -2613,7 +2645,7 @@ final class AppState: ObservableObject {
         case .create: return createOriginScreen
         case .attendance: return attendanceBack
         case .preferences, .security: return .accountGroup
-        case .editName: return .profile
+        case .editName: return editNameReturnScreen
         case .login: return authBackScreen
         case .confirmed: return confirmedBack
         case .refunded, .notifications: return .home

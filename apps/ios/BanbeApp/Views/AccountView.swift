@@ -22,21 +22,15 @@ let ROW_ACCENT_COLORS: [String: Color] = [
 struct AccountView: View {
     @EnvironmentObject var app: AppState
     // Task 3 (07-notifications.md) — story creation, hosts only.
-    @State private var storyPhotoItem: PhotosPickerItem?
-    @State private var storyCameraOpen = false
-    // 2026-09-21 follow-up (real-device report) — `PhotosPicker` nested
-    // DIRECTLY as a Menu row's content is a known SwiftUI/real-device
-    // reliability gap: `Menu` wraps each row as its own button and can
-    // swallow the tap before PhotosPicker's own internal presentation
-    // trigger ever fires — it can look fine in Xcode Previews/Simulator and
-    // still silently do nothing on a real device (confirmed against this
-    // exact symptom report). Fixed by moving the picker's PRESENTATION
-    // (not the picker itself — still real `PhotosPicker`/`.photosPicker`,
-    // not a replacement API) out of the Menu: a plain `Button` inside the
-    // Menu just flips this flag, and `.photosPicker(isPresented:...)`
-    // below is attached to the screen itself, same as `storyCameraOpen`'s
-    // own `.fullScreenCover` already was.
-    @State private var storyLibraryPickerOpen = false
+    // TASK 1 (dock "+" native-menu pass) — the three trigger flags this
+    // used to own as local @State (storyPhotoItem/storyCameraOpen/
+    // storyLibraryPickerOpen) moved to AppState (see its own comment)
+    // so the dock "+" menu can drive the same picker/camera/preview
+    // pipeline from a different screen entirely. The "PhotosPicker inside
+    // Menu swallowing taps" constraint that originally motivated the
+    // flag-flip indirection (below, `account.postStory`'s Menu rows just
+    // set `app.storyLibraryPickerOpen`/`app.storyCameraOpen`) still holds
+    // — only WHERE the flags live changed, not how they're used.
     // iPhone fix pass (2026-09-27), Issue 1 — same "flash the one row a
     // notification pointed at" convention AttendanceView's own
     // highlightedGuestID already establishes (app.attendanceHighlightBookingID).
@@ -157,6 +151,11 @@ struct AccountView: View {
                 await app.loadOrganizerHoldingSummary()
                 await app.loadRefundQueue()
             }
+            // TASK 5 (Account badges pass) — same "load it here so the
+            // group-entry badge is real, not stale" reasoning as
+            // verifications/refundQueue above, gated on the actual admin
+            // role (RLS-backed), not a UI toggle.
+            if app.isAdmin { await app.loadPendingEventsCount() }
         }
         // Stage 1 — re-run whenever this account's organizer id becomes
         // known (session restore, or right after creating a first event)
@@ -176,38 +175,11 @@ struct AccountView: View {
         // toggle path, this is the general safety net for every other one.
         .onChange(of: app.organizerMode) { _, _ in syncAccountTabToRole() }
         .onChange(of: app.accountType) { _, _ in syncAccountTabToRole() }
-        .photosPicker(isPresented: $storyLibraryPickerOpen, selection: $storyPhotoItem, matching: .images)
-        .onChange(of: storyPhotoItem) { _, item in
-            Task {
-                guard let item, let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
-                await MainActor.run { app.storyCreatePreviewImage = image }
-                storyPhotoItem = nil
-            }
-        }
-        .fullScreenCover(isPresented: $storyCameraOpen) {
-            CameraPicker { image in
-                storyCameraOpen = false
-                app.storyCreatePreviewImage = image
-            }
-            .ignoresSafeArea()
-        }
-        // Task 3.2 — Retake / Use Photo preview before actually publishing.
-        .fullScreenCover(isPresented: Binding(get: { app.storyCreatePreviewImage != nil }, set: { if !$0 { app.storyCreatePreviewImage = nil } })) {
-            storyCreatePreview
-        }
-        // Task 1.3 (real-device report) — BottomTabBarOverlay is a SEPARATE,
-        // always-on-top UIWindow (see that file's own doc comment) that sits
-        // above ANY main-window content, including a `.photosPicker`/
-        // `.fullScreenCover` presentation — `.profile` staying in
-        // `visibleScreens` throughout means it was never hidden for any of
-        // these three presentations, silently covering Retake/Use Photo.
-        // Reuses the exact `setForcedHidden(_:)` mechanism InboxView already
-        // established for its own settings sheet, ORing in all three
-        // triggers here instead of inventing a second mechanism.
-        .onChange(of: storyLibraryPickerOpen) { _, _ in syncDockHidden() }
-        .onChange(of: storyCameraOpen) { _, _ in syncDockHidden() }
-        .onChange(of: app.storyCreatePreviewImage != nil) { _, _ in syncDockHidden() }
-        .onDisappear { BottomTabBarOverlay.shared.setForcedHidden(false) }
+        // TASK 1 (dock "+" native-menu pass) — the `.photosPicker`/
+        // `.fullScreenCover` presentation for story creation (and the
+        // BottomTabBarOverlay force-hide while any of it is up) is now
+        // centralized in RootView, since the dock "+" menu can trigger the
+        // same flags from outside this screen. See RootView's own comment.
     }
 
     /// Pulled out of `accountContent` (2026-09-29 follow-up) so it's a fixed
@@ -335,12 +307,12 @@ struct AccountView: View {
                             // chat composer's "+" menu exactly (same SF
                             // Symbols) so the two read as one family.
                             Button {
-                                storyLibraryPickerOpen = true
+                                app.storyLibraryPickerOpen = true
                             } label: {
                                 Label(app.T("Thư viện ảnh", "Photo library"), systemImage: "photo.on.rectangle")
                             }
                             Button {
-                                storyCameraOpen = true
+                                app.storyCameraOpen = true
                             } label: {
                                 Label(app.T("Camera", "Camera"), systemImage: "camera")
                             }
@@ -501,50 +473,6 @@ struct AccountView: View {
         else if app.accountTab == "admin" && app.accountType != "admin" { app.accountTab = "personal" }
     }
 
-    private func syncDockHidden() {
-        BottomTabBarOverlay.shared.setForcedHidden(storyLibraryPickerOpen || storyCameraOpen || app.storyCreatePreviewImage != nil)
-    }
-
-    private var storyCreatePreview: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 0) {
-                if let image = app.storyCreatePreviewImage {
-                    Image(uiImage: image).resizable().scaledToFit()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                HStack(spacing: 10) {
-                    Button {
-                        app.storyCreatePreviewImage = nil
-                        storyCameraOpen = true
-                    } label: {
-                        Text(app.T("Chụp lại", "Retake"))
-                            .font(.system(size: 13.5, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                            .foregroundStyle(.white)
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.35)))
-                    }
-                    .accessibilityIdentifier("story.retake")
-                    Button {
-                        Task { _ = await app.publishStory() }
-                    } label: {
-                        Text(app.storyCreateBusy ? app.T("Đang đăng…", "Posting…") : app.T("Dùng ảnh", "Use photo"))
-                            .font(.system(size: 13.5, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                            .foregroundStyle(.black)
-                            .background(Color.white, in: RoundedRectangle(cornerRadius: 12))
-                            .opacity(app.storyCreateBusy ? 0.6 : 1)
-                    }
-                    .disabled(app.storyCreateBusy)
-                    .accessibilityIdentifier("story.usePhoto")
-                }
-                .padding(.horizontal, 22).padding(.top, 16).padding(.bottom, 34)
-            }
-        }
-    }
-
     // Personal-vs-organizer hierarchy pass (2026-09-27) — extracted out of
     // `body`'s own `ForEach` (a real Swift type-checker timeout once this
     // ScreenScaffold call gained an `onRefresh:` closure alongside
@@ -657,13 +585,18 @@ struct AccountView: View {
                     .background((ROW_ACCENT_COLORS[groupKey] ?? .clear).opacity(0.33), in: Circle())
                 Text(label).font(.system(size: 14))
                 Spacer()
+                // TASK 5 (Account badges pass) — "99+" display, same cap
+                // convention BottomTabBar.swift's own Notifications badge
+                // already uses, with the real count kept in the
+                // accessibility label (never lost, just not rendered).
                 if badge > 0 {
-                    Text("\(badge)")
+                    Text(badge > 99 ? "99+" : "\(badge)")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(app.palette.paper)
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background(BanbeTheme.alert, in: Capsule())
                         .accessibilityIdentifier("account.group.\(groupKey).badge")
+                        .accessibilityLabel(app.T("\(badge) mục mới", "\(badge) new item(s)"))
                 }
                 Text("›").font(.system(size: 15))
             }
@@ -962,7 +895,7 @@ struct AccountView: View {
     // migration 040) — RLS is the real backstop; openAdminDashboard()
     // guards again regardless.
     private var adminSection: some View {
-        groupCard(groupKey: "adminReview", icon: "exclamationmark.shield", label: app.T("Duyệt & kiểm duyệt", "Review & moderation"), topPadding: 22)
+        groupCard(groupKey: "adminReview", icon: "exclamationmark.shield", label: app.T("Duyệt & kiểm duyệt", "Review & moderation"), badge: app.pendingEventsCount, topPadding: 22)
     }
 
     /// Host tab's OWN rounded profile card (Stage D) — organizer avatar/
@@ -1063,6 +996,57 @@ struct AccountView: View {
         app.accountScrollAnchorID = nil
         DispatchQueue.main.async {
             app.accountScrollAnchorID = target
+        }
+    }
+}
+
+/// TASK 1 (dock "+" native-menu pass) — extracted out of AccountView (it
+/// used to be a private `var` there) since the story picker/preview
+/// presentation it's part of is now centralized in RootView (any screen's
+/// "Post a story" action can trigger it, not just AccountView's own).
+/// Retake re-opens the camera directly, matching AccountView's own
+/// original behavior, regardless of whether library or camera was the
+/// original source.
+struct StoryCreatePreviewView: View {
+    @EnvironmentObject var app: AppState
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 0) {
+                if let image = app.storyCreatePreviewImage {
+                    Image(uiImage: image).resizable().scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                HStack(spacing: 10) {
+                    Button {
+                        app.storyCreatePreviewImage = nil
+                        app.storyCameraOpen = true
+                    } label: {
+                        Text(app.T("Chụp lại", "Retake"))
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .foregroundStyle(.white)
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.35)))
+                    }
+                    .accessibilityIdentifier("story.retake")
+                    Button {
+                        Task { _ = await app.publishStory() }
+                    } label: {
+                        Text(app.storyCreateBusy ? app.T("Đang đăng…", "Posting…") : app.T("Dùng ảnh", "Use photo"))
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .foregroundStyle(.black)
+                            .background(Color.white, in: RoundedRectangle(cornerRadius: 12))
+                            .opacity(app.storyCreateBusy ? 0.6 : 1)
+                    }
+                    .disabled(app.storyCreateBusy)
+                    .accessibilityIdentifier("story.usePhoto")
+                }
+                .padding(.horizontal, 22).padding(.top, 16).padding(.bottom, 34)
+            }
         }
     }
 }

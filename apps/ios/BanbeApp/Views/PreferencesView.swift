@@ -103,7 +103,12 @@ struct EditNameView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Tài khoản", "Account")) { app.screen = .profile }
+                // TASK 4 (Reserve→edit-name pass) — `editNameReturnScreen`
+                // (set by `goEditName()`) is wherever this was actually
+                // opened from now, not always Account.
+                BackLink(label: app.editNameReturnScreen == .reserve ? app.T("Đặt chỗ", "Reserve") : app.T("Tài khoản", "Account")) {
+                    app.screen = app.editNameReturnScreen
+                }
 
                 Text(app.T("Tên hiển thị", "Display name"))
                     .font(BanbeTheme.display(27))

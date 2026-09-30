@@ -210,8 +210,22 @@ struct RealEventSummary: Decodable {
     // `shapeRealEvent` decodes; lets `goEditEvent` pre-fill the keywords
     // field on a resubmit instead of losing whatever was set before.
     let keywords: [String]?
+    // TASK 3 (event creation validation pass) — AdminEventsView's own
+    // detailed review section (booking-approval mode + withdrawal
+    // history). Additive fields, only ever populated where selected.
+    let approval: String?
+    let withdrawalReason: String?
+    let withdrawnAt: Date?
     var organizerName: String = ""
     var photoURL: URL?
+    // Only ever populated by loadPendingEvents' own admin-only organizer
+    // lookup (organizerIdentities(for:)) — self-declared, `verified` has
+    // no real write path anywhere in this schema (migration 109's own
+    // comment). Default matches organizers.organizer_type's own DB
+    // default so an unpopulated value never silently reads as "business."
+    var organizerType: String = "individual"
+    var organizerVerified: Bool = false
+    var organizerHasTaxCode: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id, name, area, lat, lng, keywords
@@ -228,6 +242,7 @@ struct RealEventSummary: Decodable {
         case status
         case cancelledAt = "cancelled_at"
         case visibility
+        case approval
         case organizerId = "organizer_id"
         case description
         case eventDate = "event_date"
@@ -235,6 +250,8 @@ struct RealEventSummary: Decodable {
         case submittedAt = "submitted_at"
         case reviewedAt = "reviewed_at"
         case rejectionReason = "rejection_reason"
+        case withdrawalReason = "withdrawal_reason"
+        case withdrawnAt = "withdrawn_at"
         case coverImage = "cover_image"
         case includedItems = "included_items"
         case intro

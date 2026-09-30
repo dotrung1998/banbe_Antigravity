@@ -50,6 +50,7 @@ import ToastStack from './screens/ToastStack.jsx';
 import Policy from './screens/Policy.jsx';
 import MapExplore from './screens/MapExplore.jsx';
 import DockCreateButton from './screens/DockCreateButton.jsx';
+import StoryCreateOverlay from './screens/StoryCreateOverlay.jsx';
 import EditProfile from './screens/EditProfile.jsx';
 import PublicProfile from './screens/PublicProfile.jsx';
 import OrganizerProfile from './screens/OrganizerProfile.jsx';
@@ -660,6 +661,10 @@ function Shell() {
         {state.loading && <Loading label={T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
       {showBar && <DockRow collapsed={barCollapsed} showCreate={state.organizerMode} />}
+      {/* TASK 1 (dock "+" menu pass) — mounted unconditionally (not gated
+          on showBar/organizerMode) since Account.jsx's own "Đăng story"
+          entry point can still open it even on a screen without the dock. */}
+      <StoryCreateOverlay />
       <ToastStack />
     </div>
   );

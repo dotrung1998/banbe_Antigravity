@@ -296,19 +296,12 @@ final class BottomTabBarOverlay {
             // whatever's underneath while it's still fading out.
             window?.isUserInteractionEnabled = false
             withAnimation(Self.transitionAnimation) { appState?.dockVisible = false }
-            // TASK 1 (2026-10-05 fix pass) — every case this ticket lists
-            // ("hide/reconcile dock on other sheets, Pulse, story viewer,
-            // QR and auth screens") already funnels through THIS branch —
-            // it's exactly when `shouldShow` above goes false. Closing the
-            // tray here, once, covers all of them instead of duplicating
-            // the same check at each individual call site
-            // (setStoryViewerOpen/setPulseViewerOpen/updateVisibility/…).
-            // An orphaned open tray with its dock/button now hidden
-            // underneath (e.g. Pulse opening while the tray was up) would
-            // otherwise leave an invisible scrim still intercepting taps —
-            // the exact "don't leave an invisible tap-blocking backdrop
-            // after close" failure mode this ticket calls out.
-            appState?.dockCreateTrayOpen = false
+            // TASK 1 (dock "+" native-menu pass) — the "+" now opens a
+            // native SwiftUI `Menu` (DockCreateButtonView) instead of the
+            // old custom tray, so there's no separate open/closed flag to
+            // reconcile here anymore: a native `Menu`'s own popover is
+            // owned by this window and is dismissed by the system when
+            // the window loses interaction/hides, same as the dock itself.
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.transitionDuration) { [weak self] in
                 guard let self, self.visibilityToken == token else { return }
                 self.window?.isHidden = true

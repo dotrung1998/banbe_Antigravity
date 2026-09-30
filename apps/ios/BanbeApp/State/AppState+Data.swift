@@ -579,6 +579,13 @@ extension AppState {
         authMandatory = true
         authReturnScreen = .home
         authBackScreen = .home
+        // TASK 4 (Reserve→edit-name pass) — clear the return context, same
+        // belt-and-suspenders spirit as authReturnScreen/authBackScreen
+        // above, so a later sign-in never inherits a stale return target.
+        editNameReturnScreen = .profile
+        // TASK 5 (Account badges pass) — admin-only cache; a non-admin (or
+        // the next account signing in) must never see a stale prior count.
+        pendingEventsCount = 0
     }
 
     /// Which catalogue events this account is actually attending (from real
@@ -955,6 +962,31 @@ extension AppState {
             print("loadEventPhotos failed:", error)
             eventPhotos = []
             eventPhotosLoading = false
+        }
+    }
+
+    /// TASK 3 (event creation validation pass) — AdminEventsView's own
+    /// detailed review section needs MULTIPLE events' galleries available
+    /// at once (one per expanded card); the single global `eventPhotos`/
+    /// `eventPhotosLoading` pair `loadEventPhotos(eventID:)` above owns is
+    /// scoped to exactly one event at a time (a single-event edit
+    /// context), so this is a separate, non-state-mutating query rather
+    /// than reusing/widening that one.
+    func loadEventGalleryURLs(eventID: String) async -> [URL] {
+        do {
+            let photos: [OrganizerPhoto] = try await SupabaseService.client
+                .from("event_photos").select("id, event_id, storage_path, sort_order")
+                .eq("event_id", value: eventID)
+                .order("sort_order", ascending: true)
+                .execute().value
+            return photos.compactMap { photo in
+                let relative = photo.storagePath.hasPrefix("event-photos/")
+                    ? String(photo.storagePath.dropFirst("event-photos/".count)) : photo.storagePath
+                return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative)
+            }
+        } catch {
+            print("loadEventGalleryURLs failed:", error)
+            return []
         }
     }
 
@@ -1360,7 +1392,14 @@ extension AppState {
         }
     }
 
+    // TASK 4 (Reserve→edit-name pass) — captures the CALLER's screen (e.g.
+    // `.reserve`, still holding its own event id/qty/hold state — none of
+    // that is touched by this flow, it's global `AppState`) so save/back
+    // return to wherever this was actually opened from, not always
+    // `.profile`. `AccountView`'s own "Đổi tên" entry still returns to
+    // Account because `screen` there IS `.profile` when this runs.
     func goEditName() {
+        editNameReturnScreen = screen
         editNameValue = user?.displayName ?? ""
         editNameError = ""
         screen = .editName
@@ -1372,7 +1411,7 @@ extension AppState {
             editNameError = T("Hãy nhập tên hiển thị.", "Please enter a display name.")
             return
         }
-        if newName == user?.displayName { screen = .profile; return }
+        if newName == user?.displayName { screen = editNameReturnScreen; return }
         editNameSaving = true
         editNameError = ""
         let oldName = user?.displayName ?? ""
@@ -1382,7 +1421,7 @@ extension AppState {
                 .execute()
             editNameSaving = false
             user?.displayName = newName
-            screen = .profile
+            screen = editNameReturnScreen
             // The in-app notifications are written by the RPC itself; this
             // only dispatches the email side, which re-derives its own
             // recipients server-side.
@@ -2734,7 +2773,11 @@ extension AppState {
     // exists and is populated. See git history for why this was briefly
     // reverted — requesting a column that doesn't exist yet fails the
     // WHOLE query, not just that field.
-    private static let realEventColumns = "id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included_items, intro, address_line, city, postal_code, address_verified, keywords"
+    // TASK 3 (event creation validation pass) — approval/withdrawal_reason/
+    // withdrawn_at added for AdminEventsView's own detailed review section
+    // (booking-approval mode + withdrawal history); additive, same table,
+    // so every other existing reader of this constant is unaffected.
+    private static let realEventColumns = "id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, approval, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, withdrawal_reason, withdrawn_at, cover_image, included_items, intro, address_line, city, postal_code, address_verified, keywords"
 
     /// `events.cover_image` (migration 087) always wins over the gallery's
     /// own sort_order-first fallback when a host has explicitly picked one —
@@ -2783,6 +2826,33 @@ extension AppState {
             return Dictionary(uniqueKeysWithValues: orgs.map { ($0.id, $0.name) })
         } catch {
             print("organizerNames failed:", error)
+            return [:]
+        }
+    }
+
+    /// TASK 3 (event creation validation pass) — AdminEventsView's own
+    /// detailed review section. Separate from `organizerNames(for:)` above
+    /// (that one's used well beyond admin review — no reason to widen its
+    /// select or its callers' assumptions). Per migration 109's own
+    /// comment, `organizer_type` is self-declared and `verified` has no
+    /// real write path anywhere in this schema — never render either as
+    /// admin-confirmed. Never selects bank_name/bank_account_no/
+    /// momo_phone or any other payout/banking field.
+    private struct OrganizerIdentityRow: Decodable {
+        let id: String
+        let organizerType: String?
+        let verified: Bool?
+        let taxCode: String?
+        enum CodingKeys: String, CodingKey { case id, organizerType = "organizer_type", verified, taxCode = "tax_code" }
+    }
+    private func organizerIdentities(for organizerIDs: [String]) async -> [String: OrganizerIdentityRow] {
+        guard !organizerIDs.isEmpty else { return [:] }
+        do {
+            let orgs: [OrganizerIdentityRow] = try await SupabaseService.client
+                .from("organizers").select("id, organizer_type, verified, tax_code").in("id", values: organizerIDs).execute().value
+            return Dictionary(uniqueKeysWithValues: orgs.map { ($0.id, $0) })
+        } catch {
+            print("organizerIdentities failed:", error)
             return [:]
         }
     }
@@ -3906,13 +3976,20 @@ extension AppState {
     /// createSubmit/GocContext.jsx uses for the identical code.
     struct ResubmitEventError: Error { let code: String }
 
+    // TASK 3 (event creation validation pass) — returns real success/
+    // failure so the post-submission chooser (CreateEventView) only ever
+    // opens on a REAL RPC-confirmed success, never just "the request
+    // finished." `@discardableResult` since every existing call site
+    // (goEditEvent's own resubmit path, if any) that doesn't care about
+    // the outcome keeps compiling unchanged.
+    @discardableResult
     func submitCreateEvent(
         newImages: [UIImage] = [], coverNewIndex: Int? = nil,
         removeExistingPhotoIDs: [UUID] = [], existingCoverPath: String? = nil,
         defaultKeywordsLabel: String = ""
-    ) async {
-        guard !createName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        guard !submitCreateEventInFlight else { return }
+    ) async -> Bool {
+        guard !createName.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        guard !submitCreateEventInFlight else { return false }
         submitCreateEventInFlight = true
         defer { submitCreateEventInFlight = false }
         loading = true
@@ -3933,7 +4010,7 @@ extension AppState {
             if let picked = AppState.vnCombinedFormatter.date(from: combined), picked < Date().addingTimeInterval(-5 * 60) {
                 loading = false
                 createError = T("Ngày giờ sự kiện đã ở trong quá khứ.", "This event's date/time is in the past.")
-                return
+                return false
             }
         }
 
@@ -3953,7 +4030,7 @@ extension AppState {
         else {
             loading = false
             createError = T("Hãy chọn một địa chỉ gợi ý và xác nhận vị trí trên bản đồ trước khi đăng.", "Select a suggested address and confirm its pin before publishing.")
-            return
+            return false
         }
 
         // "Bao gồm" item validation — mirrors migration 087's own server-
@@ -3967,7 +4044,7 @@ extension AppState {
         guard includedItemsPayload.allSatisfy({ $0.label.count <= 60 && $0.detail.count <= 300 }) else {
             loading = false
             createError = T("Mỗi mục \"Bao gồm\" cần tên (tối đa 60 ký tự) và mô tả tối đa 300 ký tự.", "Each \"Included\" item needs a label (max 60 chars) and detail under 300 chars.")
-            return
+            return false
         }
 
         // Keyword-search fix (migration 108) — mirrors web's identical
@@ -4095,12 +4172,46 @@ extension AppState {
                 }
             }
 
+            // TASK 3 (event creation validation pass) — the 3-8 photo
+            // invariant enforced in the TRUSTED WRITE PATH, not just the
+            // UI; see migration 109's own comment for why this has to be a
+            // separate, post-reconciliation RPC rather than a gate inside
+            // create_event_draft itself. A failure here withdraws the
+            // event back to 'draft' with a real rejection_reason
+            // server-side — a genuine submission FAILURE, not a success
+            // with a note, so it must NOT set createSent.
+            if let eventID {
+                struct FinalizePhotoCountParams: Encodable {
+                    let eventId: String
+                    enum CodingKeys: String, CodingKey { case eventId = "p_event_id" }
+                }
+                do {
+                    let result: [String: JSONValue] = try await SupabaseService.client
+                        .rpc("finalize_event_photo_count", params: FinalizePhotoCountParams(eventId: eventID))
+                        .execute().value
+                    if case .bool(false) = result["success"] ?? .bool(true),
+                       case .string("PHOTO_COUNT_INVALID") = result["error"] ?? .string("") {
+                        let count: Int
+                        if case .double(let d)? = result["count"] { count = Int(d) } else { count = 0 }
+                        loading = false
+                        createError = T(
+                            "Sự kiện cần 3-8 ảnh khả dụng (hiện có \(count)). Sự kiện đã được chuyển về bản nháp — hãy thêm/bớt ảnh rồi gửi lại.",
+                            "This event needs 3-8 available photos (it has \(count)). It's been moved back to draft — add or remove photos, then resubmit."
+                        )
+                        return false
+                    }
+                } catch {
+                    print("finalize_event_photo_count failed:", error)
+                }
+            }
+
             loading = false
             createSent = true
             hasHosted = true
             mode = "host"
             await loadMyEvents()
             await loadMyOrgEventSummaries()
+            return true
         } catch {
             loading = false
             // Migration 107's specific error codes surfaced with the SAME
@@ -4134,6 +4245,7 @@ extension AppState {
                     "Could not submit this event right now. Please try again."
                 )
             }
+            return false
         }
     }
 
@@ -4270,6 +4382,31 @@ extension AppState {
         Task { await loadPendingEvents() }
     }
 
+    /// TASK 5 (Account badges pass) — a lightweight COUNT-only sibling to
+    /// `loadPendingEvents()` below, for the "adminReview" group-card
+    /// badge (AccountView.swift). Deliberately does NOT reuse
+    /// `loadPendingEvents()` itself: that fetches full event rows +
+    /// first-photo lookups for the review list UI, too heavy to run just
+    /// to show a number on every Account load. Same `events_select_admin`
+    /// RLS (migration 085) backs both, so this stays authorized/consistent
+    /// with the real queue.
+    func loadPendingEventsCount() async {
+        do {
+            let response: PostgrestResponse<[IDRow]> = try await SupabaseService.client
+                .from("events")
+                .select("id", count: .exact)
+                .eq("status", value: "review")
+                .execute()
+            pendingEventsCount = response.count ?? 0
+        } catch {
+            print("loadPendingEventsCount failed:", error)
+            // Honest-failure handling — a query failure must not leave a
+            // stale positive count on screen implying there's still
+            // something to review when the real state is simply unknown.
+            pendingEventsCount = 0
+        }
+    }
+
     /// `events_select_admin` (migration 085) is what actually makes this
     /// return every organizer's pending rows, not just this account's own.
     func loadPendingEvents() async {
@@ -4285,12 +4422,21 @@ extension AppState {
             let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
             async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
             async let orgNames = organizerNames(for: organizerIDs)
+            async let orgIdentities = organizerIdentities(for: organizerIDs)
             let photos = await photoMap
             let names = await orgNames
+            let identities = await orgIdentities
             adminEvents = rows.map { row in
                 var r = row
                 r.photoURL = resolveCoverURL(row.coverImage) ?? photos[row.id]
-                if let orgId = row.organizerId { r.organizerName = names[orgId] ?? "" }
+                if let orgId = row.organizerId {
+                    r.organizerName = names[orgId] ?? ""
+                    if let identity = identities[orgId] {
+                        r.organizerType = identity.organizerType ?? "individual"
+                        r.organizerVerified = identity.verified ?? false
+                        r.organizerHasTaxCode = !(identity.taxCode ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+                    }
+                }
                 return r
             }
         } catch {
@@ -4327,7 +4473,10 @@ extension AppState {
             adminEventError = error.localizedDescription
         }
         adminEventBusy = nil
-        if ok { await loadPendingEvents() }
+        // TASK 5 (Account badges pass) — the adminReview group-card badge
+        // reads pendingEventsCount, not adminEvents.count, so it needs its
+        // own refresh here too, same as the full queue does.
+        if ok { await loadPendingEvents(); await loadPendingEventsCount() }
         return ok
     }
 
@@ -4372,12 +4521,19 @@ struct ResubmissionStatus {
 enum JSONValue: Decodable {
     case bool(Bool)
     case string(String)
+    // TASK 3 (event creation validation pass) — additive: finalize_event_
+    // photo_count's own `count` field is a real number, which fell through
+    // to `.null` before (bool/string were the only two non-null cases
+    // this ever tried). Tried AFTER bool (so `true`/`false` still decode
+    // as `.bool`, unchanged) and before falling to `.null`.
+    case double(Double)
     case null
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let b = try? container.decode(Bool.self) { self = .bool(b); return }
         if let s = try? container.decode(String.self) { self = .string(s); return }
+        if let d = try? container.decode(Double.self) { self = .double(d); return }
         self = .null
     }
 }

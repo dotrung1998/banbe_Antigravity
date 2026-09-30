@@ -7,7 +7,12 @@ export default function EditName() {
 
   return (
     <div style={{ animation: 'gocFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="Edit name">
-      <div onClick={() => set({ screen: 'profile' })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
+      {/* TASK 4 (Reserve→edit-name pass) — editNameReturnScreen (set by
+          goEditName) is wherever this was actually opened from now, not
+          always Account. */}
+      <div onClick={() => set({ screen: s.editNameReturnScreen })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>
+        ‹ {s.editNameReturnScreen === 'reserve' ? T('Đặt chỗ', 'Reserve') : T('Tài khoản', 'Account')}
+      </div>
       <div style={{ padding: '16px 30px 42px' }}>
         <h1 style={{ ...display(27, { margin: 0, lineHeight: 1.2 }) }}>{T('Tên hiển thị', 'Display name')}</h1>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '10px 0 0' }}>

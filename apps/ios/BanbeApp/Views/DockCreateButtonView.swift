@@ -21,14 +21,27 @@ import SwiftUI
 /// createButtonSize`, matching `barHeight` exactly) trailing child of
 /// DockRow's HStack, so it shares the dock's vertical center structurally
 /// (same height, same HStack `alignment: .center`) instead of independently
-/// computed padding math. Tapping it no longer opens a menu in THIS window
-/// — the tray it opens (`DockCreateTrayView`, RootView.swift) needs to rise
-/// well above this window's own small hit-testable band and dim the actual
-/// screen content behind it, neither of which this narrow band-sized window
-/// can do — so this button only flips `app.dockCreateTrayOpen`, a plain
-/// published bool the MAIN window's RootView reads to present the tray
-/// itself. The "+"→"X" morph stays here, driven by that same shared bool,
-/// so the two windows' visuals stay in lockstep with no duplicated state.
+/// computed padding math.
+///
+/// TASK 1 (dock "+" native-menu pass) — the custom bottom tray
+/// (`DockCreateTrayView`, now removed) this used to open is replaced by a
+/// native SwiftUI `Menu`, the SAME anchored-popover pattern already used by
+/// `NotificationsView`'s row "…" menu and `InboxRow`'s own (MessagingViews.
+/// swift) — a `Menu`'s popover is owned by UIKit and composites above
+/// everything, including a `.sheet()` on Map, with zero extra wiring, and
+/// unlike the old tray it needs no full-screen scrim, so it can stay
+/// entirely inside this view — still a child of BottomTabBarOverlay's own
+/// separate always-on-top UIWindow, same as the dock itself. Dismissing
+/// without picking a row is handled entirely by the system (no scrim/state
+/// to leak), so Map's own camera/list-detent/search/filter/scroll state is
+/// untouched by construction.
+///
+/// "Post a story" reuses the EXACT SAME pipeline AccountView's own
+/// "▪︎ Đăng story" menu uses (`app.storyLibraryPickerOpen`/
+/// `app.storyCameraOpen` → `app.publishStory()`, presented centrally from
+/// RootView) — not a second upload pipeline. Per AccountView's own
+/// "PhotosPicker inside Menu swallowing taps" note, these rows only flip a
+/// flag; they never present a picker directly.
 ///
 /// BUG (2026-10-06 fix pass) — this used to paint itself as a SOLID
 /// `app.palette.ink`-filled circle with its own independently-chosen
@@ -53,9 +66,34 @@ struct DockCreateButtonView: View {
         // itself already only inserts this view under the same condition,
         // but keeping the check here too means this view never renders
         // anything if ever reused/embedded elsewhere without that gate.
+        // Same gate Post-story's own row in AccountView uses, so a
+        // non-organizer never sees a dead "Post a story" action here either
+        // — the whole button (and both its actions) is simply absent,
+        // matching this codebase's existing "hide while organizerMode is
+        // off" convention rather than showing a disabled/explained row.
         if app.organizerMode {
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) { app.dockCreateTrayOpen.toggle() }
+            Menu {
+                Button {
+                    app.goCreate()
+                } label: {
+                    Label(app.T("Tạo sự kiện", "Create event"), systemImage: "calendar.badge.plus")
+                }
+                .accessibilityIdentifier("dock.createMenu.event")
+                Menu {
+                    Button {
+                        app.storyLibraryPickerOpen = true
+                    } label: {
+                        Label(app.T("Thư viện ảnh", "Photo library"), systemImage: "photo.on.rectangle")
+                    }
+                    Button {
+                        app.storyCameraOpen = true
+                    } label: {
+                        Label(app.T("Camera", "Camera"), systemImage: "camera")
+                    }
+                } label: {
+                    Label(app.T("Đăng story", "Post a story"), systemImage: "photo.badge.plus")
+                }
+                .accessibilityIdentifier("dock.createMenu.story")
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 18, weight: .semibold))
@@ -64,11 +102,9 @@ struct DockCreateButtonView: View {
                     .background(.thinMaterial, in: Circle())
                     .overlay(Circle().strokeBorder(app.palette.ink.opacity(0.06)))
                     .shadow(color: .black.opacity(0.16), radius: 14, x: 0, y: 6)
-                    .rotationEffect(.degrees(app.dockCreateTrayOpen ? 45 : 0))
             }
-            .buttonStyle(.plain)
             .accessibilityIdentifier("dock.createButton")
-            .accessibilityLabel(app.dockCreateTrayOpen ? app.T("Đóng", "Close") : app.T("Tạo mới", "Create"))
+            .accessibilityLabel(app.T("Tạo mới", "Create"))
         }
     }
 }

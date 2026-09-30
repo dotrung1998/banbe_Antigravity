@@ -1,5 +1,5 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { paper, ink } from '../theme.js';
+import { paper, ink, SPLASH_LOADING_GAP } from '../theme.js';
 import BanbeLoadingVisual from './BanbeLoadingVisual.jsx';
 
 export default function Splash() {
@@ -22,7 +22,7 @@ export default function Splash() {
           from /public, so it's cached by the browser like any other static
           asset — no separate offline-caching code needed on web (unlike
           iOS, which must explicitly bundle it — see project.yml). */}
-      <div style={{ marginTop: 34, animation: 'gocFade 0.6s ease 1s both' }}>
+      <div style={{ marginTop: SPLASH_LOADING_GAP, animation: 'gocFade 0.6s ease 1s both' }}>
         <BanbeLoadingVisual size={36} />
       </div>
     </div>

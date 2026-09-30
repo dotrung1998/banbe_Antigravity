@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { supabase } from '../lib/supabase.js';
@@ -99,6 +99,7 @@ export function RowIcon({ kind, size = 22, accent }) {
 // `ROW_ACCENT_COLORS` lookup AND the `data-testid`/route id both platforms
 // share, so iOS/web can't drift on what a given group actually is.
 function GroupCard({ groupKey, iconKind, label, badge, onClick, marginTop = 8 }) {
+  const { T } = useGoc();
   return (
     <div
       onClick={onClick}
@@ -110,9 +111,19 @@ function GroupCard({ groupKey, iconKind, label, badge, onClick, marginTop = 8 })
         {label}
       </span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* TASK 5 (Account badges pass) — "99+" display, same cap
+            convention BottomTabBar.jsx's own Notifications badge already
+            uses, with the real count kept in aria-label/title (never lost,
+            just not rendered) for accessibility/debugging. */}
         {!!badge && (
-          <span style={{ fontSize: 11, fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }} data-testid={`account-group-${groupKey}-badge`}>
-            {badge}
+          <span
+            role="status"
+            aria-label={`${badge} ${T('mục mới', 'new item(s)')}`}
+            title={String(badge)}
+            style={{ fontSize: 11, fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}
+            data-testid={`account-group-${groupKey}-badge`}
+          >
+            {badge > 99 ? '99+' : badge}
           </span>
         )}
         <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
@@ -125,8 +136,8 @@ export default function Account() {
   const {
     state, T, goHome, goEditName, goGoingList, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
     openMyRefunds, openEditProfile,
-    loadHomeStories, openStoryViewer, pickStoryFile, cancelStoryCreate, publishStory,
-    loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary,
+    loadHomeStories, openStoryViewer, openStoryLibraryPicker, openStoryCameraPicker,
+    loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadPendingEventsCount,
     openPaymentDetails, goDashboard,
     loadMyOrgStats, setAccountTab, openPublicProfile, openReports, openAccountGroup,
     loadMyOrganizerMemberships,
@@ -154,12 +165,15 @@ export default function Account() {
     if (accountTab === 'host' && !s.organizerMode) setAccountTab('personal');
     else if (accountTab === 'admin' && s.accountType !== 'admin') setAccountTab('personal');
   }, [accountTab, s.organizerMode, s.accountType, setAccountTab]);
-  const storyFileRef = useRef(null);
-  const storyCameraRef = useRef(null);
   // Task 1 (2026-09-21 real-device follow-up) — "Post Story" is now a real
   // two-option menu (Photo library / Camera), matching Chat.jsx's own
   // attach-menu convention (same icon set, same popup shape) instead of a
   // single link that only ever opened the library picker.
+  // TASK 1 (dock "+" menu pass) — the actual file inputs/upload/preview
+  // this opens now live in StoryCreateOverlay.jsx (mounted once, globally,
+  // in App.jsx) — not here — so the dock "+" menu's own "Đăng story" row
+  // can drive the exact same pipeline. This component only flips the
+  // shared open* flags below.
   const [storyMenuOpen, setStoryMenuOpen] = useState(false);
 
   // Stage 1 (2026-09-27 nav/discovery pass) — this card's own inline
@@ -192,7 +206,11 @@ export default function Account() {
       loadRefundQueue();
       loadOrganizerHoldingSummary();
     }
-  }, [s.user?.id, canHost, loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary]);
+    // TASK 5 (Account badges pass) — same "load it here so the group-entry
+    // badge is real, not stale" reasoning as verifications/refundQueue
+    // above, gated on the actual admin role (RLS-backed), not a UI toggle.
+    if (s.accountType === 'admin') loadPendingEventsCount();
+  }, [s.user?.id, canHost, s.accountType, loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadPendingEventsCount]);
   // Stage 1 — re-run whenever this account's organizer id becomes known
   // (session restore, or right after creating a first event — see
   // createSubmit's own comment) so the host card's real published-event
@@ -222,12 +240,6 @@ export default function Account() {
   const hasActiveStory = !!myStoryGroup;
   const storyUnviewed = hasActiveStory && !myStoryGroup.allViewed;
 
-  const onPickStoryFile = (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (file) pickStoryFile(file);
-  };
-  const doPublishStory = async () => { await publishStory(); };
   // Once an event is over it belongs in "Completed", not "Going" — otherwise
   // it just sits there forever looking like something still upcoming.
   const goingCount = s.attending
@@ -368,7 +380,7 @@ export default function Account() {
                     style={{ ...cardGlass({ position: 'absolute', top: 20, left: 0, minWidth: 200 }), padding: 6, display: 'flex', flexDirection: 'column' }}
                   >
                     <div
-                      onClick={() => { setStoryMenuOpen(false); storyFileRef.current?.click(); }}
+                      onClick={() => { setStoryMenuOpen(false); openStoryLibraryPicker(); }}
                       data-testid="account-post-story-library"
                       style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
                     >
@@ -376,7 +388,7 @@ export default function Account() {
                       {T('Thư viện ảnh', 'Photo library')}
                     </div>
                     <div
-                      onClick={() => { setStoryMenuOpen(false); storyCameraRef.current?.click(); }}
+                      onClick={() => { setStoryMenuOpen(false); openStoryCameraPicker(); }}
                       data-testid="account-post-story-camera"
                       style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
                     >
@@ -403,34 +415,7 @@ export default function Account() {
             ›
           </span>
         )}
-        <input ref={storyFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPickStoryFile} data-testid="story-file-input" />
-        <input ref={storyCameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onPickStoryFile} data-testid="story-camera-input" />
       </div>
-
-      {/* Task 3.2 — Retake / Use Photo preview before actually publishing. */}
-      {s.storyCreatePreview && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 50, background: '#000', display: 'flex', flexDirection: 'column' }} data-testid="story-create-preview">
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-            <img src={s.storyCreatePreview.url} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-          </div>
-          <div style={{ padding: '16px 22px 34px', display: 'flex', gap: 10 }}>
-            <div
-              onClick={s.storyCreateBusy ? undefined : () => { cancelStoryCreate(); storyCameraRef.current?.click(); }}
-              data-testid="story-retake"
-              style={{ flex: 1, textAlign: 'center', padding: '13px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.35)', color: '#fff', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}
-            >
-              {T('Chụp lại', 'Retake')}
-            </div>
-            <div
-              onClick={s.storyCreateBusy ? undefined : doPublishStory}
-              data-testid="story-use-photo"
-              style={{ flex: 1, textAlign: 'center', padding: '13px', borderRadius: 12, background: '#fff', color: '#000', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', opacity: s.storyCreateBusy ? 0.6 : 1 }}
-            >
-              {s.storyCreateBusy ? T('Đang đăng…', 'Posting…') : T('Dùng ảnh', 'Use photo')}
-            </div>
-          </div>
-        </div>
-      )}
 
       <div style={{ display: 'flex', gap: 10, padding: '22px 20px 0' }}>
         {/* data-attending-raw-count is the unfiltered s.attending.length — not
@@ -697,6 +682,7 @@ export default function Account() {
           <GroupCard
             groupKey="adminReview" iconKind="alertShield"
             label={T('Duyệt & kiểm duyệt', 'Review & moderation')}
+            badge={s.pendingEventsCount}
             onClick={() => openAccountGroup('adminReview')}
             marginTop={22}
           />

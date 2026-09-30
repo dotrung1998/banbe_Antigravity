@@ -24,7 +24,7 @@ struct SplashView: View {
                 // this — the very first thing a cold launch shows — works
                 // offline, per this ticket's own instruction.
                 BanbeLoadingVisual(size: 44)
-                    .padding(.top, 34)
+                    .padding(.top, BanbeTheme.LoadingVisual.splashGap)
             }
         }
         .contentShape(Rectangle())
@@ -190,6 +190,7 @@ struct CreateEventView: View {
         ("popup", "Pop-up", "Pop-up"),
     ]
     private let maxPhotos = 8
+    private let minPhotos = 3
 
     @State private var galleryItems: [StagedGalleryItem] = []
     @State private var coverItemID: String?
@@ -210,6 +211,15 @@ struct CreateEventView: View {
     // shows already lives in `app.create*`/this view's own `galleryItems`/
     // `coverItemID` state, so dismissing it loses nothing.
     @State private var reviewOpen = false
+    // TASK 3 (event creation validation pass) — the post-submission
+    // chooser; opened only by a real submitCreateEvent() success (see the
+    // review sheet's own onConfirm above), never merely because the
+    // request finished. `successChoiceMade` distinguishes an explicit
+    // button tap from a swipe-to-dismiss/backdrop-tap on the native
+    // `.confirmationDialog` — both must land on the SAME "unambiguous
+    // success" default (pending events) per this ticket's own instruction.
+    @State private var successChooserOpen = false
+    @State private var successChoiceMade = false
 
     private var removedExistingIDs: [UUID] {
         let kept = Set(galleryItems.compactMap { if case .existing(let id, _) = $0.kind { return id }; return nil })
@@ -226,6 +236,24 @@ struct CreateEventView: View {
               case .existing(_, let path) = item.kind else { return nil }
         return path
     }
+
+    // TASK 3 (event creation validation pass) — these five are genuinely
+    // required (not decorative asterisks): each blocks the "Xem lại"/
+    // "Review" button below via `enabled:`, mirroring the SAME "hint text
+    // always visible while invalid" convention this screen's own
+    // `!app.createLocConfirmed` hint already uses (not a tap-triggered
+    // banner — `InkButton(enabled: false)` is a real disabled button, a
+    // tap on it does nothing to react to). `galleryItems` already excludes
+    // removed items (removeGalleryItem splices them out) and only ever
+    // holds locally-staged/already-uploaded ones — nothing "failed/
+    // in-progress" to separately exclude before a real upload attempt.
+    private var descValid: Bool { !app.createDesc.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var dateTimeValid: Bool { app.createEventDate != nil && app.createEventTime != nil }
+    private var seatsValid: Bool { Int(app.createSeats) ?? 0 > 0 }
+    private var catsValid: Bool { !app.createCats.isEmpty }
+    private var includedValid: Bool { app.createIncludedItems.contains { !$0.label.trimmingCharacters(in: .whitespaces).isEmpty } }
+    private var photosValid: Bool { galleryItems.count >= minPhotos && galleryItems.count <= maxPhotos }
+    private var hasCreateFieldErrors: Bool { !descValid || !dateTimeValid || !seatsValid || !catsValid || !includedValid || !photosValid }
 
     private func seedGalleryIfNeeded() {
         guard let editID = app.createEditEventId else {
@@ -265,9 +293,12 @@ struct CreateEventView: View {
     private func gallerySection() -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(app.T("Hình ảnh", "Photos")).font(.system(size: 11.5))
+                HStack(spacing: 4) {
+                    Text(app.T("Hình ảnh", "Photos")).font(.system(size: 11.5))
+                    Text("*").font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                }
                 Spacer()
-                Text("\(galleryItems.count)/\(maxPhotos)").font(.system(size: 10.5))
+                Text("\(galleryItems.count)/\(maxPhotos) (\(app.T("tối thiểu \(minPhotos)", "min \(minPhotos)")))").font(.system(size: 10.5))
             }
             VStack(spacing: 8) {
                 ForEach(Array(galleryItems.enumerated()), id: \.element.id) { index, item in
@@ -367,6 +398,9 @@ struct CreateEventView: View {
             }
             if !photoError.isEmpty {
                 Text(photoError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+            } else if !photosValid && !app.createSent {
+                Text(app.T("Cần tối thiểu \(minPhotos) và tối đa \(maxPhotos) ảnh khả dụng.", "Minimum \(minPhotos), maximum \(maxPhotos) available photos."))
+                    .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
             }
         }
         .padding(.top, 22)
@@ -430,7 +464,10 @@ struct CreateEventView: View {
     @ViewBuilder
     private func includedItemsEditor() -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(app.T("Bao gồm", "Included")).font(.system(size: 11.5))
+            HStack(spacing: 4) {
+                Text(app.T("Bao gồm", "Included")).font(.system(size: 11.5))
+                Text("*").font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+            }
             ForEach(Array(app.createIncludedItems.enumerated()), id: \.offset) { index, item in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
@@ -467,6 +504,10 @@ struct CreateEventView: View {
                     Text(app.T("+ Thêm mục", "+ Add item")).font(.system(size: 12.5, weight: .semibold))
                 }
                 .buttonStyle(.plain)
+            }
+            if !includedValid && !app.createSent {
+                Text(app.T("Hãy thêm ít nhất một mục Bao gồm.", "Please add at least one Included item."))
+                    .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
             }
         }
         .foregroundStyle(app.palette.ink)
@@ -559,7 +600,10 @@ struct CreateEventView: View {
     @ViewBuilder
     private func dateTimeRow() -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(app.T("Ngày & giờ (giờ Việt Nam)", "Date & time (Vietnam time)")).font(.system(size: 11.5))
+            HStack(spacing: 4) {
+                Text(app.T("Ngày & giờ (giờ Việt Nam)", "Date & time (Vietnam time)")).font(.system(size: 11.5))
+                Text("*").font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+            }
             Button {
                 dateTimeSheetOpen = true
             } label: {
@@ -578,6 +622,10 @@ struct CreateEventView: View {
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .buttonStyle(.plain)
+            if !dateTimeValid && !app.createSent {
+                Text(app.T("Hãy chọn ngày và giờ diễn ra.", "Please pick a date and time."))
+                    .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+            }
         }
         .sheet(isPresented: $dateTimeSheetOpen) {
             EventDateTimeSheet(date: $app.createEventDate, time: $app.createEventTime)
@@ -612,6 +660,15 @@ struct CreateEventView: View {
                     }(),
                     onBack: { withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = false } },
                     onConfirm: {
+                        // TASK 3 (event creation validation pass) —
+                        // defense-in-depth: this sheet's own fields are
+                        // read-only display, but re-check here too rather
+                        // than trust nothing changed since Review opened.
+                        guard !app.createName.trimmingCharacters(in: .whitespaces).isEmpty,
+                              app.createLocConfirmed, !hasCreateFieldErrors else {
+                            withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = false }
+                            return
+                        }
                         // Keyword-search fix (migration 108) — same
                         // default-to-category-label(s) fallback web's
                         // identical `createCatLabel` provides, computed
@@ -619,11 +676,21 @@ struct CreateEventView: View {
                         // `categories` already lives on this view.
                         let picked = app.createCats.isEmpty ? ["supper"] : app.createCats
                         let defaultKeywordsLabel = picked.compactMap { key in categories.first(where: { $0.key == key }).map { app.T($0.vi, $0.en) } }.joined(separator: " ▪︎ ")
-                        await app.submitCreateEvent(
+                        // TASK 3 (event creation validation pass) — only a
+                        // REAL RPC-confirmed success opens the post-
+                        // submission chooser; a failure leaves Review open
+                        // with data intact and app.createError already
+                        // showing, never the chooser.
+                        let ok = await app.submitCreateEvent(
                             newImages: newImagesInOrder, coverNewIndex: coverNewIndex,
                             removeExistingPhotoIDs: removedExistingIDs, existingCoverPath: existingCoverPath,
                             defaultKeywordsLabel: defaultKeywordsLabel
                         )
+                        if ok {
+                            withAnimation(.easeInOut(duration: 0.25)) { reviewOpen = false }
+                            successChoiceMade = false
+                            successChooserOpen = true
+                        }
                     }
                 )
                 .environmentObject(app)
@@ -633,6 +700,50 @@ struct CreateEventView: View {
         }
         .onChange(of: reviewOpen) { _, open in app.isCreateReviewOpen = open }
         .onDisappear { app.isCreateReviewOpen = false }
+        // TASK 3 (event creation validation pass) — a native
+        // `.confirmationDialog` (UIAlertController style .actionSheet under
+        // the hood), this ticket's own "supported platform API" instruction
+        // — not an imitation of Apple's password-provider UI.
+        .confirmationDialog(
+            app.T("Đã gửi sự kiện!", "Event submitted!"),
+            isPresented: $successChooserOpen,
+            titleVisibility: .visible
+        ) {
+            Button(app.T("Tạo sự kiện khác", "Create another event")) {
+                successChoiceMade = true
+                galleryItems = []
+                coverItemID = nil
+                photoError = ""
+                seededForEventID = nil
+                seededExistingIDs = []
+                app.goCreate()
+            }
+            Button(app.T("Xem sự kiện đang chờ duyệt", "View pending events")) {
+                successChoiceMade = true
+                app.goDashboard()
+            }
+            Button(app.T("Về Trang chủ", "Go to Home")) {
+                successChoiceMade = true
+                app.goHome()
+            }
+            Button(app.T("Về Tài khoản", "Go to Account")) {
+                successChoiceMade = true
+                app.goProfile()
+            }
+            // Explicit Cancel row — SwiftUI would otherwise supply its own
+            // no-op Cancel, which doesn't match this ticket's own "default
+            // to the pending-events destination" instruction.
+            Button(app.T("Đóng", "Dismiss"), role: .cancel) {
+                successChoiceMade = true
+                app.goDashboard()
+            }
+        }
+        // Swipe-to-dismiss/backdrop-tap on the sheet flips this binding to
+        // false WITHOUT any button firing — same "unambiguous success"
+        // pending-events default as the explicit Cancel row above.
+        .onChange(of: successChooserOpen) { _, open in
+            if !open && !successChoiceMade { app.goDashboard() }
+        }
     }
 
     private var createFormBody: some View {
@@ -679,7 +790,12 @@ struct CreateEventView: View {
                                placeholder: app.T("Tên sự kiện của bạn", "Your event name"), text: $app.createName,
                                required: true)
                     BanbeField(label: app.T("Mô tả", "Description"),
-                               placeholder: app.T("Buổi này có gì?", "What happens?"), text: $app.createDesc)
+                               placeholder: app.T("Buổi này có gì?", "What happens?"), text: $app.createDesc,
+                               required: true)
+                    if !descValid && !app.createSent {
+                        Text(app.T("Hãy nhập mô tả.", "Please enter a description."))
+                            .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
+                    }
                     introEditor()
                     BanbeField(
                         label: app.T("Địa điểm", "Location"),
@@ -721,11 +837,18 @@ struct CreateEventView: View {
                         BanbeField(label: app.T("Giá", "Price"), placeholder: "900.000", text: $app.createPrice,
                                    keyboard: .numberPad)
                         BanbeField(label: app.T("Số chỗ", "Seats"), placeholder: "14", text: $app.createSeats,
-                                   keyboard: .numberPad)
+                                   keyboard: .numberPad, required: true)
+                    }
+                    if !seatsValid && !app.createSent {
+                        Text(app.T("Hãy nhập số chỗ lớn hơn 0.", "Please enter a number of seats greater than 0."))
+                            .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
                     }
 
-                    Text(app.T("Hạng mục ▪︎ chọn tối đa 2", "Categories ▪︎ up to 2"))
-                        .font(.system(size: 11.5))
+                    HStack(spacing: 4) {
+                        Text(app.T("Hạng mục ▪︎ chọn tối đa 2", "Categories ▪︎ up to 2"))
+                            .font(.system(size: 11.5))
+                        Text("*").font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                    }
                     FlowRow(spacing: 8) {
                         ForEach(categories, id: \.key) { category in
                             let active = app.createCats.contains(category.key)
@@ -739,6 +862,10 @@ struct CreateEventView: View {
                             }
                             .buttonStyle(.plain)
                         }
+                    }
+                    if !catsValid && !app.createSent {
+                        Text(app.T("Hãy chọn ít nhất một danh mục.", "Please pick at least one category."))
+                            .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
                     }
 
                     // Keyword-search fix (migration 108) — so this event
@@ -766,23 +893,16 @@ struct CreateEventView: View {
 
                 gallerySection()
 
-                // Excel bulk-create (Stage C) — the SAME bundled .xlsx web
-                // downloads, generated by the one shared
-                // scripts/generate-template.js. Download-only on iOS this
-                // pass: parsing it back (.xlsx/.zip + embedded-image
-                // extraction) needs a ZIP/XML capability this project
-                // doesn't have yet, unlike web's JSZip dependency — adding
-                // one is a real dependency decision, not made here without
-                // asking first.
-                if let templateURL = Bundle.main.url(forResource: "banbe_event_template", withExtension: "xlsx") {
-                    ShareLink(item: templateURL) {
-                        Text(app.T("Tải mẫu Excel để tạo hàng loạt", "Download the Excel template for bulk creation"))
-                            .font(.system(size: 12.5))
-                            .underline()
-                            .foregroundStyle(app.palette.ink)
-                    }
-                    .padding(.top, 18)
-                }
+                // TASK 3 (event creation validation pass) — the "Download
+                // the Excel template" entry (a `ShareLink` to the bundled
+                // .xlsx, generated by scripts/generate-template.js) is
+                // removed per this ticket's own instruction. iOS never had
+                // an upload/parse side to this feature at all (see this
+                // block's own prior doc comment: no ZIP/XML capability),
+                // so there is no "unrelated import functionality" left
+                // here to preserve — the whole feature is gone on iOS,
+                // matching what actually remains once the entry point is
+                // removed (web keeps its own upload/parse path, unaffected).
 
                 // No SLA is actually monitored server-side — the previous
                 // "duyệt sự kiện đầu tiên trong 48 giờ"/"reviews your first
@@ -795,7 +915,7 @@ struct CreateEventView: View {
                           ? app.T("Đã gửi, đang chờ Banbe duyệt", "Submitted, waiting for Banbe to review")
                           : app.T("Xem lại trước khi gửi", "Review before submitting"),
                           enabled: !app.createName.trimmingCharacters(in: .whitespaces).isEmpty
-                              && app.createLocConfirmed && !app.createSent && !app.loading,
+                              && app.createLocConfirmed && !hasCreateFieldErrors && !app.createSent && !app.loading,
                           cornerRadius: 999) {
                     // Keyboard-stays-up fix (2026-09-29) — opening the review
                     // used to rely on `.fullScreenCover` implicitly resigning

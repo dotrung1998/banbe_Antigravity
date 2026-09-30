@@ -1,4 +1,4 @@
-import { ink, paper } from '../theme.js';
+import { ink, paper, RESERVATION_LOADING_GAP } from '../theme.js';
 import BanbeLoadingVisual from './BanbeLoadingVisual.jsx';
 
 // A4 (Pulse/loading UX pass, 2026-09-27) — this screen is App.jsx's own
@@ -17,7 +17,7 @@ export default function Loading({ label }) {
       data-screen-label="Loading"
     >
       <BanbeLoadingVisual size={72} />
-      <span style={{ fontSize: 12.5, color: ink, marginTop: 20 }}>{label}</span>
+      <span style={{ fontSize: 12.5, color: ink, marginTop: RESERVATION_LOADING_GAP }}>{label}</span>
     </div>
   );
 }

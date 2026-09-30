@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { BAR_HEIGHT, BAR_BOTTOM_OFFSET, DOCK_MARGIN, CREATE_SIZE } from './BottomTabBar.jsx';
 import { ink, paper, rule, barGlass } from '../theme.js';
+import { AttachMenuIcon } from './Chat.jsx';
 
 // TASK C (2026-10-03 fix pass) — replaces the old floating "Tạo sự kiện"
 // pill (CreateEventFab.jsx, removed) with a compact "+" that sits right
@@ -23,9 +24,14 @@ import { ink, paper, rule, barGlass } from '../theme.js';
 // screen, which an absolutely-positioned popover anchored to this button
 // alone could never do convincingly.
 export default function DockCreateButton() {
-  const { state, T, goCreate } = useGoc();
+  const { state, T, goCreate, openStoryLibraryPicker, openStoryCameraPicker } = useGoc();
   const [open, setOpen] = useState(false);
   const [dragY, setDragY] = useState(0);
+  // TASK 1 (dock "+" menu pass) — "Post a story" is a two-option row
+  // (Photo library / Camera), same shape as Account.jsx's own "Đăng story"
+  // menu and Chat.jsx's attach menu; a separate sub-open state so it can
+  // expand within this same tray instead of opening a second overlay.
+  const [storySubOpen, setStorySubOpen] = useState(false);
   const dragRef = useRef(null);
 
   if (!state.organizerMode) return null;
@@ -33,8 +39,13 @@ export default function DockCreateButton() {
   // matches rule C5 exactly (never over modal sheets/story/Pulse).
   if (state.storyViewer || state.scanningQr || state.photoViewer || state.chatPhotoViewer || state.reasonPrompt || state.pulseOpen) return null;
 
-  const close = () => { setOpen(false); setDragY(0); };
+  const close = () => { setOpen(false); setStorySubOpen(false); setDragY(0); };
   const choose = () => { close(); goCreate(); };
+  // Reuses the EXACT SAME pipeline Account.jsx's own "Đăng story" menu
+  // uses (openStoryLibraryPicker/openStoryCameraPicker → the globally
+  // mounted StoryCreateOverlay → publishStory) — not a second upload path.
+  const chooseStoryLibrary = () => { close(); openStoryLibraryPicker(); };
+  const chooseStoryCamera = () => { close(); openStoryCameraPicker(); };
 
   // "keyboard Escape/back where relevant" — real menu semantics on web
   // means Escape closes it, matching how the browser's own <select>/native
@@ -134,13 +145,47 @@ export default function DockCreateButton() {
             role="menuitem"
             onClick={choose}
             data-testid="dock-create-menu-event"
-            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 18px 17px', cursor: 'pointer', fontSize: 14, color: ink }}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 18px', cursor: 'pointer', fontSize: 14, color: ink }}
           >
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
               <path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
             {T('Tạo sự kiện', 'Create event')}
           </div>
+          <div
+            role="menuitem"
+            onClick={(e) => { e.stopPropagation(); setStorySubOpen(v => !v); }}
+            data-testid="dock-create-menu-story"
+            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: storySubOpen ? '13px 18px 4px' : '13px 18px 17px', cursor: 'pointer', fontSize: 14, color: ink }}
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+              <path d="M4 8a2 2 0 0 1 2-2h1.5l1-1.5h7l1 1.5H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8z" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinejoin="round" />
+              <circle cx="12" cy="13" r="3.2" stroke="currentColor" strokeWidth="1.6" fill="none" />
+            </svg>
+            {T('Đăng story', 'Post a story')}
+          </div>
+          {storySubOpen && (
+            <div style={{ padding: '0 10px 13px 34px', display: 'flex', flexDirection: 'column' }}>
+              <div
+                role="menuitem"
+                onClick={chooseStoryLibrary}
+                data-testid="dock-create-menu-story-library"
+                style={{ padding: '10px 8px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
+              >
+                <AttachMenuIcon name="library" />
+                {T('Thư viện ảnh', 'Photo library')}
+              </div>
+              <div
+                role="menuitem"
+                onClick={chooseStoryCamera}
+                data-testid="dock-create-menu-story-camera"
+                style={{ padding: '10px 8px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
+              >
+                <AttachMenuIcon name="camera" />
+                {T('Camera', 'Camera')}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </>

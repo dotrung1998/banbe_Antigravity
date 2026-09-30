@@ -43,9 +43,21 @@ function shapeRealEvent(row, extra = {}) {
     status: row.status,
     cancelledAt: row.cancelled_at || null,
     visibility: row.visibility,
+    approval: row.approval || '',
     organizerId: row.organizer_id,
     photoUrl: resolveCoverUrl(row.cover_image, extra.photoUrl),
     organizerName: extra.organizerName || '',
+    // TASK 3 (event creation validation pass) — AdminEvents.jsx's own
+    // detailed review section. `organizerType`/`organizerVerified`/
+    // `organizerHasTaxCode` are ONLY ever populated by loadPendingEvents'
+    // own admin-only organizer join (migration 109's own comment: these
+    // are self-declared, `verified` specifically has no real write path
+    // anywhere in this schema — never render it as "verified registration").
+    organizerType: extra.organizerType || 'individual',
+    organizerVerified: !!extra.organizerVerified,
+    organizerHasTaxCode: !!extra.organizerHasTaxCode,
+    withdrawalReason: row.withdrawal_reason || '',
+    withdrawnAt: row.withdrawn_at || null,
     followedHost: !!extra.followedHost,
     isReal: true,
     // Event review queue (retention/admin follow-up) — carried through so
@@ -89,7 +101,11 @@ function shapeRealEvent(row, extra = {}) {
 // column exists and is populated. See this constant's own git history for
 // why it was briefly reverted — requesting a column that doesn't exist yet
 // fails the ENTIRE query, not just that field.
-const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, cover_image, included, included_items, intro, address_line, city, postal_code, address_verified, keywords';
+// TASK 3 (event creation validation pass) — `approval`/`withdrawal_reason`/
+// `withdrawn_at` added for AdminEvents.jsx's own detailed review section
+// (booking-approval mode + withdrawal history); additive, same table, no
+// new join, so every other existing reader of this constant is unaffected.
+const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, approval, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, withdrawal_reason, withdrawn_at, cover_image, included, included_items, intro, address_line, city, postal_code, address_verified, keywords';
 
 /** A real event's own selected `cover_image` (migration 087) resolved to a
  * public URL, falling back to `fallbackUrl` (the first `event_photos` row
@@ -583,6 +599,9 @@ const initialState = {
   editNameValue: '',
   editNameError: '',
   editNameSaving: false,
+  // TASK 4 (Reserve→edit-name pass) — where goEditName() was actually
+  // called from; see its own comment.
+  editNameReturnScreen: 'profile',
   // TASK D (2026-10-01 UX foundation pass) — shareable profile card.
   editProfileHandle: '', editProfileName: '', editProfileBio: '', editProfileCity: '',
   editProfileInterests: '', editProfileTheme: 'default', editProfileError: '', editProfileBusy: false,
@@ -790,6 +809,10 @@ const initialState = {
   adminEvents: [],
   adminEventsLoading: false,
   adminEventBusy: '',
+  // TASK 5 (Account badges pass) — count-only sibling of `adminEvents`,
+  // powering the "adminReview" group-card badge without loading the full
+  // queue on every Account mount; see loadPendingEventsCount()'s own comment.
+  pendingEventsCount: 0,
   adminEventError: '',
   orgRegName: '',
   orgRegIg: '',
@@ -929,6 +952,10 @@ const initialState = {
   // (Retake / Use Photo) is open, from Account.
   storyCreatePreview: null,
   storyCreateBusy: false,
+  // TASK 1 (dock "+" menu pass) — one-shot "open this picker" requests;
+  // StoryCreateOverlay.jsx clicks its hidden input then resets the flag.
+  storyLibraryPickerOpen: false,
+  storyCameraPickerOpen: false,
   // Ids of stories this account has already recorded a view for THIS
   // SESSION — local optimism so the ring subdues immediately on close,
   // without waiting for a re-fetch. Reconciled against real story_views
@@ -3543,11 +3570,37 @@ export function GocProvider({ children }) {
    * v_disputes establish for the other two admin queues, just without a
    * dedicated view (no evidence/PII join complex enough to warrant one).
    */
+  // TASK 5 (Account badges pass) — a lightweight COUNT-only sibling to
+  // loadPendingEvents() above, for the "adminReview" group-card badge
+  // (Account.jsx). Deliberately does NOT reuse loadPendingEvents() itself:
+  // that fetches full event rows + first-photo lookups for the review
+  // list UI, which is too heavy to run just to show a number on every
+  // Account mount. Same `events_select_admin` RLS (migration 085) backs
+  // both, so this stays authorized/consistent with the real queue.
+  const loadPendingEventsCount = useCallback(async () => {
+    const { count, error } = await supabase
+      .from('events')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'review');
+    // Honest-failure handling — a query failure must not leave a stale
+    // positive count on screen implying there's still something to review
+    // when the real state is simply unknown.
+    if (error) { console.warn('loadPendingEventsCount failed:', error); set({ pendingEventsCount: 0 }); return; }
+    set({ pendingEventsCount: count || 0 });
+  }, [set]);
+
   const loadPendingEvents = useCallback(async () => {
     set({ adminEventsLoading: true, adminEventError: '' });
+    // TASK 3 (event creation validation pass) — organizer_type/verified/
+    // tax_code added for the admin review detail section. Per migration
+    // 109's own comment, `verified` has no real write path anywhere in
+    // this schema and `organizer_type` is purely self-declared — this
+    // query only reads them, it never implies either is admin-confirmed.
+    // Never joins bank_name/bank_account_no/momo_phone or any other
+    // payout/banking field — those stay out of every review/public query.
     const { data, error } = await supabase
       .from('events')
-      .select(`${REAL_EVENT_ROW_COLUMNS}, organizers(name)`)
+      .select(`${REAL_EVENT_ROW_COLUMNS}, organizers(name, organizer_type, verified, tax_code)`)
       .eq('status', 'review')
       .order('submitted_at', { ascending: true });
     if (error) {
@@ -3557,7 +3610,13 @@ export function GocProvider({ children }) {
     }
     const rows = data || [];
     const photoUrlByEvent = await firstPhotoUrlByEvent(rows.map(r => r.id));
-    const shaped = rows.map(r => shapeRealEvent(r, { photoUrl: photoUrlByEvent[r.id], organizerName: r.organizers?.name }));
+    const shaped = rows.map(r => shapeRealEvent(r, {
+      photoUrl: photoUrlByEvent[r.id],
+      organizerName: r.organizers?.name,
+      organizerType: r.organizers?.organizer_type,
+      organizerVerified: r.organizers?.verified,
+      organizerHasTaxCode: !!(r.organizers?.tax_code || '').trim(),
+    }));
     set({ adminEvents: shaped, adminEventsLoading: false });
   }, [set]);
 
@@ -3592,9 +3651,12 @@ export function GocProvider({ children }) {
     // "refreshed" client-side for an approval to become visible there; the
     // very next real fetch already reflects the server-confirmed state.
     // This just refreshes the admin's OWN queue view.
-    if (ok) await loadPendingEvents();
+    // TASK 5 (Account badges pass) — the adminReview group-card badge
+    // reads pendingEventsCount, not adminEvents.length, so it needs its
+    // own refresh here too, same as the full queue does.
+    if (ok) { await loadPendingEvents(); await loadPendingEventsCount(); }
     return ok;
-  }, [set, loadPendingEvents]);
+  }, [set, loadPendingEvents, loadPendingEventsCount]);
 
   // ---- the temporary dispute chat (guest <-> organizer, while escalated) ----
   /**
@@ -4467,6 +4529,18 @@ export function GocProvider({ children }) {
   const cancelStoryCreate = useCallback(() => {
     set(prev => { if (prev.storyCreatePreview) URL.revokeObjectURL(prev.storyCreatePreview.url); return { storyCreatePreview: null }; });
   }, [set]);
+  // TASK 1 (dock "+" menu pass) — trigger flags for the SAME story
+  // creation pipeline above, so a screen other than Account (namely the
+  // dock "+" menu, which is mounted globally in App.jsx/Shell, not inside
+  // any one screen) can open the picker/camera without owning a second
+  // file input or upload path. StoryCreateOverlay.jsx (mounted once,
+  // globally, alongside DockCreateButton) watches these and clicks its own
+  // hidden inputs; Account.jsx's own "Đăng story" menu sets the same flags.
+  const openStoryLibraryPicker = useCallback(() => set({ storyLibraryPickerOpen: true }), [set]);
+  const openStoryCameraPicker = useCallback(() => set({ storyCameraPickerOpen: true }), [set]);
+  // Consumed by StoryCreateOverlay.jsx right after it clicks its hidden
+  // input, so a request is always one-shot (never stays "stuck open").
+  const closeStoryPickerRequests = useCallback(() => set({ storyLibraryPickerOpen: false, storyCameraPickerOpen: false }), [set]);
   const publishStory = useCallback(async () => {
     const preview = s.storyCreatePreview;
     const orgId = s.myOrganizerIds[0];
@@ -4837,11 +4911,24 @@ export function GocProvider({ children }) {
     // Stage 3 — never carry a previous session's confirmed coordinates
     // into an unrelated fresh event, even if `createLoc`'s TEXT happens to
     // still read the same from before this reset.
+    // TASK 3 (event creation validation pass) — "Create another event"
+    // (the post-submission chooser, CreateEvent.jsx) reuses this SAME
+    // function, and unlike every previous caller (always arriving here
+    // from a genuinely different screen), it can now fire while the
+    // 'create' screen is ALREADY showing — no unmount, so nothing else
+    // would otherwise clear the previous event's own name/description/
+    // date/price/seats/included items/intro/keywords. Reset all of them
+    // here, not just the address/edit-id fields this already cleared, so
+    // "Create another" truly starts blank rather than pre-filled with the
+    // event that was just submitted.
     set(prev => ({
       screen: 'create', mode: 'host', createEditEventId: null, createSent: false, createError: '', createOriginScreen: prev.screen,
+      createName: '', createCats: [], createDesc: '',
       createLoc: '', createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false,
       createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
+      createEventDate: '', createEventTime: '', createPrice: '', createSeats: '',
+      createIncludedItems: [], createIntro: '', createKeywords: '',
     }));
   }, [set, s.user, canHost, enableOrganizerMode]);
   const openHeld = useCallback(() => set({ screen: 'confirmed' }), [set]);
@@ -4918,6 +5005,12 @@ export function GocProvider({ children }) {
     set({
       user: null, accountType: 'participant', organizerMode: false, hasHosted: false, mode: 'goer',
       screen: 'login', authMode: 'login', authMandatory: true, authReturnScreen: 'home', authBackScreen: 'home',
+      // TASK 4 (Reserve→edit-name pass) — same belt-and-suspenders spirit
+      // as authReturnScreen/authBackScreen above.
+      editNameReturnScreen: 'profile',
+      // TASK 5 (Account badges pass) — admin-only cache; a non-admin (or
+      // the next account signing in) must never see a stale prior count.
+      pendingEventsCount: 0,
       referralCode: null, orgRegName: '', favorites: [],
       // TASK A point 8 — every refund-related cache belongs to the account
       // that just left; leaving it in state risks the next sign-in (on the
@@ -4930,12 +5023,19 @@ export function GocProvider({ children }) {
   }, [set]);
 
   // ---- display name ----
-  const goEditName = useCallback(() => set({ screen: 'editName', editNameValue: s.user?.name || '', editNameError: '' }), [set, s.user?.name]);
+  // TASK 4 (Reserve→edit-name pass) — captures the CALLER's screen (e.g.
+  // 'reserve', still holding its own event id/qty/hold state — none of
+  // that is touched by this flow, it's global GocContext state) so
+  // save/back return to wherever this was actually opened from, not
+  // always 'profile'. Account.jsx's own "Đổi tên" entry still returns to
+  // Account because `s.screen` there IS 'profile' when this runs. Mirrors
+  // the existing authReturnScreen/authBackScreen pattern.
+  const goEditName = useCallback(() => set({ screen: 'editName', editNameReturnScreen: s.screen, editNameValue: s.user?.name || '', editNameError: '' }), [set, s.screen, s.user?.name]);
   const editNameType = useCallback((e) => set({ editNameValue: e.target.value }), [set]);
   const saveDisplayName = useCallback(async () => {
     const newName = s.editNameValue.trim();
     if (!newName) return set({ editNameError: T('Hãy nhập tên hiển thị.', 'Please enter a display name.') });
-    if (newName === s.user?.name) return set({ screen: 'profile' });
+    if (newName === s.user?.name) return set({ screen: s.editNameReturnScreen });
 
     set({ editNameSaving: true, editNameError: '' });
     const oldName = s.user?.name || '';
@@ -4944,7 +5044,7 @@ export function GocProvider({ children }) {
       set({ editNameSaving: false, editNameError: T('Không thể đổi tên lúc này. Vui lòng thử lại.', 'We could not change your name right now. Please try again.') });
       return;
     }
-    set({ editNameSaving: false, user: { ...s.user, name: data?.new_name || newName }, screen: 'profile' });
+    set({ editNameSaving: false, user: { ...s.user, name: data?.new_name || newName }, screen: s.editNameReturnScreen });
 
     // The in-app notification rows are already written by the RPC above —
     // this only dispatches the email side, and re-derives its own recipient
@@ -4960,7 +5060,7 @@ export function GocProvider({ children }) {
         }).catch(() => {});
       }
     } catch { /* best-effort email dispatch; the in-app notification already landed */ }
-  }, [set, s.editNameValue, s.user, T]);
+  }, [set, s.editNameValue, s.editNameReturnScreen, s.user, T]);
 
   // ---- TASK D (2026-10-01 UX foundation pass) — shareable profile card ----
   const openEditProfile = useCallback(() => set({
@@ -7244,7 +7344,35 @@ export function GocProvider({ children }) {
             : T('Đã gửi sự kiện, nhưng không tải được ảnh nào.', "Event submitted, but no photos could be uploaded.");
         }
       }
+
+      // TASK 3 (event creation validation pass) — the 3-8 photo invariant
+      // enforced in the TRUSTED WRITE PATH, not just the UI (migration
+      // 109's own comment explains why this has to be a separate,
+      // post-reconciliation RPC rather than a gate inside create_event_draft
+      // itself). A failure here withdraws the event back to 'draft' with a
+      // real rejection_reason server-side — this is a genuine submission
+      // FAILURE, not a success with a note, so it must NOT set createSent.
+      if (eventId) {
+        const { data: finalizeData, error: finalizeError } = await supabase.rpc('finalize_event_photo_count', { p_event_id: eventId });
+        if (finalizeError) console.warn('finalize_event_photo_count failed:', finalizeError);
+        else if (finalizeData?.success === false && finalizeData?.error === 'PHOTO_COUNT_INVALID') {
+          set({
+            loading: false,
+            createError: T(
+              `Sự kiện cần 3-8 ảnh khả dụng (hiện có ${finalizeData.count}). Sự kiện đã được chuyển về bản nháp — hãy thêm/bớt ảnh rồi gửi lại.`,
+              `This event needs 3-8 available photos (it has ${finalizeData.count}). It's been moved back to draft — add or remove photos, then resubmit.`
+            ),
+          });
+          return false;
+        }
+      }
       set({ loading: false, createSent: true, hasHosted: true, mode: 'host', createMediaError: mediaNote });
+      // TASK 3 (event creation validation pass) — the post-submission
+      // chooser (CreateEvent.jsx) needs a real success/failure signal,
+      // not just `createSent` (which this same function also sets, so a
+      // caller reading `state.createSent` right after `await` would only
+      // ever see the value from ITS OWN stale render closure).
+      return true;
     } catch (err) {
       console.warn('Event draft creation failed:', err);
       const message = err.message === 'PAST_EVENT_NOT_ALLOWED'
@@ -7266,6 +7394,7 @@ export function GocProvider({ children }) {
         ? T('Sự kiện này đã đang chờ duyệt. Hãy sửa & gửi lại sự kiện đó thay vì tạo mới.', 'This event is already pending review. Edit and resubmit it instead of creating a new one.')
         : (err.message || 'Unable to submit this event.');
       set({ loading: false, createError: message });
+      return false;
     } finally {
       createSubmitInFlightRef.current = false;
     }
@@ -8016,7 +8145,7 @@ export function GocProvider({ children }) {
     loadMyRefunds, openRefundAccounts, backFromRefundAccounts, openMyRefunds, backFromMyRefunds,
     loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
-    openAdminEvents, loadPendingEvents, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
+    openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
@@ -8027,7 +8156,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, openStoryLibraryPicker, openStoryCameraPicker, closeStoryPickerRequests, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
@@ -8052,7 +8181,7 @@ export function GocProvider({ children }) {
     loadMyRefunds, openRefundAccounts, backFromRefundAccounts, openMyRefunds, backFromMyRefunds,
     loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
-    openAdminEvents, loadPendingEvents, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
+    openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
     canHost, toggleOrganizerMode, enableOrganizerMode,
@@ -8063,7 +8192,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, publishStory, createEventShareStory, goEventFromStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, openStoryLibraryPicker, openStoryCameraPicker, closeStoryPickerRequests, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
