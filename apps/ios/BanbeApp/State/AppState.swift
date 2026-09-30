@@ -2607,12 +2607,18 @@ final class AppState: ObservableObject {
     /// activity"/etc. instead of a generic "Account" whenever the actual
     /// back target is a specific group page. AccountGroupView's own
     /// `title` computed property calls this too, so the two never drift.
+    // Account IA reorg (2026-09-30) — "activity"'s visible label changed
+    // to "Tickets & Bookings" (its content is now this account's REAL
+    // bookings, see `AccountGroupView.activityContent`) and "preferences"
+    // relabeled to "Settings" for accuracy — mirrors web's
+    // `AccountGroup.jsx` GROUP_META exactly. The keys themselves ("activity"/
+    // "preferences") are UNCHANGED, only these display strings.
     func accountGroupTitle(for key: String?) -> String {
         switch key {
         case "team": return T("Hồ Sơ & Team", "Profile & Team")
-        case "activity": return T("Vé & Hoạt Động", "Tickets & Activity")
+        case "activity": return T("Vé & Đặt Chỗ", "Tickets & Bookings")
         case "payments": return T("Thanh Toán & Giấy Tờ", "Payments & Documents")
-        case "preferences": return T("Tùy Chỉnh", "Preferences")
+        case "preferences": return T("Cài Đặt", "Settings")
         case "hostOps": return T("Vận Hành & Thanh Toán Tổ Chức", "Event Operations & Payments")
         case "adminReview": return T("Duyệt & Kiểm Duyệt", "Review & Moderation")
         default: return ""

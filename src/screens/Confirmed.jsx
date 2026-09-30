@@ -305,9 +305,15 @@ export default function Confirmed() {
       {/* Same documentBack-style pattern (07-notifications.md's 2026-09-18
           follow-up) — this footer button now honors confirmedBack (default
           'home', unchanged for every non-notification entry point) instead
-          of always going home. */}
+          of always going home. Account IA reorg (2026-09-30) — "My
+          Tickets" (AccountGroup.jsx's `activity` content) opens this
+          screen with confirmedBack: 'accountGroup', so the label now names
+          that destination too instead of misleadingly reading "Back to
+          home" while actually returning to Account. */}
       <div onClick={backFromConfirmed} style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0 34px', cursor: 'pointer' }}>
-        {s.confirmedBack === 'notifications' ? T('‹ Thông báo', '‹ Notifications') : T('Về trang chính', 'Back to home')}
+        {s.confirmedBack === 'notifications' ? T('‹ Thông báo', '‹ Notifications')
+          : s.confirmedBack === 'accountGroup' ? T('‹ Tài khoản', '‹ Account')
+          : T('Về trang chính', 'Back to home')}
       </div>
     </div>
   );

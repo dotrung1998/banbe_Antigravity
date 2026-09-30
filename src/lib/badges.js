@@ -62,6 +62,23 @@ export function computeAccountDockBadge(state) {
   return computeAdminModerationCount(state) + computeHostActionCount(state);
 }
 
+/** Personal-tab "Tickets & Bookings" group badge (Account IA reorg,
+ * 2026-09-30) — real bookings this account itself needs to act on: a
+ * still-holding/awaiting-payment/pending-verification booking (active
+ * status, not yet a real ticket per `isBookingTicket`). Reads the SAME
+ * `paymentBookings` array `Account.jsx`'s own `myHolding`/
+ * `myPendingVerification` ActionCenter items already load (no new query),
+ * so this is a third view of one already-loaded array, not a new source.
+ * Deliberately NOT summed into `computeAccountDockBadge` — that chain is
+ * scoped to admin/host duties (see its own doc comment); this is a
+ * personal-tab-only signal with nowhere else in the dock chain it belongs. */
+export function computeMyTicketsActionCount({ paymentBookings = [] } = {}) {
+  return (paymentBookings || []).filter(b => (
+    ['pending', 'confirmed', 'attended'].includes(b.status)
+    && !(b.status === 'confirmed' && b.payment_state === 'confirmed')
+  )).length;
+}
+
 /** Shared "99+" cap — the exact count is still always available to the
  * caller for its own accessibility label; this only bounds the digits
  * actually painted into the small badge shape. */

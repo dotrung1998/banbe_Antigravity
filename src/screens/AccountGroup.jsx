@@ -4,6 +4,7 @@ import { EVENTS } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
 import { computeHostActionCount, formatBadgeCount } from '../lib/badges.js';
+import { isBookingTicket } from '../lib/bookingTicket.js';
 
 // Account IA pass (2026-09-27) — the ONE shared child screen every
 // Account group entry card opens (`openAccountGroup(key)`), keyed by
@@ -15,11 +16,17 @@ import { computeHostActionCount, formatBadgeCount } from '../lib/badges.js';
 // identical files/screens would just be repetition, not a real
 // architectural need. `accountTab` itself is never touched by this
 // screen, so "‹ Tài khoản" always lands back on whichever tab was showing.
+// Account IA reorg (2026-09-30) — "activity"'s visible label changed to
+// "Tickets & Bookings" (its content is now this account's REAL bookings,
+// see the `key === 'activity'` block below) and "preferences" relabeled
+// to "Settings" for accuracy. Both `groupKey`s themselves are UNCHANGED
+// (still "activity"/"preferences" — the route/testid/deep-link target),
+// per this pass's own instruction to rename labels only, never keys.
 const GROUP_META = {
   team: { vi: 'Hồ Sơ & Team', en: 'Profile & Team' },
-  activity: { vi: 'Vé & Hoạt Động', en: 'Tickets & Activity' },
+  activity: { vi: 'Vé & Đặt Chỗ', en: 'Tickets & Bookings' },
   payments: { vi: 'Thanh Toán & Giấy Tờ', en: 'Payments & Documents' },
-  preferences: { vi: 'Tùy Chỉnh', en: 'Preferences' },
+  preferences: { vi: 'Cài Đặt', en: 'Settings' },
   hostOps: { vi: 'Vận Hành & Thanh Toán Tổ Chức', en: 'Event Operations & Payments' },
   adminReview: { vi: 'Duyệt & Kiểm Duyệt', en: 'Review & Moderation' },
 };
@@ -52,6 +59,7 @@ export default function AccountGroup() {
     respondToOrganizerInvite, setOrganizerMemberVisibility,
     openPreferences, openSecurity, openDocuments, openRefundAccounts, openMyRefunds,
     openVerifications, openPayout, openDisputes, openAdminEvents,
+    loadPaymentBookings, openBookingConfirmed,
   } = useGoc();
   const key = s.accountGroupKey;
 
@@ -63,6 +71,18 @@ export default function AccountGroup() {
     if (key === 'hostOps' && !s.organizerMode) set({ screen: 'profile' });
     else if (key === 'adminReview' && s.accountType !== 'admin') set({ screen: 'profile' });
   }, [key, s.organizerMode, s.accountType, set]);
+
+  // Account IA reorg (2026-09-30) — "My Tickets" (the `activity` group's
+  // new real content) reuses the SAME `paymentBookings` array Account.jsx
+  // already loads for its own Action Center — Account.jsx has already
+  // loaded it by the time this screen is reachable, but a direct deep link
+  // straight into `accountGroupKey: 'activity'` (bypassing Account.jsx's
+  // own mount effect) is a real path, so this screen loads it itself too;
+  // `loadPaymentBookings` is idempotent (a plain re-fetch), never a second
+  // divergent source.
+  useEffect(() => {
+    if (key === 'activity' && s.user?.id) loadPaymentBookings();
+  }, [key, s.user?.id, loadPaymentBookings]);
 
   if (!key || !GROUP_META[key]) return null;
   const title = T(GROUP_META[key].vi, GROUP_META[key].en);
@@ -125,14 +145,14 @@ export default function AccountGroup() {
             {s.myOrganizerInvites.length === 0 && s.myTeamMemberships.length === 0 && (
               <p style={{ fontSize: 13, color: ink, opacity: 0.65, marginTop: 24 }}>{T('Chưa có lời mời hay Team nào.', 'No invites or teams yet.')}</p>
             )}
-          </>
-        )}
-
-        {key === 'activity' && (
-          <>
-            <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
-              <Row icon="calendarCheck" label={T('Sự kiện đã hoàn thành', 'Completed events')} trailing={`${completedCount} ›`} testId="account-completed-events" onClick={goCompletedList} border={false} />
-            </div>
+            {/* Account IA reorg (2026-09-30) — event-credit invites
+                (organizer-collaboration credits, not attendee tickets)
+                RELOCATED here from the old "activity" group — a deliberate
+                reclassification, not a silent drop: both this and Team
+                invites/memberships above are organizer-collaboration
+                concerns, a better semantic fit than sitting alongside real
+                attendee bookings in "Tickets & Bookings". Content/testids
+                unchanged from their previous location. */}
             {s.myEventCredits.length > 0 && (
               <div style={{ marginTop: 24 }} data-testid="account-event-credits">
                 <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện: lời mời đang chờ', 'Event contributions: pending invites')}</span>
@@ -168,6 +188,98 @@ export default function AccountGroup() {
                 ))}
               </div>
             )}
+          </>
+        )}
+
+        {key === 'activity' && (
+          <>
+            {/* Account IA reorg (2026-09-30) — Task 2b: "My Tickets" is now
+                REAL DB-backed data, reusing `s.paymentBookings`
+                (`loadPaymentBookings()`, GocContext.jsx) — the exact same
+                `bookings` query Account.jsx's own Action Center already
+                loads (`user_id`-scoped, joined to `events`/`organizers` for
+                real name/date), not the static demo catalogue and not a
+                second divergent query. Active bookings (pending/confirmed/
+                attended) tap into `openBookingConfirmed`, the same booking-
+                id-scoped helper Confirmed.jsx's own notification-reopen
+                path already uses — it self-gates the real QR (via
+                `isBookingTicket`) vs. the "awaiting payment" state, exactly
+                like Event Detail's reserve bar's `openHeld` already does
+                for whichever booking happens to be in `state.booking`, just
+                generalized to any booking id. Cancelled/expired/no_show
+                bookings (real `bookings.status` values confirmed in the
+                migrations — see 069/070/072/011) get their own clearly
+                labeled, non-interactive section — no fabricated "refunded"
+                bucket, since `bookings.status` has no such value. */}
+            {s.paymentsLoading && !s.paymentBookings.length && (
+              <p style={{ fontSize: 13, color: ink, opacity: 0.65, marginTop: 24 }} data-testid="my-tickets-loading">{T('Đang tải vé của bạn…', 'Loading your tickets…')}</p>
+            )}
+            {!s.paymentsLoading && s.paymentBookings.length === 0 && (
+              <p style={{ fontSize: 13, color: ink, opacity: 0.65, marginTop: 24 }} data-testid="my-tickets-empty">{T('Bạn chưa có vé nào.', "You don't have any tickets yet.")}</p>
+            )}
+            {(() => {
+              const active = s.paymentBookings.filter(b => ['pending', 'confirmed', 'attended'].includes(b.status));
+              const inactive = s.paymentBookings.filter(b => ['cancelled', 'expired', 'no_show'].includes(b.status));
+              const statusLabel = (b) => {
+                if (isBookingTicket(b)) return T('Vé đã sẵn sàng', 'Ticket ready');
+                if (b.status === 'attended') return T('Đã tham dự', 'Attended');
+                if (b.payment_state === 'pending_verification') return T('Chờ xác nhận thanh toán', 'Awaiting verification');
+                if (b.status === 'pending') return T('Đang giữ chỗ', 'Holding');
+                return T('Đang xử lý', 'In progress');
+              };
+              const terminalLabel = (b) => ({
+                cancelled: T('Đã hủy', 'Cancelled'),
+                expired: T('Đã hết hạn', 'Expired'),
+                no_show: T('Không tham dự', 'No-show'),
+              }[b.status] || b.status);
+              return (
+                <>
+                  {active.length > 0 && (
+                    <div style={{ marginTop: 24 }} data-testid="my-tickets-active">
+                      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Vé của tôi', 'My tickets')}</span>
+                      {active.map(b => (
+                        <div
+                          key={b.id}
+                          onClick={() => openBookingConfirmed(b.id, b.event_id, 'accountGroup')}
+                          style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }) }}
+                          data-testid={`my-ticket-${b.id}`}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.events?.name || T('Một sự kiện', 'An event')}</span>
+                            <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{b.events?.event_date ? `${b.events.event_date}${b.events.event_time ? ' ▪︎ ' + b.events.event_time : ''}` : ''}</span>
+                            <span style={{ fontSize: 11, color: ink, opacity: 0.85 }}>{statusLabel(b)}</span>
+                          </div>
+                          <span aria-hidden style={{ fontSize: 18, color: ink, opacity: 0.5, flex: 'none' }}>›</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {inactive.length > 0 && (
+                    <div style={{ marginTop: 24 }} data-testid="my-tickets-inactive">
+                      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đã hủy / hết hạn', 'Cancelled / expired')}</span>
+                      {inactive.map(b => (
+                        <div
+                          key={b.id}
+                          style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: 0.65 }) }}
+                          data-testid={`my-ticket-inactive-${b.id}`}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.events?.name || T('Một sự kiện', 'An event')}</span>
+                            <span style={{ fontSize: 11, color: ink }}>{terminalLabel(b)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+            {/* "Sự kiện đã hoàn thành" relabeled "Quá Khứ"/"Past Events" for
+                clarity — same destination (`goCompletedList` ->
+                `EventListView`/`EventList.jsx` mode 'completed'), unchanged. */}
+            <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
+              <Row icon="calendarCheck" label={T('Sự Kiện Quá Khứ', 'Past Events')} trailing={`${completedCount} ›`} testId="account-completed-events" onClick={goCompletedList} border={false} />
+            </div>
           </>
         )}
 

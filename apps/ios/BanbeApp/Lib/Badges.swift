@@ -45,6 +45,22 @@ enum AccountBadges {
             + hostActionCount(organizerMode: organizerMode, verificationsCount: verificationsCount, refundQueueCount: refundQueueCount)
     }
 
+    /// Personal-tab "Tickets & Bookings" group badge (Account IA reorg,
+    /// 2026-09-30) — real bookings this account itself needs to act on: a
+    /// still-holding/awaiting-payment/pending-verification booking (active
+    /// status, not yet a real ticket per `Booking.isTicket`). Reads the
+    /// SAME `paymentBookings` array `AccountView`'s own Action Center
+    /// already loads (no new query) — a third view of one already-loaded
+    /// array. Deliberately NOT summed into `accountDockBadge` — that chain
+    /// is scoped to admin/host duties (see its own doc comment); this is a
+    /// personal-tab-only signal mirroring `src/lib/badges.js`'s
+    /// `computeMyTicketsActionCount` exactly.
+    static func myTicketsActionCount(paymentBookings: [PayableBooking]) -> Int {
+        paymentBookings.filter { b in
+            ["pending", "confirmed", "attended"].contains(b.status) && !b.isTicket
+        }.count
+    }
+
     /// Shared "99+" cap for a badge that should not be limited to the
     /// existing "9+" convention (Notifications) — the exact count stays
     /// available to the caller for its own accessibility label.

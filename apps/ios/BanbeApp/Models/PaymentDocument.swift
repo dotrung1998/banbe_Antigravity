@@ -183,6 +183,14 @@ struct PayableBooking: Identifiable, Hashable {
     var nudgeCount: Int = 0
 
     var isPaid: Bool { paymentState == .confirmed || paidMarkedAt != nil }
+    /// Account IA reorg (2026-09-30) — the same canonical "is this a real,
+    /// scannable ticket" gate `Booking.isTicket` already defines (status
+    /// AND payment_state both confirmed — `isPaid` above is a looser,
+    /// different-purpose check that also counts an organizer's manual
+    /// `paidMarkedAt`, not safe to reuse here). AccountGroupView's My
+    /// Tickets list reads this to decide whether a row opens the real QR
+    /// or an "awaiting payment" state.
+    var isTicket: Bool { status == "confirmed" && paymentState == .confirmed }
     var isFrozen: Bool { paymentState == .pendingVerification }
     var hasBank: Bool { payMethods.contains("bank") && !bankAccountNo.isEmpty }
     var hasMomo: Bool { payMethods.contains("momo") && !momoPhone.isEmpty }

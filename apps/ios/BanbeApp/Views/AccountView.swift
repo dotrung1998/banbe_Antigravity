@@ -382,10 +382,51 @@ struct AccountView: View {
             // action keeps its EXACT original accessibility identifier/
             // route (openDocuments/openSecurity/etc., unchanged) — only
             // WHERE it's reached from moved.
-            groupCard(groupKey: "team", icon: "person.3", label: app.T("Hồ Sơ & Team", "Profile & Team"), badge: app.myOrganizerInvites.count, topPadding: 20)
-            groupCard(groupKey: "activity", icon: "calendar.badge.checkmark", label: app.T("Vé & Hoạt Động", "Tickets & Activity"), badge: app.myEventCredits.count)
+            // Account IA reorg (2026-09-30) — Team's badge now also counts
+            // pending event-credit invites (organizer-collaboration
+            // credits), relocated here FROM "activity" per this pass's own
+            // reclassification — see `AccountGroupView.teamContent`. Two
+            // distinct real arrays, safe to sum per Badges.swift's own
+            // dedup rule.
+            groupCard(groupKey: "team", icon: "person.3", label: app.T("Hồ Sơ & Team", "Profile & Team"), badge: app.myOrganizerInvites.count + app.myEventCredits.count, topPadding: 20)
+            // Relabeled "Vé & Hoạt Động"/"Tickets & Activity" -> "Vé & Đặt
+            // Chỗ"/"Tickets & Bookings"; `groupKey` stays "activity" (route/
+            // identifier unchanged). Badge is now the real count of this
+            // account's own holding/awaiting-payment/pending-verification
+            // bookings (`AccountBadges.myTicketsActionCount`, reading the
+            // SAME `paymentBookings` array already loaded for the Action
+            // Center above — no new query).
+            groupCard(groupKey: "activity", icon: "calendar.badge.checkmark", label: app.T("Vé & Đặt Chỗ", "Tickets & Bookings"), badge: AccountBadges.myTicketsActionCount(paymentBookings: app.paymentBookings))
             groupCard(groupKey: "payments", icon: "banknote", label: app.T("Thanh Toán & Giấy Tờ", "Payments & Documents"))
-            groupCard(groupKey: "preferences", icon: "slider.horizontal.3", label: app.T("Tùy Chỉnh", "Preferences"))
+            // Relabeled "Tùy Chỉnh"/"Preferences" -> "Cài Đặt"/"Settings"
+            // (reads more accurately for its actual contents). `groupKey`/
+            // identifier/route unchanged.
+            groupCard(groupKey: "preferences", icon: "slider.horizontal.3", label: app.T("Cài Đặt", "Settings"))
+            // "Help & Legal" — no dedicated in-app Help/Support screen
+            // exists anywhere in this codebase (searched for one); only the
+            // real, already-wired Policy screen (`app.openPolicy()`/
+            // `PolicyView.swift`, the same bilingual policy text used at
+            // signup consent, reachable read-only here — its own "‹ Back"
+            // returns to `app.policyBackScreen`, set to whichever screen
+            // opened it). This row is therefore the Legal half only — the "Help"
+            // half has no real destination yet, a genuine gap flagged in
+            // 09-auth-onboarding.md's dated fix-pass section, not
+            // fabricated here.
+            Button { app.openPolicy() } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "lock.shield").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
+                    Text(app.T("Trợ Giúp & Pháp Lý", "Help & Legal")).font(.system(size: 14))
+                    Spacer()
+                    Text("›").font(.system(size: 15)).opacity(0.85)
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(.horizontal, 16).padding(.vertical, 15)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.top, 8)
+            .accessibilityIdentifier("account.helpLegal")
 
             // Account extension (2026-09-27, Stage 1) — "organizer mode
             // OFF means host UI is OFF": the whole Tổ chức tab disappears

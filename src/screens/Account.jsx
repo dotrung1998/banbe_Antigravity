@@ -8,7 +8,7 @@ import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCent
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
 import ActionCenter from './ActionCenter.jsx';
 import { pickSoonest } from '../lib/countdown.js';
-import { computeAdminModerationCount, computeHostActionCount, formatBadgeCount } from '../lib/badges.js';
+import { computeAdminModerationCount, computeHostActionCount, computeMyTicketsActionCount, formatBadgeCount } from '../lib/badges.js';
 
 function organizerAvatarUrl(path) {
   if (!path) return '';
@@ -142,7 +142,7 @@ export default function Account() {
     openPaymentDetails, goDashboard,
     loadMyOrgStats, setAccountTab, openPublicProfile, openReports, openAccountGroup,
     loadMyOrganizerMemberships,
-    loadMyEventCredits, loadMyConfirmedEventCredits,
+    loadMyEventCredits, loadMyConfirmedEventCredits, openPolicy,
   } = useGoc();
   const s = state;
   // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Both panes stay
@@ -494,17 +494,32 @@ export default function Account() {
           counts are the same real, un-derived pending-action data that
           used to render inline here — never buried, still visible at this
           entry level. */}
+      {/* Account IA reorg (2026-09-30) — Team's badge now also counts
+          pending event-credit invites (organizer-collaboration credits),
+          relocated here FROM the old "activity" group per this pass's own
+          reclassification: both are organizer-collaboration concerns, a
+          better semantic fit than living alongside attendee tickets. Two
+          distinct real arrays/tables (myOrganizerInvites, myEventCredits),
+          safe to sum per this module's own dedup rule. */}
       <GroupCard
         groupKey="team" iconKind="users"
         label={T('Hồ Sơ & Team', 'Profile & Team')}
-        badge={s.myOrganizerInvites.length}
+        badge={s.myOrganizerInvites.length + s.myEventCredits.length}
         onClick={() => openAccountGroup('team')}
         marginTop={20}
       />
+      {/* Account IA reorg (2026-09-30) — relabeled "Vé & Hoạt Động"/"Tickets
+          & Activity" -> "Vé & Đặt Chỗ"/"Tickets & Bookings"; `groupKey`
+          stays "activity" (route/testid unchanged, only the visible label
+          and its content changed — see AccountGroup.jsx). Badge is now the
+          real count of this account's own holding/awaiting-payment/
+          pending-verification bookings (computeMyTicketsActionCount,
+          reading the SAME `paymentBookings` array already loaded above for
+          the Action Center — no new query). */}
       <GroupCard
         groupKey="activity" iconKind="calendarCheck"
-        label={T('Vé & Hoạt Động', 'Tickets & Activity')}
-        badge={s.myEventCredits.length}
+        label={T('Vé & Đặt Chỗ', 'Tickets & Bookings')}
+        badge={computeMyTicketsActionCount(s)}
         onClick={() => openAccountGroup('activity')}
       />
       <GroupCard
@@ -512,11 +527,35 @@ export default function Account() {
         label={T('Thanh Toán & Giấy Tờ', 'Payments & Documents')}
         onClick={() => openAccountGroup('payments')}
       />
+      {/* Account IA reorg (2026-09-30) — relabeled "Tùy Chỉnh"/"Preferences"
+          -> "Cài Đặt"/"Settings" (reads more accurately for its actual
+          contents, app preferences + security). `groupKey`/testid/route
+          unchanged (still "preferences" — see AccountGroup.jsx's own
+          GROUP_META, only its display string changed). */}
       <GroupCard
         groupKey="preferences" iconKind="sliders"
-        label={T('Tùy Chỉnh', 'Preferences')}
+        label={T('Cài Đặt', 'Settings')}
         onClick={() => openAccountGroup('preferences')}
       />
+      {/* Account IA reorg (2026-09-30) — "Help & Legal". No dedicated
+          in-app Help/Support screen exists anywhere in this codebase
+          (searched for one) — only the real, already-wired Policy screen
+          (`openPolicy`/`Policy.jsx`, the same bilingual policy text used at
+          signup consent and reachable read-only here, `backFromPolicy`
+          returning to whichever screen opened it). This row is therefore
+          the Legal half only; the "Help" half has no real destination to
+          point to yet (a genuine gap, not fabricated here — flagged in
+          09-auth-onboarding.md's dated fix-pass section). */}
+      <div
+        onClick={openPolicy}
+        data-testid="account-help-legal"
+        style={{ ...fieldGlass({ marginTop: 8, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
+          <RowIcon kind="shield" />{T('Trợ Giúp & Pháp Lý', 'Help & Legal')}
+        </span>
+        <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+      </div>
 
       {/* Account extension (2026-09-27, Stage 1) — "Organizer mode OFF
           means host UI is OFF": the whole Tổ chức tab disappears while

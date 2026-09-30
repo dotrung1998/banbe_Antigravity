@@ -2310,14 +2310,45 @@ export function GocProvider({ children }) {
   // own branch here — Splash.jsx's `prefers-reduced-motion` check makes
   // the iframe itself fire `logomotion-complete` immediately in that case
   // (see `logomotion2309.html`'s `prefersReducedMotion()`).
+  //
+  // 1.0s completed-motion dwell (2026-09-30, second pass) — on the NORMAL
+  // (non-Reduce-Motion) path only, hold on the already-completed final
+  // frame (the iframe already does this by removing its ticker, unchanged
+  // here) for one extra named second before advancing. Started at the
+  // exact moment the real completion signal fires, not from mount/asset-
+  // ready/bootstrap-done. `sessionCheckedRef` mirrors `s.sessionChecked`
+  // so the dwell's own timeout callback (which only runs once, later)
+  // reads the LATEST readiness value instead of a stale one captured when
+  // the effect first ran — whichever of {dwell, sessionChecked} finishes
+  // last is what actually calls `splashAdvance` (`splashAdvance` itself is
+  // idempotent — it's a no-op once `screen !== 'splash'` — so both call
+  // sites can safely fire speculatively). Reduce Motion is detected here
+  // via `matchMedia` (native, not the iframe's own signal) and skips the
+  // dwell entirely, advancing immediately exactly as before this pass.
+  const splashDwellTimer = useRef(null);
+  const splashDwellDone = useRef(false);
+  const sessionCheckedRef = useRef(s.sessionChecked);
+  useEffect(() => { sessionCheckedRef.current = s.sessionChecked; }, [s.sessionChecked]);
+  useEffect(() => {
+    if (!s.sessionChecked) return;
+    if (splashDwellDone.current) splashAdvance();
+  }, [s.sessionChecked, splashAdvance]);
   useEffect(() => {
     if (!s.logomotionComplete) return;
     clearTimeout(splashTimer.current);
-    splashAdvance();
+    const reduceMotion = typeof window !== 'undefined' && window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion) { splashAdvance(); return undefined; }
+    splashDwellTimer.current = setTimeout(() => {
+      splashDwellDone.current = true;
+      if (sessionCheckedRef.current) splashAdvance();
+    }, 1000);
+    return () => clearTimeout(splashDwellTimer.current);
   }, [s.logomotionComplete, splashAdvance]);
   const notifyLogomotionComplete = useCallback(() => set({ logomotionComplete: true }), [set]);
   const dismissSplash = useCallback(() => {
     clearTimeout(splashTimer.current);
+    clearTimeout(splashDwellTimer.current);
     set(prev => {
       if (prev.screen !== 'splash') return {};
       if (!prev.hasOnboarded) return { screen: 'langPick' };

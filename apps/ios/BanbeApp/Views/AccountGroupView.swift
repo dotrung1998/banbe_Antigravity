@@ -136,15 +136,14 @@ struct AccountGroupView: View {
             Text(app.T("Chưa có lời mời hay Team nào.", "No invites or teams yet."))
                 .font(.system(size: 13)).opacity(0.65)
         }
-    }
 
-    @ViewBuilder
-    private var activityContent: some View {
-        VStack(spacing: 0) {
-            row(app.T("Sự kiện đã hoàn thành", "Completed events"), identifier: "account.completedList", icon: "calendar.badge.checkmark", trailing: "\(completedCount) ›") { app.goCompletedList() }
-        }
-        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-
+        // Account IA reorg (2026-09-30) — event-credit invites (organizer-
+        // collaboration credits, not attendee tickets) RELOCATED here from
+        // the old `activityContent` — a deliberate reclassification, not a
+        // silent drop: both this and Team invites/memberships above are
+        // organizer-collaboration concerns, a better semantic fit than
+        // sitting alongside real attendee bookings in "Tickets & Bookings".
+        // Content/identifiers unchanged from their previous location.
         if !app.myEventCredits.isEmpty {
             Text(app.T("Đóng góp sự kiện: lời mời đang chờ", "Event contributions: pending invites")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myEventCredits) { c in
@@ -188,6 +187,109 @@ struct AccountGroupView: View {
                 .padding(.top, 8)
                 .accessibilityIdentifier("eventCreditConfirmed.\(c.id)")
             }
+        }
+    }
+
+    // Account IA reorg (2026-09-30) — Task 2b: "My Tickets" is now REAL
+    // DB-backed data, reusing `app.paymentBookings` (`loadPaymentBookings()`,
+    // AppState+Payments.swift) — the exact same `bookings` query
+    // AccountView's own Action Center already loads (`user_id`-scoped,
+    // joined to `events`/`organizers` for the real event name), not the
+    // static demo catalogue and not a second divergent query. Active
+    // bookings (pending/confirmed/attended) tap into `openBookingConfirmed`
+    // — the same booking-id-scoped helper Confirmed's own notification-
+    // reopen path already uses — which self-gates the real QR
+    // (`Booking.isTicket`) vs. the "awaiting payment" state, matching Event
+    // Detail's reserve bar's `openHeld` routing for whichever booking
+    // happens to be current, just generalized to any booking id.
+    // Cancelled/expired/no_show bookings (real `bookings.status` values,
+    // confirmed in the migrations — 069/070/072/011) get their own
+    // clearly labeled, non-interactive section — no fabricated "refunded"
+    // bucket, since `bookings.status` has no such value.
+    // Known gap vs. web: `paymentBookings`'s own query does not currently
+    // select `event_date`/`event_time` (only `events(name, ...)`), so this
+    // row shows event name + status only, not a date — extending that
+    // shared struct's decode/CodingKeys was judged out of scope for this
+    // pass (it's used by several other payment screens); flagged, not
+    // silently fixed.
+    @ViewBuilder
+    private var activityContent: some View {
+        if app.paymentsLoading && app.paymentBookings.isEmpty {
+            Text(app.T("Đang tải vé của bạn…", "Loading your tickets…"))
+                .font(.system(size: 13)).opacity(0.65)
+        } else if app.paymentBookings.isEmpty {
+            Text(app.T("Bạn chưa có vé nào.", "You don't have any tickets yet."))
+                .font(.system(size: 13)).opacity(0.65)
+        } else {
+            let active = app.paymentBookings.filter { ["pending", "confirmed", "attended"].contains($0.status) }
+            let inactive = app.paymentBookings.filter { ["cancelled", "expired", "no_show"].contains($0.status) }
+            if !active.isEmpty {
+                Text(app.T("Vé của tôi", "My tickets")).font(.system(size: 11.5, weight: .semibold))
+                ForEach(active) { b in
+                    Button {
+                        Task { _ = await app.openBookingConfirmed(bookingID: b.id, eventKey: b.eventKey, back: .accountGroup) }
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
+                                Text(ticketStatusLabel(b)).font(.system(size: 11)).opacity(0.85)
+                            }
+                            Spacer(minLength: 0)
+                            Text("›").font(.system(size: 18)).opacity(0.5)
+                        }
+                        .foregroundStyle(app.palette.ink)
+                        .padding(14)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("myTicket.\(b.id)")
+                }
+            }
+            if !inactive.isEmpty {
+                Text(app.T("Đã hủy / hết hạn", "Cancelled / expired")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+                ForEach(inactive) { b in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
+                            Text(terminalStatusLabel(b)).font(.system(size: 11))
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(14)
+                    .opacity(0.65)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("myTicketInactive.\(b.id)")
+                }
+            }
+        }
+
+        // "Sự kiện đã hoàn thành" relabeled "Sự Kiện Quá Khứ"/"Past Events"
+        // for clarity — same destination (`goCompletedList`), unchanged.
+        VStack(spacing: 0) {
+            row(app.T("Sự Kiện Quá Khứ", "Past Events"), identifier: "account.completedList", icon: "calendar.badge.checkmark", trailing: "\(completedCount) ›") { app.goCompletedList() }
+        }
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.top, 18)
+    }
+
+    private func ticketStatusLabel(_ b: PayableBooking) -> String {
+        if b.isTicket { return app.T("Vé đã sẵn sàng", "Ticket ready") }
+        if b.status == "attended" { return app.T("Đã tham dự", "Attended") }
+        if b.paymentState == .pendingVerification { return app.T("Chờ xác nhận thanh toán", "Awaiting verification") }
+        if b.status == "pending" { return app.T("Đang giữ chỗ", "Holding") }
+        return app.T("Đang xử lý", "In progress")
+    }
+
+    private func terminalStatusLabel(_ b: PayableBooking) -> String {
+        switch b.status {
+        case "cancelled": return app.T("Đã hủy", "Cancelled")
+        case "expired": return app.T("Đã hết hạn", "Expired")
+        case "no_show": return app.T("Không tham dự", "No-show")
+        default: return b.status
         }
     }
 
@@ -246,18 +348,25 @@ struct AccountGroupView: View {
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    // NOTE: iOS's own pre-existing admin rows differ from web's here —
-    // web has a dedicated "Tranh chấp thanh toán"/"Payment disputes" row
-    // (`openDisputes`); iOS's `adminSection` (before this pass) only ever
-    // had "Bảng quản trị"/"Admin Panel" (`openAdminDashboard`) and "Sự
-    // kiện chờ duyệt"/"Pending events" (`openAdminEvents`) — a real,
-    // pre-existing platform divergence, not something this pass invents
-    // or silently papers over by inventing an `openDisputes` call iOS
-    // never had. Kept EXACTLY as iOS already had it; reconciling the two
-    // platforms' admin surface is a separate, out-of-scope task.
+    // Parity fix (2026-09-30) — web has a dedicated "Tranh chấp thanh
+    // toán"/"Payment disputes" row (`openDisputes`, routing to
+    // `Disputes.jsx`); iOS never had a standalone disputes screen or
+    // `openDisputes` action at all — its dispute desk has always lived
+    // INSIDE `AdminDashboardView` (see that file's own "iOS counterpart of
+    // src/screens/Disputes.jsx" comment, `app.adminDisputes`/
+    // `loadAdminDisputes()`). Rather than inventing a new `openDisputes`
+    // action or a second dispute-viewing screen, this row reuses the
+    // EXACT existing destination (`app.openAdminDashboard()`) — the real
+    // screen where iOS disputes already live — closing the visible-row
+    // parity gap without adding new dispute logic. "Bảng quản trị"/"Admin
+    // Panel" below still opens the same screen for its other admin tools;
+    // both rows are legitimately two doors into one destination, not a
+    // duplicate feature.
     @ViewBuilder
     private var adminReviewContent: some View {
         VStack(spacing: 0) {
+            row(app.T("Tranh Chấp Thanh Toán", "Payment Disputes"), identifier: "admin.disputes", icon: "exclamationmark.shield", trailing: "›") { app.openAdminDashboard() }
+            Divider().overlay(app.palette.rule)
             row(app.T("Bảng quản trị", "Admin Panel"), identifier: "admin.panel", icon: "exclamationmark.shield", trailing: "›") { app.openAdminDashboard() }
             Divider().overlay(app.palette.rule)
             row(app.T("Sự Kiện Chờ Duyệt", "Pending Events"), identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›", badge: app.pendingEventsCount) { app.openAdminEvents() }

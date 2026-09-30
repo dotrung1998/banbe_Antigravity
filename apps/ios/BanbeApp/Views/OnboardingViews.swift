@@ -27,6 +27,24 @@ import UIKit
 /// re-derive: `AppState.init()` sets `screen = .splash` exactly once, at
 /// app launch, and nothing else ever re-assigns `.splash` — returning from
 /// background never remounts this view or replays the animation.
+///
+/// 1.0s completed-motion dwell (2026-09-30, second pass) — on the NORMAL
+/// (non-Reduce-Motion) path only, once the real `animationComplete` signal
+/// fires, a single cancellable `Task.sleep` dwell timer starts at that
+/// exact moment (not view mount, not session readiness). The animation's
+/// own completed final frame is already held on screen by the prior fix
+/// (the JS ticker removes itself), so nothing else is needed to avoid a
+/// blank screen during the dwell. Automatic advance then requires the
+/// dwell AND session readiness both — whichever finishes later gates the
+/// transition (`readyToAdvance` below composes them with `&&`, same as it
+/// already composed `sessionChecked`). The bounded `fallbackFired` path
+/// (broken WebView/iframe load) intentionally skips the dwell — it is not
+/// a real completion, waiting an extra second on top of an already-broken
+/// load serves nobody. Reduce Motion skips the dwell entirely, matching
+/// its existing "complete immediately" behavior; the dwell Task is never
+/// started for that path even though the shared HTML/JS may still fire
+/// `animationComplete` immediately under Reduce Motion too (belt-and-
+/// suspenders, same reasoning as the native `reduceMotion` OR below).
 struct SplashView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var auth: AuthViewModel
@@ -35,6 +53,8 @@ struct SplashView: View {
     @State private var animationComplete = false
     @State private var fallbackFired = false
     @State private var dismissed = false
+    @State private var dwellElapsed = false
+    @State private var dwellTask: Task<Void, Never>? = nil
 
     private static let logomotionAspect: CGFloat = 800.0 / 1288.0
     // A few seconds past the real ~ (totalFrames / 24fps) authored
@@ -43,12 +63,18 @@ struct SplashView: View {
     // healthy load/play never hits it, short enough that a genuinely
     // broken WebView load doesn't strand the user on the splash screen.
     private static let fallbackTimeout: UInt64 = 6_000_000_000
+    // Hold the completed launch motion on screen for one extra second
+    // before advancing, normal (non-Reduce-Motion) path only.
+    private static let dwellDuration: UInt64 = 1_000_000_000
 
-    /// Both real signals this screen waits on for the AUTOMATIC path —
-    /// Reduce Motion (or the animation's own real completion, or the
-    /// bounded fallback) AND session bootstrap being done.
+    /// Both real signals this screen waits on for the AUTOMATIC path.
+    /// Reduce Motion and the bounded fallback both count as "ready"
+    /// immediately (no dwell); real completion additionally needs the
+    /// 1s dwell to have elapsed. Session bootstrap readiness always gates
+    /// on top, same as before this pass.
     private var readyToAdvance: Bool {
-        (reduceMotion || animationComplete || fallbackFired) && auth.sessionChecked
+        let motionReady = reduceMotion || fallbackFired || dwellElapsed
+        return motionReady && auth.sessionChecked
     }
 
     var body: some View {
@@ -65,23 +91,44 @@ struct SplashView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { advance(force: true) }
-        .onChange(of: animationComplete) { _, _ in advance(force: false) }
+        .onChange(of: animationComplete) { _, newValue in
+            if newValue && !reduceMotion { startDwellTimer() }
+            advance(force: false)
+        }
         .onChange(of: auth.sessionChecked) { _, _ in advance(force: false) }
         .task {
             try? await Task.sleep(nanoseconds: Self.fallbackTimeout)
             fallbackFired = true
             advance(force: false)
         }
+        .onDisappear { dwellTask?.cancel() }
+    }
+
+    /// Starts the single named 1.0s dwell timer, cancelling any prior one
+    /// first (defensive — `animationComplete` only ever flips false->true
+    /// once per `LogomotionView`'s own guarded bridge, but this keeps the
+    /// invariant explicit rather than assumed).
+    private func startDwellTimer() {
+        dwellTask?.cancel()
+        dwellTask = Task {
+            try? await Task.sleep(nanoseconds: Self.dwellDuration)
+            guard !Task.isCancelled else { return }
+            dwellElapsed = true
+            advance(force: false)
+        }
     }
 
     /// `force: true` is the explicit-tap path (always dismisses, no
-    /// gating). `force: false` is every automatic call site — only
-    /// actually advances once `readyToAdvance` is true; harmless to call
+    /// gating — unchanged relationship to the completion/dwell gate). It
+    /// also cancels an in-flight dwell timer since the screen is going
+    /// away. `force: false` is every automatic call site — only actually
+    /// advances once `readyToAdvance` is true; harmless to call
     /// speculatively (from either `onChange`) before that.
     private func advance(force: Bool) {
         guard app.screen == .splash, !dismissed else { return }
         guard force || readyToAdvance else { return }
         dismissed = true
+        dwellTask?.cancel()
         app.dismissSplash(isSignedIn: auth.isSignedIn)
     }
 }

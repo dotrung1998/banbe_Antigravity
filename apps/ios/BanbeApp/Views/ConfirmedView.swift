@@ -285,8 +285,17 @@ struct ConfirmedView: View {
                     // Same documentBack-style pattern (07-notifications.md's
                     // 2026-09-18 follow-up) — honors confirmedBack (default
                     // .home, unchanged for every non-notification entry
-                    // point) instead of always going home.
-                    footerButton(app.confirmedBack == .notifications ? app.T("‹ Thông báo", "‹ Notifications") : app.T("Về trang chính", "Back to home")) {
+                    // point) instead of always going home. Account IA reorg
+                    // (2026-09-30) — "My Tickets" (AccountGroupView's
+                    // activityContent) opens this screen with
+                    // confirmedBack = .accountGroup, so the label now names
+                    // that destination too instead of misleadingly reading
+                    // "Back to home" while actually returning to Account.
+                    footerButton(
+                        app.confirmedBack == .notifications ? app.T("‹ Thông báo", "‹ Notifications")
+                        : app.confirmedBack == .accountGroup ? app.T("‹ Tài khoản", "‹ Account")
+                        : app.T("Về trang chính", "Back to home")
+                    ) {
                         app.screen = app.confirmedBack
                     }
                 }
