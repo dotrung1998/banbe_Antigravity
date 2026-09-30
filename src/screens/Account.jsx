@@ -153,7 +153,7 @@ export default function Account() {
     loadHomeStories, openStoryViewer, openStoryLibraryPicker, openStoryCameraPicker,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadPendingEventsCount,
     openPaymentDetails, goDashboard,
-    loadMyOrgStats, setAccountTab, openPublicProfile, openReports, openAccountGroup,
+    loadMyOrgStats, setAccountTab, openPublicProfile, openReports, openAccountGroup, goSurveysHosting,
     loadMyOrganizerMemberships,
     loadMyEventCredits, loadMyConfirmedEventCredits, openPolicy,
   } = useGoc();
@@ -797,6 +797,23 @@ export default function Account() {
           label={T('Hồ Sơ & Team Tổ Chức', 'Organizer Profile & Team')}
           badge={s.myOrganizerInvites.length + s.myEventCredits.length}
           onClick={() => openAccountGroup('team')}
+          marginTop={8}
+        />
+      )}
+
+      {/* Interest surveys (Slice B) — a standalone screen (SurveysHosting),
+          not a case inside the shared AccountGroup switch, since it has
+          its own tabs (Active/Closed/Suggested Drafts) and a create form,
+          not a simple flat list. Badge is honestly 0 for now — the
+          unseen/actionable candidate count this badge is meant to carry
+          (Slice C, candidate generation) is not implemented yet; see
+          .claude/notes/21-invite-only-events-and-surveys.md. */}
+      {canHost && (
+        <GroupCard
+          groupKey="surveys" iconKind="checklist"
+          label={T('Khảo Sát & Ý Tưởng Sự Kiện', 'Surveys & Event Ideas')}
+          badge={0}
+          onClick={goSurveysHosting}
           marginTop={8}
         />
       )}

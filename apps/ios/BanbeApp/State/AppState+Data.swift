@@ -1127,6 +1127,14 @@ extension AppState {
                 // description text available regardless of `keywords`.
                 .select("id, cat_key, cat_label, name, area, city, country_code, state_province, neighborhood, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)")
                 .eq("status", value: "live")
+                // Strict invite-only events (migration 113) — this query
+                // never filtered visibility at all, the exact same gap
+                // MapExplore.jsx's fetchLiveEvents had on web (fixed
+                // there first) — a real invite-only event would have
+                // shown up on the Map for anyone. RLS is the real
+                // backstop now, but this list should stay honest
+                // client-side too.
+                .eq("visibility", value: "public")
             if let bounds {
                 filter = filter
                     .gte("lat", value: bounds.south).lte("lat", value: bounds.north)
@@ -2411,6 +2419,9 @@ extension AppState {
                 "EVENT_NOT_FOUND": T("Không tìm thấy sự kiện này.", "This event could not be found."),
                 "EVENT_NOT_LIVE": T("Sự kiện này đã bị huỷ hoặc chưa mở.", "This event has been cancelled or isn’t open."),
                 "SOLD_OUT": T("Rất tiếc, chỗ vừa hết.", "Sorry, this just sold out."),
+                // Strict invite-only events (migration 113) — hold_seats'
+                // own gate; a specific, truthful message, not "try again".
+                "INVITE_REQUIRED": T("Sự kiện này chỉ dành cho người được mời.", "This event is invite-only."),
             ][code] ?? T(
                 "Không thể giữ chỗ lúc này. Vui lòng thử lại.",
                 "Could not hold this spot right now. Please try again."

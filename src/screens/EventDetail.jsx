@@ -271,7 +271,13 @@ export default function EventDetail() {
         )}
         <div style={{ fontSize: 13, color: ink, marginTop: 5 }}>{evSeatsLong}</div>
         {ev.inviteOnly && (
-          <div style={{ fontSize: 12.5, color: ink, marginTop: 6 }}>{T('Bạn có thể mời thêm 1 người.', 'You can bring one +1.')}</div>
+          // Strict invite-only events (migration 113) — this used to claim
+          // "you can bring one +1," a leftover from the old static demo
+          // catalogue's own flavor text for its fictional 'banrieng' event
+          // (removed). No "+1" mechanism exists anywhere in the invite
+          // model, and this line now renders for REAL invite-only events
+          // — a truthful statement instead of an invented feature.
+          <div style={{ fontSize: 12.5, color: ink, marginTop: 6 }}>{T('Sự kiện này chỉ dành cho người được mời.', 'This event is invite-only.')}</div>
         )}
         <p style={{ fontSize: 14, lineHeight: 1.55, color: ink, margin: '20px 0 0' }}>{ev.desc}</p>
         <div style={{ marginTop: 22, borderTop: `1px solid ${rule}` }}>

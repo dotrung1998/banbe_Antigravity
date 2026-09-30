@@ -57,6 +57,8 @@ import PublicProfile from './screens/PublicProfile.jsx';
 import OrganizerProfile from './screens/OrganizerProfile.jsx';
 import Reports from './screens/Reports.jsx';
 import TeamPage from './screens/TeamPage.jsx';
+import SurveyPublic from './screens/SurveyPublic.jsx';
+import SurveysHosting from './screens/SurveysHosting.jsx';
 import RootRefreshIndicator from './screens/RootRefreshIndicator.jsx';
 
 const SCREENS = {
@@ -101,6 +103,8 @@ const SCREENS = {
   organizerProfile: OrganizerProfile,
   reports: Reports,
   organizerTeam: TeamPage,
+  surveyPublic: SurveyPublic,
+  surveysHosting: SurveysHosting,
 };
 
 // TASK 1 (2026-10-05 fix pass) — the dock and the create-"+" button laid

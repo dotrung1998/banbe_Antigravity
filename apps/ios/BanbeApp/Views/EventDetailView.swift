@@ -319,7 +319,12 @@ struct EventDetailView: View {
                 .padding(.top, 5)
 
             if event.inviteOnly {
-                Text(app.T("Bạn có thể mời thêm 1 người.", "You can bring one +1."))
+                // Strict invite-only events (migration 113) — leftover
+                // "+1" claim from the old static demo catalogue's own
+                // fictional flavor text (removed); no such mechanism
+                // exists, and this now renders for REAL invite-only
+                // events, so it needs to be true, not invented.
+                Text(app.T("Sự kiện này chỉ dành cho người được mời.", "This event is invite-only."))
                     .font(.system(size: 12.5)).padding(.top, 6)
             }
 

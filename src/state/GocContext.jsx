@@ -313,6 +313,21 @@ if (typeof window !== 'undefined') {
   if (m) sharedOrganizerId = m[1];
 }
 
+// Interest surveys (Slice B) — the dedicated browser route,
+// /surveys/<publicId>, read the SAME way as /u/<handle> and /org/<id>
+// above: a real path (not a query param — audited against this repo's own
+// existing precedent for a path-based deep link, since the SPA's catch-all
+// vercel.json rewrite already serves index.html for any unknown path, so
+// this JS still runs and still sees the real pathname on direct load AND
+// refresh). Works signed out (get_survey_public is granted to anon) —
+// responding still requires signing in, enforced by submit_survey_response
+// itself, not by hiding the read-only preview behind a login wall first.
+let sharedSurveyPublicId = null;
+if (typeof window !== 'undefined') {
+  const m = window.location.pathname.match(/^\/surveys\/([A-Za-z0-9_-]{1,64})\/?$/);
+  if (m) sharedSurveyPublicId = m[1];
+}
+
 // Every screen a signed-out visitor may ever legitimately be on. Anything
 // else while `!user` gets redirected to 'login' by the guard effect below
 // — the enforcement point for "no guest browsing of any screen" (Task 1).
@@ -322,7 +337,7 @@ if (typeof window !== 'undefined') {
 // gap flagged, out of scope, in the prior ticket's own report) — now
 // directly in scope: "tap a member card to open their personal public
 // profile" must work for a signed-out Team page visitor too.
-const GUEST_ALLOWED_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy', 'organizerProfile', 'organizerTeam', 'publicProfile']);
+const GUEST_ALLOWED_SCREENS = new Set(['splash', 'langPick', 'themePick', 'login', 'resetPassword', 'policy', 'organizerProfile', 'organizerTeam', 'publicProfile', 'surveyPublic']);
 // Account extension (2026-09-27, Stage 1) — the internal, organizer-mode-
 // gated management screens: real event creation/editing, the organizer
 // management dashboard, and event check-in. Deliberately EXCLUDES
@@ -663,6 +678,22 @@ const initialState = {
   // shared /org/<id> link works without knowing who owns it.
   organizerProfile: null, organizerProfileLoading: false, organizerProfileError: '', organizerProfileBack: 'profile', organizerProfileId: '',
   organizerProfileUpcoming: [], organizerProfilePhotos: [], organizerProfileExtrasLoadedFor: '',
+  // Interest surveys (Slice B) — the public/browser+in-app response
+  // screen. `surveyPublic` is exactly get_survey_public()'s return shape
+  // (never raw table rows) so the public route can never expose more than
+  // that RPC's own allowlisted fields.
+  surveyPublic: null, surveyPublicLoading: false, surveyPublicError: '', surveyPublicBack: 'home', surveyPublicId: '',
+  // The signed-in respondent's own current answer (or null if none yet) —
+  // loaded separately since get_survey_public is anon-reachable and must
+  // never carry any one respondent's data.
+  mySurveyResponse: null, mySurveyResponseLoading: false,
+  // Draft answers, sessionStorage-backed (keyed by public_id) so they
+  // survive a sign-in round trip — "preserve entered answers through
+  // auth," the task's own explicit requirement for the browser page.
+  surveyDraft: { interestLevel: null, dateOptions: [], groupSize: null, locationOptions: [], budgetOption: null, activities: [], freeText: '', contactConsent: false },
+  surveyResponseSubmitting: false, surveyResponseError: '', surveyResponseSuccess: false,
+  // Host management (Hosting -> Surveys & Event Ideas).
+  mySurveys: [], mySurveysLoading: false, mySurveyCreateBusy: false, mySurveyCreateError: '',
   // Account extension (2026-09-27, Stage 3) — one role-scoped KPI
   // dashboard, reached from a "Số liệu & báo cáo" row on each visible
   // Account tab. `reportsScope` is 'personal'|'host'|'admin' (never
@@ -1258,6 +1289,8 @@ export function GocProvider({ children }) {
         ...(sharedProfileHandle ? { screen: 'publicProfile', publicProfileHandle: sharedProfileHandle, publicProfileLoading: true, publicProfileBack: 'home' } : {}),
         // Same reasoning, for a shared /org/<id> organizer link.
         ...(sharedOrganizerId ? { screen: 'organizerProfile', organizerProfileId: sharedOrganizerId, organizerProfileLoading: true, organizerProfileBack: 'home' } : {}),
+        // Same reasoning, for a shared /surveys/<publicId> link.
+        ...(sharedSurveyPublicId ? { screen: 'surveyPublic', surveyPublicId: sharedSurveyPublicId, surveyPublicLoading: true, surveyPublicBack: 'home' } : {}),
       };
     } catch {
       return initialState;
@@ -1298,6 +1331,27 @@ export function GocProvider({ children }) {
         return;
       }
       setStateRaw(prev => ({ ...prev, organizerProfile: data, organizerProfileLoading: false }));
+    });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Same reasoning, for a shared /surveys/<publicId> link's already-set
+  // initial screen — inlined here (rather than calling the loadSurveyPublic
+  // action defined later in this same component) since this effect must
+  // run on mount regardless of declaration order, and this file's other
+  // two shared-link effects above already establish "call supabase.rpc
+  // directly in a one-time mount effect" as the pattern for this exact
+  // situation.
+  useEffect(() => {
+    if (!sharedSurveyPublicId) return;
+    let active = true;
+    supabase.rpc('get_survey_public', { p_public_id: sharedSurveyPublicId }).then(({ data, error }) => {
+      if (!active) return;
+      if (error || data?.success === false) {
+        setStateRaw(prev => ({ ...prev, surveyPublicLoading: false, surveyPublicError: T('Không tìm thấy khảo sát này.', "This survey couldn't be found.") }));
+        return;
+      }
+      setStateRaw(prev => ({ ...prev, surveyPublic: data, surveyPublicLoading: false }));
     });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5467,6 +5521,163 @@ export function GocProvider({ children }) {
   }, [set, T]);
   const backFromOrganizerProfile = useCallback(() => set(prev => ({ screen: prev.organizerProfileBack || 'profile' })), [set]);
 
+  // ==================== Interest surveys (Slice B) ====================
+  const SURVEY_DRAFT_PREFIX = 'banbe.surveyDraft.';
+  function loadSurveyDraftFromStorage(publicId) {
+    try {
+      const raw = sessionStorage.getItem(SURVEY_DRAFT_PREFIX + publicId);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+  function saveSurveyDraftToStorage(publicId, draft) {
+    try { sessionStorage.setItem(SURVEY_DRAFT_PREFIX + publicId, JSON.stringify(draft)); } catch { /* private browsing, etc. */ }
+  }
+  function clearSurveyDraftFromStorage(publicId) {
+    try { sessionStorage.removeItem(SURVEY_DRAFT_PREFIX + publicId); } catch { /* private browsing, etc. */ }
+  }
+  const DEFAULT_SURVEY_DRAFT = { interestLevel: null, dateOptions: [], groupSize: null, locationOptions: [], budgetOption: null, activities: [], freeText: '', contactConsent: false };
+
+  /** In-app navigation to the same screen the dedicated browser route
+   * (/surveys/<publicId>) uses — one screen, one backend, per the task's
+   * own "reuse... using the SAME response backend" instruction (used by
+   * the host's own preview and, later, a story's "Answer Survey" CTA). */
+  const goSurveyPublic = useCallback(async (publicId, back = 'home') => {
+    set({
+      screen: 'surveyPublic', surveyPublic: null, surveyPublicLoading: true, surveyPublicError: '',
+      surveyPublicBack: back, surveyPublicId: publicId,
+      surveyDraft: loadSurveyDraftFromStorage(publicId) || DEFAULT_SURVEY_DRAFT,
+      surveyResponseSuccess: false, surveyResponseError: '',
+    });
+    const { data, error } = await supabase.rpc('get_survey_public', { p_public_id: publicId });
+    if (error || data?.success === false) {
+      set({ surveyPublicLoading: false, surveyPublicError: T('Không tìm thấy khảo sát này.', "This survey couldn't be found.") });
+      return;
+    }
+    set({ surveyPublic: data, surveyPublicLoading: false });
+  }, [set, T]);
+  const backFromSurveyPublic = useCallback(() => set(prev => ({ screen: prev.surveyPublicBack || 'home' })), [set]);
+  /** A signed-out visitor tapping submit — same authReturnScreen pattern
+   * every other "this needs an account" action already uses (goReserve,
+   * etc.), returning to THIS screen (surveyPublicId/surveyDraft are
+   * untouched by the trip through Login, so nothing is lost). */
+  const promptLoginForSurvey = useCallback(() => set({ screen: 'login', authMode: 'login', authReturnScreen: 'surveyPublic', authBackScreen: 'surveyPublic' }), [set]);
+  const goSurveysHosting = useCallback(() => set({ screen: 'surveysHosting' }), [set]);
+
+  /** The signed-in respondent's own existing answer, if any — loaded
+   * separately from get_survey_public (anon-reachable, must never carry
+   * one respondent's data) once we know who's signed in. Pre-fills the
+   * draft so re-opening an already-answered survey shows the real answer,
+   * not a blank form. */
+  const loadMySurveyResponse = useCallback(async (surveyId) => {
+    if (!surveyId || !s.user?.id) return;
+    set({ mySurveyResponseLoading: true });
+    const { data, error } = await supabase
+      .from('survey_responses').select('*')
+      .eq('survey_id', surveyId).eq('respondent_id', s.user.id).maybeSingle();
+    if (error) { set({ mySurveyResponseLoading: false }); return; }
+    set(prev => ({
+      mySurveyResponse: data || null, mySurveyResponseLoading: false,
+      surveyDraft: data ? {
+        interestLevel: data.interest_level, dateOptions: data.date_options || [], groupSize: data.group_size,
+        locationOptions: data.location_options || [], budgetOption: data.budget_option, activities: data.activities || [],
+        freeText: data.free_text || '', contactConsent: data.contact_consent || false,
+      } : prev.surveyDraft,
+    }));
+  }, [set, s.user?.id]);
+
+  const updateSurveyDraft = useCallback((patch) => set(prev => {
+    const next = { ...prev.surveyDraft, ...patch };
+    if (prev.surveyPublicId) saveSurveyDraftToStorage(prev.surveyPublicId, next);
+    return { surveyDraft: next };
+  }), [set]);
+
+  /** The one submission path both the in-app screen and the dedicated
+   * browser page call — server (submit_survey_response, migration 114) is
+   * the real validation/closure gate, this is just the UI-facing wrapper.
+   * Requires a signed-in identity; the screen itself is what prompts
+   * sign-in first (this app has no anonymous-write path anywhere). */
+  const submitSurveyResponseAction = useCallback(async () => {
+    if (!s.surveyPublic?.survey_id) return;
+    set({ surveyResponseSubmitting: true, surveyResponseError: '' });
+    const d = s.surveyDraft;
+    const { error } = await supabase.rpc('submit_survey_response', {
+      p_survey_id: s.surveyPublic.survey_id,
+      p_interest_level: d.interestLevel,
+      p_date_options: d.dateOptions,
+      p_group_size: d.groupSize,
+      p_location_options: d.locationOptions,
+      p_budget_option: d.budgetOption,
+      p_activities: d.activities,
+      p_free_text: d.freeText,
+      p_contact_consent: d.contactConsent,
+    });
+    if (error) {
+      const message = {
+        NOT_AUTHENTICATED: T('Bạn cần đăng nhập để trả lời.', 'You need to sign in to respond.'),
+        SURVEY_NOT_ACTIVE: T('Khảo sát này hiện không mở.', 'This survey isn’t open right now.'),
+        SURVEY_CLOSED: T('Khảo sát này đã đóng.', 'This survey has closed.'),
+        SURVEY_NOT_OPEN_YET: T('Khảo sát này chưa mở.', 'This survey hasn’t opened yet.'),
+        DATE_OPTIONS_REQUIRED: T('Vui lòng chọn ít nhất một ngày.', 'Please pick at least one date.'),
+        LOCATION_OPTIONS_REQUIRED: T('Vui lòng chọn ít nhất một địa điểm.', 'Please pick at least one location.'),
+        BUDGET_REQUIRED: T('Vui lòng chọn mức ngân sách.', 'Please pick a budget range.'),
+        ACTIVITIES_REQUIRED: T('Vui lòng chọn ít nhất một hoạt động.', 'Please pick at least one activity.'),
+        GROUP_SIZE_REQUIRED: T('Vui lòng nhập số người.', 'Please enter a group size.'),
+        INVALID_GROUP_SIZE: T('Số người không hợp lệ.', 'That group size isn’t valid.'),
+        INTEREST_LEVEL_REQUIRED: T('Vui lòng chọn mức độ quan tâm.', 'Please pick an interest level.'),
+      }[error.message] || T('Không thể gửi câu trả lời. Vui lòng thử lại.', 'Could not submit your response. Please try again.');
+      set({ surveyResponseSubmitting: false, surveyResponseError: message });
+      return;
+    }
+    clearSurveyDraftFromStorage(s.surveyPublicId);
+    set({ surveyResponseSubmitting: false, surveyResponseSuccess: true });
+  }, [set, s.surveyPublic, s.surveyDraft, s.surveyPublicId, T]);
+
+  // ---- Host management: Hosting -> Surveys & Event Ideas ----
+  const loadMySurveys = useCallback(async () => {
+    if (!s.myOrganizerId) return;
+    set({ mySurveysLoading: true });
+    const { data, error } = await supabase
+      .from('surveys').select('*').eq('organizer_id', s.myOrganizerId).order('created_at', { ascending: false });
+    set({ mySurveys: error ? [] : (data || []), mySurveysLoading: false });
+  }, [set, s.myOrganizerId]);
+
+  const createSurveyAction = useCallback(async (input) => {
+    if (!s.myOrganizerId) return null;
+    set({ mySurveyCreateBusy: true, mySurveyCreateError: '' });
+    const { data, error } = await supabase.rpc('create_survey', {
+      p_organizer_id: s.myOrganizerId,
+      p_title: input.title, p_description: input.description || '',
+      p_opens_at: input.opensAt, p_closes_at: input.closesAt,
+      p_timezone: 'Asia/Ho_Chi_Minh', p_config: input.config,
+    });
+    if (error) {
+      set({ mySurveyCreateBusy: false, mySurveyCreateError: {
+        TITLE_REQUIRED: T('Vui lòng nhập tiêu đề.', 'Please enter a title.'),
+        INVALID_WINDOW: T('Hạn chót phải sau thời điểm mở.', 'The deadline must be after the opening time.'),
+      }[error.message] || T('Không thể tạo khảo sát. Vui lòng thử lại.', 'Could not create the survey. Please try again.') });
+      return null;
+    }
+    set({ mySurveyCreateBusy: false });
+    await loadMySurveys();
+    return data;
+  }, [set, s.myOrganizerId, T, loadMySurveys]);
+
+  const publishSurveyAction = useCallback(async (surveyId) => {
+    const { error } = await supabase.rpc('publish_survey', { p_survey_id: surveyId });
+    if (!error) await loadMySurveys();
+    return !error;
+  }, [loadMySurveys]);
+  const closeSurveyAction = useCallback(async (surveyId) => {
+    const { error } = await supabase.rpc('close_survey', { p_survey_id: surveyId });
+    if (!error) await loadMySurveys();
+    return !error;
+  }, [loadMySurveys]);
+  const archiveSurveyAction = useCallback(async (surveyId) => {
+    const { error } = await supabase.rpc('archive_survey', { p_survey_id: surveyId });
+    if (!error) await loadMySurveys();
+    return !error;
+  }, [loadMySurveys]);
+
   /** Small preview content for the organizer public profile — real
    * upcoming events (published, soonest first) and a handful of real
    * photos from those same events, never invented. Guarded on
@@ -6292,6 +6503,11 @@ export function GocProvider({ children }) {
         EVENT_NOT_FOUND: T('Không tìm thấy sự kiện này.', 'This event could not be found.'),
         EVENT_NOT_LIVE: T('Sự kiện này đã bị huỷ hoặc chưa mở.', 'This event has been cancelled or isn’t open.'),
         SOLD_OUT: T('Rất tiếc, chỗ vừa hết.', 'Sorry, this just sold out.'),
+        // Strict invite-only events (migration 113) — hold_seats' own gate.
+        // A truthful, specific message rather than the generic fallback:
+        // this isn't "try again", it's "you need an invite," which no
+        // amount of retrying fixes.
+        INVITE_REQUIRED: T('Sự kiện này chỉ dành cho người được mời.', 'This event is invite-only.'),
       }[err.message] || T('Không thể giữ chỗ lúc này. Vui lòng thử lại.', 'Could not hold this spot right now. Please try again.');
       set({ loading: false, reserveError: message });
     }
@@ -8578,6 +8794,7 @@ export function GocProvider({ children }) {
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
+    goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, loadMySurveys, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
@@ -8614,6 +8831,7 @@ export function GocProvider({ children }) {
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
+    goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, loadMySurveys, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   ]);
 

@@ -1,13 +1,18 @@
 # Strict invite-only events + interest surveys — domain note
 
-## Status: PARTIALLY WORKING (web only). Read this before touching invite-only events, event photo privacy, or surveys again.
+## Status: PARTIALLY WORKING (mostly web; iOS booking-path fix included). Read this before touching invite-only events, event photo privacy, or surveys again.
 
-Slice A (invite-only events) backend is real and tested; web UI has the
-creation toggle only, no host invite-management UI yet. Slices B/C/D
-(interest surveys, candidate generation, stories/badges integration) are
-**not started**.
+Slice A (invite-only events) backend is real and tested, including the
+**critical fix described below** (the actual booking RPC, not just the one
+originally gated). Slice B (interest surveys) backend + a functional web
+host/respondent UI + the dedicated browser route are real and tested.
+Slices C (candidate generation) and D (surveys in stories) are **not
+started**. Host invite-management UI, invite email delivery, and
+EventDetail accept/decline for event invites are also **not started**.
 
-## What's real and verified
+## Slice A — Strict invite-only events
+
+### What's real and verified
 
 - `supabase/migrations/20261025000113_113_strict_invite_only_events.sql`
   (**not yet applied to any deployed database** — see Deployment below).
@@ -22,10 +27,21 @@ creation toggle only, no host invite-management UI yet. Slices B/C/D
   fully readable by direct id/slug). `events_select_invited` is the
   additive policy for the invited case, same pattern as the existing
   `events_select_admin` (085).
-- `claim_seats` (007) redefined with one added check: invite-only events
-  require a non-revoked/non-expired invite row for the caller, checked
-  server-side — direct RPC calls cannot bypass it. The organizer owner can
-  always book their own event.
+- **CRITICAL, found and fixed after the first pass looked done**:
+  `claim_seats` (007) was gated first, but reading `GocContext.jsx`'s own
+  `submitReserve` comment revealed the REAL reserve flow calls
+  **`hold_seats()` (migration 053)**, not `claim_seats` — the latter is
+  explicitly described in that comment as legacy (it never touches
+  `payment_state`/`hold_expires_at`). Gating `claim_seats` alone left the
+  actual booking path completely unprotected despite looking fixed.
+  **Both are now gated**: `claim_seats` for defense-in-depth, `hold_seats`
+  because it's what the app actually calls — verified end-to-end against
+  the local Postgres harness (stranger blocked with `INVITE_REQUIRED`,
+  invitee books successfully, owner bypasses without needing an invite,
+  correct notifications fire). **Lesson for next time**: always trace a
+  client call site to its real RPC name before declaring a server-side
+  gate complete — a plausible-sounding function name is not proof it's
+  the live path.
 - Real photo privacy: invite-only events' photos go to a **separate,
   genuinely private bucket** (`event-photos-private`), not the existing
   public `event-photos` bucket. This matters because Supabase serves a
@@ -44,37 +60,57 @@ creation toggle only, no host invite-management UI yet. Slices B/C/D
   `event_invite`), reusing the existing table/RLS/toast pipeline — no new
   inbox. `openNotification()` routes it to `goEvent()` (GocContext.jsx).
 - `MapExplore.jsx`'s `fetchLiveEvents` now filters `visibility='public'`
-  (it never had before — the only discovery query with this gap).
+  (it never had before — the only web discovery query with this gap).
+- **iOS parity fix, found by re-auditing after the web fix**:
+  `AppState+Data.swift`'s `loadMapEvents()` (the Map screen's real query)
+  had the EXACT SAME missing-visibility-filter bug as `MapExplore.jsx` —
+  fixed the same way (`.eq("visibility", value: "public")`). iOS's
+  `locationUniverse`/Home-feed filters (`AppState.swift:1635`/`:1757`)
+  were re-checked and are already correct (`!e.inviteOnly`, mirroring
+  web's `Home.jsx`) — no change needed there. `ViewModels/HomeViewModel.
+  swift` has the same bare `status=live` query with no visibility filter,
+  but is dead code (grepped: referenced nowhere else in the app) — left
+  alone; RLS is the real backstop for it regardless if it's ever wired up.
 - The static demo catalogue's `banrieng` entry (`src/data/events.js`,
   iOS `Resources/events.json`) is **removed** — it was gated only by a
   hardcoded client-side map plus an `s.invited` array that was never
   actually populated (dead code, always `[]`), so any signed-in user
   navigating to it directly got full "private" demo content for free. The
   real seeded `events` row with the same id (migration 020) now goes
-  through the real RLS/`event_invites`/`claim_seats` path this migration
-  added — no separate demo auth model.
+  through the real RLS/`event_invites`/booking path this migration added.
+- Fixed a fabricated claim: EventDetail (web + iOS) used to show "You can
+  bring one +1" on any invite-only event — leftover flavor text from the
+  removed demo event's own fiction. No "+1" mechanism exists anywhere in
+  the invite model; now shows a truthful "This event is invite-only"
+  instead, on both platforms, since this line now renders for REAL
+  invite-only events.
 - `CreateEvent.jsx` has a Public/Invite-only toggle (`s.createVisibility`,
   persisted via the new `set_event_visibility` RPC, deliberately NOT a new
   param on the already-large `create_event_draft`/`resubmit_event_for_
   review` — same pattern as the existing `set_event_keywords`) and shows
   it on the Review step.
+- `submitReserve`'s (web) and iOS's equivalent error-mapping both now show
+  a truthful "This event is invite-only" for `INVITE_REQUIRED`, instead of
+  the generic "could not hold this spot, try again" fallback.
 
-## Verification performed
+### Verification performed (Slice A)
 
 No local/staging Supabase instance exists in this environment (no
 `supabase` CLI, no running project). Verified instead against a throwaway
-local Postgres container running a minimal stub of the relevant schema
-(events/organizers/bookings/threads/profiles/event_photos/auth.users/
-storage.buckets+objects) plus this migration applied on top — NOT a
-substitute for a real `supabase db push` + `supabase migration list`
-check, which still needs to happen before this is live. Confirmed:
-- Non-invitee: 0 rows on direct `SELECT events`, `claim_seats` raises
-  `INVITE_REQUIRED`.
+local Postgres container running a minimal stub of the relevant schema —
+NOT a substitute for a real `supabase db push` + `supabase migration list`
+check. Confirmed, calling the RPCs directly under different session
+identities (`request.jwt.uid` session var standing in for `auth.uid()`):
+- Non-invitee: 0 rows on direct `SELECT events`; both `claim_seats` AND
+  `hold_seats` raise `INVITE_REQUIRED`.
 - Invited (pending, no explicit accept) user: sees the event, books
-  successfully.
-- Host revokes → invitee's next `claim_seats` call fails
-  (`INVITE_REQUIRED`); the invitee's EARLIER booking is untouched (no
-  silent cancellation/financial-state change).
+  successfully via `hold_seats` (the real path) with correct
+  `payment_state`/notifications.
+- The event's organizer owner books their own private event without
+  needing an invite.
+- Host revokes → invitee's next booking attempt fails (`INVITE_REQUIRED`);
+  the invitee's EARLIER booking is untouched (no silent cancellation/
+  financial-state change).
 - Email-only invite: wrong token → `INVITE_NOT_FOUND`; correct token from
   the wrong identity → `IDENTITY_MISMATCH`; correct token from the actual
   invited email → binds `invited_user_id`, succeeds.
@@ -84,78 +120,214 @@ check, which still needs to happen before this is live. Confirmed:
   invitee: sees them).
 - `set_event_visibility` rejects a non-owner (`NOT_AUTHORIZED`) and
   correctly inserts a `notifications` row for an existing-user invite.
-- `npx vite build` — clean, no errors, after all client-side changes.
+- `npx vite build` clean. `xcodebuild -scheme PersonalTeamDebug ... build`
+  → **BUILD SUCCEEDED**, after the iOS `loadMapEvents`/error-mapping/"+1"
+  copy fixes.
 
-**Not run**: `xcodebuild` (no iOS changes were made this pass — see Not
-done, below). No real Supabase project was touched; no data was written
-to any deployed database.
-
-## Not done this pass (explicitly out of scope / deferred)
+### Not done (Slice A)
 
 - **Host invite-management UI** (send invites, see pending/accepted/
-  revoked list, revoke button) — the RPCs exist and are tested, but there
-  is no screen calling them yet. Planned location: a panel in
-  `CreateEvent.jsx`'s edit mode when `createVisibility === 'invite'`, or a
-  new Dashboard sub-view.
+  revoked list, revoke button) — the RPCs exist and are tested, but no
+  screen calls them yet.
 - **Email delivery for email-only invites** — `create_event_invites`
-  returns the plaintext token, but nothing calls `/api/notify` (or
-  `src/lib/sendEmail.js`) to actually send it yet. Needs a new
-  `event_invite` case in `api/notify.js` (same Bearer-token/service-role
-  pattern as its existing cases) plus a redemption link built from the
-  token (`/?invite=<token>` query-param convention, since this is a
-  path-less Vite SPA — see Slice B's own routing note below).
-- **EventDetail accept/decline banner** — an invitee currently lands on
-  the event (RLS-permitted) but there's no UI surfacing "you're invited,
-  accept/decline" or handling the `INVITE_REQUIRED` error from
-  `claim_seats` with a clear message instead of the generic reserve-error
-  path.
-- **iOS** — zero iOS changes this pass. `EventDetailView.swift`'s existing
-  `inviteOnly` check (driven by `event.visibility`) already reads real
-  data once the demo catalogue fix above ships (its own bundled
-  `events.json` no longer has a `banrieng` row), but iOS has no invite
-  RPC calls, no accept/decline, no private-bucket-aware photo loading.
-  `AppState.swift:1635`/`:1757` (`!e.inviteOnly` filters) were not audited
-  for whether they need the same MapExplore-style visibility fix.
+  returns the plaintext token, but nothing calls `/api/notify` yet to
+  actually send it. Needs a new `event_invite` case in `api/notify.js`
+  (same Bearer-token/service-role pattern as its existing cases).
+- **EventDetail accept/decline banner** for event invites — an invitee
+  lands on the event (RLS-permitted) but there's no UI surfacing "you're
+  invited, accept/decline."
+- **iOS**: only the two fixes above (Map query, error message, "+1" copy)
+  — no invite RPC calls, no accept/decline, no private-bucket-aware photo
+  loading on iOS.
 - **Organizer public-profile stats leak (found, not fixed)**: `get_
   organizer_profile` (095) and the organizer public team page (100) count
   `event_count`/`hosting_since_year` over `status IN ('live','ended')`
   with **no visibility filter** — an invite-only event's existence
-  contributes to a PUBLIC organizer page's numbers (count, "hosting
-  since" year) even though the event row itself is now correctly hidden.
-  Not fixed this pass: both are large (100+ line) `SECURITY DEFINER`
-  functions already redefined multiple times across later migrations
-  (096, 097, 102 all touch `get_public_profile`'s mirrored organizer sub-
-  object), and this environment has no way to test a full redefinition of
-  them against the real schema (the local stub used above doesn't model
-  `follows`/`event_credits`/etc.) — retyping them by hand under time
-  pressure without a real test was judged riskier than leaving a
-  documented, lower-severity leak (aggregate counts/year, not event
-  content) for a follow-up pass with proper testing.
+  contributes to a PUBLIC organizer page's numbers even though the event
+  row itself is now correctly hidden. Not fixed: both are large (100+
+  line) `SECURITY DEFINER` functions redefined multiple times across later
+  migrations, and this environment can't test a full redefinition against
+  the real schema — retyping them by hand under time pressure without a
+  real test was judged riskier than leaving a documented, lower-severity
+  leak (aggregate counts/year, not event content) for a follow-up pass.
 - **Organizer-team invites vs event invites**: deliberately kept separate
-  — `event_invites` (this migration) is attendee-level event access;
-  `organizer_members`/`invite_organizer_member` (098) is organizer-team
-  membership. No shared table, no shared RPC, per the task's own
-  instruction not to confuse the two.
-- **Slices B/C/D (surveys, candidates, stories/badges)** — not started.
-  See the audit dependency map given to the user for what exists vs is
-  missing there (no survey/poll table anywhere; no client-side router, so
-  `/surveys/:publicId` must be a query-param convention on this Vite SPA,
-  not a real path route; `pg_cron` is the reusable pattern for deadline
-  closure).
+  — `event_invites` is attendee-level event access; `organizer_members`/
+  `invite_organizer_member` (098) is organizer-team membership. No shared
+  table, no shared RPC.
 
-## Deployment status
+## Slice B — Interest surveys before an event
 
-**Nothing in this migration has been applied to any database.** No
+### What's real and verified
+
+- `supabase/migrations/20261026000114_114_interest_surveys.sql` (**not yet
+  applied to any deployed database**).
+- Fixed MVP question set stored as ONE structured `surveys.config` JSON
+  block (date/time options, location options, budget options, activities,
+  group size bounds, per-field `required` flags) — deliberately not a
+  generic question/option engine, per the task's own "don't build an
+  unrestricted complex form-builder" instruction.
+- `surveys` (draft/active/closed/archived) + `survey_responses`
+  (`UNIQUE(survey_id, respondent_id)`, atomic upsert = "one current
+  response, editable until closure"). Direct table SELECT is host/admin
+  only; the public browser route reads exclusively through
+  `get_survey_public()`, an allowlisted-field RPC that can never leak more
+  than it explicitly returns, and that computes EFFECTIVE status
+  (`closes_at <= now()` ⇒ closed) rather than trusting the stored column
+  alone, in case the closure worker hasn't run yet.
+- RPCs: `create_survey`/`update_survey` (host, structural `config` changes
+  LOCKED once any response exists — not versioned, an explicit simpler
+  choice, see Not done)/`publish_survey`/`close_survey`/`archive_survey`/
+  `get_survey_public`/`submit_survey_response`.
+- `submit_survey_response` validates: survey is active AND
+  `opens_at <= now() < closes_at` (enforced here too, not just by the
+  worker — "enforce closes_at on response writes even if the worker is
+  late"), every required field per the survey's own `config.required`,
+  every submitted option id is a real member of that survey's own option
+  set, group size within `config.group_size_min/max`. Atomic upsert via
+  `ON CONFLICT (survey_id, respondent_id)` under the survey row's own
+  `FOR UPDATE` lock, so a host's `close_survey()` and a respondent's
+  concurrent submit can't race past each other.
+- Deadline closure: `close_expired_surveys()` on `pg_cron` (`* * * * *`,
+  same pattern as the existing `goc_expire_lapsed_pendings`/`goc_mark_
+  past_events` jobs, migration 008) — idempotent, host doesn't need the
+  app open.
+- Respondent privacy: RLS on `survey_responses` scopes SELECT to
+  `respondent_id = auth.uid()` OR the survey's own host/admin — a
+  respondent can never see another respondent's name or answers.
+- Contact consent (`contact_consent`) is a separate boolean field, never
+  implied by answering, never auto-true.
+- Browser route: real path `/surveys/<publicId>` (NOT a query param — see
+  the correction below), read the same way this app's existing `/u/
+  <handle>` and `/org/<id>` deep links are (parsed from
+  `window.location.pathname` once at module load, before React mounts;
+  works signed out via the anon-granted RPC). One screen
+  (`SurveyPublic.jsx`) serves both the dedicated browser page and in-app
+  navigation (`goSurveyPublic`), sharing the exact same backend calls, per
+  the task's "reuse... the SAME response backend" instruction.
+- Draft answers persist through a sign-in round trip via `sessionStorage`
+  (keyed by `public_id`), restored on mount, cleared on successful submit
+  — "preserve entered answers through auth."
+- Host screen: `SurveysHosting.jsx`, reachable from Account → Hosting →
+  "Khảo Sát & Ý Tưởng Sự Kiện" (new `GroupCard`, badge honestly `0` since
+  the real unseen-candidate-count driving that badge is Slice C, not
+  built). Active/Closed/Suggested-Drafts tabs; create form (title,
+  description, days-until-close, comma-separated option lists, max group
+  size); publish/close-early/archive actions; a "Preview" link that opens
+  the same `SurveyPublic` screen in-app. The Suggested-Drafts tab shows an
+  honest empty state explaining candidate generation isn't built —
+  present in the IA (a real, correctly-positioned entry point), never
+  claiming content that doesn't exist.
+
+### Correction made mid-implementation (routing)
+
+An earlier audit pass concluded this app has "no client-side router...
+so `/surveys/:publicId` must be a query-param convention," based on
+`MapExplore.jsx` and query-param usage. That was **wrong** — re-checking
+`GocContext.jsx` directly during implementation found `sharedProfileHandle`/
+`sharedOrganizerId` already parsing REAL paths (`/u/<handle>`, `/org/<id>`)
+from `window.location.pathname` at module load, working fine under
+`vercel.json`'s catch-all SPA rewrite (any path still serves `index.html`,
+so this JS still runs and still sees the real pathname on direct load and
+refresh). `/surveys/<publicId>` uses the exact same, already-proven
+pattern — a real path, not a query param. **Lesson**: verify a structural
+claim like "this app has no path-based routing" by grepping for the
+actual mechanism, not by trusting one prior investigation's summary.
+
+### Verification performed (Slice B)
+
+Same local-Postgres-harness method as Slice A (extended with `surveys`/
+`survey_responses`/pg_cron stub). Confirmed:
+- Draft survey not reachable via `get_survey_public` (`NOT_FOUND`, same as
+  a genuinely missing link — a draft was never meant to be reachable yet).
+- Respondent blocked from submitting before publish (`SURVEY_NOT_ACTIVE`).
+- After publish: `get_survey_public` reports `active`; a respondent
+  submits successfully; the SAME respondent editing their answer updates
+  the same row (not a duplicate — `UNIQUE(survey_id, respondent_id)`
+  proven, not assumed).
+- Invalid option id → `INVALID_LOCATION_OPTION`; missing required field →
+  `DATE_OPTIONS_REQUIRED`; out-of-bounds group size → `INVALID_GROUP_
+  SIZE`.
+- A second respondent's row is invisible to the first respondent via
+  direct `SELECT` (RLS proven with two real, different session
+  identities, not assumed from the policy text alone).
+- Host sees both respondents' full rows.
+- `update_survey` with a `config` change AFTER a response exists →
+  `STRUCTURAL_CHANGE_LOCKED`; the SAME call with only `title` changes
+  still succeeds.
+- Host `close_survey()` → subsequent respondent submit →
+  `SURVEY_NOT_ACTIVE`; `get_survey_public` reports `closed`.
+- `npx vite build` — clean (`SurveyPublic.jsx`, `SurveysHosting.jsx`,
+  `Account.jsx`, `App.jsx`, `GocContext.jsx` changes).
+
+**Not run**: no iOS survey code was written this pass, so no iOS build
+was needed for it (the earlier Slice A iOS build already covers the fixes
+that touch iOS files). No real Supabase project was touched; no data was
+written to any deployed database.
+
+### Not done (Slice B)
+
+- **True invite-gated private surveys** — this pass ships public-by-link
+  audience only (anyone with the `/surveys/<publicId>` link can respond,
+  same trust model as any other shared link in this app). Reusing
+  `event_invites` to gate a survey's audience is not implemented.
+- **Question-level versioning** — `update_survey` HARD LOCKS `config`
+  changes once any response exists, rather than the task's alternative
+  "or implement explicit versioning so old answers keep their meaning."
+  `config_version` exists on both `surveys` and `survey_responses` for a
+  future pass that wants true versioning instead of a lock; this pass
+  took the simpler, safer branch given time constraints.
+- **Explicit rate-limiting** of `submit_survey_response` itself — the
+  atomic per-respondent upsert structurally caps meaningful writes to one
+  effective row no matter how many times it's called (idempotent, not
+  spammable into duplicates), and identity verification itself already
+  rate-limits via the existing OTP/email-code infra (`otp_codes.attempts`)
+  reused for sign-in. No NEW request-throttling infra (e.g. a sliding
+  window) was added.
+- **iOS** — no survey code at all on iOS this pass (no screens, no RPC
+  calls).
+- **Slice C (candidate generation)** — not started. Schema was shaped
+  with this in mind (`date_options`/`location_options` stored as
+  queryable arrays per response) so a later deterministic scoring pass
+  doesn't need a data migration first, but no scoring function, candidate
+  table, or "Use This Idea" → Create Event prefill exists.
+- **Slice D (surveys in organizer stories)** — not started. No survey
+  story/card type, no "Answer Survey" CTA, no pause-story-for-response
+  flow.
+- **Notifications/badges for survey results** — no "your event ideas are
+  ready" notification exists (there's nothing to notify about yet, since
+  Slice C doesn't exist); the Hosting/dock badge Slice C would eventually
+  drive is a hardcoded `0` for now, honestly, not a fabricated count.
+
+## Deployment status (both migrations)
+
+**Nothing in either migration has been applied to any database.** No
 `supabase` CLI is installed in this environment and no local/staging
 Supabase project is running, so `supabase db push`/`supabase migration
-list` could not be run here. Before this is live:
+list` could not be run here. Before either is live:
 1. Run `supabase migration list` against the real project to confirm
-   `20261025000113` isn't already partially applied some other way.
-2. `supabase db push` (or equivalent) to apply it — this is a schema
-   change (new table, new bucket, redefined `claim_seats`) and should go
-   through whatever review/approval this project normally requires for a
-   production migration.
-3. Until applied, `visibility='invite'` on the `events` table still exists
-   but is completely unenforced in production (the exact pre-existing gap
-   this migration closes) — do not rely on any invite-only behavior in
-   production before confirming the migration is live.
+   `20261025000113` and `20261026000114` aren't already partially applied
+   some other way.
+2. `supabase db push` (or equivalent) to apply them, in order — both are
+   schema changes (new tables/buckets, redefined `claim_seats`/
+   `hold_seats`) and should go through whatever review/approval this
+   project normally requires for a production migration.
+3. Until applied: `visibility='invite'` on `events` remains completely
+   unenforced in production (the exact pre-existing gap 113 closes), and
+   no survey infrastructure exists at all in production. Do not rely on
+   either feature in production before confirming both migrations are
+   live.
+
+## iPhone/browser checklist (once migrations are deployed)
+
+- Create an event, toggle Invite-only, confirm it does NOT appear on
+  Home/Map for a second test account with no invite.
+- From a second account with no invite, try to reserve the same event by
+  guessing/reusing its id directly (not through the UI) — should fail.
+- Open `/surveys/<publicId>` for a published survey directly in Safari,
+  signed out: description/deadline/form should render; submitting should
+  prompt sign-in, then land back on the same survey with the draft intact.
+- Refresh the browser survey page mid-form — draft answers should survive
+  (sessionStorage).
+- As the host, publish a survey, submit a response from a second account,
+  confirm it appears in `SurveysHosting`'s Active tab; close it early;
+  confirm the browser page now shows "closed" and rejects a new submit.
