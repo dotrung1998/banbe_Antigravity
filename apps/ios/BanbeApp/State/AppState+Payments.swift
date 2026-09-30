@@ -1860,6 +1860,47 @@ struct RefundClaim: Codable, Identifiable, Equatable {
         case recipientSnapshot = "recipient_snapshot"
         case hostGuestName = "guest_name"
     }
+
+    // Real bug found (2026-10-01): a refund claim visible on web (loosely
+    // typed JS — a null/unexpected field just reads as falsy) was silently
+    // MISSING ENTIRELY on iOS. Root cause, confirmed by reading the decode
+    // path: `[RefundClaim]` used Swift's default synthesized Decodable,
+    // which is atomic per element — a single claim with e.g. `amount_vnd`
+    // or `reason` null (both were declared non-optional here) throws for
+    // the WHOLE array, which get_host_refund_claims() returns as ONE
+    // top-level result — so one malformed/edge-case row silently emptied
+    // the entire admin/host refund queue, on every platform-wide load, not
+    // just that one row. This custom initializer decodes every field
+    // defensively (`decodeIfPresent` + a safe default) so no single claim
+    // can ever take down the batch again, regardless of which field is
+    // eventually null for some future edge case.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        bookingId = try c.decodeIfPresent(UUID.self, forKey: .bookingId)
+        reservationId = try c.decodeIfPresent(UUID.self, forKey: .reservationId)
+        amountVnd = try c.decodeIfPresent(Int.self, forKey: .amountVnd) ?? 0
+        reason = try c.decodeIfPresent(String.self, forKey: .reason) ?? ""
+        status = try c.decodeIfPresent(String.self, forKey: .status) ?? ""
+        hostMarkedAt = try c.decodeIfPresent(Date.self, forKey: .hostMarkedAt)
+        guestConfirmedAt = try c.decodeIfPresent(Date.self, forKey: .guestConfirmedAt)
+        note = try c.decodeIfPresent(String.self, forKey: .note)
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt)
+        refundDueAt = try c.decodeIfPresent(Date.self, forKey: .refundDueAt)
+        disputedAt = try c.decodeIfPresent(Date.self, forKey: .disputedAt)
+        hostResponseDueAt = try c.decodeIfPresent(Date.self, forKey: .hostResponseDueAt)
+        transferReference = try c.decodeIfPresent(String.self, forKey: .transferReference)
+        resendReference = try c.decodeIfPresent(String.self, forKey: .resendReference)
+        resendBankName = try c.decodeIfPresent(String.self, forKey: .resendBankName)
+        resendTransferredAt = try c.decodeIfPresent(Date.self, forKey: .resendTransferredAt)
+        resendNote = try c.decodeIfPresent(String.self, forKey: .resendNote)
+        selectedDestinationId = try c.decodeIfPresent(UUID.self, forKey: .selectedDestinationId)
+        recipientSnapshot = try? c.decodeIfPresent(RecipientSnapshot.self, forKey: .recipientSnapshot)
+        hostGuestName = try c.decodeIfPresent(String.self, forKey: .hostGuestName)
+        guestName = ""
+        eventName = ""
+        eventKey = nil
+    }
 }
 
 /// TASK B (shared host refund presentation, 2026-09-30 pass) — the ONE
