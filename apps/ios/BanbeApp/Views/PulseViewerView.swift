@@ -640,24 +640,60 @@ struct PulseViewerView: View {
                     // `scaledToFill`ed across the whole media area, blurred
                     // and dimmed, replacing the solid-color fill.
                     if let urlStr = eventPhotoURL(item.photoPath), let url = URL(string: urlStr) {
+                        // Layout-regression fix (2026-10-25, second pass) —
+                        // root cause, confirmed by reading the modifier
+                        // chain: the AsyncImage above had NO explicit frame
+                        // of its own. Without one, AsyncImage's reported
+                        // ideal size is driven by its CONTENT's ideal size —
+                        // and `img.resizable().scaledToFill()`, with no
+                        // bounding frame either, proposes the photo's own
+                        // native pixel width upward as its ideal width. For
+                        // a portrait photo that's still narrower than the
+                        // sheet, so nothing visibly broke; for a landscape
+                        // photo it's WIDER than the sheet, so the ZStack
+                        // (and the VStack/sheet containing it) sized itself
+                        // to that oversized width, shifting the footer
+                        // (organizer name/Like/Share/link, a SIBLING lower
+                        // in the same VStack) right and clipping it —
+                        // exactly the reported symptom, and not something
+                        // `.clipped()` alone (a paint-time crop, not a
+                        // layout constraint) could ever fix.
+                        // Fix: both dimensions of the media area are now
+                        // explicit and container-derived (`geo.size`, the
+                        // GeometryReader this whole sheet is already built
+                        // on — never the image's own intrinsic size). The
+                        // foreground keeps its exact prior look
+                        // (`scaledToFit`, untouched); the blurred backdrop
+                        // moves from a ZStack SIBLING (which independently
+                        // contributes its own layout size) to a
+                        // `.background()` modifier on the foreground —
+                        // backgrounds are always sized to match their host
+                        // view and never drive layout themselves, which is
+                        // the actual guarantee this needed, not merely
+                        // "add a frame and hope."
+                        let mediaSize = CGSize(width: geo.size.width, height: geo.size.height * 2 / 3)
                         AsyncImage(url: url) { phase in
                             if let img = phase.image {
-                                ZStack {
-                                    img.resizable().scaledToFill()
-                                        // `opaque: true` clamps edge pixels
-                                        // instead of fading them to
-                                        // transparent — without it, the blur
-                                        // itself reintroduces a faint version
-                                        // of the same edge gap this fix is
-                                        // removing.
-                                        .blur(radius: 28, opaque: true)
-                                        .overlay(Color.black.opacity(0.35))
-                                    img.resizable().scaledToFit()
-                                }
+                                img.resizable().scaledToFit()
+                                    .frame(width: mediaSize.width, height: mediaSize.height)
+                                    .background(
+                                        img.resizable().scaledToFill()
+                                            .frame(width: mediaSize.width, height: mediaSize.height)
+                                            // `opaque: true` clamps edge pixels
+                                            // instead of fading them to
+                                            // transparent — without it, the
+                                            // blur itself reintroduces a faint
+                                            // version of the same edge gap
+                                            // this fix is removing.
+                                            .blur(radius: 28, opaque: true)
+                                            .overlay(Color.black.opacity(0.35))
+                                            .clipped()
+                                    )
                             } else {
                                 Color.clear
                             }
                         }
+                        .frame(width: mediaSize.width, height: mediaSize.height)
                     }
                     VStack {
                         Capsule().fill(Color.white.opacity(0.55)).frame(width: 36, height: 4)
@@ -681,7 +717,7 @@ struct PulseViewerView: View {
                         Spacer()
                     }
                 }
-                .frame(height: geo.size.height * 2 / 3)
+                .frame(width: geo.size.width, height: geo.size.height * 2 / 3)
                 .clipped()
 
                 ScrollView {
