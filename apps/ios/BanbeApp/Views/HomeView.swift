@@ -307,7 +307,7 @@ struct HomeView: View {
                 // kept in this same leading `HStack`, before the `Spacer`,
                 // so the language/area/theme controls on the trailing side
                 // don't move at all.
-                Text(app.T("chính", "home"))
+                Text(app.T("Nhà", "home"))
                     .font(BanbeTheme.display(27))
                     .foregroundStyle(app.palette.ink)
                 // Home quick event search moved OUT of this header
