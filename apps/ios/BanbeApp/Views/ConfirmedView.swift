@@ -119,8 +119,8 @@ struct ConfirmedView: View {
                                                    "Seat locked ▪︎ no countdown against you"))
                                             .font(.system(size: 11.5, weight: .semibold))
                                         Text(verifyOverdue
-                                             ? app.T("Người tổ chức đang xử lý — có thể mất thêm chút thời gian",
-                                                     "The organizer is on it — may take a little longer")
+                                             ? app.T("Người tổ chức đang xử lý, có thể mất thêm chút thời gian",
+                                                     "The organizer is on it, may take a little longer")
                                              : app.T("Người tổ chức thường phản hồi trong",
                                                      "The organizer typically responds within"))
                                             .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.75))

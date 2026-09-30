@@ -150,7 +150,7 @@ export default function DockCreateButton() {
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
               <path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
-            {T('Tạo sự kiện', 'Create event')}
+            {T('Tạo Sự Kiện', 'Create Event')}
           </div>
           <div
             role="menuitem"
@@ -162,7 +162,7 @@ export default function DockCreateButton() {
               <path d="M4 8a2 2 0 0 1 2-2h1.5l1-1.5h7l1 1.5H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8z" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinejoin="round" />
               <circle cx="12" cy="13" r="3.2" stroke="currentColor" strokeWidth="1.6" fill="none" />
             </svg>
-            {T('Đăng story', 'Post a story')}
+            {T('Đăng Story', 'Post A Story')}
           </div>
           {storySubOpen && (
             <div style={{ padding: '0 10px 13px 34px', display: 'flex', flexDirection: 'column' }}>
@@ -173,7 +173,7 @@ export default function DockCreateButton() {
                 style={{ padding: '10px 8px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
               >
                 <AttachMenuIcon name="library" />
-                {T('Thư viện ảnh', 'Photo library')}
+                {T('Thư Viện Ảnh', 'Photo Library')}
               </div>
               <div
                 role="menuitem"

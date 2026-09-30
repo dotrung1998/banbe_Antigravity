@@ -220,9 +220,9 @@ export default function Notifications() {
             }}
           />
         ) : selectionMode ? (
-          <span style={{ ...display(27) }}>{T('Đang chọn', 'Selecting')}</span>
+          <span style={{ ...display(27) }}>{T('Đang Chọn', 'Selecting')}</span>
         ) : (
-          <span style={{ ...display(27) }}>{T('Thông báo', 'Notifications')}</span>
+          <span style={{ ...display(27) }}>{T('Thông Báo', 'Notifications')}</span>
         )}
         {/* TASK 2 (2026-09-22 twentieth follow-up) — the two right-side
             header slots morph in place (same two fixed positions, content

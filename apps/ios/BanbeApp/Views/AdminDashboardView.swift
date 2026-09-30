@@ -86,9 +86,9 @@ struct AdminDashboardView: View {
             }
 
             VStack(spacing: 4) {
-                line(app.T("Nội dung CK", "Reference"), row.paymentRef ?? "—")
-                line(app.T("Mã giao dịch khách khai", "Buyer transaction ID"), row.transactionId ?? "—")
-                line(app.T("Lý do từ chối", "Rejection reason"), row.disputeReason?.isEmpty == false ? row.disputeReason! : "—")
+                line(app.T("Nội dung CK", "Reference"), row.paymentRef ?? app.T("Không Có Thông Tin", "Not Provided"))
+                line(app.T("Mã giao dịch khách khai", "Buyer transaction ID"), row.transactionId ?? app.T("Không Có Thông Tin", "Not Provided"))
+                line(app.T("Lý do từ chối", "Rejection reason"), row.disputeReason?.isEmpty == false ? row.disputeReason! : app.T("Không Có Thông Tin", "Not Provided"))
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))

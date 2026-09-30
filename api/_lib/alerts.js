@@ -152,7 +152,7 @@ export async function sendZaloFallback(row) {
     body: JSON.stringify({
       recipient: { user_id: row.zalo_user_id },
       message: {
-        text: `banbe: ${formatVnd(row.total_vnd)} — ${row.event_name} (${row.payment_ref}) đang chờ xác nhận.`,
+        text: `banbe: ${formatVnd(row.total_vnd)}, ${row.event_name} (${row.payment_ref}) đang chờ xác nhận.`,
       },
     }),
   });

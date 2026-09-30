@@ -48,7 +48,7 @@ struct AdminEventsView: View {
 
                 HStack(alignment: .lastTextBaseline) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(app.T("Sự kiện chờ duyệt", "Pending events"))
+                        Text(app.T("Sự Kiện Chờ Duyệt", "Pending Events"))
                             .font(BanbeTheme.display(24))
                             .accessibilityIdentifier("adminEvents.title")
                         Text(app.T("Sự kiện chỉ hiển thị công khai sau khi được duyệt ở đây.", "An event only shows publicly once approved here."))
@@ -147,20 +147,20 @@ struct AdminEventsView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     line(app.T("Trạng thái", "Status"), row.status)
-                    line(app.T("Danh mục", "Category"), row.catLabel?.isEmpty == false ? row.catLabel! : (row.catKey ?? "—"))
-                    line(app.T("Từ khoá", "Keywords"), row.keywords?.isEmpty == false ? row.keywords!.joined(separator: ", ") : "—")
+                    line(app.T("Danh mục", "Category"), row.catLabel?.isEmpty == false ? row.catLabel! : (row.catKey ?? app.T("Không Có Thông Tin", "Not Provided")))
+                    line(app.T("Từ khoá", "Keywords"), row.keywords?.isEmpty == false ? row.keywords!.joined(separator: ", ") : app.T("Không Có Thông Tin", "Not Provided"))
                     line(app.T("Ngày", "Date"), row.eventDate.map { "\($0)\(row.eventTime.map { " ▪︎ \(String($0.prefix(5)))" } ?? "")" } ?? app.T("Chưa đặt", "Not set"))
-                    line(app.T("Sức chứa", "Capacity"), row.capacity.map(String.init) ?? "—")
+                    line(app.T("Sức chứa", "Capacity"), row.capacity.map(String.init) ?? app.T("Không Có Thông Tin", "Not Provided"))
                     line(app.T("Hiển thị", "Visibility"), row.visibility)
-                    line(app.T("Chế độ duyệt vé", "Booking approval"), row.approval?.isEmpty == false ? row.approval! : "—")
-                    line(app.T("Mô tả", "Description"), row.description?.isEmpty == false ? row.description! : "—")
-                    line(app.T("Bao gồm", "Included"), row.includedItems?.isEmpty == false ? row.includedItems!.map(\.label).joined(separator: " ▪︎ ") : "—")
+                    line(app.T("Chế độ duyệt vé", "Booking approval"), row.approval?.isEmpty == false ? row.approval! : app.T("Không Có Thông Tin", "Not Provided"))
+                    line(app.T("Mô tả", "Description"), row.description?.isEmpty == false ? row.description! : app.T("Không Có Thông Tin", "Not Provided"))
+                    line(app.T("Bao gồm", "Included"), row.includedItems?.isEmpty == false ? row.includedItems!.map(\.label).joined(separator: " ▪︎ ") : app.T("Không Có Thông Tin", "Not Provided"))
                 }
                 .padding(10)
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    line(app.T("Địa chỉ", "Address"), [row.addressLine, row.area, row.city].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: ", ").isEmpty ? "—" : [row.addressLine, row.area, row.city].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: ", "))
+                    line(app.T("Địa chỉ", "Address"), [row.addressLine, row.area, row.city].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: ", ").isEmpty ? app.T("Không Có Thông Tin", "Not Provided") : [row.addressLine, row.area, row.city].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: ", "))
                     line(app.T("Đã xác minh (chủ nhà tự khai)", "Address confirmed (host-provided)"), (row.addressVerified ?? false) ? app.T("Có", "Yes") : app.T("Không", "No"))
                     if let lat = row.lat, let lng = row.lng, let url = URL(string: "https://www.google.com/maps/search/?api=1&query=\(lat),\(lng)") {
                         Link(app.T("Mở trên Google Maps", "Open in Google Maps") + " (\(String(format: "%.5f", lat)), \(String(format: "%.5f", lng)))", destination: url)

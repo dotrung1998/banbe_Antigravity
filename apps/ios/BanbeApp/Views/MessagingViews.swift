@@ -671,7 +671,7 @@ struct ChatView: View {
     private var unreadDivider: some View {
         HStack(spacing: 10) {
             Rectangle().fill(app.palette.rule).frame(height: 1)
-            Text("— \(app.T("Chưa đọc", "Unread")) —")
+            Text("(\(app.T("Chưa đọc", "Unread")))")
                 .font(.system(size: 10.5, weight: .semibold))
                 .foregroundStyle(BanbeTheme.alert)
             Rectangle().fill(app.palette.rule).frame(height: 1)

@@ -120,7 +120,7 @@ export default function DocumentView() {
               <p style={{ fontSize: 12, color: ink, margin: 0 }}>{pendingFile?.name}</p>
               <textarea
                 value={reason} onChange={(e) => setReason(e.target.value)}
-                placeholder={T('Lý do thay thế (bắt buộc) — khách sẽ thấy lý do này', 'Reason for replacing (required) — the guest will see this')}
+                placeholder={T('Lý do thay thế (bắt buộc, khách sẽ thấy lý do này)', 'Reason for replacing (required, the guest will see this)')}
                 rows={2} data-testid="document-replace-reason"
                 style={{ fontSize: 12.5, padding: 10, borderRadius: 10, border: `1px solid rgba(27,25,22,0.16)`, fontFamily: "'Be Vietnam Pro', sans-serif", resize: 'vertical' }}
               />

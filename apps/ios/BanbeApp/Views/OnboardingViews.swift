@@ -439,8 +439,8 @@ struct CreateEventView: View {
                 Spacer()
                 Text("\(app.createIntro.count)/4000").font(.system(size: 10.5))
             }
-            Text(app.T("Một đoạn giới thiệu dài hơn, hấp dẫn — tách dòng trống giữa các đoạn. Không phải quảng cáo giả, không phải \"Bao gồm\".",
-                        "A longer, attractive write-up — leave a blank line between paragraphs. Not fabricated marketing copy, not the same as \"Included\"."))
+            Text(app.T("Một đoạn giới thiệu dài hơn, hấp dẫn. Tách dòng trống giữa các đoạn. Không phải quảng cáo giả, không phải \"Bao gồm\".",
+                        "A longer, attractive write-up. Leave a blank line between paragraphs. Not fabricated marketing copy, not the same as \"Included\"."))
                 .font(.system(size: 11)).opacity(0.75)
             TextEditor(text: $app.createIntro)
                 .font(.system(size: 14))
@@ -579,7 +579,7 @@ struct CreateEventView: View {
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .foregroundStyle(app.palette.ink)
         } else {
-            Text(app.T("Chọn một địa chỉ gợi ý ở trên — cần thiết để đăng sự kiện.", "Pick a suggested address above — required to publish."))
+            Text(app.T("Chọn một địa chỉ gợi ý ở trên (cần thiết để đăng sự kiện).", "Pick a suggested address above (required to publish)."))
                 .font(.system(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
         }
     }
@@ -1575,7 +1575,7 @@ private struct CreateEventReviewSheet: View {
                         .padding(.top, 18)
                 }
 
-                Text(app.T("Xem trước — chưa đăng công khai", "Preview — not published yet"))
+                Text(app.T("Xem trước: chưa đăng công khai", "Preview: not published yet"))
                     .font(.system(size: 11)).opacity(0.6)
                     .padding(.top, 22)
 
@@ -1669,7 +1669,7 @@ private struct CreateEventReviewSheet: View {
                     // (no `event_photos.id` exists until submission), so
                     // this stays an honest "preview" caption instead of
                     // faking engagement the real viewer would show.
-                    Text(app.T("Xem trước — chưa đăng công khai", "Preview — not published yet"))
+                    Text(app.T("Xem trước: chưa đăng công khai", "Preview: not published yet"))
                         .font(.system(size: 10.5)).kerning(0.4)
                         .foregroundStyle(.white.opacity(0.6))
                 }

@@ -428,7 +428,7 @@ export default function Attendance() {
 
                 <div style={{ ...fieldGlass({ display: 'flex', flexDirection: 'column' }) }}>
                   {visibleRows.map(c => {
-                    const label = REFUND_STATUS_LABEL[statusKey(c)] || REFUND_STATUS_LABEL[c.status] || ['—', '—'];
+                    const label = REFUND_STATUS_LABEL[statusKey(c)] || REFUND_STATUS_LABEL[c.status] || ['Không Xác Định', 'Unknown'];
                     return (
                       <div key={c.id} style={{ padding: '12px 14px', borderBottom: `1px solid ${rule}`, display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="refund-center-row">
                         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -558,7 +558,7 @@ export default function Attendance() {
                 {s.refundBatchError && <p style={{ fontSize: 12, color: alert, margin: 0 }}>{s.refundBatchError}</p>}
                 {s.refundBatchResult?.skipped_count > 0 && (
                   <p style={{ fontSize: 12, color: alert, margin: 0 }}>
-                    {T(`${s.refundBatchResult.skipped_count} khoản đã bị bỏ qua vì không còn đủ điều kiện.`, `${s.refundBatchResult.skipped_count} refund(s) were skipped — no longer eligible.`)}
+                    {T(`${s.refundBatchResult.skipped_count} khoản đã bị bỏ qua vì không còn đủ điều kiện.`, `${s.refundBatchResult.skipped_count} refund(s) were skipped: no longer eligible.`)}
                   </p>
                 )}
                 <div style={{ display: 'flex', gap: 10 }}>

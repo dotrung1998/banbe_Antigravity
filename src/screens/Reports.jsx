@@ -112,7 +112,7 @@ function MetricCard({ metric, expanded, onToggle, rangeLabel, T, onExportCsv }) 
             </div>
           ) : (
             <p style={{ fontSize: 11.5, color: ink, opacity: 0.6, paddingTop: 14, margin: 0 }}>
-              {T('Số liệu hiện tại, không theo biểu đồ thời gian.', 'A current total — not a time series.')}
+              {T('Số liệu hiện tại, không theo biểu đồ thời gian.', 'A current total, not a time series.')}
             </p>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 14 }}>

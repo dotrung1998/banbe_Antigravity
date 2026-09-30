@@ -107,6 +107,22 @@ struct BottomTabBar: View {
         // cap would just hide real information — shown uncapped per this
         // ticket's own ask.
         var badgeCapped: Bool = false
+        var badgeCap: Int = 9
+    }
+
+    // FIX PASS (2026-09-30) — top of the "child row -> group card -> tab ->
+    // dock icon" chain (see Lib/Badges.swift's own doc comment for the
+    // dedup/permission rules): real admin-moderation + host-duty counts,
+    // never a fabricated one. Home/Map/the create "+" deliberately stay
+    // `badge: 0` (hidden) — no real underlying actionable source for any.
+    private var accountBadge: Int {
+        AccountBadges.accountDockBadge(
+            accountType: app.accountType,
+            organizerMode: app.organizerMode,
+            pendingEventsCount: app.pendingEventsCount,
+            verificationsCount: app.verifications.count,
+            refundQueueCount: app.refundQueue.count
+        )
     }
 
     private var items: [Item] {
@@ -118,7 +134,7 @@ struct BottomTabBar: View {
             // — see refreshUnreadMessageCount() (AppState+Data.swift),
             // refreshed on the same 5s poll as unreadNotifications.
             Item(id: "inbox", icon: { AnyView(InboxGlyph(color: $0, filled: $1)) }, label: app.T("Tin nhắn", "Messages"), action: { app.goInbox() }, badge: app.unreadMessages),
-            Item(id: "profile", icon: { AnyView(ProfileGlyph(color: $0, filled: $1)) }, label: app.T("Tài khoản", "Account"), action: { app.goProfile() }, badge: 0),
+            Item(id: "profile", icon: { AnyView(ProfileGlyph(color: $0, filled: $1)) }, label: app.T("Tài khoản", "Account"), action: { app.goProfile() }, badge: accountBadge, badgeCapped: true, badgeCap: 99),
         ]
     }
 
@@ -391,7 +407,7 @@ struct BottomTabBar: View {
     @ViewBuilder
     private func tabItem(_ item: Item) -> some View {
         let isActive = activeID == item.id
-        let badgeText: String = (item.badgeCapped && item.badge > 9) ? "9+" : String(item.badge)
+        let badgeText: String = item.badgeCapped ? AccountBadges.format(item.badge, cap: item.badgeCap) : String(item.badge)
         ZStack(alignment: .topTrailing) {
             item.icon(app.palette.ink, isActive)
                 .frame(width: iconSize, height: iconSize)
@@ -404,6 +420,8 @@ struct BottomTabBar: View {
                     .frame(minWidth: 14, minHeight: 14)
                     .background(BanbeTheme.alert, in: Capsule())
                     .offset(x: 7, y: -5)
+                    .accessibilityIdentifier("tab.\(item.id).badge")
+                    .accessibilityLabel(app.T("\(item.badge) mục mới", "\(item.badge) new item(s)"))
             }
         }
         .frame(minWidth: 44, maxWidth: .infinity, minHeight: barHeight)

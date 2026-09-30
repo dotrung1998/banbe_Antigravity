@@ -159,7 +159,7 @@ extension AppState {
             receiptRequestSending = false
             guard result.success == true else {
                 receiptRequestError = result.error == "ALREADY_REQUESTED_RECENTLY"
-                    ? T("Bạn vừa yêu cầu gần đây — hãy đợi người tổ chức phản hồi.", "You already asked recently — give the organizer a little time to respond.")
+                    ? T("Bạn vừa yêu cầu gần đây, hãy đợi người tổ chức phản hồi.", "You already asked recently, give the organizer a little time to respond.")
                     : T("Không gửi được yêu cầu. Thử lại nhé.", "Couldn't send the request. Please try again.")
                 return
             }
@@ -1067,7 +1067,7 @@ extension AppState {
                 }
             } else {
                 refundBatchError = result.error == "REFUND_DESTINATION_REQUIRED"
-                    ? T("Chưa thể đánh dấu đã hoàn tiền. Khách cần chọn tài khoản nhận trước.", "Cannot mark this refund sent yet — the guest needs to choose a destination first.")
+                    ? T("Chưa thể đánh dấu đã hoàn tiền. Khách cần chọn tài khoản nhận trước.", "Cannot mark this refund sent yet: the guest needs to choose a destination first.")
                     : T("Không thể cập nhật lúc này. Vui lòng thử lại.", "Could not update right now. Please try again.")
             }
         } catch {

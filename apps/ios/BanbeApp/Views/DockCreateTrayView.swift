@@ -23,8 +23,21 @@ struct DockCreateTrayView: View {
     // (storySubOpen) — no native submenu needed, full manual control.
     @State private var storySubOpen = false
 
+    // FIX PASS (2026-09-30, Map-sheet layering) — this tray now lives inside
+    // BottomTabBarOverlay's own always-on-top UIWindow (see that file's own
+    // doc comment for why — that window is the ONE thing in this app proven
+    // to draw above a native `.sheet()`, which is exactly what MapExplore's
+    // filter/list sheet is). That overlay temporarily grows from its normal
+    // small dock-band frame to full-screen while this tray is open, then
+    // shrinks back once it's gone — but only AFTER this view's own close
+    // animation finishes, so the exit transition isn't clipped by a
+    // premature frame shrink. `BottomTabBarOverlay.setDockCreateTrayOpen`
+    // reads this exact constant for that delay, so the two can never drift
+    // out of sync with each other.
+    static let closeAnimationDuration: TimeInterval = 0.15
+
     private func close() {
-        withAnimation(.easeInOut(duration: 0.15)) { app.dockCreateMenuOpen = false }
+        withAnimation(.easeInOut(duration: Self.closeAnimationDuration)) { app.dockCreateMenuOpen = false }
         storySubOpen = false
     }
 
@@ -50,7 +63,7 @@ struct DockCreateTrayView: View {
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "calendar.badge.plus").font(.system(size: 14, weight: .semibold))
-                        Text(app.T("Tạo sự kiện", "Create event")).font(.system(size: 14))
+                        Text(app.T("Tạo Sự Kiện", "Create Event")).font(.system(size: 14))
                         Spacer(minLength: 0)
                     }
                     .foregroundStyle(app.palette.ink)
@@ -72,7 +85,7 @@ struct DockCreateTrayView: View {
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "photo.badge.plus").font(.system(size: 14, weight: .semibold))
-                        Text(app.T("Đăng story", "Post a story")).font(.system(size: 14))
+                        Text(app.T("Đăng Story", "Post A Story")).font(.system(size: 14))
                         Spacer(minLength: 0)
                         Image(systemName: storySubOpen ? "chevron.up" : "chevron.down")
                             .font(.system(size: 11, weight: .semibold)).opacity(0.6)
@@ -92,7 +105,7 @@ struct DockCreateTrayView: View {
                         } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: "photo.on.rectangle").font(.system(size: 13))
-                                Text(app.T("Thư viện ảnh", "Photo library")).font(.system(size: 13.5))
+                                Text(app.T("Thư Viện Ảnh", "Photo Library")).font(.system(size: 13.5))
                                 Spacer(minLength: 0)
                             }
                             .foregroundStyle(app.palette.ink)

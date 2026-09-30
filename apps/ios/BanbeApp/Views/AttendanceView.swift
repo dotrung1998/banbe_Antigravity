@@ -527,7 +527,7 @@ struct AttendanceView: View {
                         Text(app.refundBatchError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
                     }
                     if let skipped = app.refundBatchResult?.skippedCount, skipped > 0 {
-                        Text(app.T("\(skipped) khoản đã bị bỏ qua vì không còn đủ điều kiện.", "\(skipped) refund(s) were skipped — no longer eligible."))
+                        Text(app.T("\(skipped) khoản đã bị bỏ qua vì không còn đủ điều kiện.", "\(skipped) refund(s) were skipped: no longer eligible."))
                             .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
                     }
                     HStack(spacing: 10) {

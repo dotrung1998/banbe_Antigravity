@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { ink, alert, barGlass, dockHighlight } from '../theme.js';
+import { computeAccountDockBadge } from '../lib/badges.js';
 
 // FEATURE follow-up (623ec1e real-device report): Map/Notifications/Inbox
 // were still hard to tell apart at a glance despite 64f2719's stroke-count
@@ -174,13 +175,21 @@ export default function BottomTabBar({ collapsed }) {
   // Stage 3 (2026-09-27 nav/discovery pass) — visible dock text labels
   // removed entirely (see the icon-only render below); `label` remains
   // the sole source for the accessibility label/VoiceOver announcement.
+  // FIX PASS (2026-09-30) — Account/profile's own dock badge is the TOP of
+  // the "child row -> group card -> tab -> dock icon" chain this pass
+  // implements (see src/lib/badges.js's own top-of-file comment for the
+  // dedup/permission rules) — real admin-moderation + host-duty counts,
+  // never a fabricated one. Home/Map/the create "+" deliberately keep
+  // `badge: 0` (hidden) — no real underlying actionable/unread source
+  // exists for any of them.
+  const accountBadge = computeAccountDockBadge(s);
   const items = useMemo(() => [
     { key: 'home', icon: 'home', onClick: goHome, label: T('Trang chính', 'Home'), testId: 'tab-home', badge: 0, badgeCapped: false },
     { key: 'mapExplore', icon: 'map', onClick: goMapExplore, label: T('Bản đồ', 'Map'), testId: 'tab-map', badge: 0, badgeCapped: false },
-    { key: 'notifications', icon: 'notifications', onClick: goNotifications, label: T('Thông báo', 'Notifications'), testId: 'tab-notifications', badge: s.unreadNotifications || 0, badgeCapped: true },
+    { key: 'notifications', icon: 'notifications', onClick: goNotifications, label: T('Thông báo', 'Notifications'), testId: 'tab-notifications', badge: s.unreadNotifications || 0, badgeCapped: true, badgeCap: 9 },
     { key: 'inbox', icon: 'inbox', onClick: goInbox, label: T('Tin nhắn', 'Messages'), testId: 'tab-inbox', badge: s.unreadMessages || 0, badgeCapped: false },
-    { key: 'profile', icon: 'profile', onClick: goProfile, label: T('Tài khoản', 'Account'), testId: 'tab-profile', badge: 0, badgeCapped: false },
-  ], [goHome, goMapExplore, goNotifications, goInbox, goProfile, T, s.unreadNotifications, s.unreadMessages]);
+    { key: 'profile', icon: 'profile', onClick: goProfile, label: T('Tài khoản', 'Account'), testId: 'tab-profile', badge: accountBadge, badgeCapped: true, badgeCap: 99 },
+  ], [goHome, goMapExplore, goNotifications, goInbox, goProfile, T, s.unreadNotifications, s.unreadMessages, accountBadge]);
 
   // FEATURE — scrub-to-select: press anywhere on the bar and drag; a soft
   // highlight blob follows the finger in real time and lands on whichever
@@ -628,17 +637,29 @@ export default function BottomTabBar({ collapsed }) {
           >
             <div style={{ position: 'relative', width: ICON_SIZE, height: ICON_SIZE, opacity: activeIndex === i ? 1 : 0.72 }}>
               {ICONS[item.icon](ink, activeIndex === i)}
-              {item.badge > 0 && (
-                <span
-                  style={{
-                    position: 'absolute', top: -5, right: -7, minWidth: 14, height: 14, padding: '0 3px',
-                    borderRadius: 7, background: alert, color: '#fff', fontSize: 9, fontWeight: 700,
-                    lineHeight: '14px', textAlign: 'center',
-                  }}
-                >
-                  {item.badgeCapped && item.badge > 9 ? '9+' : item.badge}
-                </span>
-              )}
+              {item.badge > 0 && (() => {
+                const cap = item.badgeCap ?? 9;
+                const displayText = item.badgeCapped && item.badge > cap ? `${cap}+` : String(item.badge);
+                // Compact capsule (not a fixed circle) for multi-digit/99+ —
+                // same red/paper-on-alert recipe, just widened + rounded via
+                // borderRadius: 999 instead of clipping/wrapping a 2-3 char
+                // string into a 14px circle.
+                return (
+                  <span
+                    data-testid={`${item.testId}-badge`}
+                    role="status"
+                    aria-label={T(`${item.badge} mục mới`, `${item.badge} new item(s)`)}
+                    title={String(item.badge)}
+                    style={{
+                      position: 'absolute', top: -5, right: -7, minWidth: 14, height: 14, padding: displayText.length > 1 ? '0 4px' : '0 3px',
+                      borderRadius: 999, background: alert, color: '#fff', fontSize: 9, fontWeight: 700,
+                      lineHeight: '14px', textAlign: 'center', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {displayText}
+                  </span>
+                );
+              })()}
             </div>
           </div>
         ))}

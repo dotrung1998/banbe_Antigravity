@@ -209,7 +209,7 @@ private struct MetricCardView: View {
                             Text(msg).font(.system(size: 10.5)).opacity(0.6)
                         }
                     } else {
-                        Text(app.T("Số liệu hiện tại, không theo biểu đồ thời gian.", "A current total — not a time series."))
+                        Text(app.T("Số liệu hiện tại, không theo biểu đồ thời gian.", "A current total, not a time series."))
                             .font(.system(size: 11.5)).opacity(0.6)
                     }
 

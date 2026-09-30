@@ -300,7 +300,7 @@ struct DocumentViewerView: View {
             } else {
                 Text(pendingFileURL?.lastPathComponent ?? "")
                     .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
-                TextField(app.T("Lý do thay thế (bắt buộc) — khách sẽ thấy lý do này", "Reason for replacing (required) — the guest will see this"), text: $reason, axis: .vertical)
+                TextField(app.T("Lý do thay thế (bắt buộc, khách sẽ thấy lý do này)", "Reason for replacing (required, the guest will see this)"), text: $reason, axis: .vertical)
                     .font(.system(size: 12.5))
                     .padding(10)
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.rule, lineWidth: 1))

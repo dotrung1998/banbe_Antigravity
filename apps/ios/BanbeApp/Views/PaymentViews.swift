@@ -300,8 +300,8 @@ struct PaymentDetailsView: View {
             // after — a guest should get to choose when their 2 nudges are
             // worth using, not discover the cap only once it's too late.
             if booking.nudgeCount < 2 {
-                Text(app.T("Bạn chỉ có thể nhắc tối đa 2 lần — hãy chọn thời điểm phù hợp.",
-                           "You can only nudge up to 2 times — choose the right moment."))
+                Text(app.T("Bạn chỉ có thể nhắc tối đa 2 lần, hãy chọn thời điểm phù hợp.",
+                           "You can only nudge up to 2 times, choose the right moment."))
                     .font(.system(size: 10.5))
                     .foregroundStyle(app.palette.ink.opacity(0.55))
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -604,8 +604,8 @@ struct PaymentDetailsView: View {
                 QRCodeImage(value: payload)
                     .frame(width: 210, height: 210)
                     .accessibilityIdentifier("payment.vietqr")
-                Text(app.T("Mở app ngân hàng, quét mã — số tiền và nội dung đã được điền sẵn.",
-                           "Open your banking app and scan — the amount and reference are filled in already."))
+                Text(app.T("Mở app ngân hàng, quét mã: số tiền và nội dung đã được điền sẵn.",
+                           "Open your banking app and scan: the amount and reference are filled in already."))
                     .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                     .multilineTextAlignment(.center)
             }
@@ -676,8 +676,8 @@ struct PaymentDetailsView: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("payment.reference")
 
-            Text(app.T("Ghi đúng mã này — hệ thống đối soát tự động dựa vào nó để xác nhận ngay khi tiền tới.",
-                       "Use this exact reference — automatic reconciliation uses it to confirm you the moment the money lands."))
+            Text(app.T("Ghi đúng mã này: hệ thống đối soát tự động dựa vào nó để xác nhận ngay khi tiền tới.",
+                       "Use this exact reference: automatic reconciliation uses it to confirm you the moment the money lands."))
                 .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
         }
         .padding(.top, 16)

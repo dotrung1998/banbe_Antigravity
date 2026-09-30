@@ -94,8 +94,8 @@ export default function Verifications() {
           {focusId ? T('Chi tiết thanh toán', 'Payment detail') : T('Chờ xác nhận', 'Awaiting verification')}
         </h1>
         <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
-          {T('Khách đã báo chuyển khoản. Đối chiếu với sao kê rồi xác nhận — chỗ của họ đang được giữ và đồng hồ đã dừng.',
-             "These guests reported a transfer. Check your statement, then confirm — their seat is held and their clock has stopped.")}
+          {T('Khách đã báo chuyển khoản. Đối chiếu với sao kê rồi xác nhận: chỗ của họ đang được giữ và đồng hồ đã dừng.',
+             "These guests reported a transfer. Check your statement, then confirm: their seat is held and their clock has stopped.")}
         </p>
         {!focusId && overdue > 0 && (
           <p style={{ fontSize: 12.5, fontWeight: 600, color: alert, margin: '10px 0 0' }} data-testid="verifications-overdue">
@@ -126,7 +126,7 @@ export default function Verifications() {
 
             <div style={{ ...fieldGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }}>
               <Line label={T('Nội dung CK', 'Reference')} value={v.payment_ref} mono />
-              <Line label={T('Mã giao dịch', 'Transaction ID')} value={v.transaction_id || '—'} mono />
+              <Line label={T('Mã giao dịch', 'Transaction ID')} value={v.transaction_id || T('Không Có Thông Tin', 'Not Provided')} mono />
               <Line label={T('Đã chờ', 'Waiting')} value={waitLabel(v.proof_submitted_at, T)} />
               {v.verify_due_at && (
                 <Line
@@ -193,10 +193,10 @@ export default function Verifications() {
                 />
                 <p style={{ fontSize: 11, lineHeight: 1.45, color: ink, opacity: 0.7, margin: 0 }}>
                   {reasonFor.kind === 'escalate'
-                    ? T('banbe sẽ xem xét và đưa ra quyết định — chỗ của khách vẫn được giữ trong lúc chờ.',
-                        "banbe will review and decide — the guest's seat stays held while you wait.")
-                    : T('Lý do này được gửi thẳng cho khách qua tin nhắn để họ bổ sung — chỗ vẫn được giữ, banbe không tham gia ở bước này.',
-                        "This reason goes straight to the guest by chat so they can follow up — the seat stays held, and banbe is not involved at this step.")}
+                    ? T('banbe sẽ xem xét và đưa ra quyết định. Chỗ của khách vẫn được giữ trong lúc chờ.',
+                        "banbe will review and decide. The guest's seat stays held while you wait.")
+                    : T('Lý do này được gửi thẳng cho khách qua tin nhắn để họ bổ sung, chỗ vẫn được giữ, banbe không tham gia ở bước này.',
+                        "This reason goes straight to the guest by chat so they can follow up. The seat stays held, and banbe is not involved at this step.")}
                 </p>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <Action label={T('Gửi', 'Submit')} testid="verification-reject-confirm"

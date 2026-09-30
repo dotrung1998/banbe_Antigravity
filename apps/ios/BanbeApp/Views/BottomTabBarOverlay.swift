@@ -150,6 +150,23 @@ final class BottomTabBarOverlay {
     // is driven by `app.areaAsking` alone, never by InboxView's or
     // NotificationsView's own sheets.
     private var areaSheetOpen = false
+    // FIX PASS (2026-09-30, Map-sheet layering) — the dock "+" tray
+    // (`DockCreateTrayView`) now renders inside THIS window (moved out of
+    // RootView's main-window ZStack, where it rendered under MapExplore's
+    // native filter/list `.sheet()` — see RootView.swift's removed call
+    // site for the full root-cause writeup). Unlike every flag above, this
+    // one does NOT feed `applyVisibility()` — the tray only ever opens while
+    // the dock itself is already visible (you have to tap the dock's own
+    // "+" to open it), so the window is already shown; what this flag
+    // drives instead is the window's own FRAME, temporarily growing it from
+    // the small dock band to the full screen so the tray has room for its
+    // full-bleed scrim and its own rise-above-the-dock card, then shrinking
+    // it back once the tray is gone. Kept as its own field (not reused from
+    // `forcedHidden`/etc.) for the same "independent callers, independent
+    // state" reasoning as every flag above.
+    private var dockCreateTrayOpen = false
+    private var trayResizeToken = 0
+    private var sceneBounds: CGRect = .zero
     // TASK 1 (2026-09-22 twenty-first follow-up) — this window's own
     // `isHidden` used to be set synchronously, in lockstep with these
     // flags, which is the actual root cause of the abrupt appear/disappear
@@ -193,13 +210,8 @@ final class BottomTabBarOverlay {
         hosting.view.backgroundColor = .clear
 
         let screenBounds = scene.screen.bounds
-        let width = min(Self.bandWidth, screenBounds.width)
-        let frame = CGRect(
-            x: (screenBounds.width - width) / 2,
-            y: screenBounds.height - Self.bandHeight,
-            width: width,
-            height: Self.bandHeight
-        )
+        sceneBounds = screenBounds
+        let frame = bandFrame(in: screenBounds)
 
         let win = UIWindow(windowScene: scene)
         win.frame = frame
@@ -266,6 +278,61 @@ final class BottomTabBarOverlay {
     func setAreaSheetOpen(_ open: Bool) {
         areaSheetOpen = open
         applyVisibility()
+    }
+
+    private func bandFrame(in bounds: CGRect) -> CGRect {
+        let width = min(Self.bandWidth, bounds.width)
+        return CGRect(
+            x: (bounds.width - width) / 2,
+            y: bounds.height - Self.bandHeight,
+            width: width,
+            height: Self.bandHeight
+        )
+    }
+
+    /// FIX PASS (2026-09-30, Map-sheet layering) — called from RootView's
+    /// `.onChange(of: app.dockCreateMenuOpen)`. This is the actual structural
+    /// fix for the tray rendering under MapExplore's native filter/list
+    /// sheet: rather than fighting for a ZStack zIndex a real `.sheet()`
+    /// can never respect (see this type's own top-of-file doc comment,
+    /// already proven for the dock itself), the tray is hosted in THIS
+    /// window — the one thing in this app already proven to paint above a
+    /// `.sheet()` at any detent — and this window is temporarily grown to
+    /// full-screen for exactly as long as the tray needs the room.
+    ///
+    /// Deliberately touches nothing about MapExploreView itself — no
+    /// camera/filter/search/selection/detent state, no sheet dismissal.
+    /// This only ever resizes THIS window's own frame; the map's `.sheet()`
+    /// underneath is a completely separate UIKit presentation this window
+    /// merely happens to now be able to cover.
+    func setDockCreateTrayOpen(_ open: Bool) {
+        guard dockCreateTrayOpen != open, let window else { return }
+        dockCreateTrayOpen = open
+        trayResizeToken += 1
+        let token = trayResizeToken
+
+        if open {
+            // Grow FIRST, before the tray's own SwiftUI content starts its
+            // entrance animation, so it's never clipped by a frame that's
+            // still band-sized. Anchored so the dock/button's own on-screen
+            // position (bottom-center of the band) doesn't visibly jump —
+            // the band is a sub-rect of this exact same full-screen frame.
+            window.frame = sceneBounds
+        } else {
+            // Shrink back to the small dock band — but only AFTER the
+            // tray's own close animation has actually finished (see
+            // `DockCreateTrayView.closeAnimationDuration`, the single
+            // source of truth this reads rather than a second, possibly
+            // drifting guess), so its exit transition isn't cut off by a
+            // premature frame shrink, and so this window is never left
+            // full-screen (and therefore touch-absorbing over whatever's
+            // underneath, e.g. the map) a moment longer than the tray
+            // itself is actually visible.
+            DispatchQueue.main.asyncAfter(deadline: .now() + DockCreateTrayView.closeAnimationDuration) { [weak self] in
+                guard let self, self.trayResizeToken == token, !self.dockCreateTrayOpen, let window = self.window else { return }
+                window.frame = self.bandFrame(in: self.sceneBounds)
+            }
+        }
     }
 
     private func applyVisibility() {
@@ -343,10 +410,21 @@ private struct BottomTabBarOverlayRoot: View {
         // window/visibility lifecycle (see DockCreateButtonView's own doc
         // comment for why that lives here instead of a second floating
         // UIWindow) — only the internal composition changed.
-        DockRow()
-        .offset(y: app.dockVisible ? 0 : 40)
-        .opacity(app.dockVisible ? 1 : 0)
-        .allowsHitTesting(app.dockVisible)
-        .animation(BottomTabBarOverlay.transitionAnimation, value: app.dockVisible)
+        ZStack {
+            DockRow()
+                .offset(y: app.dockVisible ? 0 : 40)
+                .opacity(app.dockVisible ? 1 : 0)
+                .allowsHitTesting(app.dockVisible)
+                .animation(BottomTabBarOverlay.transitionAnimation, value: app.dockVisible)
+
+            // FIX PASS (2026-09-30, Map-sheet layering) — moved here from
+            // RootView's main-window ZStack (was zIndex 28 there, which
+            // could never out-layer MapExplore's native `.sheet()`). This
+            // window is resized to full-screen by `setDockCreateTrayOpen`
+            // for exactly as long as this is on screen, so the tray's own
+            // full-bleed scrim/drag-to-dismiss and the dock/button beside it
+            // all keep working unchanged.
+            if app.dockCreateMenuOpen { DockCreateTrayView() }
+        }
     }
 }

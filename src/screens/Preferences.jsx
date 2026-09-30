@@ -16,7 +16,7 @@ export default function Preferences() {
     <div style={{ animation: 'gocFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="Preferences">
       <div onClick={() => set({ screen: 'profile' })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
       <div style={{ padding: '16px 30px 42px' }}>
-        <h1 style={{ ...display(27, { margin: 0, lineHeight: 1.2 }) }}>{T('Ngôn ngữ & hiển thị', 'Language & appearance')}</h1>
+        <h1 style={{ ...display(27, { margin: 0, lineHeight: 1.2 }) }}>{T('Ngôn Ngữ & Hiển Thị', 'Language & Appearance')}</h1>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '10px 0 0' }}>{T('Chọn cách banbe xuất hiện với bạn. Bạn có thể đổi lại bất cứ lúc nào.', 'Choose how banbe looks. You can change it anytime.')}</p>
 
         <Section title={T('Ngôn ngữ', 'Language')}>
@@ -35,7 +35,7 @@ export default function Preferences() {
           <Choice
             active={state.autoEmailDocuments}
             title={T('Tự động gửi email hoá đơn/biên nhận', 'Automatically email me a copy of invoices/receipts')}
-            subtitle={T('Dùng làm bằng chứng thanh toán. Áp dụng cho mọi lượt đặt chỗ, không hỏi lại mỗi lần.', 'As proof of payment. Applies to every booking — you will not be asked again per booking.')}
+            subtitle={T('Dùng làm bằng chứng thanh toán. Áp dụng cho mọi lượt đặt chỗ, không hỏi lại mỗi lần.', 'As proof of payment. Applies to every booking; you will not be asked again per booking.')}
             onClick={toggleAutoEmailDocuments}
             testId="preferences-auto-email-documents"
           />

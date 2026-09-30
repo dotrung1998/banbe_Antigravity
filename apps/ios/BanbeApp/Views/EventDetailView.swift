@@ -51,7 +51,7 @@ struct EventDetailView: View {
         switch app.eventBackScreen {
         case .dashboard: return app.T("Trang của bạn", "Your dashboard")
         case .organizer: return app.T("Trang tổ chức", "Organizer page")
-        case .create: return app.T("Tạo sự kiện", "Create event")
+        case .create: return app.T("Tạo Sự Kiện", "Create Event")
         // Named after whichever list it is ("Going"/"Saved"/"Completed
         // events"), so the pill says where it actually goes.
         case .eventList: return app.eventListTitle

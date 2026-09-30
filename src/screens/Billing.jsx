@@ -22,7 +22,7 @@ export default function Billing() {
         ‹ {T('Quay lại', 'Back')}
       </div>
       <div style={{ padding: '14px 22px 0' }}>
-        <h1 style={{ ...display(24, { margin: 0 }) }}>{T('Thông tin xuất hoá đơn', 'Billing details')}</h1>
+        <h1 style={{ ...display(24, { margin: 0 }) }}>{T('Thông Tin Xuất Hoá Đơn', 'Billing Details')}</h1>
         <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
           {T('Được in vào phần "Bên mua" trên hoá đơn và biên nhận của bạn.',
              'Printed in the "Buyer" block of your invoices and receipts.')}

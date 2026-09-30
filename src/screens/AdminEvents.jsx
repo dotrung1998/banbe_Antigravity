@@ -60,7 +60,7 @@ export default function AdminEvents() {
       </div>
       <div style={{ padding: '14px 22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 10 }}>
         <div>
-          <h1 style={{ ...display(24, { margin: 0 }) }} data-testid="admin-events-title">{T('Sự kiện chờ duyệt', 'Pending events')}</h1>
+          <h1 style={{ ...display(24, { margin: 0 }) }} data-testid="admin-events-title">{T('Sự Kiện Chờ Duyệt', 'Pending Events')}</h1>
           <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
             {T('Sự kiện chỉ hiển thị công khai sau khi được duyệt ở đây.', 'An event only shows publicly once approved here.')}
           </p>
@@ -84,7 +84,7 @@ export default function AdminEvents() {
           const isOpen = expanded.has(e.key);
           const gallery = galleryByEvent[e.key] || (e.photoUrl ? [e.photoUrl] : []);
           const submittedLabel = e.submittedAt ? new Date(e.submittedAt).toLocaleString() : T('Không rõ', 'Unknown');
-          const addressLabel = [e.addressLine, e.area, e.city].filter(Boolean).join(', ') || e.area || '—';
+          const addressLabel = [e.addressLine, e.area, e.city].filter(Boolean).join(', ') || e.area || T('Không Có Thông Tin', 'Not Provided');
           return (
             <div key={e.key} style={{ ...cardGlass({ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }) }} data-testid="admin-event-row">
               {/* Compact identifying summary — always visible. */}
@@ -124,16 +124,16 @@ export default function AdminEvents() {
 
                   <div style={{ ...fieldGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }}>
                     <Line label={T('Trạng thái', 'Status')} value={e.status} />
-                    <Line label={T('Danh mục', 'Category')} value={e.catLabel || e.catKey || '—'} />
-                    <Line label={T('Từ khoá', 'Keywords')} value={e.keywords?.length ? e.keywords.join(', ') : '—'} />
+                    <Line label={T('Danh mục', 'Category')} value={e.catLabel || e.catKey || T('Không Có Thông Tin', 'Not Provided')} />
+                    <Line label={T('Từ khoá', 'Keywords')} value={e.keywords?.length ? e.keywords.join(', ') : T('Không Có Thông Tin', 'Not Provided')} />
                     <Line label={T('Ngày', 'Date')} value={e.eventDate ? `${e.eventDate}${e.eventTime ? ' ▪︎ ' + e.eventTime.slice(0, 5) : ''}` : T('Chưa đặt', 'Not set')} />
-                    <Line label={T('Sức chứa', 'Capacity')} value={e.capacity != null ? String(e.capacity) : '—'} />
-                    <Line label={T('Hiển thị', 'Visibility')} value={e.visibility || '—'} />
-                    <Line label={T('Chế độ duyệt vé', 'Booking approval')} value={e.approval || '—'} />
-                    <Line label={T('Mô tả', 'Description')} value={e.description || '—'} />
+                    <Line label={T('Sức chứa', 'Capacity')} value={e.capacity != null ? String(e.capacity) : T('Không Có Thông Tin', 'Not Provided')} />
+                    <Line label={T('Hiển thị', 'Visibility')} value={e.visibility || T('Không Có Thông Tin', 'Not Provided')} />
+                    <Line label={T('Chế độ duyệt vé', 'Booking approval')} value={e.approval || T('Không Có Thông Tin', 'Not Provided')} />
+                    <Line label={T('Mô tả', 'Description')} value={e.description || T('Không Có Thông Tin', 'Not Provided')} />
                     <Line
                       label={T('Bao gồm', 'Included')}
-                      value={e.includedItems?.length ? e.includedItems.map(it => it.label).join(' ▪︎ ') : (e.included || '—')}
+                      value={e.includedItems?.length ? e.includedItems.map(it => it.label).join(' ▪︎ ') : (e.included || T('Không Có Thông Tin', 'Not Provided'))}
                     />
                   </div>
 

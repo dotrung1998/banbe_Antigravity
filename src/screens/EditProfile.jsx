@@ -31,7 +31,7 @@ export default function EditProfile() {
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Edit profile">
       <div style={{ padding: '66px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span onClick={backFromEditProfile} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('‹ Tài khoản', '‹ Account')}</span>
-        <span style={{ ...display(18) }}>{T('Chỉnh sửa hồ sơ', 'Edit profile')}</span>
+        <span style={{ ...display(18) }}>{T('Chỉnh Sửa Hồ Sơ', 'Edit Profile')}</span>
         <span style={{ width: 50 }} />
       </div>
 

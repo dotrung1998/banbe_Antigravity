@@ -127,7 +127,7 @@ export default function Login() {
         )}
         {showEmailFormatError && (
           <p data-testid="login-email-error" style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '8px 2px 0' }}>
-            {T('Email chưa đúng định dạng — ví dụ: ban@email.com', "That doesn't look like an email address — e.g. ban@email.com")}
+            {T('Email chưa đúng định dạng (ví dụ: ban@email.com)', "That doesn't look like an email address (e.g. ban@email.com)")}
           </p>
         )}
         {!awaitingCode && isPassword && (

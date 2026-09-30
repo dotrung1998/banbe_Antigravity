@@ -86,8 +86,8 @@ async function sendReminder(admin, row, { urgent }) {
         `Một ${kindLabelVi} (số ${escapeHtml(row.number)}) sẽ bị xoá vĩnh viễn khỏi banbe trong ${daysLeft} ngày tới.`,
         `A ${kindLabelEn} (No. ${escapeHtml(row.number)}) will be permanently deleted from banbe in the next ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`),
       t(locale,
-        'Hãy tải về ngay nếu bạn cần giữ lại bản này — sau khi xoá, banbe không thể khôi phục.',
-        'Download it now if you need to keep a copy — once deleted, banbe cannot recover it.'),
+        'Hãy tải về ngay nếu bạn cần giữ lại bản này. Sau khi xoá, banbe không thể khôi phục.',
+        'Download it now if you need to keep a copy. Once deleted, banbe cannot recover it.'),
     ];
     try {
       await sendWithGmail({

@@ -22,7 +22,7 @@ export default function Security() {
     <div style={{ animation: 'gocFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="Security">
       <div onClick={() => set({ screen: 'profile' })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
       <div style={{ padding: '16px 30px 42px' }}>
-        <h1 style={{ ...display(27, { margin: 0, lineHeight: 1.2 }) }}>{T('Bảo mật', 'Security')}</h1>
+        <h1 style={{ ...display(27, { margin: 0, lineHeight: 1.2 }) }}>{T('Bảo Mật', 'Security')}</h1>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '10px 0 0' }}>
           {T('Mật khẩu tài khoản của bạn.', 'Your account password.')}
         </p>

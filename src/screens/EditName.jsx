@@ -14,7 +14,7 @@ export default function EditName() {
         ‹ {s.editNameReturnScreen === 'reserve' ? T('Đặt chỗ', 'Reserve') : T('Tài khoản', 'Account')}
       </div>
       <div style={{ padding: '16px 30px 42px' }}>
-        <h1 style={{ ...display(27, { margin: 0, lineHeight: 1.2 }) }}>{T('Tên hiển thị', 'Display name')}</h1>
+        <h1 style={{ ...display(27, { margin: 0, lineHeight: 1.2 }) }}>{T('Tên Hiển Thị', 'Display Name')}</h1>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '10px 0 0' }}>
           {T('Đây là tên mà người tổ chức và khách khác thấy. Nếu bạn từng giữ chỗ ở đâu, đổi tên sẽ báo cho người tổ chức đó qua thông báo và email.', 'This is the name organizers and other guests see. If you have any bookings, changing it notifies those organizers by in-app notification and email.')}
         </p>

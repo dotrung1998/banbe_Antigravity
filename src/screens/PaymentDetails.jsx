@@ -285,8 +285,8 @@ export default function PaymentDetails() {
               using, not discover the cap only once it's too late. */}
           {nudgeCount < 2 && (
             <p style={{ fontSize: 10.5, color: ink, opacity: 0.55, textAlign: 'center', margin: '6px 0 0' }} data-testid="payment-nudge-limit-note">
-              {T('Bạn chỉ có thể nhắc tối đa 2 lần — hãy chọn thời điểm phù hợp.',
-                 "You can only nudge up to 2 times — choose the right moment.")}
+              {T('Bạn chỉ có thể nhắc tối đa 2 lần, hãy chọn thời điểm phù hợp.',
+                 "You can only nudge up to 2 times, choose the right moment.")}
             </p>
           )}
           {s.nudgeError && (
@@ -320,8 +320,8 @@ export default function PaymentDetails() {
               {T('banbe đang xem xét', 'banbe is reviewing this')}
             </span>
             <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
-              {T('Người tổ chức chưa đối chiếu được khoản này. Chỗ của bạn vẫn được giữ trong lúc banbe xem xét — bằng chứng bạn đã gửi được lưu lại.',
-                 "The organizer couldn't match this against their statement. Your seat stays held while banbe reviews it — the evidence you submitted is on file.")}
+              {T('Người tổ chức chưa đối chiếu được khoản này. Chỗ của bạn vẫn được giữ trong lúc banbe xem xét. Bằng chứng bạn đã gửi được lưu lại.',
+                 "The organizer couldn't match this against their statement. Your seat stays held while banbe reviews it. The evidence you submitted is on file.")}
             </p>
           </div>
           <DisputeChatPanel bookingId={booking.id} />
@@ -575,8 +575,8 @@ export default function PaymentDetails() {
               <div style={{ ...cardGlass({ marginTop: 10, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }) }}>
                 <VietQr payload={qrPayload} />
                 <span style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, textAlign: 'center' }}>
-                  {T('Mở app ngân hàng, quét mã — số tiền và nội dung đã được điền sẵn.',
-                     'Open your banking app and scan — the amount and reference are filled in already.')}
+                  {T('Mở app ngân hàng, quét mã: số tiền và nội dung đã được điền sẵn.',
+                     'Open your banking app and scan: the amount and reference are filled in already.')}
                 </span>
               </div>
             </div>
@@ -606,8 +606,8 @@ export default function PaymentDetails() {
               </span>
             </div>
             <p style={{ fontSize: 11.5, lineHeight: 1.55, color: ink, opacity: 0.7, margin: '8px 2px 0' }}>
-              {T('Ghi đúng mã này — hệ thống đối soát tự động dựa vào nó để xác nhận ngay khi tiền tới.',
-                 'Use this exact reference — automatic reconciliation uses it to confirm you the moment the money lands.')}
+              {T('Ghi đúng mã này: hệ thống đối soát tự động dựa vào nó để xác nhận ngay khi tiền tới.',
+                 'Use this exact reference: automatic reconciliation uses it to confirm you the moment the money lands.')}
             </p>
           </div>
 

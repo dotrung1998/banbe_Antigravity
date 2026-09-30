@@ -104,7 +104,7 @@ export default function RefundAccounts() {
         ‹ {T('Tài khoản', 'Account')}
       </div>
       <div style={{ padding: '14px 22px 0' }}>
-        <h1 style={{ ...display(24, { margin: 0 }) }}>{T('Tài khoản nhận hoàn tiền', 'Refund accounts')}</h1>
+        <h1 style={{ ...display(24, { margin: 0 }) }}>{T('Tài Khoản Nhận Hoàn Tiền', 'Refund Accounts')}</h1>
         {s.refundDestinations.length > 1 && (
           <p style={{ fontSize: 11.5, color: ink, opacity: 0.6, margin: '6px 0 0' }}>{T('Kéo để sắp xếp', 'Drag to reorder')}</p>
         )}

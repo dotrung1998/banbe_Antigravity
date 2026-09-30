@@ -8,6 +8,7 @@ import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCent
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
 import ActionCenter from './ActionCenter.jsx';
 import { pickSoonest } from '../lib/countdown.js';
+import { computeAdminModerationCount, computeHostActionCount, formatBadgeCount } from '../lib/badges.js';
 
 function organizerAvatarUrl(path) {
   if (!path) return '';
@@ -274,18 +275,24 @@ export default function Account() {
           hosting-mode side effect by itself. */}
       <div style={{ display: 'flex', gap: 6, padding: '18px 20px 0' }} data-testid="account-tabs">
         {[
-          { key: 'personal', label: T('Cá nhân', 'Personal') },
+          { key: 'personal', label: T('Cá Nhân', 'Personal') },
           // Account extension (2026-09-27, Stage 1) — "organizer mode OFF
           // means host UI is OFF": Tổ chức only shows while `organizerMode`
           // (the CURRENT toggle) is actually on, never `canHost`
           // (eligibility) — a never-hosted account reaches hosting via the
           // toggle row moved into Cá nhân below, not this tab.
-          ...(isOrganizer ? [{ key: 'host', label: T('Tổ chức', 'Host') }] : []),
+          // FIX PASS (2026-09-30) — badge propagated from the SAME source
+          // as this tab's own group card ("Vận hành & thanh toán tổ chức"
+          // below): verifications + refundQueue, never a second count.
+          ...(isOrganizer ? [{ key: 'host', label: T('Tổ Chức', 'Host'), badge: computeHostActionCount(s) }] : []),
           // Stage 2 — Admin depends only on a server-confirmed role
           // (`accountType`, set exclusively by syncUser()'s own read of
           // `profiles.role`/`set_organizer_mode`'s return value — never
           // client-writable to "admin" by this toggle), never organizerMode.
-          ...(s.accountType === 'admin' ? [{ key: 'admin', label: T('Quản trị', 'Admin') }] : []),
+          // Badge propagated from the SAME source as the "Duyệt & kiểm
+          // duyệt" group card / "Sự kiện chờ duyệt" row below —
+          // pendingEventsCount, never a second, independently-derived count.
+          ...(s.accountType === 'admin' ? [{ key: 'admin', label: T('Quản Trị', 'Admin'), badge: computeAdminModerationCount(s) }] : []),
         ].map(tab => (
           <span
             key={tab.key}
@@ -296,8 +303,27 @@ export default function Account() {
               background: accountTab === tab.key ? ink : 'transparent',
               color: accountTab === tab.key ? paper : ink,
               border: accountTab === tab.key ? 'none' : `1px solid ${rule}`,
+              display: 'flex', alignItems: 'center', gap: 6,
             }}
-          >{tab.label}</span>
+          >
+            {tab.label}
+            {!!tab.badge && (
+              <span
+                data-testid={`account-tab-${tab.key}-badge`}
+                role="status"
+                aria-label={T(`${tab.badge} mục mới`, `${tab.badge} new item(s)`)}
+                title={String(tab.badge)}
+                style={{
+                  fontSize: 10, fontWeight: 700, minWidth: 16, height: 16, padding: '0 4px', lineHeight: '16px',
+                  textAlign: 'center', borderRadius: 999,
+                  background: accountTab === tab.key ? paper : alert,
+                  color: accountTab === tab.key ? ink : '#fff',
+                }}
+              >
+                {formatBadgeCount(tab.badge)}
+              </span>
+            )}
+          </span>
         ))}
       </div>
 
@@ -385,7 +411,7 @@ export default function Account() {
                       style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
                     >
                       <AttachMenuIcon name="library" />
-                      {T('Thư viện ảnh', 'Photo library')}
+                      {T('Thư Viện Ảnh', 'Photo Library')}
                     </div>
                     <div
                       onClick={() => { setStoryMenuOpen(false); openStoryCameraPicker(); }}
@@ -470,25 +496,25 @@ export default function Account() {
           entry level. */}
       <GroupCard
         groupKey="team" iconKind="users"
-        label={T('Hồ sơ & Team', 'Profile & Team')}
+        label={T('Hồ Sơ & Team', 'Profile & Team')}
         badge={s.myOrganizerInvites.length}
         onClick={() => openAccountGroup('team')}
         marginTop={20}
       />
       <GroupCard
         groupKey="activity" iconKind="calendarCheck"
-        label={T('Vé & hoạt động', 'Tickets & activity')}
+        label={T('Vé & Hoạt Động', 'Tickets & Activity')}
         badge={s.myEventCredits.length}
         onClick={() => openAccountGroup('activity')}
       />
       <GroupCard
         groupKey="payments" iconKind="banknote"
-        label={T('Thanh toán & giấy tờ', 'Payments & documents')}
+        label={T('Thanh Toán & Giấy Tờ', 'Payments & Documents')}
         onClick={() => openAccountGroup('payments')}
       />
       <GroupCard
         groupKey="preferences" iconKind="sliders"
-        label={T('Tùy chỉnh', 'Preferences')}
+        label={T('Tùy Chỉnh', 'Preferences')}
         onClick={() => openAccountGroup('preferences')}
       />
 
@@ -500,7 +526,7 @@ export default function Account() {
           now holds only the organizer identity card + its management
           entry point (org-profile-card, above/unchanged). */}
       <div style={{ padding: '22px 20px 0' }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Tổ chức', 'Hosting')}</span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Tổ Chức', 'Hosting')}</span>
         {/* TASK 2 (2026-10-05 fix pass) — `organizerModeBusy` (real guard
             in toggleOrganizerMode/applyOrganizerMode, see GocContext.jsx)
             mirrored here as `.opacity`/no-op click so a second tap while
@@ -546,7 +572,7 @@ export default function Account() {
           <div style={{ ...cardGlass({ marginTop: 10, padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 10 }) }}>
             <span style={{ ...display(19, { lineHeight: 1.3 }) }}>{T('Tổ chức sự kiện đầu tiên', 'Host your first event')}</span>
             <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, margin: 0 }}>
-              {T('Miễn phí hoàn toàn khi banbe còn mới — không phí đăng, không phí giao dịch. Tạo sự kiện đầu tiên để mở trang tổ chức.', 'Completely free while banbe is new — no listing or transaction fees. Create your first event to unlock your host page.')}
+              {T('Miễn phí hoàn toàn khi banbe còn mới: không phí đăng, không phí giao dịch. Tạo sự kiện đầu tiên để mở trang tổ chức.', 'Completely free while banbe is new: no listing or transaction fees. Create your first event to unlock your host page.')}
             </p>
             <div onClick={toggleOrganizerMode} style={{ ...inkButton({ marginTop: 4, borderRadius: 18, padding: 14, fontSize: 14 }) }}>{T('Bắt đầu tổ chức ▪︎ miễn phí', 'Start hosting ▪︎ free')}</div>
           </div>
@@ -651,7 +677,7 @@ export default function Account() {
       {canHost && (
         <GroupCard
           groupKey="hostOps" iconKind="checklist"
-          label={T('Vận hành & thanh toán tổ chức', 'Event operations & payments')}
+          label={T('Vận Hành & Thanh Toán Tổ Chức', 'Event Operations & Payments')}
           badge={(s.verifications || []).length + (s.refundQueue || []).length}
           onClick={() => openAccountGroup('hostOps')}
           marginTop={22}
@@ -681,7 +707,7 @@ export default function Account() {
               tab has nothing else to reorder ahead of. */}
           <GroupCard
             groupKey="adminReview" iconKind="alertShield"
-            label={T('Duyệt & kiểm duyệt', 'Review & moderation')}
+            label={T('Duyệt & Kiểm Duyệt', 'Review & Moderation')}
             badge={s.pendingEventsCount}
             onClick={() => openAccountGroup('adminReview')}
             marginTop={22}

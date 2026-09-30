@@ -87,8 +87,8 @@ export default async function handler(req, res) {
     }
 
     const settled = approve
-      ? `✅ ${escapeMarkdownV2(`Đã xác nhận thanh toán — ${operator}`)}`
-      : `❌ ${escapeMarkdownV2(`Đã đánh dấu chưa nhận được — ${operator}. banbe sẽ xem xét.`)}`;
+      ? `✅ ${escapeMarkdownV2(`Đã xác nhận thanh toán (${operator})`)}`
+      : `❌ ${escapeMarkdownV2(`Đã đánh dấu chưa nhận được (${operator}). banbe sẽ xem xét.`)}`;
 
     await answerCallback(callback.id, approve ? 'Đã xác nhận. Vé đã được gửi.' : 'Đã ghi nhận.')
       .catch(() => {});

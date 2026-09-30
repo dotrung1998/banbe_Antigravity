@@ -56,7 +56,7 @@ struct DisputeChatPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(app.T("Trao đổi trực tiếp về tranh chấp này", "Direct chat about this dispute"))
                 .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
-            Text(app.T("Cuộc trò chuyện này là tạm thời — sẽ bị xoá sau khi banbe đưa ra quyết định, và bản ghi được gửi qua email cho cả hai bên.",
+            Text(app.T("Cuộc trò chuyện này là tạm thời: sẽ bị xoá sau khi banbe đưa ra quyết định, và bản ghi được gửi qua email cho cả hai bên.",
                        "This conversation is temporary — it is deleted once banbe rules on the dispute, and a copy is emailed to both of you."))
                 .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
             if let retentionLabel {

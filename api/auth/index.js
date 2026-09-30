@@ -150,8 +150,8 @@ async function handleSendPasswordReset(req, res, admin, body) {
     ];
     const footNote = t(
       locale,
-      'Nếu bạn không yêu cầu đặt lại mật khẩu, bạn có thể bỏ qua email này — mật khẩu hiện tại của bạn vẫn giữ nguyên.',
-      "If you didn't request a password reset, you can ignore this email — your current password stays unchanged."
+      'Nếu bạn không yêu cầu đặt lại mật khẩu, bạn có thể bỏ qua email này. Mật khẩu hiện tại của bạn vẫn giữ nguyên.',
+      "If you didn't request a password reset, you can ignore this email. Your current password stays unchanged."
     );
 
     try {

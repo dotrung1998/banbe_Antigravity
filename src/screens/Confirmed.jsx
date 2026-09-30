@@ -170,7 +170,7 @@ export default function Confirmed() {
                 </span>
                 <span style={{ fontSize: 11.5, color: ink, opacity: 0.75 }}>
                   {verifyOverdue
-                    ? T('Người tổ chức đang xử lý — có thể mất thêm chút thời gian', "The organizer is on it — may take a little longer")
+                    ? T('Người tổ chức đang xử lý, có thể mất thêm chút thời gian', "The organizer is on it, may take a little longer")
                     : T('Người tổ chức thường phản hồi trong', "The organizer typically responds within")}
                 </span>
               </div>
@@ -263,7 +263,7 @@ export default function Confirmed() {
                  style={{ ...cardGlass({ padding: '14px 16px', marginBottom: 10, cursor: 'pointer' }) }}>
               <span style={{ fontSize: 14, color: ink }}>{T('Lịch Apple ▪︎ Ứng dụng khác', 'Apple Calendar ▪︎ Other apps')}</span>
               <div style={{ fontSize: 11, color: ink, opacity: 0.65, marginTop: 3 }}>
-                {T('Tải file .ics — mở bằng Lịch hoặc bất kỳ ứng dụng lịch nào khác.', 'Downloads an .ics file — open it with Calendar or any other calendar app.')}
+                {T('Tải file .ics (mở bằng Lịch hoặc bất kỳ ứng dụng lịch nào khác).', 'Downloads an .ics file (open it with Calendar or any other calendar app).')}
               </div>
             </div>
             <div onClick={closeCalendarPicker} style={{ textAlign: 'center', fontSize: 13, color: ink, opacity: 0.7, padding: '10px 0', cursor: 'pointer' }}>

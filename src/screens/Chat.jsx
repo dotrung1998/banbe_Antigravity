@@ -170,7 +170,7 @@ export default function Chat() {
             rows.push(
               <div key="unread-divider" data-testid="chat-unread-divider" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0', opacity: 0.55 }}>
                 <div style={{ flex: 1, height: 1, background: rule }} />
-                <span style={{ fontSize: 10.5, color: alert, fontWeight: 600 }}>— {T('Chưa đọc', 'Unread')} —</span>
+                <span style={{ fontSize: 10.5, color: alert, fontWeight: 600 }}>({T('Chưa đọc', 'Unread')})</span>
                 <div style={{ flex: 1, height: 1, background: rule }} />
               </div>
             );

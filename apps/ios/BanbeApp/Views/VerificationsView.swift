@@ -46,8 +46,8 @@ struct VerificationsView: View {
                 Text(app.verificationsFocusBookingID != nil ? app.T("Chi tiết thanh toán", "Payment detail") : app.T("Chờ xác nhận", "Awaiting verification"))
                     .font(BanbeTheme.display(24)).padding(.top, 14)
                     .accessibilityIdentifier("verifications.title")
-                Text(app.T("Khách đã báo chuyển khoản. Đối chiếu với sao kê rồi xác nhận — chỗ của họ đang được giữ và đồng hồ đã dừng.",
-                           "These guests reported a transfer. Check your statement, then confirm — their seat is held and their clock has stopped."))
+                Text(app.T("Khách đã báo chuyển khoản. Đối chiếu với sao kê rồi xác nhận: chỗ của họ đang được giữ và đồng hồ đã dừng.",
+                           "These guests reported a transfer. Check your statement, then confirm: their seat is held and their clock has stopped."))
                     .font(.system(size: 12.5))
                     .foregroundStyle(app.palette.ink.opacity(0.75))
                     .padding(.top, 8)
@@ -290,8 +290,8 @@ struct VerificationsView: View {
             }
 
             VStack(spacing: 4) {
-                line(app.T("Nội dung CK", "Reference"), row.paymentRef ?? "—")
-                line(app.T("Mã giao dịch", "Transaction ID"), row.transactionId ?? "—")
+                line(app.T("Nội dung CK", "Reference"), row.paymentRef ?? app.T("Không Có Thông Tin", "Not Provided"))
+                line(app.T("Mã giao dịch", "Transaction ID"), row.transactionId ?? app.T("Không Có Thông Tin", "Not Provided"))
                 line(app.T("Đã chờ", "Waiting"), waited(row.proofSubmittedAt))
                 if let dueAt = row.verifyDueAt {
                     let secondsLeft = Countdown.secondsUntil(dueAt, now: tick)
@@ -357,10 +357,10 @@ struct VerificationsView: View {
                     .font(.system(size: 13)).padding(11)
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 Text(current.kind == .escalate
-                     ? app.T("banbe sẽ xem xét và đưa ra quyết định — chỗ của khách vẫn được giữ trong lúc chờ.",
-                             "banbe will review and decide — the guest's seat stays held while you wait.")
-                     : app.T("Lý do này được gửi thẳng cho khách qua tin nhắn để họ bổ sung — chỗ vẫn được giữ, banbe không tham gia ở bước này.",
-                             "This reason goes straight to the guest by chat so they can follow up — the seat stays held, and banbe is not involved at this step."))
+                     ? app.T("banbe sẽ xem xét và đưa ra quyết định. Chỗ của khách vẫn được giữ trong lúc chờ.",
+                             "banbe will review and decide. The guest's seat stays held while you wait.")
+                     : app.T("Lý do này được gửi thẳng cho khách qua tin nhắn để họ bổ sung, chỗ vẫn được giữ, banbe không tham gia ở bước này.",
+                             "This reason goes straight to the guest by chat so they can follow up. The seat stays held, and banbe is not involved at this step."))
                     .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
                 HStack(spacing: 8) {
                     action(app.T("Gửi", "Submit"), id: "verification.rejectConfirm") {

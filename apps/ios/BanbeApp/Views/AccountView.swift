@@ -221,8 +221,8 @@ struct AccountView: View {
             // stays out of this condition, see applyOrganizerMode's own
             // doc comment for why conflating the two was the earlier bug.
             HStack(spacing: 6) {
-                ForEach(accountTabs, id: \.0) { key, label in
-                    accountTabButton(key: key, label: label)
+                ForEach(accountTabs, id: \.0) { key, label, badge in
+                    accountTabButton(key: key, label: label, badge: badge)
                 }
             }
 
@@ -309,7 +309,7 @@ struct AccountView: View {
                             Button {
                                 app.storyLibraryPickerOpen = true
                             } label: {
-                                Label(app.T("Thư viện ảnh", "Photo library"), systemImage: "photo.on.rectangle")
+                                Label(app.T("Thư Viện Ảnh", "Photo Library"), systemImage: "photo.on.rectangle")
                             }
                             Button {
                                 app.storyCameraOpen = true
@@ -382,10 +382,10 @@ struct AccountView: View {
             // action keeps its EXACT original accessibility identifier/
             // route (openDocuments/openSecurity/etc., unchanged) — only
             // WHERE it's reached from moved.
-            groupCard(groupKey: "team", icon: "person.3", label: app.T("Hồ sơ & Team", "Profile & Team"), badge: app.myOrganizerInvites.count, topPadding: 20)
-            groupCard(groupKey: "activity", icon: "calendar.badge.checkmark", label: app.T("Vé & hoạt động", "Tickets & activity"), badge: app.myEventCredits.count)
-            groupCard(groupKey: "payments", icon: "banknote", label: app.T("Thanh toán & giấy tờ", "Payments & documents"))
-            groupCard(groupKey: "preferences", icon: "slider.horizontal.3", label: app.T("Tùy chỉnh", "Preferences"))
+            groupCard(groupKey: "team", icon: "person.3", label: app.T("Hồ Sơ & Team", "Profile & Team"), badge: app.myOrganizerInvites.count, topPadding: 20)
+            groupCard(groupKey: "activity", icon: "calendar.badge.checkmark", label: app.T("Vé & Hoạt Động", "Tickets & Activity"), badge: app.myEventCredits.count)
+            groupCard(groupKey: "payments", icon: "banknote", label: app.T("Thanh Toán & Giấy Tờ", "Payments & Documents"))
+            groupCard(groupKey: "preferences", icon: "slider.horizontal.3", label: app.T("Tùy Chỉnh", "Preferences"))
 
             // Account extension (2026-09-27, Stage 1) — "organizer mode
             // OFF means host UI is OFF": the whole Tổ chức tab disappears
@@ -483,18 +483,38 @@ struct AccountView: View {
     // `organizerMode` is actually on (never `canHost`/eligibility); Admin
     // (Stage 2) only for a server-confirmed admin, independent of
     // `organizerMode` entirely.
-    private var accountTabs: [(String, String)] {
-        var tabs: [(String, String)] = [("personal", app.T("Cá nhân", "Personal"))]
-        if app.organizerMode { tabs.append(("host", app.T("Tổ chức", "Host"))) }
-        if app.accountType == "admin" { tabs.append(("admin", app.T("Quản trị", "Admin"))) }
+    // FIX PASS (2026-09-30) — badges propagated from the SAME sources as
+    // each tab's own group card below (host: "Vận hành & thanh toán tổ
+    // chức"; admin: "Duyệt & kiểm duyệt") — see Lib/Badges.swift.
+    private var accountTabs: [(String, String, Int)] {
+        var tabs: [(String, String, Int)] = [("personal", app.T("Cá Nhân", "Personal"), 0)]
+        if app.organizerMode {
+            let hostBadge = AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueueCount: app.refundQueue.count)
+            tabs.append(("host", app.T("Tổ Chức", "Host"), hostBadge))
+        }
+        if app.accountType == "admin" {
+            let adminBadge = AccountBadges.adminModerationCount(accountType: app.accountType, pendingEventsCount: app.pendingEventsCount)
+            tabs.append(("admin", app.T("Quản Trị", "Admin"), adminBadge))
+        }
         return tabs
     }
 
     @ViewBuilder
-    private func accountTabButton(key: String, label: String) -> some View {
+    private func accountTabButton(key: String, label: String, badge: Int = 0) -> some View {
         Button { app.accountTab = key } label: {
-            Text(label)
-                .font(.system(size: 13, weight: .semibold))
+            HStack(spacing: 6) {
+                Text(label).font(.system(size: 13, weight: .semibold))
+                if badge > 0 {
+                    Text(AccountBadges.format(badge))
+                        .font(.system(size: 10, weight: .bold))
+                        .padding(.horizontal, 4)
+                        .frame(minWidth: 16, minHeight: 16)
+                        .background(app.accountTab == key ? app.palette.paper : BanbeTheme.alert, in: Capsule())
+                        .foregroundStyle(app.accountTab == key ? app.palette.ink : .white)
+                        .accessibilityIdentifier("account.tab.\(key).badge")
+                        .accessibilityLabel(app.T("\(badge) mục mới", "\(badge) new item(s)"))
+                }
+            }
                 .padding(.horizontal, 16).padding(.vertical, 9)
                 .background(app.accountTab == key ? app.palette.ink : .clear, in: Capsule())
                 .overlay(Capsule().stroke(app.accountTab == key ? .clear : app.palette.rule, lineWidth: 1))
@@ -702,7 +722,7 @@ struct AccountView: View {
         // section (myConfirmedEventCredits) below, per this ticket's own
         // "pending invites separately from confirmed credits" ask.
         if !app.myEventCredits.isEmpty {
-            Text(app.T("Đóng góp sự kiện — lời mời đang chờ", "Event contributions — pending invites")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Đóng góp sự kiện: lời mời đang chờ", "Event contributions: pending invites")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myEventCredits) { c in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(app.T(
@@ -733,7 +753,7 @@ struct AccountView: View {
         // migration 100). Read-only (no Accept/Decline — already resolved),
         // tappable straight to the event.
         if !app.myConfirmedEventCredits.isEmpty {
-            Text(app.T("Đóng góp sự kiện — đã xác nhận", "Event contributions — confirmed")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Đóng góp sự kiện: đã xác nhận", "Event contributions: confirmed")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myConfirmedEventCredits) { c in
                 Button { app.goEvent(c.eventId) } label: {
                     HStack {
@@ -761,7 +781,7 @@ struct AccountView: View {
 
     @ViewBuilder
     private var hostingSection: some View {
-        Text(app.T("Tổ chức", "Hosting"))
+        Text(app.T("Tổ Chức", "Hosting"))
             .font(.system(size: 11.5, weight: .semibold))
             .padding(.top, 22)
 
@@ -875,7 +895,7 @@ struct AccountView: View {
             if app.canHost {
                 groupCard(
                     groupKey: "hostOps", icon: "checklist",
-                    label: app.T("Vận hành & thanh toán tổ chức", "Event operations & payments"),
+                    label: app.T("Vận Hành & Thanh Toán Tổ Chức", "Event Operations & Payments"),
                     badge: app.verifications.count + app.refundQueue.count,
                     topPadding: 22
                 )
@@ -895,7 +915,7 @@ struct AccountView: View {
     // migration 040) — RLS is the real backstop; openAdminDashboard()
     // guards again regardless.
     private var adminSection: some View {
-        groupCard(groupKey: "adminReview", icon: "exclamationmark.shield", label: app.T("Duyệt & kiểm duyệt", "Review & moderation"), badge: app.pendingEventsCount, topPadding: 22)
+        groupCard(groupKey: "adminReview", icon: "exclamationmark.shield", label: app.T("Duyệt & Kiểm Duyệt", "Review & Moderation"), badge: app.pendingEventsCount, topPadding: 22)
     }
 
     /// Host tab's OWN rounded profile card (Stage D) — organizer avatar/

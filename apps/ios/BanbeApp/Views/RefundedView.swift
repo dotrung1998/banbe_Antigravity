@@ -33,8 +33,8 @@ struct RefundedView: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(app.T("Số tiền hoàn", "Amount refunded"))
                                     .font(.system(size: 11.5, weight: .semibold))
-                                Text(app.T("Về phương thức thanh toán ban đầu, 3–5 ngày làm việc",
-                                           "To your original payment method, 3–5 business days"))
+                                Text(app.T("Về phương thức thanh toán ban đầu, 3-5 ngày làm việc",
+                                           "To your original payment method, 3-5 business days"))
                                     .font(.system(size: 11.5))
                             }
                             Spacer(minLength: 0)

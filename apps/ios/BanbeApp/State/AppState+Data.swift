@@ -2399,7 +2399,7 @@ extension AppState {
                 "PROFILE_NOT_FOUND": T("Không tìm thấy hồ sơ của bạn. Vui lòng thử lại.", "We couldn’t find your profile. Please try again."),
                 "EVENT_NOT_FOUND": T("Không tìm thấy sự kiện này.", "This event could not be found."),
                 "EVENT_NOT_LIVE": T("Sự kiện này đã bị huỷ hoặc chưa mở.", "This event has been cancelled or isn’t open."),
-                "SOLD_OUT": T("Rất tiếc, chỗ vừa hết.", "Sorry — this just sold out."),
+                "SOLD_OUT": T("Rất tiếc, chỗ vừa hết.", "Sorry, this just sold out."),
             ][code] ?? T(
                 "Không thể giữ chỗ lúc này. Vui lòng thử lại.",
                 "Could not hold this spot right now. Please try again."
@@ -3865,7 +3865,7 @@ extension AppState {
         case "NOT_AUTHORIZED":
             return T("Bạn không có quyền huỷ vé này.", "You don't have permission to cancel this booking.")
         case "BOOKING_CANNOT_BE_CANCELLED":
-            return T("Vé này không thể huỷ vì đã bị huỷ, hết hạn hoặc khách đã check-in.", "This booking can't be cancelled — it's already cancelled, expired, or the guest already checked in.")
+            return T("Vé này không thể huỷ vì đã bị huỷ, hết hạn hoặc khách đã check-in.", "This booking can't be cancelled: it's already cancelled, expired, or the guest already checked in.")
         case let code?:
             return T("Không thể huỷ vé: \(code)", "Could not cancel the booking: \(code)")
         case nil:

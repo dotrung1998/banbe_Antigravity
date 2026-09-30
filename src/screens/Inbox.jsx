@@ -170,7 +170,7 @@ function FeedbackFlow({ onClose, T }) {
       </div>
       {step === 'choice' ? (
         <div style={{ padding: '18px 22px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <span style={{ ...display(24) }}>{T('Gửi phản hồi', 'Give feedback')}</span>
+          <span style={{ ...display(24) }}>{T('Gửi Phản Hồi', 'Give Feedback')}</span>
           <p style={{ fontSize: 13, lineHeight: 1.5, color: ink, opacity: 0.75, margin: 0 }}>
             {T('Hãy cho chúng tôi biết phản hồi của bạn là về điều gì. Chúng tôi đọc mọi phản hồi nhưng không thể trả lời từng người.',
               'Please let us know what your feedback is about. We review all feedback but are unable to respond individually.')}
@@ -191,7 +191,7 @@ function FeedbackFlow({ onClose, T }) {
         </div>
       ) : (
         <div style={{ padding: '18px 22px 24px', display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
-          <span style={{ ...display(24) }}>{T('Kể cho chúng tôi nghe', 'Tell us about it')}</span>
+          <span style={{ ...display(24) }}>{T('Kể Cho Chúng Tôi Nghe', 'Tell Us About It')}</span>
           <p style={{ fontSize: 13, lineHeight: 1.5, color: ink, opacity: 0.75, margin: 0 }}>
             {T('Chia sẻ trải nghiệm của bạn. Điều gì tốt? Điều gì có thể tốt hơn?', 'Share your experience with us. What went well? What could have gone better?')}
           </p>
@@ -272,7 +272,7 @@ export default function Inbox() {
             }}
           />
         ) : (
-          <span style={{ ...display(27) }}>{s.inboxView === 'archived' ? T('Đã lưu trữ', 'Archived') : T('Tin nhắn', 'Messages')}</span>
+          <span style={{ ...display(27) }}>{s.inboxView === 'archived' ? T('Đã Lưu Trữ', 'Archived') : T('Tin Nhắn', 'Messages')}</span>
         )}
         {/* Task 1 — "Done" replaced with search + settings icons. Task 5 —
             each icon-only control gets a small label underneath. */}
@@ -340,7 +340,7 @@ export default function Inbox() {
               dead gap below them. */}
           <div onClick={(e) => e.stopPropagation()} style={{ ...cardGlass({ borderRadius: '18px 18px 0 0' }), padding: '18px 22px 34px', display: 'flex', flexDirection: 'column', animation: `gocSheetIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ ...display(18) }}>{T('Cài đặt tin nhắn', 'Messaging settings')}</span>
+              <span style={{ ...display(18) }}>{T('Cài Đặt Tin Nhắn', 'Messaging Settings')}</span>
               <span onClick={() => setSettingsOpen(false)} style={{ fontSize: 18, color: ink, cursor: 'pointer' }}>✕</span>
             </div>
             <div
@@ -355,7 +355,7 @@ export default function Inbox() {
               data-testid="inbox-menu-feedback"
               style={{ padding: '22px 2px', borderTop: `1px solid ${rule}`, borderBottom: `1px solid ${rule}`, fontSize: 14.5, color: ink, cursor: 'pointer' }}
             >
-              {T('Gửi phản hồi', 'Give feedback')}
+              {T('Gửi Phản Hồi', 'Give Feedback')}
             </div>
           </div>
         </div>

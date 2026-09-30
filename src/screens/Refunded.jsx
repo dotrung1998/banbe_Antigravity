@@ -21,7 +21,7 @@ export default function Refunded() {
         <div style={{ ...fieldGlass({ marginTop: 24, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 16 }) }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
             <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Số tiền hoàn', 'Amount refunded')}</span>
-            <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink }}>{T('Về phương thức thanh toán ban đầu, 3–5 ngày làm việc', 'To your original payment method, 3–5 business days')}</span>
+            <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink }}>{T('Về phương thức thanh toán ban đầu, 3-5 ngày làm việc', 'To your original payment method, 3-5 business days')}</span>
           </div>
           <span style={{ ...display(24, { whiteSpace: 'nowrap', flex: 'none' }) }}>{refundAmount}</span>
         </div>

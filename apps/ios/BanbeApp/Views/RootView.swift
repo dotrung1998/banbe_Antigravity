@@ -753,15 +753,20 @@ struct RootView: View {
             // overlay, don't add another competing floating UIWindow"
             // instruction — see that file's doc comment.
             //
-            // TASK 1 real-device follow-up — the tray THAT BUTTON opens
-            // lives here instead, in this main window's own ZStack (see
-            // that view's own doc comment for why: it needs to dim/cover
-            // the real screen, which the dock's small band-sized overlay
-            // window cannot do). A native SwiftUI `Menu` was tried
-            // directly inside that overlay window instead and reverted —
-            // see DockCreateButtonView's own doc comment for the
-            // real-device clipping bug that caused.
-            if app.dockCreateMenuOpen { DockCreateTrayView().zIndex(28) }
+            // FIX PASS (2026-09-30) — the tray THAT BUTTON opens used to
+            // live here, in this main window's own ZStack, at zIndex 28 —
+            // which is exactly why it rendered UNDER MapExplore's native
+            // filter/list `.sheet()` on a real device: a plain ZStack
+            // zIndex can never out-layer a separately presented UIKit
+            // `.sheet()` (see BottomTabBarOverlay.swift's own long-standing
+            // doc comment on this exact class of bug, already proven for
+            // the dock itself). Moved into BottomTabBarOverlayRoot — the
+            // SAME always-on-top UIWindow the dock/create-button already
+            // live in, and the one thing in this app already proven to draw
+            // above a native `.sheet()` at any detent — instead of a THIRD
+            // competing window. See BottomTabBarOverlay.setDockCreateTrayOpen
+            // for how that window temporarily grows to full-screen while
+            // this is open.
 
             // BUG 3 follow-up (this session's real-device report on
             // 80c1ac3): BottomTabBar used to render HERE, as a ZStack
@@ -985,6 +990,16 @@ struct RootView: View {
         // storyViewer above.
         .onChange(of: app.pulseOpen) { _, open in
             BottomTabBarOverlay.shared.setPulseViewerOpen(open)
+        }
+        // FIX PASS (2026-09-30, Map-sheet layering) — the dock "+" tray now
+        // renders INSIDE BottomTabBarOverlay's own window (moved out of this
+        // main-window ZStack — see the removed call site's own comment
+        // above), so it needs the same kind of explicit signal StoryViewer/
+        // Pulse above already give that window: this drives the window's
+        // own temporary full-screen grow/shrink, never anything about
+        // MapExploreView's own sheet/camera/filter/search/selection state.
+        .onChange(of: app.dockCreateMenuOpen) { _, open in
+            BottomTabBarOverlay.shared.setDockCreateTrayOpen(open)
         }
         // TASK 3 (2026-09-22 seventeenth follow-up) — same "separate
         // UIWindow, isHidden not zIndex" reasoning as `setForcedHidden`'s

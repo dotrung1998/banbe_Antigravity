@@ -28,7 +28,7 @@ export default function MyRefunds() {
         ‹ {T('Tài khoản', 'Account')}
       </div>
       <div style={{ padding: '14px 22px 0' }}>
-        <h1 style={{ ...display(24, { margin: 0 }) }}>{T('Hoàn tiền', 'Refunds')}</h1>
+        <h1 style={{ ...display(24, { margin: 0 }) }}>{T('Hoàn Tiền', 'Refunds')}</h1>
         <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
           {T('Các khoản hoàn tiền đang cần xử lý của bạn.', 'Your refund claims that are still active.')}
         </p>
@@ -44,7 +44,7 @@ export default function MyRefunds() {
         ) : (
           <div style={{ ...fieldGlass({ display: 'flex', flexDirection: 'column' }) }}>
             {s.myRefunds.map((c, i, arr) => {
-              const label = STATUS_LABEL[c.status] || ['—', '—'];
+              const label = STATUS_LABEL[c.status] || ['Không Xác Định', 'Unknown'];
               const overdue = (c.status === 'owed' && c.refund_due_at && new Date(c.refund_due_at).getTime() < Date.now())
                 || (c.status === 'disputed' && c.host_response_due_at && new Date(c.host_response_due_at).getTime() < Date.now());
               return (

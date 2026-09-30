@@ -146,7 +146,7 @@ struct AccountGroupView: View {
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
         if !app.myEventCredits.isEmpty {
-            Text(app.T("Đóng góp sự kiện — lời mời đang chờ", "Event contributions — pending invites")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Đóng góp sự kiện: lời mời đang chờ", "Event contributions: pending invites")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myEventCredits) { c in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(app.T(
@@ -168,7 +168,7 @@ struct AccountGroupView: View {
             }
         }
         if !app.myConfirmedEventCredits.isEmpty {
-            Text(app.T("Đóng góp sự kiện — đã xác nhận", "Event contributions — confirmed")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Đóng góp sự kiện: đã xác nhận", "Event contributions: confirmed")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myConfirmedEventCredits) { c in
                 Button { app.goEvent(c.eventId) } label: {
                     HStack {
@@ -229,7 +229,13 @@ struct AccountGroupView: View {
             // Sub-section-of-a-group back-navigation fix (2026-09-29,
             // second pass) — was the default `back: .profile`, skipping
             // this group page.
-            row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"), identifier: "host.verifications", icon: "checklist", trailing: "›") { app.openVerifications(back: .accountGroup) }
+            // FIX PASS (2026-09-30) — badge parity with this group's own
+            // entry card (AccountView.swift's "Vận hành & thanh toán tổ
+            // chức"), same rule the "Pending events" row below already
+            // established: both verifications AND refundQueue land on
+            // THIS exact screen (openVerifications), so this row's badge
+            // is the same sum, not a second independently-derived count.
+            row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"), identifier: "host.verifications", icon: "checklist", trailing: "›", badge: AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueueCount: app.refundQueue.count)) { app.openVerifications(back: .accountGroup) }
             Divider().overlay(app.palette.rule)
             row(app.T("Nhận thanh toán", "Getting paid"), identifier: "host.payout", icon: "banknote", trailing: "›") { app.openPayout() }
             Divider().overlay(app.palette.rule)
@@ -254,7 +260,7 @@ struct AccountGroupView: View {
         VStack(spacing: 0) {
             row(app.T("Bảng quản trị", "Admin Panel"), identifier: "admin.panel", icon: "exclamationmark.shield", trailing: "›") { app.openAdminDashboard() }
             Divider().overlay(app.palette.rule)
-            row(app.T("Sự kiện chờ duyệt", "Pending events"), identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›", badge: app.pendingEventsCount) { app.openAdminEvents() }
+            row(app.T("Sự Kiện Chờ Duyệt", "Pending Events"), identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›", badge: app.pendingEventsCount) { app.openAdminEvents() }
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }

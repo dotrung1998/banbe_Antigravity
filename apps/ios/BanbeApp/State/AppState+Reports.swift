@@ -284,7 +284,7 @@ extension AppState {
                 logo.draw(in: CGRect(x: 40, y: y, width: w, height: h))
                 y += h + 16
             }
-            let title = T("Báo cáo số liệu — \(roleLabel)", "KPI report — \(roleLabel)")
+            let title = T("Báo cáo số liệu (\(roleLabel))", "KPI report (\(roleLabel))")
             title.draw(at: CGPoint(x: 40, y: y), withAttributes: [.font: UIFont.boldSystemFont(ofSize: 16)])
             y += 26
             let df = DateFormatter()
@@ -292,7 +292,7 @@ extension AppState {
             df.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
             let rangeText: String
             if let range = report.range, let s = Self.isoFormatter.date(from: range.start), let e = Self.isoFormatter.date(from: range.end) {
-                rangeText = "\(T("Khoảng thời gian", "Range")): \(df.string(from: s)) – \(df.string(from: e))"
+                rangeText = "\(T("Khoảng thời gian", "Range")): \(df.string(from: s)) - \(df.string(from: e))"
             } else { rangeText = "" }
             rangeText.draw(at: CGPoint(x: 40, y: y), withAttributes: [.font: UIFont.systemFont(ofSize: 10)])
             y += 16

@@ -83,8 +83,8 @@ export default function DisputeChatPanel({ bookingId }) {
         {T('Trao đổi trực tiếp về tranh chấp này', 'Direct chat about this dispute')}
       </span>
       <p style={{ fontSize: 11, lineHeight: 1.45, color: ink, opacity: 0.7, margin: 0 }}>
-        {T('Cuộc trò chuyện này là tạm thời — sẽ bị xoá sau khi banbe đưa ra quyết định, và bản ghi được gửi qua email cho cả hai bên.',
-           'This conversation is temporary — it is deleted once banbe rules on the dispute, and a copy is emailed to both of you.')}
+        {T('Cuộc trò chuyện này là tạm thời: sẽ bị xoá sau khi banbe đưa ra quyết định, và bản ghi được gửi qua email cho cả hai bên.',
+           'This conversation is temporary: it is deleted once banbe rules on the dispute, and a copy is emailed to both of you.')}
       </p>
       {retention && (
         <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.55 }} data-testid="dispute-chat-retention">

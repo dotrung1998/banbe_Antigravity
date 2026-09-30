@@ -52,7 +52,7 @@ export default function Disputes() {
         ‹ {T('Tài khoản', 'Account')}
       </div>
       <div style={{ padding: '14px 22px 0' }}>
-        <h1 style={{ ...display(24, { margin: 0 }) }} data-testid="disputes-title">{T('Tranh chấp thanh toán', 'Payment disputes')}</h1>
+        <h1 style={{ ...display(24, { margin: 0 }) }} data-testid="disputes-title">{T('Tranh Chấp Thanh Toán', 'Payment Disputes')}</h1>
         <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
           {T('Khách khẳng định đã chuyển, người tổ chức không tìm thấy. Chỗ vẫn đang bị khoá cho tới khi có quyết định.',
              "The guest says they paid; the organizer can't find it. The seat stays locked until this is decided.")}
@@ -72,9 +72,9 @@ export default function Disputes() {
 
             <div style={{ ...fieldGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }}>
               <Line label={T('Nội dung CK', 'Reference')} value={d.payment_ref} />
-              <Line label={T('Mã giao dịch khách khai', 'Buyer transaction ID')} value={d.transaction_id || '—'} />
+              <Line label={T('Mã giao dịch khách khai', 'Buyer transaction ID')} value={d.transaction_id || T('Không Có Thông Tin', 'Not Provided')} />
               <Line label={T('Ảnh biên lai', 'Proof')} value={d.proof_path ? T('có', 'on file') : T('không có', 'none')} />
-              <Line label={T('Lý do từ chối', 'Rejection reason')} value={d.dispute_reason || '—'} />
+              <Line label={T('Lý do từ chối', 'Rejection reason')} value={d.dispute_reason || T('Không Có Thông Tin', 'Not Provided')} />
             </div>
 
             {/* The actual evidence, not just "on file" — an admin ruling on
@@ -187,8 +187,8 @@ export default function Disputes() {
                   {isExpanded && (
                     <>
                       <div style={{ ...cardGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }}>
-                        <Line label={T('Lý do từ chối', 'Rejection reason')} value={d.dispute_reason || '—'} />
-                        <Line label={T('Quyết định', 'Decision')} value={d.dispute_resolution || '—'} />
+                        <Line label={T('Lý do từ chối', 'Rejection reason')} value={d.dispute_reason || T('Không Có Thông Tin', 'Not Provided')} />
+                        <Line label={T('Quyết định', 'Decision')} value={d.dispute_resolution || T('Không Có Thông Tin', 'Not Provided')} />
                       </div>
 
                       <div onClick={() => loadAuditTrail(d.booking_id)}

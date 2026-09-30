@@ -343,7 +343,7 @@ export default function CreateEvent() {
             style={fieldInput}
           />
           <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.75 }}>
-            {T('Cách nhau bằng dấu phẩy — để trống sẽ tự dùng danh mục đã chọn ở trên.', 'Comma-separated — left blank, the category picked above is used instead.')}
+            {T('Cách nhau bằng dấu phẩy. Để trống sẽ tự dùng danh mục đã chọn ở trên.', 'Comma-separated. Left blank, the category picked above is used instead.')}
           </p>
         </div>
 
@@ -359,7 +359,7 @@ export default function CreateEvent() {
             <span style={{ fontSize: 10.5, color: ink }}>{s.createIntro.length}/4000</span>
           </div>
           <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.75 }}>
-            {T('Một đoạn giới thiệu dài hơn, hấp dẫn — tách dòng trống giữa các đoạn. Không phải quảng cáo giả, không phải "Bao gồm".', 'A longer, attractive write-up — leave a blank line between paragraphs. Not fabricated marketing copy, not the same as "Included".')}
+            {T('Một đoạn giới thiệu dài hơn, hấp dẫn. Tách dòng trống giữa các đoạn. Không phải quảng cáo giả, không phải "Bao gồm".', 'A longer, attractive write-up. Leave a blank line between paragraphs. Not fabricated marketing copy, not the same as "Included".')}
           </p>
           <textarea
             value={s.createIntro} onChange={createIntroType} maxLength={4000} rows={6}

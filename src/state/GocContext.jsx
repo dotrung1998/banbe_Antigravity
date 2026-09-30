@@ -1150,7 +1150,7 @@ function cancelBookingErrorMessage(code, T) {
     case 'NOT_AUTHORIZED':
       return T('Bạn không có quyền huỷ vé này.', "You don't have permission to cancel this booking.");
     case 'BOOKING_CANNOT_BE_CANCELLED':
-      return T('Vé này không thể huỷ vì đã bị huỷ, hết hạn hoặc khách đã check-in.', "This booking can't be cancelled — it's already cancelled, expired, or the guest already checked in.");
+      return T('Vé này không thể huỷ vì đã bị huỷ, hết hạn hoặc khách đã check-in.', "This booking can't be cancelled: it's already cancelled, expired, or the guest already checked in.");
     default:
       return code
         ? T(`Không thể huỷ vé: ${code}`, `Could not cancel the booking: ${code}`)
@@ -2696,7 +2696,7 @@ export function GocProvider({ children }) {
       set({
         receiptRequestSending: false,
         receiptRequestError: data?.error === 'ALREADY_REQUESTED_RECENTLY'
-          ? T('Bạn vừa yêu cầu gần đây — hãy đợi người tổ chức phản hồi.', "You already asked recently — give the organizer a little time to respond.")
+          ? T('Bạn vừa yêu cầu gần đây, hãy đợi người tổ chức phản hồi.', "You already asked recently, give the organizer a little time to respond.")
           : T('Không gửi được yêu cầu. Thử lại nhé.', "Couldn't send the request. Please try again."),
       });
       return;
@@ -2963,7 +2963,7 @@ export function GocProvider({ children }) {
       if (data?.success === false) {
         set({
           refundBatchError: data.error === 'REFUND_DESTINATION_REQUIRED'
-            ? T('Chưa thể đánh dấu đã hoàn tiền. Khách cần chọn tài khoản nhận trước.', 'Cannot mark this refund sent yet — the guest needs to choose a destination first.')
+            ? T('Chưa thể đánh dấu đã hoàn tiền. Khách cần chọn tài khoản nhận trước.', 'Cannot mark this refund sent yet: the guest needs to choose a destination first.')
             : T('Không thể cập nhật lúc này. Vui lòng thử lại.', 'Could not update right now. Please try again.'),
         });
       } else {
@@ -5462,11 +5462,11 @@ export function GocProvider({ children }) {
       y += 50;
       doc.setFontSize(16);
       const roleLabel = { personal: T('Cá nhân', 'Personal'), host: T('Tổ chức', 'Host'), admin: T('Quản trị', 'Admin') }[s.reportsData.scope] || s.reportsData.scope;
-      doc.text(T(`Báo cáo số liệu — ${roleLabel}`, `KPI report — ${roleLabel}`), marginX, y);
+      doc.text(T(`Báo cáo số liệu (${roleLabel})`, `KPI report (${roleLabel})`), marginX, y);
       y += 20;
       doc.setFontSize(10);
       const fmt = (iso) => new Date(iso).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
-      doc.text(`${T('Khoảng thời gian', 'Range')}: ${fmt(s.reportsData.range.start)} – ${fmt(s.reportsData.range.end)}`, marginX, y);
+      doc.text(`${T('Khoảng thời gian', 'Range')}: ${fmt(s.reportsData.range.start)} - ${fmt(s.reportsData.range.end)}`, marginX, y);
       y += 14;
       doc.text(`${T('Tạo lúc', 'Generated')}: ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`, marginX, y);
       y += 24;
@@ -6055,7 +6055,7 @@ export function GocProvider({ children }) {
         PROFILE_NOT_FOUND: T('Không tìm thấy hồ sơ của bạn. Vui lòng thử lại.', 'We couldn’t find your profile. Please try again.'),
         EVENT_NOT_FOUND: T('Không tìm thấy sự kiện này.', 'This event could not be found.'),
         EVENT_NOT_LIVE: T('Sự kiện này đã bị huỷ hoặc chưa mở.', 'This event has been cancelled or isn’t open.'),
-        SOLD_OUT: T('Rất tiếc, chỗ vừa hết.', 'Sorry — this just sold out.'),
+        SOLD_OUT: T('Rất tiếc, chỗ vừa hết.', 'Sorry, this just sold out.'),
       }[err.message] || T('Không thể giữ chỗ lúc này. Vui lòng thử lại.', 'Could not hold this spot right now. Please try again.');
       set({ loading: false, reserveError: message });
     }

@@ -468,8 +468,8 @@ async function handleDocumentUploaded(req, res, admin, userData, body) {
     const heading = t(locale, `${kindLabel[0].toUpperCase()}${kindLabel.slice(1)} của bạn đã sẵn sàng`, `Your ${kindLabel} is ready`);
     const paragraphs = [
       t(locale,
-        `Người tổ chức vừa tải lên ${kindLabel} cho lượt đặt chỗ của bạn — đính kèm bản sao trong email này để lưu trữ.`,
-        `The organizer just uploaded your ${kindLabel} — a copy is attached to this email for your records.`),
+        `Người tổ chức vừa tải lên ${kindLabel} cho lượt đặt chỗ của bạn. Bản sao được đính kèm trong email này để lưu trữ.`,
+        `The organizer just uploaded your ${kindLabel}. A copy is attached to this email for your records.`),
       t(locale,
         'Bạn đang nhận email này vì đã bật "Tự động gửi email hoá đơn/biên nhận" trong Tuỳ chọn. Có thể tắt bất cứ lúc nào.',
         'You are getting this because "Automatically email me a copy of invoices/receipts" is on in your Preferences. You can turn it off any time.'),
@@ -553,18 +553,18 @@ async function handleWelcome(req, res, admin, userData) {
     const heading = t(
       locale,
       name ? `Chào ${name}, tài khoản của bạn đã sẵn sàng` : 'Tài khoản của bạn đã sẵn sàng',
-      name ? `Welcome, ${name} — you're all set` : "You're all set"
+      name ? `Welcome, ${name}: you're all set` : "You're all set"
     );
     const paragraphs = [
       t(
         locale,
-        'Từ giờ mỗi tuần sẽ có vài buổi hay ho dành cho bạn — supper club, phòng tranh, gig nhạc nhỏ. Không xếp hạng, không quảng cáo, không lướt vô tận.',
-        "Every week from here on, there'll be a few good things happening near you — supper clubs, small galleries, tucked-away gigs. No ratings, no ads, no endless scrolling."
+        'Từ giờ mỗi tuần sẽ có vài buổi hay ho dành cho bạn: supper club, phòng tranh, gig nhạc nhỏ. Không xếp hạng, không quảng cáo, không lướt vô tận.',
+        "Every week from here on, there'll be a few good things happening near you: supper clubs, small galleries, tucked-away gigs. No ratings, no ads, no endless scrolling."
       ),
       t(
         locale,
-        'banbe vui hơn khi có bạn bè cùng tham gia. Chia sẻ liên kết dưới đây — khi ai đó tham gia qua đó, bạn sẽ là người đã mời họ.',
-        "banbe is better with people you know. Share your link below — anyone who joins through it, you'll be the one who brought them in."
+        'banbe vui hơn khi có bạn bè cùng tham gia. Chia sẻ liên kết dưới đây, khi ai đó tham gia qua đó, bạn sẽ là người đã mời họ.',
+        "banbe is better with people you know. Share your link below, anyone who joins through it, you'll be the one who brought them in."
       ),
     ];
 

@@ -19,7 +19,7 @@ export default function Payout() {
         ‹ {T('Tài khoản', 'Account')}
       </div>
       <div style={{ padding: '14px 22px 0' }}>
-        <h1 style={{ ...display(24, { margin: 0 }) }}>{T('Nhận thanh toán', 'Getting paid')}</h1>
+        <h1 style={{ ...display(24, { margin: 0 }) }}>{T('Nhận Thanh Toán', 'Getting Paid')}</h1>
         <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
           {T('Khách chuyển khoản thẳng cho bạn. banbe không giữ tiền và không thu phí.',
              'Guests transfer straight to you. banbe never holds the money and takes no cut.')}

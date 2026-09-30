@@ -57,7 +57,7 @@ export default function EventDetail() {
     home: 'banbe',
     dashboard: T('Trang của bạn', 'Your dashboard'),
     organizer: T('Trang tổ chức', 'Organizer page'),
-    create: T('Tạo sự kiện', 'Create event'),
+    create: T('Tạo Sự Kiện', 'Create Event'),
     // Named after whichever list it is ("Going"/"Saved"/"Completed
     // events"), so the pill says where it actually goes.
     eventList: eventListTitle,

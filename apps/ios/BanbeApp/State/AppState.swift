@@ -2609,12 +2609,12 @@ final class AppState: ObservableObject {
     /// `title` computed property calls this too, so the two never drift.
     func accountGroupTitle(for key: String?) -> String {
         switch key {
-        case "team": return T("Hồ sơ & Team", "Profile & Team")
-        case "activity": return T("Vé & hoạt động", "Tickets & activity")
-        case "payments": return T("Thanh toán & giấy tờ", "Payments & documents")
-        case "preferences": return T("Tùy chỉnh", "Preferences")
-        case "hostOps": return T("Vận hành & thanh toán tổ chức", "Event operations & payments")
-        case "adminReview": return T("Duyệt & kiểm duyệt", "Review & moderation")
+        case "team": return T("Hồ Sơ & Team", "Profile & Team")
+        case "activity": return T("Vé & Hoạt Động", "Tickets & Activity")
+        case "payments": return T("Thanh Toán & Giấy Tờ", "Payments & Documents")
+        case "preferences": return T("Tùy Chỉnh", "Preferences")
+        case "hostOps": return T("Vận Hành & Thanh Toán Tổ Chức", "Event Operations & Payments")
+        case "adminReview": return T("Duyệt & Kiểm Duyệt", "Review & Moderation")
         default: return ""
         }
     }

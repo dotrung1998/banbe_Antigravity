@@ -142,8 +142,8 @@ struct LoginView: View {
                         BanbeField(label: nil, placeholder: "ban@email.com", text: $email, keyboard: .emailAddress)
                             .accessibilityIdentifier("login.email")
                         if showEmailFormatError {
-                            Text(app.T("Email chưa đúng định dạng — ví dụ: ban@email.com",
-                                       "That doesn't look like an email address — e.g. ban@email.com"))
+                            Text(app.T("Email chưa đúng định dạng (ví dụ: ban@email.com)",
+                                       "That doesn't look like an email address (e.g. ban@email.com)"))
                                 .font(.system(size: 12))
                                 .foregroundStyle(BanbeTheme.alert)
                                 .frame(maxWidth: .infinity, alignment: .leading)

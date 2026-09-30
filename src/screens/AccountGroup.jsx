@@ -3,6 +3,7 @@ import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
+import { computeHostActionCount, formatBadgeCount } from '../lib/badges.js';
 
 // Account IA pass (2026-09-27) — the ONE shared child screen every
 // Account group entry card opens (`openAccountGroup(key)`), keyed by
@@ -15,12 +16,12 @@ import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
 // architectural need. `accountTab` itself is never touched by this
 // screen, so "‹ Tài khoản" always lands back on whichever tab was showing.
 const GROUP_META = {
-  team: { vi: 'Hồ sơ & Team', en: 'Profile & Team' },
-  activity: { vi: 'Vé & hoạt động', en: 'Tickets & activity' },
-  payments: { vi: 'Thanh toán & giấy tờ', en: 'Payments & documents' },
-  preferences: { vi: 'Tùy chỉnh', en: 'Preferences' },
-  hostOps: { vi: 'Vận hành & thanh toán tổ chức', en: 'Event operations & payments' },
-  adminReview: { vi: 'Duyệt & kiểm duyệt', en: 'Review & moderation' },
+  team: { vi: 'Hồ Sơ & Team', en: 'Profile & Team' },
+  activity: { vi: 'Vé & Hoạt Động', en: 'Tickets & Activity' },
+  payments: { vi: 'Thanh Toán & Giấy Tờ', en: 'Payments & Documents' },
+  preferences: { vi: 'Tùy Chỉnh', en: 'Preferences' },
+  hostOps: { vi: 'Vận Hành & Thanh Toán Tổ Chức', en: 'Event Operations & Payments' },
+  adminReview: { vi: 'Duyệt & Kiểm Duyệt', en: 'Review & Moderation' },
 };
 
 // TASK 5 real-device follow-up — `badge` (0/undefined = hidden) so a child
@@ -34,8 +35,8 @@ function Row({ icon, label, trailing, onClick, testId, border = true, badge }) {
       <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind={icon} />{label}</span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {!!badge && (
-          <span role="status" aria-label={`${badge} new item(s)`} title={String(badge)} style={{ fontSize: 11, fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}>
-            {badge > 99 ? '99+' : badge}
+          <span data-testid={`${testId}-badge`} role="status" aria-label={`${badge} new item(s)`} title={String(badge)} style={{ fontSize: 11, fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}>
+            {formatBadgeCount(badge)}
           </span>
         )}
         <span style={{ fontSize: 13, color: ink }}>{trailing}</span>
@@ -134,7 +135,7 @@ export default function AccountGroup() {
             </div>
             {s.myEventCredits.length > 0 && (
               <div style={{ marginTop: 24 }} data-testid="account-event-credits">
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện — lời mời đang chờ', 'Event contributions — pending invites')}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện: lời mời đang chờ', 'Event contributions: pending invites')}</span>
                 {s.myEventCredits.map(c => (
                   <div key={c.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`event-credit-${c.id}`}>
                     <span style={{ fontSize: 13, color: ink }}>
@@ -150,7 +151,7 @@ export default function AccountGroup() {
             )}
             {s.myConfirmedEventCredits.length > 0 && (
               <div style={{ marginTop: 24 }} data-testid="account-event-credits-confirmed">
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện — đã xác nhận', 'Event contributions — confirmed')}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đóng góp sự kiện: đã xác nhận', 'Event contributions: confirmed')}</span>
                 {s.myConfirmedEventCredits.map(c => (
                   <div
                     key={c.id}
@@ -193,7 +194,13 @@ export default function AccountGroup() {
 
         {key === 'hostOps' && (
           <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
-            <Row icon="checklist" label={T('Chờ xác nhận thanh toán', 'Awaiting verification')} trailing="›" testId="host-verifications" onClick={openVerifications} />
+            {/* FIX PASS (2026-09-30) — badge parity with this group's own
+                entry card (Account.jsx's "Vận hành & thanh toán tổ chức"),
+                same rule 25bd5f5 already established for "Pending events"
+                below: both verifications AND refundQueue land on THIS exact
+                screen (openVerifications), so this row's badge is the same
+                sum, not a second independently-derived count. */}
+            <Row icon="checklist" label={T('Chờ xác nhận thanh toán', 'Awaiting verification')} trailing="›" testId="host-verifications" onClick={openVerifications} badge={computeHostActionCount(s)} />
             <Row icon="banknote" label={T('Nhận thanh toán', 'Getting paid')} trailing="›" testId="host-payout" onClick={openPayout} />
             <Row icon="document" label={T('Hoá đơn đã phát hành', 'Invoices issued')} trailing="›" testId="host-invoices" onClick={() => openDocuments('invoice', 'host')} />
             <Row icon="receipt" label={T('Biên nhận đã phát hành', 'Receipts issued')} trailing="›" testId="host-receipts" onClick={() => openDocuments('receipt', 'host')} border={false} />
@@ -203,7 +210,7 @@ export default function AccountGroup() {
         {key === 'adminReview' && (
           <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
             <Row icon="alertShield" label={T('Tranh chấp thanh toán', 'Payment disputes')} trailing="›" testId="admin-disputes" onClick={openDisputes} />
-            <Row icon="alertShield" label={T('Sự kiện chờ duyệt', 'Pending events')} trailing="›" testId="admin-events" onClick={openAdminEvents} border={false} badge={s.pendingEventsCount} />
+            <Row icon="alertShield" label={T('Sự Kiện Chờ Duyệt', 'Pending Events')} trailing="›" testId="admin-events" onClick={openAdminEvents} border={false} badge={s.pendingEventsCount} />
           </div>
         )}
       </div>
