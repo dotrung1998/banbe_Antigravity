@@ -254,12 +254,17 @@ struct AccountGroupView: View {
         VStack(spacing: 0) {
             row(app.T("Bảng quản trị", "Admin Panel"), identifier: "admin.panel", icon: "exclamationmark.shield", trailing: "›") { app.openAdminDashboard() }
             Divider().overlay(app.palette.rule)
-            row(app.T("Sự kiện chờ duyệt", "Pending events"), identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›") { app.openAdminEvents() }
+            row(app.T("Sự kiện chờ duyệt", "Pending events"), identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›", badge: app.pendingEventsCount) { app.openAdminEvents() }
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private func row(_ title: String, identifier: String? = nil, icon: String, trailing: String, action: @escaping () -> Void) -> some View {
+    // TASK 5 real-device follow-up — `badge` (0 = hidden) so a child row
+    // (e.g. "Pending events") can show the SAME real count its own
+    // group-entry card already does — same capsule style `groupCard`
+    // (AccountView.swift) uses, capped at "99+" with the full count kept
+    // in the accessibility label.
+    private func row(_ title: String, identifier: String? = nil, icon: String, trailing: String, badge: Int = 0, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
@@ -268,6 +273,14 @@ struct AccountGroupView: View {
                     .opacity(0.72)
                 Text(title).font(.system(size: 14))
                 Spacer()
+                if badge > 0 {
+                    Text(badge > 99 ? "99+" : "\(badge)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(app.palette.paper)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(BanbeTheme.alert, in: Capsule())
+                        .accessibilityLabel(app.T("\(badge) mục mới", "\(badge) new item(s)"))
+                }
                 Text(trailing).font(.system(size: 13))
             }
             .foregroundStyle(app.palette.ink)

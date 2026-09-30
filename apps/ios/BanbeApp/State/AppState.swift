@@ -428,6 +428,16 @@ final class AppState: ObservableObject {
     // toggleFavorite()'s own comment.
     var favoriteToggleInFlight: Set<String> = []
     @Published var hasHosted = false
+    // TASK 1 real-device follow-up — whether the dock "+"'s creation tray
+    // is open. Lives on AppState (not local @State in DockCreateButtonView)
+    // because the tray itself renders in RootView's own main-window ZStack
+    // (see that file), a different view entirely from the button that
+    // opens it (DockCreateButtonView, inside BottomTabBarOverlay's separate
+    // UIWindow) — both need to read/drive the same boolean. A native
+    // SwiftUI `Menu` was tried here first and reverted — see
+    // DockCreateButtonView's own doc comment for the real-device clipping
+    // bug that caused.
+    @Published var dockCreateMenuOpen = false
     // MARK: Feed state
     @Published var favorites: [String] = []
     @Published var following: [String] = []

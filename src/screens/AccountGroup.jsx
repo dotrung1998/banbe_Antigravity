@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS } from '../data/events.js';
-import { paper, ink, rule, display, fieldGlass, inkButton } from '../theme.js';
+import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
 
 // Account IA pass (2026-09-27) — the ONE shared child screen every
@@ -23,11 +23,23 @@ const GROUP_META = {
   adminReview: { vi: 'Duyệt & kiểm duyệt', en: 'Review & moderation' },
 };
 
-function Row({ icon, label, trailing, onClick, testId, border = true }) {
+// TASK 5 real-device follow-up — `badge` (0/undefined = hidden) so a child
+// row (e.g. "Pending events") can show the SAME real count its own
+// group-entry card already does — same capsule style `GroupCard`
+// (Account.jsx) uses, capped at "99+" with the full count kept in
+// aria-label/title.
+function Row({ icon, label, trailing, onClick, testId, border = true, badge }) {
   return (
     <div onClick={onClick} data-testid={testId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 16px', borderBottom: border ? `1px solid ${rule}` : 'none', cursor: 'pointer' }}>
       <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}><RowIcon kind={icon} />{label}</span>
-      <span style={{ fontSize: 13, color: ink }}>{trailing}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {!!badge && (
+          <span role="status" aria-label={`${badge} new item(s)`} title={String(badge)} style={{ fontSize: 11, fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}>
+            {badge > 99 ? '99+' : badge}
+          </span>
+        )}
+        <span style={{ fontSize: 13, color: ink }}>{trailing}</span>
+      </span>
     </div>
   );
 }
@@ -191,7 +203,7 @@ export default function AccountGroup() {
         {key === 'adminReview' && (
           <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
             <Row icon="alertShield" label={T('Tranh chấp thanh toán', 'Payment disputes')} trailing="›" testId="admin-disputes" onClick={openDisputes} />
-            <Row icon="alertShield" label={T('Sự kiện chờ duyệt', 'Pending events')} trailing="›" testId="admin-events" onClick={openAdminEvents} border={false} />
+            <Row icon="alertShield" label={T('Sự kiện chờ duyệt', 'Pending events')} trailing="›" testId="admin-events" onClick={openAdminEvents} border={false} badge={s.pendingEventsCount} />
           </div>
         )}
       </div>

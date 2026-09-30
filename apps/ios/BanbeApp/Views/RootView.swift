@@ -753,12 +753,15 @@ struct RootView: View {
             // overlay, don't add another competing floating UIWindow"
             // instruction — see that file's doc comment.
             //
-            // TASK 1 (dock "+" native-menu pass) — the "+" now opens a
-            // native SwiftUI `Menu` directly inside that same overlay
-            // window (see DockCreateButtonView's own doc comment for why
-            // that's safe: a `Menu`'s popover needs no full-screen scrim,
-            // unlike the old custom tray this replaced), so there's
-            // nothing left to host here.
+            // TASK 1 real-device follow-up — the tray THAT BUTTON opens
+            // lives here instead, in this main window's own ZStack (see
+            // that view's own doc comment for why: it needs to dim/cover
+            // the real screen, which the dock's small band-sized overlay
+            // window cannot do). A native SwiftUI `Menu` was tried
+            // directly inside that overlay window instead and reverted —
+            // see DockCreateButtonView's own doc comment for the
+            // real-device clipping bug that caused.
+            if app.dockCreateMenuOpen { DockCreateTrayView().zIndex(28) }
 
             // BUG 3 follow-up (this session's real-device report on
             // 80c1ac3): BottomTabBar used to render HERE, as a ZStack
@@ -872,6 +875,20 @@ struct RootView: View {
             // from any source, invalidates any older in-flight
             // `commitTabSwipe` settle so it can never overwrite this one.
             navGeneration += 1
+            // Real-device follow-up — these three are meant to be
+            // transient, one-shot triggers (see RootView's own centralized
+            // `.photosPicker`/`.fullScreenCover` comment above), but
+            // nothing previously cleared them on a genuine screen change.
+            // A stray/leftover `true` (e.g. an accidental tap on a
+            // clipped/off-screen control — see DockCreateButtonView's own
+            // real-device clipping bug) would otherwise keep presenting a
+            // full-screen camera/picker cover OVER whatever screen this
+            // navigation actually lands on, since these are attached
+            // globally, not scoped to one screen.
+            if oldScreen != newScreen {
+                app.storyLibraryPickerOpen = false
+                app.storyCameraOpen = false
+            }
             if !app.isSignedIn && !AppState.guestAllowedScreens.contains(newScreen) {
                 app.authMandatory = true
                 app.authReturnScreen = newScreen
