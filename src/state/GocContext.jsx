@@ -661,6 +661,16 @@ const initialState = {
   // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
   pulseDaily: [], pulseWeekly: [], pulseOpen: false, pulseTab: 'daily', pulseOrganizerSheet: null,
   pulseDailyLoading: false, pulseWeeklyLoading: false,
+  // Account deletion (Task 2, Account/Settings pass) — a self-contained
+  // sheet's worth of wizard state, mirrored on iOS (AppState.swift). Step
+  // is a plain string enum, not a `Screen`, since this never needs a route/
+  // deep-link/back-swipe of its own — it's always opened from and closed
+  // back to the `preferences` AccountGroup screen.
+  deleteAccountOpen: false, deleteAccountStep: 'intro', // 'intro' | 'reason' | 'confirm' | 'submitting' | 'done'
+  deleteAccountReasonCode: '', deleteAccountReasonText: '',
+  deleteAccountPhraseInput: '', deleteAccountReauthSent: false, deleteAccountReauthCode: '',
+  deleteAccountReauthVerified: false, deleteAccountReauthBusy: false, deleteAccountReauthError: '',
+  deleteAccountSubmitting: false, deleteAccountError: '', deleteAccountOAuthProvider: null,
   // 2026-09-25 fix pass — third Pulse tab: individual event photos ranked
   // by real engagement (photo_likes/photo_shares, migration 083), a
   // separate ranking from the event-level one above — never merged into
@@ -1635,31 +1645,109 @@ export function GocProvider({ children }) {
     set({ homeLiveEvents: map });
   }, [set]);
 
+  // Notification banner fix pass (2026-09-30 third) — named constant, per
+  // this ticket's own instruction (was a bare 2200ms magic number). The
+  // clock now starts when the banner ACTUALLY becomes visible
+  // (`markToastVisible`, called by ToastStack.jsx's own per-toast mount
+  // effect), not at enqueue time — a toast pushed while >VISIBLE_COUNT are
+  // already shown and sitting behind "Xem thêm" doesn't silently burn its
+  // reading window before anyone's even seen it.
+  const TOAST_DURATION_MS = 8000;
+  // Real per-id timer bookkeeping — deliberately NOT React state (a timer
+  // handle isn't serializable/renderable data): id -> { timeoutId,
+  // remainingMs, startedAt, paused, started }. `started` guards
+  // markToastVisible from re-arming an already-running timer on a re-render
+  // (e.g. "Xem thêm" expanding the visible set doesn't touch already-shown
+  // toasts).
+  const toastTimersRef = useRef({});
+
+  const clearToastTimer = useCallback((id) => {
+    const timer = toastTimersRef.current[id];
+    if (timer?.timeoutId) clearTimeout(timer.timeoutId);
+    delete toastTimersRef.current[id];
+  }, []);
+
   // A toast auto-dismisses in two steps: `leaving: true` swaps it to the
   // exit animation (gocToastOut, index.css), then a second timeout actually
   // drops it from the array once that animation has had time to finish.
-  // Carries the source `notification` row (not just its title/body) so
-  // ToastStack.jsx can tap it open — see openNotification/dismissToast.
-  const pushToast = useCallback((notification) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    set(prev => ({ toasts: [...prev.toasts, { id, notification, leaving: false }] }));
-    setTimeout(() => {
-      set(prev => ({ toasts: prev.toasts.map(t => (t.id === id ? { ...t, leaving: true } : t)) }));
-    }, 2200);
-    setTimeout(() => {
-      set(prev => ({ toasts: prev.toasts.filter(t => t.id !== id) }));
-    }, 2500);
-  }, [set]);
-
-  // Tapping a toast shouldn't sit around for its own auto-dismiss timer —
-  // it's already been acted on. Fires the same 'leaving' exit animation
-  // immediately rather than yanking it out with no transition at all.
-  const dismissToast = useCallback((id) => {
+  const finishToastDismiss = useCallback((id) => {
+    delete toastTimersRef.current[id];
     set(prev => ({ toasts: prev.toasts.map(t => (t.id === id ? { ...t, leaving: true } : t)) }));
     setTimeout(() => {
       set(prev => ({ toasts: prev.toasts.filter(t => t.id !== id) }));
     }, 280);
   }, [set]);
+
+  // Pause on interaction (pointerenter/touchstart on the toast element,
+  // ToastStack.jsx) — a real timer pause, not just visual: the pending
+  // setTimeout is cancelled and its remaining budget recorded, not merely
+  // hidden behind a CSS state.
+  const pauseToastTimer = useCallback((id) => {
+    const timer = toastTimersRef.current[id];
+    if (!timer || timer.paused) return;
+    clearTimeout(timer.timeoutId);
+    timer.timeoutId = null;
+    timer.remainingMs = Math.max(0, timer.remainingMs - (Date.now() - timer.startedAt));
+    timer.paused = true;
+  }, []);
+
+  // Resume once interaction ends — reset convention (a fresh full window is
+  // NOT given; the remaining budget from when the pointer entered resumes
+  // counting down), documented here since the ticket left the choice open.
+  const resumeToastTimer = useCallback((id) => {
+    const timer = toastTimersRef.current[id];
+    if (!timer || !timer.paused) return;
+    timer.paused = false;
+    timer.startedAt = Date.now();
+    timer.timeoutId = setTimeout(() => finishToastDismiss(id), timer.remainingMs);
+  }, [finishToastDismiss]);
+
+  // Called by ToastStack.jsx's own per-toast mount effect — the moment a
+  // toast is actually painted on screen (not merely appended to the queue).
+  // Idempotent: a toast already ticking (e.g. re-rendered by an unrelated
+  // state change) is left alone, never restarted from a fresh 8s.
+  const markToastVisible = useCallback((id) => {
+    if (toastTimersRef.current[id]) return;
+    toastTimersRef.current[id] = {
+      timeoutId: setTimeout(() => finishToastDismiss(id), TOAST_DURATION_MS),
+      remainingMs: TOAST_DURATION_MS,
+      startedAt: Date.now(),
+      paused: false,
+    };
+  }, [finishToastDismiss]);
+
+  // Carries the source `notification` row (not just its title/body) so
+  // ToastStack.jsx can tap it open — see openNotification/dismissToast.
+  // Queue/dedup by stable id (notification.id) — a new arrival for the SAME
+  // notification currently visible (and not already leaving) is dropped
+  // rather than replacing/resetting the visible banner mid-read; a
+  // genuinely different notification queues normally, unbounded (ToastStack
+  // caps what's ever VISIBLE at once via VISIBLE_COUNT/"Xem thêm", this
+  // queue itself is not artificially capped).
+  const pushToast = useCallback((notification) => {
+    const notifId = notification?.id;
+    set(prev => {
+      if (notifId != null && prev.toasts.some(t => t.notification?.id === notifId && !t.leaving)) {
+        return {}; // already shown/queued for this exact notification — no-op, don't touch it
+      }
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      return { toasts: [...prev.toasts, { id, notification, leaving: false }] };
+    });
+  }, [set]);
+
+  // Tapping a toast shouldn't sit around for its own auto-dismiss timer —
+  // it's already been acted on. Fires the same 'leaving' exit animation
+  // immediately rather than yanking it out with no transition at all.
+  // Cancels the pending auto-dismiss timer FIRST (synchronously) so a race
+  // with openNotification's own async work can never let the banner vanish
+  // out from under an in-flight tap before it resolves.
+  const dismissToast = useCallback((id) => {
+    clearToastTimer(id);
+    set(prev => ({ toasts: prev.toasts.map(t => (t.id === id ? { ...t, leaving: true } : t)) }));
+    setTimeout(() => {
+      set(prev => ({ toasts: prev.toasts.filter(t => t.id !== id) }));
+    }, 280);
+  }, [set, clearToastTimer]);
 
   // "Tắt tất cả" (ToastStack.jsx) — clears the whole local toast queue at
   // once. Same local-only contract as dismissToast: this NEVER touches
@@ -1667,11 +1755,14 @@ export function GocProvider({ children }) {
   // badge count) is a completely separate, server-backed concept that a
   // toast is only ever an ephemeral, client-side echo of.
   const dismissAllToasts = useCallback(() => {
-    set(prev => ({ toasts: prev.toasts.map(t => ({ ...t, leaving: true })) }));
+    set(prev => {
+      prev.toasts.forEach(t => clearToastTimer(t.id));
+      return { toasts: prev.toasts.map(t => ({ ...t, leaving: true })) };
+    });
     setTimeout(() => {
       set(prev => ({ toasts: prev.toasts.filter(t => !t.leaving) }));
     }, 280);
-  }, [set]);
+  }, [set, clearToastTimer]);
 
   // Real event assignment for the signed-in account: which of the catalogue
   // events they're attending (from actual bookings) and which they organize
@@ -6451,6 +6542,114 @@ export function GocProvider({ children }) {
   const loginFacebook = useCallback(() => startOAuth('facebook'), [startOAuth]);
   const loginInstagram = useCallback(() => set({ reserveError: T('Instagram chưa khả dụng. Hãy dùng email hoặc OTP điện thoại.', 'Instagram is not available yet. Use email or phone OTP.') }), [set, T]);
 
+  // ---- Account deletion (Task 2, Account/Settings pass) ----
+  // Lives inside Settings/Preferences (AccountGroup.jsx's `preferences`
+  // case), not Login.jsx — reuses the SAME `supabase.auth.verifyOtp`
+  // email-code mechanism Login already established (see `verifyEmailCode`
+  // above) as the reauthentication step, rather than a parallel auth path.
+  const openDeleteAccount = useCallback(() => {
+    set({
+      deleteAccountOpen: true, deleteAccountStep: 'intro', deleteAccountReasonCode: '', deleteAccountReasonText: '',
+      deleteAccountPhraseInput: '', deleteAccountReauthSent: false, deleteAccountReauthCode: '', deleteAccountReauthVerified: false,
+      deleteAccountReauthBusy: false, deleteAccountReauthError: '', deleteAccountSubmitting: false, deleteAccountError: '',
+      // Only a Google/Facebook `identities` provider (note 10) changes the
+      // reauth affordance shown — 'apple' is deliberately never checked
+      // here, since this app does not offer Sign in with Apple anywhere
+      // (confirmed by grep; see the report for this pass).
+      deleteAccountOAuthProvider: (s.user?.identities || []).find(i => i.provider !== 'email')?.provider || null,
+    });
+  }, [set, s.user]);
+  const closeDeleteAccount = useCallback(() => set({ deleteAccountOpen: false }), [set]);
+  const setDeleteAccountStep = useCallback((step) => set({ deleteAccountStep: step }), [set]);
+  const setDeleteAccountReasonCode = useCallback((code) => set({ deleteAccountReasonCode: code }), [set]);
+  const setDeleteAccountReasonText = useCallback((e) => set({ deleteAccountReasonText: e.target.value.slice(0, 500) }), [set]);
+  const setDeleteAccountPhraseInput = useCallback((e) => set({ deleteAccountPhraseInput: e.target.value }), [set]);
+  const setDeleteAccountReauthCode = useCallback((e) => set({ deleteAccountReauthCode: e.target.value, deleteAccountReauthError: '' }), [set]);
+
+  // Sends a fresh emailed login code to THIS account's own, already-known
+  // email — never a client-supplied address — via the same `send_email_code`
+  // endpoint/mode Login already uses for a returning user.
+  const sendDeleteAccountReauthCode = useCallback(async () => {
+    if (!s.user?.email) return set({ deleteAccountReauthError: T('Không tìm thấy email tài khoản.', 'Could not find this account’s email.') });
+    set({ deleteAccountReauthBusy: true, deleteAccountReauthError: '' });
+    try {
+      await requestAuthEmail({ email: s.user.email, mode: 'login' });
+      set({ deleteAccountReauthSent: true, deleteAccountReauthBusy: false });
+    } catch (e) {
+      set({ deleteAccountReauthBusy: false, deleteAccountReauthError: authEmailErrorMessage(e, 'login') });
+    }
+  }, [set, s.user, T, authEmailErrorMessage]);
+
+  // Verifying the code refreshes the real Supabase session (a genuine,
+  // server-checked proof of live control of the account's own credential —
+  // never a local/biometric-only check, which is exactly this ticket's own
+  // "Face ID alone is not sufficient server-side identity proof" rule).
+  const verifyDeleteAccountReauthCode = useCallback(async () => {
+    const email = s.user?.email;
+    const token = s.deleteAccountReauthCode.trim();
+    if (!token) return set({ deleteAccountReauthError: T('Nhập mã đã gửi tới email của bạn.', 'Enter the code sent to your email.') });
+    set({ deleteAccountReauthBusy: true, deleteAccountReauthError: '' });
+    const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
+    if (error) {
+      set({ deleteAccountReauthBusy: false, deleteAccountReauthError: T('Mã không đúng hoặc đã hết hạn.', 'That code is wrong or has expired.') });
+      return;
+    }
+    set({ deleteAccountReauthBusy: false, deleteAccountReauthVerified: true, deleteAccountReauthError: '' });
+  }, [set, s.user, s.deleteAccountReauthCode, T]);
+
+  const DELETE_ACCOUNT_PHRASE = 'DELETE banbe';
+  const deleteAccountPhraseMatches = s.deleteAccountPhraseInput.trim() === DELETE_ACCOUNT_PHRASE;
+  // Final gate: phrase match AND reauth completed AND not already
+  // submitting (the duplicate-submission guard — `deleteAccountSubmitting`
+  // is set synchronously below, before the request even goes out).
+  const deleteAccountReadyToSubmit = deleteAccountPhraseMatches && s.deleteAccountReauthVerified && !s.deleteAccountSubmitting;
+
+  const confirmDeleteAccount = useCallback(async () => {
+    if (!deleteAccountPhraseMatches || !s.deleteAccountReauthVerified || s.deleteAccountSubmitting) return;
+    set({ deleteAccountSubmitting: true, deleteAccountError: '', deleteAccountStep: 'submitting' });
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) throw new Error('NO_SESSION');
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          type: 'delete_account',
+          reasonCode: s.deleteAccountReasonCode || null,
+          reasonText: s.deleteAccountReasonText || null,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (payload.error === 'ACCOUNT_DELETION_BLOCKED_OPEN_EVENT') {
+          const names = (payload.openEvents || []).map(e => e.name).filter(Boolean).join(', ');
+          throw new Error(T(
+            `Bạn vẫn đang tổ chức sự kiện đang mở${names ? ` (${names})` : ''}. Vui lòng hủy hoặc kết thúc sự kiện trước khi xóa tài khoản.`,
+            `You still own an open event${names ? ` (${names})` : ''}. Please cancel or end it before deleting your account.`
+          ));
+        }
+        throw new Error(payload.error || 'ACCOUNT_DELETION_FAILED');
+      }
+      // Truthful completion: the request has FULLY completed server-side
+      // by this point (the endpoint only responds 200 after
+      // admin.auth.admin.deleteUser() itself succeeded) — this is a real
+      // "deleted", not merely "requested".
+      set({ deleteAccountSubmitting: false, deleteAccountStep: 'done' });
+      // Client-side session cleanup (per this ticket's own instruction):
+      // sign out of the now-nonexistent session, clear the local session
+      // cache, and drop any push-token registration this device holds for
+      // this now-deleted account (see AppState+Push.swift's iOS mirror for
+      // whether an equivalent exists there — web registers no push token
+      // anywhere in this codebase today, confirmed by grep, so there is
+      // nothing web-side to unregister).
+      await supabase.auth.signOut().catch(() => {});
+      try { localStorage.clear(); sessionStorage.clear(); } catch { /* private mode / blocked storage — non-fatal */ }
+    } catch (e) {
+      set({ deleteAccountSubmitting: false, deleteAccountStep: 'confirm', deleteAccountError: e.message || String(e) });
+    }
+  }, [set, s.deleteAccountReauthVerified, s.deleteAccountSubmitting, s.deleteAccountReasonCode, s.deleteAccountReasonText, deleteAccountPhraseMatches, T]);
+
   // ---- Account > Security ----
   const securityPasswordType = useCallback((e) => set({ securityPassword: e.target.value, securityError: '', securitySaved: false }), [set]);
   const securityPasswordConfirmType = useCallback((e) => set({ securityPasswordConfirm: e.target.value, securityError: '', securitySaved: false }), [set]);
@@ -8218,7 +8417,7 @@ export function GocProvider({ children }) {
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
@@ -8254,7 +8453,7 @@ export function GocProvider({ children }) {
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,

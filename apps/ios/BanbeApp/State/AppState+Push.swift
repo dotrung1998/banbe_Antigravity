@@ -70,4 +70,26 @@ extension AppState {
         }
         #endif
     }
+
+    /// Account deletion (Task 2, Account/Settings pass) — client-side
+    /// cleanup step for "drop any push-token registration this device
+    /// holds for this now-deleted account". Checked first, honestly: this
+    /// app caches NO device token locally (no UserDefaults/Keychain key
+    /// anywhere in this file or AppDelegate.swift — confirmed by reading
+    /// both) — `registerPushToken(_:)` above only ever WRITES the token to
+    /// the server (`register_push_token` RPC), it never persists a local
+    /// copy to later delete. The server-side row itself is already gone by
+    /// the time this runs regardless: `device_push_tokens.user_id`
+    /// references `profiles(id)` (migration 049), which cascades from
+    /// `auth.users` the same way every other per-user table does, so
+    /// `admin.auth.admin.deleteUser()` (the delete-account endpoint's own
+    /// final step) already removed it server-side. This function exists so
+    /// the call site reads as an explicit, intentional step rather than a
+    /// silently-skipped one — not because there is local state left to
+    /// clear today.
+    func forgetPushTokenLocally() {
+        #if ENABLE_PUSH
+        UIApplication.shared.unregisterForRemoteNotifications()
+        #endif
+    }
 }

@@ -41,6 +41,24 @@ struct AuthAPIError: LocalizedError {
     }
 }
 
+/// Error shape for `AuthAPIService.deleteAccount` — carries the raw JSON
+/// payload alongside the code so the caller can read `openEvents` on a
+/// `ACCOUNT_DELETION_BLOCKED_OPEN_EVENT` refusal, unlike the plain
+/// `AuthAPIError` above which only ever needs a static message.
+struct AccountDeletionError: LocalizedError {
+    let code: String
+    let payload: [String: Any]
+
+    var errorDescription: String? {
+        if code == "ACCOUNT_DELETION_BLOCKED_OPEN_EVENT" {
+            let names = (payload["openEvents"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
+            let joined = names.isEmpty ? "" : " (\(names.joined(separator: ", ")))"
+            return "You still own an open event\(joined). Please cancel or end it before deleting your account."
+        }
+        return "We could not delete your account right now. Please try again later."
+    }
+}
+
 /// Talks to the same /api/auth Vercel function the web app uses (see
 /// src/lib/authEmail.js) instead of Supabase's own outgoing mail — see the
 /// note in SupabaseService.swift on why: Supabase's built-in mailer is
@@ -100,6 +118,44 @@ enum AuthAPIService {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         _ = try? await URLSession.shared.data(for: request)
+    }
+
+    /// Account deletion (Task 2, Account/Settings pass) — folds into the
+    /// SAME `/api/auth` dispatcher (type: delete_account), never a new
+    /// endpoint file. Unlike every function above, this call carries the
+    /// caller's OWN bearer token (the endpoint verifies it server-side and
+    /// derives the user id to delete from THAT token — never from anything
+    /// this body sends). Returns the raw decoded JSON so the caller
+    /// (DeleteAccountView) can read `openEvents` on a 409 refusal or
+    /// `requestId` on success, mirroring web's equivalent fetch in
+    /// GocContext.jsx's `confirmDeleteAccount`.
+    static func deleteAccount(reasonCode: String?, reasonText: String?) async throws -> [String: Any] {
+        guard let url = URL(string: AppConfig.apiBaseURL + "/api/auth"),
+              let token = try? await SupabaseService.client.auth.session.accessToken
+        else { throw AuthAPIError(code: "AUTH_REQUIRED") }
+
+        var body: [String: Any] = ["type": "delete_account"]
+        if let reasonCode, !reasonCode.isEmpty { body["reasonCode"] = reasonCode }
+        if let reasonText, !reasonText.isEmpty { body["reasonText"] = reasonText }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw AuthAPIError(code: "ACCOUNT_DELETION_FAILED")
+        }
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let code = json["error"] as? String ?? "ACCOUNT_DELETION_FAILED"
+            throw AccountDeletionError(code: code, payload: json)
+        }
+        return json
     }
 
     private static func post(path: String, body: [String: String]) async throws {

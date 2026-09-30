@@ -740,10 +740,15 @@ struct RootView: View {
             // suspend/resume.
             PulseTeaserBubbleView().zIndex(29)
 
-            if !app.toasts.isEmpty {
-                ToastOverlay()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            }
+            // Notification banner fix pass (2026-09-30 third) — `ToastOverlay`
+            // moved OUT of this main window entirely (was here, rendered
+            // BENEATH MapExplore's native filter/list `.sheet()` — the same
+            // bug class already fixed for the dock tray). It now renders
+            // inside `BottomTabBarOverlay`'s separate always-on-top
+            // `DockOverlayWindow` — see `BottomTabBarOverlayRoot`
+            // (BottomTabBarOverlay.swift) for the new mount site, and that
+            // window's own `hitTest` for the additive `toastRect` hit-test
+            // region this required.
 
             // TASK C (2026-10-03 fix pass) — the floating pill FAB that
             // used to live here (CreateEventFabView) is gone; its
@@ -856,6 +861,9 @@ struct RootView: View {
             }
         }
         .fullScreenCover(isPresented: $app.scanningQr) { QRScannerView() }
+        // Account deletion (Task 2, Account/Settings pass) — opened from
+        // AccountGroupView's `preferences` case (`app.deleteAccountOpen`).
+        .fullScreenCover(isPresented: $app.deleteAccountOpen) { DeleteAccountView() }
         // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse. No longer a
         // `.fullScreenCover` — see the `if app.pulseOpen { PulseViewerView() }`
         // ZStack sibling above, and that view's own `commitDismiss()` doc

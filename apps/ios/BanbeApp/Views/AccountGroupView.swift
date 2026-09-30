@@ -323,6 +323,34 @@ struct AccountGroupView: View {
             row(app.T("Bảo mật", "Security"), identifier: "account.security", icon: "lock.shield", trailing: "›") { app.openSecurity() }
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+        // Account deletion (Task 2, Account/Settings pass) — a visually
+        // separated "Account Management" subsection, per this ticket's own
+        // placement instruction (distinct from the rows above and from
+        // Sign Out on the parent AccountView). Reuses `BanbeTheme.alert` —
+        // no new color introduced.
+        VStack(alignment: .leading, spacing: 8) {
+            Text(app.T("Quản Lý Tài Khoản", "Account Management"))
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(app.palette.ink)
+                .padding(.top, 24)
+
+            Button { app.deleteAccountOpen = true } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.shield").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22)
+                    Text(app.T("Xóa Tài Khoản", "Delete Account")).font(.system(size: 14, weight: .semibold))
+                    Spacer()
+                    Text("›").font(.system(size: 15))
+                }
+                .foregroundStyle(BanbeTheme.alert)
+                .padding(16)
+                .background(BanbeTheme.alert.opacity(0.08))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(BanbeTheme.alert.opacity(0.35), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("account.deleteRow")
+        }
     }
 
     @ViewBuilder

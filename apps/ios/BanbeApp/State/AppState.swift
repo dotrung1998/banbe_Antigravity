@@ -776,23 +776,98 @@ final class AppState: ObservableObject {
     /// AttendanceView has actually applied it.
     @Published var attendanceHighlightBookingID: UUID?
 
+    /// Notification banner fix pass (2026-09-30 third) — named constant
+    /// (was a bare 2.5s `Task.sleep`), matching web's `TOAST_DURATION_MS`
+    /// (GocContext.jsx) value-for-value.
+    static let toastDurationSeconds: TimeInterval = 8.0
+
+    /// Real per-toast timer bookkeeping (pause/resume needs a cancellable
+    /// task + a remaining-budget, not just a plain sleep). Not `@Published`
+    /// — a `Task` handle isn't renderable data.
+    private struct ToastTimerState {
+        var task: Task<Void, Never>?
+        var remaining: TimeInterval
+        var startedAt: Date
+        var paused: Bool
+    }
+    private var toastTimers: [UUID: ToastTimerState] = [:]
+
+    private func armToastTimer(id: UUID, remaining: TimeInterval) {
+        let task = Task {
+            try? await Task.sleep(nanoseconds: UInt64(max(0, remaining) * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            finishToastAutoDismiss(id)
+        }
+        toastTimers[id] = ToastTimerState(task: task, remaining: remaining, startedAt: Date(), paused: false)
+    }
+
+    private func finishToastAutoDismiss(_ id: UUID) {
+        toastTimers[id] = nil
+        toasts.removeAll { $0.id == id }
+    }
+
+    /// Called by ToastOverlay's own per-toast `.onAppear` — the moment a
+    /// toast is actually painted on screen (not merely appended to the
+    /// queue, which may have happened earlier if it sat behind "Xem thêm").
+    /// Idempotent: an already-ticking toast is never restarted.
+    func markToastVisible(_ id: UUID) {
+        guard toastTimers[id] == nil else { return }
+        armToastTimer(id: id, remaining: Self.toastDurationSeconds)
+    }
+
+    /// Pause on interaction (an active press on the banner, ToastOverlay's
+    /// own long-press-as-press-state gesture) — a real timer pause: the
+    /// pending `Task` is cancelled and its remaining budget recorded, not
+    /// merely a visual state.
+    func pauseToastTimer(_ id: UUID) {
+        guard var timer = toastTimers[id], !timer.paused else { return }
+        timer.task?.cancel()
+        timer.remaining = max(0, timer.remaining - Date().timeIntervalSince(timer.startedAt))
+        timer.paused = true
+        timer.task = nil
+        toastTimers[id] = timer
+    }
+
+    /// Resume once the press ends — the remaining budget from when the
+    /// press started resumes counting down (not a fresh full window).
+    func resumeToastTimer(_ id: UUID) {
+        guard let timer = toastTimers[id], timer.paused else { return }
+        armToastTimer(id: id, remaining: timer.remaining)
+    }
+
+    /// Account deletion (Task 2, Account/Settings pass) — drives
+    /// `DeleteAccountView`'s `.fullScreenCover` presentation from
+    /// `RootView`. The wizard's own step/reason/phrase/reauth state lives
+    /// locally in that view (plain `@State`, not here) — this is the one
+    /// piece of state another screen (AccountGroupView's `preferences`
+    /// case) needs to reach in to flip.
+    @Published var deleteAccountOpen = false
+
     /// Shows a small toast and fires a light (not the heavier .success/
     /// .warning system) haptic alongside it, so it feels gentle — see
     /// startNotificationPolling() in AppState+Data.swift for what triggers
     /// this. Carries the whole notification (not just title/body) so
     /// tapping it can route the same way NotificationsView's rows do.
+    /// Queue/dedup by stable id: a new arrival for the SAME notification
+    /// already shown/queued (and not yet dismissed) is dropped rather than
+    /// replacing/resetting the visible banner mid-read.
     func pushToast(_ notification: AppNotification) {
+        if toasts.contains(where: { $0.notification.id == notification.id }) { return }
         let item = ToastItem(id: UUID(), notification: notification)
         toasts.append(item)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        Task {
-            try? await Task.sleep(nanoseconds: 2_500_000_000)
-            toasts.removeAll { $0.id == item.id }
-        }
+        // The auto-dismiss timer is armed by markToastVisible(_:), called
+        // from ToastOverlay's own onAppear — NOT here — so the duration
+        // starts when the banner is actually visible, not at enqueue time.
     }
 
     /// Tapping a toast shouldn't sit around for its own auto-dismiss timer.
+    /// Cancels the pending timer FIRST (synchronously) so a race with
+    /// openNotification's own async work can never let the banner vanish
+    /// out from under an in-flight tap before it resolves.
     func dismissToast(_ id: UUID) {
+        toastTimers[id]?.task?.cancel()
+        toastTimers[id] = nil
         toasts.removeAll { $0.id == id }
     }
 
@@ -802,6 +877,8 @@ final class AppState: ObservableObject {
     /// unread state and badge count are untouched by clearing this ephemeral
     /// queue. See .claude/notes/07-notifications.md.
     func dismissAllToasts() {
+        for (_, timer) in toastTimers { timer.task?.cancel() }
+        toastTimers.removeAll()
         toasts.removeAll()
     }
 

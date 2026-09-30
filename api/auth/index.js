@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { getMissingEmailVariables, sendWithGmail } from '../_lib/email.js';
 import { getSupabaseAdmin, resolveAuthUserId, linkRegistration, getRedirectUrl } from '../_lib/authLookup.js';
+import { findOpenEventsBlockingDeletion } from '../_lib/accountDeletion.js';
 import { renderEmail, renderEmailText } from '../_lib/emailTemplate.js';
 
 // Consolidated dispatcher for the /api/auth/* trio, folded together to fit
@@ -246,6 +247,147 @@ async function handleSignupPassword(req, res, admin, body) {
   }
 }
 
+// ---- Account deletion (Task 2, Account/Settings pass) ----
+// See supabase/migrations/20261023000111_111_account_deletion_requests.sql
+// for the full data-handling writeup (hard-deleted vs anonymized vs
+// blocked). This is a recorded, step-tracked workflow, not a single atomic
+// call — `account_deletion_requests` is updated after each step so a
+// partial failure is inspectable/retryable, never silently reported as a
+// full success.
+//
+// SAFETY (per this ticket's own explicit instruction): this code path is
+// written and was verified by reading it back carefully, but this session
+// never invoked it against any real account, including a throwaway one —
+// no isolated fixture/staging environment was available. It is reported as
+// "written, not exercised end-to-end."
+async function markStep(admin, requestId, stepKey, value) {
+  // Best-effort — a failure to WRITE progress must never mask the actual
+  // step's own success/failure being returned to the caller, so this never
+  // throws upward.
+  try {
+    const { data } = await admin.from('account_deletion_requests').select('steps').eq('id', requestId).maybeSingle();
+    const steps = { ...(data?.steps || {}), [stepKey]: value };
+    await admin.from('account_deletion_requests').update({ steps }).eq('id', requestId);
+  } catch (error) {
+    console.warn('account_deletion_requests step write failed (non-fatal):', stepKey, error);
+  }
+}
+
+async function handleDeleteAccount(req, res, admin, body) {
+  // The user id to delete comes ONLY from the caller's own verified bearer
+  // token — never from a client-supplied body field. This is the one new
+  // "verify the caller's OWN session, then act on their own row" pattern
+  // this dispatcher didn't already have (every other action here resolves
+  // a target by admin lookup, not by the caller's own identity).
+  const token = getText((req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
+  if (!token) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const { data: userData, error: userError } = await admin.auth.getUser(token);
+  if (userError || !userData?.user) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+  const userId = userData.user.id;
+
+  // Open-event refusal — matches Policy's own "refused while you still own
+  // an open event" claim. "Open" = a currently live or pending-review
+  // event on any organizer this user owns (owner_id OR user_id — both are
+  // real ownership links per the schema, migration 001). A draft/cancelled/
+  // ended event never blocks.
+  const { data: ownedOrgs, error: orgError } = await admin
+    .from('organizers')
+    .select('id, name')
+    .or(`owner_id.eq.${userId},user_id.eq.${userId}`);
+  if (orgError) {
+    console.error('Account deletion: organizer ownership lookup failed:', orgError);
+    return res.status(502).json({ error: 'ACCOUNT_DELETION_LOOKUP_FAILED' });
+  }
+  const orgIds = (ownedOrgs || []).map(o => o.id);
+  if (orgIds.length) {
+    // Fetch every non-terminal-status candidate and let the pure function
+    // decide what actually blocks — see api/_lib/accountDeletion.js
+    // (unit-tested in tests/unit/account-deletion-open-event.test.mjs),
+    // rather than re-encoding the "which statuses count as open" rule
+    // twice (once in this query's own `.in(...)`, once conceptually).
+    const { data: candidateEvents, error: eventsError } = await admin
+      .from('events')
+      .select('id, name, status')
+      .in('organizer_id', orgIds);
+    if (eventsError) {
+      console.error('Account deletion: open-event lookup failed:', eventsError);
+      return res.status(502).json({ error: 'ACCOUNT_DELETION_LOOKUP_FAILED' });
+    }
+    const openEvents = findOpenEventsBlockingDeletion(candidateEvents);
+    if (openEvents.length) {
+      return res.status(409).json({
+        error: 'ACCOUNT_DELETION_BLOCKED_OPEN_EVENT',
+        openEvents: openEvents.map(e => ({ id: e.id, name: e.name, status: e.status })),
+      });
+    }
+  }
+
+  // Record the attempt BEFORE doing anything destructive — a row always
+  // exists even if the very next step throws.
+  const { data: reqRow, error: insertError } = await admin
+    .from('account_deletion_requests')
+    .insert({
+      user_id: userId,
+      status: 'processing',
+      reason_code: getText(body.reasonCode) || null,
+      reason_text: getText(body.reasonText).slice(0, 500) || null,
+    })
+    .select('id')
+    .single();
+  if (insertError || !reqRow) {
+    console.error('Account deletion: could not create tracking row:', insertError);
+    return res.status(502).json({ error: 'ACCOUNT_DELETION_INIT_FAILED' });
+  }
+  const requestId = reqRow.id;
+
+  // Step 1 — Storage cleanup for files this user unambiguously owns by a
+  // `<user_id>/...` path convention: the `avatars` bucket (migration 079).
+  // KNOWN LIMITATION, documented here rather than silently skipped:
+  // `payment-documents`/`pay-proof`/`organizer-photos` are keyed by
+  // booking id/organizer id, not user id, so this pass does not enumerate
+  // and remove those — they are left as orphaned private objects (never
+  // publicly served, since those buckets are already private + RLS-scoped
+  // to the specific booking/organizer). A future pass could resolve this
+  // user's own booking ids first and delete matching `payment-documents`
+  // paths; not done here to keep this endpoint's blast radius reviewable.
+  try {
+    const { data: avatarFiles } = await admin.storage.from('avatars').list(userId);
+    if (avatarFiles?.length) {
+      await admin.storage.from('avatars').remove(avatarFiles.map(f => `${userId}/${f.name}`));
+    }
+    await markStep(admin, requestId, 'avatar_storage', 'ok');
+  } catch (error) {
+    // Non-fatal — a leftover avatar file is not a reason to abort deleting
+    // the account itself, but it IS recorded so it can be found/cleaned up
+    // later rather than silently vanishing from view.
+    await markStep(admin, requestId, 'avatar_storage', `failed: ${error?.message || error}`);
+  }
+
+  // Step 2 — the actual account deletion. `profiles.id REFERENCES
+  // auth.users(id) ON DELETE CASCADE` means this one call is what cascades
+  // the profile row, which in turn cascades/detaches everything else per
+  // each table's own FK rule (see the migration's own doc comment for the
+  // full table).
+  const { error: deleteError } = await admin.auth.admin.deleteUser(userId);
+  if (deleteError) {
+    await markStep(admin, requestId, 'auth_delete', `failed: ${deleteError.message || deleteError}`);
+    await admin.from('account_deletion_requests').update({
+      status: 'failed',
+      error_detail: deleteError.message || String(deleteError),
+    }).eq('id', requestId);
+    console.error('Account deletion: auth.admin.deleteUser failed:', deleteError);
+    return res.status(502).json({ error: 'ACCOUNT_DELETION_FAILED', requestId });
+  }
+  await markStep(admin, requestId, 'auth_delete', 'ok');
+
+  await admin.from('account_deletion_requests').update({
+    status: 'done',
+    completed_at: new Date().toISOString(),
+  }).eq('id', requestId);
+
+  return res.status(200).json({ deleted: true, requestId });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -253,6 +395,17 @@ export default async function handler(req, res) {
   }
 
   const admin = getSupabaseAdmin();
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const type = getText(body.type);
+
+  // Account deletion needs no outbound email config at all — checked
+  // separately (only the service-role client) so a missing Gmail
+  // credential (unrelated to this action) never blocks it.
+  if (type === 'delete_account') {
+    if (!admin) return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED', missing: ['SUPABASE_SERVICE_ROLE_KEY'] });
+    return handleDeleteAccount(req, res, admin, body);
+  }
+
   const missing = [
     ...getMissingEmailVariables(),
     !admin && 'SUPABASE_SERVICE_ROLE_KEY',
@@ -260,9 +413,6 @@ export default async function handler(req, res) {
   if (missing.length) {
     return res.status(503).json({ error: 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED', missing });
   }
-
-  const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const type = getText(body.type);
 
   switch (type) {
     case 'send_email_code': return handleSendEmailCode(req, res, admin, body);

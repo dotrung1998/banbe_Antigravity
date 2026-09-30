@@ -141,9 +141,21 @@ import UIKit
 private final class DockOverlayWindow: UIWindow {
     var passthroughRect: CGRect = .zero
     var trayOpen = false
+    // Notification banner fix pass (2026-09-30 third) — ADDITIVE alongside
+    // `passthroughRect`/`trayOpen`, never replacing either's own meaning.
+    // `ToastOverlay` now renders inside this same always-on-top window (see
+    // `BottomTabBarOverlayRoot` below, the same fix already applied to the
+    // dock create tray) so a banner is visible/tappable above MapExplore's
+    // native `.sheet()` too — but this window still geometrically rejects
+    // every touch outside its known content by default, so the toast's own
+    // on-screen frame (reported up via `ToastFramePreferenceKey`) must be
+    // forwarded here the same way the dock band's own rect already is.
+    // `.zero` (no toast currently shown) contains no point, so this is a
+    // pure no-op whenever there's nothing to tap.
+    var toastRect: CGRect = .zero
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        guard trayOpen || passthroughRect.contains(point) else { return nil }
+        guard trayOpen || passthroughRect.contains(point) || toastRect.contains(point) else { return nil }
         return super.hitTest(point, with: event)
     }
 }
@@ -371,6 +383,19 @@ final class BottomTabBarOverlay {
         window?.trayOpen = open
     }
 
+    /// Notification banner fix pass (2026-09-30 third) — additive sibling to
+    /// `setDockCreateTrayOpen` above, same idea applied to the toast banner
+    /// instead of the tray: `ToastOverlay` (mounted in
+    /// `BottomTabBarOverlayRoot` below) reports its own on-screen frame via
+    /// `ToastFramePreferenceKey`; that frame is forwarded here so
+    /// `DockOverlayWindow.hitTest` can let a tap on the banner itself
+    /// through. `.zero` when no toast is shown restores the window to
+    /// exactly its pre-existing pass-through behavior — nothing else about
+    /// `applyVisibility()`/`forcedHidden`/`storyViewerOpen`/etc. is touched.
+    fileprivate func setToastRect(_ rect: CGRect) {
+        window?.toastRect = rect
+    }
+
     private func applyVisibility() {
         let shouldShow = !(forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || areaSheetOpen)
             && BottomTabBar.visibleScreens.contains(currentScreen)
@@ -494,6 +519,21 @@ private struct BottomTabBarOverlayRoot: View {
             // tray's own full-bleed scrim/drag-to-dismiss and the dock/
             // button beside it just work, with no resize involved anymore.
             if app.dockCreateMenuOpen { DockCreateTrayView() }
+
+            // Notification banner fix pass (2026-09-30 third) — moved here
+            // from RootView's main-window ZStack (same root cause as the
+            // tray above: rendered beneath MapExplore's native `.sheet()`
+            // there). `.frame(..., alignment: .top)` makes this child claim
+            // the whole window and self-align to the top, exactly like
+            // DockRow above claims it and self-aligns to the bottom — same
+            // technique, opposite edge. Its own `ToastFramePreferenceKey`
+            // report is read below and forwarded to the window's
+            // `toastRect` so a tap on the banner itself isn't swallowed by
+            // this window's default pass-through gating.
+            if !app.toasts.isEmpty {
+                ToastOverlay()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
         }
         // BUG FIX (dock-centered-instead-of-bottom regression) — see this
         // type's own doc comment above for the full root cause. This is the
@@ -502,5 +542,8 @@ private struct BottomTabBarOverlayRoot: View {
         // centered in the full-screen `DockOverlayWindow` instead of
         // sitting at its bottom.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .onPreferenceChange(ToastFramePreferenceKey.self) { rect in
+            BottomTabBarOverlay.shared.setToastRect(rect)
+        }
     }
 }

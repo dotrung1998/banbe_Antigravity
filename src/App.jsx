@@ -31,6 +31,7 @@ import PhotoViewer from './screens/sheets/PhotoViewer.jsx';
 import ChatPhotoViewer from './screens/sheets/ChatPhotoViewer.jsx';
 import StoryViewer from './screens/sheets/StoryViewer.jsx';
 import PulseViewer from './screens/sheets/PulseViewer.jsx';
+import DeleteAccountSheet from './screens/sheets/DeleteAccountSheet.jsx';
 import Preferences from './screens/Preferences.jsx';
 import EditName from './screens/EditName.jsx';
 import Notifications from './screens/Notifications.jsx';
@@ -665,6 +666,7 @@ function Shell() {
           on showBar/organizerMode) since Account.jsx's own "Đăng story"
           entry point can still open it even on a screen without the dock. */}
       <StoryCreateOverlay />
+      {state.deleteAccountOpen && <DeleteAccountSheet />}
       <ToastStack />
     </div>
   );

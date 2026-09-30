@@ -133,6 +133,19 @@ function GroupCard({ groupKey, iconKind, label, badge, onClick, marginTop = 8 })
   );
 }
 
+// Account IA reorder pass (2026-09-30 second) — a reusable section header,
+// visually identical to the pre-existing "Tổ Chức" header style (11.5px,
+// weight 600, `ink`) so every cluster in Personal/Host/Admin reads as one
+// consistent convention instead of a one-off. Purely presentational — never
+// changes a groupKey/testid/route, only adds a label above a cluster.
+export function SectionHeader({ label, testId, marginTop = 22 }) {
+  return (
+    <div style={{ padding: `${marginTop}px 20px 0` }} data-testid={testId}>
+      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{label}</span>
+    </div>
+  );
+}
+
 export default function Account() {
   const {
     state, T, goHome, goEditName, goGoingList, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
@@ -443,7 +456,33 @@ export default function Account() {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 10, padding: '22px 20px 0' }}>
+      {/* Account IA reorder pass (2026-09-30 second) — target order per
+          17-ux-foundation-release.md's dated section: this cluster answers
+          "what needs my attention / where are my tickets and payments"
+          first (a product hypothesis on common task frequency — ticket/
+          booking access, then payments, then settings, then hosting, then
+          admin — NOT measured banbe usage data, none exists to cite). */}
+      <SectionHeader label={T('Hoạt Động Của Bạn', 'Your Activity')} testId="account-section-activity" />
+
+      <ActionCenter items={actionItems} onSeeAll={() => openVerifications('profile')} T={T} />
+
+      {/* Account IA reorg (2026-09-30) — relabeled "Vé & Hoạt Động"/"Tickets
+          & Activity" -> "Vé & Đặt Chỗ"/"Tickets & Bookings"; `groupKey`
+          stays "activity" (route/testid unchanged, only the visible label
+          and its content changed — see AccountGroup.jsx). Badge is now the
+          real count of this account's own holding/awaiting-payment/
+          pending-verification bookings (computeMyTicketsActionCount,
+          reading the SAME `paymentBookings` array already loaded above for
+          the Action Center — no new query). */}
+      <GroupCard
+        groupKey="activity" iconKind="calendarCheck"
+        label={T('Vé & Đặt Chỗ', 'Tickets & Bookings')}
+        badge={computeMyTicketsActionCount(s)}
+        onClick={() => openAccountGroup('activity')}
+        marginTop={14}
+      />
+
+      <div style={{ display: 'flex', gap: 10, padding: '14px 20px 0' }}>
         {/* data-attending-raw-count is the unfiltered s.attending.length — not
             shown to users (goingCount below is what actually renders, and is
             deliberately narrowed to the static demo catalogue + not-yet-ended
@@ -455,16 +494,24 @@ export default function Account() {
           <span style={{ ...display(24) }}>{goingCount}</span>
           <span style={{ fontSize: 11, color: ink }}>{T('Đang tham gia', 'Going')}</span>
         </div>
+        {/* Account IA reorder pass — relabeled "Đã lưu"/"Saved" (generic) ->
+            "Sự Kiện Đã Lưu"/"Saved Events" per this pass's own instruction;
+            destination (goSavedList) and testid unchanged. */}
         <div onClick={goSavedList} data-testid="account-saved-card" style={{ ...cardGlass({ flex: 1, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 3, cursor: 'pointer' }) }}>
           <RowIcon kind="document" size={18} />
           <span style={{ ...display(24) }}>{(s.favorites || []).length}</span>
-          <span style={{ fontSize: 11, color: ink }}>{T('Đã lưu', 'Saved')}</span>
+          <span style={{ fontSize: 11, color: ink }}>{T('Sự Kiện Đã Lưu', 'Saved Events')}</span>
         </div>
       </div>
 
-      <ActionCenter items={actionItems} onSeeAll={() => openVerifications('profile')} T={T} />
+      <GroupCard
+        groupKey="payments" iconKind="banknote"
+        label={T('Thanh Toán & Giấy Tờ', 'Payments & Documents')}
+        onClick={() => openAccountGroup('payments')}
+        marginTop={14}
+      />
 
-      <ReportsRow label={T('Số liệu & báo cáo', 'Metrics & reports')} testId="account-reports-personal" onClick={() => openReports('personal', null, 'profile')} />
+      <ReportsRow label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} testId="account-reports-personal" onClick={() => openReports('personal', null, 'profile')} />
 
       {referralLink && (
         <div style={{ ...cardGlass({ margin: '20px 20px 0', padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, cursor: 'pointer' }) }} onClick={shareReferral}>
@@ -483,50 +530,39 @@ export default function Account() {
         </div>
       )}
 
-      {/* Account IA pass (2026-09-27) — the old single long list of rows
-          (Completed events / App preferences / Invoices / Receipts /
-          Payment & refund accounts / Refunds / Security), plus Team
-          invites/memberships and event credits from further up, are now
-          FOUR grouped entry cards, each opening the shared AccountGroup
-          child screen for that one related flow. Every child action keeps
-          its EXACT original data-testid/route (openDocuments/openSecurity/
-          etc., unchanged) — only WHERE it's reached from moved. Badge
-          counts are the same real, un-derived pending-action data that
-          used to render inline here — never buried, still visible at this
-          entry level. */}
-      {/* Account IA reorg (2026-09-30) — Team's badge now also counts
-          pending event-credit invites (organizer-collaboration credits),
-          relocated here FROM the old "activity" group per this pass's own
-          reclassification: both are organizer-collaboration concerns, a
-          better semantic fit than living alongside attendee tickets. Two
-          distinct real arrays/tables (myOrganizerInvites, myEventCredits),
-          safe to sum per this module's own dedup rule. */}
-      <GroupCard
-        groupKey="team" iconKind="users"
-        label={T('Hồ Sơ & Team', 'Profile & Team')}
-        badge={s.myOrganizerInvites.length + s.myEventCredits.length}
-        onClick={() => openAccountGroup('team')}
-        marginTop={20}
-      />
-      {/* Account IA reorg (2026-09-30) — relabeled "Vé & Hoạt Động"/"Tickets
-          & Activity" -> "Vé & Đặt Chỗ"/"Tickets & Bookings"; `groupKey`
-          stays "activity" (route/testid unchanged, only the visible label
-          and its content changed — see AccountGroup.jsx). Badge is now the
-          real count of this account's own holding/awaiting-payment/
-          pending-verification bookings (computeMyTicketsActionCount,
-          reading the SAME `paymentBookings` array already loaded above for
-          the Action Center — no new query). */}
-      <GroupCard
-        groupKey="activity" iconKind="calendarCheck"
-        label={T('Vé & Đặt Chỗ', 'Tickets & Bookings')}
-        badge={computeMyTicketsActionCount(s)}
-        onClick={() => openAccountGroup('activity')}
-      />
-      <GroupCard
-        groupKey="payments" iconKind="banknote"
-        label={T('Thanh Toán & Giấy Tờ', 'Payments & Documents')}
-        onClick={() => openAccountGroup('payments')}
-      />
+      {/* Account IA reorder pass (2026-09-30 second) — second cluster:
+          account-level settings, reached after the actionable/ticket stuff
+          above. `team` GroupCard used to always render here — REMOVED
+          wholesale (not simply moved into Hosting): a user can receive a
+          co-organizer invite before ever turning Hosting Mode on, and
+          hiding the ONLY entry point to that invite behind the Hosting
+          toggle would strand them with an invisible, un-actionable invite.
+          Instead: (a) the Host tab now has its own entry point into the
+          SAME `groupKey: 'team'` screen (see account-tab-panel-host below —
+          mirrors the existing "two doors, one destination" pattern already
+          used for the Payment Disputes row), and (b) a lightweight
+          conditional row right below surfaces the SAME destination here
+          ONLY when there's a real pending invite AND Hosting is currently
+          off (so it's never invisible, but a participant who's never
+          touched hosting doesn't see an empty organizer-team card by
+          default). Gating is mutually exclusive with the Host-tab card
+          (that card only renders while organizerMode is on — see
+          `useEffect` above that forces accountTab off 'host' whenever
+          organizerMode is false), so the two entry points are never both
+          visible at once and neither ever double-counts. */}
+      <SectionHeader label={T('Tài Khoản & Cài Đặt', 'Account & Settings')} testId="account-section-settings" />
+
+      <div
+        onClick={() => s.user?.handle && openPublicProfile(s.user.handle, 'profile')}
+        data-testid="account-personal-profile"
+        style={{ ...fieldGlass({ marginTop: 14, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
+          <RowIcon kind="pencil" />{T('Hồ Sơ Cá Nhân', 'Personal Profile')}
+        </span>
+        <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+      </div>
+
       {/* Account IA reorg (2026-09-30) — relabeled "Tùy Chỉnh"/"Preferences"
           -> "Cài Đặt"/"Settings" (reads more accurately for its actual
           contents, app preferences + security). `groupKey`/testid/route
@@ -556,6 +592,34 @@ export default function Account() {
         </span>
         <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
       </div>
+
+      {/* Account IA reorder pass — the lightweight conditional invite row
+          described above. Same badge SOURCE as the Host-tab `team` card
+          (myOrganizerInvites.length [+ myEventCredits.length]) — never a
+          second independently-derived count, and never rendered at the
+          same time as that card (mutually exclusive on `isOrganizer`). */}
+      {!isOrganizer && s.myOrganizerInvites.length > 0 && (
+        <div
+          onClick={() => openAccountGroup('team')}
+          data-testid="account-team-invite-banner"
+          style={{ ...fieldGlass({ marginTop: 8, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
+            <RowIcon kind="users" accent={ROW_ACCENT_COLORS.team} />{T('Bạn có lời mời Team', 'You have a team invite')}
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span
+              role="status"
+              aria-label={T(`${s.myOrganizerInvites.length} lời mời`, `${s.myOrganizerInvites.length} invite(s)`)}
+              style={{ fontSize: 11, fontWeight: 700, color: paper, background: alert, borderRadius: 999, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}
+              data-testid="account-team-invite-banner-badge"
+            >
+              {s.myOrganizerInvites.length}
+            </span>
+            <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+          </span>
+        </div>
+      )}
 
       {/* Account extension (2026-09-27, Stage 1) — "Organizer mode OFF
           means host UI is OFF": the whole Tổ chức tab disappears while
@@ -702,10 +766,6 @@ export default function Account() {
         </div>
       )}
 
-      {s.myOrganizerId && (
-        <ReportsRow label={T('Số liệu & báo cáo', 'Metrics & reports')} testId="account-reports-host" onClick={() => openReports('host', s.myOrganizerId, 'profile')} />
-      )}
-
       {/* Account regression fix pass (2026-09-27), Item 1 — host-management
           rows, only ever reachable while organizerMode is on (this whole
           tab's own visibility rule). Account IA pass (2026-09-27) — now
@@ -721,6 +781,32 @@ export default function Account() {
           onClick={() => openAccountGroup('hostOps')}
           marginTop={22}
         />
+      )}
+
+      {/* Account IA reorder pass (2026-09-30 second) — the Host tab's own
+          entry point into the SAME `groupKey: 'team'` screen the personal
+          tab's conditional invite row also opens (see that row's own
+          comment for the full "two doors, one destination" reasoning —
+          mirrors the Payment Disputes row's existing pattern). Gated
+          `canHost`, matching `hostOps` above (the rest of this tab's own
+          convention) — a genuine co-organizer invite/team membership is
+          eligibility-scoped content, not preference-scoped. */}
+      {canHost && (
+        <GroupCard
+          groupKey="team" iconKind="users"
+          label={T('Hồ Sơ & Team Tổ Chức', 'Organizer Profile & Team')}
+          badge={s.myOrganizerInvites.length + s.myEventCredits.length}
+          onClick={() => openAccountGroup('team')}
+          marginTop={8}
+        />
+      )}
+
+      {/* Account IA reorder pass — actionable content first: Reports moved
+          AFTER the group cards above (was: identity card, Reports, then
+          the group card) per this ticket's explicit instruction. Same
+          destination/testid, only position changed. */}
+      {s.myOrganizerId && (
+        <ReportsRow label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} testId="account-reports-host" onClick={() => openReports('host', s.myOrganizerId, 'profile')} />
       )}
 
       <div style={{ height: 24 }} />
@@ -739,7 +825,13 @@ export default function Account() {
           (payment-state-machine.spec.js) already asserts by element count. */}
       {s.accountType === 'admin' && (
         <div data-testid="account-tab-panel-admin" style={{ display: accountTab === 'admin' ? 'block' : 'none' }}>
-          <ReportsRow label={T('Số liệu & báo cáo', 'Metrics & reports')} testId="account-reports-admin" onClick={() => openReports('admin', null, 'profile')} />
+          {/* Account IA reorder pass (2026-09-30 second) — this tab had no
+              header at all ("nothing to group"); now there is: the header
+              plus a real order swap justify it. Actionable review/disputes
+              FIRST, administrative reports AFTER — the explicit instruction
+              for this tab, a real reorder from the previous code, not just
+              a label change. */}
+          <SectionHeader label={T('Quản Trị', 'Administration')} testId="account-section-admin" marginTop={22} />
           {/* Account IA pass (2026-09-27) — same "Payment disputes"/
               "Pending events" actions, now one grouped entry card. No
               identity card exists for Admin (there never was one) — this
@@ -749,8 +841,9 @@ export default function Account() {
             label={T('Duyệt & Kiểm Duyệt', 'Review & Moderation')}
             badge={s.pendingEventsCount}
             onClick={() => openAccountGroup('adminReview')}
-            marginTop={22}
+            marginTop={14}
           />
+          <ReportsRow label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} testId="account-reports-admin" onClick={() => openReports('admin', null, 'profile')} />
           <div style={{ height: 24 }} />
         </div>
       )}

@@ -59,7 +59,7 @@ export default function AccountGroup() {
     respondToOrganizerInvite, setOrganizerMemberVisibility,
     openPreferences, openSecurity, openDocuments, openRefundAccounts, openMyRefunds,
     openVerifications, openPayout, openDisputes, openAdminEvents,
-    loadPaymentBookings, openBookingConfirmed,
+    loadPaymentBookings, openBookingConfirmed, openDeleteAccount,
   } = useGoc();
   const key = s.accountGroupKey;
 
@@ -301,6 +301,31 @@ export default function AccountGroup() {
               onClick={openPreferences}
             />
             <Row icon="shield" label={T('Bảo mật', 'Security')} trailing="›" testId="account-security" onClick={openSecurity} border={false} />
+          </div>
+        )}
+
+        {/* Account deletion (Task 2, Account/Settings pass) — a visually
+            separated "Account Management" subsection inside this same
+            `preferences` group screen, per this ticket's own placement
+            instruction (distinct from the ordinary rows above and from
+            Sign Out on the parent Account screen). Reuses the existing
+            `alert` color token — no new color introduced. */}
+        {key === 'preferences' && (
+          <div style={{ marginTop: 24 }} data-testid="account-management-section">
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản Lý Tài Khoản', 'Account Management')}</span>
+            <div
+              onClick={openDeleteAccount}
+              data-testid="account-delete-row"
+              style={{
+                marginTop: 8, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                cursor: 'pointer', borderRadius: 14, border: `1px solid ${alert}55`, background: `${alert}14`,
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: alert, fontWeight: 600 }}>
+                <RowIcon kind="alertShield" />{T('Xóa Tài Khoản', 'Delete Account')}
+              </span>
+              <span style={{ fontSize: 15, color: alert, lineHeight: 1 }}>›</span>
+            </div>
           </div>
         )}
 

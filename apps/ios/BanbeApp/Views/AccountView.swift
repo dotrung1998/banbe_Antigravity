@@ -357,38 +357,19 @@ struct AccountView: View {
             } // app.accountTab == "personal" (profile card)
 
             if app.accountTab == "personal" {
-            HStack(spacing: 10) {
-                counter(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going"), icon: "calendar.badge.checkmark", identifier: "account.goingCard") { app.goGoingList() }
-                counter(value: app.favorites.count, label: app.T("Đã lưu", "Saved"), icon: "bookmark", identifier: "account.savedCard") { app.goSavedList() }
-            }
-            .padding(.top, 22)
-            .id("account-stats")
+            // Account IA reorder pass (2026-09-30 second) — mirrors web's
+            // Account.jsx target order exactly: same product hypothesis on
+            // common task frequency (ticket/booking access, then payments,
+            // then settings, then hosting, then admin) — NOT measured
+            // banbe usage data, none exists to cite.
+            sectionHeader(app.T("Hoạt Động Của Bạn", "Your Activity"))
+                .accessibilityIdentifier("account.section.activity")
 
             // TASK A (2026-10-01 UX foundation pass) — same canonical
             // Action Center Home/Dashboard show; Account is one of its
             // three placements.
             ActionCenterView(items: actionItems, onSeeAll: { app.openVerifications(back: .profile) })
 
-            reportsRow(app.T("Số liệu & báo cáo", "Metrics & reports"), identifier: "account.reportsPersonal") {
-                app.openReports(scope: "personal", back: .profile)
-            }
-
-            // Account IA pass (2026-09-27) — the old single long list of
-            // rows (Completed events / App preferences / Invoices /
-            // Receipts / Payment & refund accounts / Refunds / Security),
-            // plus Team invites/memberships and event credits from
-            // further up, are now FOUR grouped entry cards, each opening
-            // AccountGroupView for that one related flow. Every child
-            // action keeps its EXACT original accessibility identifier/
-            // route (openDocuments/openSecurity/etc., unchanged) — only
-            // WHERE it's reached from moved.
-            // Account IA reorg (2026-09-30) — Team's badge now also counts
-            // pending event-credit invites (organizer-collaboration
-            // credits), relocated here FROM "activity" per this pass's own
-            // reclassification — see `AccountGroupView.teamContent`. Two
-            // distinct real arrays, safe to sum per Badges.swift's own
-            // dedup rule.
-            groupCard(groupKey: "team", icon: "person.3", label: app.T("Hồ Sơ & Team", "Profile & Team"), badge: app.myOrganizerInvites.count + app.myEventCredits.count, topPadding: 20)
             // Relabeled "Vé & Hoạt Động"/"Tickets & Activity" -> "Vé & Đặt
             // Chỗ"/"Tickets & Bookings"; `groupKey` stays "activity" (route/
             // identifier unchanged). Badge is now the real count of this
@@ -396,8 +377,62 @@ struct AccountView: View {
             // bookings (`AccountBadges.myTicketsActionCount`, reading the
             // SAME `paymentBookings` array already loaded for the Action
             // Center above — no new query).
-            groupCard(groupKey: "activity", icon: "calendar.badge.checkmark", label: app.T("Vé & Đặt Chỗ", "Tickets & Bookings"), badge: AccountBadges.myTicketsActionCount(paymentBookings: app.paymentBookings))
-            groupCard(groupKey: "payments", icon: "banknote", label: app.T("Thanh Toán & Giấy Tờ", "Payments & Documents"))
+            groupCard(groupKey: "activity", icon: "calendar.badge.checkmark", label: app.T("Vé & Đặt Chỗ", "Tickets & Bookings"), badge: AccountBadges.myTicketsActionCount(paymentBookings: app.paymentBookings), topPadding: 14)
+
+            HStack(spacing: 10) {
+                counter(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going"), icon: "calendar.badge.checkmark", identifier: "account.goingCard") { app.goGoingList() }
+                // Relabeled "Đã lưu"/"Saved" (generic) -> "Sự Kiện Đã Lưu"/
+                // "Saved Events"; destination/identifier unchanged.
+                counter(value: app.favorites.count, label: app.T("Sự Kiện Đã Lưu", "Saved Events"), icon: "bookmark", identifier: "account.savedCard") { app.goSavedList() }
+            }
+            .padding(.top, 14)
+            .id("account-stats")
+
+            groupCard(groupKey: "payments", icon: "banknote", label: app.T("Thanh Toán & Giấy Tờ", "Payments & Documents"), topPadding: 14)
+
+            reportsRow(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsPersonal") {
+                app.openReports(scope: "personal", back: .profile)
+            }
+
+            // Account IA reorder pass (2026-09-30 second) — second cluster:
+            // account-level settings. The `team` group card used to always
+            // render here — REMOVED wholesale (not simply moved into
+            // Hosting): a user can receive a co-organizer invite before
+            // ever turning Hosting Mode on, and hiding the ONLY entry point
+            // to that invite behind the Hosting toggle would strand them.
+            // Instead: (a) the Host tab now has its own entry point into
+            // the SAME "team" screen (see hostManagementRows below — same
+            // "two doors, one destination" pattern already used for the
+            // Payment Disputes row), and (b) the lightweight conditional
+            // row below surfaces the SAME destination here ONLY when
+            // there's a real pending invite AND Hosting is off — mutually
+            // exclusive with the Host-tab card (accountTab can never be
+            // "host" while organizerMode is false — see the tab-list
+            // filter/redirect elsewhere in this file), so neither ever
+            // double-counts.
+            sectionHeader(app.T("Tài Khoản & Cài Đặt", "Account & Settings"), topPadding: 22)
+                .accessibilityIdentifier("account.section.settings")
+
+            Button {
+                if let handle = app.user?.handle, !handle.isEmpty {
+                    app.openPublicProfile(handle: handle, back: .profile)
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "person.crop.circle").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
+                    Text(app.T("Hồ Sơ Cá Nhân", "Personal Profile")).font(.system(size: 14))
+                    Spacer()
+                    Text("›").font(.system(size: 15)).opacity(0.85)
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(.horizontal, 16).padding(.vertical, 15)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.top, 14)
+            .accessibilityIdentifier("account.personalProfile")
+
             // Relabeled "Tùy Chỉnh"/"Preferences" -> "Cài Đặt"/"Settings"
             // (reads more accurately for its actual contents). `groupKey`/
             // identifier/route unchanged.
@@ -428,6 +463,34 @@ struct AccountView: View {
             .padding(.top, 8)
             .accessibilityIdentifier("account.helpLegal")
 
+            // The lightweight conditional invite row described above. Same
+            // badge SOURCE as the Host-tab "team" card (myOrganizerInvites
+            // [+ myEventCredits]) — never a second independently-derived
+            // count, never shown at the same time as that card.
+            if !app.organizerMode && !app.myOrganizerInvites.isEmpty {
+                Button { app.accountGroupKey = "team"; app.screen = .accountGroup } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.3").font(.system(size: 16, weight: .medium)).frame(width: 30, height: 30)
+                            .background((ROW_ACCENT_COLORS["team"] ?? .clear).opacity(0.33), in: Circle())
+                        Text(app.T("Bạn có lời mời Team", "You have a team invite")).font(.system(size: 14))
+                        Spacer()
+                        Text("\(app.myOrganizerInvites.count)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(app.palette.paper)
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(BanbeTheme.alert, in: Capsule())
+                            .accessibilityIdentifier("account.teamInviteBanner.badge")
+                        Text("›").font(.system(size: 15))
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(16)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 8)
+                .accessibilityIdentifier("account.teamInviteBanner")
+            }
+
             // Account extension (2026-09-27, Stage 1) — "organizer mode
             // OFF means host UI is OFF": the whole Tổ chức tab disappears
             // while this is off, so the ON/OFF control itself (and any
@@ -442,19 +505,27 @@ struct AccountView: View {
             // Account IA pass (2026-09-27) — identity card FIRST (was:
             // reports row, then this card).
             orgProfileCard()
+            hostManagementRows
+            // Account IA reorder pass — actionable content first: Reports
+            // moved AFTER the group cards (was: identity card, Reports,
+            // then the group card). Same destination/identifier, only
+            // position changed.
             if app.myOrganizerID != nil {
-                reportsRow(app.T("Số liệu & báo cáo", "Metrics & reports"), identifier: "account.reportsHost") {
+                reportsRow(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsHost") {
                     app.openReports(scope: "host", organizerID: app.myOrganizerID, back: .profile)
                 }
             }
-            hostManagementRows
             } // app.accountTab == "host"
 
             if app.accountTab == "admin" {
-            reportsRow(app.T("Số liệu & báo cáo", "Metrics & reports"), identifier: "account.reportsAdmin") {
+            // No header existed here before ("nothing to group"); now
+            // there is: this header plus the reorder below justifies it.
+            sectionHeader(app.T("Quản Trị", "Administration"))
+                .accessibilityIdentifier("account.section.admin")
+            adminSection
+            reportsRow(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsAdmin") {
                 app.openReports(scope: "admin", back: .profile)
             }
-            adminSection
             } // app.accountTab == "admin"
 
 
@@ -610,6 +681,19 @@ struct AccountView: View {
 
     // Account extension (2026-09-27, Stage 3) — the one recognizable "Số
     // liệu & báo cáo" entry point every visible tab gets, near its own top.
+    // Account IA reorder pass (2026-09-30 second) — mirrors web's
+    // `SectionHeader` (Account.jsx) value-for-value: same 11.5pt/semibold
+    // style already used by "Tổ Chức" above, factored out so every cluster
+    // in Personal/Host/Admin reads as one consistent convention. Purely
+    // presentational — never changes a groupKey/identifier/route.
+    private func sectionHeader(_ label: String, topPadding: CGFloat = 22) -> some View {
+        Text(label)
+            .font(.system(size: 11.5, weight: .semibold))
+            .foregroundStyle(app.palette.ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, topPadding)
+    }
+
     private func reportsRow(_ title: String, identifier: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
@@ -939,6 +1023,19 @@ struct AccountView: View {
                     label: app.T("Vận Hành & Thanh Toán Tổ Chức", "Event Operations & Payments"),
                     badge: app.verifications.count + app.refundQueue.count,
                     topPadding: 22
+                )
+                // Account IA reorder pass (2026-09-30 second) — the Host
+                // tab's own entry point into the SAME "team" screen the
+                // Personal tab's conditional invite row also opens (see
+                // that row's own comment for the full "two doors, one
+                // destination" reasoning — mirrors the Payment Disputes
+                // row's existing pattern). Gated `canHost`, matching
+                // hostOps above.
+                groupCard(
+                    groupKey: "team", icon: "person.3",
+                    label: app.T("Hồ Sơ & Team Tổ Chức", "Organizer Profile & Team"),
+                    badge: app.myOrganizerInvites.count + app.myEventCredits.count,
+                    topPadding: 8
                 )
             }
         }

@@ -55,9 +55,25 @@ struct ToastOverlay: View {
                         .stroke(app.palette.rule, lineWidth: 1)
                 )
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    app.openNotification(toast.notification)
+                // Notification banner fix pass (2026-09-30 third) — one
+                // gesture does double duty: `pressing` toggles the SAME
+                // real pause/resume timer a `.onTapGesture` alone couldn't
+                // observe (pause while the user is actively pressing the
+                // banner), `perform` fires on a completed tap. Race fix:
+                // the auto-dismiss timer is cancelled (via dismissToast)
+                // BEFORE openNotification's own async work runs.
+                .onLongPressGesture(minimumDuration: 0, pressing: { pressing in
+                    if pressing { app.pauseToastTimer(toast.id) } else { app.resumeToastTimer(toast.id) }
+                }, perform: {
                     app.dismissToast(toast.id) // don't wait for the auto-dismiss timer — it's been acted on
+                    app.openNotification(toast.notification)
+                })
+                .onAppear {
+                    // Duration starts here — when this card is actually
+                    // painted — not at whatever earlier moment pushToast()
+                    // enqueued it (it may have sat behind "Xem thêm" until
+                    // now). Idempotent on AppState's side.
+                    app.markToastVisible(toast.id)
                 }
                 .allowsHitTesting(true)
                 .transition(.asymmetric(
@@ -98,5 +114,28 @@ struct ToastOverlay: View {
         .frame(maxWidth: .infinity, alignment: .top)
         .animation(.easeOut(duration: 0.28), value: app.toasts)
         .allowsHitTesting(false)
+        // Notification banner fix pass (2026-09-30 third) — reports this
+        // content's own real on-screen frame (zero when there's nothing to
+        // show) so `BottomTabBarOverlay` can widen its always-on-top
+        // window's geometric pass-through hit-test region to cover it —
+        // see `ToastFramePreferenceKey`'s own doc comment below.
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: ToastFramePreferenceKey.self, value: app.toasts.isEmpty ? .zero : proxy.frame(in: .global))
+            }
+        )
     }
+}
+
+/// Notification banner fix pass (2026-09-30 third) — carries `ToastOverlay`'s
+/// own real on-screen frame up to `BottomTabBarOverlayRoot`
+/// (BottomTabBarOverlay.swift), which forwards it to
+/// `BottomTabBarOverlay.setToastRect(_:)`. This is what lets
+/// `DockOverlayWindow.hitTest` (a window that otherwise geometrically
+/// rejects every touch outside its small dock band or an open tray) also
+/// let a tap on the toast banner itself through, now that `ToastOverlay`
+/// renders inside that same always-on-top window instead of the main one.
+struct ToastFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
 }
