@@ -55,7 +55,7 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
     // search document built below (`buildEventSearchDoc`) can include
     // category/organizer/description text regardless of whether
     // `keywords` happens to be populated for a given row.
-    .select('id, key, name, cat_key, cat_label, area, city, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)')
+    .select('id, key, name, cat_key, cat_label, area, city, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, country_code, state_province, neighborhood, organizers(name)')
     .eq('status', 'live')
     .order('starts_at', { ascending: true })
     .range(offset, offset + limit - 1);
@@ -116,6 +116,14 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
       name: row.name || cosmetic?.name,
       area: row.area || cosmetic?.meta,
       city: row.city,
+      // Location hierarchy (migration 112) — the raw fields the shared
+      // area/location filter (curArea.match, src/lib/locationTree.js)
+      // reads. `locationLabel` is the RAW district (never `cosmetic.meta`,
+      // which is a "district ▪︎ km ▪︎ date" display string).
+      locationLabel: row.area || cosmetic?.locationLabel || '',
+      countryCode: row.country_code || cosmetic?.countryCode || '',
+      stateProvince: row.state_province || '',
+      neighborhood: row.neighborhood || '',
       organizerName: row.organizers?.name,
       description: row.description,
       intro: row.intro,
@@ -163,7 +171,7 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
 }
 
 export default function MapExplore() {
-  const { state: s, T, goEvent, backFromMapExplore, allowLocation, setMapExploreState } = useGoc();
+  const { state: s, T, goEvent, backFromMapExplore, allowLocation, setMapExploreState, curArea, openArea } = useGoc();
   // Restored once, at mount, if MapExplore.jsx's own CTA saved a snapshot
   // right before navigating to Event Detail (bug 2) — App.jsx's Shell
   // unmounts/remounts this whole component on every `screen` change, so
@@ -500,6 +508,12 @@ export default function MapExplore() {
 
   const visibleEvents = useMemo(() => {
     let list = events;
+    // Location hierarchy (2026-09-30) — the SAME selected location node
+    // Home's feed uses (curArea.match, src/lib/locationTree.js). Map used
+    // to ignore the area pick entirely. Pure data filter: never touches
+    // locPermission/allowLocation, so picking any node (incl. the empty US
+    // root) can't trigger a location-permission prompt.
+    if (curArea.key !== 'all') list = list.filter(e => curArea.match(e));
     if (catFilter !== 'all') list = list.filter(e => e.catKey === catFilter);
     if (openNowOnly) list = list.filter(e => e.seatsRemaining > 0);
     // Home quick event search — matched against the canonical search
@@ -521,7 +535,7 @@ export default function MapExplore() {
       });
     }
     return list;
-  }, [events, catFilter, openNowOnly, searchQuery, sortByDistance, s.userCoords, eventSearchDocs]);
+  }, [events, curArea, catFilter, openNowOnly, searchQuery, sortByDistance, s.userCoords, eventSearchDocs]);
 
   // B1 — the ONE filtered event-id set the list below and the map's own
   // markers (the draw effect right after this) both key off, so they can
@@ -1128,7 +1142,16 @@ export default function MapExplore() {
           ))}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, padding: '0 16px 10px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '0 16px 10px' }}>
+          {/* Location hierarchy — opens the same shared area sheet Home
+              uses (AreaSheet.jsx); shows the current short label. */}
+          <div
+            onClick={openArea}
+            data-testid="map-chip-area"
+            style={{ ...fieldGlass({}), padding: '5px 10px', fontSize: 11, cursor: 'pointer', color: ink, fontWeight: curArea.key !== 'all' ? 700 : 400, border: curArea.key !== 'all' ? `1px solid ${ink}` : 'none' }}
+          >
+            {curArea.key === 'all' ? T('Tất cả khu vực', 'All areas') : curArea.label} ▾
+          </div>
           <div
             onClick={() => setOpenNowOnly(v => !v)}
             data-testid="map-chip-open-now"

@@ -334,7 +334,7 @@ struct HomeView: View {
                     // accessibility identifier and action already make it
                     // unambiguous which control this is without a label
                     // prefix repeating the app's own name.
-                    Button("\(app.currentArea.key == "all" ? "Sài Gòn" : app.currentArea.label) ▾") {
+                    Button("\(app.currentAreaLabel) ▾") {
                         app.openArea()
                     }
                     .font(.system(size: 15, weight: .bold))
@@ -683,8 +683,8 @@ struct HomeView: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             Text(app.T(
-                "Chưa có buổi nào ở \(app.currentArea.key == "all" ? "mục này" : app.currentArea.label) tuần này, thử mục khác xem sao!",
-                "Nothing in \(app.currentArea.key == "all" ? "this category" : app.currentArea.label) this week, try another one!"
+                "Chưa có buổi nào ở \(app.area == LocationHierarchy.allID ? "mục này" : app.currentAreaLabel) tuần này, thử mục khác xem sao!",
+                "Nothing in \(app.area == LocationHierarchy.allID ? "this category" : app.currentAreaLabel) this week, try another one!"
             ))
             .font(.system(size: 14))
             .multilineTextAlignment(.center)

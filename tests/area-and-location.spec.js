@@ -8,7 +8,7 @@ test.describe('Area picker & location sharing', () => {
   });
 
   test('an area\'s event count excludes invite-only events not shown in its feed', async ({ page }) => {
-    await page.getByText(/banbe ▪︎ Sài Gòn/).click();
+    await page.getByText(/banbe ▪︎ Tất cả/).click();
     const sheet = page.getByText('Khu vực').locator('..');
 
     // Bình Thạnh has two demo events (bepnho, banrieng), but banrieng is
@@ -22,13 +22,13 @@ test.describe('Area picker & location sharing', () => {
     await context.grantPermissions(['geolocation']);
     await context.setGeolocation({ latitude: 10.8, longitude: 106.7 });
 
-    await page.getByText(/banbe ▪︎ Sài Gòn/).click();
+    await page.getByText(/banbe ▪︎ Tất cả/).click();
     await expect(page.getByText('Dùng vị trí của tôi để xem khoảng cách')).toBeVisible();
 
     // Granting location closes the sheet (its existing behavior) — reopen it
     // to see the toggle's new state.
     await page.getByText('Dùng vị trí của tôi để xem khoảng cách').click();
-    await page.getByText(/banbe ▪︎ Sài Gòn/).click();
+    await page.getByText(/banbe ▪︎ Tất cả/).click();
     await expect(page.getByText('Tắt vị trí ▪︎ đang hiển thị khoảng cách')).toBeVisible({ timeout: 3000 });
 
     // Turning it back off does not close the sheet (only granting does), so

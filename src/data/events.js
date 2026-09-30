@@ -294,6 +294,11 @@ export const EVENTS = ROWS.map((r, idx) => {
       return new Date(2026, parseInt(m[2], 10) - 1, parseInt(m[1], 10), hh, mm || 0);
     })(),
     locationLabel: r[5],
+    // Location hierarchy (migration 112) — this whole demo catalogue is
+    // Ho Chi Minh City by its own definition (AREA_COORDS above), so every
+    // row belongs under the Vietnam root; `locationLabel` is read as its
+    // legacy familiar-area group (src/lib/locationTree.js).
+    countryCode: 'VN',
   };
 });
 

@@ -912,6 +912,9 @@ struct CreateEventView: View {
                         app.createDistrict = ""
                         app.createCity = ""
                         app.createPostalCode = ""
+                        app.createCountryCode = nil
+                        app.createStateProvince = nil
+                        app.createNeighborhood = nil
                         app.createLocConfirmed = false
                         app.createAddressSuggestions = []
                         app.createAddressSearchError = ""

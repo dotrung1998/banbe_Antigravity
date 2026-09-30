@@ -47,6 +47,18 @@ struct PhotoViewerView: View {
     // swipe-browse drag is never affected.
     @State private var dragTranslation: CGSize = .zero
     @State private var isDraggingDown = false
+    // The decoded foreground photo, tagged with the path it belongs to so a
+    // page change never sizes/draws the new index from the previous
+    // photo's pixels. Released with this view on dismiss (NSCache in
+    // PhotoLoader keeps its own, evictable copy exactly as before).
+    @State private var loadedPhoto: (path: String, image: UIImage)?
+
+    // Vertical room the stage needs besides the photo itself: the credit
+    // line (~13pt at 10.5pt) + 8pt gap above the photo, 8pt gap + the 34pt
+    // tagline/actions row below it — rounded up — plus breathing room
+    // above and below the whole column.
+    private let stageChromeHeight: CGFloat = 64
+    private let stageVerticalMargin: CGFloat = 24
 
     // How far (pt) a downward drag has to travel before the backdrop is
     // fully revealed (opacity 0) — independent of `swipeThreshold` (which
@@ -98,7 +110,7 @@ struct PhotoViewerView: View {
     // which `@State` fed it.
     private func dismiss() {
         guard dismissTransform == nil else { return }
-        guard photoRect != .zero else { app.closePhoto(); return }
+        guard photoRect.width > 0, photoRect.height > 0 else { app.closePhoto(); return }
         let o = item.originRect
         let scale = CGSize(width: o.width / photoRect.width, height: o.height / photoRect.height)
         let offset = CGSize(width: o.midX - photoRect.midX, height: o.midY - photoRect.midY)
@@ -112,7 +124,34 @@ struct PhotoViewerView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let photoWidth = proxy.size.width - 40
+            // This GeometryReader ignores the safe area (see below), so its
+            // proxy reports zero insets — read the window's real ones.
+            let insets = windowSafeAreaInsets
+            // The largest box the photo may occupy: full width minus the
+            // stage's 20pt side padding (and landscape side insets), full
+            // height minus the safe areas, the caption/actions chrome and
+            // the breathing margin.
+            let available = CGSize(
+                width: max(0, proxy.size.width - 40 - insets.left - insets.right),
+                height: max(0, proxy.size.height - insets.top - insets.bottom
+                            - stageChromeHeight - 2 * stageVerticalMargin)
+            )
+            // Deliberately the SAME maxPixel the backdrop's CatalogPhoto
+            // below computes for itself (`max(width ?? 0, height ?? 0) *
+            // scale` with only `height` given) — same PhotoLoader cache
+            // key, so foreground and backdrop share ONE decoded image
+            // instead of two.
+            let decodePixel = proxy.size.height * UIScreen.main.scale
+            let image = currentPhoto(maxPixel: decodePixel)
+            // Aspect-FIT: the whole, uncropped photo at the largest size
+            // that fits `available`, never upscaled past its own pixels.
+            // Until it has decoded, the tapped thumbnail's own frame stands
+            // in for the aspect so the column doesn't collapse.
+            let photoSize = Self.fitSize(image?.size ?? placeholderAspect, in: available, capToNative: image != nil)
+            // Caption/actions column matches the photo's own width, with a
+            // floor so the actions row stays usable under an extremely
+            // tall/narrow photo.
+            let columnWidth = max(photoSize.width, min(available.width, 200))
             ZStack {
                 // The photo itself, blown up and blurred into a backdrop.
                 // Pushed past the edges so the blur has no soft, transparent
@@ -125,7 +164,12 @@ struct PhotoViewerView: View {
                 CatalogPhoto(path: item.current.url, height: proxy.size.height, cornerRadius: 0)
                     .frame(width: proxy.size.width)
                     .scaleEffect(1.24)
-                    .blur(radius: 34)
+                    // `opaque: true` — same radius as before, but edge
+                    // pixels are clamped instead of fading to transparent,
+                    // so the (left/right, where the 1.24 overscale only
+                    // pushes ~47pt past a 390pt-wide screen) blur fringe
+                    // can't let whatever is behind the viewer show through.
+                    .blur(radius: 34, opaque: true)
                     .overlay(Color.black.opacity(0.38))
                     .allowsHitTesting(false)
                     // Task 2b: fades progressively as a downward dismiss
@@ -140,14 +184,26 @@ struct PhotoViewerView: View {
                 // screen's. This whole column is the "outside" tap target —
                 // the photo below carves out its own gesture area and wins
                 // via `.highPriorityGesture` for anything starting on it.
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .center, spacing: 8) {
                     caption(app.T("Ảnh của", "Photo by") + " \(item.organizer)")
                         .accessibilityIdentifier("photoViewer.credit")
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                    CatalogPhoto(path: item.current.url,
-                                 height: proxy.size.height / 3,
-                                 width: photoWidth,
-                                 cornerRadius: 14)
+                    // Aspect-FIT foreground (replaces the old fixed
+                    // `height / 3` CatalogPhoto, whose RemoteImage is
+                    // `.scaledToFill()` and so cropped the photo to that
+                    // box). The frame already has the photo's exact aspect,
+                    // so `.scaledToFit()` fills it edge to edge.
+                    ZStack {
+                        if let image {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .transition(.opacity)
+                        }
+                    }
+                        .frame(width: photoSize.width, height: photoSize.height)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .shadow(color: .black.opacity(0.4), radius: 22, y: 10)
                         .id(item.index)
                         .transition(.opacity)
@@ -200,7 +256,7 @@ struct PhotoViewerView: View {
                                     }
                                     // A plain tap: which half of the
                                     // photo's own width it landed in.
-                                    if value.location.x >= photoWidth / 2 {
+                                    if value.location.x >= photoSize.width / 2 {
                                         app.showPhoto(at: item.index + 1)
                                     } else {
                                         app.showPhoto(at: item.index - 1)
@@ -221,6 +277,7 @@ struct PhotoViewerView: View {
                         actions
                     }
                 }
+                .frame(width: columnWidth)
                 // Task 3 follow-up (real-device report: backdrop tap does
                 // nothing): this VStack's own natural height is just its
                 // content (credit + photo + tagline row), vertically
@@ -242,7 +299,10 @@ struct PhotoViewerView: View {
                 // (`PhotoViewer.jsx`'s `position: 'absolute', inset: 0`
                 // wrapper) — confirmed via that platform comparison that
                 // web never had this gap, only iOS did.
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                // (Now `.center`: the column above is sized to the fitted
+                // photo's own width, so it's centred horizontally too; the
+                // vertical component is `.center` either way.)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .padding(.horizontal, 20)
                 .contentShape(Rectangle())
                 .onTapGesture { dismiss() }
@@ -250,6 +310,16 @@ struct PhotoViewerView: View {
             .animation(.easeOut(duration: 0.18), value: item.index)
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipped()
+            .task(id: "\(item.current.url)@\(Int(decodePixel))") {
+                let path = item.current.url
+                if let cached = PhotoLoader.cached(path: path, maxPixel: decodePixel) {
+                    loadedPhoto = (path, cached)
+                    return
+                }
+                guard let loaded = await PhotoLoader.load(path: path, maxPixel: decodePixel),
+                      !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.2)) { loadedPhoto = (path, loaded) }
+            }
         }
         .ignoresSafeArea()
         .transition(.opacity)
@@ -258,6 +328,40 @@ struct PhotoViewerView: View {
         // `.animation(value:)` needed here, that transaction already
         // covers every dependent property, this one included.
         .opacity(dismissTransform == nil ? 1 : 0)
+    }
+
+    /// The current index's decoded photo, if there is one yet — from this
+    /// view's own load, or straight from PhotoLoader's memory cache so an
+    /// already-warm photo sizes and paints on the first frame.
+    private func currentPhoto(maxPixel: CGFloat) -> UIImage? {
+        if let loadedPhoto, loadedPhoto.path == item.current.url { return loadedPhoto.image }
+        return PhotoLoader.cached(path: item.current.url, maxPixel: maxPixel)
+    }
+
+    /// Stand-in aspect while the photo decodes: the tapped thumbnail's own
+    /// frame, else square.
+    private var placeholderAspect: CGSize {
+        let o = item.originRect
+        return (o.width > 0 && o.height > 0) ? o.size : CGSize(width: 1, height: 1)
+    }
+
+    /// The window's safe-area insets (this view's GeometryReader ignores
+    /// the safe area, so its own proxy reports zero).
+    private var windowSafeAreaInsets: UIEdgeInsets {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.keyWindow?.safeAreaInsets ?? .zero
+    }
+
+    /// Aspect-fit: `source` scaled uniformly to the largest size inside
+    /// `bounds`. With `capToNative`, never scaled up past 1 image pixel per
+    /// point (the same ceiling the web viewer's `<img>` has: 1 image pixel
+    /// per CSS px) — a small photo shows smaller instead of stretched.
+    private static func fitSize(_ source: CGSize, in bounds: CGSize, capToNative: Bool) -> CGSize {
+        guard source.width > 0, source.height > 0, bounds.width > 0, bounds.height > 0 else { return .zero }
+        var scale = min(bounds.width / source.width, bounds.height / source.height)
+        if capToNative { scale = min(scale, 1) }
+        return CGSize(width: source.width * scale, height: source.height * scale)
     }
 
     /// Photo-interactions redesign (2026-09-26) — same caption text style as

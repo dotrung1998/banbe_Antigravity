@@ -30,26 +30,6 @@ enum EventListMode: String {
     case going, saved, completed
 }
 
-/// Feed area filter — ports AREAS in src/state/GocContext.jsx. Labels stay
-/// Vietnamese in both languages, as on the web.
-struct AreaOption: Identifiable {
-    let key: String
-    let label: String
-    let match: (CatalogEvent) -> Bool
-    var id: String { key }
-
-    static let all: [AreaOption] = [
-        AreaOption(key: "all", label: "Toàn Sài Gòn", match: { _ in true }),
-        AreaOption(key: "q1", label: "Quận 1", match: { $0.meta.contains("Quận 1") }),
-        AreaOption(key: "thaodien", label: "Thảo Điền", match: { $0.meta.contains("Thảo Điền") }),
-        AreaOption(key: "binhthanh", label: "Bình Thạnh", match: { $0.meta.contains("Bình Thạnh") }),
-        AreaOption(key: "other", label: "Quận khác", match: {
-            !$0.meta.contains("Quận 1") && !$0.meta.contains("Thảo Điền") && !$0.meta.contains("Bình Thạnh")
-        }),
-        AreaOption(key: "danang", label: "Đà Nẵng", match: { _ in false }),
-    ]
-}
-
 /// Predefined reasons an organizer must pick from before reversing a
 /// check-in or cancelling a paid booking — ports UNDO_CHECKIN_REASONS /
 /// CANCEL_BOOKING_REASONS. No free text, so the guest's notification always
@@ -382,7 +362,27 @@ final class AppState: ObservableObject {
     @Published var theme: String = UserDefaults.standard.string(forKey: "banbe.theme") ?? "light" {
         didSet { UserDefaults.standard.set(theme, forKey: "banbe.theme") }
     }
-    @Published var area: String = "all"
+    // Location hierarchy (migration 112) — now a `LocationHierarchy` node
+    // ID ("all", "c:VN", "c:VN|a:Quận 1", …) instead of one of six
+    // hardcoded keys. Still purely in-memory (it never was persisted —
+    // confirmed by grep: no UserDefaults key for it), so a relaunch resets
+    // to "all" exactly as before. Any legacy key that still reaches it
+    // (q1/thaodien/binhthanh/other/danang/all) is mapped to its new ID by
+    // the pure `LocationHierarchy.migrateSelection` instead of breaking.
+    @Published var area: String = LocationHierarchy.allID {
+        didSet {
+            let migrated = LocationHierarchy.migrateSelection(area)
+            if migrated != area { area = migrated }
+        }
+    }
+    /// The area sheet's expand/collapse state, by stable node ID — kept
+    /// here (not view-local) so it survives the sheet closing/reopening
+    /// and is shared by Home's and Map's copies of the picker. Never
+    /// touches `area`: expanding is not selecting.
+    @Published var areaExpanded: Set<String> = ["c:VN"]
+    /// Live DB location of each demo-catalogue event, keyed by slug —
+    /// populated by `loadHomeLiveEvents()` (same rows Map reads).
+    @Published var homeEventLocations: [String: EventLocation] = [:]
     @Published var filter: String = "all"
     // Home's second, independent chip row (12-home-filters.md) — multi-select,
     // AND-combined with `filter`/`area` above, not folded into either.
@@ -1264,6 +1264,12 @@ final class AppState: ObservableObject {
     @Published var createDistrict = ""
     @Published var createCity = ""
     @Published var createPostalCode = ""
+    // Location hierarchy (migration 112) — from the picked
+    // `AddressSuggestion`; nil = not (re)picked this session, see
+    // `selectCreateAddressSuggestion`/`goEditEvent`.
+    @Published var createCountryCode: String?
+    @Published var createStateProvince: String?
+    @Published var createNeighborhood: String?
     @Published var createLocConfirmed = false
     @Published var createAddressSuggestions: [AddressSuggestion] = []
     @Published var createAddressSearching = false
@@ -1592,7 +1598,50 @@ final class AppState: ObservableObject {
         case .none: return .unavailable(key: eventKey, loading: true, T: T)
         }
     }
-    var currentArea: AreaOption { AreaOption.all.first { $0.key == area } ?? AreaOption.all[0] }
+    /// Short, disambiguating label for the current location selection
+    /// (Home header, empty state, Map chip) — never a full breadcrumb.
+    var currentAreaLabel: String { LocationHierarchy.shortLabel(for: area, roots: locationTree, T: T) }
+
+    /// Location hierarchy — one event's structured location. Real events
+    /// carry their own (`fromReal`); a demo-catalogue event uses its live
+    /// DB row (`homeEventLocations`) and, until that has loaded, its
+    /// bundled district label under VN (the whole bundled catalogue is a
+    /// Ho Chi Minh City one, matching its live rows' country_code 'VN').
+    func eventLocation(_ e: CatalogEvent) -> EventLocation {
+        if let loc = e.location { return loc }
+        if let loc = homeEventLocations[e.key] { return loc }
+        return EventLocation(countryCode: "VN", stateProvince: nil, city: nil, area: e.locationLabel, neighborhood: nil)
+    }
+
+    func matchesArea(_ e: CatalogEvent) -> Bool {
+        LocationHierarchy.matches(leafID: LocationHierarchy.leafID(for: eventLocation(e)), selection: area)
+    }
+
+    func matchesArea(_ row: MapEventRow) -> Bool {
+        LocationHierarchy.matches(leafID: LocationHierarchy.leafID(for: row.location), selection: area)
+    }
+
+    /// Every discoverable (non-invite) event the tree is built from — the
+    /// Home feed's own universe (real + demo) plus Map's live rows,
+    /// deduped by event id so nothing is ever counted twice. Discovery
+    /// only: a user's own tickets/bookings never come from here.
+    var locationUniverse: [LocatedEvent] {
+        var seen = Set<String>()
+        var out: [LocatedEvent] = []
+        let catalogKeys = Set(EventCatalog.all.map(\.key))
+        let catalogFeed = discoveryEvents.filter { !catalogKeys.contains($0.key) } + EventCatalog.all
+        for raw in catalogFeed {
+            let e = withLive(raw)
+            guard !e.inviteOnly, seen.insert(e.key).inserted else { continue }
+            out.append(LocatedEvent(id: e.key, location: eventLocation(e), isOpen: e.isOpen))
+        }
+        for row in mapEvents where seen.insert(row.id).inserted {
+            out.append(LocatedEvent(id: row.id, location: row.location, isOpen: row.status == "live"))
+        }
+        return out
+    }
+
+    var locationTree: [LocationNode] { LocationHierarchy.build(from: locationUniverse) }
     var isSignedIn: Bool { userID != nil }
     var canHost: Bool { organizerMode || accountType == "admin" || hasHosted }
     var isAdmin: Bool { accountType == "admin" }
@@ -1707,7 +1756,7 @@ final class AppState: ObservableObject {
             .map(withLive)
             .filter { !$0.inviteOnly }
             .filter { filter == "all" || $0.catKey == filter || $0.cat2Key == filter }
-            .filter { currentArea.match($0) }
+            .filter { matchesArea($0) }
         let attendance = categoryAndArea
             .filter { !filterAttending || isGoing($0.key) }
             .filter { !filterNotConfirmed || isAwaitingConfirmation($0.key) }
@@ -2484,6 +2533,9 @@ final class AppState: ObservableObject {
         createDistrict = ""
         createCity = ""
         createPostalCode = ""
+        createCountryCode = nil
+        createStateProvince = nil
+        createNeighborhood = nil
         createLocConfirmed = false
         createAddressSuggestions = []
         createAddressSearching = false
@@ -2829,7 +2881,7 @@ final class AppState: ObservableObject {
         }
     }
     func openArea() { areaAsking = true }
-    func pickArea(_ key: String) { area = key; areaAsking = false }
+    func pickArea(_ key: String) { area = LocationHierarchy.migrateSelection(key); areaAsking = false }
 
     func askLocation() { if located == nil { askingLocation = true } }
 

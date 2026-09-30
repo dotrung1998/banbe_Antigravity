@@ -27,8 +27,11 @@ const DISMISS_MS = 280;
 const GESTURE_THRESHOLD = 44;
 
 // A tapped gallery photo, shown over a fully blurred copy of itself.
-// Deliberately not full-screen: the photo sits in the middle third of the
-// display with the same 14px corner every other photo in the app has. The
+// The photo is shown whole (aspect-fit, never cropped), as large as the
+// usable viewport allows, with the same 14px corner every other photo in
+// the app has; the blurred copy (aspect-fill) covers the entire viewer
+// behind it, so whatever the fitted photo leaves free is blur, never a
+// bare background. The
 // credit/tagline/actions sit right against the photo's own top and bottom
 // edges (not the screen's).
 //
@@ -120,6 +123,11 @@ export default function PhotoViewer() {
     const el = photoRef.current;
     if (!el || !originRect) { closePhoto(); return; }
     const current = el.getBoundingClientRect();
+    // The photo is now an <img> sized by its own natural aspect (see the
+    // stage below), so before it has decoded its box is 0x0 — a scale
+    // computed against that would be Infinity. Nothing on screen to shrink
+    // back yet, so just close.
+    if (!current.width || !current.height) { closePhoto(); return; }
     const scaleX = originRect.width / current.width;
     const scaleY = originRect.height / current.height;
     const dx = (originRect.left + originRect.width / 2) - (current.left + current.width / 2);
@@ -285,12 +293,38 @@ export default function PhotoViewer() {
           keeps its taps/drags from ever reaching this handler. */}
       <div
         onClick={onBackdropClick}
-        style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', padding: '0 20px' }}
+        style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 20px' }}
       >
-        <span ref={creditRef} style={{ ...caption, marginBottom: 8 }}>{T('Ảnh của', 'Photo by')} {organizer}</span>
-        <div
+        {/* Shrink-wraps to the photo's own fitted width (the credit and
+            tagline rows below are `width: 0; minWidth: 100%`, so they
+            contribute nothing to this column's intrinsic width and just
+            stretch to whatever the photo made it) — keeps both caption rows
+            flush with the photo's own left/right edges for portrait photos
+            too, not the screen's. `minWidth` keeps the icon row usable
+            under an extremely tall/narrow photo. */}
+        <div style={{ display: 'grid', minWidth: 'min(200px, 100%)' }}>
+        <div style={{ display: 'flex', width: 0, minWidth: '100%', marginBottom: 8 }}>
+          <span ref={creditRef} style={caption}>{T('Ảnh của', 'Photo by')} {organizer}</span>
+        </div>
+        {/* Full, uncropped photo (aspect-FIT), as large as the usable
+            viewport allows: replaces the old fixed `33vh` crop-to-fill
+            box. `width/height: auto` + both max bounds is plain CSS
+            replaced-element fit math — any aspect ratio (portrait,
+            landscape, square, panorama) scales down uniformly until it
+            fits both bounds, and is never upscaled past its own natural
+            size. The height bound subtracts the safe areas, the credit
+            line + tagline/actions row (~64px incl. their 8px gaps) and a
+            24px breathing margin above and below; the width bound is the
+            app column (max 480px, see App.jsx) minus this stage's 20px
+            side padding and any landscape side safe areas. Everything the
+            photo doesn't cover is the blurred backdrop above, which
+            already spans the whole viewer. */}
+        <img
           ref={photoRef}
           key={index}
+          src={url}
+          alt=""
+          draggable={false}
           data-testid="photo-viewer-image"
           data-index={index}
           onClick={stop(() => {})}
@@ -298,30 +332,39 @@ export default function PhotoViewer() {
           onPointerMove={stop(onPhotoPointerMove)}
           onPointerUp={stop(onPhotoPointerUp)}
           style={{
-            ...bg(url, {
-              width: '100%',
-              height: '33vh',
-              borderRadius: 14,
-              boxShadow: '0 18px 44px rgba(12,12,12,0.4)',
-              touchAction: 'none',
-              animation: entered ? undefined : 'gocIn 0.22s cubic-bezier(.22,.61,.36,1) both',
-              transform: closing ? closing.transform : 'none',
-              transformOrigin: 'center',
-              // Always present — same reasoning as the backdrop's opacity
-              // transition above. `animation: gocIn` (which also animates
-              // `transform`) wins over this while it's running; once it
-              // finishes the element is at rest with `transform: none` and
-              // this transition, so a later JS-driven change to `transform`
-              // (dismissing) has an actual prior frame to interpolate from.
-              transition: `transform ${DISMISS_MS}ms ${DISMISS_EASING}`,
-            }),
+            display: 'block',
+            justifySelf: 'center',
+            width: 'auto',
+            height: 'auto',
+            maxWidth: 'calc(min(100vw, 480px) - 40px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))',
+            maxHeight: 'calc(100dvh - 64px - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
+            objectFit: 'contain',
+            // Same photo treatment `bg()` gives every other photo in the app.
+            filter: 'saturate(0.92) contrast(1.07)',
+            borderRadius: 14,
+            boxShadow: '0 18px 44px rgba(12,12,12,0.4)',
+            touchAction: 'none',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            WebkitUserDrag: 'none',
+            WebkitTouchCallout: 'none',
+            animation: entered ? undefined : 'gocIn 0.22s cubic-bezier(.22,.61,.36,1) both',
+            transform: closing ? closing.transform : 'none',
+            transformOrigin: 'center',
+            // Always present — same reasoning as the backdrop's opacity
+            // transition above. `animation: gocIn` (which also animates
+            // `transform`) wins over this while it's running; once it
+            // finishes the element is at rest with `transform: none` and
+            // this transition, so a later JS-driven change to `transform`
+            // (dismissing) has an actual prior frame to interpolate from.
+            transition: `transform ${DISMISS_MS}ms ${DISMISS_EASING}`,
           }}
         />
         {/* Top-aligned, not bottom: the row is as tall as the 34px icon
             buttons, and bottom-aligning the tagline text inside that box
             pushed it well below the photo — top-aligning puts it right
             after the marginTop gap, matching the credit's spacing above. */}
-        <div ref={taglineRowRef} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', width: '100%', marginTop: 8 }}>
+        <div ref={taglineRowRef} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', width: 0, minWidth: '100%', marginTop: 8 }}>
           <span style={caption}>
             {s.photoShared ? T('Đã sao chép link', 'Link copied') : 'banbe ▪︎ bạn mới mỗi tuần'}
           </span>
@@ -356,6 +399,7 @@ export default function PhotoViewer() {
               ><Icon name="share" /></span>
             </span>
           </div>
+        </div>
         </div>
       </div>
     </div>

@@ -24,24 +24,14 @@ struct BottomSheet<Content: View>: View {
     }
 }
 
-/// Port of AreaSheet.jsx — pick a neighbourhood, with a real event count
-/// per area (matching the feed's own filter, invite-only excluded) and a
-/// genuine on/off toggle for location sharing.
+/// Port of AreaSheet.jsx — pick a location from the data-driven
+/// hierarchy (`LocationHierarchy`, migration 112), with a real open-event
+/// count per node (invite-only excluded, same universe as the feed) and a
+/// genuine on/off toggle for location sharing. Choosing ANY location here
+/// (including an empty US root) only ever sets `app.area` — it never
+/// requests location permission; only the explicit toggle below does.
 struct AreaSheetView: View {
     @EnvironmentObject var app: AppState
-
-    // Region-count fix (2026-09-29) — this used to count ONLY the static
-    // demo catalogue, never `app.discoveryEvents` (real, organizer-created,
-    // admin-approved rows) — same root cause and fix as web's identical
-    // AreaSheet.jsx bug. Deduped against the static catalogue by key, same
-    // as `AppState.feed` already does.
-    private func count(_ area: AreaOption) -> String {
-        if area.key == "danang" { return "Sắp có" }
-        let realKeys = Set(EventCatalog.all.map(\.key))
-        let realOpen = app.discoveryEvents.filter { !realKeys.contains($0.key) && area.match($0) && $0.isOpen && !$0.inviteOnly }.count
-        let staticOpen = EventCatalog.all.filter { area.match($0) && $0.isOpen && !$0.inviteOnly }.count
-        return "\(realOpen + staticOpen) sự kiện"
-    }
 
     var body: some View {
         BottomSheet(onDismiss: { app.areaAsking = false }) {
@@ -57,24 +47,7 @@ struct AreaSheetView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("area.close")
             }
-            VStack(spacing: 0) {
-                ForEach(AreaOption.all) { area in
-                    Button { app.pickArea(area.key) } label: {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(area.label)
-                                .font(.system(size: 14.5, weight: app.area == area.key ? .semibold : .regular))
-                            Spacer()
-                            Text(count(area)).font(.system(size: 11))
-                        }
-                        .padding(.vertical, 13)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("area.\(area.key)")
-                    Divider().overlay(app.palette.rule)
-                }
-            }
-            .padding(.top, 10)
+            LocationPickerList { app.pickArea($0) }
 
             Button(app.located == true
                    ? "Tắt vị trí ▪︎ đang hiển thị khoảng cách"
@@ -87,6 +60,228 @@ struct AreaSheetView: View {
             .padding(.top, 14)
             .buttonStyle(.plain)
         }
+    }
+}
+
+/// The hierarchical, searchable location list shared by Home's area sheet
+/// and Map Explore's own location picker. Rows are flattened from the tree
+/// so expand/collapse (keyed by stable node ID in `app.areaExpanded`) and
+/// search visibility are plain data, never view identity tricks.
+struct LocationPickerList: View {
+    @EnvironmentObject var app: AppState
+    let onPick: (String) -> Void
+    @State private var query = ""
+
+    private enum Row: Identifiable {
+        case node(LocationNode, Int)
+        case allIn(LocationNode, Int)
+        case empty(String, Int)
+
+        var id: String {
+            switch self {
+            case .node(let n, _): return "node:" + n.id
+            case .allIn(let n, _): return "all:" + n.id
+            case .empty(let parent, _): return "empty:" + parent
+            }
+        }
+    }
+
+    /// A country is always expandable (so an empty root can show its
+    /// honest empty state); anything else only when it has children.
+    private func isExpandable(_ n: LocationNode) -> Bool { n.kind == .country || !n.children.isEmpty }
+
+    private func rows(_ nodes: [LocationNode], depth: Int, search: (visible: Set<String>, autoExpanded: Set<String>)?) -> [Row] {
+        var out: [Row] = []
+        for n in nodes {
+            if let search, !search.visible.contains(n.id) { continue }
+            out.append(.node(n, depth))
+            guard isExpandable(n) else { continue }
+            let expanded = app.areaExpanded.contains(n.id) || (search?.autoExpanded.contains(n.id) ?? false)
+            guard expanded else { continue }
+            out.append(.allIn(n, depth + 1))
+            if n.children.isEmpty {
+                out.append(.empty(n.id, depth + 1))
+            } else {
+                out.append(contentsOf: rows(n.children, depth: depth + 1, search: search))
+            }
+        }
+        return out
+    }
+
+    private func countLabel(_ n: Int) -> String { app.T("\(n) sự kiện", n == 1 ? "1 event" : "\(n) events") }
+
+    private func accessibilityID(_ nodeID: String) -> String {
+        "area." + (LocationHierarchy.legacyKey(forNodeID: nodeID) ?? nodeID)
+    }
+
+    var body: some View {
+        let roots = app.locationTree
+        let search = LocationHierarchy.search(roots, query: query, T: app.T)
+        let list = rows(roots, depth: 0, search: search)
+        let totalOpen = roots.reduce(0) { $0 + $1.openCount }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").font(.system(size: 13)).opacity(0.55)
+                TextField(app.T("Tìm tỉnh, thành phố, khu vực…", "Search state, city, area…"), text: $query)
+                    .font(.system(size: 14))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("area.search")
+                if !query.isEmpty {
+                    Button { query = "" } label: {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 13)).opacity(0.45)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("area.searchClear")
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.top, 12)
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if search == nil {
+                        selectRow(id: LocationHierarchy.allID, title: app.T("Tất cả khu vực", "All locations"), count: totalOpen, depth: 0)
+                    }
+                    ForEach(list) { row in
+                        switch row {
+                        case .node(let n, let depth):
+                            if isExpandable(n) {
+                                expandRow(n, depth: depth)
+                            } else {
+                                selectRow(id: n.id, title: LocationHierarchy.label(n, T: app.T), count: n.openCount, depth: depth, legacy: n.kind == .legacyArea)
+                            }
+                        case .allIn(let n, let depth):
+                            selectRow(id: n.id, title: app.T("Tất cả tại \(LocationHierarchy.label(n, T: app.T))", "All in \(LocationHierarchy.label(n, T: app.T))"), count: n.openCount, depth: depth)
+                        case .empty(_, let depth):
+                            Text(app.T("Chưa có sự kiện nào ở đây.", "No events here yet."))
+                                .font(.system(size: 12.5))
+                                .opacity(0.6)
+                                .padding(.leading, CGFloat(depth) * 16)
+                                .padding(.vertical, 11)
+                        }
+                    }
+                    if search != nil && list.isEmpty {
+                        Text(app.T("Không tìm thấy khu vực phù hợp.", "No matching location."))
+                            .font(.system(size: 12.5))
+                            .opacity(0.6)
+                            .padding(.vertical, 13)
+                    }
+                }
+            }
+            .frame(maxHeight: 380)
+            .padding(.top, 6)
+        }
+        .onAppear {
+            // Reveal (never change) the current selection.
+            app.areaExpanded.formUnion(LocationHierarchy.ancestorIDs(of: app.area))
+        }
+    }
+
+    /// A parent node: tapping only expands/collapses — selection lives on
+    /// its own "All in [X]" row (and on its children), so expanding never
+    /// changes what's selected. A dot marks a selection hidden inside.
+    private func expandRow(_ n: LocationNode, depth: Int) -> some View {
+        let expanded = app.areaExpanded.contains(n.id)
+        let containsSelection = app.area != LocationHierarchy.allID && LocationHierarchy.matches(leafID: app.area, selection: n.id)
+        return Button {
+            if expanded { app.areaExpanded.remove(n.id) } else { app.areaExpanded.insert(n.id) }
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .rotationEffect(.degrees(expanded ? 90 : 0))
+                    .opacity(0.6)
+                    .frame(width: 12)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(LocationHierarchy.label(n, T: app.T))
+                        .font(.system(size: 14.5, weight: containsSelection ? .semibold : .regular))
+                    if n.kind == .legacyArea { legacyCaption }
+                }
+                if containsSelection { Circle().frame(width: 5, height: 5) }
+                Spacer()
+                Text(countLabel(n.openCount)).font(.system(size: 11))
+            }
+            .padding(.leading, CGFloat(depth) * 16)
+            .padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("area.toggle.\(n.id)")
+        .overlay(alignment: .bottom) { Divider().overlay(app.palette.rule) }
+    }
+
+    private func selectRow(id: String, title: String, count: Int, depth: Int, legacy: Bool = false) -> some View {
+        let selected = app.area == id
+        return Button { onPick(id) } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Color.clear.frame(width: 12, height: 1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 14.5, weight: selected ? .semibold : .regular))
+                    if legacy { legacyCaption }
+                }
+                Spacer()
+                Text(countLabel(count)).font(.system(size: 11))
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .opacity(selected ? 1 : 0)
+                    .accessibilityHidden(!selected)
+            }
+            .padding(.leading, CGFloat(depth) * 16)
+            .padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(accessibilityID(id))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .overlay(alignment: .bottom) { Divider().overlay(app.palette.rule) }
+    }
+
+    /// `events.area` values are free-text "familiar" names (many are
+    /// pre-2025 district names) — labelled as such, never presented as a
+    /// current official administrative unit.
+    private var legacyCaption: some View {
+        Text(app.T("Tên khu vực quen gọi", "Familiar area name"))
+            .font(.system(size: 10.5))
+            .opacity(0.55)
+    }
+}
+
+/// Map Explore's own copy of the picker, presented as a nested `.sheet`
+/// from inside the map's list sheet (RootView's `AreaSheetView` overlay
+/// would sit BEHIND that system sheet). Same shared `app.area` selection
+/// as Home; no location-permission control here at all.
+struct MapLocationPickerSheet: View {
+    @EnvironmentObject var app: AppState
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(app.T("Khu vực", "Location")).font(.system(size: 11.5, weight: .semibold))
+                Spacer()
+                Button { isPresented = false } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(app.palette.ink.opacity(0.6))
+                        .padding(4)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("map.area.close")
+            }
+            LocationPickerList { id in
+                app.area = LocationHierarchy.migrateSelection(id)
+                isPresented = false
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(app.palette.paper)
+        .foregroundStyle(app.palette.ink)
+        .presentationDetents([.large])
     }
 }
 

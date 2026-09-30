@@ -238,7 +238,9 @@ private struct KeyedLiveEventStatus: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         slug = try container.decode(String.self, forKey: .slug)
         status = try LiveEventStatus(from: decoder)
+        location = try EventLocation(from: decoder)
     }
+    let location: EventLocation
     enum CodingKeys: String, CodingKey { case slug }
 }
 private struct MessageThreadIDRow: Decodable {
@@ -1091,10 +1093,14 @@ extension AppState {
         do {
             let rows: [KeyedLiveEventStatus] = try await SupabaseService.client
                 .from("events")
-                .select("slug, status, starts_at, cancelled_at, cancel_reason")
+                .select("slug, status, starts_at, cancelled_at, cancel_reason, area, city, country_code, state_province, neighborhood")
                 .in("slug", values: EventCatalog.all.map(\.key))
                 .execute().value
             homeLiveEvents = Dictionary(uniqueKeysWithValues: rows.map { ($0.slug, $0.status) })
+            // Location hierarchy (migration 112) — the demo catalogue's
+            // own live DB location, so Home's location filter places each
+            // demo event exactly where Map (which reads the same rows) does.
+            homeEventLocations = Dictionary(uniqueKeysWithValues: rows.map { ($0.slug, $0.location) })
         } catch {
             print("loadHomeLiveEvents failed:", error)
         }
@@ -1119,7 +1125,7 @@ extension AppState {
                 // intro/organizers(name)) so the search document built by
                 // `Search.buildEventSearchDoc` has category/organizer/
                 // description text available regardless of `keywords`.
-                .select("id, cat_key, cat_label, name, area, city, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)")
+                .select("id, cat_key, cat_label, name, area, city, country_code, state_province, neighborhood, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)")
                 .eq("status", value: "live")
             if let bounds {
                 filter = filter
@@ -2782,7 +2788,7 @@ extension AppState {
     // withdrawn_at added for AdminEventsView's own detailed review section
     // (booking-approval mode + withdrawal history); additive, same table,
     // so every other existing reader of this constant is unaffected.
-    private static let realEventColumns = "id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, approval, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, withdrawal_reason, withdrawn_at, cover_image, included_items, intro, address_line, city, postal_code, address_verified, keywords"
+    private static let realEventColumns = "id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, approval, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, withdrawal_reason, withdrawn_at, cover_image, included_items, intro, address_line, city, postal_code, address_verified, keywords, country_code, state_province, neighborhood"
 
     /// `events.cover_image` (migration 087) always wins over the gallery's
     /// own sort_order-first fallback when a host has explicitly picked one —
@@ -3953,6 +3959,13 @@ extension AppState {
         createDistrict = suggestion.district
         createCity = suggestion.city
         createPostalCode = suggestion.postalCode
+        // Location hierarchy (migration 112) — "" (not nil) for a level
+        // MapKit didn't return, so a resubmit with a freshly re-picked
+        // address CLEARS a stale old value server-side instead of
+        // COALESCE-preserving it.
+        createCountryCode = suggestion.countryCode ?? ""
+        createStateProvince = suggestion.stateProvince ?? ""
+        createNeighborhood = suggestion.neighborhood ?? ""
         createLat = suggestion.lat
         createLng = suggestion.lng
         createLocLabel = suggestion.label
@@ -3969,6 +3982,9 @@ extension AppState {
         createDistrict = ""
         createCity = ""
         createPostalCode = ""
+        createCountryCode = nil
+        createStateProvince = nil
+        createNeighborhood = nil
         createLat = nil
         createLng = nil
         createLocLabel = ""
@@ -4094,7 +4110,10 @@ extension AppState {
                         addressLine: createAddressLine.trimmingCharacters(in: .whitespaces),
                         city: createCity.trimmingCharacters(in: .whitespaces),
                         postalCode: createPostalCode.trimmingCharacters(in: .whitespaces),
-                        addressVerified: true
+                        addressVerified: true,
+                        countryCode: createCountryCode,
+                        stateProvince: createStateProvince,
+                        neighborhood: createNeighborhood
                     ))
                     .execute().value
                 if case .bool(true) = result["success"] ?? .bool(false) {
@@ -4135,7 +4154,10 @@ extension AppState {
                         addressLine: createAddressLine.trimmingCharacters(in: .whitespaces),
                         city: createCity.trimmingCharacters(in: .whitespaces),
                         postalCode: createPostalCode.trimmingCharacters(in: .whitespaces),
-                        addressVerified: true
+                        addressVerified: true,
+                        countryCode: createCountryCode,
+                        stateProvince: createStateProvince,
+                        neighborhood: createNeighborhood
                     ))
                     .execute().value
                 eventID = created.id
@@ -4305,6 +4327,11 @@ extension AppState {
         createDistrict = real.area ?? ""
         createCity = real.city ?? ""
         createPostalCode = real.postalCode ?? ""
+        // nil = "not re-picked this session" → omitted from the resubmit
+        // payload, so the RPC COALESCE-preserves the row's own values.
+        createCountryCode = nil
+        createStateProvince = nil
+        createNeighborhood = nil
         createLocConfirmed = hadVerifiedAddress
         createAddressSuggestions = []
         createAddressSearching = false
@@ -4575,6 +4602,12 @@ struct ResubmitEventParams: Encodable {
     let city: String
     let postalCode: String
     let addressVerified: Bool
+    // Location hierarchy (migration 112) — optional trailing params;
+    // nil is OMITTED from the JSON (synthesized encodeIfPresent), so the
+    // RPC's own DEFAULT NULL applies.
+    let countryCode: String?
+    let stateProvince: String?
+    let neighborhood: String?
 
     enum CodingKeys: String, CodingKey {
         case eventId = "p_event_id"
@@ -4594,6 +4627,9 @@ struct ResubmitEventParams: Encodable {
         case city = "p_city"
         case postalCode = "p_postal_code"
         case addressVerified = "p_address_verified"
+        case countryCode = "p_country_code"
+        case stateProvince = "p_state_province"
+        case neighborhood = "p_neighborhood"
     }
 }
 
@@ -4642,6 +4678,12 @@ struct CreateEventParams: Encodable {
     let city: String
     let postalCode: String
     let addressVerified: Bool
+    // Location hierarchy (migration 112) — optional trailing params;
+    // nil is OMITTED from the JSON (synthesized encodeIfPresent), so the
+    // RPC's own DEFAULT NULL applies.
+    let countryCode: String?
+    let stateProvince: String?
+    let neighborhood: String?
 
     enum CodingKeys: String, CodingKey {
         case name = "p_name"
@@ -4663,5 +4705,8 @@ struct CreateEventParams: Encodable {
         case city = "p_city"
         case postalCode = "p_postal_code"
         case addressVerified = "p_address_verified"
+        case countryCode = "p_country_code"
+        case stateProvince = "p_state_province"
+        case neighborhood = "p_neighborhood"
     }
 }

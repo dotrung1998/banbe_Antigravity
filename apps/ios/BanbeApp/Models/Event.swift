@@ -88,9 +88,20 @@ struct MapEventRow: Codable, Identifiable, Hashable {
     var intro: String?
     var organizers: MapEventOrganizerJoin?
     var organizerName: String? { organizers?.name }
+    // Location hierarchy (migration 112) — feeds `LocationHierarchy`'s
+    // tree/filter (Map now honors the same location selection as Home).
+    var countryCode: String?
+    var stateProvince: String?
+    var neighborhood: String?
+    var location: EventLocation {
+        EventLocation(countryCode: countryCode, stateProvince: stateProvince, city: city, area: area, neighborhood: neighborhood)
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
+        case countryCode = "country_code"
+        case stateProvince = "state_province"
+        case neighborhood
         case catKey = "cat_key"
         case name
         case area
@@ -160,6 +171,23 @@ struct AddressSuggestion: Identifiable, Equatable {
     let lng: Double
     /// Full human-readable label for the "confirmed" summary UI.
     let label: String
+    // Location hierarchy (migration 112) — sent as the RPCs' new
+    // `p_country_code`/`p_state_province`/`p_neighborhood`.
+    /// `placemark.isoCountryCode` ("VN"/"US"), uppercased; nil if MapKit
+    /// didn't return one.
+    let countryCode: String?
+    /// `placemark.administrativeArea` — deliberately the SAME source
+    /// `city` already uses for VN (so for a Vietnamese address the two are
+    /// equal; that overlap is honest, not a bug: `city` keeps its existing
+    /// meaning, `stateProvince` is the hierarchy's own level). US
+    /// abbreviations ("CA") are expanded to the full state name so the
+    /// node ID matches web's Nominatim-sourced value.
+    let stateProvince: String?
+    /// `placemark.subLocality`, ONLY when it's genuinely finer than the
+    /// locality `district` already used. With the current district rule
+    /// (subLocality first) that's never true, so this is nil in practice
+    /// — intentionally left honest rather than guessing a finer level.
+    let neighborhood: String?
 
     /// `nil` when MapKit's own result can't resolve to a genuinely
     /// precise point by this app's rules — same heuristic web's
@@ -183,7 +211,15 @@ struct AddressSuggestion: Identifiable, Equatable {
         let street = (placemark.thoroughfare ?? "").trimmingCharacters(in: .whitespaces)
         let venueName = (mapItem.name ?? "").trimmingCharacters(in: .whitespaces)
         let district = (placemark.subLocality?.isEmpty == false ? placemark.subLocality : placemark.locality) ?? ""
-        let city = (placemark.administrativeArea ?? "").trimmingCharacters(in: .whitespaces)
+        let isoCountry = (placemark.isoCountryCode ?? "").trimmingCharacters(in: .whitespaces).uppercased()
+        let adminArea = (placemark.administrativeArea ?? "").trimmingCharacters(in: .whitespaces)
+        let locality = (placemark.locality ?? "").trimmingCharacters(in: .whitespaces)
+        // Location hierarchy (migration 112) — for a US address MapKit's
+        // `administrativeArea` is the state ("CA"), never the city, so
+        // `city` there comes from `locality` instead (there is no real US
+        // event data yet, so no existing row's meaning changes). VN is
+        // unchanged: `city` stays `administrativeArea`.
+        let city = (isoCountry == "US" && !locality.isEmpty) ? locality : adminArea
         let postalCode = (placemark.postalCode ?? "").trimmingCharacters(in: .whitespaces)
 
         var resolvedAddressLine = ""
@@ -208,5 +244,10 @@ struct AddressSuggestion: Identifiable, Equatable {
         self.lat = coordinate.latitude
         self.lng = coordinate.longitude
         self.label = [resolvedAddressLine, district, city].filter { !$0.isEmpty }.joined(separator: ", ")
+        self.countryCode = isoCountry.isEmpty ? nil : isoCountry
+        self.stateProvince = adminArea.isEmpty ? nil : (isoCountry == "US" ? LocationHierarchy.fullUSStateName(adminArea) : adminArea)
+        let subLocality = (placemark.subLocality ?? "").trimmingCharacters(in: .whitespaces)
+        let trimmedDistrict = district.trimmingCharacters(in: .whitespaces)
+        self.neighborhood = (!subLocality.isEmpty && SearchMatch.normalize(subLocality) != SearchMatch.normalize(trimmedDistrict)) ? subLocality : nil
     }
 }

@@ -79,6 +79,12 @@ struct CatalogEvent: Codable, Identifiable, Hashable {
     // which has neither key) keeps decoding exactly as before.
     let intro: String?
     let includedItems: [IncludedItem]?
+    /// Location hierarchy (migration 112) — a real event's own structured
+    /// location (set by `fromReal`). Deliberately NOT in `CodingKeys`: the
+    /// bundled demo catalogue has no such fields, so it stays nil there and
+    /// `AppState.eventLocation(_:)` resolves demo events from their live DB
+    /// row instead.
+    var location: EventLocation? = nil
 
     enum CodingKeys: String, CodingKey {
         case key, catKey, cat, cat2Key, catDisplay, name, img, lat, lng, meta
@@ -210,6 +216,10 @@ struct RealEventSummary: Decodable {
     // `shapeRealEvent` decodes; lets `goEditEvent` pre-fill the keywords
     // field on a resubmit instead of losing whatever was set before.
     let keywords: [String]?
+    // Location hierarchy (migration 112).
+    let countryCode: String?
+    let stateProvince: String?
+    let neighborhood: String?
     // TASK 3 (event creation validation pass) — AdminEventsView's own
     // detailed review section (booking-approval mode + withdrawal
     // history). Additive fields, only ever populated where selected.
@@ -229,6 +239,9 @@ struct RealEventSummary: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, area, lat, lng, keywords
+        case countryCode = "country_code"
+        case stateProvince = "state_province"
+        case neighborhood
         case addressLine = "address_line"
         case city
         case postalCode = "postal_code"
@@ -258,6 +271,9 @@ struct RealEventSummary: Decodable {
     }
 
     var soldOut: Bool { (seatsRemaining ?? 1) <= 0 }
+    var location: EventLocation {
+        EventLocation(countryCode: countryCode, stateProvince: stateProvince, city: city, area: area, neighborhood: neighborhood)
+    }
 }
 
 // `Codable` (not just `Decodable`) and `Hashable` (not just `Equatable`) —
@@ -343,7 +359,8 @@ extension CatalogEvent {
             until: nil, untilLabel: "", startDate: real.startsAt,
             locationLabel: real.area,
             intro: introOrNil,
-            includedItems: itemsOrNil
+            includedItems: itemsOrNil,
+            location: real.location
         )
     }
 

@@ -29,7 +29,7 @@ test.describe('Event distance (km) reflects real location permission/coords, not
     // Grant location from Home's own area sheet (the app's real allow
     // path — sets `located: true` and requests a fresh position) BEFORE
     // navigating to Event Detail.
-    await page.getByText(/banbe ▪︎ Sài Gòn/).click();
+    await page.getByText(/banbe ▪︎ Tất cả/).click();
     await page.getByText('Dùng vị trí của tôi để xem khoảng cách').click();
     await expect(page.locator('[data-screen-label="Home"]')).toBeVisible();
 

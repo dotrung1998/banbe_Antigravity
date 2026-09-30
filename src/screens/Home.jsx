@@ -565,6 +565,11 @@ export default function Home() {
         // reaching this far.
         inviteOnly: e.visibility !== 'public',
         area: e.area,
+        // Location hierarchy (migration 112) — carried through so the
+        // shared curArea.match() (src/lib/locationTree.js) can place this
+        // card in the same tree node the area sheet shows it under.
+        countryCode: e.countryCode, stateProvince: e.stateProvince,
+        neighborhood: e.neighborhood, city: e.city,
         meta: `${e.area}${e.area && overrides.when ? ' ▪︎ ' : ''}${overrides.when || ''}`,
         catDisplay: e.catLabel || e.catKey,
         price: e.priceVnd ? formatVnd(e.priceVnd) : 'Miễn phí',
@@ -650,14 +655,13 @@ export default function Home() {
   // real-events-only and pre-sorted (followed hosts first, then soonest —
   // see loadWeekendEvents' own comment); this only narrows by the two
   // shared filters and caps it to a compact strip.
-  const AREA_DISTRICT_MATCH = {
-    q1: a => a.includes('Quận 1'),
-    thaodien: a => a.includes('Thảo Điền'),
-    binhthanh: a => a.includes('Bình Thạnh'),
-    other: a => !a.includes('Quận 1') && !a.includes('Thảo Điền') && !a.includes('Bình Thạnh'),
-  };
+  // Location hierarchy (2026-09-30) — the second, duplicated
+  // AREA_DISTRICT_MATCH table that used to live here is gone: the weekend
+  // strip now uses the SAME curArea.match() the main feed above does
+  // (src/lib/locationTree.js's eventMatchesLocation), so the two can
+  // never disagree about which events are "in" the selected location.
   const weekendList = useMemo(() => (s.weekendEvents || [])
-    .filter(e => (AREA_DISTRICT_MATCH[curArea.key] || (() => true))(e.area))
+    .filter(e => curArea.match(e))
     .filter(e => s.filter === 'all' || e.catKey === s.filter)
     .slice(0, 12)
     .map(e => ({
@@ -665,7 +669,7 @@ export default function Home() {
       saved: isSaved(e.key),
       priceDisplay: e.priceLabel || T('Miễn phí', 'Free'),
       seatsDisplay: e.soldOut ? T('Hết chỗ', 'Sold out') : (e.seatsRemaining != null ? T(e.seatsRemaining + ' chỗ trống', e.seatsRemaining + ' left') : ''),
-    })), [s.weekendEvents, curArea.key, s.filter, isSaved, T]);
+    })), [s.weekendEvents, curArea, s.filter, isSaved, T]);
 
   const heldKey = heldEv ? heldEv.key : null;
   const savedKeys = [...new Set([...s.favorites, ...s.attending, ...s.invited, ...(heldKey ? [heldKey] : [])])];
@@ -783,7 +787,7 @@ export default function Home() {
                 match the language toggle's size/weight/hit-area (13px/600,
                 4px vertical padding) instead of the smaller 11px/400 they'd
                 been left at when the language toggle was enlarged. */}
-            <span onClick={openArea} style={{ fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer', padding: '4px 2px' }}>banbe ▪︎ {curArea.key === 'all' ? 'Sài Gòn' : curArea.label} ▾</span>
+            <span onClick={openArea} data-testid="home-area-toggle" style={{ fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer', padding: '4px 2px' }}>banbe ▪︎ {curArea.key === 'all' ? T('Tất cả', 'All') : curArea.label} ▾</span>
             <span style={{ fontSize: 9, color: ink, opacity: 0.4 }}>▪</span>
             <span onClick={toggleTheme} data-testid="home-theme-toggle" style={{ fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer', padding: '4px 2px' }}>{s.theme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}</span>
           </div>

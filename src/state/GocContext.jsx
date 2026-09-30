@@ -8,6 +8,7 @@ import { msUntil, liveEventOverrides, thisWeekendWindow, formatVnEventDate } fro
 import { normalizeProofFile } from '../lib/proofUpload.js';
 import { POLICY_VERSION } from '../lib/policy.js';
 import { refundClaimPresentation } from '../lib/refundPresentation.js';
+import { buildLocationTree, eventMatchesLocation, locationShortLabel, migrateLegacyAreaKey, LOCATION_ALL } from '../lib/locationTree.js';
 
 const GocCtx = createContext(null);
 
@@ -87,6 +88,13 @@ function shapeRealEvent(row, extra = {}) {
     city: row.city || '',
     postalCode: row.postal_code || '',
     addressVerified: !!row.address_verified,
+    // Location hierarchy (migration 112) — additive, nullable. Read by
+    // src/lib/locationTree.js to build the area picker's tree and to match
+    // events against a selected node; `area`/`city` above keep their
+    // existing meaning unchanged.
+    countryCode: row.country_code || '',
+    stateProvince: row.state_province || '',
+    neighborhood: row.neighborhood || '',
     // Keyword-search fix (migration 108) — free-text keywords a search on
     // Map matches against, in addition to name/district. Defaults to the
     // event's own category label(s) at create/resubmit time when a host
@@ -105,7 +113,7 @@ function shapeRealEvent(row, extra = {}) {
 // `withdrawn_at` added for AdminEvents.jsx's own detailed review section
 // (booking-approval mode + withdrawal history); additive, same table, no
 // new join, so every other existing reader of this constant is unaffected.
-const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, approval, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, withdrawal_reason, withdrawn_at, cover_image, included, included_items, intro, address_line, city, postal_code, address_verified, keywords';
+const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, approval, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, withdrawal_reason, withdrawn_at, cover_image, included, included_items, intro, address_line, city, postal_code, address_verified, keywords, country_code, state_province, neighborhood';
 
 /** A real event's own selected `cover_image` (migration 087) resolved to a
  * public URL, falling back to `fallbackUrl` (the first `event_photos` row
@@ -779,6 +787,13 @@ const initialState = {
   createDistrict: '',
   createCity: '',
   createPostalCode: '',
+  // Location hierarchy (migration 112) — captured from the confirmed
+  // Nominatim suggestion (shapeAddressSuggestion) alongside the fields
+  // above and sent as the RPCs' own optional p_country_code/
+  // p_state_province/p_neighborhood. Empty = "unknown", sent as NULL.
+  createCountryCode: '',
+  createStateProvince: '',
+  createNeighborhood: '',
   createLocConfirmed: false,
   createAddressSuggestions: [],
   createAddressSearching: false,
@@ -1023,14 +1038,11 @@ const HOME_FILTER_STATE_KEY = {
   soldOut: 'filterSoldOut', upcoming: 'filterUpcoming', ended: 'filterEnded',
 };
 
-export const AREAS = [
-  { key: 'all', label: 'Toàn Sài Gòn', match: () => true },
-  { key: 'q1', label: 'Quận 1', match: e => e.meta.includes('Quận 1') },
-  { key: 'thaodien', label: 'Thảo Điền', match: e => e.meta.includes('Thảo Điền') },
-  { key: 'binhthanh', label: 'Bình Thạnh', match: e => e.meta.includes('Bình Thạnh') },
-  { key: 'other', label: 'Quận khác', match: e => !e.meta.includes('Quận 1') && !e.meta.includes('Thảo Điền') && !e.meta.includes('Bình Thạnh') },
-  { key: 'danang', label: 'Đà Nẵng', match: () => false },
-];
+// Location hierarchy (2026-09-30, migration 112) — the old hardcoded
+// `AREAS` table (6 fixed keys, each a hand-rolled `e.meta.includes(...)`
+// predicate) is replaced by the data-driven tree in src/lib/locationTree.js.
+// `s.area` now holds a location node id ('all' | 'loc:VN|a:Bình Thạnh' | …);
+// an old key ('q1', 'thaodien', …) is migrated by migrateLegacyAreaKey().
 
 // Predefined reasons — an organizer reversing a check-in or cancelling a paid
 // booking must pick one of these (no free text) so the guest's notification
@@ -4784,7 +4796,25 @@ export function GocProvider({ children }) {
     }
   }, [s.storyCreateBusy, loadHomeStories]);
 
-  const curArea = AREAS.find(a => a.key === s.area) || AREAS[0];
+  // Location hierarchy — ONE tree for the area sheet, built from the same
+  // browsable discovery set the old AreaSheet counted (static demo events
+  // that aren't cancelled/ended/invite-only + real live public events), so
+  // a node's count still matches what Home's feed actually shows for it.
+  // Never built from (or applied to) this account's own tickets/bookings.
+  const locationTree = useMemo(() => buildLocationTree([
+    ...EVENTS.filter(e => !e.cancelled && e.endedHoursAgo == null && !e.inviteOnly),
+    ...(s.discoveryEvents || []).filter(e => e.status === 'live' && e.visibility === 'public'),
+  ]), [s.discoveryEvents]);
+  // Same { key, label, match } shape every existing `curArea` consumer
+  // already reads (Home header/empty-state, Home feed + weekend strip,
+  // MapExplore) — `match` is the one shared "event is in the selected node
+  // or any of its descendants" check, `label` a short header label.
+  const curAreaKey = migrateLegacyAreaKey(s.area);
+  const curArea = useMemo(() => ({
+    key: curAreaKey,
+    label: locationShortLabel(curAreaKey, s.lang),
+    match: (e) => eventMatchesLocation(e, curAreaKey),
+  }), [curAreaKey, s.lang]);
 
   // ---- organizer mode ----
   // Any account can host: organizer mode is a switch on the profile, so
@@ -5077,6 +5107,7 @@ export function GocProvider({ children }) {
       createName: '', createCats: [], createDesc: '',
       createLoc: '', createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false,
       createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
+      createCountryCode: '', createStateProvince: '', createNeighborhood: '',
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
       createEventDate: '', createEventTime: '', createPrice: '', createSeats: '',
       createIncludedItems: [], createIntro: '', createKeywords: '',
@@ -6052,7 +6083,11 @@ export function GocProvider({ children }) {
     persistAccountPreference({ locale: next });
   }, [set, EN, persistAccountPreference]);
   const openArea = useCallback(() => set({ areaAsking: true }), [set]);
-  const pickArea = useCallback((key) => set({ area: key, areaAsking: false }), [set]);
+  // `s.area` is in-memory only (initialState 'all'; never written to
+  // localStorage/`banbe.preferences` or the profile) — same mechanism as
+  // before, just a location node id now. Old keys are migrated on the way
+  // in so a stale caller/deep link can't store an unmatchable value.
+  const pickArea = useCallback((key) => set({ area: migrateLegacyAreaKey(key), areaAsking: false }), [set]);
   const requestFreshCoords = useCallback(() => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
@@ -6086,7 +6121,7 @@ export function GocProvider({ children }) {
   // ---- filter ----
   const pickFilter = useCallback((key) => set({ filter: key }), [set]);
   const clearFilters = useCallback(() => set({
-    filter: 'all', area: 'all',
+    filter: 'all', area: LOCATION_ALL,
     filterAttending: false, filterSaved: false, filterSoldOut: false,
     filterNotConfirmed: false, filterUpcoming: false, filterEnded: false,
   }), [set]);
@@ -7242,6 +7277,15 @@ export function GocProvider({ children }) {
     const district = (addr.suburb || addr.city_district || addr.quarter || addr.district || addr.town || '').trim();
     const city = (addr.city || addr.state || addr.province || '').trim();
     const postalCode = (addr.postcode || '').trim();
+    // Location hierarchy (migration 112) — previously discarded. Nominatim
+    // returns `country_code` lowercase ("vn"); `state`/`province` is often
+    // ABSENT for Ho Chi Minh City rows (treated as a municipality) and
+    // present elsewhere (Da Lat -> "Tỉnh Lâm Đồng"); `neighbourhood`/
+    // `quarter` only sometimes. Any of these may legitimately be null —
+    // never a reason to reject the suggestion.
+    const countryCode = (addr.country_code || '').trim().toUpperCase().slice(0, 2) || null;
+    const stateProvince = (addr.state || addr.province || '').trim().slice(0, 100) || null;
+    const neighborhood = (addr.neighbourhood || addr.quarter || '').trim().slice(0, 100) || null;
     let addressLine = '';
     let isVenue = false;
     if (houseNumber && road) {
@@ -7259,6 +7303,7 @@ export function GocProvider({ children }) {
     return {
       id: String(hit.place_id ?? `${lat},${lng}`),
       addressLine, district, city, postalCode, isVenue, lat, lng,
+      countryCode, stateProvince, neighborhood,
       label: hit.display_name || [addressLine, district, city].filter(Boolean).join(', '),
     };
   }
@@ -7300,6 +7345,7 @@ export function GocProvider({ children }) {
     set({
       createLoc: value, createLocConfirmed: false, createLat: null, createLng: null,
       createLocLabel: '', createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
+      createCountryCode: '', createStateProvince: '', createNeighborhood: '',
       createAddressSuggestions: [], createAddressSearchError: '',
     });
     const query = value.trim();
@@ -7320,6 +7366,8 @@ export function GocProvider({ children }) {
     set({
       createAddressLine: suggestion.addressLine, createDistrict: suggestion.district,
       createCity: suggestion.city, createPostalCode: suggestion.postalCode,
+      createCountryCode: suggestion.countryCode || '', createStateProvince: suggestion.stateProvince || '',
+      createNeighborhood: suggestion.neighborhood || '',
       createLat: suggestion.lat, createLng: suggestion.lng,
       createLocLabel: suggestion.label, createLocConfirmed: true,
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
@@ -7329,6 +7377,7 @@ export function GocProvider({ children }) {
   /** "Adjust" — clears the confirmed selection so the host can search again, without losing what they'd typed. */
   const clearCreateAddressSelection = useCallback(() => set({
     createAddressLine: '', createDistrict: '', createCity: '', createPostalCode: '',
+    createCountryCode: '', createStateProvince: '', createNeighborhood: '',
     createLat: null, createLng: null, createLocLabel: '', createLocConfirmed: false,
   }), [set]);
   const createEventDateType = useCallback((e) => set({ createEventDate: e.target.value }), [set]);
@@ -7551,6 +7600,13 @@ export function GocProvider({ children }) {
           p_lat: s.createLat, p_lng: s.createLng,
           p_address_line: s.createAddressLine.trim(), p_city: s.createCity.trim(),
           p_postal_code: s.createPostalCode.trim(), p_address_verified: true,
+          // Location hierarchy (migration 112) — optional trailing params.
+          // NULL (never '') when unknown: resubmit_event_for_review
+          // COALESCEs a NULL back to the row's existing value, while ''
+          // would be NULLIF'd into actively clearing it.
+          p_country_code: s.createCountryCode.trim() || null,
+          p_state_province: s.createStateProvince.trim() || null,
+          p_neighborhood: s.createNeighborhood.trim() || null,
         });
         if (error) throw error;
         if (data?.success === false) throw new Error(data.error);
@@ -7575,6 +7631,13 @@ export function GocProvider({ children }) {
           p_lat: s.createLat, p_lng: s.createLng,
           p_address_line: s.createAddressLine.trim(), p_city: s.createCity.trim(),
           p_postal_code: s.createPostalCode.trim(), p_address_verified: true,
+          // Location hierarchy (migration 112) — optional trailing params.
+          // NULL (never '') when unknown: resubmit_event_for_review
+          // COALESCEs a NULL back to the row's existing value, while ''
+          // would be NULLIF'd into actively clearing it.
+          p_country_code: s.createCountryCode.trim() || null,
+          p_state_province: s.createStateProvince.trim() || null,
+          p_neighborhood: s.createNeighborhood.trim() || null,
         });
         if (error) throw error;
         eventId = data?.id || null;
@@ -7668,7 +7731,7 @@ export function GocProvider({ children }) {
     } finally {
       createSubmitInFlightRef.current = false;
     }
-  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createLat, s.createLng, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
+  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createCountryCode, s.createStateProvince, s.createNeighborhood, s.createLat, s.createLng, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
 
   /**
@@ -7705,6 +7768,8 @@ export function GocProvider({ children }) {
       createLocLabel: real.addressVerified ? [real.addressLine, real.area, real.city].filter(Boolean).join(', ') : '',
       createAddressLine: real.addressLine || '', createDistrict: real.area || '',
       createCity: real.city || '', createPostalCode: real.postalCode || '',
+      createCountryCode: real.countryCode || '', createStateProvince: real.stateProvince || '',
+      createNeighborhood: real.neighborhood || '',
       createLocConfirmed: !!real.addressVerified,
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
       createEventDate: real.eventDate || '', createEventTime: real.eventTime ? real.eventTime.slice(0, 5) : '',
@@ -8397,7 +8462,7 @@ export function GocProvider({ children }) {
   }, [notifyCheckIn, s.attendanceEventKey, loadAttendanceGuests]);
 
   const value = useMemo(() => ({
-    state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
+    state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
     isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
     loadNotifications, loadInboxThreads,
@@ -8433,7 +8498,7 @@ export function GocProvider({ children }) {
     pickCreateCat, pickCreatePalette, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
-    s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea,
+    s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
     isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
     loadNotifications, loadInboxThreads,

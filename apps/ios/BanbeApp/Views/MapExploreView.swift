@@ -68,6 +68,10 @@ struct MapExploreView: View {
     // (mirrors `hadRestoredState`'s own one-shot capture), so a later
     // unrelated re-render can't re-focus the field out from under the user.
     @State private var searchQuery = ""
+    // Location hierarchy (migration 112) — Map's own presentation of the
+    // shared location picker (selection itself is `app.area`, shared with
+    // Home).
+    @State private var locationPickerOpen = false
     // Map search-focus fix (2026-09-28, fifth pass) — plain `@State`, not
     // `@FocusState`. See `FocusableTextField`'s own doc comment
     // (Components.swift) for the confirmed reason: `@FocusState` itself
@@ -492,6 +496,12 @@ struct MapExploreView: View {
             // 5s freshness poll (`app.loadMapEvents` never touches `catFilter`).
             withAnimation(.easeOut(duration: 0.28)) { sheetDetent = .fraction(0.45) }
         }
+        .onChange(of: app.area) { _, _ in
+            // Same MID-snap a genuine category/"Còn chỗ" change gets; no
+            // camera move, no location request.
+            guard !isPreview else { return }
+            withAnimation(.easeOut(duration: 0.28)) { sheetDetent = .fraction(0.45) }
+        }
         .onChange(of: openNowOnly) { _, _ in
             // B2 — "Còn chỗ" excludes events the same way the category
             // chips do, so it gets the same MID-snap; it does NOT get
@@ -524,6 +534,10 @@ struct MapExploreView: View {
         }
         .sheet(isPresented: $sheetPresented) {
             sheetContent
+                .sheet(isPresented: $locationPickerOpen) {
+                    MapLocationPickerSheet(isPresented: $locationPickerOpen)
+                        .environmentObject(app)
+                }
                 // ANIMATION REQUIREMENT (11-realtime-map.md follow-up): a
                 // soft "bubble" settle layered ON TOP of the system's own
                 // slide-up-from-bottom sheet presentation — SwiftUI doesn't
@@ -1223,6 +1237,11 @@ struct MapExploreView: View {
         var list = app.mapEvents
         if catFilter != "all" { list = list.filter { effectiveCatKey($0) == catFilter } }
         if openNowOnly { list = list.filter { ($0.seatsRemaining ?? 0) > 0 } }
+        // Location hierarchy (migration 112) — Map previously applied NO
+        // location filter at all (same bug as web's MapExplore.jsx). Now
+        // the same `app.area` node selection Home uses, ANDed with the
+        // filters above. Pure data filter — never touches GPS/permission.
+        if app.area != LocationHierarchy.allID { list = list.filter { app.matchesArea($0) } }
         // Home quick event search (2026-09-27) — a by-name/area/keywords
         // text filter, ANDed with the filters above; never a second search
         // index (same `app.mapEvents` this screen already loads).
@@ -1344,6 +1363,14 @@ struct MapExploreView: View {
             .padding(.top, 8)
 
             HStack(spacing: 8) {
+                Text("\(app.currentAreaLabel) ▾")
+                    .font(.system(size: 11, weight: app.area == LocationHierarchy.allID ? .regular : .bold))
+                    .lineLimit(1)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(.thinMaterial, in: Capsule())
+                    .onTapGesture { locationPickerOpen = true }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityIdentifier("map.area")
                 Text(app.T("Còn chỗ", "Open now"))
                     .font(.system(size: 11, weight: openNowOnly ? .bold : .regular))
                     .padding(.horizontal, 10).padding(.vertical, 5)
