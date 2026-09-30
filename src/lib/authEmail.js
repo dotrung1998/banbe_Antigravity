@@ -15,7 +15,7 @@ async function postJson(path, body) {
   return payload;
 }
 
-// Sends a 6-digit sign-in/sign-up code by email. The caller still has to
+// Sends a 8-digit sign-in/sign-up code by email. The caller still has to
 // finish the flow with supabase.auth.verifyOtp({ email, token, type }) —
 // this only triggers the email, it never returns a session. `locale` only
 // actually matters for a brand-new signup (an existing login's email

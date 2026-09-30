@@ -79,7 +79,7 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    /// Requests a 6-digit sign-in/sign-up code by email — via
+    /// Requests a 8-digit sign-in/sign-up code by email — via
     /// AuthAPIService (Gmail delivery through the same Vercel function the
     /// web app uses), not Supabase's own `signInWithOTP`. Supabase's
     /// built-in mailer is capped at a handful of emails per hour on this

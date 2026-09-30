@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Port of src/screens/Login.jsx — a Log in/Sign up toggle, then either an
-/// emailed 6-digit code or an email + password, the same two methods the
+/// emailed 8-digit code or an email + password, the same two methods the
 /// web app offers. There is no "sign in via link": that used to be
 /// requested with a `banbe://login-callback` redirect no URL scheme was
 /// ever registered for. The social buttons are still web-only.

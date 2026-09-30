@@ -47,7 +47,7 @@ struct AuthAPIError: LocalizedError {
 /// rate-limited to only a handful of emails per hour and fails immediately
 /// in practice, where these functions send via Gmail with no such limit.
 enum AuthAPIService {
-    /// Requests a 6-digit sign-in/sign-up code by email. Verifying it is
+    /// Requests a 8-digit sign-in/sign-up code by email. Verifying it is
     /// still done directly against Supabase — see AuthViewModel.verifyEmailCode.
     static func requestEmailCode(email: String, mode: AuthMode, displayName: String? = nil) async throws {
         var body: [String: String] = ["type": "send_email_code", "email": email, "mode": mode.rawValue]
@@ -58,7 +58,7 @@ enum AuthAPIService {
     }
 
     /// Creates an account with a password of the person's own choosing.
-    /// Like the code path this still finishes with the emailed 6-digit
+    /// Like the code path this still finishes with the emailed 8-digit
     /// confirmation (verified as `.signup`) — the account exists but is
     /// unconfirmed until then. Mirrors src/lib/authEmail.js's
     /// requestPasswordSignup.

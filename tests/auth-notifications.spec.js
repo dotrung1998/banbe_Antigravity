@@ -242,7 +242,7 @@ test.describe('Login & Signup Notification Messages', () => {
     await page.locator('[data-screen-label="Login"]').getByText(/Gửi mã đăng nhập/).click();
 
     await expect(page.locator('[data-screen-label="Login"]')).toHaveText(/Đã gửi mã tới email của bạn/);
-    await expect(page.locator('input[placeholder="6-digit code"], input[placeholder="Mã 6 số"]')).toBeVisible();
+    await expect(page.locator('input[placeholder="6-digit code"], input[placeholder="Mã 8 số"]')).toBeVisible();
   });
 
   test('points an existing email at the log-in tab instead of signing up again', async ({ page }) => {
