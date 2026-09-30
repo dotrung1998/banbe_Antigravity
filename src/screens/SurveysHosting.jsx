@@ -187,6 +187,15 @@ export default function SurveysHosting() {
               <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>
                 {T('Hạn', 'Deadline')}: {sv.closes_at ? new Date(sv.closes_at).toLocaleString('vi-VN') : '—'}
               </div>
+              {sv.status !== 'draft' && (
+                <div
+                  onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/surveys/${sv.public_id}`); }}
+                  style={{ fontSize: 11.5, opacity: 0.6, marginTop: 4, cursor: 'pointer', wordBreak: 'break-all' }}
+                  title={T('Bấm để sao chép', 'Tap to copy')}
+                >
+                  {`${window.location.origin}/surveys/${sv.public_id}`}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                 <span onClick={() => goSurveyPublic(sv.public_id, 'surveysHosting')} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}>{T('Xem trước', 'Preview')}</span>
                 {sv.status === 'draft' && (

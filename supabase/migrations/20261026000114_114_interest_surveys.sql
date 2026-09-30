@@ -30,7 +30,15 @@ CREATE TABLE IF NOT EXISTS surveys (
   -- Short, unguessable-enough public identifier for the browser route —
   -- NOT the primary key, so it can be regenerated/rotated later without
   -- touching foreign keys, same reasoning as events.slug vs events.id.
-  public_id text NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(9), 'base64'),
+  -- pgcrypto lives in the `extensions` schema on Supabase, not `public` —
+  -- schema-qualified because a column DEFAULT expression is resolved at
+  -- CREATE TABLE time against the plain connection search_path, which has
+  -- no equivalent of a function's own `SET search_path` to fall back on.
+  -- (Confirmed live: an unqualified gen_random_bytes() call here is
+  -- exactly what failed a real `supabase db push` with "function
+  -- gen_random_bytes(integer) does not exist" — this is the fix, not a
+  -- guess.)
+  public_id text NOT NULL UNIQUE DEFAULT encode(extensions.gen_random_bytes(9), 'base64'),
   title text NOT NULL,
   description text NOT NULL DEFAULT '',
   status survey_status NOT NULL DEFAULT 'draft',
