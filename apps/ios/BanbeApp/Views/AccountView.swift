@@ -1037,6 +1037,30 @@ struct AccountView: View {
                     badge: app.myOrganizerInvites.count + app.myEventCredits.count,
                     topPadding: 8
                 )
+                // Interest surveys (Slice B) — a standalone screen
+                // (SurveysHostingView), not a case inside AccountGroupView's
+                // switch, since it has its own tabs (Active/Closed/
+                // Suggested Drafts) and a create form, not a simple flat
+                // list. Badge honestly 0 for now — the unseen/actionable
+                // candidate count this badge is meant to carry (candidate
+                // generation) is not implemented yet.
+                Button { app.screen = .surveysHosting } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checklist")
+                            .font(.system(size: 16, weight: .medium))
+                            .frame(width: 30, height: 30)
+                            .background((ROW_ACCENT_COLORS["hostOps"] ?? .clear).opacity(0.33), in: Circle())
+                        Text(app.T("Khảo Sát & Ý Tưởng Sự Kiện", "Surveys & Event Ideas")).font(.system(size: 14))
+                        Spacer()
+                        Text("›").font(.system(size: 15))
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(16)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 8)
+                .accessibilityIdentifier("account.group.surveys")
             }
         }
     }

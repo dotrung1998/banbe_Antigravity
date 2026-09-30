@@ -24,13 +24,14 @@ struct EventDetailView: View {
     // belongs to `event.key`, since this is a single-event query), not just
     // a bare URL — see `PhotoGalleryItem`'s own doc comment.
     private var realPhotos: [PhotoGalleryItem] {
+        // Strict invite-only events (migration 113) — app.eventPhotoURLs
+        // is already resolved by loadEventPhotos (public getPublicURL or a
+        // private-bucket signed URL); a photo with no resolved URL yet
+        // (still loading, or resolution failed) is simply omitted rather
+        // than shown broken.
         app.eventPhotos.compactMap { photo in
-            let relative = photo.storagePath.hasPrefix("event-photos/")
-                ? String(photo.storagePath.dropFirst("event-photos/".count))
-                : photo.storagePath
-            guard let url = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative).absoluteString
-            else { return nil }
-            return PhotoGalleryItem(id: photo.id.uuidString.lowercased(), url: url, eventId: event.key)
+            guard let url = app.eventPhotoURLs[photo.id] else { return nil }
+            return PhotoGalleryItem(id: photo.id.uuidString.lowercased(), url: url.absoluteString, eventId: event.key)
         }
     }
 

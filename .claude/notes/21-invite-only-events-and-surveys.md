@@ -1,14 +1,17 @@
 # Strict invite-only events + interest surveys — domain note
 
-## Status: PARTIALLY WORKING (mostly web; iOS booking-path fix included). Read this before touching invite-only events, event photo privacy, or surveys again.
+## Status: PARTIALLY WORKING, web AND iOS. Read this before touching invite-only events, event photo privacy, or surveys again.
 
 Slice A (invite-only events) backend is real and tested, including the
 **critical fix described below** (the actual booking RPC, not just the one
-originally gated). Slice B (interest surveys) backend + a functional web
-host/respondent UI + the dedicated browser route are real and tested.
-Slices C (candidate generation) and D (surveys in stories) are **not
-started**. Host invite-management UI, invite email delivery, and
-EventDetail accept/decline for event invites are also **not started**.
+originally gated) — web AND iOS both create/read/book through it, and iOS
+has the same private-bucket-aware photo resolution as web. Slice B
+(interest surveys) backend + a functional web AND iOS host/respondent UI
+are real and tested/build-clean; the dedicated browser route is web-only
+by nature. Slices C (candidate generation) and D (surveys in stories) are
+**not started**, on either platform. Host invite-management UI, invite
+email delivery, and EventDetail accept/decline for event invites are also
+**not started**, on either platform.
 
 ## Slice A — Strict invite-only events
 
@@ -136,9 +139,21 @@ identities (`request.jwt.uid` session var standing in for `auth.uid()`):
 - **EventDetail accept/decline banner** for event invites — an invitee
   lands on the event (RLS-permitted) but there's no UI surfacing "you're
   invited, accept/decline."
-- **iOS**: only the two fixes above (Map query, error message, "+1" copy)
-  — no invite RPC calls, no accept/decline, no private-bucket-aware photo
-  loading on iOS.
+- **iOS is now at full parity with web for what web itself has**:
+  `CreateEventView` (OnboardingViews.swift) has the same Public/Invite-only
+  toggle, persisted via the same `set_event_visibility` RPC; photo uploads
+  route to `event-photos-private` for invite-only events
+  (`reconcileEventMedia`); a new `resolveEventPhotoURL` helper
+  (AppState+Data.swift) resolves signed URLs for the private bucket and is
+  now used everywhere an event photo is displayed (EventDetailView's
+  gallery, CreateEventView's edit-seed, AdminEventsView's review gallery
+  via `loadEventGalleryURLs`, notification thumbnails via
+  `firstPhotoURLByEvent`); `loadMapEvents` (the Map screen's real query,
+  found to have the exact same missing-visibility-filter bug as web's
+  `MapExplore.jsx`) is fixed; `hold_seats`'s `INVITE_REQUIRED` error maps
+  to the same truthful message. Still not done, either platform: invite
+  RPC calls (create/revoke/accept/decline/redeem) have no UI at all yet —
+  see the bullets above, unchanged by the iOS work.
 - **Organizer public-profile stats leak (found, not fixed)**: `get_
   organizer_profile` (095) and the organizer public team page (100) count
   `event_count`/`hosting_since_year` over `status IN ('live','ended')`
@@ -283,8 +298,22 @@ written to any deployed database.
   rate-limits via the existing OTP/email-code infra (`otp_codes.attempts`)
   reused for sign-in. No NEW request-throttling infra (e.g. a sliding
   window) was added.
-- **iOS** — no survey code at all on iOS this pass (no screens, no RPC
-  calls).
+- **iOS now has full survey parity with web**: `AppState+Surveys.swift`
+  (models + every RPC call — `get_survey_public`, `submit_survey_response`,
+  `create_survey`/`publish`/`close`/`archive_survey`, `loadMySurveys`,
+  `loadMySurveyResponse`), `SurveyPublicView.swift` (one screen for both
+  in-app navigation and the `/surveys/<publicId>` universal-link deep link
+  — `handleUniversalLink` in AppState+Profile.swift now recognizes a
+  `surveys` path segment the same way it already does `u`/`org`; actual
+  resolution still needs the real Team ID for Associated Domains, same
+  documented caveat as every other universal link in this app, see note
+  17), `SurveysHostingView.swift` (Active/Closed/Suggested-Drafts tabs,
+  create form, copyable link), a new Account → Hosting entry point.
+  `xcodebuild -scheme PersonalTeamDebug ... build` → BUILD SUCCEEDED after
+  adding all of this. No draft-persistence-through-sign-in mechanism was
+  needed on iOS the way web's `sessionStorage` fix was — the app itself is
+  the durable session, so there's no "browser tab reload mid-auth" failure
+  mode to guard against.
 - **Slice C (candidate generation)** — not started. Schema was shaped
   with this in mind (`date_options`/`location_options` stored as
   queryable arrays per response) so a later deterministic scoring pass
@@ -331,3 +360,7 @@ list` could not be run here. Before either is live:
 - As the host, publish a survey, submit a response from a second account,
   confirm it appears in `SurveysHosting`'s Active tab; close it early;
   confirm the browser page now shows "closed" and rejects a new submit.
+- iOS: repeat the Invite-only toggle + photo-upload check in the app's own
+  Create Event flow; open Account → Hosting → "Khảo Sát & Ý Tưởng Sự Kiện"
+  and create/publish/close a survey from the phone; tap "Xem trước" and
+  confirm the in-app survey form matches the browser version's behavior.

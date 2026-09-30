@@ -464,6 +464,7 @@ extension AppState {
         switch parts[0] {
         case "u": openPublicProfile(handle: parts[1].lowercased(), back: .home)
         case "org": openOrganizerProfile(organizerID: parts[1], back: .home)
+        case "surveys": Task { await self.openSurveyPublic(publicID: parts[1], back: .home) }
         default: break
         }
     }

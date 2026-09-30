@@ -361,11 +361,13 @@ struct CreateEventView: View {
         guard seededForEventID != editID, !app.eventPhotosLoading else { return }
         seededForEventID = editID
         let cover = app.myOrgEventSummaries.first(where: { $0.id == editID })?.coverImage
+        // Strict invite-only events (migration 113) — loadEventPhotos
+        // already resolves each row's display URL (public getPublicURL or
+        // a private-bucket signed URL), so this no longer needs its own
+        // synchronous (and, for a private path, simply wrong) getPublicURL
+        // call.
         let seeded: [StagedGalleryItem] = app.eventPhotos.map { photo in
-            let relative = photo.storagePath.hasPrefix("event-photos/")
-                ? String(photo.storagePath.dropFirst("event-photos/".count)) : photo.storagePath
-            let url = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative)
-            return StagedGalleryItem(id: photo.id.uuidString, kind: .existing(photoID: photo.id, storagePath: photo.storagePath), url: url)
+            StagedGalleryItem(id: photo.id.uuidString, kind: .existing(photoID: photo.id, storagePath: photo.storagePath), url: app.eventPhotoURLs[photo.id])
         }
         galleryItems = seeded
         seededExistingIDs = Set(app.eventPhotos.map(\.id))
@@ -944,6 +946,36 @@ struct CreateEventView: View {
                             .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
                     }
 
+                    // Strict invite-only events (migration 113) — a peer of
+                    // every other field here, not a separate "advanced"
+                    // section: it changes who can even discover the event.
+                    // Deliberately separate from approval mode (not exposed
+                    // in this form) and admin review — private is not
+                    // auto-approved, per set_event_visibility's own comment.
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(app.T("Quyền riêng tư", "Privacy")).font(.system(size: 11.5))
+                        HStack(spacing: 8) {
+                            ForEach([("public", "Công khai", "Public"), ("invite", "Chỉ mời", "Invite-only")], id: \.0) { key, vi, en in
+                                let active = app.createVisibility == key
+                                Button { app.createVisibility = key } label: {
+                                    Text(app.T(vi, en))
+                                        .font(.system(size: 13))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 10)
+                                        .background(active ? app.palette.ink : .clear, in: RoundedRectangle(cornerRadius: 10))
+                                        .foregroundStyle(active ? app.palette.paper : app.palette.ink)
+                                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(active ? .clear : app.palette.rule))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("create-visibility-\(key)")
+                            }
+                        }
+                        Text(app.createVisibility == "invite"
+                             ? app.T("Chỉ người được mời mới thấy và đặt được sự kiện này. Bạn vẫn cần được banbe duyệt.", "Only invited people can see or book this event. It still needs banbe approval.")
+                             : app.T("Ai cũng có thể tìm thấy và đặt sự kiện này.", "Anyone can discover and book this event."))
+                            .font(.system(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
+                    }
+
                     HStack(spacing: 4) {
                         Text(app.T("Hạng mục ▪︎ chọn tối đa 2", "Categories ▪︎ up to 2"))
                             .font(.system(size: 11.5))
@@ -1287,6 +1319,7 @@ private struct CreateEventReviewSheet: View {
                             row(app.T("Địa chỉ", "Address"), addressLabel)
                             row(app.T("Số chỗ", "Capacity"), app.createSeats.isEmpty ? app.T("Chưa nhập", "Not set") : app.createSeats)
                             row(app.T("Giá vé", "Price"), app.createPrice.isEmpty ? app.T("Miễn phí", "Free") : app.createPrice)
+                            row(app.T("Quyền riêng tư", "Privacy"), app.createVisibility == "invite" ? app.T("Chỉ mời", "Invite-only") : app.T("Công khai", "Public"))
                             if !app.createDesc.trimmingCharacters(in: .whitespaces).isEmpty {
                                 row(app.T("Mô tả", "Description"), app.createDesc.trimmingCharacters(in: .whitespaces))
                             }

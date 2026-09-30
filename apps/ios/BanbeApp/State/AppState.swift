@@ -22,6 +22,8 @@ enum Screen: String {
     case reports
     case organizerTeam
     case accountGroup
+    case surveyPublic
+    case surveysHosting
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -301,7 +303,7 @@ final class AppState: ObservableObject {
     // pre-existing gap, out of scope in the prior ticket); now directly
     // in scope, since a signed-out Team page visitor must be able to tap
     // a member card through to their public profile.
-    static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .login, .policy, .organizerProfile, .organizerTeam, .publicProfile]
+    static let guestAllowedScreens: Set<Screen> = [.splash, .langPick, .themePick, .login, .policy, .organizerProfile, .organizerTeam, .publicProfile, .surveyPublic]
 
     // MARK: - Screenshot Catalog (docs/demo-screenshots)
     // Test-only launch flags for `scripts/capture_ios_catalog.sh` /
@@ -564,6 +566,14 @@ final class AppState: ObservableObject {
     // (AppState+Data.swift).
     @Published var eventPhotos: [OrganizerPhoto] = []
     @Published var eventPhotosLoading = false
+    // Strict invite-only events (migration 113) — resolved display URL per
+    // photo id, populated by loadEventPhotos (AppState+Data.swift). A
+    // public event's photo resolves via the cheap synchronous
+    // getPublicURL(); an invite-only event's photo (storage_path prefixed
+    // 'event-photos-private/') needs a real signed-URL network call
+    // instead, which OrganizerPhoto's own Decodable init can't do inline —
+    // hence a separate map rather than a field on the model itself.
+    @Published var eventPhotoURLs: [UUID: URL] = [:]
     // STAGE C (2026-09-25) — Dashboard's real "add photo" upload flow.
     @Published var eventPhotoUploadBusy: [String: Bool] = [:]
     @Published var eventPhotoUploaded: [String: Bool] = [:]
@@ -1100,6 +1110,24 @@ final class AppState: ObservableObject {
     @Published var organizerProfileUpcoming: [OrganizerUpcomingEvent] = []
     @Published var organizerProfilePhotos: [OrganizerPhoto] = []
     @Published var organizerProfileExtrasLoadedFor = ""
+    // Interest surveys (Slice B, migration 114) — mirrors web's
+    // GocContext.jsx state field-for-field. `surveyPublic` is exactly
+    // get_survey_public()'s return shape (never raw table rows).
+    @Published var surveyPublic: SurveyPublic?
+    @Published var surveyPublicLoading = false
+    @Published var surveyPublicError = ""
+    @Published var surveyPublicBackScreen: Screen = .home
+    @Published var surveyPublicID = ""
+    @Published var mySurveyResponse: SurveyResponseRow?
+    @Published var mySurveyResponseLoading = false
+    @Published var surveyDraft = SurveyDraft()
+    @Published var surveyResponseSubmitting = false
+    @Published var surveyResponseError = ""
+    @Published var surveyResponseSuccess = false
+    @Published var mySurveys: [SurveySummary] = []
+    @Published var mySurveysLoading = false
+    @Published var mySurveyCreateBusy = false
+    @Published var mySurveyCreateError = ""
     // Account extension (2026-09-27, Stage 3) — one role-scoped KPI
     // dashboard (get_account_kpis, migration 097), reused for on-screen
     // cards, CSV/PDF/JSON export and PNG chart snapshots alike — see
@@ -1286,6 +1314,12 @@ final class AppState: ObservableObject {
     @Published var createEventTime: Date?
     @Published var createPrice = ""
     @Published var createSeats = ""
+    // Strict invite-only events (migration 113) — "public" | "invite",
+    // same field/values as web's `s.createVisibility` (GocContext.jsx).
+    // Deliberately separate from `events.approval` (not exposed in this
+    // form): visibility is who can even see/book the event; approval is
+    // whether a booking still needs the host's manual OK.
+    @Published var createVisibility = "public"
     @Published var createCats: [String] = []
     @Published var createSent = false
     @Published var createError = ""
@@ -2522,6 +2556,7 @@ final class AppState: ObservableObject {
         createEventTime = nil
         createPrice = ""
         createSeats = ""
+        createVisibility = "public"
         createIntro = ""
         // Never carry a previous session's confirmed address/coordinates
         // into an unrelated fresh event.
@@ -2722,6 +2757,8 @@ final class AppState: ObservableObject {
         // `isCommittingBack`/`dragTranslation` regardless, reading as
         // "snaps back to Team" once that animation finished.
         case .organizerTeam: backFromOrganizerTeam()
+        case .surveyPublic: screen = surveyPublicBackScreen
+        case .surveysHosting: screen = .profile
         case .reports: backFromReports()
         // Account IA pass (2026-09-27) — `accountTab` is never touched by
         // AccountGroupView, so returning to `.profile` always lands back
@@ -2812,6 +2849,8 @@ final class AppState: ObservableObject {
         case .editProfile: return .profile
         case .publicProfile: return publicProfileBackScreen
         case .organizerProfile: return organizerProfileBackScreen
+        case .surveyPublic: return surveyPublicBackScreen
+        case .surveysHosting: return .profile
         // iPhone fix pass (2026-09-27), Issue 4 — CONFIRMED root cause of
         // "edge-swipe on Team reveals Home instead of OrganizerProfile,
         // then snaps back to Team": `.organizerTeam` had no case here at

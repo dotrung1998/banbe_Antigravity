@@ -731,14 +731,23 @@ extension AppState {
     @discardableResult
     func reconcileEventMedia(
         eventID: String, newImages: [UIImage], coverNewIndex: Int?,
-        removeExistingIDs: [UUID], existingCoverPath: String?
+        removeExistingIDs: [UUID], existingCoverPath: String?, visibility: String = "public"
     ) async -> (uploaded: Int, failed: Int, removed: Int) {
+        // Strict invite-only events (migration 113) — an invite-only
+        // event's photos go to the SEPARATE, genuinely private
+        // 'event-photos-private' bucket (RLS-gated by host/admin/invited-
+        // status), never the public 'event-photos' bucket whose public
+        // URL bypasses RLS entirely. Public events are unaffected (same
+        // bucket/path as always). Mirrors web's identical fix
+        // (GocContext.jsx's reconcileEventMedia).
+        let bucketID = visibility == "invite" ? "event-photos-private" : "event-photos"
         var removed = 0
         for photoID in removeExistingIDs {
             if let row = eventPhotos.first(where: { $0.id == photoID }) {
-                let relative = row.storagePath.hasPrefix("event-photos/")
-                    ? String(row.storagePath.dropFirst("event-photos/".count)) : row.storagePath
-                _ = try? await SupabaseService.client.storage.from("event-photos").remove(paths: [relative])
+                let rowBucket = row.storagePath.hasPrefix("event-photos-private/") ? "event-photos-private" : "event-photos"
+                let relative = row.storagePath.hasPrefix("\(rowBucket)/")
+                    ? String(row.storagePath.dropFirst("\(rowBucket)/".count)) : row.storagePath
+                _ = try? await SupabaseService.client.storage.from(rowBucket).remove(paths: [relative])
             }
             do {
                 _ = try await SupabaseService.client.from("event_photos").delete().eq("id", value: photoID).execute()
@@ -754,9 +763,9 @@ extension AppState {
             guard let data = image.jpegData(compressionQuality: 0.85), data.count <= 50 * 1024 * 1024 else { continue }
             let path = "\(eventID)/\(Int(Date().timeIntervalSince1970 * 1000))-\(i).jpg"
             do {
-                _ = try await SupabaseService.client.storage.from("event-photos")
+                _ = try await SupabaseService.client.storage.from(bucketID)
                     .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
-                let storagePath = "event-photos/\(path)"
+                let storagePath = "\(bucketID)/\(path)"
                 _ = try await SupabaseService.client.from("event_photos")
                     .insert(NewEventPhoto(eventId: eventID, storagePath: storagePath)).execute()
                 uploaded += 1
@@ -944,6 +953,40 @@ extension AppState {
     /// (migration 001), so this needs no extra scoping beyond the event
     /// id itself — a viewer who can already reach this event's page (real
     /// `events` RLS already gated that) can see its real photos too.
+    /// Strict invite-only events (migration 113) — the ONLY correct way to
+    /// resolve an 'event-photos-private/…' storage_path (a real, RLS-
+    /// checked signed-URL network call via is_event_host()/has_event_
+    /// invite_access()/is_platform_admin(), same server-side policies as
+    /// web). A public-bucket path still resolves via the cheap synchronous
+    /// getPublicURL() building block. 1-hour signed URL — long enough for
+    /// one screen visit, short enough that a leaked link doesn't stay
+    /// valid indefinitely. Mirrors web's resolveEventPhotoUrlAsync
+    /// (GocContext.jsx) exactly.
+    func resolveEventPhotoURL(_ storagePath: String) async -> URL? {
+        if storagePath.hasPrefix("event-photos-private/") {
+            let relative = String(storagePath.dropFirst("event-photos-private/".count))
+            do {
+                // Same batch API this codebase already uses for every
+                // other private bucket (payment-documents, pay-qr) — no
+                // singular createSignedURL exists in this SDK version.
+                let results = try await SupabaseService.client.storage
+                    .from("event-photos-private")
+                    .createSignedURLs(paths: [relative], expiresIn: 3600)
+                for result in results {
+                    if case let .success(resultPath, signedURL) = result, resultPath == relative {
+                        return signedURL
+                    }
+                }
+                return nil
+            } catch {
+                print("resolveEventPhotoURL signed-url failed:", error)
+                return nil
+            }
+        }
+        let relative = storagePath.hasPrefix("event-photos/") ? String(storagePath.dropFirst("event-photos/".count)) : storagePath
+        return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative)
+    }
+
     func loadEventPhotos(eventID: String) async {
         eventPhotosLoading = true
         do {
@@ -952,6 +995,20 @@ extension AppState {
                 .eq("event_id", value: eventID)
                 .order("sort_order", ascending: true)
                 .execute().value
+            // Resolve every row's display URL BEFORE publishing `eventPhotos`
+            // — CreateEventView's `.onChange(of: app.eventPhotos)` seeds its
+            // gallery the instant that array changes and only ever seeds
+            // ONCE per edit session, so if `eventPhotoURLs` populated AFTER
+            // (a separate @Published property, its own later onChange this
+            // view doesn't watch), the seed would permanently lock in blank
+            // thumbnails for that session.
+            var resolvedURLs: [UUID: URL] = [:]
+            for photo in photos {
+                if let url = await resolveEventPhotoURL(photo.storagePath) {
+                    resolvedURLs[photo.id] = url
+                }
+            }
+            eventPhotoURLs = eventPhotoURLs.merging(resolvedURLs) { _, new in new }
             eventPhotos = photos
             eventPhotosLoading = false
             // Photo-interactions redesign (2026-09-26) — fire-and-forget,
@@ -981,11 +1038,16 @@ extension AppState {
                 .eq("event_id", value: eventID)
                 .order("sort_order", ascending: true)
                 .execute().value
-            return photos.compactMap { photo in
-                let relative = photo.storagePath.hasPrefix("event-photos/")
-                    ? String(photo.storagePath.dropFirst("event-photos/".count)) : photo.storagePath
-                return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative)
+            // Strict invite-only events (migration 113) — admin review
+            // must be able to see a pending invite-only event's photos too
+            // (is_event_host()/is_platform_admin() both grant the signed-
+            // URL RLS check), so this uses the same private-bucket-aware
+            // resolver as loadEventPhotos, not a bare getPublicURL.
+            var urls: [URL] = []
+            for photo in photos {
+                if let url = await resolveEventPhotoURL(photo.storagePath) { urls.append(url) }
             }
+            return urls
         } catch {
             print("loadEventGalleryURLs failed:", error)
             return []
@@ -1595,11 +1657,14 @@ extension AppState {
                     .in("event_id", values: Array(eventIDs))
                     .order("sort_order", ascending: true)
                     .execute().value
+                // Strict invite-only events (migration 113) — a
+                // notification thumbnail can legitimately belong to an
+                // invite-only event (e.g. the recipient's own booking
+                // confirmation), so this must resolve through the same
+                // async/private-bucket-aware helper, not a bare
+                // getPublicURL() that would silently 403 on it.
                 for p in photos where maps.eventPhotoByEventId[p.eventId] == nil {
-                    let relativePath = p.storagePath.hasPrefix("event-photos/")
-                        ? String(p.storagePath.dropFirst("event-photos/".count))
-                        : p.storagePath
-                    if let url = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relativePath) {
+                    if let url = await resolveEventPhotoURL(p.storagePath) {
                         maps.eventPhotoByEventId[p.eventId] = url
                     }
                 }
@@ -2807,15 +2872,24 @@ extension AppState {
     /// batch upload's sort_order reflects upload order, not cover status.
     private func resolveCoverURL(_ coverImagePath: String?) -> URL? {
         guard let path = coverImagePath, !path.isEmpty else { return nil }
+        // Strict invite-only events (migration 113) — this sync helper
+        // can't do a real network call for a private-bucket path
+        // (createSignedURL is async); every call site reachable here
+        // (discovery/Home/Organizer public surfaces) already excludes
+        // invite-only events by visibility filtering, so this is a
+        // defensive fallback, not the real gate — mirrors web's identical
+        // resolveCoverUrl decision (GocContext.jsx).
+        guard !path.hasPrefix("event-photos-private/") else { return nil }
         let relative = path.hasPrefix("event-photos/") ? String(path.dropFirst("event-photos/".count)) : path
         return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative)
     }
 
-    /// event_photos rows for `eventIds` -> first public photo URL per event —
-    /// same batching + bucket-name-doubling defensive strip
-    /// loadNotificationAvatarMaps' own eventPhotoByEventId uses (see that
-    /// function's comment). Factored out here so loadWeekendEvents and
-    /// loadRealEventsByID don't each reimplement it.
+    /// event_photos rows for `eventIds` -> first display photo URL per
+    /// event — same batching loadNotificationAvatarMaps' own
+    /// eventPhotoByEventId uses (see that function's comment). Factored
+    /// out here so loadWeekendEvents and loadRealEventsByID don't each
+    /// reimplement it. Already async, so this uses the real private-
+    /// bucket-aware resolver rather than a bare getPublicURL.
     private func firstPhotoURLByEvent(_ eventIds: [String]) async -> [String: URL] {
         guard !eventIds.isEmpty else { return [:] }
         var byEvent: [String: URL] = [:]
@@ -2826,10 +2900,7 @@ extension AppState {
                 .order("sort_order", ascending: true)
                 .execute().value
             for p in photos where byEvent[p.eventId] == nil {
-                let relativePath = p.storagePath.hasPrefix("event-photos/")
-                    ? String(p.storagePath.dropFirst("event-photos/".count))
-                    : p.storagePath
-                if let url = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relativePath) {
+                if let url = await resolveEventPhotoURL(p.storagePath) {
                     byEvent[p.eventId] = url
                 }
             }
@@ -4208,12 +4279,32 @@ extension AppState {
                 } catch {
                     print("set_event_keywords failed:", error)
                 }
+
+                // Strict invite-only events (migration 113) — same
+                // "separate, additive RPC" pattern as set_event_keywords
+                // just above, not a new positional param on
+                // create_event_draft/resubmit_event_for_review. Best-
+                // effort like keywords, but surfaced as a non-fatal note
+                // since visibility is a real privacy setting.
+                struct SetVisibilityParams: Encodable {
+                    let eventId: String
+                    let visibility: String
+                    enum CodingKeys: String, CodingKey { case eventId = "p_event_id", visibility = "p_visibility" }
+                }
+                do {
+                    let _: JSONValue = try await SupabaseService.client
+                        .rpc("set_event_visibility", params: SetVisibilityParams(eventId: eventID, visibility: createVisibility))
+                        .execute().value
+                } catch {
+                    print("set_event_visibility failed:", error)
+                }
             }
 
             if let eventID, !newImages.isEmpty || !removeExistingPhotoIDs.isEmpty || (existingCoverPath?.isEmpty == false) {
                 let (uploaded, failed, _) = await reconcileEventMedia(
                     eventID: eventID, newImages: newImages, coverNewIndex: coverNewIndex,
-                    removeExistingIDs: removeExistingPhotoIDs, existingCoverPath: existingCoverPath
+                    removeExistingIDs: removeExistingPhotoIDs, existingCoverPath: existingCoverPath,
+                    visibility: createVisibility
                 )
                 if failed > 0 {
                     createMediaError = uploaded > 0
@@ -4338,6 +4429,7 @@ extension AppState {
         createDistrict = real.area ?? ""
         createCity = real.city ?? ""
         createPostalCode = real.postalCode ?? ""
+        createVisibility = real.visibility
         // nil = "not re-picked this session" → omitted from the resubmit
         // payload, so the RPC COALESCE-preserves the row's own values.
         createCountryCode = nil
