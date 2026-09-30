@@ -438,8 +438,33 @@ export default function PulseViewer() {
             onClick={(e) => e.stopPropagation()}
             style={{ background: paper, width: '100%', height: '66vh', borderRadius: '18px 18px 0 0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
           >
-            <div style={{ position: 'relative', flex: '2 1 0', minHeight: 0, background: '#0C0B09', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <img src={eventPhotoUrl(s.pulsePhotoSheet.photo_path)} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+            <div style={{ position: 'relative', flex: '2 1 0', minHeight: 0, background: '#0C0B09', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              {/* Black-bar fix (2026-10-25) — object-fit:contain against a
+                  fixed-aspect container left the solid #0C0B09 background
+                  showing as literal black panels (portrait: sides,
+                  landscape: top/bottom) whenever the photo's own aspect
+                  didn't match. Same recipe as PhotoViewer.jsx's existing
+                  aspect-fit/aspect-fill fix (.claude/notes/20-location-
+                  hierarchy-photo-viewer.md) — a blurred, dimmed cover-fit
+                  copy of the SAME <img src>, which browsers already resolve
+                  from the shared HTTP cache (no duplicate request), behind
+                  the untouched contain-fit foreground. overflow:hidden on
+                  this container (new) clips the blur to the media area, so
+                  it can't bleed into the caption/footer panel below. */}
+              {(() => {
+                const src = eventPhotoUrl(s.pulsePhotoSheet.photo_path);
+                if (!src) return null;
+                return (
+                  <>
+                    <img
+                      src={src} alt="" aria-hidden="true"
+                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(28px)', transform: 'scale(1.15)' }}
+                    />
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} />
+                    <img src={src} alt="" style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                  </>
+                );
+              })()}
               <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', width: 36, height: 4, background: 'rgba(255,255,255,0.55)', borderRadius: 2 }} />
               <span
                 onClick={closePulsePhotoSheet}

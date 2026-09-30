@@ -624,8 +624,40 @@ struct PulseViewerView: View {
             VStack(spacing: 0) {
                 ZStack {
                     Color(red: 0.047, green: 0.043, blue: 0.035)
+                    // Black-bar fix (2026-10-25) — this sheet's media area has
+                    // a fixed height (2/3 of the sheet) that rarely matches a
+                    // real photo's own aspect ratio; with only `.scaledToFit()`
+                    // and a solid dark background behind it, the mismatch
+                    // showed as literal black panels (portrait: left/right,
+                    // landscape: top/bottom) — see .claude/notes/20-location-
+                    // hierarchy-photo-viewer.md's own PhotoViewer fix for the
+                    // identical problem/recipe, deliberately NOT applied here
+                    // until now. ONE `AsyncImage` (not two) so foreground and
+                    // backdrop share the same loaded image — no duplicate
+                    // request, no cache-key mismatch, no flicker on photo
+                    // change. Foreground is untouched (`scaledToFit`, full
+                    // uncropped photo); the backdrop is the SAME image
+                    // `scaledToFill`ed across the whole media area, blurred
+                    // and dimmed, replacing the solid-color fill.
                     if let urlStr = eventPhotoURL(item.photoPath), let url = URL(string: urlStr) {
-                        AsyncImage(url: url) { $0.resizable().scaledToFit() } placeholder: { Color.clear }
+                        AsyncImage(url: url) { phase in
+                            if let img = phase.image {
+                                ZStack {
+                                    img.resizable().scaledToFill()
+                                        // `opaque: true` clamps edge pixels
+                                        // instead of fading them to
+                                        // transparent — without it, the blur
+                                        // itself reintroduces a faint version
+                                        // of the same edge gap this fix is
+                                        // removing.
+                                        .blur(radius: 28, opaque: true)
+                                        .overlay(Color.black.opacity(0.35))
+                                    img.resizable().scaledToFit()
+                                }
+                            } else {
+                                Color.clear
+                            }
+                        }
                     }
                     VStack {
                         Capsule().fill(Color.white.opacity(0.55)).frame(width: 36, height: 4)
