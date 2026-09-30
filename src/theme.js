@@ -15,14 +15,11 @@ export const fieldSolid = 'var(--bb-field)';
 // .claude/notes/06-design-tokens.md.
 export const alert = 'var(--bb-alert)';
 
-// TASK 2 (loading GIF placement pass) — named per-context spacing around
-// BanbeLoadingVisual, mirroring apps/ios/BanbeApp/Views/BanbeTheme.swift's
-// `BanbeTheme.LoadingVisual`. Splash.jsx and Loading.jsx need to move in
-// OPPOSITE directions and must not drag Confirmed.jsx's own use of the
-// same shared GIF component along with them, so these are two separate
-// constants, not one shared value.
-export const SPLASH_LOADING_GAP = 48; // was 34 — pushes the launch GIF down, clear of the tagline above it.
-export const RESERVATION_LOADING_GAP = 34; // was 20 — keeps the seat-hold GIF's own bounds clear of the label below it.
+// Named per-context spacing around BanbeLoadingVisual, mirroring
+// apps/ios/BanbeApp/Views/BanbeTheme.swift's `BanbeTheme.LoadingVisual`.
+// Splash.jsx no longer uses the shared GIF (replaced by the logomotion
+// animation), so only Loading.jsx's own gap constant remains here.
+export const RESERVATION_LOADING_GAP = 34; // keeps the seat-hold GIF's own bounds clear of the label below it.
 
 // Dock scrub-highlight — the translucent capsule that sits BEHIND the
 // active/dragged tab icon in BottomTabBar.jsx. Web-only "solid black blob"

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>banbe logomotion</title>
+<script src="vendor/createjs.min.js"></script>
+<script src="logomotion2309.js"></script>
+<style>
+	html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+</style>
+<script>
+var canvas, stage, exportRoot, anim_container, dom_overlay_container, fnStartAnimation;
+function init() {
+	canvas = document.getElementById("canvas");
+	anim_container = document.getElementById("animation_container");
+	dom_overlay_container = document.getElementById("dom_overlay_container");
+	var comp = AdobeAn.getComposition("780173490A857A428DA8E73A20D06F58");
+	var lib = comp.getLibrary();
+	var loader = new createjs.LoadQueue(false);
+	loader.addEventListener("fileload", function(evt){ handleFileLoad(evt, comp); });
+	loader.addEventListener("complete", function(evt){ handleComplete(evt, comp); });
+	loader.loadManifest(lib.properties.manifest);
+}
+function handleFileLoad(evt, comp) {
+	var images = comp.getImages();
+	if (evt && (evt.item.type == "image")) { images[evt.item.id] = evt.result; }
+}
+function handleComplete(evt, comp) {
+	var lib = comp.getLibrary();
+	var ss = comp.getSpriteSheet();
+	var queue = evt.target;
+	var ssMetadata = lib.ssMetadata;
+	for (var i = 0; i < ssMetadata.length; i++) {
+		ss[ssMetadata[i].name] = new createjs.SpriteSheet({ "images": [queue.getResult(ssMetadata[i].name)], "frames": ssMetadata[i].frames });
+	}
+	exportRoot = new lib.logomotion01_11_9();
+	stage = new lib.Stage(canvas);
+	fnStartAnimation = function() {
+		stage.addChild(exportRoot);
+		createjs.Ticker.framerate = lib.properties.fps;
+		createjs.Ticker.addEventListener("tick", stage);
+	};
+	AdobeAn.makeResponsive(false, 'both', false, 1, [canvas, anim_container, dom_overlay_container]);
+	AdobeAn.compositionLoaded(lib.properties.id);
+	fnStartAnimation();
+	if (window.parent && window.parent !== window) {
+		try { window.parent.postMessage({ type: "logomotion-ready" }, "*"); } catch (e) {}
+	}
+}
+</script>
+</head>
+<body onload="init();" style="margin:0px;">
+	<div id="animation_container" style="background-color:rgba(255, 255, 255, 0.00); width:1288px; height:800px">
+		<canvas id="canvas" width="1288" height="800" style="position: absolute; display: block; background-color:rgba(255, 255, 255, 0.00);"></canvas>
+		<div id="dom_overlay_container" style="pointer-events:none; overflow:hidden; width:1288px; height:800px; position: absolute; left: 0px; top: 0px; display: block;">
+		</div>
+	</div>
+</body>
+</html>

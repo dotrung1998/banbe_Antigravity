@@ -2,29 +2,24 @@ import SwiftUI
 import PhotosUI
 import UIKit
 
-/// Port of src/screens/Splash.jsx — the wordmark, the tagline, and a
-/// spinner; tapping (or waiting) moves on to the language picker.
+/// Port of src/screens/Splash.jsx — the logomotion animation and the
+/// tagline; tapping (or waiting) moves on to the language picker.
 struct SplashView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var auth: AuthViewModel
+
+    private static let logomotionAspect: CGFloat = 800.0 / 1288.0
 
     var body: some View {
         ZStack {
             app.palette.paper.ignoresSafeArea()
             VStack(spacing: 0) {
-                BanbeLogo(kind: .wordmark, width: 252)
+                LogomotionView()
+                    .frame(width: 280, height: 280 * Self.logomotionAspect)
                 Text("bạn mới mỗi tuần")
                     .font(.system(size: 14))
                     .foregroundStyle(app.palette.ink)
                     .padding(.top, 16)
-                // A3 (Pulse/loading UX pass, 2026-09-27) — the shared
-                // Banbe loading GIF, replacing the plain orbit-arc spinner
-                // this used before (BanbeLoadingVisual honors Reduce
-                // Motion itself). Bundled with the app (project.yml), so
-                // this — the very first thing a cold launch shows — works
-                // offline, per this ticket's own instruction.
-                BanbeLoadingVisual(size: 44)
-                    .padding(.top, BanbeTheme.LoadingVisual.splashGap)
             }
         }
         .contentShape(Rectangle())

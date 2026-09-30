@@ -67,6 +67,15 @@ targets:
       # offline per this ticket's own instruction.
       - path: ../../public/banbe-loading.gif
         buildPhase: resources
+      # Splash-only replacement for the launch logo: the Adobe
+      # Animate/CreateJS "logomotion" export, referenced in place from
+      # `public/logomotion` (same single-source-of-truth reasoning as the
+      # assets above) and rendered via WKWebView (LogomotionView). Bundled
+      # as a folder resource so its own createjs.min.js/images/html stay
+      # together under one "logomotion" subdirectory at the bundle root.
+      - path: ../../public/logomotion
+        type: folder
+        buildPhase: resources
     resources:
       - BanbeApp/Resources
     dependencies:

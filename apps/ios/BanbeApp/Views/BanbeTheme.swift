@@ -47,23 +47,12 @@ enum BanbeTheme {
     }
 
     /// TASK 2 (loading GIF placement pass) — named per-context spacing
-    /// around `BanbeLoadingVisual` (Components.swift), since the two call
-    /// sites this ticket touches (splash, reservation-hold) need to move in
-    /// OPPOSITE directions and must not drag every other
-    /// `BanbeLoadingVisual` use (FaceIDLockView, Confirmed/Pulse) along
-    /// with them. Both values reserve real layout space (applied via
-    /// `.padding`/`VStack(spacing:)`, not a non-reflowing `.offset`), so
-    /// the animation's own frame never overlaps the neighboring label.
+    /// around `BanbeLoadingVisual` (Components.swift). Splash no longer
+    /// uses the shared GIF (replaced by LogomotionView), so only the
+    /// reservation-hold gap remains here.
     enum LoadingVisual {
-        /// Gap between the splash tagline and the launch GIF below it
-        /// (`OnboardingViews.swift`'s `SplashView`) — was 34, now pushed
-        /// down ~14pt so the GIF reads as a distinct element under the
-        /// tagline rather than crowding it.
-        static let splashGap: CGFloat = 48
         /// Gap between the seat-hold GIF and the "Đang giữ chỗ…" label
-        /// below it (`RootView.swift`'s `loadingOverlay`) — was 14, now
-        /// ~14pt larger so the GIF's own rotating bounds sit clear above
-        /// the text instead of nearly touching it.
+        /// below it (`RootView.swift`'s `loadingOverlay`).
         static let reservationGap: CGFloat = 28
     }
 }
