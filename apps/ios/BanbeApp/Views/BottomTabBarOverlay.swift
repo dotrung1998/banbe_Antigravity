@@ -250,13 +250,22 @@ final class BottomTabBarOverlay {
         let hosting = UIHostingController(rootView: BottomTabBarOverlayRoot().environmentObject(appState))
         hosting.view.backgroundColor = .clear
 
-        let screenBounds = scene.screen.bounds
+        // `scene.screen.bounds` is the full PHYSICAL DISPLAY size, not
+        // necessarily this scene's own current viewport — identical on
+        // iPhone (no windowed multitasking) but can be larger than the
+        // scene's real bounds on iPad Split View/Slide Over. This window
+        // is anchored to `scene` specifically (`UIWindow(windowScene:)`),
+        // so it should size itself off the SAME geometry the scene's own
+        // (SwiftUI-managed) main window actually occupies —
+        // `scene.coordinateSpace.bounds` reflects that; `scene.screen.bounds`
+        // does not. Behaviorally a no-op on iPhone, correct on iPad.
+        let screenBounds = scene.coordinateSpace.bounds
         sceneBounds = screenBounds
 
-        // Always full-screen, and never resized again — see
-        // `DockOverlayWindow`'s own doc comment for why. `passthroughRect`
-        // is what keeps this window from swallowing touches outside the
-        // small dock band while the tray is closed.
+        // Always full-screen (of the scene's own viewport), and never
+        // resized again — see `DockOverlayWindow`'s own doc comment for
+        // why. `passthroughRect` is what keeps this window from swallowing
+        // touches outside the small dock band while the tray is closed.
         let win = DockOverlayWindow(windowScene: scene)
         win.frame = screenBounds
         win.passthroughRect = bandFrame(in: screenBounds)
@@ -412,12 +421,31 @@ final class BottomTabBarOverlay {
 /// gate exactly, so the bar shows/hides on the same screens it always has —
 /// this view has its own copy of `AppState` injected (a separate UIWindow
 /// means a separate SwiftUI environment; it doesn't automatically inherit
-/// WindowGroup's). Since `DockOverlayWindow` is now permanently full-screen
-/// (dock-jump-on-tray-open fix pass — see that type's own doc comment),
-/// this ZStack's own bounds are simply the physical screen's bounds, in
-/// every state, always — `alignment: .bottom` anchors DockRow to the real
-/// screen bottom directly, with no "which of two window sizes is this
-/// right now" question left to answer.
+/// WindowGroup's).
+///
+/// BUG FIX (dock-centered-instead-of-bottom regression) — the previous
+/// version of this doc comment claimed "this ZStack's own bounds are
+/// simply the physical screen's bounds" once `DockOverlayWindow` became
+/// permanently full-screen. That was wrong, and is the actual root cause
+/// of the dock rendering vertically centered (screenshot: sitting mid-Home,
+/// covering content) instead of at the bottom with the tray closed. A
+/// `UIHostingController`'s root view being told its HOSTING VIEW now spans
+/// the full screen does not itself make the ROOT SwiftUI VIEW report a
+/// full-screen size — without a `.frame(maxWidth: .infinity, maxHeight:
+/// .infinity)` somewhere in this tree, this `ZStack` reports only its
+/// INTRINSIC size (DockRow's own fixed height, per that view's own doc
+/// comment, `BottomTabBar.swift`), and SwiftUI centers a root view that
+/// doesn't fill its container within the full available bounds — so the
+/// whole (small) dock box floated at screen-center, not the bottom.
+/// `alignment: .bottom` on this `ZStack` only ever governed placement
+/// INSIDE that too-small box; it never made the box itself span the full
+/// window. Fixed below: the trailing `.frame(maxWidth: .infinity,
+/// maxHeight: .infinity, alignment: .bottom)` makes this view actually
+/// claim the full, constant (never-resized, per `DockOverlayWindow`)
+/// window bounds, with `alignment: .bottom` on THAT outer frame placing
+/// the (still intrinsically-sized) dock content flush against the real
+/// physical bottom edge — invariant across "+"/"x", since the window's
+/// size never changes and now neither does this view's own reported size.
 private struct BottomTabBarOverlayRoot: View {
     @EnvironmentObject var app: AppState
 
@@ -467,5 +495,12 @@ private struct BottomTabBarOverlayRoot: View {
             // button beside it just work, with no resize involved anymore.
             if app.dockCreateMenuOpen { DockCreateTrayView() }
         }
+        // BUG FIX (dock-centered-instead-of-bottom regression) — see this
+        // type's own doc comment above for the full root cause. This is the
+        // missing "claim the full window" step: without it, the ZStack
+        // above reports only its intrinsic (DockRow-height) size and gets
+        // centered in the full-screen `DockOverlayWindow` instead of
+        // sitting at its bottom.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
 }
