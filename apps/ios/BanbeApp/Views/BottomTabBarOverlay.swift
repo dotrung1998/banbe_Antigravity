@@ -104,10 +104,54 @@ import UIKit
 /// scrolls all the way down to the physical bottom edge). The band now
 /// tracks `BottomTabBar`'s real constants directly instead of a rough,
 /// independently-chosen guess.
+/// BUG FIX (dock-jump-on-tray-open pass, real-device regression) — this
+/// window used to GROW from a small dock band to the full screen while the
+/// "+" tray was open, then shrink back after close (see
+/// `BottomTabBarOverlay.setDockCreateTrayOpen`'s git history). That resize
+/// is the actual root cause of the reported jump on both open AND close:
+/// `BottomTabBarOverlayRoot`'s SwiftUI content is laid out fresh against
+/// whatever size THIS window currently reports, and on a real device
+/// `DockRow`'s computed screen position was not perfectly invariant across
+/// that resize (open) or across the delayed shrink racing the tray's own
+/// closing `withAnimation` transaction (close, the worse of the two
+/// symptoms) — exactly the class of timing/geometry dependency this ticket
+/// asks to eliminate structurally, not paper over with an offset.
+///
+/// Fixed per this ticket's own preferred option: the window's frame is now
+/// set ONCE, at `attach()`, to the full screen, and NEVER changes again for
+/// any reason — there is no more resize for `setDockCreateTrayOpen` to
+/// sequence, so there is nothing left that can race or over/undershoot.
+/// `DockRow`'s container is therefore byte-for-byte identical in every
+/// state, tray open or closed, before/during/after any transition.
+///
+/// Pass-through hit-testing (this window must not start swallowing every
+/// touch on every screen just because its frame now covers all of it — see
+/// a5fd823's own doc comment above for why a tight hit-testable band
+/// matters) is done geometrically instead of by resizing: `hitTest` only
+/// forwards a touch into this window's content when the point falls inside
+/// `passthroughRect` (the same small dock-band rectangle the window itself
+/// used to BE), or anywhere at all while `trayOpen` is true (the tray's own
+/// full-bleed scrim legitimately needs to catch a tap anywhere to dismiss).
+/// This is a coordinate-based check, unrelated to the view-IDENTITY-based
+/// `hitTest` override 5f449d9 already tried and reverted (see this file's
+/// own top-of-file doc comment) — that one failed because SwiftUI backs an
+/// entire subtree with a single `UIView`, making "is this the root view"
+/// always true for every touch. Comparing a POINT against a RECT has no
+/// such ambiguity and needs no knowledge of SwiftUI's internal view tree.
+private final class DockOverlayWindow: UIWindow {
+    var passthroughRect: CGRect = .zero
+    var trayOpen = false
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard trayOpen || passthroughRect.contains(point) else { return nil }
+        return super.hitTest(point, with: event)
+    }
+}
+
 @MainActor
 final class BottomTabBarOverlay {
     static let shared = BottomTabBarOverlay()
-    private var window: UIWindow?
+    private var window: DockOverlayWindow?
     private var currentScreen: Screen = .home
     // Inbox.jsx bug 2 fix (2026-09-21 follow-up): the Inbox settings sheet
     // (and its "Give feedback" flow) are hand-rolled SwiftUI content INSIDE
@@ -157,15 +201,12 @@ final class BottomTabBarOverlay {
     // site for the full root-cause writeup). Unlike every flag above, this
     // one does NOT feed `applyVisibility()` — the tray only ever opens while
     // the dock itself is already visible (you have to tap the dock's own
-    // "+" to open it), so the window is already shown; what this flag
-    // drives instead is the window's own FRAME, temporarily growing it from
-    // the small dock band to the full screen so the tray has room for its
-    // full-bleed scrim and its own rise-above-the-dock card, then shrinking
-    // it back once the tray is gone. Kept as its own field (not reused from
-    // `forcedHidden`/etc.) for the same "independent callers, independent
-    // state" reasoning as every flag above.
+    // "+" to open it), so the window is already shown. As of the
+    // dock-jump-on-tray-open fix pass this flag no longer resizes anything
+    // (see `DockOverlayWindow`'s own doc comment) — it only widens this
+    // window's OWN pass-through hit-test region to the full screen for as
+    // long as the tray's scrim needs to catch a tap anywhere to dismiss.
     private var dockCreateTrayOpen = false
-    private var trayResizeToken = 0
     private var sceneBounds: CGRect = .zero
     // TASK 1 (2026-09-22 twenty-first follow-up) — this window's own
     // `isHidden` used to be set synchronously, in lockstep with these
@@ -211,10 +252,14 @@ final class BottomTabBarOverlay {
 
         let screenBounds = scene.screen.bounds
         sceneBounds = screenBounds
-        let frame = bandFrame(in: screenBounds)
 
-        let win = UIWindow(windowScene: scene)
-        win.frame = frame
+        // Always full-screen, and never resized again — see
+        // `DockOverlayWindow`'s own doc comment for why. `passthroughRect`
+        // is what keeps this window from swallowing touches outside the
+        // small dock band while the tray is closed.
+        let win = DockOverlayWindow(windowScene: scene)
+        win.frame = screenBounds
+        win.passthroughRect = bandFrame(in: screenBounds)
         win.backgroundColor = .clear
         win.rootViewController = hosting
         // .normal + 1: above the app's own main window (and therefore
@@ -291,48 +336,30 @@ final class BottomTabBarOverlay {
     }
 
     /// FIX PASS (2026-09-30, Map-sheet layering) — called from RootView's
-    /// `.onChange(of: app.dockCreateMenuOpen)`. This is the actual structural
-    /// fix for the tray rendering under MapExplore's native filter/list
-    /// sheet: rather than fighting for a ZStack zIndex a real `.sheet()`
-    /// can never respect (see this type's own top-of-file doc comment,
-    /// already proven for the dock itself), the tray is hosted in THIS
+    /// `.onChange(of: app.dockCreateMenuOpen)`. The tray is hosted in THIS
     /// window — the one thing in this app already proven to paint above a
-    /// `.sheet()` at any detent — and this window is temporarily grown to
-    /// full-screen for exactly as long as the tray needs the room.
+    /// `.sheet()` at any detent — which is what puts it above MapExplore's
+    /// native filter/list sheet.
+    ///
+    /// dock-jump-on-tray-open fix pass: this used to also grow/shrink the
+    /// window's own frame between a small band and the full screen (see git
+    /// history), which was the actual root cause of the dock visibly moving
+    /// on both open and close. The window is now permanently full-screen
+    /// (`attach()`) and this method only widens/narrows its pass-through
+    /// hit-test region (`DockOverlayWindow.trayOpen`) — an instantaneous,
+    /// non-animated flag flip, never a frame/layout change, so there is
+    /// nothing left for any transaction/animation to race. No delay is
+    /// needed on close either: since the window's SIZE never changes, there
+    /// is no more "premature shrink clipping the exit animation" failure
+    /// mode the old delay existed to prevent, and therefore no stale
+    /// delayed-callback/token bookkeeping needed for rapid open/close taps.
     ///
     /// Deliberately touches nothing about MapExploreView itself — no
     /// camera/filter/search/selection/detent state, no sheet dismissal.
-    /// This only ever resizes THIS window's own frame; the map's `.sheet()`
-    /// underneath is a completely separate UIKit presentation this window
-    /// merely happens to now be able to cover.
     func setDockCreateTrayOpen(_ open: Bool) {
-        guard dockCreateTrayOpen != open, let window else { return }
+        guard dockCreateTrayOpen != open else { return }
         dockCreateTrayOpen = open
-        trayResizeToken += 1
-        let token = trayResizeToken
-
-        if open {
-            // Grow FIRST, before the tray's own SwiftUI content starts its
-            // entrance animation, so it's never clipped by a frame that's
-            // still band-sized. Anchored so the dock/button's own on-screen
-            // position (bottom-center of the band) doesn't visibly jump —
-            // the band is a sub-rect of this exact same full-screen frame.
-            window.frame = sceneBounds
-        } else {
-            // Shrink back to the small dock band — but only AFTER the
-            // tray's own close animation has actually finished (see
-            // `DockCreateTrayView.closeAnimationDuration`, the single
-            // source of truth this reads rather than a second, possibly
-            // drifting guess), so its exit transition isn't cut off by a
-            // premature frame shrink, and so this window is never left
-            // full-screen (and therefore touch-absorbing over whatever's
-            // underneath, e.g. the map) a moment longer than the tray
-            // itself is actually visible.
-            DispatchQueue.main.asyncAfter(deadline: .now() + DockCreateTrayView.closeAnimationDuration) { [weak self] in
-                guard let self, self.trayResizeToken == token, !self.dockCreateTrayOpen, let window = self.window else { return }
-                window.frame = self.bandFrame(in: self.sceneBounds)
-            }
-        }
+        window?.trayOpen = open
     }
 
     private func applyVisibility() {
@@ -385,9 +412,12 @@ final class BottomTabBarOverlay {
 /// gate exactly, so the bar shows/hides on the same screens it always has —
 /// this view has its own copy of `AppState` injected (a separate UIWindow
 /// means a separate SwiftUI environment; it doesn't automatically inherit
-/// WindowGroup's). Aligned to the bottom of THIS window's own (much
-/// smaller) bounds, which is anchored to the same physical bottom edge of
-/// the screen as the main window, so it lands in the same place.
+/// WindowGroup's). Since `DockOverlayWindow` is now permanently full-screen
+/// (dock-jump-on-tray-open fix pass — see that type's own doc comment),
+/// this ZStack's own bounds are simply the physical screen's bounds, in
+/// every state, always — `alignment: .bottom` anchors DockRow to the real
+/// screen bottom directly, with no "which of two window sizes is this
+/// right now" question left to answer.
 private struct BottomTabBarOverlayRoot: View {
     @EnvironmentObject var app: AppState
 
@@ -411,18 +441,17 @@ private struct BottomTabBarOverlayRoot: View {
         // comment for why that lives here instead of a second floating
         // UIWindow) — only the internal composition changed.
         // BUG FIX (dock-jump-on-tray-open pass) — `alignment: .bottom` here
-        // (was the ZStack default, `.center`) is the other half of the fix:
-        // DockRow no longer requests `maxHeight: .infinity` (see its own
-        // doc comment, BottomTabBar.swift), so it now reports its own
-        // fixed intrinsic height and this ZStack places it flush against
-        // ITS OWN bottom edge — which is the window's bottom edge, which
-        // `bandFrame(in:)`/`setDockCreateTrayOpen` always keep pinned to
-        // the physical screen's bottom edge (`y + height == bounds.height`)
-        // in BOTH the small band frame and the full-screen tray frame.
-        // DockRow's on-screen position is therefore anchored to a
-        // coordinate that is invariant to the window's own height, instead
-        // of being re-derived from a "fill then self-align" computation
-        // that changes when the window resizes.
+        // (was the ZStack default, `.center`) combined with DockRow no
+        // longer requesting `maxHeight: .infinity` (see its own doc
+        // comment, BottomTabBar.swift) was this ticket's FIRST attempt at a
+        // fix — keeping DockRow's own intrinsic height flush against this
+        // ZStack's bottom edge. That alone still weren't sufficient on a
+        // real device (the window itself still resized between a band and
+        // the full screen at the time). Superseded, not replaced, by
+        // `DockOverlayWindow` now being permanently full-screen (see that
+        // type's own doc comment) — this `alignment: .bottom` is still
+        // correct and still needed, just against a container that no
+        // longer ever changes size in the first place.
         ZStack(alignment: .bottom) {
             DockRow()
                 .offset(y: app.dockVisible ? 0 : 40)
@@ -433,10 +462,9 @@ private struct BottomTabBarOverlayRoot: View {
             // FIX PASS (2026-09-30, Map-sheet layering) — moved here from
             // RootView's main-window ZStack (was zIndex 28 there, which
             // could never out-layer MapExplore's native `.sheet()`). This
-            // window is resized to full-screen by `setDockCreateTrayOpen`
-            // for exactly as long as this is on screen, so the tray's own
-            // full-bleed scrim/drag-to-dismiss and the dock/button beside it
-            // all keep working unchanged.
+            // window is always full-screen (`DockOverlayWindow`), so the
+            // tray's own full-bleed scrim/drag-to-dismiss and the dock/
+            // button beside it just work, with no resize involved anymore.
             if app.dockCreateMenuOpen { DockCreateTrayView() }
         }
     }
