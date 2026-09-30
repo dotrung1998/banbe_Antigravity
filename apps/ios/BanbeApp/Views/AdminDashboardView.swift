@@ -25,7 +25,7 @@ struct AdminDashboardView: View {
                     .padding(.top, 8)
                     .accessibilityIdentifier("admin.back")
 
-                Text(app.T("Tranh chấp thanh toán", "Payment disputes"))
+                Text(app.T("Tranh chấp thanh toán", "Payment Disputes"))
                     .font(BanbeTheme.display(24)).padding(.top, 14)
                     .accessibilityIdentifier("admin.title")
                 Text(app.T("Khách khẳng định đã chuyển, người tổ chức không tìm thấy. Chỗ vẫn đang bị khoá cho tới khi có quyết định.",

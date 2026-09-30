@@ -62,7 +62,7 @@ struct ReportsView: View {
                 BackLink(label: app.T("Quay lại", "Back")) { app.backFromReports() }
                     .padding(.top, 16)
 
-                Text(app.T("Số liệu & báo cáo", "Metrics & reports"))
+                Text(app.T("Số liệu & báo cáo", "Metrics & Reports"))
                     .font(BanbeTheme.display(24)).padding(.top, 10)
                 Text(roleLabel).font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.65))
 
