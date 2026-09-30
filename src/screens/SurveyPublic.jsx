@@ -70,6 +70,7 @@ export default function SurveyPublic() {
     );
   }
 
+  const isDraft = survey.status === 'draft';
   const isClosed = survey.status === 'closed';
   const notOpenYet = survey.status === 'not_open_yet';
   const canRespond = survey.status === 'active';
@@ -92,6 +93,11 @@ export default function SurveyPublic() {
           {T('Đây không phải là giữ chỗ.', 'This does not reserve a place.')}
         </div>
 
+        {isDraft && (
+          <div style={{ padding: 14, background: 'rgba(0,0,0,0.04)', borderRadius: 10, fontSize: 13.5 }}>
+            {T('Đây là bản xem trước — khảo sát chưa được xuất bản.', "This is a preview — the survey hasn't been published yet.")}
+          </div>
+        )}
         {isClosed && (
           <div style={{ padding: 14, background: 'rgba(0,0,0,0.04)', borderRadius: 10, fontSize: 13.5 }}>
             {T('Khảo sát này đã đóng. Cảm ơn bạn đã quan tâm.', 'This survey is closed. Thanks for your interest.')}

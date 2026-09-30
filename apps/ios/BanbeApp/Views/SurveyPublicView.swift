@@ -74,7 +74,12 @@ struct SurveyPublicView: View {
             Text(app.T("Đây không phải là giữ chỗ.", "This does not reserve a place."))
                 .font(.system(size: 12, weight: .semibold))
 
-            if survey.status == "closed" {
+            if survey.status == "draft" {
+                Text(app.T("Đây là bản xem trước — khảo sát chưa được xuất bản.", "This is a preview — the survey hasn't been published yet."))
+                    .font(.system(size: 13.5)).padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+            } else if survey.status == "closed" {
                 Text(app.T("Khảo sát này đã đóng. Cảm ơn bạn đã quan tâm.", "This survey is closed. Thanks for your interest."))
                     .font(.system(size: 13.5)).padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)

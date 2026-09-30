@@ -333,4 +333,14 @@ extension AppState {
             await loadMySurveys()
         } catch { print("archiveSurvey failed:", error) }
     }
+    /// Draft-only (migration 116) — a published survey may already have
+    /// real respondent answers; archive_survey is the correct action once
+    /// a survey has ever been live, not delete.
+    func deleteSurvey(_ surveyID: UUID) async {
+        do {
+            let _: Bool = try await SupabaseService.client
+                .rpc("delete_survey", params: ["p_survey_id": surveyID.uuidString]).execute().value
+            await loadMySurveys()
+        } catch { print("deleteSurvey failed:", error) }
+    }
 }

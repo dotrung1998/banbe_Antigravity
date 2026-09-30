@@ -123,6 +123,8 @@ struct SurveysHostingView: View {
                 }
                 if survey.status == "draft" {
                     Button(app.T("Xuất bản", "Publish")) { Task { await app.publishSurvey(survey.id) } }
+                    Button(app.T("Xoá", "Delete")) { Task { await app.deleteSurvey(survey.id) } }
+                        .foregroundStyle(BanbeTheme.alert)
                 }
                 if survey.status == "active" {
                     Button(app.T("Đóng sớm", "Close early")) { Task { await app.closeSurveyEarly(survey.id) } }

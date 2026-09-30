@@ -101,7 +101,7 @@ function CreateSurveyForm({ T, onCreate, busy, error }) {
 export default function SurveysHosting() {
   const {
     state, T, goHome, mySurveys, mySurveysLoading, loadMySurveys,
-    createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction,
+    createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction,
     mySurveyCreateBusy, mySurveyCreateError, goSurveyPublic,
   } = useGoc();
   const s = state;
@@ -199,7 +199,10 @@ export default function SurveysHosting() {
               <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                 <span onClick={() => goSurveyPublic(sv.public_id, 'surveysHosting')} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}>{T('Xem trước', 'Preview')}</span>
                 {sv.status === 'draft' && (
-                  <span onClick={() => publishSurveyAction(sv.id)} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}>{T('Xuất bản', 'Publish')}</span>
+                  <>
+                    <span onClick={() => publishSurveyAction(sv.id)} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}>{T('Xuất bản', 'Publish')}</span>
+                    <span onClick={() => deleteSurveyAction(sv.id)} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer', color: alert }}>{T('Xoá', 'Delete')}</span>
+                  </>
                 )}
                 {sv.status === 'active' && (
                   <span onClick={() => closeSurveyAction(sv.id)} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}>{T('Đóng sớm', 'Close early')}</span>

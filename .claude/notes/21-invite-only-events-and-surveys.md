@@ -327,24 +327,50 @@ written to any deployed database.
   Slice C doesn't exist); the Hosting/dock badge Slice C would eventually
   drive is a hardcoded `0` for now, honestly, not a fabricated count.
 
-## Deployment status (both migrations)
+### Bugs found testing on a physical iPhone (2026-10-01), fixed
 
-**Nothing in either migration has been applied to any database.** No
-`supabase` CLI is installed in this environment and no local/staging
-Supabase project is running, so `supabase db push`/`supabase migration
-list` could not be run here. Before either is live:
-1. Run `supabase migration list` against the real project to confirm
-   `20261025000113` and `20261026000114` aren't already partially applied
-   some other way.
-2. `supabase db push` (or equivalent) to apply them, in order — both are
-   schema changes (new tables/buckets, redefined `claim_seats`/
-   `hold_seats`) and should go through whatever review/approval this
-   project normally requires for a production migration.
-3. Until applied: `visibility='invite'` on `events` remains completely
-   unenforced in production (the exact pre-existing gap 113 closes), and
-   no survey infrastructure exists at all in production. Do not rely on
-   either feature in production before confirming both migrations are
-   live.
+- `get_survey_public()` unconditionally returned `NOT_FOUND` for a draft,
+  with no exception for the survey's own host — so "Preview" on any draft
+  (web and iOS both call this same RPC) showed "couldn't be found," the
+  exact reported symptom. Fixed in migration 116: the host/admin can now
+  preview their own draft (a stranger still gets the same honest
+  `NOT_FOUND`); the returned effective `status` for that case is `'draft'`
+  specifically, and both `SurveyPublicView.swift` and `SurveyPublic.jsx`
+  now render an explicit "this is a preview, not published yet" state for
+  it instead of showing the live response form.
+- No way to delete a mistaken/unwanted draft. Added `delete_survey()`
+  (migration 116), deliberately restricted to `status = 'draft'` only —
+  once a survey has ever been published it may have real respondent
+  answers, and `archive_survey()` is the correct action from there, never
+  delete. Wired on both platforms (`deleteSurvey`/`deleteSurveyAction`,
+  a "Delete" action next to "Publish" on a draft card).
+- Verified against the local Postgres harness: host previews own draft
+  (success, `status: 'draft'`); stranger previews same draft (`NOT_FOUND`);
+  stranger tries to delete host's draft (`NOT_AUTHORIZED`); host deletes
+  own draft (succeeds), deleting again fails (`SURVEY_NOT_FOUND`); host
+  tries to delete an already-published survey (`ONLY_DRAFT_CAN_BE_DELETED`).
+  `npx vite build` and `xcodebuild -scheme PersonalTeamDebug ... build`
+  both clean after the client-side changes.
+
+## Deployment status
+
+This environment has no `supabase` CLI and no local/staging project, so
+none of this was ever applied FROM here — all real `supabase db push` runs
+happened on the user's own machine:
+- `20261025000113` (invite-only events) and `20261026000114` (surveys) —
+  the first `db push` attempt failed on 114's `gen_random_bytes` default
+  (pgcrypto schema issue); **confirmed applied successfully** after that
+  fix, since the user went on to create and test real draft surveys on a
+  physical iPhone ("T2", "Test survey").
+- `20261027000115` (pgcrypto schema-qualification fix for 113's
+  `create_event_invites`/`redeem_event_invite_token`) — applied together
+  with 114 in that same successful push.
+- `20261028000116` (this pass's draft-preview + delete_survey fix) —
+  **written this pass, NOT YET applied** — run `supabase db push` again to
+  pick it up. Every RPC/table change in it was verified against a local
+  Postgres harness before being handed over (see above), the same way
+  113/114/115 were, but that is still not a substitute for confirming it
+  on the real project.
 
 ## iPhone/browser checklist (once migrations are deployed)
 

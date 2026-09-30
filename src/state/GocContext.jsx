@@ -5677,6 +5677,14 @@ export function GocProvider({ children }) {
     if (!error) await loadMySurveys();
     return !error;
   }, [loadMySurveys]);
+  /** Draft-only (migration 116) — a published survey may already have real
+   * respondent answers; archive_survey is the correct action once a
+   * survey has ever been live, not delete. */
+  const deleteSurveyAction = useCallback(async (surveyId) => {
+    const { error } = await supabase.rpc('delete_survey', { p_survey_id: surveyId });
+    if (!error) await loadMySurveys();
+    return !error;
+  }, [loadMySurveys]);
 
   /** Small preview content for the organizer public profile — real
    * upcoming events (published, soonest first) and a handful of real
@@ -8794,7 +8802,7 @@ export function GocProvider({ children }) {
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
-    goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, loadMySurveys, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction,
+    goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, loadMySurveys, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
@@ -8831,7 +8839,7 @@ export function GocProvider({ children }) {
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
-    goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, loadMySurveys, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction,
+    goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, loadMySurveys, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   ]);
 
