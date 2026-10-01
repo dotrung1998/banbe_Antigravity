@@ -817,6 +817,16 @@ extension AppState {
         Task { await loadVerifications() }
     }
 
+    /// Refund-discoverability fix — a dedicated "Refunds" row/entry point.
+    /// Calls the EXACT SAME openVerifications() above (same gate, same
+    /// screen, same data loaders) and only additionally sets a one-shot
+    /// scroll flag — no duplicated backend/state logic, no second refund
+    /// surface.
+    func openVerificationsRefunds(back: Screen = .profile) {
+        openVerifications(back: back)
+        verificationsScrollAnchorID = "refundSection"
+    }
+
     /// 14-organizer-checkin.md: Attendance's "Check payment" — jumps
     /// straight to this one booking's own row, whether it's the only
     /// pending item or buried far down a long queue. Same event-ownership
@@ -989,24 +999,56 @@ extension AppState {
     /// tick that started before a more recent one) can never overwrite what
     /// that more recent call already applied.
     func loadRefundQueue() async {
-        guard isAdmin || !myOrganizerIDs.isEmpty else { refundQueue = []; return }
+        // Investigation fix — this gate used to read ONLY `myOrganizerIDs.
+        // isEmpty`, which is true in THREE different situations: genuinely
+        // owns no organizer, organizer discovery hasn't run/finished yet,
+        // and organizer discovery FAILED. Only the first is a real
+        // "nothing to show" — the other two must surface distinctly
+        // instead of silently reporting the same empty queue.
+        if !isAdmin {
+            switch myOrganizerIdsStatus {
+            case "idle", "loading":
+                refundQueueGateReason = "awaiting-organizer-discovery"
+                return
+            case "error":
+                refundQueue = []
+                refundQueueLoading = false
+                refundQueueError = T("Không thể xác định các sự kiện bạn tổ chức. Vui lòng thử lại.", "Could not determine which events you organize. Please try again.")
+                refundQueueGateReason = "organizer-discovery-failed"
+                return
+            default:
+                if myOrganizerIDs.isEmpty {
+                    refundQueue = []
+                    refundQueueLoading = false
+                    refundQueueError = ""
+                    refundQueueGateReason = "no-organizers"
+                    return
+                }
+            }
+        }
         refundQueueSeq += 1
         let seq = refundQueueSeq
         refundQueueLoading = true
+        refundQueueError = ""
         do {
             let result: GetHostRefundClaimsResult = try await SupabaseService.client
                 .rpc("get_host_refund_claims", params: GetHostRefundClaimsParams(pEventId: nil))
                 .execute().value
-            guard seq == refundQueueSeq else { return }
+            guard seq == refundQueueSeq else { refundQueueGateReason = "skipped-stale"; return }
             guard result.success == true else {
                 print("loadRefundQueue failed:", result.error ?? "unknown", "userID:", userID?.uuidString ?? "nil")
                 refundQueueLoading = false
+                refundQueueGateReason = "success-false"
+                refundQueueError = T("Không thể tải danh sách hoàn tiền. Vui lòng thử lại.", "Could not load the refund queue. Please try again.")
                 return
             }
             refundQueue = result.claims ?? []
+            refundQueueGateReason = "ok"
         } catch {
             guard seq == refundQueueSeq else { return }
             print("loadRefundQueue failed:", error, "userID:", userID?.uuidString ?? "nil")
+            refundQueueGateReason = "rpc-error"
+            refundQueueError = T("Không thể tải danh sách hoàn tiền. Vui lòng thử lại.", "Could not load the refund queue. Please try again.")
         }
         refundQueueLoading = false
     }
@@ -1859,6 +1901,24 @@ struct RefundClaim: Codable, Identifiable, Equatable {
         case selectedDestinationId = "selected_destination_id"
         case recipientSnapshot = "recipient_snapshot"
         case hostGuestName = "guest_name"
+        // Investigation fix (2026-10-?? pass) — get_host_refund_claims()
+        // (migration 078) returns `event_name`/`event_id` directly in its
+        // own canonical join, exactly like `guest_name` above, but neither
+        // was ever in this CodingKeys list — `init(from:)` below hardcoded
+        // `eventName = ""`/`eventKey = nil` unconditionally instead of
+        // decoding them, so every host-queue/Refund-Center row showed a
+        // blank event name regardless of what the RPC actually returned.
+        // A CodingKeys case must match a real stored property name for
+        // Swift to auto-synthesize Encodable (confirmed by the compiler
+        // itself: an earlier attempt at a differently-named case here
+        // failed with "does not match any stored properties") — using the
+        // real `eventName`/`eventKey` names is correct AND harmless for
+        // loadMyRefunds()'s own manual post-decode patch (that query's
+        // SELECT has no event_id/event_name columns, so decoding this key
+        // there just yields nil/"", immediately overwritten by that
+        // function's own assignment either way).
+        case eventName = "event_name"
+        case eventKey = "event_id"
     }
 
     // Real bug found (2026-10-01): a refund claim visible on web (loosely
@@ -1897,9 +1957,9 @@ struct RefundClaim: Codable, Identifiable, Equatable {
         selectedDestinationId = try c.decodeIfPresent(UUID.self, forKey: .selectedDestinationId)
         recipientSnapshot = try? c.decodeIfPresent(RecipientSnapshot.self, forKey: .recipientSnapshot)
         hostGuestName = try c.decodeIfPresent(String.self, forKey: .hostGuestName)
-        guestName = ""
-        eventName = ""
-        eventKey = nil
+        guestName = hostGuestName ?? ""
+        eventName = (try c.decodeIfPresent(String.self, forKey: .eventName)) ?? ""
+        eventKey = try c.decodeIfPresent(String.self, forKey: .eventKey)
     }
 }
 

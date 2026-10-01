@@ -4,6 +4,67 @@ import { formatVnd } from '../lib/paymentDocument.js';
 import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, alert } from '../theme.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
+import { supabase, supabaseUrl } from '../lib/supabase.js';
+
+/** Point 2 of the refund-discoverability investigation — an explicit
+ * opt-in diagnostic panel (NOT gated on import.meta.env.DEV, since the
+ * person reproducing this is testing against the real deployed build on a
+ * physical iPhone, where DEV is always false) that answers exactly the
+ * questions that distinguish "hidden by a client gate," "still loading,"
+ * "failed," and "genuinely empty" from each other, without ever logging a
+ * JWT/refresh token/password/bank detail/email code or a full response
+ * payload. Toggled by 5 taps on the "Hoàn tiền" section title — see
+ * `titleTapRef` below — never visible by accident. */
+function RefundDiagnosticsPanel({ s, T }) {
+  const [authUserId, setAuthUserId] = useState('(checking…)');
+  useEffect(() => {
+    let active = true;
+    // supabase.auth.getUser() re-verifies against the server (not just the
+    // locally cached session) — this is what this ticket's own "use
+    // supabase.auth.getUser() for web identity verification" line asks
+    // for, specifically BECAUSE it's the one value a raw SQL Editor
+    // `auth.uid()` can never actually confirm (that only proves what the
+    // query editor's OWN session is, never this app's).
+    supabase.auth.getUser().then(({ data, error }) => {
+      if (!active) return;
+      setAuthUserId(error ? `(error: ${error.message})` : (data?.user?.id || '(no session)'));
+    });
+    return () => { active = false; };
+  }, []);
+
+  const activeCount = s.refundQueue.filter(c => c.status === 'owed' || c.status === 'disputed').length;
+  const pendingCount = s.refundQueue.filter(c => c.status === 'host_marked_sent').length;
+  const hidingReason = s.verificationsFocusBookingId
+    ? 'verifications-focus-booking-id-set (section hidden entirely — notification/Attendance "Check payment" deep link)'
+    : 'not-hidden-by-focus';
+
+  const row = (label, value) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 11, fontFamily: 'monospace' }}>
+      <span style={{ opacity: 0.6 }}>{label}</span>
+      <span style={{ textAlign: 'right', wordBreak: 'break-all' }}>{String(value)}</span>
+    </div>
+  );
+
+  return (
+    <div data-testid="refund-diagnostics-panel" style={{ ...cardGlass({ padding: 12, display: 'flex', flexDirection: 'column', gap: 4 }), border: `1px dashed ${alert}` }}>
+      <span style={{ fontSize: 10.5, fontWeight: 700, color: alert, marginBottom: 2 }}>DIAGNOSTICS (refund queue)</span>
+      {row('supabase.auth.getUser() id', authUserId)}
+      {row('app-state user id (s.user.id)', s.user?.id || '(null)')}
+      {row('profile role (s.accountType)', s.accountType)}
+      {row('organizerMode', s.organizerMode)}
+      {row('supabase host', new URL(supabaseUrl).host)}
+      {row('myOrganizerIdsStatus', s.myOrganizerIdsStatus)}
+      {row('myOrganizerIds', JSON.stringify(s.myOrganizerIds))}
+      {row('refundQueueLoading', s.refundQueueLoading)}
+      {row('refundQueueGateReason', s.refundQueueGateReason || '(never set — loadRefundQueue never ran)')}
+      {row('refundQueueError', s.refundQueueError || '(none)')}
+      {row('refundQueue ids+status', JSON.stringify(s.refundQueue.map(c => ({ id: c.id, status: c.status, hasDestination: c.hasDestination }))))}
+      {row('presentation result (active/pending)', `${activeCount} / ${pendingCount}`)}
+      {row('verificationsFocusBookingId', s.verificationsFocusBookingId || '(null)')}
+      {row('section-hiding condition', hidingReason)}
+    </div>
+  );
+}
 
 // The organizer's manual-verification queue — the fallback for every payment
 // the bank webhook didn't reconcile on its own (a buyer who mistyped the
@@ -45,6 +106,12 @@ export default function Verifications() {
   // already uses elsewhere in this app, not a novel interval.
   const [refundNoteFor, setRefundNoteFor] = useState(null);
   const [refundNote, setRefundNote] = useState('');
+  // Point 2 — diagnostics panel toggle (5 taps on the "Hoàn tiền" title,
+  // within 1.2s of each other; resets on a pause so an ordinary stray tap
+  // never accidentally opens it).
+  const [diagOpen, setDiagOpen] = useState(false);
+  const diagTapCountRef = useRef(0);
+  const diagTapTimerRef = useRef(null);
   useEffect(() => { loadRefundQueue(); }, [loadRefundQueue]);
   useEffect(() => {
     const id = setInterval(() => loadRefundQueue(), 6000);
@@ -61,6 +128,20 @@ export default function Verifications() {
       set({ refundQueueFocusClaimId: null });
     }
   }, [s.refundQueueFocusClaimId, s.refundQueue, set]);
+  // Refund-discoverability fix — the dedicated "Refunds" entry
+  // (openVerificationsRefunds) sets this so arriving here scrolls straight
+  // to the "Hoàn tiền" section/title instead of landing at the top of the
+  // payment-verification list this shared route is normally labeled for.
+  // Fires once the section container is actually in the DOM (ref attaches
+  // on every render once mounted, regardless of loading/error/empty/rows
+  // state — see the section's own render below), then self-clears.
+  const refundSectionRef = useRef(null);
+  useEffect(() => {
+    if (s.verificationsScrollToRefunds && refundSectionRef.current) {
+      refundSectionRef.current.scrollIntoView({ block: 'start' });
+      set({ verificationsScrollToRefunds: false });
+    }
+  }, [s.verificationsScrollToRefunds, s.refundQueue, s.refundQueueLoading, s.refundQueueError, set]);
 
   // Tapping a 'dispute_message' toast/notification (openNotification,
   // GocContext.jsx) lands an organizer here with s.chatHighlight set —
@@ -288,12 +369,57 @@ export default function Verifications() {
       {!focusId && (() => {
         const activeRows = s.refundQueue.filter(c => c.status === 'owed' || c.status === 'disputed');
         const pendingRows = s.refundQueue.filter(c => c.status === 'host_marked_sent');
-        if (!activeRows.length && !pendingRows.length) return null;
+        const hasRows = activeRows.length > 0 || pendingRows.length > 0;
+        // Investigation fix — distinguish "still checking whether you
+        // organize anything" / "that check failed" / "failed to load" /
+        // "genuinely nothing to act on" / "here are the rows." Before this,
+        // every one of the first four collapsed to the exact same "render
+        // nothing," which is indistinguishable from the section simply not
+        // existing — "do not show failed loading as empty."
+        const awaitingOrganizerDiscovery = s.refundQueueGateReason === 'awaiting-organizer-discovery';
+        const showLoading = (s.refundQueueLoading || awaitingOrganizerDiscovery) && !hasRows;
+        const showError = !!s.refundQueueError && !hasRows;
+        const showEmpty = !hasRows && !showLoading && !showError;
         return (
-          <div style={{ margin: '0 22px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }} data-testid="refund-queue-title">
+          <div ref={refundSectionRef} style={{ margin: '0 22px 40px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <span
+              onClick={() => {
+                diagTapCountRef.current += 1;
+                clearTimeout(diagTapTimerRef.current);
+                diagTapTimerRef.current = setTimeout(() => { diagTapCountRef.current = 0; }, 1200);
+                if (diagTapCountRef.current >= 5) { diagTapCountRef.current = 0; setDiagOpen(v => !v); }
+              }}
+              style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7, cursor: 'default' }} data-testid="refund-queue-title"
+            >
               {T('Hoàn tiền', 'Refunds')}
             </span>
+            {diagOpen && <RefundDiagnosticsPanel s={s} T={T} />}
+            {/* Point 1's own explicit requirement — the host does not
+                create or hold any receiving payment method here; the GOER
+                already chose/snapshotted their own destination, the host
+                only reviews it and transfers externally, then marks sent. */}
+            {(hasRows || showEmpty) && (
+              <span style={{ fontSize: 11, color: ink, opacity: 0.6 }} data-testid="refund-queue-explainer">
+                {T(
+                  'Khách đã chọn tài khoản nhận hoàn tiền của họ. Bạn chuyển khoản trực tiếp cho khách rồi đánh dấu đã hoàn tiền — không cần tạo phương thức nhận tiền riêng.',
+                  'The guest has already chosen their own refund destination. You transfer to them directly, then mark it sent — no receiving payment method of your own is needed here.'
+                )}
+              </span>
+            )}
+            {showLoading && (
+              <span style={{ fontSize: 12.5, color: ink, opacity: 0.6 }} data-testid="refund-queue-loading">{T('Đang tải…', 'Loading…')}</span>
+            )}
+            {showError && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="refund-queue-error">
+                <span style={{ fontSize: 12.5, color: alert }}>{s.refundQueueError}</span>
+                <Action label={T('Thử lại', 'Retry')} onClick={loadRefundQueue} testid="refund-queue-retry" />
+              </div>
+            )}
+            {showEmpty && (
+              <span style={{ fontSize: 12.5, color: ink, opacity: 0.6 }} data-testid="refund-queue-empty">
+                {T('Không có khoản hoàn tiền nào cần xử lý.', 'No refunds need action right now.')}
+              </span>
+            )}
             {activeRows.map(c => (
               <div
                 key={c.id}

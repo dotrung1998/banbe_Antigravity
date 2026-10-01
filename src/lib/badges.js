@@ -51,6 +51,17 @@ export function computeHostActionCount({ organizerMode, verifications = [], refu
   return (verifications?.length || 0) + (refundQueue?.length || 0);
 }
 
+/** Refund-discoverability fix — a dedicated "Refunds" row (AccountGroup.jsx/
+ * AccountGroupView.swift's `hostOps` section) needs its OWN badge, same
+ * `refundQueue.length` term `computeHostActionCount` already sums in —
+ * never a second, differently-defined count, so the two badges can never
+ * silently drift apart (e.g. one counting only 'owed'/'disputed' while the
+ * other counts every status). */
+export function computeRefundActionCount({ organizerMode, refundQueue = [] }) {
+  if (!organizerMode) return 0;
+  return refundQueue?.length || 0;
+}
+
 /** Account (dock/profile) icon badge — the top of the whole chain. Sums
  * the admin and host counts (never each other's own already-summed value,
  * and never a per-row count a second time) because a real admin queue item

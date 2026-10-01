@@ -381,6 +381,17 @@ export default function Attendance() {
         )}
       </div>
 
+      {/* Investigation fix — "do not show failed loading as empty": a
+          first-load failure with nothing already on screen (loadRefundCenter
+          only sets this when refundCenterClaims is still empty) used to
+          render as if there were simply no refund claims for this event. */}
+      {s.refundCenterError && s.refundCenterClaims.length === 0 && (
+        <div style={{ margin: '0 22px 24px', display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="refund-center-error">
+          <span style={{ fontSize: 12.5, color: alert }}>{s.refundCenterError}</span>
+          <span onClick={() => loadRefundCenter(s.attendanceEventKey)} data-testid="refund-center-retry" style={{ fontSize: 12.5, textDecoration: 'underline', cursor: 'pointer' }}>{T('Thử lại', 'Retry')}</span>
+        </div>
+      )}
+
       {/* Refund MVP — Host Event Refund Center. Only rendered once there's
           actually something to refund for this event. */}
       {s.refundCenterClaims.length > 0 && (() => {

@@ -16,6 +16,9 @@ struct VerificationsView: View {
     @State private var refundQueuePollTask: Task<Void, Never>?
     @State private var refundNoteFor: UUID?
     @State private var refundNoteText = ""
+    // Point 2 — diagnostics panel toggle (5 taps on the "Hoàn tiền" title).
+    @State private var diagOpen = false
+    @State private var diagTapCount = 0
 
     private enum ReasonKind { case reject, escalate }
 
@@ -32,7 +35,7 @@ struct VerificationsView: View {
     }
 
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(scrollPositionID: $app.verificationsScrollAnchorID) {
             VStack(alignment: .leading, spacing: 0) {
                 // Sub-section-of-a-group back-navigation fix (2026-09-29,
                 // second pass) — label now also distinguishes the
@@ -136,16 +139,58 @@ struct VerificationsView: View {
                 // "Đang chờ xác nhận" section instead of being silently
                 // dropped. Hidden while focused on one verification booking,
                 // same reasoning as the dispute section above.
-                if app.verificationsFocusBookingID == nil, !activeRefundRows.isEmpty || !pendingRefundRows.isEmpty {
-                    Text(app.T("Hoàn tiền", "Refunds"))
-                        .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
-                        .padding(.top, 24)
-                        .accessibilityIdentifier("refundQueue.title")
-                    VStack(spacing: 12) {
-                        ForEach(activeRefundRows) { claim in refundRow(claim) }
-                        ForEach(pendingRefundRows) { claim in pendingRefundRow(claim) }
+                // Investigation fix — distinguish "still checking whether
+                // you organize anything" / "that check failed" / "failed
+                // to load" / "genuinely nothing to act on" / "here are the
+                // rows." Before this, every one of the first four collapsed
+                // to the exact same "render nothing," indistinguishable
+                // from the section simply not existing — "do not show
+                // failed loading as empty."
+                if app.verificationsFocusBookingID == nil {
+                    let hasRows = !activeRefundRows.isEmpty || !pendingRefundRows.isEmpty
+                    let awaitingOrganizerDiscovery = app.refundQueueGateReason == "awaiting-organizer-discovery"
+                    let showLoading = (app.refundQueueLoading || awaitingOrganizerDiscovery) && !hasRows
+                    let showError = !app.refundQueueError.isEmpty && !hasRows
+                    let showEmpty = !hasRows && !showLoading && !showError
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(app.T("Hoàn tiền", "Refunds"))
+                            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+                            .accessibilityIdentifier("refundQueue.title")
+                            .onTapGesture { diagTapCount += 1; if diagTapCount >= 5 { diagTapCount = 0; diagOpen.toggle() } }
+                        // Point 1's own explicit requirement — the host does
+                        // not create or hold any receiving payment method
+                        // here; the GOER already chose/snapshotted their own
+                        // destination, the host only reviews it and
+                        // transfers externally, then marks sent.
+                        if hasRows || showEmpty {
+                            Text(app.T(
+                                "Khách đã chọn tài khoản nhận hoàn tiền của họ. Bạn chuyển khoản trực tiếp cho khách rồi đánh dấu đã hoàn tiền — không cần tạo phương thức nhận tiền riêng.",
+                                "The guest has already chosen their own refund destination. You transfer to them directly, then mark it sent — no receiving payment method of your own is needed here."
+                            ))
+                            .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        }
+                        if showLoading {
+                            Text(app.T("Đang tải…", "Loading…")).font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        }
+                        if showError {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(app.refundQueueError).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                                Button(app.T("Thử lại", "Retry")) { Task { await app.loadRefundQueue() } }
+                                    .font(.system(size: 12.5, weight: .semibold)).underline()
+                            }
+                        }
+                        if showEmpty {
+                            Text(app.T("Không có khoản hoàn tiền nào cần xử lý.", "No refunds need action right now."))
+                                .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        }
+                        if diagOpen { RefundDiagnosticsPanel() }
+                        VStack(spacing: 12) {
+                            ForEach(activeRefundRows) { claim in refundRow(claim) }
+                            ForEach(pendingRefundRows) { claim in pendingRefundRow(claim) }
+                        }
                     }
-                    .padding(.top, 12)
+                    .padding(.top, 24)
+                    .id("refundSection")
                 }
             }
             .foregroundStyle(app.palette.ink)
@@ -164,6 +209,18 @@ struct VerificationsView: View {
             // once its own local toggle is opened, so that has to happen
             // here before DisputeChatPanel can scroll to/highlight anything.
             if let bookingID = app.chatHighlight?.bookingID { openChatBookingID = bookingID }
+            // One-shot scroll-to-refunds (openVerificationsRefunds) —
+            // `.scrollPosition(id:)` applies the scroll once this id is
+            // set and a matching `.id(...)` exists; clearing it shortly
+            // after is enough here (unlike HomeView's own restore-on-
+            // return use of this same mechanism, this is a single jump,
+            // never re-triggered for the same id on this screen).
+            if app.verificationsScrollAnchorID != nil {
+                Task {
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    app.verificationsScrollAnchorID = nil
+                }
+            }
         }
         .onDisappear { tickTask?.cancel(); refundQueuePollTask?.cancel() }
         .onChange(of: app.chatHighlight?.bookingID) { _, newValue in
@@ -438,5 +495,60 @@ struct VerificationsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(id ?? title)
+    }
+}
+
+/// Point 2 of the refund-discoverability investigation — an explicit
+/// opt-in diagnostic panel (NOT gated on a DEBUG compiler flag, since the
+/// person reproducing this is testing against a real Release/PersonalTeamDebug
+/// build on a physical iPhone) that answers exactly the questions that
+/// distinguish "hidden by a client gate," "still loading," "failed," and
+/// "genuinely empty" from each other, without ever logging a JWT/refresh
+/// token/password/bank detail/email code or a full response payload.
+/// Toggled by 5 taps on the "Hoàn tiền" section title.
+private struct RefundDiagnosticsPanel: View {
+    @EnvironmentObject private var app: AppState
+    @State private var authUserID = "(checking…)"
+
+    private func row(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).font(.system(size: 10, design: .monospaced)).opacity(0.6)
+            Spacer(minLength: 8)
+            Text(value).font(.system(size: 10, design: .monospaced)).multilineTextAlignment(.trailing)
+        }
+    }
+
+    var body: some View {
+        let activeCount = app.refundQueue.filter(\.isActiveRefundStatus).count
+        let pendingCount = app.refundQueue.filter { $0.status == "host_marked_sent" }.count
+        VStack(alignment: .leading, spacing: 4) {
+            Text("DIAGNOSTICS (refund queue)").font(.system(size: 9.5, weight: .bold)).foregroundStyle(BanbeTheme.alert)
+            // auth.user() re-verifies against the server (not just the
+            // locally cached session) — the one value a raw SQL Editor
+            // auth.uid() can never actually confirm, since that only
+            // proves what the query editor's OWN session is.
+            row("auth.user() id", authUserID)
+            row("app-state user id", app.userID?.uuidString ?? "(nil)")
+            row("profile role (accountType)", app.accountType)
+            row("organizerMode", String(app.organizerMode))
+            row("supabase host", URL(string: AppConfig.supabaseURL)?.host ?? "(unknown)")
+            row("myOrganizerIdsStatus", app.myOrganizerIdsStatus)
+            row("myOrganizerIDs", app.myOrganizerIDs.description)
+            row("refundQueueLoading", String(app.refundQueueLoading))
+            row("refundQueueGateReason", app.refundQueueGateReason.isEmpty ? "(never set)" : app.refundQueueGateReason)
+            row("refundQueueError", app.refundQueueError.isEmpty ? "(none)" : app.refundQueueError)
+            row("refundQueue ids+status", app.refundQueue.map { "\($0.id):\($0.status)" }.joined(separator: ", "))
+            row("presentation (active/pending)", "\(activeCount) / \(pendingCount)")
+            row("verificationsFocusBookingID", app.verificationsFocusBookingID?.uuidString ?? "(nil)")
+        }
+        .padding(12)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(BanbeTheme.alert, style: StrokeStyle(lineWidth: 1, dash: [4])))
+        .task {
+            if let user = try? await SupabaseService.client.auth.user() {
+                authUserID = user.id.uuidString
+            } else {
+                authUserID = "(no session / error)"
+            }
+        }
     }
 }

@@ -594,6 +594,7 @@ extension AppState {
     /// bookings) and which it organizes (from owning the organizer row).
     func loadMyEvents() async {
         guard let uid = userID else { return }
+        myOrganizerIdsStatus = "loading"
         do {
             let bookings: [BookingBrief] = try await SupabaseService.client
                 .from("bookings")
@@ -640,6 +641,7 @@ extension AppState {
                 .order("id", ascending: true)
                 .execute().value
             myOrganizerIDs = organizers.map(\.id)
+            myOrganizerIdsStatus = "loaded"
             if !organizers.isEmpty {
                 // The account's actual host page name — Account used to
                 // always fall back to the generic "Bếp Nhỏ" placeholder
@@ -669,6 +671,11 @@ extension AppState {
             }
         } catch {
             print("Failed to load account events:", error)
+            // myOrganizerIDs itself is deliberately left untouched (already
+            // correct before this pass — this `catch` never wrote to it) —
+            // only the STATUS is new, so a reader can tell "failed" apart
+            // from "confirmed empty" instead of inferring it from `.isEmpty`.
+            myOrganizerIdsStatus = "error"
         }
     }
 

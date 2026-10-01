@@ -36,6 +36,14 @@ enum AccountBadges {
         return verificationsCount + refundQueueCount
     }
 
+    /// Refund-discoverability fix — a dedicated "Refunds" row's own badge,
+    /// same `refundQueueCount` term `hostActionCount` already sums in,
+    /// never a second, differently-defined count.
+    static func refundActionCount(organizerMode: Bool, refundQueueCount: Int) -> Int {
+        guard organizerMode else { return 0 }
+        return refundQueueCount
+    }
+
     /// Account (dock/profile) icon badge — top of the whole chain. Sums
     /// admin + host counts (never each other's own already-summed value)
     /// since a real admin queue item and a real host queue item are always

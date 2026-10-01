@@ -165,18 +165,41 @@ targets:
         TEST_TARGET_NAME: BanbeApp
         GENERATE_INFOPLIST_FILE: "YES"
 
+  # Refund-discoverability investigation (point 3) — a real in-process unit
+  # test target (`@testable import BanbeApp`), unlike BanbeAppUITests
+  # (bundle.ui-testing launches the app as a separate process and cannot
+  # import its module). Only the RefundClaim decode regression test lives
+  # here for now; a small, fast, no-simulator-interaction target, not a
+  # second UI test suite.
+  BanbeAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: BanbeAppTests
+    dependencies:
+      - target: BanbeApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.banbe.ios.tests
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/BanbeApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BanbeApp"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
 schemes:
   BanbeApp:
     build:
       targets:
         BanbeApp: all
         BanbeAppUITests: [test]
+        BanbeAppTests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
         - BanbeAppUITests
+        - BanbeAppTests
   # .claude/notes/18-ios-personal-team-signing.md — a dedicated scheme so
   # "Select Personal Team Debug" is a single picker choice in Xcode's
   # scheme menu, not a manual per-run Edit Scheme > Build Configuration

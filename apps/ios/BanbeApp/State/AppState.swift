@@ -447,6 +447,14 @@ final class AppState: ObservableObject {
     @Published var tickets: [String: Int] = [:]
     @Published var myOrgEventKeys: [String] = []
     @Published var myOrganizerIDs: [String] = []
+    /// Refund-discoverability investigation — mirrors web's `myOrganizerIdsStatus`.
+    /// `loadMyEvents()`'s own `catch` already left `myOrganizerIDs` untouched
+    /// on a failed lookup (confirmed by reading — iOS never had web's "no
+    /// error check, silently writes []" bug), but there was still no way for
+    /// a reader (loadRefundQueue's own gate, diagnostics) to tell "still
+    /// loading"/"failed" apart from "confirmed owns zero organizers" just
+    /// from `myOrganizerIDs.isEmpty`. 'idle' | 'loading' | 'loaded' | 'error'.
+    @Published var myOrganizerIdsStatus = "idle"
     // Part B audit (2026-09-28) — Dashboard-identity-mismatch fix (mirrors
     // web's GocContext.jsx `myOrgEventOrganizerId`). `myOrgEventKeys` above
     // stays the full union across every organizer row this account owns
@@ -1042,6 +1050,21 @@ final class AppState: ObservableObject {
     // booking PaymentDetailsView is currently showing.
     @Published var refundQueue: [RefundClaim] = []
     @Published var refundQueueLoading = false
+    /// Distinct from refundQueueLoading (in flight) — a transport error or
+    /// RPC success:false, surfaced in VerificationsView instead of
+    /// silently rendering as an empty queue.
+    @Published var refundQueueError = ""
+    /// Dev-diagnostics only — the exact reason loadRefundQueue() took the
+    /// branch it took: "ok" | "awaiting-organizer-discovery" |
+    /// "organizer-discovery-failed" | "no-organizers" | "rpc-error" |
+    /// "success-false" | "skipped-stale".
+    @Published var refundQueueGateReason = ""
+    /// Refund-discoverability fix — a dedicated "Refunds" row sets this to
+    /// "refundSection" so VerificationsView (via ScreenScaffold's existing
+    /// `scrollPositionID` mechanism, same one HomeView already uses to
+    /// restore scroll position) scrolls straight to the refund section
+    /// instead of landing at the top of the payment-verification list.
+    @Published var verificationsScrollAnchorID: String?
     // TASK A (2026-09-30 pass) — only the newest loadRefundQueue() call may
     // write refundQueue; see that function's own doc comment
     // (AppState+Payments.swift). Same pattern as attendanceGuestsSeq above.

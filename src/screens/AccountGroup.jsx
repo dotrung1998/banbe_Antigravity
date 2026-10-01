@@ -3,7 +3,7 @@ import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
-import { computeHostActionCount, formatBadgeCount } from '../lib/badges.js';
+import { computeHostActionCount, computeRefundActionCount, formatBadgeCount } from '../lib/badges.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 
 // Account IA pass (2026-09-27) — the ONE shared child screen every
@@ -58,7 +58,7 @@ export default function AccountGroup() {
     goCompletedList, respondToEventCredit, goEvent,
     respondToOrganizerInvite, setOrganizerMemberVisibility,
     openPreferences, openSecurity, openDocuments, openRefundAccounts, openMyRefunds,
-    openVerifications, openPayout, openDisputes, openAdminEvents,
+    openVerifications, openVerificationsRefunds, openPayout, openDisputes, openAdminEvents,
     loadPaymentBookings, openBookingConfirmed, openDeleteAccount,
   } = useGoc();
   const key = s.accountGroupKey;
@@ -338,6 +338,15 @@ export default function AccountGroup() {
                 screen (openVerifications), so this row's badge is the same
                 sum, not a second independently-derived count. */}
             <Row icon="checklist" label={T('Chờ xác nhận thanh toán', 'Awaiting verification')} trailing="›" testId="host-verifications" onClick={openVerifications} badge={computeHostActionCount(s)} />
+            {/* Refund-discoverability fix — refunds previously only lived
+                inside the row above, with no mention of the word "refund"
+                anywhere in this group's own labels. Same screen/data
+                (openVerificationsRefunds just adds a one-shot scroll flag
+                to the SAME openVerifications() call), own badge
+                (computeRefundActionCount — the same refundQueue.length term
+                the row above's own sum already includes, never a second,
+                differently-defined count). */}
+            <Row icon="banknote" label={T('Hoàn tiền', 'Refunds')} trailing="›" testId="host-refunds" onClick={openVerificationsRefunds} badge={computeRefundActionCount(s)} />
             <Row icon="banknote" label={T('Nhận thanh toán', 'Getting paid')} trailing="›" testId="host-payout" onClick={openPayout} />
             <Row icon="document" label={T('Hoá đơn đã phát hành', 'Invoices issued')} trailing="›" testId="host-invoices" onClick={() => openDocuments('invoice', 'host')} />
             <Row icon="receipt" label={T('Biên nhận đã phát hành', 'Receipts issued')} trailing="›" testId="host-receipts" onClick={() => openDocuments('receipt', 'host')} border={false} />

@@ -447,6 +447,29 @@ const initialState = {
   tickets: {},
   myOrgEventKeys: [],
   myOrganizerIds: [],
+  // Refund-discoverability investigation (2026-10-?? pass) — real bug
+  // found: loadMyEvents() used to silently collapse `myOrganizerIds` to
+  // `[]` on a FAILED organizers query (no `error` check at all), which is
+  // indistinguishable from "genuinely owns zero organizers" to every
+  // reader of `myOrganizerIds` — including loadRefundQueue's own gate,
+  // which then permanently (until the next loadMyEvents call) reported an
+  // empty refund queue for a host who actually owns organizers, with NO
+  // visible error anywhere. 'idle' before the first call ever runs,
+  // 'loading' while in flight, 'loaded' only after a GENUINE success
+  // (including a real zero-organizer result), 'error' when the query
+  // itself failed — callers that need to tell "confirmed none" apart from
+  // "don't know yet" (loadRefundQueue, diagnostics) read this, never infer
+  // it from `myOrganizerIds.length` alone.
+  myOrganizerIdsStatus: 'idle',
+  // Distinct from refundQueueLoading (in flight) — a transport error or
+  // RPC success:false, surfaced in Verifications.jsx instead of silently
+  // rendering as an empty queue ("do not show failed loading as empty").
+  refundQueueError: '',
+  // Dev-diagnostics only (point 2 of this ticket) — the exact reason
+  // loadRefundQueue took the branch it took, one of: 'ok' |
+  // 'awaiting-organizer-discovery' | 'organizer-discovery-failed' |
+  // 'no-organizers' | 'rpc-error' | 'decode-error' | 'skipped-stale'.
+  refundQueueGateReason: '',
   // Part B audit (2026-09-28) — Dashboard-identity-mismatch fix. Every
   // owned organizer row's events are (correctly, deliberately) still
   // unioned into `myOrgEventKeys` above — that flat list is the real
@@ -613,6 +636,7 @@ const initialState = {
   // and a computed `eligible` flag.
   refundCenterClaims: [],
   refundCenterLoading: false,
+  refundCenterError: '',
   refundCenterSelected: [],
   refundBatchBusy: false,
   refundBatchInFlight: false,
@@ -625,6 +649,13 @@ const initialState = {
   // booking instead of the full list, whether it's the only pending item
   // or buried far down in it.
   verificationsFocusBookingId: null,
+  // Refund-discoverability fix — a dedicated "Refunds" entry (same screen,
+  // same data, no new backend/state) sets this so Verifications.jsx scrolls
+  // straight to the "Hoàn tiền" section on open, instead of landing at the
+  // top of the payment-verification list the shared route is normally
+  // labeled for. Self-clears once applied (mirrors refundQueueFocusClaimId's
+  // own one-shot pattern just below).
+  verificationsScrollToRefunds: false,
   disputes: [],
   disputesLoading: false,
   disputeBusy: '',
@@ -1925,7 +1956,8 @@ export function GocProvider({ children }) {
   // `loadMyEvents` on every render, not only when the effect itself runs.
   const loadMyEvents = useCallback(async (uid) => {
     if (!uid) return;
-    const [{ data: bookings }, { data: organizers }] = await Promise.all([
+    set({ myOrganizerIdsStatus: 'loading' });
+    const [{ data: bookings }, { data: organizers, error: organizersError }] = await Promise.all([
       supabase
         .from('bookings')
         .select('event_id, qty, status')
@@ -1941,8 +1973,23 @@ export function GocProvider({ children }) {
     const tickets = Object.fromEntries((bookings || []).map(b => [b.event_id, b.qty]));
     set({ attending, tickets });
 
+    // Real bug, confirmed by reading: this used to write `myOrganizerIds:
+    // []` unconditionally, with no `error` check at all — a genuinely
+    // FAILED query (RLS hiccup, network blip, transient 5xx) collapsed to
+    // the exact same `[]` as "really owns zero organizers," and every
+    // downstream reader (loadRefundQueue's own gate, foremost) had no way
+    // to tell the two apart. A failed lookup must never be reported as a
+    // confirmed empty result.
+    if (organizersError) {
+      if (import.meta.env?.DEV) {
+        console.warn('loadMyEvents: organizers lookup failed, myOrganizerIds NOT overwritten:', { code: organizersError.code, message: organizersError.message, userId: uid });
+      }
+      set({ myOrganizerIdsStatus: 'error' });
+      return;
+    }
+
     const organizerIds = (organizers || []).map(o => o.id);
-    set({ myOrganizerIds: organizerIds });
+    set({ myOrganizerIds: organizerIds, myOrganizerIdsStatus: 'loaded' });
     if (organizerIds.length) {
       const { data: events } = await supabase.from('events').select('id, organizer_id').in('organizer_id', organizerIds);
       set({
@@ -3035,6 +3082,14 @@ export function GocProvider({ children }) {
     set({ screen: 'verifications', verifications: [], verificationsLoading: true, verificationsFocusBookingId: null, verificationsBack: back });
   }, [set, s.organizerMode, s.accountType, s.hasHosted]);
   const backFromVerifications = useCallback(() => set(prev => ({ screen: prev.verificationsBack || 'profile' })), [set]);
+  /** Refund-discoverability fix — a dedicated "Refunds" row/entry point.
+   * Calls the EXACT SAME openVerifications() above (same gate, same screen,
+   * same data loaders) and only additionally sets a one-shot scroll flag —
+   * no duplicated backend/state logic, no second refund surface. */
+  const openVerificationsRefunds = useCallback((back = 'profile') => {
+    openVerifications(back);
+    set({ verificationsScrollToRefunds: true });
+  }, [openVerifications, set]);
 
   /**
    * 14-organizer-checkin.md: Attendance's "Check payment" — jumps straight
@@ -3204,34 +3259,70 @@ export function GocProvider({ children }) {
   // no more separate eligibility logic to drift out of sync.
   const refundQueueSeq = useRef(0);
   const loadRefundQueue = useCallback(async () => {
-    if (s.accountType !== 'admin' && !s.myOrganizerIds.length) {
-      return set({ refundQueue: [], refundQueueLoading: false });
+    // Investigation fix — this gate used to read ONLY `myOrganizerIds.
+    // length`, which is `[]` in THREE different situations: genuinely owns
+    // no organizer, organizer discovery hasn't run/finished yet, and
+    // organizer discovery FAILED (see loadMyEvents' own fix above). Only
+    // the first of those three is a real "nothing to show" — the other two
+    // must not silently report the same empty queue with no error, because
+    // they can resolve to a non-empty queue the moment discovery actually
+    // completes (and, for 'error', never self-correct without a retry).
+    if (s.accountType !== 'admin') {
+      if (s.myOrganizerIdsStatus === 'idle' || s.myOrganizerIdsStatus === 'loading') {
+        // Don't flip refundQueueLoading off here — this is "not ready to
+        // check yet," not "checked and empty." The effect that calls this
+        // (Verifications.jsx) re-fires once myOrganizerIdsStatus changes,
+        // since it's part of this callback's own dependency array below.
+        set({ refundQueueGateReason: 'awaiting-organizer-discovery' });
+        return;
+      }
+      if (s.myOrganizerIdsStatus === 'error') {
+        set({ refundQueue: [], refundQueueLoading: false, refundQueueError: T('Không thể xác định các sự kiện bạn tổ chức. Vui lòng thử lại.', 'Could not determine which events you organize. Please try again.'), refundQueueGateReason: 'organizer-discovery-failed' });
+        return;
+      }
+      if (!s.myOrganizerIds.length) {
+        set({ refundQueue: [], refundQueueLoading: false, refundQueueError: '', refundQueueGateReason: 'no-organizers' });
+        return;
+      }
     }
     const seq = ++refundQueueSeq.current;
-    set({ refundQueueLoading: true });
+    set({ refundQueueLoading: true, refundQueueError: '' });
     const { data, error } = await supabase.rpc('get_host_refund_claims', { p_event_id: null });
     // Only the newest call may ever write refundQueue — a slower, older
     // in-flight call (a poll tick that started before this one) landing
     // late must never overwrite what a more recent call already applied.
-    if (seq !== refundQueueSeq.current) return;
+    if (seq !== refundQueueSeq.current) { set({ refundQueueGateReason: 'skipped-stale' }); return; }
     if (error || data?.success === false) {
       if (import.meta.env?.DEV) {
         console.warn('loadRefundQueue failed:', { code: error?.code, message: error?.message, details: error?.details, hint: error?.hint, rpcError: data?.error, userId: s.user?.id });
       }
-      set({ refundQueueLoading: false });
+      set({
+        refundQueueLoading: false, refundQueueGateReason: 'rpc-error',
+        refundQueueError: T('Không thể tải danh sách hoàn tiền. Vui lòng thử lại.', 'Could not load the refund queue. Please try again.'),
+      });
       return;
     }
-    const claims = data.claims || [];
-    const enriched = claims.map(c => ({
-      ...c,
-      guestName: c.guest_name || T('Khách', 'Guest'),
-      eventName: c.event_name || '',
-      eventId: c.event_id || null,
-      destination: c.recipient_snapshot || null,
-      ...refundClaimPresentation(c),
-    }));
-    set({ refundQueue: enriched, refundQueueLoading: false });
-  }, [set, T, s.accountType, s.myOrganizerIds.length, s.user?.id]);
+    let enriched;
+    try {
+      const claims = data.claims || [];
+      enriched = claims.map(c => ({
+        ...c,
+        guestName: c.guest_name || T('Khách', 'Guest'),
+        eventName: c.event_name || '',
+        eventId: c.event_id || null,
+        destination: c.recipient_snapshot || null,
+        ...refundClaimPresentation(c),
+      }));
+    } catch (decodeError) {
+      if (import.meta.env?.DEV) console.warn('loadRefundQueue decode failed:', decodeError);
+      set({
+        refundQueueLoading: false, refundQueueGateReason: 'decode-error',
+        refundQueueError: T('Không thể hiển thị danh sách hoàn tiền. Vui lòng thử lại.', 'Could not display the refund queue. Please try again.'),
+      });
+      return;
+    }
+    set({ refundQueue: enriched, refundQueueLoading: false, refundQueueError: '', refundQueueGateReason: 'ok' });
+  }, [set, T, s.accountType, s.myOrganizerIds.length, s.myOrganizerIdsStatus, s.user?.id]);
 
   /** Host's "Đã hoàn tiền" — owed -> host_marked_sent. Shared by
    * Verifications.jsx's own refund queue AND Attendance.jsx's "Hoàn lại lần
@@ -3653,7 +3744,7 @@ export function GocProvider({ children }) {
    */
   const refundCenterSeq = useRef(0);
   const loadRefundCenter = useCallback(async (eventKey) => {
-    if (!eventKey) return set({ refundCenterClaims: [], refundCenterLoading: false });
+    if (!eventKey) return set({ refundCenterClaims: [], refundCenterLoading: false, refundCenterError: '' });
     const seq = ++refundCenterSeq.current;
     set({ refundCenterLoading: true });
     const { data, error } = await supabase.rpc('get_host_refund_claims', { p_event_id: eventKey });
@@ -3663,11 +3754,17 @@ export function GocProvider({ children }) {
     if (error || data?.success === false) {
       // A transient fetch error must never clobber an already-populated
       // list — leave refundCenterClaims exactly as it was. Full diagnostic
-      // logged only in dev — never surfaced raw to the user.
+      // logged only in dev — never surfaced raw to the user. `refundCenterError`
+      // only shows when there's NOTHING already on screen to fall back to
+      // (set below, read in Attendance.jsx) — "do not show failed loading
+      // as empty" applies to the FIRST load, not every background poll hiccup.
       if (import.meta.env?.DEV) {
         console.warn('loadRefundCenter failed:', { code: error?.code, message: error?.message, details: error?.details, hint: error?.hint, rpcError: data?.error, eventKey, userId: s.user?.id });
       }
-      set({ refundCenterLoading: false });
+      set(prev => ({
+        refundCenterLoading: false,
+        refundCenterError: prev.refundCenterClaims.length ? '' : T('Không thể tải Refund Center. Vui lòng thử lại.', 'Could not load the Refund Center. Please try again.'),
+      }));
       return;
     }
     const claims = data.claims || [];
@@ -3684,6 +3781,7 @@ export function GocProvider({ children }) {
     set(prev => ({
       refundCenterClaims: enriched,
       refundCenterLoading: false,
+      refundCenterError: '',
       refundCenterSelected: prev.refundCenterSelected.filter(id => eligibleIds.has(id)),
     }));
   }, [set, T, s.user?.id]);
@@ -9004,7 +9102,7 @@ export function GocProvider({ children }) {
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid, uploadPaymentDocument, openDocumentFromNotification, toggleAutoEmailDocuments,
     submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer, loadReceiptStatus, requestReceipt,
-    openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
+    openVerifications, openVerificationsRefunds, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     loadRefundQueue, markRefundSent, confirmRefundReceived, disputeRefund, loadPaymentRefundClaim,
     loadRefundDestinations, saveRefundDestination, deleteRefundDestination, setDefaultRefundDestination, selectRefundDestinationForClaim, reorderRefundDestinations,
     loadMyRefunds, openRefundAccounts, backFromRefundAccounts, openMyRefunds, backFromMyRefunds,
@@ -9041,7 +9139,7 @@ export function GocProvider({ children }) {
     openDocuments, loadDocuments, openDocument, backFromDocument, backFromDocuments,
     currentDocument, downloadDocument, markGuestPaid, uploadPaymentDocument, openDocumentFromNotification, toggleAutoEmailDocuments,
     submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer, loadReceiptStatus, requestReceipt,
-    openVerifications, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
+    openVerifications, openVerificationsRefunds, openVerificationDetail, backFromVerifications, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadOrganizerHoldingSummary, forfeitExpiredHold,
     loadRefundQueue, markRefundSent, confirmRefundReceived, disputeRefund, loadPaymentRefundClaim,
     loadRefundDestinations, saveRefundDestination, deleteRefundDestination, setDefaultRefundDestination, selectRefundDestinationForClaim, reorderRefundDestinations,
     loadMyRefunds, openRefundAccounts, backFromRefundAccounts, openMyRefunds, backFromMyRefunds,

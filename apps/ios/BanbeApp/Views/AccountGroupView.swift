@@ -367,6 +367,15 @@ struct AccountGroupView: View {
             // is the same sum, not a second independently-derived count.
             row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"), identifier: "host.verifications", icon: "checklist", trailing: "›", badge: AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueueCount: app.refundQueue.count)) { app.openVerifications(back: .accountGroup) }
             Divider().overlay(app.palette.rule)
+            // Refund-discoverability fix — refunds previously only lived
+            // inside the row above, with no mention of the word "refund"
+            // anywhere in this group's own labels. Same screen/data
+            // (openVerificationsRefunds just adds a one-shot scroll flag to
+            // the SAME openVerifications() call), own badge
+            // (AccountBadges.refundActionCount — the same refundQueue.count
+            // term the row above's own sum already includes).
+            row(app.T("Hoàn tiền", "Refunds"), identifier: "host.refunds", icon: "banknote", trailing: "›", badge: AccountBadges.refundActionCount(organizerMode: app.organizerMode, refundQueueCount: app.refundQueue.count)) { app.openVerificationsRefunds(back: .accountGroup) }
+            Divider().overlay(app.palette.rule)
             row(app.T("Nhận thanh toán", "Getting paid"), identifier: "host.payout", icon: "banknote", trailing: "›") { app.openPayout() }
             Divider().overlay(app.palette.rule)
             row(app.T("Hoá đơn đã phát hành", "Invoices issued"), identifier: "host.invoices", icon: "doc.text", trailing: "›") { app.openDocuments(kind: "invoice", role: "host") }
