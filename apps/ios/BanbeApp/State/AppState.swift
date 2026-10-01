@@ -1157,6 +1157,12 @@ final class AppState: ObservableObject {
     // Section 5 — public (non-follower) survey-story discovery ("Help Shape
     // Upcoming Events"), built in loadHomeStories() alongside homeStories.
     @Published var homeSurveyDiscovery: [SurveyDiscoveryCard] = []
+    /// Visibility-investigation fix — distinct loading/error states so a
+    /// real query/decode failure is never silently indistinguishable from
+    /// "no public surveys right now." Loading starts true so the very
+    /// first paint doesn't flash "nothing here" either.
+    @Published var homeSurveyDiscoveryLoading = true
+    @Published var homeSurveyDiscoveryError = ""
     // Section 2 — a story's "Answer Survey" CTA opens SurveyPublicView
     // inside a `.fullScreenCover` instead of navigating `screen` away, so
     // whatever's underneath (the story, paused via StoryViewerView's

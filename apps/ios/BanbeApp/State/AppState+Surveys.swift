@@ -79,13 +79,14 @@ struct SurveySummary: Decodable, Identifiable, Equatable {
     let organizerId: String
     let publicId: String
     let title: String
+    let description: String?
     let status: String
     let closesAt: Date?
     enum CodingKeys: String, CodingKey {
         case id
         case organizerId = "organizer_id"
         case publicId = "public_id"
-        case title, status
+        case title, description, status
         case closesAt = "closes_at"
     }
 }

@@ -720,6 +720,14 @@ const initialState = {
   // organizer-first, capped — see that function's own comment for why this
   // is a SEPARATE bucket from the normal, still-follow-gated `homeStories`.
   homeSurveyDiscovery: [],
+  // Visibility-investigation fix — distinct loading/error states so a real
+  // query/decode failure is never silently indistinguishable from "no
+  // public surveys right now" ("never silently treat query/decode errors
+  // as an empty discovery feed"). Loading starts true so the very first
+  // paint (before loadHomeStories' first call resolves) doesn't flash
+  // "nothing here" either.
+  homeSurveyDiscoveryLoading: true,
+  homeSurveyDiscoveryError: '',
   surveyPublic: null, surveyPublicLoading: false, surveyPublicError: '', surveyPublicBack: 'home', surveyPublicId: '',
   // The signed-in respondent's own current answer (or null if none yet) —
   // loaded separately since get_survey_public is anon-reachable and must
@@ -4569,12 +4577,24 @@ export function GocProvider({ children }) {
   // They're routed into a separate `homeSurveyDiscovery` bucket instead, one
   // real `follows` lookup below is what tells the two cases apart.
   const loadHomeStories = useCallback(async () => {
-    if (!s.user) return set({ homeStories: [], homeSurveyDiscovery: [] });
+    if (!s.user) return set({ homeStories: [], homeSurveyDiscovery: [], homeSurveyDiscoveryLoading: false, homeSurveyDiscoveryError: '' });
+    set({ homeSurveyDiscoveryLoading: true, homeSurveyDiscoveryError: '' });
     const { data: rows, error } = await supabase
       .from('stories')
       .select('id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at, kind, event_id, survey_id')
       .order('created_at', { ascending: true });
-    if (error || !rows?.length) return set({ homeStories: [], homeSurveyDiscovery: [] });
+    // Visibility-investigation fix — a real query error must never render
+    // the same as "genuinely nothing to discover." Only a true empty
+    // result (no error, zero rows) clears both buckets with no error text.
+    if (error) {
+      if (import.meta.env?.DEV) console.warn('loadHomeStories failed:', { code: error.code, message: error.message });
+      set({
+        homeSurveyDiscoveryLoading: false,
+        homeSurveyDiscoveryError: T('Không thể tải khảo sát công khai. Vui lòng thử lại.', 'Could not load public surveys. Please try again.'),
+      });
+      return;
+    }
+    if (!rows?.length) return set({ homeStories: [], homeSurveyDiscovery: [], homeSurveyDiscoveryLoading: false, homeSurveyDiscoveryError: '' });
 
     const { data: followRows } = await supabase.from('follows').select('organizer_id').eq('user_id', s.user.id);
     const followedOrgIds = new Set((followRows || []).map(f => f.organizer_id));
@@ -4699,7 +4719,7 @@ export function GocProvider({ children }) {
       .slice(0, 20)
       .map(entry => ({ storyId: entry.storyId, organizerId: entry.organizerId, ...entry.card }));
 
-    set({ homeStories: groups, homeSurveyDiscovery: discovery });
+    set({ homeStories: groups, homeSurveyDiscovery: discovery, homeSurveyDiscoveryLoading: false, homeSurveyDiscoveryError: '' });
   }, [set, s.user, s.myOrganizerIds]);
 
   // Records a real story_views row (idempotent — PK on story_id+viewer_id,

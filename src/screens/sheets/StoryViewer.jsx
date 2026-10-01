@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useGoc } from '../../state/GocContext.jsx';
 import { paper, ink, display, cardGlass } from '../../theme.js';
 import { bg, distanceLabel } from '../../data/events.js';
+import SurveyStoryCard from './SurveyStoryCard.jsx';
 
 // Task 3.4 (07-notifications.md) — the story progression viewer. A
 // deliberately SEPARATE component/state from PhotoViewer.jsx and
@@ -756,33 +757,13 @@ function SurveyShareCard({ story, T }) {
       </div>
     );
   }
-  const closed = snap.status !== 'active';
   const open = (e) => { e.stopPropagation(); openSurveyStoryModal(snap.public_id); };
   return (
-    <div
-      data-testid="story-survey-card"
-      onClick={open}
-      style={{ width: '86%', maxWidth: 340, borderRadius: 18, overflow: 'hidden', background: paper, cursor: 'pointer', boxShadow: '0 18px 44px rgba(0,0,0,0.5)', padding: '20px 18px' }}
-    >
-      <div style={{ fontSize: 11, color: ink, opacity: 0.6 }}>{snap.host_name}</div>
-      <div style={{ ...display(18, { color: ink, marginTop: 6 }) }}>{snap.title}</div>
-      {snap.description && <div style={{ fontSize: 12.5, color: ink, opacity: 0.75, marginTop: 6 }}>{snap.description}</div>}
-      {snap.closes_at && (
-        <div style={{ fontSize: 11.5, color: ink, opacity: 0.6, marginTop: 10 }}>
-          {T('Hạn trả lời', 'Deadline')}: {new Date(snap.closes_at).toLocaleString('vi-VN')}
-        </div>
-      )}
-      <div
-        data-testid="story-survey-cta"
-        onClick={open}
-        style={{
-          marginTop: 14, padding: '12px 0', textAlign: 'center', borderRadius: 12,
-          background: closed ? 'transparent' : ink, color: closed ? ink : paper,
-          border: closed ? `1px solid ${ink}` : 'none', fontSize: 13.5, fontWeight: 700, opacity: closed ? 0.6 : 1,
-        }}
-      >
-        {closed ? T('Khảo sát đã đóng', 'Survey closed') : T('Trả lời khảo sát', 'Answer Survey')}
-      </div>
+    <div data-testid="story-survey-card" onClick={open} style={{ width: '86%', maxWidth: 340, height: '66%', maxHeight: 460, cursor: 'pointer' }}>
+      <SurveyStoryCard
+        T={T} hostName={snap.host_name} title={snap.title} description={snap.description}
+        closesAt={snap.closes_at} status={snap.status} onAnswerSurvey={open}
+      />
     </div>
   );
 }

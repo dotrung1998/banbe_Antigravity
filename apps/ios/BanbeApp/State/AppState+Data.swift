@@ -3191,14 +3191,24 @@ extension AppState {
     // account is actually permitted to see.
 
     func loadHomeStories() async {
-        guard let uid = userID else { homeStories = []; homeSurveyDiscovery = []; return }
+        guard let uid = userID else {
+            homeStories = []; homeSurveyDiscovery = []
+            homeSurveyDiscoveryLoading = false; homeSurveyDiscoveryError = ""
+            return
+        }
+        homeSurveyDiscoveryLoading = true
+        homeSurveyDiscoveryError = ""
         do {
             let rows: [Story] = try await SupabaseService.client
                 .from("stories")
                 .select("id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at, kind, event_id, survey_id")
                 .order("created_at", ascending: true)
                 .execute().value
-            guard !rows.isEmpty else { homeStories = []; homeSurveyDiscovery = []; return }
+            guard !rows.isEmpty else {
+                homeStories = []; homeSurveyDiscovery = []
+                homeSurveyDiscoveryLoading = false; homeSurveyDiscoveryError = ""
+                return
+            }
 
             // Survey-sharing pass (section 5) — migration 117 ADDITIVELY
             // widens stories RLS so a `kind = "survey_share"` row can also
@@ -3333,10 +3343,16 @@ extension AppState {
                         hostName: entry.card.hostName ?? "", closesAt: entry.card.closesAt, status: status
                     )
                 }
+            homeSurveyDiscoveryLoading = false
         } catch {
             print("loadHomeStories failed:", error)
-            homeStories = []
-            homeSurveyDiscovery = []
+            // Visibility-investigation fix — a real query/decode failure is
+            // now surfaced distinctly, never silently rendered as "no
+            // public surveys right now" (homeStories/homeSurveyDiscovery
+            // are left at whatever they were — only the discovery feed's
+            // own error text is new; see HomeView's render of this field).
+            homeSurveyDiscoveryLoading = false
+            homeSurveyDiscoveryError = T("Không thể tải khảo sát công khai. Vui lòng thử lại.", "Could not load public surveys. Please try again.")
         }
     }
 

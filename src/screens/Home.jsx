@@ -908,12 +908,36 @@ export default function Home() {
           status (s.homeSurveyDiscovery is built that way in
           loadHomeStories()'s own comment — never mixed into the
           follow-gated ring row above). Tapping a card opens the same
-          in-app response modal a story's own "Answer Survey" CTA does. */}
-      {s.homeSurveyDiscovery.length > 0 && (
-        <div style={{ padding: '0 20px 16px' }}>
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7, marginBottom: 10 }}>
-            {T('Góp ý cho sự kiện sắp tới', 'Help Shape Upcoming Events')}
+          in-app response modal a story's own "Answer Survey" CTA does.
+          Visibility-investigation fix — this section is now ALWAYS
+          rendered (title + one of loading/error/empty/cards), not only
+          when cards already exist, so a real load failure is never
+          indistinguishable from the section simply not existing — "never
+          silently treat query/decode errors as an empty discovery feed."
+          Deduplication is handled server-side in loadHomeStories() (one
+          card per organizer, deduped by survey_id first — see that
+          function's own comment); `card.survey_id` as the React key is the
+          same dedup key, so a render-level duplicate is structurally
+          impossible here too. */}
+      <div style={{ padding: '0 20px 16px' }} data-testid="home-survey-discovery-section">
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7, marginBottom: 10 }}>
+          {T('Góp ý cho sự kiện sắp tới', 'Help Shape Upcoming Events')}
+        </div>
+        {s.homeSurveyDiscoveryLoading && !s.homeSurveyDiscovery.length && (
+          <div style={{ fontSize: 12, opacity: 0.6 }} data-testid="home-survey-discovery-loading">{T('Đang tải…', 'Loading…')}</div>
+        )}
+        {!s.homeSurveyDiscoveryLoading && s.homeSurveyDiscoveryError && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="home-survey-discovery-error">
+            <span style={{ fontSize: 12, color: alert }}>{s.homeSurveyDiscoveryError}</span>
+            <span onClick={loadHomeStories} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer', alignSelf: 'flex-start' }}>{T('Thử lại', 'Retry')}</span>
           </div>
+        )}
+        {!s.homeSurveyDiscoveryLoading && !s.homeSurveyDiscoveryError && s.homeSurveyDiscovery.length === 0 && (
+          <div style={{ fontSize: 12, opacity: 0.6 }} data-testid="home-survey-discovery-empty">
+            {T('Chưa có khảo sát công khai nào.', 'No public surveys right now.')}
+          </div>
+        )}
+        {s.homeSurveyDiscovery.length > 0 && (
           <div style={{ display: 'flex', gap: 10, overflowX: 'auto' }} data-testid="home-survey-discovery-row">
             {s.homeSurveyDiscovery.map(card => (
               <div
@@ -935,8 +959,8 @@ export default function Home() {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <div style={{ display: 'flex', gap: 20, padding: '16px 20px 14px' }}>
         {filters.map(f => (

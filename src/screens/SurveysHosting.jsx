@@ -2,6 +2,13 @@ import { useEffect, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, display, alert } from '../theme.js';
 import { surveyPublicUrl } from '../lib/surveyLink.js';
+import { supabase } from '../lib/supabase.js';
+import SurveyStoryCard from './sheets/SurveyStoryCard.jsx';
+
+function organizerAvatarUrl(path) {
+  if (!path) return '';
+  return supabase.storage.from('organizer-photos').getPublicUrl(path).data.publicUrl;
+}
 
 const TABS = [
   { key: 'active', vi: 'Đang mở', en: 'Active Surveys' },
@@ -222,31 +229,60 @@ export default function SurveysHosting() {
         </div>
       </div>
 
-      {/* Task 4 — "Show a preview and require explicit Publish; no
-          automatic posting." The card preview mirrors exactly what
-          SurveyShareCard renders in the real story (host/title/purpose/
-          deadline/Answer Survey), so there's no surprise between preview
-          and what actually gets posted. */}
+      {/* Section 4 redesign — "Show a preview and require explicit Publish;
+          no automatic posting." The canvas reuses SurveyStoryCard (the
+          SAME renderer StoryViewer.jsx's real in-story card uses, `fill`
+          variant) with the host's OWN real organizer name/avatar
+          (s.orgRegName/s.myOrganizerAvatarPath — this survey's own
+          organizer, since a host only ever has one org context here),
+          never a generic "Your organizer" placeholder. The card's own CTA
+          is a no onAnswerSurvey handler (not a real action, not
+          navigation) — Publish below is the only publishing action.
+          Cancel/Publish are anchored in their own safe-area-aware bottom
+          bar, outside the scrollable canvas, so a long title/description
+          can never push them off-screen. */}
       {s.surveyShareToStoryTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div style={{ background: paper, borderRadius: 16, padding: 20, maxWidth: 360, width: '100%', display: 'flex', flexDirection: 'column', gap: 14 }} data-testid="survey-share-to-story-confirm">
-            <div style={{ fontSize: 14, fontWeight: 600 }}>{T('Xem trước story', 'Story preview')}</div>
-            <div style={{ border: `1px solid ${rule}`, borderRadius: 12, padding: 14 }}>
-              <div style={{ fontSize: 10.5, opacity: 0.6 }}>{T('Người tổ chức của bạn', 'Your organizer')}</div>
-              <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4 }}>{s.surveyShareToStoryTarget.title}</div>
-              {s.surveyShareToStoryTarget.description && <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>{s.surveyShareToStoryTarget.description}</div>}
-              {s.surveyShareToStoryTarget.closes_at && (
-                <div style={{ fontSize: 11, opacity: 0.6, marginTop: 8 }}>{T('Hạn', 'Deadline')}: {new Date(s.surveyShareToStoryTarget.closes_at).toLocaleString('vi-VN')}</div>
-              )}
-              <div style={{ marginTop: 10, padding: '10px 0', textAlign: 'center', borderRadius: 10, background: ink, color: paper, fontSize: 12.5, fontWeight: 700 }}>{T('Trả lời khảo sát', 'Answer Survey')}</div>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div
+            data-testid="survey-share-to-story-confirm"
+            style={{
+              background: paper, borderRadius: 24, width: '100%', maxWidth: 400, maxHeight: '92vh',
+              display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 10px', flexShrink: 0 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.7 }}>{T('Xem trước story', 'Story preview')}</span>
+              <span onClick={closeShareToStoryConfirm} data-testid="survey-share-to-story-close" style={{ cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</span>
             </div>
-            {s.surveyShareToStoryError && <div style={{ fontSize: 12, color: alert }}>{s.surveyShareToStoryError}</div>}
-            <div style={{ display: 'flex', gap: 8 }}>
-              <div onClick={closeShareToStoryConfirm} style={{ flex: 1, textAlign: 'center', padding: 11, borderRadius: 9, border: `1px solid ${rule}`, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{T('Huỷ', 'Cancel')}</div>
+
+            {/* Full-bleed canvas — fills the available width, clipped to its
+                own rounded bounds, aspect-ratio'd like a real story rather
+                than a small padded card floating in empty space. */}
+            <div style={{ padding: '0 16px', flex: '1 1 auto', minHeight: 0, display: 'flex' }}>
+              <div style={{ width: '100%', aspectRatio: '9 / 15', maxHeight: '100%', margin: '0 auto', borderRadius: 20, overflow: 'hidden' }}>
+                <SurveyStoryCard
+                  T={T}
+                  hostName={s.orgRegName}
+                  hostAvatarUrl={organizerAvatarUrl(s.myOrganizerAvatarPath)}
+                  title={s.surveyShareToStoryTarget.title}
+                  description={s.surveyShareToStoryTarget.description}
+                  closesAt={s.surveyShareToStoryTarget.closes_at}
+                  status="active"
+                  fill
+                />
+              </div>
+            </div>
+
+            {s.surveyShareToStoryError && (
+              <div style={{ fontSize: 12, color: alert, padding: '10px 16px 0', flexShrink: 0 }}>{s.surveyShareToStoryError}</div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, padding: '14px 16px calc(14px + env(safe-area-inset-bottom))', flexShrink: 0 }}>
+              <div onClick={closeShareToStoryConfirm} data-testid="survey-share-to-story-cancel" style={{ flex: 1, textAlign: 'center', padding: 13, borderRadius: 11, border: `1px solid ${rule}`, fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>{T('Huỷ', 'Cancel')}</div>
               <div
                 onClick={s.surveyShareToStoryBusy ? undefined : confirmShareSurveyToStory}
                 data-testid="survey-confirm-publish-to-story"
-                style={{ flex: 1, textAlign: 'center', padding: 11, borderRadius: 9, background: ink, color: paper, fontSize: 13, fontWeight: 600, cursor: s.surveyShareToStoryBusy ? 'default' : 'pointer', opacity: s.surveyShareToStoryBusy ? 0.6 : 1 }}
+                style={{ flex: 1, textAlign: 'center', padding: 13, borderRadius: 11, background: ink, color: paper, fontSize: 13.5, fontWeight: 600, cursor: s.surveyShareToStoryBusy ? 'default' : 'pointer', opacity: s.surveyShareToStoryBusy ? 0.6 : 1 }}
               >
                 {s.surveyShareToStoryBusy ? T('Đang đăng…', 'Posting…') : T('Xuất bản', 'Publish')}
               </div>

@@ -158,37 +158,60 @@ struct SurveysHostingView: View {
 /// posting." Mirrors exactly what SurveyShareCard renders in the real
 /// story (host/title/purpose/deadline/Answer Survey), so there's no
 /// surprise between preview and what actually gets posted.
+/// Section 4 redesign — a full-bleed story-canvas preview instead of a
+/// small padded card in a medium sheet. Reuses SurveyStoryCardView (the
+/// SAME renderer StoryViewerView's real in-story card uses) with the
+/// host's own real organizer name/avatar — never a generic "Your
+/// organizer" placeholder — so there's no surprise between preview and
+/// what viewers actually see. The card's `onAnswerSurvey` is nil here (a
+/// visual preview only, never an accidental submit/navigation); Publish
+/// below is the only publishing action. Cancel/Publish are anchored in
+/// their own bottom bar outside the scrollable canvas, safe-area aware, so
+/// a long title/description can never push them off-screen.
 private struct ShareSurveyToStoryConfirmView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.dismiss) private var dismiss
     let survey: SurveySummary
 
+    private var organizerAvatarURL: URL? {
+        guard !app.myOrganizerAvatarPath.isEmpty else { return nil }
+        return try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: app.myOrganizerAvatarPath)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(app.T("Xem trước story", "Story preview")).font(.system(size: 14, weight: .semibold))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(app.T("Người tổ chức của bạn", "Your organizer")).font(.system(size: 10.5)).opacity(0.6)
-                Text(survey.title).font(.system(size: 15, weight: .semibold))
-                if let closesAt = survey.closesAt {
-                    Text("\(app.T("Hạn", "Deadline")): \(closesAt.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.system(size: 11)).opacity(0.6)
+        VStack(spacing: 0) {
+            HStack {
+                Text(app.T("Xem trước story", "Story preview")).font(.system(size: 12.5, weight: .semibold)).opacity(0.7)
+                Spacer()
+                Button { app.closeShareToStoryConfirm(); dismiss() } label: {
+                    Image(systemName: "xmark").font(.system(size: 16, weight: .semibold))
                 }
-                Text(app.T("Trả lời khảo sát", "Answer Survey"))
-                    .font(.system(size: 12.5, weight: .bold))
-                    .frame(maxWidth: .infinity).padding(.vertical, 10)
-                    .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10))
-                    .foregroundStyle(app.palette.paper)
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("survey.shareToStory.close")
             }
-            .padding(14)
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+
+            GeometryReader { geo in
+                SurveyStoryCardView(
+                    hostName: app.orgRegName, hostAvatarURL: organizerAvatarURL,
+                    title: survey.title, description: survey.description,
+                    closesAt: survey.closesAt, status: "active",
+                    onAnswerSurvey: nil, fill: true
+                )
+                .frame(width: geo.size.width, height: min(geo.size.height, geo.size.width * 15 / 9))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(.horizontal, 16)
 
             if !app.surveyShareToStoryError.isEmpty {
                 Text(app.surveyShareToStoryError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                    .padding(.horizontal, 16).padding(.top, 10)
             }
+
             HStack(spacing: 8) {
                 Button(app.T("Huỷ", "Cancel")) { app.closeShareToStoryConfirm(); dismiss() }
-                    .frame(maxWidth: .infinity).padding(.vertical, 11)
-                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(app.palette.rule))
+                    .frame(maxWidth: .infinity).padding(.vertical, 13)
+                    .overlay(RoundedRectangle(cornerRadius: 11).stroke(app.palette.rule))
                 Button(app.surveyShareToStoryBusy ? app.T("Đang đăng…", "Posting…") : app.T("Xuất bản", "Publish")) {
                     Task {
                         await app.confirmShareSurveyToStory()
@@ -196,15 +219,17 @@ private struct ShareSurveyToStoryConfirmView: View {
                     }
                 }
                 .disabled(app.surveyShareToStoryBusy)
-                .frame(maxWidth: .infinity).padding(.vertical, 11)
-                .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 9))
+                .frame(maxWidth: .infinity).padding(.vertical, 13)
+                .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 11))
                 .foregroundStyle(app.palette.paper)
+                .opacity(app.surveyShareToStoryBusy ? 0.6 : 1)
             }
             .buttonStyle(.plain)
-            .font(.system(size: 13, weight: .semibold))
+            .font(.system(size: 13.5, weight: .semibold))
+            .padding(.horizontal, 16).padding(.top, 14)
         }
-        .padding(20)
-        .presentationDetents([.medium])
+        .padding(.bottom, 8)
+        .presentationDetents([.large])
         .background(app.palette.paper)
         .foregroundStyle(app.palette.ink)
     }

@@ -651,32 +651,13 @@ private struct SurveyShareCard: View {
 
     var body: some View {
         if let card = story.surveyCard, let publicId = card.publicId {
-            let closed = card.status != "active"
-            VStack(alignment: .leading, spacing: 4) {
-                Text(card.hostName ?? "").font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.6))
-                Text(card.title ?? "").font(BanbeTheme.display(18)).foregroundStyle(app.palette.ink).padding(.top, 2)
-                if let desc = card.description, !desc.isEmpty {
-                    Text(desc).font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 4)
-                }
-                if let closesAt = card.closesAt {
-                    Text("\(app.T("Hạn trả lời", "Deadline")): \(closesAt.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6)).padding(.top, 8)
-                }
-                Text(closed ? app.T("Khảo sát đã đóng", "Survey closed") : app.T("Trả lời khảo sát", "Answer Survey"))
-                    .font(.system(size: 13.5, weight: .bold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .foregroundStyle(closed ? app.palette.ink : app.palette.paper)
-                    .background(closed ? Color.clear : app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(closed ? app.palette.ink : .clear))
-                    .opacity(closed ? 0.6 : 1)
-                    .padding(.top, 10)
-            }
-            .padding(18)
-            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .frame(maxWidth: 340)
-            .shadow(radius: 24)
+            SurveyStoryCardView(
+                hostName: card.hostName ?? "", title: card.title ?? "", description: card.description,
+                closesAt: card.closesAt, status: card.status,
+                onAnswerSurvey: { Task { await app.openSurveyStoryModal(publicID: publicId) } },
+                fill: false
+            )
+            .frame(maxWidth: 340, maxHeight: 460)
             .accessibilityIdentifier("story.surveyCard")
             .onTapGesture { Task { await app.openSurveyStoryModal(publicID: publicId) } }
         } else {

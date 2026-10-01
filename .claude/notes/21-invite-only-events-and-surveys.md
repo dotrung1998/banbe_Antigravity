@@ -128,6 +128,97 @@ not independently tested.
   NOT touched (this ticket's own "do not modify unrelated links blindly"
   rule); worth a follow-up pass with the same canonical-origin treatment.
 
+### Fix pass — published survey story invisible to a non-follower (confirmed root cause, fix NOT yet deployed), publish-preview redesign
+
+**Confirmed root cause, by a real authenticated integration test against
+the deployed project** (`tests/e2e/survey-story-visibility.integration.mjs`
+— the sanctioned real-backend pattern `tests/e2e/setup.mjs`/
+`dispute-flow-e2e.spec.js` already established: service-role ONLY to seed
+two throwaway accounts, an anon-key client mirroring the real app for every
+actual assertion, full cleanup after): migration 117 **is** deployed
+(`create_survey_share_story` exists and works; a throwaway host's story
+publishes correctly — `kind='survey_share'`, `survey_id` set, `media_path`
+empty). The bug is in `stories_select_survey_share_public`'s own RLS
+policy: its `EXISTS (SELECT 1 FROM surveys sv WHERE sv.id = stories.
+survey_id AND sv.status <> 'draft')` subquery runs under the CALLING
+user's own privileges — for a non-owner/non-admin viewer, that subquery is
+itself subject to `surveys_select_host` (host/admin-only SELECT), which
+returns zero rows for them regardless of the real row's status. `EXISTS`
+therefore always evaluated false for exactly the audience this policy
+existed to serve. **Proven live**: a throwaway non-follower viewer's own
+authenticated `stories` SELECT (the exact query `loadHomeStories()` issues)
+returned the published story for ZERO rows, while `get_survey_card()` (a
+SECURITY DEFINER RPC, structurally immune to this bug class) correctly
+returned the survey for that same viewer in the same test run.
+**Fix written, NOT YET deployed**: `supabase/migrations/
+20261030000118_118_fix_survey_share_story_rls_subquery.sql` — the exact
+`is_event_host`/`has_event_invite_access` pattern note 21's own Slice A
+already established for an identical "a policy needs to check another
+RLS-protected table without being subject to that table's own RLS"
+problem: a small `SECURITY DEFINER` function
+(`is_survey_publicly_shareable(p_survey_id)`) the policy calls instead of a
+raw subquery. `surveys_select_host` itself is completely untouched — only
+this one boolean check now sees through it, exactly like
+`get_survey_card()` already safely does today. **This environment has no
+`supabase` CLI/DB credentials to actually apply a migration or run raw SQL
+against the live project** (same documented limitation as every other pass
+in this file) — `supabase db push` (or applying the migration's SQL
+directly) is required before this is live, and the integration test above
+should be re-run afterward to confirm (it's the exact reproduction case).
+Also fixed while here (not previously implemented): `loadHomeStories()`
+(both platforms) used to treat a real query/decode error identically to
+"zero stories" for the WHOLE function, including the public-discovery
+feed — `homeSurveyDiscoveryLoading`/`homeSurveyDiscoveryError` (web:
+`GocContext.jsx`; iOS: `AppState.swift`/`AppState+Data.swift`) now
+distinguish loading/error/empty/cards, and Home's "Help Shape Upcoming
+Events" section (`Home.jsx`/`HomeView.swift`) is now always rendered (not
+only when cards already exist) so a real failure is never indistinguishable
+from the section not existing. Confirmed (by reading, not assumed) that
+account-switch already reloads this correctly — both platforms' Home mount
+effects already key on the signed-in user id and re-run `loadHomeStories()`
+on change; no fix needed there.
+
+**Publish-preview redesign** (task 2): `ShareSurveyToStoryConfirmView`
+(`SurveysHosting.jsx`/`SurveysHostingView.swift`) rebuilt as a full-bleed
+story-canvas (9:16, rounded, clipped) instead of a small padded card
+floating in a mostly-empty medium sheet — small preview heading + X at
+top, the host's own REAL organizer name/avatar (`s.orgRegName`/
+`s.myOrganizerAvatarPath`, never a generic "Your organizer"), the existing
+Banbe Pulse dusty-rose/sage/sand gradient as the canvas background (no new
+uploaded artwork, no invented survey content), Cancel/Publish anchored in
+their own safe-area-aware bottom bar outside the scrollable canvas (a long
+title/description can never push them off-screen). New shared renderer —
+`src/screens/sheets/SurveyStoryCard.jsx` / `SurveyStoryCardView.swift` — is
+used by BOTH this preview (`fill: true`, `onAnswerSurvey: nil` — a visual
+preview only, never an accidental submit/navigation) and the real in-story
+card (`StoryViewer.jsx`'s/`StoryViewerView.swift`'s `SurveyShareCard`,
+`fill: false`, real `onAnswerSurvey` tap handler), so the preview is
+provably the same layout viewers actually see, not just a visual
+approximation. In-flight guard/errors/dismissal cleanup/explicit-publish
+logic (`surveyShareToStoryBusy`/`surveyShareToStoryError`/
+`closeShareToStoryConfirm`/`confirmShareSurveyToStory`) are untouched —
+only the presentation changed.
+
+**Verification performed**: the integration test above (migration 117
+deployed, story publishes correctly, root cause reproduced live — see
+above). `npx vite build` clean. `xcodebuild clean && build -scheme
+BanbeApp` → **BUILD SUCCEEDED** (added `SurveySummary.description`,
+missing from the iOS model despite the client's own `select()` already
+fetching it). `BanbeAppTests` — 3/3 still passing post-clean. No simulator/
+device UI run of the redesigned preview itself (no simulator/device
+interaction this pass beyond compiling) — the 9:16 aspect-ratio math and
+safe-area bottom bar should be checked on a real device per this ticket's
+own iPhone-testing plan.
+
+**Not done / explicitly out of scope this pass**: applying migration 118
+(approval gate — see above); adding an organizer avatar field to
+`get_survey_card()`'s own payload so the REAL in-story card (not just the
+host's own preview) can show a host avatar too — today it only shows
+`host_name` text, since the preview's avatar comes from the host's own
+already-loaded local state while the viewer-facing RPC was not touched
+this pass (kept the change minimal/proven-safe rather than widening an
+RLS-sensitive RPC's return shape without a specific need for it).
+
 ## Slice A — Strict invite-only events
 
 ### What's real and verified

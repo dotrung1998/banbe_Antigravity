@@ -97,7 +97,7 @@ struct HomeView: View {
                     ActionCenterView(items: actionItems, onSeeAll: { app.goNotifications() })
                     if !app.savedStrip.isEmpty { savedStrip }
                     storyRow
-                    if !app.homeSurveyDiscovery.isEmpty { surveyDiscoveryRow }
+                    surveyDiscoveryRow
                     filterTabs
                     homeExtraFilterChips
                     if app.feed.isEmpty {
@@ -574,10 +574,31 @@ struct HomeView: View {
     /// loadHomeStories()'s own comment — never mixed into the follow-gated
     /// `storyRow` above). Tapping a card opens the same in-app response
     /// modal a story's own "Answer Survey" CTA does.
+    /// Visibility-investigation fix — ALWAYS rendered (title + one of
+    /// loading/error/empty/cards), not only when cards already exist, so a
+    /// real load failure is never indistinguishable from the section
+    /// simply not existing. Dedup is handled server-side in
+    /// loadHomeStories() (one card per organizer, deduped by survey_id
+    /// first); `SurveyDiscoveryCard.id == surveyId` as the ForEach id is
+    /// the same dedup key.
     private var surveyDiscoveryRow: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(app.T("Góp ý cho sự kiện sắp tới", "Help Shape Upcoming Events"))
                 .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+                .padding(.horizontal, 20)
+            if app.homeSurveyDiscoveryLoading && app.homeSurveyDiscovery.isEmpty {
+                Text(app.T("Đang tải…", "Loading…")).font(.system(size: 12)).opacity(0.6).padding(.horizontal, 20)
+            } else if !app.homeSurveyDiscoveryError.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(app.homeSurveyDiscoveryError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                    Button(app.T("Thử lại", "Retry")) { Task { await app.loadHomeStories() } }
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .padding(.horizontal, 20)
+            } else if app.homeSurveyDiscovery.isEmpty {
+                Text(app.T("Chưa có khảo sát công khai nào.", "No public surveys right now."))
+                    .font(.system(size: 12)).opacity(0.6).padding(.horizontal, 20)
+            } else {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(app.homeSurveyDiscovery) { card in
@@ -603,6 +624,7 @@ struct HomeView: View {
                     }
                 }
                 .padding(.horizontal, 20)
+            }
             }
         }
         .padding(.top, 4)
