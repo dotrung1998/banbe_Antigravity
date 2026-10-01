@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, display, alert } from '../theme.js';
+import { surveyPublicUrl } from '../lib/surveyLink.js';
 
 const TABS = [
   { key: 'active', vi: 'Đang mở', en: 'Active Surveys' },
@@ -103,6 +104,7 @@ export default function SurveysHosting() {
     state, T, goHome, mySurveys, mySurveysLoading, loadMySurveys,
     createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction,
     mySurveyCreateBusy, mySurveyCreateError, goSurveyPublic,
+    shareSurveyLinkAction, openShareToStoryConfirm, closeShareToStoryConfirm, confirmShareSurveyToStory,
   } = useGoc();
   const s = state;
   const [tab, setTab] = useState('active');
@@ -189,11 +191,11 @@ export default function SurveysHosting() {
               </div>
               {sv.status !== 'draft' && (
                 <div
-                  onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/surveys/${sv.public_id}`); }}
+                  onClick={() => { navigator.clipboard?.writeText(surveyPublicUrl(sv.public_id)); }}
                   style={{ fontSize: 11.5, opacity: 0.6, marginTop: 4, cursor: 'pointer', wordBreak: 'break-all' }}
                   title={T('Bấm để sao chép', 'Tap to copy')}
                 >
-                  {`${window.location.origin}/surveys/${sv.public_id}`}
+                  {surveyPublicUrl(sv.public_id)}
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
@@ -205,7 +207,11 @@ export default function SurveysHosting() {
                   </>
                 )}
                 {sv.status === 'active' && (
-                  <span onClick={() => closeSurveyAction(sv.id)} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}>{T('Đóng sớm', 'Close early')}</span>
+                  <>
+                    <span onClick={() => shareSurveyLinkAction(sv)} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}>{T('Chia sẻ liên kết', 'Share Link')}</span>
+                    <span onClick={() => openShareToStoryConfirm(sv)} data-testid="survey-open-share-to-story" style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}>{T('Chia sẻ lên story', 'Share To Story')}</span>
+                    <span onClick={() => closeSurveyAction(sv.id)} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}>{T('Đóng sớm', 'Close early')}</span>
+                  </>
                 )}
                 {sv.status === 'closed' && (
                   <span onClick={() => archiveSurveyAction(sv.id)} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}>{T('Lưu trữ', 'Archive')}</span>
@@ -215,6 +221,39 @@ export default function SurveysHosting() {
           ))}
         </div>
       </div>
+
+      {/* Task 4 — "Show a preview and require explicit Publish; no
+          automatic posting." The card preview mirrors exactly what
+          SurveyShareCard renders in the real story (host/title/purpose/
+          deadline/Answer Survey), so there's no surprise between preview
+          and what actually gets posted. */}
+      {s.surveyShareToStoryTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ background: paper, borderRadius: 16, padding: 20, maxWidth: 360, width: '100%', display: 'flex', flexDirection: 'column', gap: 14 }} data-testid="survey-share-to-story-confirm">
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{T('Xem trước story', 'Story preview')}</div>
+            <div style={{ border: `1px solid ${rule}`, borderRadius: 12, padding: 14 }}>
+              <div style={{ fontSize: 10.5, opacity: 0.6 }}>{T('Người tổ chức của bạn', 'Your organizer')}</div>
+              <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4 }}>{s.surveyShareToStoryTarget.title}</div>
+              {s.surveyShareToStoryTarget.description && <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>{s.surveyShareToStoryTarget.description}</div>}
+              {s.surveyShareToStoryTarget.closes_at && (
+                <div style={{ fontSize: 11, opacity: 0.6, marginTop: 8 }}>{T('Hạn', 'Deadline')}: {new Date(s.surveyShareToStoryTarget.closes_at).toLocaleString('vi-VN')}</div>
+              )}
+              <div style={{ marginTop: 10, padding: '10px 0', textAlign: 'center', borderRadius: 10, background: ink, color: paper, fontSize: 12.5, fontWeight: 700 }}>{T('Trả lời khảo sát', 'Answer Survey')}</div>
+            </div>
+            {s.surveyShareToStoryError && <div style={{ fontSize: 12, color: alert }}>{s.surveyShareToStoryError}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div onClick={closeShareToStoryConfirm} style={{ flex: 1, textAlign: 'center', padding: 11, borderRadius: 9, border: `1px solid ${rule}`, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{T('Huỷ', 'Cancel')}</div>
+              <div
+                onClick={s.surveyShareToStoryBusy ? undefined : confirmShareSurveyToStory}
+                data-testid="survey-confirm-publish-to-story"
+                style={{ flex: 1, textAlign: 'center', padding: 11, borderRadius: 9, background: ink, color: paper, fontSize: 13, fontWeight: 600, cursor: s.surveyShareToStoryBusy ? 'default' : 'pointer', opacity: s.surveyShareToStoryBusy ? 0.6 : 1 }}
+              >
+                {s.surveyShareToStoryBusy ? T('Đang đăng…', 'Posting…') : T('Xuất bản', 'Publish')}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -8,10 +8,125 @@ originally gated) — web AND iOS both create/read/book through it, and iOS
 has the same private-bucket-aware photo resolution as web. Slice B
 (interest surveys) backend + a functional web AND iOS host/respondent UI
 are real and tested/build-clean; the dedicated browser route is web-only
-by nature. Slices C (candidate generation) and D (surveys in stories) are
-**not started**, on either platform. Host invite-management UI, invite
-email delivery, and EventDetail accept/decline for event invites are also
-**not started**, on either platform.
+by nature. **Slice D (surveys in stories) is now real, web AND iOS — see
+the 2026-10-29 pass below.** Slice C (candidate generation) is still **not
+started**, either platform. Host invite-management UI, invite email
+delivery, and EventDetail accept/decline for event invites are also **not
+started**, on either platform.
+
+## Slice D — survey sharing, in-app popup, lightweight respondent verification, public discovery (2026-10-29 pass)
+
+### What's real
+
+- `supabase/migrations/20261029000117_117_survey_share_stories_and_public_discovery.sql`
+  (**not yet applied to any deployed database**) — `stories.survey_id` +
+  `kind = 'survey_share'` (same additive pattern 068's `event_share` already
+  established); `create_survey_share_story()` (owner + `status='active'`
+  enforced server-side, mirrors `create_event_share_story`);
+  `get_survey_card(p_survey_id)` (authenticated-only twin of
+  `get_survey_public`, keyed by `survey_id` since a story row has that, not
+  a `public_id`); a NEW, additive `stories_select_survey_share_public` RLS
+  policy — a `survey_share` row is visible to ANY authenticated user once
+  its survey was ever published (`status <> 'draft'`), independent of
+  `stories_select_active_permitted`'s existing author/co-owner/follower
+  gate, which is **unchanged** and still governs ordinary photo/video
+  stories exactly as before.
+- **Canonical link**: `src/lib/surveyLink.js` (web) / `AppConfig.
+  publicWebOrigin` (iOS, `SupabaseService.swift` — an alias for the
+  already-correct `apiBaseURL`) replace `SurveysHostingView.swift`'s
+  hardcoded `https://banbe.app` (confirmed via `vercel project ls`/`vercel
+  domains ls`: this project has 0 custom domains attached; the real,
+  currently-serving production origin is `https://banbe-two.vercel.app`,
+  verified with a direct `curl` — 200 on both `/` and `/surveys/<id>`).
+  Web's own Copy/Share Link already used `window.location.origin` (correct,
+  just duplicated) — now routed through the one shared builder too.
+- **In-app popup** (`src/screens/sheets/SurveyResponseModal.jsx` /
+  `.fullScreenCover` in `RootView.swift`): a story's "Answer Survey" CTA
+  opens the EXISTING `SurveyPublic`/`SurveyPublicView` screen as a modal
+  over the still-mounted Home+StoryViewer (never a `screen`/navigation
+  change), with a real X, unsent-draft keep/discard confirm, a distinct
+  "Response Submitted. Thank You!" success state with its own Close button
+  (never auto-closed), and a "You Have Already Responded" read-only summary
+  with Edit Response (only while the survey is still active). The story
+  genuinely pauses and resumes from the same point: web reuses
+  `StoryViewer.jsx`'s own existing hold-to-pause `pause()`/`resume()`,
+  watching `storySurveyModalPublicId`; iOS reuses `StoryViewerView`'s
+  existing `isSuspended` parameter (the same mechanism an Event Detail
+  sheet on top of a story already proved out) — no new pause/resume
+  mechanism invented on either platform.
+- **Lightweight respondent verification** (section 3): `api/auth/index.js`'s
+  `send_email_code` gets a third `mode: 'respond'` branch that auto-detects
+  existing-vs-new identity (same `generateLink` login/signup branching the
+  ordinary modes already do internally) instead of requiring the caller to
+  guess, and returns `isNewAccount` so the UI can disclose which one just
+  happened BEFORE the respondent types the code — never silently, never
+  called "anonymous." Still finishes with the SAME `supabase.auth.verifyOtp`
+  every other code flow uses, so `submit_survey_response`'s existing
+  `auth.uid()`-only identity resolution and `UNIQUE(survey_id,
+  respondent_id)` upsert (migration 114, unchanged) are what actually
+  guarantee one current response per identity — this pass added NO new
+  dedup mechanism because that one was already correct. An explicit
+  consent checkbox (own copy, own text) gates sending the code — the
+  additive consent path for a respondent who never saw the ordinary Login
+  screen's own checkbox. New UI: `RespondVerifyInline`
+  (`SurveyPublic.jsx`) / `RespondVerifyInlineView`
+  (`SurveyPublicView.swift`); new API: `AuthAPIService.
+  requestRespondEmailCode` / `AuthMode.respond` (iOS).
+- **Host "Share To Story"/"Share Link"** (`SurveysHosting.jsx` /
+  `SurveysHostingView.swift`): both require an `active` survey, both show
+  an explicit preview-then-Publish confirm sheet (never auto-posts) that
+  renders the SAME card content the real story shows.
+- **Public discovery** (`loadHomeStories`, both platforms): now also
+  queries `follows` directly to tell "own/followed" apart from "neither" —
+  a `survey_share` row for an organizer the account does NOT follow is
+  routed into a SEPARATE `homeSurveyDiscovery` bucket (same name both
+  platforms; one card per organizer, newest-first, capped to 20), never mixed into
+  the existing follow-gated per-organizer story rings. New Home section:
+  "Help Shape Upcoming Events" (web `Home.jsx`, iOS `HomeView.swift`'s
+  `surveyDiscoveryRow`), tapping a card opens the same in-app modal a
+  story's own CTA does.
+
+### Verification performed
+
+`npx vite build` clean. `xcodebuild -scheme BanbeApp -configuration Debug
+-sdk iphonesimulator build` → **BUILD SUCCEEDED** after fixing one
+pre-existing-enum-now-non-exhaustive switch in `LoginView.swift` (adding
+`AuthMode.respond` made its `(method, mode)` switch non-exhaustive; added
+an explicit unreachable `.respond` case, no behavior change) and giving
+`SurveyCard` `Hashable` conformance (`StoryItem` needs it transitively).
+No real Supabase project was touched, no migration was applied, no
+simulator/device run — this environment has no `supabase` CLI/local
+project and no iOS simulator/device access, same documented limitation as
+every other pass in this file. The lightweight respondent-verification
+flow's actual email delivery/identity-linking behavior was NOT exercised
+against the real `/api/auth` endpoint or a real inbox this pass — reasoned
+through by reading `api/_lib/authLookup.js`'s existing `resolveAuthUserId`/
+`linkRegistration` (already used correctly by the `login`/`signup` modes),
+not independently tested.
+
+### Not done this pass
+
+- **Slice C (candidate generation)** — still not started; untouched.
+- **Static social-preview metadata** for `/surveys/<publicId>` (task 6's
+  "safe public preview metadata where feasible") — this SPA has no
+  per-route server-rendered `<meta>` tags anywhere (confirmed: `index.html`
+  is one static shell), so adding real per-survey Open Graph tags would
+  need a new serverless metadata route, out of this pass's scope; external
+  shares get a working link and native share-sheet, just a generic/no link
+  preview card today, same as every other in-app deep link this app
+  already generates.
+- **iOS `.fullScreenCover` vs the dock overlay window**: the new survey
+  modal was wired to follow the exact existing `DeleteAccountView`/
+  `QRScannerView` `.fullScreenCover` pattern (RootView.swift) rather than
+  the separate always-on-top dock `UIWindow` — consistent with every other
+  full-screen modal in this app, but NOT verified on a real device that the
+  dock stays correctly hidden under it (reasoned from the existing pattern
+  already working for those other covers, not independently confirmed here).
+- **`shareOrganizerProfile`/`u/<handle>`-style links elsewhere in this
+  codebase still hardcode `banbe.app`** (e.g. `GocContext.jsx`'s
+  `shareOrganizerProfile`) — found while auditing this area, deliberately
+  NOT touched (this ticket's own "do not modify unrelated links blindly"
+  rule); worth a follow-up pass with the same canonical-origin treatment.
 
 ## Slice A — Strict invite-only events
 

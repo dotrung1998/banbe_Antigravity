@@ -31,6 +31,7 @@ import PhotoViewer from './screens/sheets/PhotoViewer.jsx';
 import ChatPhotoViewer from './screens/sheets/ChatPhotoViewer.jsx';
 import StoryViewer from './screens/sheets/StoryViewer.jsx';
 import PulseViewer from './screens/sheets/PulseViewer.jsx';
+import SurveyResponseModal from './screens/sheets/SurveyResponseModal.jsx';
 import DeleteAccountSheet from './screens/sheets/DeleteAccountSheet.jsx';
 import Preferences from './screens/Preferences.jsx';
 import EditName from './screens/EditName.jsx';
@@ -228,7 +229,7 @@ function Shell() {
   // sheet's own dimmed backdrop. Suppressed here the same centralized way
   // StoryViewer/Pulse already are, rather than a second, independent
   // visibility flag or another UIWindow-style overlay.
-  const showBar = showsBottomBar(state.screen) && !state.storyViewer && !state.pulseOpen && !state.areaAsking;
+  const showBar = showsBottomBar(state.screen) && !state.storyViewer && !state.pulseOpen && !state.areaAsking && !state.storySurveyModalPublicId;
 
   // Stage 2 (2026-09-27 nav/discovery pass) — root-tab swipe + pull-to-
   // refresh, both gated on the SAME "is a root tab actually showing right
@@ -662,6 +663,7 @@ function Shell() {
         {state.chatPhotoViewer && <ChatPhotoViewer />}
         {state.storyViewer && <StoryViewer />}
         {state.pulseOpen && <PulseViewer />}
+        {state.storySurveyModalPublicId && <SurveyResponseModal />}
         {state.reasonPrompt && <ReasonSheet />}
         {state.loading && <Loading label={T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>

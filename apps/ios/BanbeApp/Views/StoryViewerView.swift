@@ -148,6 +148,8 @@ struct StoryViewerView: View {
                 Group {
                     if story.kind == "event_share" {
                         EventShareCard(story: story)
+                    } else if story.kind == "survey_share" {
+                        SurveyShareCard(story: story)
                     } else {
                         AsyncImage(url: story.url) { $0.resizable().scaledToFit() } placeholder: { ProgressView().tint(.white) }
                             .accessibilityIdentifier("story.viewer.image")
@@ -627,6 +629,58 @@ private struct EventShareCard: View {
             .onTapGesture { app.goEventFromStory(snap.eventKey) }
         } else {
             Text(app.T("Sự kiện này không còn khả dụng.", "This event is no longer available."))
+                .font(.system(size: 13))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .padding(24)
+        }
+    }
+}
+
+// Survey-sharing pass (section 4's card spec: "host, title, short purpose,
+// deadline, Answer Survey"). `story.surveyCard` is get_survey_card()'s own
+// live response (AppState+Data.swift's loadHomeStories), never frozen at
+// share time. The CTA opens the in-app response MODAL
+// (openSurveyStoryModal) — NOT goEventFromStory's navigate-away pattern —
+// per section 2's own "not an unrelated full-screen navigation
+// destination" rule; the story stays mounted and paused underneath (see
+// RootView's isSuspended wiring).
+private struct SurveyShareCard: View {
+    @EnvironmentObject var app: AppState
+    let story: StoryItem
+
+    var body: some View {
+        if let card = story.surveyCard, let publicId = card.publicId {
+            let closed = card.status != "active"
+            VStack(alignment: .leading, spacing: 4) {
+                Text(card.hostName ?? "").font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.6))
+                Text(card.title ?? "").font(BanbeTheme.display(18)).foregroundStyle(app.palette.ink).padding(.top, 2)
+                if let desc = card.description, !desc.isEmpty {
+                    Text(desc).font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 4)
+                }
+                if let closesAt = card.closesAt {
+                    Text("\(app.T("Hạn trả lời", "Deadline")): \(closesAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6)).padding(.top, 8)
+                }
+                Text(closed ? app.T("Khảo sát đã đóng", "Survey closed") : app.T("Trả lời khảo sát", "Answer Survey"))
+                    .font(.system(size: 13.5, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .foregroundStyle(closed ? app.palette.ink : app.palette.paper)
+                    .background(closed ? Color.clear : app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(closed ? app.palette.ink : .clear))
+                    .opacity(closed ? 0.6 : 1)
+                    .padding(.top, 10)
+            }
+            .padding(18)
+            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(maxWidth: 340)
+            .shadow(radius: 24)
+            .accessibilityIdentifier("story.surveyCard")
+            .onTapGesture { Task { await app.openSurveyStoryModal(publicID: publicId) } }
+        } else {
+            Text(app.T("Khảo sát này không còn khả dụng.", "This survey is no longer available."))
                 .font(.system(size: 13))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)

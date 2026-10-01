@@ -1128,6 +1128,32 @@ final class AppState: ObservableObject {
     @Published var mySurveysLoading = false
     @Published var mySurveyCreateBusy = false
     @Published var mySurveyCreateError = ""
+    // Already-answered respondents land on a read-only summary first; this
+    // flips open the editable form (reset to false on every fresh load).
+    @Published var surveyEditMode = false
+    // Section 5 — public (non-follower) survey-story discovery ("Help Shape
+    // Upcoming Events"), built in loadHomeStories() alongside homeStories.
+    @Published var homeSurveyDiscovery: [SurveyDiscoveryCard] = []
+    // Section 2 — a story's "Answer Survey" CTA opens SurveyPublicView
+    // inside a `.fullScreenCover` instead of navigating `screen` away, so
+    // whatever's underneath (the story, paused via StoryViewerView's
+    // existing `isSuspended`) stays exactly where it was. Non-nil = modal
+    // is presented, for THIS public_id.
+    @Published var storySurveyModalPublicID: String?
+    // Section 3 — lightweight, no-password/no-profile respondent email
+    // verification. Reuses the existing OTP-by-email mechanism
+    // (AuthAPIService, mode: "respond") — see AppState+Surveys.swift.
+    @Published var surveyRespondStep = "idle"
+    @Published var surveyRespondEmail = ""
+    @Published var surveyRespondCode = ""
+    @Published var surveyRespondSending = false
+    @Published var surveyRespondError = ""
+    @Published var surveyRespondIsNewAccount = false
+    @Published var surveyRespondConsent = false
+    // Task 4 — "Share To Story": an explicit preview-then-Publish step.
+    @Published var surveyShareToStoryTarget: SurveySummary?
+    @Published var surveyShareToStoryBusy = false
+    @Published var surveyShareToStoryError = ""
     // Account extension (2026-09-27, Stage 3) — one role-scoped KPI
     // dashboard (get_account_kpis, migration 097), reused for on-screen
     // cards, CSV/PDF/JSON export and PNG chart snapshots alike — see

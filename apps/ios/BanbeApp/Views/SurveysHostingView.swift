@@ -75,6 +75,9 @@ struct SurveysHostingView: View {
         .background(app.palette.paper)
         .foregroundStyle(app.palette.ink)
         .task { await app.loadMySurveys() }
+        .sheet(item: $app.surveyShareToStoryTarget) { survey in
+            ShareSurveyToStoryConfirmView(survey: survey)
+        }
     }
 
     private var filtered: [SurveySummary] {
@@ -111,7 +114,7 @@ struct SurveysHostingView: View {
                     .font(.system(size: 12)).opacity(0.6)
             }
             if survey.status != "draft" {
-                let link = "https://banbe.app/surveys/\(survey.publicId)"
+                let link = AppConfig.publicWebOrigin + "/surveys/" + survey.publicId
                 Text(link)
                     .font(.system(size: 11))
                     .opacity(0.6)
@@ -127,6 +130,14 @@ struct SurveysHostingView: View {
                         .foregroundStyle(BanbeTheme.alert)
                 }
                 if survey.status == "active" {
+                    if let url = URL(string: AppConfig.publicWebOrigin + "/surveys/" + survey.publicId) {
+                        ShareLink(item: url, subject: Text(survey.title)) {
+                            Text(app.T("Chia sẻ liên kết", "Share Link"))
+                        }
+                    }
+                    Button(app.T("Chia sẻ lên story", "Share To Story")) {
+                        app.openShareToStoryConfirm(survey)
+                    }
                     Button(app.T("Đóng sớm", "Close early")) { Task { await app.closeSurveyEarly(survey.id) } }
                 }
                 if survey.status == "closed" {
@@ -140,6 +151,62 @@ struct SurveysHostingView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+    }
+}
+
+/// Task 4 — "Show a preview and require explicit Publish; no automatic
+/// posting." Mirrors exactly what SurveyShareCard renders in the real
+/// story (host/title/purpose/deadline/Answer Survey), so there's no
+/// surprise between preview and what actually gets posted.
+private struct ShareSurveyToStoryConfirmView: View {
+    @EnvironmentObject var app: AppState
+    @Environment(\.dismiss) private var dismiss
+    let survey: SurveySummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(app.T("Xem trước story", "Story preview")).font(.system(size: 14, weight: .semibold))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(app.T("Người tổ chức của bạn", "Your organizer")).font(.system(size: 10.5)).opacity(0.6)
+                Text(survey.title).font(.system(size: 15, weight: .semibold))
+                if let closesAt = survey.closesAt {
+                    Text("\(app.T("Hạn", "Deadline")): \(closesAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.system(size: 11)).opacity(0.6)
+                }
+                Text(app.T("Trả lời khảo sát", "Answer Survey"))
+                    .font(.system(size: 12.5, weight: .bold))
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10))
+                    .foregroundStyle(app.palette.paper)
+            }
+            .padding(14)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+
+            if !app.surveyShareToStoryError.isEmpty {
+                Text(app.surveyShareToStoryError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+            }
+            HStack(spacing: 8) {
+                Button(app.T("Huỷ", "Cancel")) { app.closeShareToStoryConfirm(); dismiss() }
+                    .frame(maxWidth: .infinity).padding(.vertical, 11)
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(app.palette.rule))
+                Button(app.surveyShareToStoryBusy ? app.T("Đang đăng…", "Posting…") : app.T("Xuất bản", "Publish")) {
+                    Task {
+                        await app.confirmShareSurveyToStory()
+                        if app.surveyShareToStoryTarget == nil { dismiss() }
+                    }
+                }
+                .disabled(app.surveyShareToStoryBusy)
+                .frame(maxWidth: .infinity).padding(.vertical, 11)
+                .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 9))
+                .foregroundStyle(app.palette.paper)
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 13, weight: .semibold))
+        }
+        .padding(20)
+        .presentationDetents([.medium])
+        .background(app.palette.paper)
+        .foregroundStyle(app.palette.ink)
     }
 }
 

@@ -97,6 +97,7 @@ struct HomeView: View {
                     ActionCenterView(items: actionItems, onSeeAll: { app.goNotifications() })
                     if !app.savedStrip.isEmpty { savedStrip }
                     storyRow
+                    if !app.homeSurveyDiscovery.isEmpty { surveyDiscoveryRow }
                     filterTabs
                     homeExtraFilterChips
                     if app.feed.isEmpty {
@@ -566,6 +567,46 @@ struct HomeView: View {
         .padding(.top, 65)
         .padding(.bottom, 14)
         .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
+    }
+
+    /// Section 5 — public survey-story discovery, independent of follow
+    /// status (`app.homeSurveyDiscovery` is built that way in
+    /// loadHomeStories()'s own comment — never mixed into the follow-gated
+    /// `storyRow` above). Tapping a card opens the same in-app response
+    /// modal a story's own "Answer Survey" CTA does.
+    private var surveyDiscoveryRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(app.T("Góp ý cho sự kiện sắp tới", "Help Shape Upcoming Events"))
+                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(app.homeSurveyDiscovery) { card in
+                        Button {
+                            Task { await app.openSurveyStoryModal(publicID: card.publicId) }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(card.hostName).font(.system(size: 10.5)).opacity(0.6)
+                                Text(card.title).font(.system(size: 13.5, weight: .semibold)).lineLimit(2)
+                                if let closesAt = card.closesAt {
+                                    Text("\(app.T("Hạn", "Deadline")): \(closesAt.formatted(date: .abbreviated, time: .omitted))")
+                                        .font(.system(size: 10.5)).opacity(0.6)
+                                }
+                                Text(app.T("Trả lời khảo sát", "Answer Survey"))
+                                    .font(.system(size: 11.5, weight: .semibold)).underline()
+                            }
+                            .padding(14)
+                            .frame(width: 220, alignment: .leading)
+                            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("home.surveyDiscoveryCard")
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+        }
+        .padding(.top, 4)
+        .padding(.bottom, 10)
     }
 
     /// The Pulse ring's centre point inside `storyRow`'s own content space —

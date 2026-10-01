@@ -3184,14 +3184,34 @@ extension AppState {
     // account is actually permitted to see.
 
     func loadHomeStories() async {
-        guard let uid = userID else { homeStories = []; return }
+        guard let uid = userID else { homeStories = []; homeSurveyDiscovery = []; return }
         do {
             let rows: [Story] = try await SupabaseService.client
                 .from("stories")
-                .select("id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at, kind, event_id")
+                .select("id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at, kind, event_id, survey_id")
                 .order("created_at", ascending: true)
                 .execute().value
-            guard !rows.isEmpty else { homeStories = []; return }
+            guard !rows.isEmpty else { homeStories = []; homeSurveyDiscovery = []; return }
+
+            // Survey-sharing pass (section 5) — migration 117 ADDITIVELY
+            // widens stories RLS so a `kind = "survey_share"` row can also
+            // come back for an organizer this account neither owns nor
+            // follows (the whole point: public, non-follower discovery).
+            // Those rows must NOT fold into the normal per-organizer rings
+            // below (which stay exactly as follow-gated as before) — a real
+            // `follows` lookup is what tells the two cases apart, same as
+            // web's loadHomeStories().
+            struct FollowRow: Decodable { let organizerId: String
+                enum CodingKeys: String, CodingKey { case organizerId = "organizer_id" } }
+            let followRows: [FollowRow] = (try? await SupabaseService.client
+                .from("follows").select("organizer_id").eq("user_id", value: uid).execute().value) ?? []
+            let followedOrgIds = Set(followRows.map(\.organizerId))
+            let myOrgIds = await currentOrganizerIds()
+            myOrganizerIdsCache = myOrgIds
+            func isMineOrFollowed(_ organizerId: String) -> Bool { myOrgIds.contains(organizerId) || followedOrgIds.contains(organizerId) }
+
+            let ownRows = rows.filter { isMineOrFollowed($0.organizerId) }
+            let discoveryRows = rows.filter { $0.kind == "survey_share" && !isMineOrFollowed($0.organizerId) }
 
             let orgIds = Array(Set(rows.map(\.organizerId)))
             let orgRows: [OrganizerRow] = try await SupabaseService.client
@@ -3202,14 +3222,14 @@ extension AppState {
                 enum CodingKeys: String, CodingKey { case storyId = "story_id" } }
             let viewRows: [StoryViewIDRow] = try await SupabaseService.client
                 .from("story_views").select("story_id").eq("viewer_id", value: uid)
-                .in("story_id", values: rows.map(\.id.uuidString)).execute().value
+                .in("story_id", values: ownRows.map(\.id.uuidString)).execute().value
             let viewedSet = Set(viewRows.map(\.storyId)).union(storyViewedIds)
 
-            // Task 4 (2026-09-22 follow-up) — an event_share story's own
-            // media_path is deliberately empty (migration 068's own
-            // comment), so only real media rows are worth a signed-URL
-            // round trip.
-            let mediaPaths = rows.filter { $0.kind != "event_share" && !$0.mediaPath.isEmpty }.map(\.mediaPath)
+            // Task 4 (2026-09-22 follow-up) — an event_share/survey_share
+            // story's own media_path is deliberately empty (migrations 068/
+            // 117's own comments), so only real media rows are worth a
+            // signed-URL round trip.
+            let mediaPaths = ownRows.filter { $0.kind == "media" && !$0.mediaPath.isEmpty }.map(\.mediaPath)
             var urlByPath: [String: URL] = [:]
             if !mediaPaths.isEmpty, let signed = try? await SupabaseService.client.storage.from("stories")
                 .createSignedURLs(paths: mediaPaths, expiresIn: 600) {
@@ -3218,8 +3238,21 @@ extension AppState {
                 }
             }
 
+            // One get_survey_card() per distinct survey referenced by
+            // EITHER bucket — authenticated-only, allowlisted-field RPC
+            // (migration 117), never a direct `surveys` table read.
+            let surveyIds = Array(Set(rows.filter { $0.kind == "survey_share" }.compactMap(\.surveyId)))
+            var cardBySurveyId: [UUID: SurveyCard] = [:]
+            for surveyId in surveyIds {
+                if let card: SurveyCard = try? await SupabaseService.client
+                    .rpc("get_survey_card", params: ["p_survey_id": surveyId.uuidString]).execute().value,
+                   card.success == true {
+                    cardBySurveyId[surveyId] = card
+                }
+            }
+
             var byOrg: [String: StoryGroup] = [:]
-            for r in rows {
+            for r in ownRows {
                 guard let name = orgById[r.organizerId] else { continue }
                 let isEventShare = r.kind == "event_share"
                 // BUG 2 fix (2026-09-22 follow-up) — two real bugs, confirmed
@@ -3255,21 +3288,48 @@ extension AppState {
                     let ev = evRaw.applyingLiveStatus(homeLiveEvents[evRaw.key])
                     return StoryEventSnapshot(eventKey: ev.key, img: ev.img, name: ev.name, when: ev.when, location: ev.where, lat: ev.lat, lng: ev.lng)
                 }()
-                let item = StoryItem(id: r.id, mediaPath: r.mediaPath, url: urlByPath[r.mediaPath], width: r.width, height: r.height, createdAt: r.createdAt, viewed: viewedSet.contains(r.id), kind: r.kind, eventSnapshot: snapshot)
+                let card: SurveyCard? = r.kind == "survey_share" ? r.surveyId.flatMap { cardBySurveyId[$0] } : nil
+                let item = StoryItem(id: r.id, mediaPath: r.mediaPath, url: urlByPath[r.mediaPath], width: r.width, height: r.height, createdAt: r.createdAt, viewed: viewedSet.contains(r.id), kind: r.kind, eventSnapshot: snapshot, surveyCard: card)
                 if byOrg[r.organizerId] != nil { byOrg[r.organizerId]!.stories.append(item) }
                 else { byOrg[r.organizerId] = StoryGroup(organizerId: r.organizerId, orgName: name, stories: [item]) }
             }
             // The signed-in account's own active story appears first.
-            let myOrgIds = await currentOrganizerIds()
-            myOrganizerIdsCache = myOrgIds
             homeStories = byOrg.values.sorted { a, b in
                 let aMine = myOrgIds.contains(a.organizerId) ? 0 : 1
                 let bMine = myOrgIds.contains(b.organizerId) ? 0 : 1
                 return aMine != bMine ? aMine < bMine : a.orgName < b.orgName
             }
+
+            // Section 5 — "Help Shape Upcoming Events": one card per
+            // organizer (their single newest survey_share story), newest-
+            // organizer-first, capped. A card whose live get_survey_card()
+            // came back nil (deleted/error) is dropped, never rendered broken.
+            var newestBySurvey: [UUID: (storyId: UUID, organizerId: String, createdAt: Date, card: SurveyCard)] = [:]
+            for r in discoveryRows {
+                guard let surveyId = r.surveyId, let card = cardBySurveyId[surveyId] else { continue }
+                if let existing = newestBySurvey[surveyId], existing.createdAt >= r.createdAt { continue }
+                newestBySurvey[surveyId] = (r.id, r.organizerId, r.createdAt, card)
+            }
+            var newestByOrg: [String: (storyId: UUID, organizerId: String, createdAt: Date, card: SurveyCard)] = [:]
+            for entry in newestBySurvey.values {
+                if let existing = newestByOrg[entry.organizerId], existing.createdAt >= entry.createdAt { continue }
+                newestByOrg[entry.organizerId] = entry
+            }
+            homeSurveyDiscovery = newestByOrg.values
+                .sorted { $0.createdAt > $1.createdAt }
+                .prefix(20)
+                .compactMap { entry in
+                    guard let surveyId = entry.card.surveyId, let publicId = entry.card.publicId, let status = entry.card.status else { return nil }
+                    return SurveyDiscoveryCard(
+                        storyId: entry.storyId, organizerId: entry.organizerId, surveyId: surveyId, publicId: publicId,
+                        title: entry.card.title ?? "", description: entry.card.description ?? "",
+                        hostName: entry.card.hostName ?? "", closesAt: entry.card.closesAt, status: status
+                    )
+                }
         } catch {
             print("loadHomeStories failed:", error)
             homeStories = []
+            homeSurveyDiscovery = []
         }
     }
 

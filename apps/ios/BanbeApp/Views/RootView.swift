@@ -703,7 +703,14 @@ struct RootView: View {
                 // pattern the root `app.palette.paper` background above
                 // already uses and removes any ambiguity about what's
                 // proposing what size to it.
-                StoryViewerView(isSuspended: storyUnderlaysEvent)
+                // Survey-sharing pass (section 2) — "pause story progress
+                // while the modal is presented... resume after dismissal."
+                // `storySurveyModalPublicID` is a `.fullScreenCover`
+                // presented ON TOP of this same StoryViewerView (below), not
+                // a screen change — reuses the exact same isSuspended
+                // mechanism storyUnderlaysEvent already proves out for
+                // "something is covering the story."
+                StoryViewerView(isSuspended: storyUnderlaysEvent || app.storySurveyModalPublicID != nil)
                     .ignoresSafeArea()
                     .zIndex(storyUnderlaysEvent ? -1 : 27)
                     .allowsHitTesting(!storyUnderlaysEvent)
@@ -864,6 +871,17 @@ struct RootView: View {
         // Account deletion (Task 2, Account/Settings pass) — opened from
         // AccountGroupView's `preferences` case (`app.deleteAccountOpen`).
         .fullScreenCover(isPresented: $app.deleteAccountOpen) { DeleteAccountView() }
+        // Section 2 — a story's "Answer Survey" CTA. Presented over the
+        // still-mounted, now-suspended StoryViewerView (see
+        // storySurveyModalPublicID above) rather than navigating `screen`
+        // away — dismissing it (the X/close inside SurveyPublicView) clears
+        // `storySurveyModalPublicID`, which un-suspends the SAME story.
+        .fullScreenCover(isPresented: Binding(
+            get: { app.storySurveyModalPublicID != nil },
+            set: { if !$0 { app.closeSurveyStoryModal() } }
+        )) {
+            SurveyPublicView(asModal: true)
+        }
         // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse. No longer a
         // `.fullScreenCover` — see the `if app.pulseOpen { PulseViewerView() }`
         // ZStack sibling above, and that view's own `commitDismiss()` doc

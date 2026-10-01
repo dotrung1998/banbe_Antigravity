@@ -390,7 +390,7 @@ export default function Home() {
     becomeHost, switchToHost,
     canHost, loadPaymentBookings, loadVerifications, loadOrganizerHoldingSummary, loadHomeLiveEvents,
     openPaymentDetails, openVerifications, goDashboard, forfeitExpiredHold,
-    loadHomeStories, openStoryViewer,
+    loadHomeStories, openStoryViewer, openSurveyStoryModal,
     loadMyRefunds, openMyRefunds, loadRefundQueue, goNotifications,
     openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, loadPulse,
   } = useGoc();
@@ -903,6 +903,40 @@ export default function Home() {
           ))
         )}
       </div>
+
+      {/* Section 5 — public survey-story discovery, independent of follow
+          status (s.homeSurveyDiscovery is built that way in
+          loadHomeStories()'s own comment — never mixed into the
+          follow-gated ring row above). Tapping a card opens the same
+          in-app response modal a story's own "Answer Survey" CTA does. */}
+      {s.homeSurveyDiscovery.length > 0 && (
+        <div style={{ padding: '0 20px 16px' }}>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7, marginBottom: 10 }}>
+            {T('Góp ý cho sự kiện sắp tới', 'Help Shape Upcoming Events')}
+          </div>
+          <div style={{ display: 'flex', gap: 10, overflowX: 'auto' }} data-testid="home-survey-discovery-row">
+            {s.homeSurveyDiscovery.map(card => (
+              <div
+                key={card.survey_id}
+                onClick={() => openSurveyStoryModal(card.public_id)}
+                data-testid="home-survey-discovery-card"
+                style={{ ...fieldGlass({ flex: '0 0 220px', padding: 14, borderRadius: 14, cursor: 'pointer' }) }}
+              >
+                <div style={{ fontSize: 10.5, opacity: 0.6 }}>{card.host_name}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 4 }}>{card.title}</div>
+                {card.closes_at && (
+                  <div style={{ fontSize: 10.5, opacity: 0.6, marginTop: 6 }}>
+                    {T('Hạn', 'Deadline')}: {new Date(card.closes_at).toLocaleDateString('vi-VN')}
+                  </div>
+                )}
+                <div style={{ marginTop: 10, fontSize: 11.5, fontWeight: 600, textDecoration: 'underline' }}>
+                  {T('Trả lời khảo sát', 'Answer Survey')}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 20, padding: '16px 20px 14px' }}>
         {filters.map(f => (

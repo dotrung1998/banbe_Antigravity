@@ -27,8 +27,18 @@ async function handleSendEmailCode(req, res, admin, body) {
   const displayName = getText(body.displayName).slice(0, 60);
   const requestedLocale = body.locale === 'en' ? 'en' : 'vi';
 
+  // 'respond' (survey-respondent lightweight verification, task 3 of the
+  // survey-sharing pass) deliberately does NOT pre-commit to signup/login —
+  // a signed-out visitor answering a survey has no way to know in advance
+  // whether their email already has a banbe account, and asking them to
+  // guess (then getting a 404/409) would be a confusing dead end for a flow
+  // that's supposed to be lightweight. It auto-detects, exactly like the
+  // signup/login branches below already do internally — the ONLY behavior
+  // difference is skipping the two mismatch guards that assume the caller
+  // already knows which case they're in.
+  const isRespondMode = mode === 'respond';
   if (!EMAIL_PATTERN.test(email)) return res.status(400).json({ error: 'VALID_EMAIL_REQUIRED' });
-  if (mode !== 'signup' && mode !== 'login') return res.status(400).json({ error: 'VALID_AUTH_MODE_REQUIRED' });
+  if (!isRespondMode && mode !== 'signup' && mode !== 'login') return res.status(400).json({ error: 'VALID_AUTH_MODE_REQUIRED' });
   if (mode === 'signup' && !displayName) return res.status(400).json({ error: 'VALID_NAME_REQUIRED' });
 
   const { userId: authUserId, resolved, sources } = await resolveAuthUserId(admin, email);
@@ -40,11 +50,13 @@ async function handleSendEmailCode(req, res, admin, body) {
 
   if (authUserId) await linkRegistration(admin, email, authUserId);
 
-  if (mode === 'login' && !authUserId) {
-    return res.status(404).json({ error: 'AUTH_ACCOUNT_NOT_FOUND' });
-  }
-  if (mode === 'signup' && authUserId) {
-    return res.status(409).json({ error: 'AUTH_ACCOUNT_EXISTS' });
+  if (!isRespondMode) {
+    if (mode === 'login' && !authUserId) {
+      return res.status(404).json({ error: 'AUTH_ACCOUNT_NOT_FOUND' });
+    }
+    if (mode === 'signup' && authUserId) {
+      return res.status(409).json({ error: 'AUTH_ACCOUNT_EXISTS' });
+    }
   }
 
   try {
@@ -103,7 +115,13 @@ async function handleSendEmailCode(req, res, admin, body) {
       return res.status(502).json({ error: 'AUTH_EMAIL_DELIVERY_FAILED' });
     }
 
-    return res.status(200).json({ sent: true });
+    // `isNewAccount` lets a caller that doesn't pre-know signup vs login
+    // (mode: 'respond') disclose accurately which one just happened, before
+    // the respondent types the code — task's own "disclose a new identity
+    // accurately before confirmation, never silently" requirement. Harmless
+    // to include for the ordinary signup/login modes too (the client
+    // already knows which mode it asked for, so it simply doesn't read it).
+    return res.status(200).json({ sent: true, isNewAccount: !authUserId });
   } catch (error) {
     console.error('Auth email request failed:', error);
     return res.status(502).json({ error: 'AUTH_EMAIL_REQUEST_FAILED' });

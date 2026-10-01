@@ -309,6 +309,12 @@ struct LoginView: View {
             }
             await auth.signUpWithPassword(email: email, password: password,
                                           displayName: displayName, locale: app.lang)
+        case (.password, .respond):
+            // Unreachable from this screen — `.respond` is only ever used by
+            // the survey-respondent inline verification widget
+            // (RespondVerifyInlineView, SurveyPublicView.swift), which has
+            // its own code-only UI and never reaches this switch.
+            break
         }
     }
 

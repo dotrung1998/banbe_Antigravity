@@ -148,8 +148,10 @@ extension AppState {
         surveyPublicID = publicID
         surveyResponseSuccess = false
         surveyResponseError = ""
+        surveyEditMode = false
         surveyDraft = SurveyDraft()
         mySurveyResponse = nil
+        surveyRespondStep = "idle"; surveyRespondEmail = ""; surveyRespondCode = ""; surveyRespondError = ""; surveyRespondConsent = false
         screen = .surveyPublic
         do {
             let result: SurveyPublic = try await SupabaseService.client
@@ -252,6 +254,114 @@ extension AppState {
         }
     }
 
+    func toggleSurveyEditMode(_ on: Bool) { surveyEditMode = on }
+
+    /// Section 2 — open the same SurveyPublicView content as a `.fullScreenCover`
+    /// over whatever's currently showing (a paused story) instead of
+    /// navigating `screen` away — RootView watches `storySurveyModalPublicID`
+    /// and StoryViewerView pauses via its existing `isSuspended` the same
+    /// way it already does for an Event Detail sheet on top.
+    func openSurveyStoryModal(publicID: String) async {
+        storySurveyModalPublicID = publicID
+        surveyPublic = nil
+        surveyPublicLoading = true
+        surveyPublicError = ""
+        surveyPublicID = publicID
+        surveyResponseSuccess = false
+        surveyResponseError = ""
+        surveyEditMode = false
+        surveyDraft = SurveyDraft()
+        mySurveyResponse = nil
+        surveyRespondStep = "idle"; surveyRespondEmail = ""; surveyRespondCode = ""; surveyRespondError = ""; surveyRespondConsent = false
+        do {
+            let result: SurveyPublic = try await SupabaseService.client
+                .rpc("get_survey_public", params: ["p_public_id": publicID])
+                .execute().value
+            guard result.success == true else {
+                surveyPublicLoading = false
+                surveyPublicError = T("Không tìm thấy khảo sát này.", "This survey couldn't be found.")
+                return
+            }
+            surveyPublic = result
+            surveyPublicLoading = false
+            if let surveyID = result.surveyId, isSignedIn {
+                await loadMySurveyResponse(surveyID: surveyID)
+            }
+        } catch {
+            print("openSurveyStoryModal failed:", error)
+            surveyPublicLoading = false
+            surveyPublicError = T("Không tìm thấy khảo sát này.", "This survey couldn't be found.")
+        }
+    }
+
+    /// `discard` clears nothing persisted on iOS (no sessionStorage-
+    /// equivalent draft cache to begin with — see SurveyDraft's own doc
+    /// comment), it just resets the in-memory draft so reopening the same
+    /// survey from the same story doesn't resurface answers the respondent
+    /// explicitly threw away.
+    func closeSurveyStoryModal(discard: Bool = false) {
+        if discard { surveyDraft = SurveyDraft() }
+        storySurveyModalPublicID = nil
+        surveyPublic = nil
+    }
+
+    // ==================== Section 3: lightweight respondent verification ====================
+
+    /// Step 1 — request the code. Requires `surveyRespondConsent` first —
+    /// the explicit, additive consent path for a respondent who never saw
+    /// the ordinary Login screen's own checkbox.
+    func sendSurveyRespondCode(email: String) async {
+        let clean = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard clean.contains("@"), clean.contains(".") else {
+            surveyRespondError = T("Nhập email hợp lệ.", "Enter a valid email.")
+            return
+        }
+        guard surveyRespondConsent else {
+            surveyRespondError = T("Vui lòng đồng ý trước khi tiếp tục.", "Please agree before continuing.")
+            return
+        }
+        surveyRespondSending = true
+        surveyRespondError = ""
+        do {
+            let isNew = try await AuthAPIService.requestRespondEmailCode(
+                email: clean, displayName: T("Khách trả lời khảo sát", "Survey respondent")
+            )
+            surveyRespondSending = false
+            surveyRespondStep = "codeSent"
+            surveyRespondEmail = clean
+            surveyRespondIsNewAccount = isNew
+        } catch {
+            surveyRespondSending = false
+            surveyRespondError = T("Không thể gửi mã. Vui lòng thử lại.", "Could not send the code. Please try again.")
+        }
+    }
+
+    /// Step 2 — verify. A brand-new identity was created via the "signup"
+    /// linkType server-side (api/auth's isRespondMode branch), so it
+    /// verifies the same way; the resulting real session resolves
+    /// `submit_survey_response`'s identity via its own auth.uid() — never a
+    /// client-supplied id.
+    func verifySurveyRespondCode() async {
+        let token = surveyRespondCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else {
+            surveyRespondError = T("Nhập mã đã gửi tới email của bạn.", "Enter the code sent to your email.")
+            return
+        }
+        surveyRespondSending = true
+        surveyRespondError = ""
+        do {
+            try await SupabaseService.client.auth.verifyOTP(
+                email: surveyRespondEmail, token: token, type: surveyRespondIsNewAccount ? .signup : .email
+            )
+            surveyRespondSending = false
+            surveyRespondStep = "idle"
+            surveyRespondCode = ""
+        } catch {
+            surveyRespondSending = false
+            surveyRespondError = T("Mã không đúng hoặc đã hết hạn.", "That code is wrong or has expired.")
+        }
+    }
+
     // ==================== Host side: Hosting -> Surveys & Event Ideas ====================
 
     func loadMySurveys() async {
@@ -342,5 +452,41 @@ extension AppState {
                 .rpc("delete_survey", params: ["p_survey_id": surveyID.uuidString]).execute().value
             await loadMySurveys()
         } catch { print("deleteSurvey failed:", error) }
+    }
+
+    /// Task 4 — "Share Link": native share sheet, through the canonical
+    /// `AppConfig.publicWebOrigin` (never the unavailable banbe.app).
+    func shareSurveyLink(_ survey: SurveySummary) -> URL? {
+        URL(string: AppConfig.publicWebOrigin + "/surveys/" + survey.publicId)
+    }
+
+    /// Task 4 — "Share To Story": opens a preview (SurveysHostingView's own
+    /// confirm sheet), never posts automatically. The real story row is
+    /// only created on explicit Publish (confirmShareSurveyToStory).
+    func openShareToStoryConfirm(_ survey: SurveySummary) {
+        surveyShareToStoryTarget = survey
+        surveyShareToStoryError = ""
+    }
+    func closeShareToStoryConfirm() {
+        surveyShareToStoryTarget = nil
+        surveyShareToStoryError = ""
+    }
+    func confirmShareSurveyToStory() async {
+        guard let survey = surveyShareToStoryTarget else { return }
+        surveyShareToStoryBusy = true
+        surveyShareToStoryError = ""
+        do {
+            let _: Story = try await SupabaseService.client
+                .rpc("create_survey_share_story", params: ["p_survey_id": survey.id.uuidString]).execute().value
+            surveyShareToStoryBusy = false
+            surveyShareToStoryTarget = nil
+            await loadHomeStories()
+        } catch {
+            let code = (error as? PostgrestError)?.message ?? ""
+            surveyShareToStoryBusy = false
+            surveyShareToStoryError = code == "SURVEY_NOT_ACTIVE"
+                ? T("Chỉ khảo sát đang mở mới có thể chia sẻ lên story.", "Only an active survey can be shared to a story.")
+                : T("Không thể đăng lên story. Vui lòng thử lại.", "Could not post to story. Please try again.")
+        }
     }
 }

@@ -68,10 +68,12 @@ struct Story: Codable, Identifiable, Hashable {
     var height: Int?
     var createdAt: Date
     var expiresAt: Date
-    // Task 4 (2026-09-22 follow-up, migration 068) — "media" (default) or
-    // "event_share"; eventId is only ever set for the latter.
+    // Task 4 (2026-09-22 follow-up, migration 068) — "media" (default),
+    // "event_share", or "survey_share" (migration 117); eventId/surveyId
+    // are only ever set for the matching kind.
     var kind: String = "media"
     var eventId: String?
+    var surveyId: UUID?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -84,7 +86,49 @@ struct Story: Codable, Identifiable, Hashable {
         case expiresAt = "expires_at"
         case kind
         case eventId = "event_id"
+        case surveyId = "survey_id"
     }
+}
+
+/// get_survey_card()'s own return shape (migration 117) — the same safe,
+/// allowlisted fields get_survey_public() returns, keyed by survey_id
+/// (which a story row actually has) rather than public_id. Read LIVE every
+/// time loadHomeStories() runs, never frozen at share time, so a card
+/// always shows the survey's real current status.
+struct SurveyCard: Decodable, Equatable, Hashable {
+    let success: Bool?
+    let surveyId: UUID?
+    let publicId: String?
+    let title: String?
+    let description: String?
+    let hostName: String?
+    let closesAt: Date?
+    let status: String?
+    enum CodingKeys: String, CodingKey {
+        case success
+        case surveyId = "survey_id"
+        case publicId = "public_id"
+        case title, description
+        case hostName = "host_name"
+        case closesAt = "closes_at"
+        case status
+    }
+}
+
+/// Section 5 — one card per organizer in Home's "Help Shape Upcoming
+/// Events" discovery row (built client-side in loadHomeStories(), not a DB
+/// row shape — mirrors web's homeSurveyDiscovery exactly).
+struct SurveyDiscoveryCard: Identifiable, Equatable {
+    var id: UUID { surveyId }
+    let storyId: UUID
+    let organizerId: String
+    let surveyId: UUID
+    let publicId: String
+    let title: String
+    let description: String
+    let hostName: String
+    let closesAt: Date?
+    let status: String
 }
 
 /// A denormalized snapshot of the shared event's own catalogue fields, so
@@ -128,6 +172,10 @@ struct StoryItem: Identifiable, Hashable {
     var viewed: Bool
     var kind: String = "media"
     var eventSnapshot: StoryEventSnapshot?
+    // Survey-sharing pass — get_survey_card()'s live response for a
+    // survey_share item; `nil` (RPC failed/survey deleted) renders as "no
+    // longer available", same honesty rule as a missing eventSnapshot.
+    var surveyCard: SurveyCard?
 }
 
 /// One host's set of active stories, grouped for the ring/row UI.

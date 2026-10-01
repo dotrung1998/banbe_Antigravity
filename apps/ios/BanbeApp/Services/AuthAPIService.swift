@@ -5,6 +5,10 @@ import Foundation
 enum AuthMode: String {
     case login
     case signup
+    // Survey-respondent lightweight verification (section 3 of the survey-
+    // sharing pass) — deliberately does not pre-commit to signup/login, see
+    // api/auth/index.js's own isRespondMode branch for why.
+    case respond
 }
 
 /// One of the JSON `{ "error": "SOME_CODE" }` bodies api/auth/index.js (type: send_email_code)
@@ -73,6 +77,35 @@ enum AuthAPIService {
             body["displayName"] = displayName
         }
         try await post(path: "/api/auth", body: body)
+    }
+
+    /// Section 3 — a signed-out survey respondent's own lightweight
+    /// verification. Same endpoint/body shape as `requestEmailCode` (mode:
+    /// "respond"), but this one needs the response body back: the server
+    /// auto-detects new-vs-existing identity and returns `isNewAccount` so
+    /// the caller can disclose which one just happened BEFORE the
+    /// respondent types the code — never silently.
+    static func requestRespondEmailCode(email: String, displayName: String) async throws -> Bool {
+        guard let url = URL(string: AppConfig.apiBaseURL + "/api/auth") else {
+            throw AuthAPIError(code: "AUTH_EMAIL_REQUEST_FAILED")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "type": "send_email_code", "email": email, "mode": AuthMode.respond.rawValue, "displayName": displayName,
+        ])
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw AuthAPIError(code: "AUTH_EMAIL_REQUEST_FAILED")
+        }
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw AuthAPIError(code: json["error"] as? String ?? "AUTH_EMAIL_REQUEST_FAILED")
+        }
+        return json["isNewAccount"] as? Bool ?? false
     }
 
     /// Creates an account with a password of the person's own choosing.

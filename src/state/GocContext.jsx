@@ -9,6 +9,7 @@ import { normalizeProofFile } from '../lib/proofUpload.js';
 import { POLICY_VERSION } from '../lib/policy.js';
 import { refundClaimPresentation } from '../lib/refundPresentation.js';
 import { buildLocationTree, eventMatchesLocation, locationShortLabel, migrateLegacyAreaKey, LOCATION_ALL } from '../lib/locationTree.js';
+import { surveyPublicUrl } from '../lib/surveyLink.js';
 
 const GocCtx = createContext(null);
 
@@ -682,6 +683,12 @@ const initialState = {
   // screen. `surveyPublic` is exactly get_survey_public()'s return shape
   // (never raw table rows) so the public route can never expose more than
   // that RPC's own allowlisted fields.
+  // Section 5 — public (non-follower) survey-story discovery group on
+  // Home ("Help Shape Upcoming Events"), built in loadHomeStories() below:
+  // one card per organizer (newest active survey_share first), newest-
+  // organizer-first, capped — see that function's own comment for why this
+  // is a SEPARATE bucket from the normal, still-follow-gated `homeStories`.
+  homeSurveyDiscovery: [],
   surveyPublic: null, surveyPublicLoading: false, surveyPublicError: '', surveyPublicBack: 'home', surveyPublicId: '',
   // The signed-in respondent's own current answer (or null if none yet) —
   // loaded separately since get_survey_public is anon-reachable and must
@@ -692,8 +699,33 @@ const initialState = {
   // auth," the task's own explicit requirement for the browser page.
   surveyDraft: { interestLevel: null, dateOptions: [], groupSize: null, locationOptions: [], budgetOption: null, activities: [], freeText: '', contactConsent: false },
   surveyResponseSubmitting: false, surveyResponseError: '', surveyResponseSuccess: false,
+  // Already-answered respondents land on a read-only summary first ("You
+  // Have Already Responded") rather than a fresh-looking editable form —
+  // this flips it open. Reset on every fresh load (goSurveyPublic/
+  // openSurveyStoryModal) so re-opening never silently starts in edit mode.
+  surveyEditMode: false,
+  // Section 2 — survey answered inside a story's "Answer Survey" popup
+  // instead of the full-page/browser route. `surveyAsModal` is read by
+  // SurveyPublic.jsx to render itself as the modal's content (no page
+  // chrome) vs. the full standalone screen; `storySurveyModalPublicId`
+  // is what App.jsx mounts the modal wrapper on, and what StoryViewer.jsx
+  // watches to pause its own auto-advance while it's open — see
+  // openSurveyStoryModal/closeSurveyStoryModal below.
+  surveyAsModal: false, storySurveyModalPublicId: null,
+  // Section 3 — lightweight, non-banbe-account respondent email
+  // verification (outside-banbe audience), reusing the existing OTP-by-
+  // email mechanism (api/auth send_email_code, mode: 'respond') rather than
+  // a parallel auth system. Never labels anything "verified" until
+  // supabase.auth.verifyOtp() itself actually succeeds.
+  surveyRespondStep: 'idle', surveyRespondEmail: '', surveyRespondCode: '',
+  surveyRespondSending: false, surveyRespondError: '', surveyRespondIsNewAccount: false,
+  surveyRespondConsent: false,
   // Host management (Hosting -> Surveys & Event Ideas).
   mySurveys: [], mySurveysLoading: false, mySurveyCreateBusy: false, mySurveyCreateError: '',
+  // Task 4 — "Share To Story": an explicit preview-then-Publish step, never
+  // an automatic post (task's own "show a preview and require explicit
+  // Publish; no automatic posting" rule).
+  surveyShareToStoryTarget: null, surveyShareToStoryBusy: false, surveyShareToStoryError: '',
   // Account extension (2026-09-27, Stage 3) — one role-scoped KPI
   // dashboard, reached from a "Số liệu & báo cáo" row on each visible
   // Account tab. `reportsScope` is 'personal'|'host'|'admin' (never
@@ -4428,33 +4460,64 @@ export function GocProvider({ children }) {
   // signed-in account is actually permitted to see (own, co-owned organizer,
   // or a followed organizer) — so this just groups+signs what comes back,
   // no client-side re-filtering.
+  //
+  // Survey-sharing pass (section 5) — migration 117 ADDITIVELY widens that
+  // RLS to also return a `kind='survey_share'` row for ANY organizer, not
+  // just followed ones (the whole point: public, non-follower discovery).
+  // That means a row can now come back here for an organizer this account
+  // neither owns nor follows — those must NOT be folded into the normal
+  // per-organizer `homeStories` rings (which stay exactly as
+  // follow/ownership-gated as before — "keep Following stories unchanged").
+  // They're routed into a separate `homeSurveyDiscovery` bucket instead, one
+  // real `follows` lookup below is what tells the two cases apart.
   const loadHomeStories = useCallback(async () => {
-    if (!s.user) return set({ homeStories: [] });
+    if (!s.user) return set({ homeStories: [], homeSurveyDiscovery: [] });
     const { data: rows, error } = await supabase
       .from('stories')
-      .select('id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at, kind, event_id')
+      .select('id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at, kind, event_id, survey_id')
       .order('created_at', { ascending: true });
-    if (error || !rows?.length) return set({ homeStories: [] });
+    if (error || !rows?.length) return set({ homeStories: [], homeSurveyDiscovery: [] });
+
+    const { data: followRows } = await supabase.from('follows').select('organizer_id').eq('user_id', s.user.id);
+    const followedOrgIds = new Set((followRows || []).map(f => f.organizer_id));
+    const isMineOrFollowed = (organizerId) => s.myOrganizerIds.includes(organizerId) || followedOrgIds.has(organizerId);
+
+    const ownRows = rows.filter(r => isMineOrFollowed(r.organizer_id));
+    const discoveryRows = rows.filter(r => r.kind === 'survey_share' && !isMineOrFollowed(r.organizer_id));
 
     const orgIds = [...new Set(rows.map(r => r.organizer_id))];
     const { data: orgRows } = await supabase.from('organizers').select('id, name, owner_id, user_id').in('id', orgIds);
     const orgById = Object.fromEntries((orgRows || []).map(o => [o.id, o]));
 
-    const { data: viewRows } = await supabase.from('story_views').select('story_id').eq('viewer_id', s.user.id).in('story_id', rows.map(r => r.id));
+    const { data: viewRows } = await supabase.from('story_views').select('story_id').eq('viewer_id', s.user.id).in('story_id', ownRows.map(r => r.id));
     const viewedSet = new Set([...(viewRows || []).map(v => v.story_id), ...storyViewedIdsRef.current]);
 
     // Task 4 (2026-09-22 follow-up) — an event_share story's `media_path`
     // is deliberately empty (it renders as an event card, not a photo — see
     // migration 068's own comment), so only real media rows are worth a
-    // signed-URL round trip.
-    const mediaPaths = rows.filter(r => r.kind !== 'event_share' && r.media_path).map(r => r.media_path);
+    // signed-URL round trip. A survey_share row's media_path is equally
+    // always empty (migration 117's own INSERT), same reasoning.
+    const mediaPaths = ownRows.filter(r => r.kind === 'media' && r.media_path).map(r => r.media_path);
     const { data: signed } = mediaPaths.length
       ? await supabase.storage.from('stories').createSignedUrls(mediaPaths, 600)
       : { data: [] };
     const urlByPath = Object.fromEntries((signed || []).filter(r => r.signedUrl && !r.error).map(r => [r.path, r.signedUrl]));
 
+    // One get_survey_card() per distinct survey referenced by EITHER bucket
+    // — authenticated-only, allowlisted-field RPC (migration 117), never a
+    // direct `surveys` table read from the client. Fetched live on every
+    // load (never cached/frozen at share time) so a card always shows the
+    // survey's REAL current status, even if it closed after the story was
+    // posted — "closing the survey updates the viewer's truthful state."
+    const surveyIds = [...new Set(rows.filter(r => r.kind === 'survey_share' && r.survey_id).map(r => r.survey_id))];
+    const surveyCardEntries = await Promise.all(surveyIds.map(async (id) => {
+      const { data } = await supabase.rpc('get_survey_card', { p_survey_id: id });
+      return [id, data?.success ? data : null];
+    }));
+    const surveyCardById = Object.fromEntries(surveyCardEntries);
+
     const byOrg = {};
-    for (const r of rows) {
+    for (const r of ownRows) {
       const org = orgById[r.organizer_id];
       if (!org) continue;
       if (!byOrg[r.organizer_id]) byOrg[r.organizer_id] = { organizerId: r.organizer_id, orgName: org.name, stories: [] };
@@ -4495,6 +4558,11 @@ export function GocProvider({ children }) {
         // `distanceLabel()`/`haversineKm()` MapExplore and Event Detail
         // already use, instead of showing none at all (its previous state).
         eventSnapshot: isEventShare && ev ? { eventKey: ev.key, img: ev.img, name: ev.name, when: ev.when, where: ev.where, lat: ev.lat, lng: ev.lng } : null,
+        // A survey_share row read LIVE via get_survey_card (never frozen at
+        // share time) — `null` (RPC failed/survey deleted mid-session) is a
+        // real, renderable state: SurveyShareCard shows "no longer
+        // available" for it, same honesty rule as a missing eventSnapshot.
+        surveySnapshot: r.kind === 'survey_share' ? (surveyCardById[r.survey_id] || null) : null,
       });
     }
     const groups = Object.values(byOrg).map(g => ({ ...g, allViewed: g.stories.every(st => st.viewed) }));
@@ -4505,7 +4573,35 @@ export function GocProvider({ children }) {
       const bMine = s.myOrganizerIds.includes(b.organizerId) ? 0 : 1;
       return aMine - bMine;
     });
-    set({ homeStories: groups });
+
+    // Section 5 — "Help Shape Upcoming Events": one card per organizer
+    // (their single newest survey_share story — DISTINCT ON, same capping
+    // idea migration 080's goc_pulse_ranked() already uses for "one row per
+    // organizer"), newest-organizer-first, capped to a reasonable count.
+    // Deduplicated by survey_id defensively too, in case an organizer ever
+    // shares the same survey to a second story. A card whose live
+    // get_survey_card() came back null (survey deleted / RPC error) is
+    // dropped here rather than ever rendered — never a broken card.
+    const bySurveyNewest = new Map();
+    for (const r of discoveryRows) {
+      const card = surveyCardById[r.survey_id];
+      if (!card) continue;
+      const existing = bySurveyNewest.get(r.survey_id);
+      if (!existing || new Date(r.created_at) > new Date(existing.createdAt)) {
+        bySurveyNewest.set(r.survey_id, { storyId: r.id, organizerId: r.organizer_id, createdAt: r.created_at, card });
+      }
+    }
+    const byOrgNewest = new Map();
+    for (const entry of bySurveyNewest.values()) {
+      const existing = byOrgNewest.get(entry.organizerId);
+      if (!existing || new Date(entry.createdAt) > new Date(existing.createdAt)) byOrgNewest.set(entry.organizerId, entry);
+    }
+    const discovery = [...byOrgNewest.values()]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 20)
+      .map(entry => ({ storyId: entry.storyId, organizerId: entry.organizerId, ...entry.card }));
+
+    set({ homeStories: groups, homeSurveyDiscovery: discovery });
   }, [set, s.user, s.myOrganizerIds]);
 
   // Records a real story_views row (idempotent — PK on story_id+viewer_id,
@@ -5546,7 +5642,8 @@ export function GocProvider({ children }) {
       screen: 'surveyPublic', surveyPublic: null, surveyPublicLoading: true, surveyPublicError: '',
       surveyPublicBack: back, surveyPublicId: publicId,
       surveyDraft: loadSurveyDraftFromStorage(publicId) || DEFAULT_SURVEY_DRAFT,
-      surveyResponseSuccess: false, surveyResponseError: '',
+      surveyResponseSuccess: false, surveyResponseError: '', surveyEditMode: false, surveyAsModal: false,
+      surveyRespondStep: 'idle', surveyRespondEmail: '', surveyRespondCode: '', surveyRespondError: '', surveyRespondConsent: false,
     });
     const { data, error } = await supabase.rpc('get_survey_public', { p_public_id: publicId });
     if (error || data?.success === false) {
@@ -5632,6 +5729,94 @@ export function GocProvider({ children }) {
     set({ surveyResponseSubmitting: false, surveyResponseSuccess: true });
   }, [set, s.surveyPublic, s.surveyDraft, s.surveyPublicId, T]);
 
+  const toggleSurveyEditMode = useCallback((on) => set({ surveyEditMode: on }), [set]);
+
+  /** Section 2 — open the same SurveyPublic content as a modal over the
+   * current screen (a paused story) instead of navigating to it — the
+   * story's "Answer Survey" CTA. Deliberately does NOT touch `state.screen`
+   * (so Home/StoryViewer stay mounted underneath); StoryViewer.jsx pauses
+   * on its own by watching `storySurveyModalPublicId`. */
+  const openSurveyStoryModal = useCallback(async (publicId) => {
+    set({
+      surveyAsModal: true, storySurveyModalPublicId: publicId,
+      surveyPublic: null, surveyPublicLoading: true, surveyPublicError: '', surveyPublicId: publicId,
+      surveyDraft: loadSurveyDraftFromStorage(publicId) || DEFAULT_SURVEY_DRAFT,
+      surveyResponseSuccess: false, surveyResponseError: '', surveyEditMode: false,
+      surveyRespondStep: 'idle', surveyRespondEmail: '', surveyRespondCode: '', surveyRespondError: '', surveyRespondConsent: false,
+    });
+    const { data, error } = await supabase.rpc('get_survey_public', { p_public_id: publicId });
+    if (error || data?.success === false) {
+      set({ surveyPublicLoading: false, surveyPublicError: T('Không tìm thấy khảo sát này.', "This survey couldn't be found.") });
+      return;
+    }
+    set({ surveyPublic: data, surveyPublicLoading: false });
+  }, [set, T]);
+
+  /** Closing the modal: if there are real unsent changes (a dirty draft, no
+   * success yet), the caller (SurveyResponseModal.jsx) asks keep-vs-discard
+   * first — this is the actual close, called either directly (nothing to
+   * lose) or after that choice is made. `discard` clears the sessionStorage
+   * draft too, so reopening the same survey from the same story doesn't
+   * resurface answers the respondent explicitly threw away. */
+  const closeSurveyStoryModal = useCallback((discard = false) => {
+    if (discard && s.surveyPublicId) clearSurveyDraftFromStorage(s.surveyPublicId);
+    set({ surveyAsModal: false, storySurveyModalPublicId: null, surveyPublic: null });
+  }, [set, s.surveyPublicId]);
+
+  // ---- Section 3: lightweight respondent email verification (outside
+  // banbe, no password/profile/Hosting onboarding) ----
+  const SURVEY_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  /** Step 1 — request the code. Does NOT yet know (or claim) whether this
+   * creates a new identity; the server resolves that and tells us via
+   * `isNewAccount` so the NEXT screen (entering the code) can disclose it
+   * honestly before the respondent confirms anything — task's own "disclose
+   * accurately before confirmation, never call it anonymous" rule. Requires
+   * `surveyRespondConsent` first (shown alongside the email field) — this
+   * IS the explicit, additive consent path for a respondent who never saw
+   * the ordinary Login/signup screen's own checkbox. */
+  const sendSurveyRespondCode = useCallback(async (email) => {
+    const clean = String(email || '').trim().toLowerCase();
+    if (!SURVEY_EMAIL_RE.test(clean)) return set({ surveyRespondError: T('Nhập email hợp lệ.', 'Enter a valid email.') });
+    if (!s.surveyRespondConsent) return set({ surveyRespondError: T('Vui lòng đồng ý trước khi tiếp tục.', 'Please agree before continuing.') });
+    set({ surveyRespondSending: true, surveyRespondError: '' });
+    try {
+      const result = await requestAuthEmail({
+        email: clean, mode: 'respond',
+        displayName: T('Khách trả lời khảo sát', 'Survey respondent'),
+      });
+      set({
+        surveyRespondSending: false, surveyRespondStep: 'codeSent',
+        surveyRespondEmail: clean, surveyRespondIsNewAccount: Boolean(result?.isNewAccount),
+      });
+    } catch (e) {
+      set({
+        surveyRespondSending: false,
+        surveyRespondError: e?.code === 'AUTH_EMAIL_SERVICE_NOT_CONFIGURED'
+          ? T('Không thể gửi email lúc này. Vui lòng thử lại sau.', 'Could not send email right now. Please try again later.')
+          : T('Không thể gửi mã. Vui lòng thử lại.', 'Could not send the code. Please try again.'),
+      });
+    }
+  }, [set, s.surveyRespondConsent, T]);
+
+  /** Step 2 — verify. `type` mirrors verifyEmailCode's own isSignup branch:
+   * a brand-new identity was created via the 'signup' linkType server-side
+   * (see api/auth's isRespondMode branch), so it verifies the same way;
+   * `onAuthStateChange` picks up the resulting real session exactly like
+   * any other sign-in, and submit_survey_response then resolves identity
+   * from that session's own auth.uid() — never a client-supplied id. */
+  const verifySurveyRespondCode = useCallback(async () => {
+    const email = s.surveyRespondEmail;
+    const token = s.surveyRespondCode.trim();
+    if (!token) return set({ surveyRespondError: T('Nhập mã đã gửi tới email của bạn.', 'Enter the code sent to your email.') });
+    set({ surveyRespondSending: true, surveyRespondError: '' });
+    const { error } = await supabase.auth.verifyOtp({ email, token, type: s.surveyRespondIsNewAccount ? 'signup' : 'email' });
+    if (error) {
+      set({ surveyRespondSending: false, surveyRespondError: T('Mã không đúng hoặc đã hết hạn.', 'That code is wrong or has expired.') });
+      return;
+    }
+    set({ surveyRespondSending: false, surveyRespondStep: 'idle', surveyRespondCode: '' });
+  }, [set, s.surveyRespondEmail, s.surveyRespondCode, s.surveyRespondIsNewAccount, T]);
+
   // ---- Host management: Hosting -> Surveys & Event Ideas ----
   const loadMySurveys = useCallback(async () => {
     if (!s.myOrganizerId) return;
@@ -5685,6 +5870,45 @@ export function GocProvider({ children }) {
     if (!error) await loadMySurveys();
     return !error;
   }, [loadMySurveys]);
+
+  /** Task 4 — "Share Link": native share sheet with a clipboard fallback,
+   * same shape as shareOrganizerProfile below, but through the canonical
+   * surveyPublicUrl() builder (the actual verified Vercel origin, never
+   * banbe.app) since this link must genuinely resolve. */
+  const shareSurveyLinkAction = useCallback(async (survey) => {
+    const url = surveyPublicUrl(survey.public_id);
+    try {
+      if (navigator.share) { await navigator.share({ title: survey.title, url }); return; }
+    } catch { /* user cancelled the native sheet — not an error */ }
+    try {
+      await navigator.clipboard.writeText(url);
+      set({ mySurveyShareCopiedId: survey.id });
+      setTimeout(() => set(prev => (prev.mySurveyShareCopiedId === survey.id ? { mySurveyShareCopiedId: null } : {})), 1800);
+    } catch { /* clipboard unavailable — link already rendered as copyable text */ }
+  }, [set]);
+
+  /** Task 4 — "Share To Story": opens a preview, never posts automatically.
+   * `surveyShareToStoryTarget` holds the survey the confirm sheet is
+   * previewing; the actual story row is only created on explicit confirm. */
+  const openShareToStoryConfirm = useCallback((survey) => set({ surveyShareToStoryTarget: survey, surveyShareToStoryError: '' }), [set]);
+  const closeShareToStoryConfirm = useCallback(() => set({ surveyShareToStoryTarget: null, surveyShareToStoryError: '' }), [set]);
+  const confirmShareSurveyToStory = useCallback(async () => {
+    const survey = s.surveyShareToStoryTarget;
+    if (!survey) return;
+    set({ surveyShareToStoryBusy: true, surveyShareToStoryError: '' });
+    const { error } = await supabase.rpc('create_survey_share_story', { p_survey_id: survey.id });
+    if (error) {
+      set({
+        surveyShareToStoryBusy: false,
+        surveyShareToStoryError: error.message === 'SURVEY_NOT_ACTIVE'
+          ? T('Chỉ khảo sát đang mở mới có thể chia sẻ lên story.', 'Only an active survey can be shared to a story.')
+          : T('Không thể đăng lên story. Vui lòng thử lại.', 'Could not post to story. Please try again.'),
+      });
+      return;
+    }
+    set({ surveyShareToStoryBusy: false, surveyShareToStoryTarget: null });
+    await loadHomeStories();
+  }, [set, s.surveyShareToStoryTarget, T, loadHomeStories]);
 
   /** Small preview content for the organizer public profile — real
    * upcoming events (published, soonest first) and a handful of real
@@ -8802,7 +9026,7 @@ export function GocProvider({ children }) {
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
-    goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, loadMySurveys, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction,
+    goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, toggleSurveyEditMode, openSurveyStoryModal, closeSurveyStoryModal, sendSurveyRespondCode, verifySurveyRespondCode, loadMySurveys, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction, shareSurveyLinkAction, openShareToStoryConfirm, closeShareToStoryConfirm, confirmShareSurveyToStory,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
@@ -8839,7 +9063,7 @@ export function GocProvider({ children }) {
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
-    goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, loadMySurveys, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction,
+    goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, toggleSurveyEditMode, openSurveyStoryModal, closeSurveyStoryModal, sendSurveyRespondCode, verifySurveyRespondCode, loadMySurveys, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction, shareSurveyLinkAction, openShareToStoryConfirm, closeShareToStoryConfirm, confirmShareSurveyToStory,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   ]);
 

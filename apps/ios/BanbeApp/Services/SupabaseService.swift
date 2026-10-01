@@ -46,4 +46,16 @@ enum AppConfig {
     /// of its own, so this needs to be an absolute URL to wherever the API
     /// is actually deployed. Update this if that changes.
     static let apiBaseURL = "https://banbe-two.vercel.app"
+
+    /// The ONE canonical origin for a public, unauthenticated /surveys/
+    /// <publicId> link (and any other public web page this app links to) —
+    /// mirrors `PUBLIC_WEB_ORIGIN` in src/lib/surveyLink.js on the web side.
+    /// SurveysHostingView previously hardcoded `https://banbe.app`, a domain
+    /// this deployment does not own (Vercel domain lookup: 403/unattached) —
+    /// confirmed via `vercel project ls`/`vercel domains ls` that this app's
+    /// real, currently-serving production origin is `apiBaseURL` above, so
+    /// this is simply a clearly-named alias for that same verified value,
+    /// not a second source of truth. Update both together if the project
+    /// ever gets a real custom domain.
+    static let publicWebOrigin = apiBaseURL
 }

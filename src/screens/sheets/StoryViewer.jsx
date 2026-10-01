@@ -55,6 +55,13 @@ function coverUrlFor(st) {
   return st.kind === 'event_share' ? (st.eventSnapshot?.img || null) : st.url;
 }
 
+// Survey-sharing pass (section 2) — "pause story progress while the modal
+// is presented, resume after dismissal" per that task's own explicit rule.
+// `pause`/`resume` are declared further down (imperative, rAF-driven, same
+// mechanism hold-to-pause/drag already use) — this hook has to live AFTER
+// their declaration inside the component, so it's inlined at the one call
+// site below rather than extracted, to avoid a temporal-dead-zone issue.
+
 export default function StoryViewer() {
   const { state: s, T, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, markStoryViewedAt } = useGoc();
   const viewer = s.storyViewer;
@@ -139,6 +146,16 @@ export default function StoryViewer() {
     pausedRef.current = false;
     rafRef.current = requestAnimationFrame(tick);
   };
+
+  // Survey-sharing pass (section 2) — "pause story progress while the
+  // [response] modal is presented... resume playback only after dismissal
+  // if the story is still valid." Reuses the exact same pause()/resume()
+  // hold-to-pause already drives — a survey popup on top is conceptually
+  // the same "something is covering the story" state.
+  useEffect(() => {
+    if (s.storySurveyModalPublicId) pause(); else resume();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.storySurveyModalPublicId]);
 
   // Gallery-drift companion transform (Feature 3) — pure function of drag
   // progress/direction, imperative (no React state per pointer-move pixel).
@@ -567,7 +584,7 @@ export default function StoryViewer() {
     // genuine DRAG that merely starts or ends over the card's large hit
     // area still reaches the stage normally — only a true, un-dragged TAP
     // that lands on the card defers entirely to the card's own onClick.
-    if (document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-testid="story-event-card"]')) return;
+    if (document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-testid="story-event-card"], [data-testid="story-survey-card"]')) return;
     // A plain tap — which half of the screen.
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -575,6 +592,7 @@ export default function StoryViewer() {
   };
 
   const isEventShare = story.kind === 'event_share';
+  const isSurveyShare = story.kind === 'survey_share';
 
   return (
     <div
@@ -627,6 +645,8 @@ export default function StoryViewer() {
         <div ref={photoRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
           {isEventShare ? (
             <EventShareCard story={story} T={T} />
+          ) : isSurveyShare ? (
+            <SurveyShareCard story={story} T={T} />
           ) : (
             <img src={story.url} alt="" data-testid="story-viewer-image" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
           )}
@@ -712,6 +732,56 @@ function EventShareCard({ story, T }) {
         >
           {T('Xem sự kiện', 'View event')}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Survey-sharing pass (section 4's card spec: "host, title, short purpose,
+// deadline, Answer Survey") — `story.surveySnapshot` is get_survey_card()'s
+// own live response (GocContext.jsx's loadHomeStories), never frozen at
+// share time, so "closing the survey updates the viewer's truthful state"
+// holds even for a story whose own 24h lifetime outlives the survey. The
+// CTA opens the in-app response MODAL (openSurveyStoryModal) — NOT
+// goEventFromStory's unmount-and-navigate pattern — per section 2's own
+// "not an unrelated full-screen navigation destination" rule; the story
+// stays mounted and paused underneath (see the pause/resume effect above).
+function SurveyShareCard({ story, T }) {
+  const { openSurveyStoryModal } = useGoc();
+  const snap = story.surveySnapshot;
+  if (!snap) {
+    return (
+      <div style={{ color: '#fff', fontSize: 13, textAlign: 'center', padding: 24 }}>
+        {T('Khảo sát này không còn khả dụng.', 'This survey is no longer available.')}
+      </div>
+    );
+  }
+  const closed = snap.status !== 'active';
+  const open = (e) => { e.stopPropagation(); openSurveyStoryModal(snap.public_id); };
+  return (
+    <div
+      data-testid="story-survey-card"
+      onClick={open}
+      style={{ width: '86%', maxWidth: 340, borderRadius: 18, overflow: 'hidden', background: paper, cursor: 'pointer', boxShadow: '0 18px 44px rgba(0,0,0,0.5)', padding: '20px 18px' }}
+    >
+      <div style={{ fontSize: 11, color: ink, opacity: 0.6 }}>{snap.host_name}</div>
+      <div style={{ ...display(18, { color: ink, marginTop: 6 }) }}>{snap.title}</div>
+      {snap.description && <div style={{ fontSize: 12.5, color: ink, opacity: 0.75, marginTop: 6 }}>{snap.description}</div>}
+      {snap.closes_at && (
+        <div style={{ fontSize: 11.5, color: ink, opacity: 0.6, marginTop: 10 }}>
+          {T('Hạn trả lời', 'Deadline')}: {new Date(snap.closes_at).toLocaleString('vi-VN')}
+        </div>
+      )}
+      <div
+        data-testid="story-survey-cta"
+        onClick={open}
+        style={{
+          marginTop: 14, padding: '12px 0', textAlign: 'center', borderRadius: 12,
+          background: closed ? 'transparent' : ink, color: closed ? ink : paper,
+          border: closed ? `1px solid ${ink}` : 'none', fontSize: 13.5, fontWeight: 700, opacity: closed ? 0.6 : 1,
+        }}
+      >
+        {closed ? T('Khảo sát đã đóng', 'Survey closed') : T('Trả lời khảo sát', 'Answer Survey')}
       </div>
     </div>
   );
