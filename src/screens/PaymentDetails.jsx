@@ -85,6 +85,18 @@ export default function PaymentDetails() {
     && (s.paymentRefundClaim.booking_id === booking.id || s.paymentRefundClaim.reservation_id === booking.id))
     ? s.paymentRefundClaim : null;
   const isHostCancelledWithRefund = booking?.status === 'cancelled' && !!refundClaim;
+  // Investigation fix — real bug, confirmed by reading: `cancel_booking()`
+  // (migration 069) sets `booking.status = 'cancelled'` but NEVER touches
+  // `payment_state` at all, so `phase`/`isConfirmed` above (both derived
+  // from `payment_state` only) stay exactly what they were before
+  // cancellation — a booking that was paid before being cancelled keeps
+  // reading as `isConfirmed === true` forever, showing "Confirmed. Your
+  // ticket and receipt are ready." + View Ticket alongside the (correct)
+  // cancellation/refund card below. Cancellation must take precedence over
+  // payment_state for ACTIVE-TICKET eligibility specifically — the paid
+  // amount card above and the refund card below are untouched; this only
+  // gates the misleading "ticket is live" confirmation further down.
+  const isCancelledBooking = booking?.status === 'cancelled';
 
   // PHASE 1's tick drives the "seat held for" clock. PHASE 2 (14-organizer-
   // checkin.md follow-up) now ALSO ticks — not the same "your seat is at
@@ -208,7 +220,8 @@ export default function PaymentDetails() {
     <Frame onBack={backFromPaymentDetails} T={T}>
       <div style={{ padding: '14px 22px 0' }}>
         <h1 style={{ ...display(24, { margin: 0 }) }}>
-          {isConfirmed ? T('Đã thanh toán', 'Paid')
+          {isCancelledBooking ? T('Đã huỷ', 'Cancelled')
+            : isConfirmed ? T('Đã thanh toán', 'Paid')
             : isPending ? T('Đang chờ xác nhận', 'Awaiting confirmation')
             : isDisputed ? T('Đang được xem xét', 'Under review')
             : isExpired ? T('Đã hết hạn giữ chỗ', 'Hold expired')
@@ -551,7 +564,17 @@ export default function PaymentDetails() {
         </div>
       </div>
 
-      {isConfirmed ? (
+      {isConfirmed && isCancelledBooking ? (
+        // Investigation fix — a paid-then-cancelled booking must never show
+        // the active-ticket confirmation/CTA (no QR reissue, no financial-
+        // state change — the paid amount above and the cancellation/refund
+        // card below are untouched). Clearly labeled, not silently hidden.
+        <div style={{ ...fieldGlass({ margin: '14px 22px 0', padding: '14px 16px' }) }} data-testid="payment-cancelled-paid-notice">
+          <p style={{ fontSize: 13, lineHeight: 1.55, color: ink, margin: 0 }}>
+            {T('Đã huỷ. Vé này không còn hiệu lực.', 'Cancelled. This ticket is no longer valid.')}
+          </p>
+        </div>
+      ) : isConfirmed ? (
         <div style={{ ...fieldGlass({ margin: '14px 22px 0', padding: '14px 16px' }) }}>
           <p style={{ fontSize: 13, lineHeight: 1.55, color: ink, margin: 0 }}>
             {T('Đã xác nhận. Vé và biên nhận của bạn đã sẵn sàng.', 'Confirmed. Your ticket and receipt are ready.')}

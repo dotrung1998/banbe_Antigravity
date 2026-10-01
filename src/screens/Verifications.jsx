@@ -57,7 +57,12 @@ function RefundDiagnosticsPanel({ s, T }) {
       {row('myOrganizerIds', JSON.stringify(s.myOrganizerIds))}
       {row('refundQueueLoading', s.refundQueueLoading)}
       {row('refundQueueGateReason', s.refundQueueGateReason || '(never set — loadRefundQueue never ran)')}
-      {row('refundQueueError', s.refundQueueError || '(none)')}
+      {row('refundQueueError (user-facing)', s.refundQueueError || '(none)')}
+      {row('RPC call shape', "get_host_refund_claims({ p_event_id: null })")}
+      {row('failed stage', s.refundQueueErrorDetail?.stage || '(no failure)')}
+      {row('server error code', s.refundQueueErrorDetail?.code ?? '(none)')}
+      {row('server error message', s.refundQueueErrorDetail?.message ?? '(none)')}
+      {row('server error details/hint', `${s.refundQueueErrorDetail?.details ?? ''} ${s.refundQueueErrorDetail?.hint ?? ''}`.trim() || '(none)')}
       {row('refundQueue ids+status', JSON.stringify(s.refundQueue.map(c => ({ id: c.id, status: c.status, hasDestination: c.hasDestination }))))}
       {row('presentation result (active/pending)', `${activeCount} / ${pendingCount}`)}
       {row('verificationsFocusBookingId', s.verificationsFocusBookingId || '(null)')}

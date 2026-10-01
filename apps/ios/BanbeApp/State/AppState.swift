@@ -1059,6 +1059,12 @@ final class AppState: ObservableObject {
     /// "organizer-discovery-failed" | "no-organizers" | "rpc-error" |
     /// "success-false" | "skipped-stale".
     @Published var refundQueueGateReason = ""
+    /// Point 1 (new diagnostics) — structured, safe fields only (never a
+    /// token/bank detail/full payload), shown in the opt-in diagnostics
+    /// panel: which stage failed, and the server's own code/message.
+    @Published var refundQueueErrorStage = ""
+    @Published var refundQueueErrorCode = ""
+    @Published var refundQueueErrorMessage = ""
     /// Refund-discoverability fix — a dedicated "Refunds" row sets this to
     /// "refundSection" so VerificationsView (via ScreenScaffold's existing
     /// `scrollPositionID` mechanism, same one HomeView already uses to

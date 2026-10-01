@@ -470,6 +470,10 @@ const initialState = {
   // 'awaiting-organizer-discovery' | 'organizer-discovery-failed' |
   // 'no-organizers' | 'rpc-error' | 'decode-error' | 'skipped-stale'.
   refundQueueGateReason: '',
+  // Point 1 (new diagnostics) — structured, safe fields only (code/message/
+  // details/hint/decode-stage text — never a token, bank detail or full
+  // response payload), shown in the opt-in diagnostics panel.
+  refundQueueErrorDetail: null,
   // Part B audit (2026-09-28) — Dashboard-identity-mismatch fix. Every
   // owned organizer row's events are (correctly, deliberately) still
   // unioned into `myOrgEventKeys` above — that flat list is the real
@@ -3294,12 +3298,33 @@ export function GocProvider({ children }) {
       }
     }
     const seq = ++refundQueueSeq.current;
-    set({ refundQueueLoading: true, refundQueueError: '' });
-    const { data, error } = await supabase.rpc('get_host_refund_claims', { p_event_id: null });
+    set({ refundQueueLoading: true, refundQueueError: '', refundQueueErrorDetail: null });
+    // Point 1 (new diagnostics) — distinguish TRANSPORT (a thrown exception
+    // — network failure, etc.) from the normal `{data, error}` resolution
+    // supabase-js's own .rpc() returns for a Postgres-side error (what
+    // actually happens here — PostgREST reports the function's own SQL
+    // error as a resolved `error`, never a throw) — captured separately so
+    // the diagnostics panel can show exactly which stage failed, never
+    // collapsing both into the same generic text.
+    let data, error, transportError;
+    try {
+      ({ data, error } = await supabase.rpc('get_host_refund_claims', { p_event_id: null }));
+    } catch (e) {
+      transportError = e;
+    }
     // Only the newest call may ever write refundQueue — a slower, older
     // in-flight call (a poll tick that started before this one) landing
     // late must never overwrite what a more recent call already applied.
     if (seq !== refundQueueSeq.current) { set({ refundQueueGateReason: 'skipped-stale' }); return; }
+    if (transportError) {
+      if (import.meta.env?.DEV) console.warn('loadRefundQueue transport failed:', transportError);
+      set({
+        refundQueueLoading: false, refundQueueGateReason: 'transport-error',
+        refundQueueError: T('Không thể kết nối để tải danh sách hoàn tiền. Vui lòng thử lại.', 'Could not connect to load the refund queue. Please try again.'),
+        refundQueueErrorDetail: { stage: 'transport', message: String(transportError?.message || transportError) },
+      });
+      return;
+    }
     if (error || data?.success === false) {
       if (import.meta.env?.DEV) {
         console.warn('loadRefundQueue failed:', { code: error?.code, message: error?.message, details: error?.details, hint: error?.hint, rpcError: data?.error, userId: s.user?.id });
@@ -3307,6 +3332,11 @@ export function GocProvider({ children }) {
       set({
         refundQueueLoading: false, refundQueueGateReason: 'rpc-error',
         refundQueueError: T('Không thể tải danh sách hoàn tiền. Vui lòng thử lại.', 'Could not load the refund queue. Please try again.'),
+        refundQueueErrorDetail: {
+          stage: error ? 'rpc-transport-level-error' : 'rpc-business-result',
+          code: error?.code || null, message: error?.message || data?.error || null,
+          details: error?.details || null, hint: error?.hint || null,
+        },
       });
       return;
     }
@@ -3326,10 +3356,11 @@ export function GocProvider({ children }) {
       set({
         refundQueueLoading: false, refundQueueGateReason: 'decode-error',
         refundQueueError: T('Không thể hiển thị danh sách hoàn tiền. Vui lòng thử lại.', 'Could not display the refund queue. Please try again.'),
+        refundQueueErrorDetail: { stage: 'decode', message: String(decodeError?.message || decodeError) },
       });
       return;
     }
-    set({ refundQueue: enriched, refundQueueLoading: false, refundQueueError: '', refundQueueGateReason: 'ok' });
+    set({ refundQueue: enriched, refundQueueLoading: false, refundQueueError: '', refundQueueErrorDetail: null, refundQueueGateReason: 'ok' });
   }, [set, T, s.accountType, s.myOrganizerIds.length, s.myOrganizerIdsStatus, s.user?.id]);
 
   /** Host's "Đã hoàn tiền" — owed -> host_marked_sent. Shared by

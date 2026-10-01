@@ -1044,13 +1044,51 @@ extension AppState {
             }
             refundQueue = result.claims ?? []
             refundQueueGateReason = "ok"
+            refundQueueErrorStage = ""; refundQueueErrorCode = ""; refundQueueErrorMessage = ""
         } catch {
             guard seq == refundQueueSeq else { return }
             print("loadRefundQueue failed:", error, "userID:", userID?.uuidString ?? "nil")
-            refundQueueGateReason = "rpc-error"
             refundQueueError = T("Không thể tải danh sách hoàn tiền. Vui lòng thử lại.", "Could not load the refund queue. Please try again.")
+            // Point 1 (new diagnostics) — distinguish a server-side
+            // PostgrestError (RPC business/transport result, with the
+            // actual code/message/details/hint Postgres returned — e.g.
+            // 42883 "operator does not exist") from a DecodingError (the
+            // response didn't match GetHostRefundClaimsResult's shape —
+            // exact codingPath/expected type/mismatch), never collapsing
+            // both into the same generic "rpc-error".
+            if let pgError = error as? PostgrestError {
+                refundQueueGateReason = "rpc-error"
+                refundQueueErrorStage = "rpc"
+                refundQueueErrorCode = pgError.code ?? ""
+                refundQueueErrorMessage = pgError.message
+            } else if let decodingError = error as? DecodingError {
+                refundQueueGateReason = "decode-error"
+                refundQueueErrorStage = "decode"
+                refundQueueErrorCode = ""
+                refundQueueErrorMessage = Self.describeDecodingError(decodingError)
+            } else {
+                refundQueueGateReason = "transport-error"
+                refundQueueErrorStage = "transport"
+                refundQueueErrorCode = ""
+                refundQueueErrorMessage = error.localizedDescription
+            }
         }
         refundQueueLoading = false
+    }
+
+    private static func describeDecodingError(_ error: DecodingError) -> String {
+        switch error {
+        case .typeMismatch(let type, let context):
+            return "typeMismatch(\(type)) at \(context.codingPath.map(\.stringValue).joined(separator: "."))"
+        case .valueNotFound(let type, let context):
+            return "valueNotFound(\(type)) at \(context.codingPath.map(\.stringValue).joined(separator: "."))"
+        case .keyNotFound(let key, let context):
+            return "keyNotFound(\(key.stringValue)) at \(context.codingPath.map(\.stringValue).joined(separator: "."))"
+        case .dataCorrupted(let context):
+            return "dataCorrupted at \(context.codingPath.map(\.stringValue).joined(separator: "."))"
+        @unknown default:
+            return "unknown decoding error"
+        }
     }
 
     private struct MarkRefundSentResult: Decodable {

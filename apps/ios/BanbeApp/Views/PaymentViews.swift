@@ -135,8 +135,18 @@ struct PaymentDetailsView: View {
     @ViewBuilder
     private func content(_ booking: PayableBooking) -> some View {
         let phase = booking.paymentState
+        // Investigation fix — real bug, confirmed by reading: cancel_booking()
+        // (migration 069) sets `status = 'cancelled'` but never touches
+        // `payment_state`, so `phase`/`.confirmed` above stay whatever they
+        // already were — a booking that was paid before being cancelled
+        // kept reading as `.confirmed` forever, showing the live
+        // "paidBlock" (ticket-ready CTA) alongside the (correct)
+        // cancellation/refund card. Cancellation must take precedence over
+        // payment_state for ACTIVE-TICKET eligibility specifically.
+        let isCancelledBooking = booking.status == "cancelled"
         VStack(alignment: .leading, spacing: 0) {
             Text({
+                if isCancelledBooking { return app.T("Đã huỷ", "Cancelled") }
                 switch phase {
                 case .confirmed: return app.T("Đã thanh toán", "Paid")
                 case .pendingVerification: return app.T("Đang chờ xác nhận", "Awaiting confirmation")
@@ -182,7 +192,18 @@ struct PaymentDetailsView: View {
 
             amountCard(booking)
 
-            if phase == .confirmed {
+            if phase == .confirmed && isCancelledBooking {
+                // Clearly labeled, never silently hidden — no QR reissue,
+                // no financial-state change; the paid amount above and the
+                // cancellation/refund card above are untouched.
+                Text(app.T("Đã huỷ. Vé này không còn hiệu lực.", "Cancelled. This ticket is no longer valid."))
+                    .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.top, 14)
+                    .accessibilityIdentifier("payment.cancelledPaidNotice")
+            } else if phase == .confirmed {
                 paidBlock
             } else if phase == .holding || phase == .pendingVerification {
                 if let payload = VietQR.payload(for: booking) { qrCard(payload) }
