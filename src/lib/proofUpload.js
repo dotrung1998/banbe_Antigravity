@@ -26,6 +26,13 @@ const EXT_BY_TYPE = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'we
 const START_MAX_DIMENSION = 2000;
 const QUALITY_STEPS = [0.85, 0.7, 0.55, 0.4];
 
+// Bandwidth budgets for the non-receipt image uploads (avatars, event/
+// organizer photos) — see .claude/notes/22-supabase-bandwidth-optimization.md.
+// Avatars only ever render small (list rows, profile header); event/organizer
+// photos are shown up to full Detail/Pulse viewer size, hence the larger cap.
+export const AVATAR_UPLOAD_BUDGET = { maxDimension: 512, maxBytes: 512 * 1024 };
+export const EVENT_PHOTO_UPLOAD_BUDGET = { maxDimension: 1600, maxBytes: 2 * 1024 * 1024 };
+
 function looksLikePdf(file) {
   return file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
 }
@@ -57,6 +64,78 @@ function canvasToBlob(canvas, quality) {
   return new Promise((resolve, reject) => {
     canvas.toBlob(b => (b ? resolve(b) : reject(new Error('CONVERT_FAILED'))), 'image/jpeg', quality);
   });
+}
+
+function canvasToBlobTyped(canvas, mimeType, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(b => (b ? resolve(b) : reject(new Error('CONVERT_FAILED'))), mimeType, quality);
+  });
+}
+
+/** Same shrink-until-it-fits loop as `reencodeUnderLimit`, generalized to a
+ * caller-supplied dimension/byte cap and output mime type (so a PNG with
+ * real transparency stays a PNG instead of losing its alpha channel to a
+ * forced JPEG re-encode — only JPEG gets the quality-step search, since PNG
+ * is lossless and only shrinks by dimension). */
+async function reencodeGeneric(source, width, height, { maxDimension, maxBytes, mimeType }) {
+  const qualitySteps = mimeType === 'image/png' ? [undefined] : QUALITY_STEPS;
+  let dim = Math.min(maxDimension, Math.max(width, height));
+  let lastBlob = null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const scale = Math.min(1, dim / Math.max(width, height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+
+    for (const quality of qualitySteps) {
+      const blob = await canvasToBlobTyped(canvas, mimeType, quality);
+      lastBlob = blob;
+      if (blob.size <= maxBytes) return blob;
+    }
+    dim = Math.round(dim * 0.7);
+  }
+  return lastBlob; // best effort — smallest size this device could produce
+}
+
+/**
+ * Same idea as `normalizeProofFile` but for avatars/event/organizer photos,
+ * which (unlike receipts) are expected to look good at display size and may
+ * carry real transparency — so the caller picks the dimension/byte budget
+ * and a PNG source stays PNG (resized, not quality-reduced) instead of being
+ * forced to JPEG. A file already within budget passes through unchanged.
+ */
+export async function normalizeImageForUpload(file, { maxDimension, maxBytes }) {
+  let source;
+  try {
+    source = await decodeToPaintable(file);
+  } catch {
+    throw new Error('CONVERT_FAILED');
+  }
+  const width = source.width || source.naturalWidth;
+  const height = source.height || source.naturalHeight;
+  const longEdge = Math.max(width, height) || 0;
+  if (source.close) source.close();
+
+  if (longEdge > 0 && longEdge <= maxDimension && file.size <= maxBytes) {
+    return { blob: file, ext: EXT_BY_TYPE[file.type] || 'jpg', contentType: file.type, width, height };
+  }
+
+  const preservePng = file.type === 'image/png';
+  const mimeType = preservePng ? 'image/png' : 'image/jpeg';
+  // Re-decode: the first `source` was already closed/consumed above (an
+  // ImageBitmap can only be drawn once its ownership is released this way
+  // on some engines) — decoding is cheap relative to the canvas work below.
+  let drawSource;
+  try {
+    drawSource = await decodeToPaintable(file);
+  } catch {
+    throw new Error('CONVERT_FAILED');
+  }
+  const blob = await reencodeGeneric(drawSource, width, height, { maxDimension, maxBytes, mimeType });
+  if (drawSource.close) drawSource.close();
+  return { blob, ext: mimeType === 'image/png' ? 'png' : 'jpg', contentType: mimeType, width, height };
 }
 
 /**

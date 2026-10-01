@@ -5,7 +5,7 @@ import { requestAuthEmail, requestPasswordSignup, requestPasswordReset } from '.
 import { renderPaymentDocument, formatVnd } from '../lib/paymentDocument.js';
 import { buildVietQrPayload } from '../lib/vietqr.js';
 import { msUntil, liveEventOverrides, thisWeekendWindow, formatVnEventDate } from '../lib/countdown.js';
-import { normalizeProofFile } from '../lib/proofUpload.js';
+import { normalizeProofFile, normalizeImageForUpload, AVATAR_UPLOAD_BUDGET, EVENT_PHOTO_UPLOAD_BUDGET } from '../lib/proofUpload.js';
 import { POLICY_VERSION } from '../lib/policy.js';
 import { refundClaimPresentation } from '../lib/refundPresentation.js';
 import { buildLocationTree, eventMatchesLocation, locationShortLabel, migrateLegacyAreaKey, LOCATION_ALL } from '../lib/locationTree.js';
@@ -5657,9 +5657,15 @@ export function GocProvider({ children }) {
       return null;
     }
     set({ editProfileBusy: true, editProfileError: '' });
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    let blob = file, ext = (file.name.split('.').pop() || 'jpg').toLowerCase(), contentType = file.type;
+    try {
+      const normalized = await normalizeImageForUpload(file, AVATAR_UPLOAD_BUDGET);
+      ({ blob, ext, contentType } = normalized);
+    } catch {
+      // CONVERT_FAILED — upload the original rather than block the user.
+    }
     const path = `${s.user.id}/${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
+    const { error } = await supabase.storage.from('avatars').upload(path, blob, { upsert: true, contentType, cacheControl: '31536000' });
     if (error) {
       console.warn('uploadAvatar failed:', error);
       set({ editProfileBusy: false, editProfileError: T('Không thể tải ảnh lên. Vui lòng thử lại.', 'Could not upload the image. Please try again.') });
@@ -5702,9 +5708,15 @@ export function GocProvider({ children }) {
     // decision as reconcileEventMedia; a recap photo added to an
     // invite-only event after the fact must not land in the public bucket.
     const bucketId = s.realEventsById[eventId]?.visibility === 'invite' ? 'event-photos-private' : 'event-photos';
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    let blob = file, ext = (file.name.split('.').pop() || 'jpg').toLowerCase(), contentType = file.type;
+    try {
+      const normalized = await normalizeImageForUpload(file, EVENT_PHOTO_UPLOAD_BUDGET);
+      ({ blob, ext, contentType } = normalized);
+    } catch {
+      // CONVERT_FAILED — upload the original rather than block the host.
+    }
     const path = `${eventId}/${Date.now()}.${ext}`;
-    const { error: upErr } = await supabase.storage.from(bucketId).upload(path, file, { upsert: true, contentType: file.type });
+    const { error: upErr } = await supabase.storage.from(bucketId).upload(path, blob, { upsert: true, contentType, cacheControl: '31536000' });
     if (upErr) {
       console.warn('uploadEventPhoto storage failed:', upErr);
       set(prev => ({ eventPhotoUploadBusy: { ...prev.eventPhotoUploadBusy, [eventId]: false }, eventPhotoUploadError: T('Không thể tải ảnh lên. Vui lòng thử lại.', 'Could not upload the image. Please try again.') }));
@@ -7792,9 +7804,15 @@ export function GocProvider({ children }) {
       if (avatarFile) {
         if (!['image/jpeg', 'image/png', 'image/webp'].includes(avatarFile.type)) throw new Error('INVALID_IMAGE_TYPE');
         if (avatarFile.size > 5 * 1024 * 1024) throw new Error('IMAGE_TOO_LARGE');
-        const ext = (avatarFile.name.split('.').pop() || 'jpg').toLowerCase();
+        let blob = avatarFile, ext = (avatarFile.name.split('.').pop() || 'jpg').toLowerCase(), contentType = avatarFile.type;
+        try {
+          const normalized = await normalizeImageForUpload(avatarFile, AVATAR_UPLOAD_BUDGET);
+          ({ blob, ext, contentType } = normalized);
+        } catch {
+          // CONVERT_FAILED — upload the original rather than block the host.
+        }
         const path = `${s.myOrganizerId}/avatar-${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from('organizer-photos').upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
+        const { error: upErr } = await supabase.storage.from('organizer-photos').upload(path, blob, { upsert: true, contentType, cacheControl: '31536000' });
         if (upErr) throw upErr;
         avatarPath = path;
       }
@@ -8126,9 +8144,15 @@ export function GocProvider({ children }) {
       const file = newFiles[i];
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) continue;
       if (file.size > 50 * 1024 * 1024) continue;
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      let blob = file, ext = (file.name.split('.').pop() || 'jpg').toLowerCase(), contentType = file.type;
+      try {
+        const normalized = await normalizeImageForUpload(file, EVENT_PHOTO_UPLOAD_BUDGET);
+        ({ blob, ext, contentType } = normalized);
+      } catch {
+        // CONVERT_FAILED — upload the original rather than block the host.
+      }
       const path = `${eventId}/${Date.now()}-${i}.${ext}`;
-      const { error: upErr } = await supabase.storage.from(bucketId).upload(path, file, { upsert: true, contentType: file.type });
+      const { error: upErr } = await supabase.storage.from(bucketId).upload(path, blob, { upsert: true, contentType, cacheControl: '31536000' });
       if (upErr) { console.warn('reconcileEventMedia storage failed:', upErr); continue; }
       const storagePath = `${bucketId}/${path}`;
       const { error: rowErr } = await supabase.from('event_photos').insert({ event_id: eventId, storage_path: storagePath, sort_order: i });

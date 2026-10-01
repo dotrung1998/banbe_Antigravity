@@ -100,6 +100,7 @@ struct AccountView: View {
     // only ever set by the user's own scrolling, never by any of this
     // screen's data loads.
     @State private var didAttemptScrollRestore = false
+    @State private var imageCacheClearedAt: Date?
 
     var body: some View {
         // Pull-to-refresh header fix (2026-09-29 follow-up) — Messages'
@@ -529,6 +530,29 @@ struct AccountView: View {
             } // app.accountTab == "admin"
 
 
+            // Bandwidth pass (2026-10-01) — lets anyone stuck with a stale
+            // cached cover (or just wanting the disk space back) reclaim it
+            // without affecting drafts/sessions/tickets, which PhotoLoader's
+            // caches never touch in the first place. See
+            // .claude/notes/22-supabase-bandwidth-optimization.md.
+            Button {
+                PhotoLoader.clearCache()
+                imageCacheClearedAt = Date()
+            } label: {
+                Label(
+                    imageCacheClearedAt == nil
+                        ? app.T("Xoá bộ nhớ đệm hình ảnh", "Clear Image Cache")
+                        : app.T("Đã xoá bộ nhớ đệm hình ảnh", "Image cache cleared"),
+                    systemImage: "photo.stack"
+                )
+                .labelStyle(.titleAndIcon)
+            }
+            .font(.system(size: 13))
+            .foregroundStyle(app.palette.ink)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("account.clearImageCache")
+            .padding(.top, 24)
+
             Button {
                 if app.isSignedIn { Task { await app.signOut() } } else { app.goLogin() }
             } label: {
@@ -544,7 +568,7 @@ struct AccountView: View {
             .foregroundStyle(app.palette.ink)
             .buttonStyle(.plain)
             .accessibilityIdentifier(app.isSignedIn ? "account.signOut" : "account.signIn")
-            .padding(.top, 24)
+            .padding(.top, 12)
             .padding(.bottom, 100)
         }
         .foregroundStyle(app.palette.ink)
