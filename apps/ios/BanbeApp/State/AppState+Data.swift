@@ -482,6 +482,7 @@ extension AppState {
             // lock that covers the ENTIRE `applyOrganizerMode` call,
             // start to finish, not just its RPC await — closes it
             // completely and costs nothing when nothing is racing.
+            canManageAdmins = profile.canManageAdmins == true
             if !organizerModeInFlight {
                 let oldMode = organizerMode
                 accountType = profile.role
@@ -1820,6 +1821,18 @@ extension AppState {
                                 self.booking?.status = "cancelled"
                             }
                         }
+                        // Admin Team pass (2026-10-02, migration 121) —
+                        // revoke_admin()'s own doc comment: "revocation
+                        // must invalidate admin access, not merely hide a
+                        // tab until next login." Same proactive, not
+                        // tap-gated pattern as the cancellation kinds
+                        // above — this poll already runs every 5s
+                        // regardless of whether the toast is tapped.
+                        if row.kind == "admin_access_revoked" {
+                            self.accountType = "participant"
+                            self.canManageAdmins = false
+                            if self.accountTab == "admin" { self.accountTab = "personal" }
+                        }
                     }
                     self.notifications = rows
                     if attendingStale { await self.loadMyEvents() }
@@ -2204,6 +2217,28 @@ extension AppState {
                     }
                 }
             }
+        // Admin Team pass (2026-10-02) — the invitee's own pending invite
+        // lives on the SAME "Cá nhân" tab banner as a Team invite (never
+        // an admin-only destination — the whole point is this account
+        // isn't an admin yet); "someone responded" lands the manager back
+        // on the Admin Team group, permission-rechecked there like every
+        // other admin-only surface.
+        case "admin_invite":
+            screen = .profile
+            accountTab = "personal"
+        case "admin_invite_response":
+            if canManageAdmins {
+                accountTab = "admin"
+                accountGroupKey = "adminTeam"
+                screen = .accountGroup
+            }
+        case "admin_access_revoked":
+            // Already handled proactively by the toast poll itself (see
+            // its own comment) the instant this notification is first
+            // seen — a later tap just lands on an already-personal-tab
+            // Account screen.
+            screen = .profile
+            accountTab = "personal"
         // "guest_renamed": category B, informational only, no destination
         // by design — falls to default. markNotificationRead() above is
         // the whole "action."
@@ -3739,6 +3774,11 @@ extension AppState {
         attendanceBack = back
         screen = .attendance
         Task { await loadAttendanceGuests(key) }
+        // Real event metadata (name/date/status) for a non-catalogue key —
+        // see AppState.attendanceEventState. loadMissingRealEvents() is a
+        // no-op if `key` is already a bundled catalogue id or already
+        // cached/in flight, so this is always safe to call unconditionally.
+        Task { await loadMissingRealEvents(for: [key]) }
     }
 
     /// TASK D — root cause of the "No one has booked… then flickers"

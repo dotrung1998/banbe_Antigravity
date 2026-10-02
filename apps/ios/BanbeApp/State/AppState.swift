@@ -1270,6 +1270,18 @@ final class AppState: ObservableObject {
     // Organizer Team pass (2026-09-27, Stage 1) — see AppState+Team.swift.
     @Published var myOrganizerInvites: [OrganizerMembership] = []
     @Published var myTeamMemberships: [OrganizerMembership] = []
+    // Admin Team pass (2026-10-02, migration 121) — see AppState+AdminTeam.swift.
+    @Published var canManageAdmins = false
+    @Published var myAdminInvite: AdminInvite?
+    @Published var adminRoster: [AdminRosterRow] = []
+    @Published var adminInvites: [AdminInvite] = []
+    @Published var adminTeamLoading = false
+    @Published var adminInviteEmailDraft = ""
+    @Published var adminInviteBusy = false
+    @Published var adminInviteError = ""
+    @Published var adminInviteConfirmEmail: String?
+    @Published var revokeAdminInviteConfirmID: UUID?
+    @Published var revokeAdminConfirmID: UUID?
     @Published var orgTeamRoster: [OrganizerTeamRosterRow] = []
     @Published var orgTeamRosterLoading = false
     @Published var orgTeamInviteHandle = ""
@@ -1499,7 +1511,12 @@ final class AppState: ObservableObject {
     /// back. `nil` means "no scroll to restore" — top of Account, which is
     /// also always true the FIRST time Account is ever opened (nothing
     /// but the user's own scrolling ever sets this).
-    @Published var accountScrollAnchorID: String?
+    // Fixed-header pass (2026-10-02) — was a single shared anchor across
+    // Personal/Host/Admin (documented simplification, AccountView.swift's
+    // own Stage D comment: "each tab does NOT get its own independently-
+    // preserved scroll position"). Now keyed by `accountTab` so switching
+    // tabs and coming back doesn't restore to the wrong tab's old position.
+    @Published var accountScrollAnchorIDByTab: [String: String] = [:]
 
     /// Task 1 (11-realtime-map.md follow-up): mirrors `RootView`'s own
     /// edge-swipe-back gesture progress (0 at rest, 1 at full commit) so
@@ -1753,6 +1770,34 @@ final class AppState: ObservableObject {
         case .none: return .unavailable(key: eventKey, loading: true, T: T)
         }
     }
+    /// Attendance's own event resolution — same real-id-vs-catalogue-vs-
+    /// still-loading shape as `currentEvent` above, keyed off
+    /// `attendanceEventKey` instead of `eventKey`. 15-organizer-checkin.md:
+    /// Attendance used to call `EventCatalog.find(key)` directly, whose own
+    /// `?? EventCatalog.all[0]` fallback silently substituted the FIRST demo
+    /// event ("Bếp Nhỏ №12") for any real, host-created event's key (every
+    /// one of them — a real event's id can never match the bundled
+    /// catalogue). An explicit enum (not another CatalogEvent-with-a-
+    /// sentinel-name) so callers branch on `.loading`/`.unavailable`
+    /// explicitly instead of string-matching a placeholder name.
+    enum AttendanceEventState {
+        case loading
+        case unavailable
+        case ready(CatalogEvent)
+        var isUnavailable: Bool { if case .unavailable = self { return true }; return false }
+    }
+    var attendanceEventState: AttendanceEventState {
+        guard let key = attendanceEventKey else { return .loading }
+        if let catalogEvent = EventCatalog.all.first(where: { $0.key == key }) {
+            return .ready(catalogEvent.applyingLiveStatus(homeLiveEvents[key]))
+        }
+        switch realEventsByID[key] {
+        case .some(.some(let real)): return .ready(real)
+        case .some(.none): return .unavailable
+        case .none: return .loading
+        }
+    }
+
     /// Short, disambiguating label for the current location selection
     /// (Home header, empty state, Map chip) — never a full breadcrumb.
     var currentAreaLabel: String { LocationHierarchy.shortLabel(for: area, roots: locationTree, T: T) }
@@ -2908,6 +2953,7 @@ final class AppState: ObservableObject {
         case "preferences": return T("Cài Đặt", "Settings")
         case "hostOps": return T("Vận Hành & Thanh Toán Tổ Chức", "Event Operations & Payments")
         case "adminReview": return T("Duyệt & Kiểm Duyệt", "Review & Moderation")
+        case "adminTeam": return T("Đội Ngũ Quản Trị", "Admin Team")
         default: return ""
         }
     }

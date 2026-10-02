@@ -29,6 +29,7 @@ const GROUP_META = {
   preferences: { vi: 'Cài Đặt', en: 'Settings' },
   hostOps: { vi: 'Vận Hành & Thanh Toán Tổ Chức', en: 'Event Operations & Payments' },
   adminReview: { vi: 'Duyệt & Kiểm Duyệt', en: 'Review & Moderation' },
+  adminTeam: { vi: 'Đội Ngũ Quản Trị', en: 'Admin Team' },
 };
 
 // TASK 5 real-device follow-up — `badge` (0/undefined = hidden) so a child
@@ -60,6 +61,10 @@ export default function AccountGroup() {
     openPreferences, openSecurity, openDocuments, openRefundAccounts, openMyRefunds,
     openVerifications, openVerificationsRefunds, openPayout, openDisputes, openAdminEvents,
     loadPaymentBookings, openBookingConfirmed, openDeleteAccount,
+    respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft,
+    requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite,
+    requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite,
+    requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin,
   } = useGoc();
   const key = s.accountGroupKey;
 
@@ -83,6 +88,12 @@ export default function AccountGroup() {
   useEffect(() => {
     if (key === 'activity' && s.user?.id) loadPaymentBookings();
   }, [key, s.user?.id, loadPaymentBookings]);
+  // Admin Team pass (2026-10-02) — a direct deep link straight into
+  // `accountGroupKey: 'adminTeam'` bypasses Account.jsx's own mount
+  // effect, same reasoning as `activity` above; idempotent re-fetch.
+  useEffect(() => {
+    if (key === 'adminTeam' && s.canManageAdmins) loadAdminTeam();
+  }, [key, s.canManageAdmins, loadAdminTeam]);
 
   if (!key || !GROUP_META[key]) return null;
   const title = T(GROUP_META[key].vi, GROUP_META[key].en);
@@ -97,7 +108,7 @@ export default function AccountGroup() {
       </div>
       <div style={{ padding: '16px 20px 40px' }}>
         <h1 style={{ ...display(27, { margin: 0, lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: 10 }) }}>
-          <RowIcon kind={{ team: 'users', activity: 'calendarCheck', payments: 'banknote', preferences: 'sliders', hostOps: 'checklist', adminReview: 'alertShield' }[key]} size={26} accent={ROW_ACCENT_COLORS[key]} />
+          <RowIcon kind={{ team: 'users', activity: 'calendarCheck', payments: 'banknote', preferences: 'sliders', hostOps: 'checklist', adminReview: 'alertShield', adminTeam: 'users' }[key]} size={26} accent={ROW_ACCENT_COLORS[key]} />
           {title}
         </h1>
 
@@ -358,6 +369,115 @@ export default function AccountGroup() {
             <Row icon="alertShield" label={T('Tranh chấp thanh toán', 'Payment Disputes')} trailing="›" testId="admin-disputes" onClick={openDisputes} />
             <Row icon="alertShield" label={T('Sự Kiện Chờ Duyệt', 'Pending Events')} trailing="›" testId="admin-events" onClick={openAdminEvents} border={false} badge={s.pendingEventsCount} />
           </div>
+        )}
+
+        {/* Admin Team pass (2026-10-02, migration 121) — reusing proven
+            organizer-invitation MECHANICS (accept/decline shape straight
+            below, the `team` block above) but NOT its permissions: this
+            screen never lets a client write `role`/`can_manage_admins`
+            directly — every button below calls a server RPC that enforces
+            its own authorization, this UI only reflects the result. */}
+        {key === 'adminTeam' && (
+          <>
+            {s.myAdminInvite && (
+              <div style={{ marginTop: 24 }} data-testid="account-admin-invite">
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Lời mời quản trị', 'Admin Invite')}</span>
+                <div style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`admin-invite-${s.myAdminInvite.id}`}>
+                  <span style={{ fontSize: 13, color: ink }}>
+                    {T('Bạn được mời trở thành quản trị viên banbe.', "You've been invited to become a banbe admin.")}
+                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <div onClick={() => respondToAdminInvite(s.myAdminInvite.id, true)} data-testid="admin-invite-accept" style={{ ...inkButton({ flex: 1, padding: 10, fontSize: 12.5 }) }}>{T('Chấp nhận', 'Accept')}</div>
+                    <div onClick={() => respondToAdminInvite(s.myAdminInvite.id, false)} data-testid="admin-invite-decline" style={{ ...fieldGlass({ flex: 1, padding: 10, fontSize: 12.5, textAlign: 'center', cursor: 'pointer' }) }}>{T('Từ chối', 'Decline')}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {s.accountType === 'admin' && !s.canManageAdmins && (
+              <p style={{ fontSize: 13, color: ink, opacity: 0.65, marginTop: 24 }} data-testid="admin-team-no-permission">
+                {T('Bạn không có quyền quản lý đội ngũ quản trị.', "You don't have permission to manage the admin team.")}
+              </p>
+            )}
+
+            {s.canManageAdmins && (
+              <>
+                <div style={{ marginTop: 24 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Mời Quản Trị Viên', 'Invite Admin')}</span>
+                  <div style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }}>
+                    <input
+                      value={s.adminInviteEmailDraft}
+                      onChange={setAdminInviteEmailDraft}
+                      placeholder={T('Email người được mời', "Invitee's email")}
+                      data-testid="admin-invite-email-input"
+                      style={{ fontSize: 13.5, padding: '10px 12px', border: `1px solid ${rule}`, borderRadius: 10, background: paper, color: ink }}
+                    />
+                    {!!s.adminInviteError && <span style={{ fontSize: 12, color: alert }} data-testid="admin-invite-error">{s.adminInviteError}</span>}
+                    {s.adminInviteConfirmEmail ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="admin-invite-confirm">
+                        <span style={{ fontSize: 12.5, color: ink }}>
+                          {T(`Mời ${s.adminInviteConfirmEmail} làm quản trị viên banbe?`, `Invite ${s.adminInviteConfirmEmail} as a banbe admin?`)}
+                        </span>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <div onClick={confirmAdminInvite} data-testid="admin-invite-confirm-yes" style={{ ...inkButton({ flex: 1, padding: 10, fontSize: 12.5, opacity: s.adminInviteBusy ? 0.6 : 1 }) }}>
+                            {s.adminInviteBusy ? T('Đang gửi…', 'Sending…') : T('Xác nhận mời', 'Confirm invite')}
+                          </div>
+                          <div onClick={cancelAdminInviteConfirm} data-testid="admin-invite-confirm-cancel" style={{ ...fieldGlass({ flex: 1, padding: 10, fontSize: 12.5, textAlign: 'center', cursor: 'pointer' }) }}>{T('Huỷ', 'Cancel')}</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div onClick={requestAdminInviteConfirm} data-testid="admin-invite-submit" style={{ ...inkButton({ padding: 10, fontSize: 12.5, textAlign: 'center' }) }}>{T('Mời', 'Invite')}</div>
+                    )}
+                  </div>
+                </div>
+
+                {s.adminInvites.filter(i => i.status === 'pending').length > 0 && (
+                  <div style={{ marginTop: 24 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Lời Mời Đang Chờ', 'Pending Invites')}</span>
+                    {s.adminInvites.filter(i => i.status === 'pending').map(inv => (
+                      <div key={inv.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`admin-invite-row-${inv.id}`}>
+                        <span style={{ fontSize: 13, color: ink, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.invited_email}</span>
+                        {s.revokeAdminInviteConfirmId === inv.id ? (
+                          <span style={{ display: 'flex', gap: 8, flex: 'none' }}>
+                            <span onClick={confirmRevokeAdminInvite} data-testid={`admin-invite-revoke-yes-${inv.id}`} style={{ fontSize: 12, fontWeight: 600, color: alert, cursor: 'pointer' }}>{T('Thu hồi?', 'Revoke?')}</span>
+                            <span onClick={cancelRevokeAdminInviteConfirm} style={{ fontSize: 12, color: ink, opacity: 0.6, cursor: 'pointer' }}>{T('Huỷ', 'Cancel')}</span>
+                          </span>
+                        ) : (
+                          <span onClick={() => requestRevokeAdminInviteConfirm(inv.id)} data-testid={`admin-invite-revoke-${inv.id}`} style={{ fontSize: 12, color: ink, opacity: 0.6, cursor: 'pointer', flex: 'none' }}>{T('Thu hồi', 'Revoke')}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ marginTop: 24 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quản Trị Viên Hiện Tại', 'Current Admins')}</span>
+                  {s.adminRoster.map(a => (
+                    <div key={a.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`admin-roster-row-${a.id}`}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                        <span style={{ fontSize: 13, color: ink }}>{a.display_name || T('(Chưa đặt tên)', '(No name set)')}{a.is_self ? T(' (bạn)', ' (you)') : ''}</span>
+                        {a.can_manage_admins && <span style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>{T('Có quyền quản lý đội ngũ', 'Can manage the admin team')}</span>}
+                      </div>
+                      {!a.is_self && (
+                        s.revokeAdminConfirmId === a.id ? (
+                          <span style={{ display: 'flex', gap: 8, flex: 'none' }}>
+                            <span onClick={confirmRevokeAdmin} data-testid={`admin-roster-revoke-yes-${a.id}`} style={{ fontSize: 12, fontWeight: 600, color: alert, cursor: 'pointer' }}>{T('Thu hồi?', 'Revoke?')}</span>
+                            <span onClick={cancelRevokeAdminConfirm} style={{ fontSize: 12, color: ink, opacity: 0.6, cursor: 'pointer' }}>{T('Huỷ', 'Cancel')}</span>
+                          </span>
+                        ) : (
+                          <span onClick={() => requestRevokeAdminConfirm(a.id)} data-testid={`admin-roster-revoke-${a.id}`} style={{ fontSize: 12, color: ink, opacity: 0.6, cursor: 'pointer', flex: 'none' }}>{T('Thu hồi quyền', 'Revoke')}</span>
+                        )
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {!s.myAdminInvite && s.accountType !== 'admin' && (
+              <p style={{ fontSize: 13, color: ink, opacity: 0.65, marginTop: 24 }}>{T('Không có gì ở đây.', 'Nothing here.')}</p>
+            )}
+          </>
         )}
       </div>
     </div>

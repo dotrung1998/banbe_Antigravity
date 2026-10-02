@@ -51,14 +51,27 @@ struct AttendanceView: View {
     @State private var resendBank = ""
     @State private var copiedFor: UUID?
 
-    private var event: CatalogEvent? { EventCatalog.find(app.attendanceEventKey) }
+    // 15-organizer-checkin.md: `event` used to be `EventCatalog.find(key)`,
+    // whose own `?? EventCatalog.all[0]` fallback silently substituted
+    // "Bếp Nhỏ №12" (the first demo event) for ANY real, host-created
+    // event's key. `app.attendanceEventState` resolves the REAL event row
+    // (or an honest loading/unavailable state) instead — see its own doc
+    // comment (AppState.swift).
+    private var event: CatalogEvent? {
+        if case .ready(let e) = app.attendanceEventState { return e }
+        return nil
+    }
     private var checkedCount: Int { app.attendanceGuests.filter(\.checkedIn).count }
     // TASK 3 point 5 — the same real `applyingLiveStatus` merge Dashboard/
     // Home already use, not a separate "ended" calculation, so a host who
     // stays on this screen while the event genuinely ends/gets cancelled
     // (live `status`, refreshed by startPolling() below) loses actionable
     // guest controls instead of only picking that up on next screen mount.
-    private var liveEvent: CatalogEvent? { event.map { $0.applyingLiveStatus(app.homeLiveEvents[$0.key]) } }
+    // `attendanceEventState` already applies live status for a catalogue
+    // match; a real (non-catalogue) event is itself always already-live
+    // data (loadRealEventsByID has no separate "frozen" copy to merge), so
+    // `event` IS the live event on both paths — no second merge needed.
+    private var liveEvent: CatalogEvent? { event }
     private var eventEnded: Bool { (liveEvent?.cancelled ?? false) || liveEvent?.endedHoursAgo != nil }
 
     var body: some View {
@@ -90,7 +103,18 @@ struct AttendanceView: View {
         VStack(alignment: .leading, spacing: 0) {
                 BackLink(label: app.attendanceBack == .notifications ? app.T("Thông báo", "Notifications") : app.T("Trang của bạn", "Your dashboard")) { app.screen = app.attendanceBack }
 
-                if event != nil, eventEnded {
+                if app.attendanceEventKey != nil, event == nil {
+                    // Truthful loading/unavailable state — never the wrong
+                    // demo event. `.loading` (still fetching the real row)
+                    // and `.unavailable` (confirmed gone/RLS-denied) read
+                    // differently; both already disable every event-
+                    // dependent action below simply by not rendering them.
+                    Text(app.attendanceEventState.isUnavailable
+                         ? app.T("Không tải được thông tin sự kiện này.", "Couldn't load this event.")
+                         : app.T("Đang tải sự kiện…", "Loading event…"))
+                        .font(.system(size: 13))
+                        .padding(.top, 40)
+                } else if event != nil, eventEnded {
                     Text(app.T("Sự kiện đã kết thúc.", "This event has ended."))
                         .font(.system(size: 13))
                         .padding(.top, 40)
@@ -128,13 +152,21 @@ struct AttendanceView: View {
                             .foregroundStyle(app.palette.paper)
                     }
                     .padding(.horizontal, 18).padding(.vertical, 16)
-                    .background(app.palette.ink)
+                    // Same corner-radius language as the Scan QR control
+                    // above (cornerRadius: 12) — this panel used to be a
+                    // sharp rectangle, the only un-rounded surface on the
+                    // screen.
+                    .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .padding(.top, 18)
 
                     Text(app.T("Chạm vào tên khách hoặc quét mã QR vé khi họ tới nơi.",
                                "Tap a guest's name, or scan their ticket QR, when they arrive."))
                         .font(.system(size: 11.5))
                         .lineSpacing(2)
+                        // Modest breathing room below the now-rounded panel
+                        // (was flush, 0pt) — within this screen's own 12-16
+                        // literal-value spacing ladder (no named token here).
+                        .padding(.top, 14)
 
                     Text(app.T("Đánh dấu \"Đã thanh toán\" khi bạn thấy tiền vào tài khoản, rồi tải lên hoá đơn/biên nhận thật của bạn cho khách.",
                                "Mark a guest paid once you see the money arrive, then upload your own real invoice/receipt for them."))

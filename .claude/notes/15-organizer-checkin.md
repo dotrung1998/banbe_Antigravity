@@ -2,6 +2,47 @@
 
 ## Status: WORKING (web + iOS)
 
+## 2026-10-02 — real bug: Attendance always showed "Bếp Nhỏ №12" for any real event
+
+**Root cause, confirmed by reading, both platforms**: `Attendance.jsx`/
+`AttendanceView.swift` resolved the header event via `findEvent(key)`
+(web, `src/data/events.js`) / `EventCatalog.find(key)` (iOS) — both have
+their own `?? EVENTS[0]`/`?? EventCatalog.all[0]` fallback for any key
+that isn't one of the 20 static demo ids, which is true for EVERY real,
+organizer-created event. `EVENTS[0]`/`EventCatalog.all[0]` is the "Bếp Nhỏ
+№12" demo row, so it silently rendered for any real event's check-in
+screen — name, date/time all wrong, only the guest list/QR/check-in
+mutations (keyed by event id or booking id, never by this lookup) were
+actually correct underneath. Not a stale-state/race bug — deterministic,
+first render, every time.
+
+**Fix** — resolves through the SAME canonical real-event cache/pattern
+`curEvent`/`EventDetail.jsx` (web) and `currentEvent`/`resolvedEvent(for:)`
+(iOS, `AppState.swift`) already use for this exact problem class:
+- Web: `Attendance.jsx` now checks `isCosmeticCatalogMatch(attKey)`
+  (`src/data/events.js`) first; for a real (non-catalogue) key it reads
+  `s.realEventsById[attKey]` (shaped via newly-exported
+  `shapeRealEventAsCurEvent`, `GocContext.jsx`), fetched by `openAttendance()`
+  itself (`loadRealEventsById([key])`, fire-and-forget, a no-op if already
+  cached). `undefined` (still loading) vs `null` (confirmed missing) each
+  render an honest, truthful state — never the wrong demo event.
+- iOS: new `AppState.attendanceEventState` enum (`.loading`/`.unavailable`/
+  `.ready(CatalogEvent)`, `AppState.swift`) replaces `EventCatalog.find`'s
+  raw fallback; `openAttendance()` kicks off `loadMissingRealEvents(for:)`
+  (the same cache `savedStrip`/`currentEvent` already use).
+- Styling (same pass): the "Đã đến"/"Checked in" counter panel now shares
+  the Scan QR button's `cornerRadius: 12` (was a sharp rectangle, the only
+  un-rounded surface on the screen), and the explanatory text below it got
+  12–16pt breathing room (was 10px web / 0pt iOS, flush under the panel).
+
+**Verified**: `npx vite build` clean; `xcodebuild -scheme PersonalTeamDebug
+-sdk iphonesimulator build` → BUILD SUCCEEDED; existing unit tests
+(`tests/unit/events.test.mjs` — `isCosmeticCatalogMatch`/`findEvent`
+coverage already existed and still passes 24/24, confirming this fix
+reuses an already-tested predicate rather than a new one). No
+simulator/device UI run — the two-events-sequentially + Back/deep-link
+check is the user's own to run on a physical iPhone.
+
 ## Files / functions
 - `src/screens/Attendance.jsx` / `apps/ios/BanbeApp/Views/AttendanceView.swift` — the organizer's per-event guest list (`openAttendance`/`loadAttendanceGuests`).
 - `src/screens/Verifications.jsx` / `apps/ios/BanbeApp/Views/VerificationsView.swift` — the organizer's PHASE 2 (`pending_verification`) queue (`v_pending_verifications`).

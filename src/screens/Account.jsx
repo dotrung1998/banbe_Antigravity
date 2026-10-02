@@ -59,6 +59,7 @@ export const ROW_ACCENT_COLORS = {
   preferences: PROFILE_PALETTE_COLORS.ink,
   hostOps: PROFILE_PALETTE_COLORS.moss,
   adminReview: PROFILE_PALETTE_COLORS.rose,
+  adminTeam: PROFILE_PALETTE_COLORS.ink,
 };
 
 export function RowIcon({ kind, size = 22, accent }) {
@@ -156,6 +157,7 @@ export default function Account() {
     loadMyOrgStats, setAccountTab, openPublicProfile, openReports, openAccountGroup, goSurveysHosting,
     loadMyOrganizerMemberships,
     loadMyEventCredits, loadMyConfirmedEventCredits, openPolicy,
+    loadMyAdminInvite, respondToAdminInvite, loadAdminTeam,
   } = useGoc();
   const s = state;
   // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Both panes stay
@@ -203,6 +205,14 @@ export default function Account() {
   // Organizer Team pass (2026-09-27, Stage 1) — this account's own pending
   // invites/accepted memberships, shown in the Cá nhân tab below.
   useEffect(() => { if (s.user?.id) loadMyOrganizerMemberships(); }, [s.user?.id, loadMyOrganizerMemberships]);
+  // Admin Team pass (2026-10-02) — this account's own pending admin invite,
+  // if any — reachable regardless of current role (the invitee isn't an
+  // admin yet), same "Cá nhân" tab placement as the Team-invite banner.
+  useEffect(() => { if (s.user?.id) loadMyAdminInvite(); }, [s.user?.id, loadMyAdminInvite]);
+  // A manage-admins-capable admin's own badge/roster source — loaded here
+  // (not only on opening the group) for the same reason pendingEventsCount
+  // is loaded on mount below: an accurate badge, never a guessed/stale one.
+  useEffect(() => { if (s.canManageAdmins) loadAdminTeam(); }, [s.canManageAdmins, loadAdminTeam]);
   // Organizer Team pass (2026-09-27, Stage 2) — this account's own pending
   // event-credit invites ("did I really help organize this event").
   useEffect(() => { if (s.user?.id) loadMyEventCredits(); }, [s.user?.id, loadMyEventCredits]);
@@ -277,16 +287,26 @@ export default function Account() {
 
   return (
     <div style={{ position: 'relative', animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Account">
-      <div style={{ padding: '66px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ ...display(27) }}>{T('Tài khoản', 'Account')}</span>
-        <span onClick={goHome} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>Xong</span>
-      </div>
+      {/* Fixed-header pass (2026-10-02) — title row + tabs used to just
+          scroll away with the rest of the page (this screen has no sticky
+          header at all before this pass, unlike iOS's own `accountHeader`/
+          `accountTabsBar` siblings above `ScreenScaffold`). `position:
+          sticky` on the single shared scroll container this screen already
+          renders inside (App.jsx's Shell, see its own `overflowY: 'auto'`
+          div) keeps both stationary while only the content below scrolls —
+          no second scroll/tab system, same `accountTab` state and
+          `setAccountTab` routing as before. */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 5, background: paper }} data-testid="account-fixed-header">
+        <div style={{ padding: '66px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ ...display(27) }}>{T('Tài khoản', 'Account')}</span>
+          <span onClick={goHome} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>Xong</span>
+        </div>
 
-      {/* Stage D — Cá nhân/Tổ chức top-level tabs. Purely a display switch
-          below (both panes' own scroll containers keep their scrollTop
-          whichever is hidden) — never calls toggleOrganizerMode or any
-          hosting-mode side effect by itself. */}
-      <div style={{ display: 'flex', gap: 6, padding: '18px 20px 0' }} data-testid="account-tabs">
+        {/* Stage D — Cá nhân/Tổ chức top-level tabs. Purely a display switch
+            below (both panes' own scroll containers keep their scrollTop
+            whichever is hidden) — never calls toggleOrganizerMode or any
+            hosting-mode side effect by itself. */}
+        <div style={{ display: 'flex', gap: 6, padding: '18px 20px 14px' }} data-testid="account-tabs">
         {[
           { key: 'personal', label: T('Cá Nhân', 'Personal') },
           // Account extension (2026-09-27, Stage 1) — "organizer mode OFF
@@ -338,6 +358,7 @@ export default function Account() {
             )}
           </span>
         ))}
+        </div>
       </div>
 
       {/* iPhone fix pass (2026-09-26) — this personal identity card (and
@@ -621,6 +642,22 @@ export default function Account() {
         </div>
       )}
 
+      {/* Admin Team pass (2026-10-02) — same banner shape as the Team
+          invite above, reachable regardless of current role (the invitee
+          isn't an admin yet). */}
+      {s.myAdminInvite && (
+        <div
+          onClick={() => openAccountGroup('adminTeam')}
+          data-testid="account-admin-invite-banner"
+          style={{ ...fieldGlass({ marginTop: 8, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
+            <RowIcon kind="alertShield" accent={ROW_ACCENT_COLORS.adminReview} />{T('Bạn có lời mời quản trị', 'You have an admin invite')}
+          </span>
+          <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+        </div>
+      )}
+
       {/* Account extension (2026-09-27, Stage 1) — "Organizer mode OFF
           means host UI is OFF": the whole Tổ chức tab disappears while
           this is off, so the ON/OFF control itself (and any actionable
@@ -864,6 +901,21 @@ export default function Account() {
             badge={s.pendingEventsCount}
             onClick={() => openAccountGroup('adminReview')}
             marginTop={14}
+          />
+          {/* Admin Team pass (2026-10-02) — reachable to every admin (so a
+              permission-less admin can at least see WHO the team is / why
+              they can't manage it — AccountGroup's own gate decides what
+              renders inside), badge only ever counts real, still-pending
+              invites (adminInvites is only populated for a canManageAdmins
+              account in the first place — RLS denies the read otherwise,
+              so a non-manager's badge is honestly 0/undefined, never a
+              guessed number). */}
+          <GroupCard
+            groupKey="adminTeam" iconKind="users"
+            label={T('Đội Ngũ Quản Trị', 'Admin Team')}
+            badge={s.adminInvites.filter(i => i.status === 'pending').length}
+            onClick={() => openAccountGroup('adminTeam')}
+            marginTop={10}
           />
           <ReportsRow label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} testId="account-reports-admin" onClick={() => openReports('admin', null, 'profile')} />
           <div style={{ height: 24 }} />

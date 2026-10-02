@@ -22,7 +22,119 @@ Both platforms: list disputes, view receipt image (signed URL, admin bypass adde
 
 ## TODO / open questions
 - No UI test coverage added for iOS `AdminDashboardView` (web has `payment-state-machine.spec.js:79` for the account-menu gate only, not full resolve flow on either platform).
-- Only one designated admin email; no admin-management UI to promote/demote other accounts.
+- ~~Only one designated admin email; no admin-management UI to promote/demote other accounts.~~ Addressed 2026-10-02 — see below.
+
+## 2026-10-02 — Admin Team invites ("Admin Team"/"Invite Admin" in Account → Admin)
+
+**Migration `supabase/migrations/20261102000121_121_admin_team_invites.sql`
+— WRITTEN AND LOCALLY VERIFIED, NOT YET APPLIED to any deployed database**
+(this environment has no `supabase` CLI/DB credentials, and migrations
+require the user's own explicit approval gate before `supabase db push`).
+
+**The actual RBAC decision**: a new `profiles.can_manage_admins boolean`,
+distinct from `role = 'admin'` itself — checked separately in every RPC
+(`public.can_manage_admins()`). Backfilled `true` for every account that
+is ALREADY an admin today (there is only the one, `banbetestadmin@gmail.com`
+from migration 040) so nothing existing loses capability. A newly-accepted
+admin invite does **NOT** inherit this permission — it has to be explicitly
+granted afterward via `set_admin_management_permission()`, by someone who
+already has it. This is what stops an unbounded "any admin can mint
+infinite admins" chain.
+
+**Mechanics reused, not reinvented**: same shape as `event_invites` (113)/
+`organizer_members` (098) — `admin_invites` table (RLS locked, zero direct
+write policy, every mutation through a `SECURITY DEFINER` RPC), 32-random-
+byte token stored only as its sha256 hash, `find_auth_user_by_email` for
+existing-user resolution, identity re-verified against `auth.users.email`
+at redemption (`redeem_admin_invite_token`) — a forwarded link cannot grant
+a different account access. `admin_action_log` (new, append-only, no
+credentials/tokens ever logged) records invite/accept/revoke/grant/revoke-
+permission actions.
+
+**RPCs**: `create_admin_invite`, `revoke_admin_invite`,
+`redeem_admin_invite_token`, `respond_to_admin_invite` (the actual
+privilege-granting step — atomic role flip + invite-row update in one
+transaction), `set_admin_management_permission`, `revoke_admin` (demotes
+to `participant`; blocks self-revocation unconditionally and blocks
+revoking the last remaining admin), `list_admin_roster` (a dedicated,
+tightly-scoped read — never a broadened `profiles` RLS policy, so this
+doesn't widen any unrelated access to other accounts' profile data).
+`expire_stale_admin_invites()` on `pg_cron` (same pattern as
+`goc_expire_lapsed_pendings`) keeps the pending-invite badge honest even
+without a redemption attempt; falls back to a no-op if `pg_cron` isn't
+installed (lazy expiry on actual use still correctly refuses a stale
+invite either way).
+
+**Verified end-to-end against a real local Postgres** (Docker, throwaway
+container + a minimal stub schema — `auth.users`/`profiles`/`notifications`
+stand-ins, `authenticated`/`anon`/`service_role` roles, a `request`-style
+session GUC standing in for `auth.uid()`), not guessed: authorized issuer
+creates an invite; a non-admin AND an admin-without-`can_manage_admins` are
+both correctly `NOT_AUTHORIZED`; a wrong-identity account cannot accept
+someone else's invite; the intended recipient accepts and `role` flips to
+`admin` (never inheriting `can_manage_admins`); a repeated/duplicate accept
+on the same invite is correctly `INVITE_NOT_PENDING`; a revoked invite and
+an expired invite are both correctly refused; an email-only invite's token
+redemption correctly rejects the wrong identity (`IDENTITY_MISMATCH`) and
+succeeds for the right one; `revoke_admin` correctly blocks self-revocation
+and blocks revoking the last remaining admin, and succeeds otherwise.
+
+**Client-side proactive resync** — `revoke_admin()` inserts an
+`admin_access_revoked` notification; both platforms' existing 5s
+notification poll (not just the tap handler) immediately patches
+`accountType`/`canManageAdmins` and bounces off the Admin tab if it was
+open — revocation invalidates access within one poll cycle, not at next
+sign-in (same "proactive, not tap-gated" pattern `booking_declined`'s
+Going-tag refetch already established, see this file's own 2026-09-17
+section above).
+
+**UI**: Account → Cá nhân gets the same conditional invite banner shape as
+the existing Team-invite banner (reachable regardless of current role —
+the invitee isn't an admin yet); Account → Admin gets a new "Đội Ngũ Quản
+Trị"/"Admin Team" group card (badge = real pending-invite count, only ever
+populated for a `can_manage_admins` account — RLS denies the read
+otherwise) opening the shared `AccountGroup`/`AccountGroupView` child
+screen (`adminTeam` key) — invite form with an explicit confirm step
+(type email → "Invite \<email\> as a banbe admin?" → Confirm/Cancel, never
+sent on one tap), pending-invites list with inline revoke+confirm, and the
+current-admin roster with inline revoke+confirm (self-row has no revoke
+button at all).
+
+**Files**: migration 121 (new); web `src/state/GocContext.jsx` (state,
+`loadMyAdminInvite`/`respondToAdminInvite`/`loadAdminTeam`/
+`confirmAdminInvite`/`confirmRevokeAdminInvite`/`confirmRevokeAdmin` etc.,
+`syncUser`'s profile select, the notification poll's `admin_access_revoked`
+branch, `openNotification`'s three new cases), `src/screens/Account.jsx`
+(banner + group card), `src/screens/AccountGroup.jsx` (`adminTeam` content);
+iOS `apps/ios/BanbeApp/State/AppState+AdminTeam.swift` (new),
+`AppState.swift` (published fields, `accountGroupTitle`),
+`AppState+Data.swift` (`applySession`'s `canManageAdmins` read, the
+notification poll's `admin_access_revoked` branch, `openNotification`'s
+three new cases), `Models/Profile.swift` (`canManageAdmins` field),
+`Views/AccountView.swift` (banner + group card + `ROW_ACCENT_COLORS`),
+`Views/AccountGroupView.swift` (`adminTeamContent`).
+
+**Verification performed**: migration verified against a real local
+Postgres (above) — not a substitute for confirming it on the real project.
+`npx vite build` clean; `xcodebuild -scheme PersonalTeamDebug -sdk
+iphonesimulator build` → BUILD SUCCEEDED; `npm run test:unit` 24/24
+(pre-existing suite, unaffected). No simulator/device UI run.
+
+**Not done / blockers**:
+- **Migration 121 is NOT deployed** — run `supabase db push` (after review)
+  before ANY of this works against the real project; until then
+  `can_manage_admins`/`admin_invites`/the four new RPCs don't exist there,
+  so every call above will error against production as-is.
+- **Email delivery for an email-only invite** — `create_admin_invite`
+  returns the plaintext token (once, never persisted), but nothing calls
+  `/api/notify` yet to actually send it — same gap `create_event_invites`
+  (113) already has, same fix shape (`api/notify.js` would need a new
+  `admin_invite` case). Only the existing-user, in-app-notification path
+  is wired end-to-end today.
+- **No admin-permission audit viewer UI** — `admin_action_log` is written
+  on every action and RLS-readable by `can_manage_admins()`, but nothing
+  reads/displays it yet (direct-query-only for now, same as every other
+  not-yet-surfaced audit table in this schema).
 
 ## 2026-09-14 — "Khách đúng ▪︎ cấp vé" / "Mở lại chỗ" appeared to do nothing (see 03-dispute-chat.md diagnosis #3 for full detail)
 

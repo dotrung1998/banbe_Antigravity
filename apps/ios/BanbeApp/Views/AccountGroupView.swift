@@ -60,6 +60,7 @@ struct AccountGroupView: View {
                     case "preferences": preferencesContent
                     case "hostOps": hostOpsContent
                     case "adminReview": adminReviewContent
+                    case "adminTeam": adminTeamContent
                     default: EmptyView()
                     }
                 }
@@ -78,6 +79,16 @@ struct AccountGroupView: View {
         }
         .onChange(of: app.accountType) { _, type in
             if app.accountGroupKey == "adminReview", type != "admin" { app.screen = .profile }
+        }
+        // Admin Team pass (2026-10-02) — a direct deep link straight into
+        // `accountGroupKey: "adminTeam"` (e.g. from the admin_invite_
+        // response notification case) bypasses AccountView's own `.task`s;
+        // idempotent re-fetch, same reasoning as `activityContent`'s own
+        // "loaded elsewhere too" sources.
+        .onAppear {
+            if app.accountGroupKey == "adminTeam" && app.canManageAdmins {
+                Task { await app.loadAdminTeam() }
+            }
         }
     }
 
@@ -409,6 +420,139 @@ struct AccountGroupView: View {
             row(app.T("Sự Kiện Chờ Duyệt", "Pending Events"), identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›", badge: app.pendingEventsCount) { app.openAdminEvents() }
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    // Admin Team pass (2026-10-02, migration 121) — reusing proven
+    // organizer-invitation MECHANICS (accept/decline shape straight above,
+    // `teamContent`) but NOT its permissions: this view never lets a
+    // client write `role`/`can_manage_admins` directly — every control
+    // below calls a server RPC that enforces its own authorization, this
+    // UI only reflects the result.
+    @ViewBuilder
+    private var adminTeamContent: some View {
+        if let invite = app.myAdminInvite {
+            Text(app.T("Lời mời quản trị", "Admin Invite")).font(.system(size: 11.5, weight: .semibold))
+            VStack(alignment: .leading, spacing: 8) {
+                Text(app.T("Bạn được mời trở thành quản trị viên banbe.", "You've been invited to become a banbe admin."))
+                    .font(.system(size: 13))
+                HStack(spacing: 8) {
+                    InkButton(title: app.T("Chấp nhận", "Accept")) { Task { await app.respondToAdminInvite(inviteID: invite.id, accept: true) } }
+                    Button(app.T("Từ chối", "Decline")) { Task { await app.respondToAdminInvite(inviteID: invite.id, accept: false) } }
+                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                }
+            }
+            .padding(14)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.top, 8)
+            .accessibilityIdentifier("adminInvite.\(invite.id)")
+        }
+
+        if app.accountType == "admin" && !app.canManageAdmins {
+            Text(app.T("Bạn không có quyền quản lý đội ngũ quản trị.", "You don't have permission to manage the admin team."))
+                .font(.system(size: 13)).opacity(0.65).padding(.top, 18)
+                .accessibilityIdentifier("adminTeam.noPermission")
+        }
+
+        if app.canManageAdmins {
+            Text(app.T("Mời Quản Trị Viên", "Invite Admin")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(app.T("Email người được mời", "Invitee's email"), text: $app.adminInviteEmailDraft)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .font(.system(size: 13.5)).padding(10)
+                    .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.rule))
+                    .accessibilityIdentifier("adminTeam.emailInput")
+                if !app.adminInviteError.isEmpty {
+                    Text(app.adminInviteError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                }
+                if let confirmEmail = app.adminInviteConfirmEmail {
+                    Text(app.T("Mời \(confirmEmail) làm quản trị viên banbe?", "Invite \(confirmEmail) as a banbe admin?"))
+                        .font(.system(size: 12.5))
+                    HStack(spacing: 8) {
+                        InkButton(title: app.adminInviteBusy ? app.T("Đang gửi…", "Sending…") : app.T("Xác nhận mời", "Confirm invite")) {
+                            Task { await app.confirmAdminInvite() }
+                        }
+                        .opacity(app.adminInviteBusy ? 0.6 : 1)
+                        .disabled(app.adminInviteBusy)
+                        Button(app.T("Huỷ", "Cancel")) { app.cancelAdminInviteConfirm() }
+                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            .frame(maxWidth: .infinity).padding(.vertical, 10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+                    }
+                } else {
+                    InkButton(title: app.T("Mời", "Invite")) { app.requestAdminInviteConfirm() }
+                        .accessibilityIdentifier("adminTeam.inviteSubmit")
+                }
+            }
+            .padding(14)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.top, 8)
+
+            let pendingInvites = app.adminInvites.filter { $0.status == "pending" }
+            if !pendingInvites.isEmpty {
+                Text(app.T("Lời Mời Đang Chờ", "Pending Invites")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+                ForEach(pendingInvites) { inv in
+                    HStack {
+                        Text(inv.invitedEmail).font(.system(size: 13)).lineLimit(1)
+                        Spacer(minLength: 8)
+                        if app.revokeAdminInviteConfirmID == inv.id {
+                            HStack(spacing: 8) {
+                                Button(app.T("Thu hồi?", "Revoke?")) { Task { await app.confirmRevokeAdminInvite() } }
+                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                                Button(app.T("Huỷ", "Cancel")) { app.cancelRevokeAdminInviteConfirm() }
+                                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                            }
+                        } else {
+                            Button(app.T("Thu hồi", "Revoke")) { app.requestRevokeAdminInviteConfirm(inv.id) }
+                                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        }
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(14)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("adminInviteRow.\(inv.id)")
+                }
+            }
+
+            Text(app.T("Quản Trị Viên Hiện Tại", "Current Admins")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            ForEach(app.adminRoster) { a in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text((a.displayName?.isEmpty == false ? a.displayName! : app.T("(Chưa đặt tên)", "(No name set)")) + (a.isSelf ? app.T(" (bạn)", " (you)") : ""))
+                            .font(.system(size: 13))
+                        if a.canManageAdmins {
+                            Text(app.T("Có quyền quản lý đội ngũ", "Can manage the admin team")).font(.system(size: 10.5)).opacity(0.6)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    if !a.isSelf {
+                        if app.revokeAdminConfirmID == a.id {
+                            HStack(spacing: 8) {
+                                Button(app.T("Thu hồi?", "Revoke?")) { Task { await app.confirmRevokeAdmin() } }
+                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                                Button(app.T("Huỷ", "Cancel")) { app.cancelRevokeAdminConfirm() }
+                                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                            }
+                        } else {
+                            Button(app.T("Thu hồi quyền", "Revoke")) { app.requestRevokeAdminConfirm(a.id) }
+                                .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        }
+                    }
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(14)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 8)
+                .accessibilityIdentifier("adminRosterRow.\(a.id)")
+            }
+        }
+
+        if app.myAdminInvite == nil && app.accountType != "admin" {
+            Text(app.T("Không có gì ở đây.", "Nothing here.")).font(.system(size: 13)).opacity(0.65)
+        }
     }
 
     // TASK 5 real-device follow-up — `badge` (0 = hidden) so a child row

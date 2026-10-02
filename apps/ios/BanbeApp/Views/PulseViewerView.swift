@@ -16,6 +16,7 @@ private func eventPhotoURL(_ path: String?) -> String? {
 
 struct PulseViewerView: View {
     @EnvironmentObject private var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // iOS/Map UX pass (2026-09-27) — Pulse used to be a `.fullScreenCover`,
     // a wholly separate UIKit presentation layer with no access to
@@ -267,20 +268,25 @@ struct PulseViewerView: View {
             .frame(width: edgeZoneWidth)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .highPriorityGesture(edgeSwipe)
+
+            // Expanded-panel redesign (2026-10-02) — both popups used to be
+            // native `.sheet`s (system bottom-anchored presentations); a
+            // centered floating card instead needs to be a plain overlay
+            // inside this same view, not a separate presentation layer.
+            // Reduce Motion: the panel still appears/disappears (never
+            // skipped — this is content, not decoration), just without the
+            // scale/opacity transition's own motion.
+            if let item = app.pulseOrganizerSheet {
+                organizerSheet(item)
+                    .zIndex(20)
+            }
+            if let item = app.pulsePhotoSheet {
+                photoSheet(item)
+                    .zIndex(20)
+            }
         }
-        .sheet(item: $app.pulseOrganizerSheet) { item in
-            organizerSheet(item)
-                .presentationDetents([.height(300)])
-        }
-        // TASK 5 (2026-09-25 fix pass) / B5 (2026-09-26 redesign) — the
-        // ranked-photo popup is now a real fixed-height sheet at two-thirds
-        // of the screen (`.fraction(0.66)`, matching web's `height: '66vh'`)
-        // rather than a small fixed-point height.
-        .sheet(item: $app.pulsePhotoSheet) { item in
-            photoSheet(item)
-                .presentationDetents([.fraction(0.66)])
-                .presentationDragIndicator(.hidden)
-        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: app.pulseOrganizerSheet)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: app.pulsePhotoSheet)
         // Mirrors RootView's own `.onChange(of: isCommittingBack)` exactly —
         // let the single slide-to-edge animation actually finish playing
         // (0.22s) before removing this view from RootView's ZStack at all.
@@ -455,19 +461,158 @@ struct PulseViewerView: View {
         .accessibilityIdentifier("pulse.card")
     }
 
+    // Expanded-panel redesign (2026-10-02) — "IMG_6770 still has wide
+    // filler panels around the featured photo" + an iOS "expanded media
+    // control" (Now Playing card) as the VISUAL/interaction reference, not
+    // an audio player. Replaces BOTH the oversized `.sheet` bottom-sheet
+    // (Featured Photos' `photoSheet`, below) and the plain no-image
+    // `.height(300)` sheet (ranked event rows' `organizerSheet`, this same
+    // function, now image-aware) with ONE shared, centered floating glass
+    // card: a rounded `.ultraThinMaterial` surface (auto-respects Reduce
+    // Transparency — falls back to an opaque material automatically, no
+    // manual check needed), over a dimmed/blurred scrim, bounded to the
+    // real viewport with margins rather than a fixed-fraction/fixed-height
+    // box. The photo area sizes itself to the photo's OWN aspect ratio
+    // (`.scaledToFit()` with only MAX constraints, never an exact fixed
+    // frame) up to an available-height cap — never stretched, never
+    // cropped, and never leaving a visible separate "border panel": the
+    // one soft backdrop this card uses is the SAME loaded image, blurred,
+    // behind the whole card (one surface), not a second boxed media
+    // region. Card content (image optional) + title/subtitle/meta +
+    // actions are all parameters, so both callers below share one
+    // implementation instead of two parallel layouts that can drift.
+    @ViewBuilder
+    private func pulseExpandedPanel<Actions: View>(
+        photoURLString: String?,
+        title: String,
+        subtitle: String?,
+        metaLine: String?,
+        accessibilityCloseID: String,
+        onClose: @escaping () -> Void,
+        @ViewBuilder actions: @escaping () -> Actions
+    ) -> some View {
+        GeometryReader { geo in
+            let url = photoURLString.flatMap(URL.init(string:))
+            let maxPanelWidth: CGFloat = min(geo.size.width - 40, 420)
+            let maxPanelHeight: CGFloat = geo.size.height - 64
+            // Available-height limit for the photo region specifically —
+            // the rest (title/meta/actions) gets whatever it needs below,
+            // capped overall by maxPanelHeight on the outer card itself.
+            let maxImageHeight: CGFloat = maxPanelHeight * 0.58
+
+            ZStack {
+                // Dimmed/blurred background — tap outside the card to
+                // dismiss, same as tapping the X. Never blocks the card's
+                // OWN taps (it sits behind, sized to the full viewport).
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .overlay(Color.black.opacity(0.35))
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { onClose() }
+                    .accessibilityHidden(true)
+
+                VStack(spacing: 0) {
+                    if let url {
+                        AsyncImage(url: url) { phase in
+                            if let img = phase.image {
+                                img.resizable().aspectRatio(contentMode: .fit)
+                                    .frame(maxWidth: maxPanelWidth, maxHeight: maxImageHeight)
+                            } else {
+                                // Honest loading placeholder — never a wrong
+                                // cached photo, never a layout-shifting blank.
+                                Rectangle().fill(app.palette.field)
+                                    .frame(height: min(180, maxImageHeight))
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 18)
+                    }
+
+                    VStack(spacing: 8) {
+                        Text(title).font(BanbeTheme.display(18)).multilineTextAlignment(.center).lineLimit(2)
+                        if let subtitle, !subtitle.isEmpty {
+                            Text(subtitle).font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                                .multilineTextAlignment(.center)
+                        }
+                        if let metaLine, !metaLine.isEmpty {
+                            Text(metaLine).font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.6))
+                                .multilineTextAlignment(.center)
+                        }
+                        actions().padding(.top, 8)
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.top, 14)
+                    .padding(.bottom, 22)
+                }
+                .frame(maxWidth: maxPanelWidth)
+                .frame(maxHeight: maxPanelHeight)
+                .background(
+                    ZStack {
+                        // Same-image soft backdrop, as part of the OVERALL
+                        // panel (one surface) rather than a second,
+                        // visibly-separate rectangle behind just the photo.
+                        if let url {
+                            AsyncImage(url: url) { phase in
+                                if let img = phase.image {
+                                    img.resizable().scaledToFill().blur(radius: 46, opaque: true).opacity(0.45)
+                                } else { Color.clear }
+                            }
+                        }
+                        Rectangle().fill(.ultraThinMaterial)
+                    }
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(Color.white.opacity(0.18), lineWidth: 1))
+                .shadow(color: .black.opacity(0.28), radius: 30, y: 14)
+                .foregroundStyle(app.palette.ink)
+                .overlay(alignment: .topTrailing) {
+                    // Kept clear of the image/content, always tappable —
+                    // minimum 44x44 target per this ticket's own accessible-
+                    // target requirement.
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Color.black.opacity(0.45), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(6)
+                    .accessibilityIdentifier(accessibilityCloseID)
+                    .accessibilityLabel(app.T("Đóng", "Close"))
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+    }
+
     // B3 — two large, equal-width, side-by-side rounded buttons instead of
     // a solid Follow pill + a separately-sized underlined "Xem sự kiện"
     // link. "Xem sự kiện" is now always a solid filled primary button
     // (matches web); "Theo dõi"/"Đang theo dõi" keeps its existing
-    // filled/outline toggle look.
+    // filled/outline toggle look. Image-aware pass (2026-10-02) — this
+    // sheet used to show no photo at all; now uses the shared
+    // `pulseExpandedPanel` with the event's own real photo, rank, category
+    // and the real booking/check-in/follow breakdown already loaded for
+    // the row (never fabricated) — plus a new "Xem trang tổ chức"/"View
+    // host" action alongside the existing Follow/"Xem sự kiện".
     @ViewBuilder
     private func organizerSheet(_ item: PulseItem) -> some View {
-        VStack(spacing: 10) {
-            Capsule().fill(app.palette.rule).frame(width: 36, height: 4).padding(.top, 8)
-            Text(item.organizerName).font(BanbeTheme.display(19)).padding(.top, 8)
-            if item.organizerVerified {
-                Text(app.T("Đã xác minh", "Verified")).font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
-            }
+        let metaParts = [
+            item.catLabel,
+            app.T("\(item.bookingCount) vé", "\(item.bookingCount) bookings"),
+            app.T("\(item.checkinCount) check-in", "\(item.checkinCount) check-ins"),
+        ].compactMap { $0 }.filter { !$0.isEmpty }
+        pulseExpandedPanel(
+            photoURLString: eventPhotoURL(item.photoPath),
+            title: item.eventName,
+            subtitle: item.organizerName + (item.organizerVerified ? " ✓" : ""),
+            metaLine: metaParts.joined(separator: " ▪︎ "),
+            accessibilityCloseID: "pulse.organizerSheet.close",
+            onClose: { app.closePulseOrganizerSheet() }
+        ) {
             HStack(spacing: 10) {
                 Button {
                     Task { await app.followPulseOrganizer(item.organizerId) }
@@ -479,6 +624,7 @@ struct PulseViewerView: View {
                         .background(item.following ? Color.clear : app.palette.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .foregroundStyle(item.following ? app.palette.ink : app.palette.paper)
                         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(item.following ? app.palette.rule : .clear))
+                        .frame(minHeight: 44)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("pulse.follow")
@@ -494,16 +640,24 @@ struct PulseViewerView: View {
                         .padding(.vertical, 14).padding(.horizontal, 10)
                         .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .foregroundStyle(app.palette.paper)
+                        .frame(minHeight: 44)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("pulse.viewEvent")
             }
-            .padding(.top, 10)
-            Spacer()
+            Button {
+                app.closePulseOrganizerSheet()
+                app.closePulseViewer()
+                app.openOrganizerProfile(organizerID: item.organizerId, back: .profile)
+            } label: {
+                Text(app.T("Xem trang tổ chức", "View host page"))
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .underline()
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("pulse.viewHost")
         }
-        .foregroundStyle(app.palette.ink)
-        .padding(.horizontal, 22)
-        .background(app.palette.paper.ignoresSafeArea())
     }
 
     // TASK 4 (2026-09-25 fix pass) / B4 (2026-09-26 redesign) — a
@@ -607,185 +761,77 @@ struct PulseViewerView: View {
         .accessibilityIdentifier("pulse.photoCard")
     }
 
-    // TASK 5 (2026-09-25 fix pass) / B5 (2026-09-26 redesign) — a real
-    // fixed-height sheet, top 2/3 a large `<img>`-equivalent (`.scaledToFit`,
-    // never a cropping `.scaledToFill` — portrait AND landscape photos both
-    // display honestly, un-cropped) on a near-black background with a drag
-    // handle + explicit "×" close button overlaid; bottom 1/3 (scrollable)
-    // keeps the organizer identity/verified badge, like/share buttons with
-    // counts, and "Xem sự kiện" link. The `GeometryReader` drives the exact
-    // 2:1 split against the sheet's own live height (this view fills
-    // whatever the `.presentationDetents([.fraction(0.66)])` container
-    // below gives it, matching web's `height: '66vh'`).
+    // Expanded-panel redesign (2026-10-02) — was a native `.sheet` at a
+    // fixed 2/3-of-screen fraction with a hardcoded 2:1 media/footer split
+    // regardless of the real photo's aspect ratio — exactly the "wide
+    // filler panels around the featured photo" this pass removes. Now uses
+    // the shared `pulseExpandedPanel` (image-aware sizing, one glass
+    // surface, no separate boxed media region). Like/Share/View behavior,
+    // permissions, and counts are completely unchanged — only the
+    // surrounding chrome moved.
     @ViewBuilder
     private func photoSheet(_ item: PulsePhotoItem) -> some View {
         let eng = engagement(item)
-        GeometryReader { geo in
-            VStack(spacing: 0) {
-                ZStack {
-                    Color(red: 0.047, green: 0.043, blue: 0.035)
-                    // Black-bar fix (2026-10-25) — this sheet's media area has
-                    // a fixed height (2/3 of the sheet) that rarely matches a
-                    // real photo's own aspect ratio; with only `.scaledToFit()`
-                    // and a solid dark background behind it, the mismatch
-                    // showed as literal black panels (portrait: left/right,
-                    // landscape: top/bottom) — see .claude/notes/20-location-
-                    // hierarchy-photo-viewer.md's own PhotoViewer fix for the
-                    // identical problem/recipe, deliberately NOT applied here
-                    // until now. ONE `AsyncImage` (not two) so foreground and
-                    // backdrop share the same loaded image — no duplicate
-                    // request, no cache-key mismatch, no flicker on photo
-                    // change. Foreground is untouched (`scaledToFit`, full
-                    // uncropped photo); the backdrop is the SAME image
-                    // `scaledToFill`ed across the whole media area, blurred
-                    // and dimmed, replacing the solid-color fill.
-                    if let urlStr = eventPhotoURL(item.photoPath), let url = URL(string: urlStr) {
-                        // Layout-regression fix (2026-10-25, second pass) —
-                        // root cause, confirmed by reading the modifier
-                        // chain: the AsyncImage above had NO explicit frame
-                        // of its own. Without one, AsyncImage's reported
-                        // ideal size is driven by its CONTENT's ideal size —
-                        // and `img.resizable().scaledToFill()`, with no
-                        // bounding frame either, proposes the photo's own
-                        // native pixel width upward as its ideal width. For
-                        // a portrait photo that's still narrower than the
-                        // sheet, so nothing visibly broke; for a landscape
-                        // photo it's WIDER than the sheet, so the ZStack
-                        // (and the VStack/sheet containing it) sized itself
-                        // to that oversized width, shifting the footer
-                        // (organizer name/Like/Share/link, a SIBLING lower
-                        // in the same VStack) right and clipping it —
-                        // exactly the reported symptom, and not something
-                        // `.clipped()` alone (a paint-time crop, not a
-                        // layout constraint) could ever fix.
-                        // Fix: both dimensions of the media area are now
-                        // explicit and container-derived (`geo.size`, the
-                        // GeometryReader this whole sheet is already built
-                        // on — never the image's own intrinsic size). The
-                        // foreground keeps its exact prior look
-                        // (`scaledToFit`, untouched); the blurred backdrop
-                        // moves from a ZStack SIBLING (which independently
-                        // contributes its own layout size) to a
-                        // `.background()` modifier on the foreground —
-                        // backgrounds are always sized to match their host
-                        // view and never drive layout themselves, which is
-                        // the actual guarantee this needed, not merely
-                        // "add a frame and hope."
-                        let mediaSize = CGSize(width: geo.size.width, height: geo.size.height * 2 / 3)
-                        AsyncImage(url: url) { phase in
-                            if let img = phase.image {
-                                img.resizable().scaledToFit()
-                                    .frame(width: mediaSize.width, height: mediaSize.height)
-                                    .background(
-                                        img.resizable().scaledToFill()
-                                            .frame(width: mediaSize.width, height: mediaSize.height)
-                                            // `opaque: true` clamps edge pixels
-                                            // instead of fading them to
-                                            // transparent — without it, the
-                                            // blur itself reintroduces a faint
-                                            // version of the same edge gap
-                                            // this fix is removing.
-                                            .blur(radius: 28, opaque: true)
-                                            .overlay(Color.black.opacity(0.35))
-                                            .clipped()
-                                    )
-                            } else {
-                                Color.clear
+        pulseExpandedPanel(
+            photoURLString: eventPhotoURL(item.photoPath),
+            title: item.eventName,
+            subtitle: item.organizerName + (item.organizerVerified ? " ✓" : ""),
+            metaLine: nil,
+            accessibilityCloseID: "pulse-photo-sheet-close",
+            onClose: { app.closePulsePhotoSheet() }
+        ) {
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    // Heart rule (Task 3) — the glyph only ever renders
+                    // filled (liked) or not at all; no outline/empty heart
+                    // state. Reads/writes the canonical `photoEngagement`
+                    // map, so this matches whatever the quick-action column
+                    // and EventDetail/Organizer/PhotoViewer already show for
+                    // the same photo id.
+                    Button {
+                        Task { await app.togglePhotoLike(item.photoId) }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if eng.likedByMe {
+                                Image(systemName: "heart.fill").font(.system(size: 13))
                             }
+                            Text(app.T("Thích", "Like") + " · \(eng.likeCount)")
                         }
-                        .frame(width: mediaSize.width, height: mediaSize.height)
+                        .font(.system(size: 13, weight: .semibold))
+                        .padding(.horizontal, 18).padding(.vertical, 10)
+                        .frame(minHeight: 44)
+                        .background(eng.likedByMe ? app.palette.ink : Color.clear, in: Capsule())
+                        .foregroundStyle(eng.likedByMe ? app.palette.paper : app.palette.ink)
+                        .overlay(Capsule().stroke(eng.likedByMe ? .clear : app.palette.rule))
+                        .opacity(app.photoEngagementBusy.contains(item.photoId) ? 0.6 : 1)
                     }
-                    VStack {
-                        Capsule().fill(Color.white.opacity(0.55)).frame(width: 36, height: 4)
-                            .padding(.top, 10)
-                        Spacer()
+                    .buttonStyle(.plain)
+                    .disabled(app.photoEngagementBusy.contains(item.photoId))
+                    .accessibilityIdentifier("pulse.photoLike")
+
+                    Button {
+                        sharePulsePhoto(item)
+                    } label: {
+                        Text(app.T("Chia sẻ", "Share") + " · \(eng.shareCount)")
+                            .font(.system(size: 13, weight: .semibold))
+                            .padding(.horizontal, 18).padding(.vertical, 10)
+                            .frame(minHeight: 44)
+                            .overlay(Capsule().stroke(app.palette.rule))
+                            .foregroundStyle(app.palette.ink)
                     }
-                    VStack {
-                        HStack {
-                            Spacer()
-                            Button { app.closePulsePhotoSheet() } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 30, height: 30)
-                                    .background(Color.black.opacity(0.5), in: Circle())
-                            }
-                            .buttonStyle(.plain)
-                            .padding(12)
-                            .accessibilityIdentifier("pulse-photo-sheet-close")
-                        }
-                        Spacer()
-                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("pulse.photoShare")
                 }
-                .frame(width: geo.size.width, height: geo.size.height * 2 / 3)
-                .clipped()
 
-                ScrollView {
-                    VStack(spacing: 8) {
-                        Text(item.organizerName + (item.organizerVerified ? " ✓" : "")).font(BanbeTheme.display(16))
-                        if item.organizerVerified {
-                            Text(app.T("Đã xác minh", "Verified")).font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
-                        }
-
-                        HStack(spacing: 10) {
-                            // Heart rule (Task 3) — the glyph only ever
-                            // renders filled (liked) or not at all; no
-                            // outline/empty heart state. Reads/writes the
-                            // canonical `photoEngagement` map, so this
-                            // matches whatever the quick-action column and
-                            // EventDetail/Organizer/PhotoViewer already show
-                            // for the same photo id.
-                            Button {
-                                Task { await app.togglePhotoLike(item.photoId) }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    if eng.likedByMe {
-                                        Image(systemName: "heart.fill").font(.system(size: 13))
-                                    }
-                                    Text(app.T("Thích", "Like") + " · \(eng.likeCount)")
-                                }
-                                .font(.system(size: 13, weight: .semibold))
-                                .padding(.horizontal, 18).padding(.vertical, 10)
-                                .background(eng.likedByMe ? app.palette.ink : Color.clear, in: Capsule())
-                                .foregroundStyle(eng.likedByMe ? app.palette.paper : app.palette.ink)
-                                .overlay(Capsule().stroke(eng.likedByMe ? .clear : app.palette.rule))
-                                .opacity(app.photoEngagementBusy.contains(item.photoId) ? 0.6 : 1)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(app.photoEngagementBusy.contains(item.photoId))
-                            .accessibilityIdentifier("pulse.photoLike")
-
-                            Button {
-                                sharePulsePhoto(item)
-                            } label: {
-                                Text(app.T("Chia sẻ", "Share") + " · \(eng.shareCount)")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .padding(.horizontal, 18).padding(.vertical, 10)
-                                    .overlay(Capsule().stroke(app.palette.rule))
-                                    .foregroundStyle(app.palette.ink)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("pulse.photoShare")
-                        }
-                        .padding(.top, 6)
-
-                        Button(app.T("Xem sự kiện / trang tổ chức", "View event / host page")) {
-                            app.closePulsePhotoSheet()
-                            app.closePulseViewer()
-                            app.goEvent(item.eventId)
-                        }
-                        .font(.system(size: 12)).foregroundStyle(app.palette.ink).underline()
-                        .padding(.top, 4)
-                        .accessibilityIdentifier("pulse.photoViewEvent")
-                    }
-                    .foregroundStyle(app.palette.ink)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 22).padding(.top, 14).padding(.bottom, 26)
+                Button(app.T("Xem sự kiện / trang tổ chức", "View event / host page")) {
+                    app.closePulsePhotoSheet()
+                    app.closePulseViewer()
+                    app.goEvent(item.eventId)
                 }
-                .frame(height: geo.size.height / 3)
-                .background(app.palette.paper)
+                .font(.system(size: 12)).foregroundStyle(app.palette.ink).underline()
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("pulse.photoViewEvent")
             }
         }
-        .ignoresSafeArea(edges: .bottom)
     }
 }

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { EVENTS, findEvent, haversineKm } from '../data/events.js';
+import { EVENTS, findEvent, isCosmeticCatalogMatch, haversineKm } from '../data/events.js';
 import { supabase, getAuthRedirectUrl } from '../lib/supabase.js';
 import { requestAuthEmail, requestPasswordSignup, requestPasswordReset } from '../lib/authEmail.js';
 import { renderPaymentDocument, formatVnd } from '../lib/paymentDocument.js';
@@ -212,7 +212,7 @@ function mergePhotoEngagement(existing, rows) {
  * description, included list, organizer bio/trust stats, extra gallery
  * photos) is an honest empty string/neutral default, never invented.
  */
-function shapeRealEventAsCurEvent(real) {
+export function shapeRealEventAsCurEvent(real) {
   const startsAt = real.startsAt ? new Date(real.startsAt) : null;
   const { weekdayShort, dayMonth, dayLong, time } = startsAt ? formatVnEventDate(startsAt) : {};
   const endedHoursAgo = real.status === 'ended' && startsAt ? Math.max(0, Math.round((Date.now() - startsAt.getTime()) / 3600000)) : null;
@@ -805,6 +805,13 @@ const initialState = {
   // status) for whichever organizer the owner is currently managing in
   // Dashboard — never fetched for an organizer this account doesn't own.
   myOrganizerInvites: [], myTeamMemberships: [], orgTeamRoster: [], orgTeamRosterLoading: false,
+  // Admin Team pass (2026-10-02, migration 121) — see that migration's own
+  // doc comment for the full RBAC model. `canManageAdmins` is a plain
+  // profile column read back on sync, never client-derived/assumed.
+  canManageAdmins: false, myAdminInvite: null,
+  adminRoster: [], adminInvites: [], adminTeamLoading: false,
+  adminInviteEmailDraft: '', adminInviteBusy: false, adminInviteError: '',
+  adminInviteConfirmEmail: null, revokeAdminInviteConfirmId: null, revokeAdminConfirmId: null,
   orgTeamInviteHandle: '', orgTeamInviteRole: '', orgTeamInviteError: '', orgTeamInviteBusy: false,
   // Organizer Team pass (2026-09-27, Stage 2) — the public Team page
   // (get_organizer_team) and this account's own pending event-credit
@@ -1580,7 +1587,7 @@ export function GocProvider({ children }) {
       }
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, locale, theme, prefs_saved, display_name, referral_code, policy_accepted_at, policy_version, auto_email_documents, muted_notification_kinds, handle, avatar_url, bio, city, interests, profile_theme, intro_long, social_links, organizer_mode_enabled')
+        .select('role, locale, theme, prefs_saved, display_name, referral_code, policy_accepted_at, policy_version, auto_email_documents, muted_notification_kinds, handle, avatar_url, bio, city, interests, profile_theme, intro_long, social_links, organizer_mode_enabled, can_manage_admins')
         .eq('id', user.id)
         .maybeSingle();
       const role =
@@ -1629,6 +1636,7 @@ export function GocProvider({ children }) {
           introLong: profile?.intro_long || '', socialLinks: profile?.social_links || [],
         },
         ...roleFields,
+        canManageAdmins: profile?.can_manage_admins === true,
         referralCode: profile?.referral_code || null, sessionChecked: true,
         autoEmailDocuments: profile?.auto_email_documents === true,
         mutedNotificationKinds: profile?.muted_notification_kinds || [],
@@ -2356,6 +2364,20 @@ export function GocProvider({ children }) {
                 ? { booking: { ...prev.booking, status: 'cancelled' } }
                 : {}));
             }
+          }
+          // Admin Team pass (2026-10-02, migration 121) — revoke_admin()'s
+          // own doc comment: "revocation must invalidate admin access, not
+          // merely hide a tab until next login." Same proactive, not
+          // tap-gated pattern as booking_declined's Going-tag fix above —
+          // this poll already runs every 5s regardless of whether the
+          // toast is tapped, so a revoked admin loses the Admin tab (and
+          // whatever RLS-backed data it showed) within one cycle, not at
+          // next sign-in.
+          if (n.kind === 'admin_access_revoked') {
+            set(prev => ({
+              accountType: 'participant', canManageAdmins: false,
+              accountTab: prev.accountTab === 'admin' ? 'personal' : prev.accountTab,
+            }));
           }
         }
       }
@@ -6447,6 +6469,126 @@ export function GocProvider({ children }) {
     }
   }, [set]);
 
+  // ---- Admin Team pass (2026-10-02, migration 121) ----
+  // See that migration's own doc comment for the full RBAC model:
+  // `role = 'admin'` and `can_manage_admins = true` are two different
+  // things, checked separately server-side in every RPC below — this
+  // client code never assumes/derives either, only ever reflects what the
+  // server already decided.
+
+  /** This account's OWN pending admin invite, if any — a plain RLS-backed
+   * select (admin_invites_select_own), reachable regardless of current
+   * role (the whole point: the invitee isn't an admin yet). */
+  const loadMyAdminInvite = useCallback(async () => {
+    if (!s.user?.id) return;
+    const { data, error } = await supabase
+      .from('admin_invites')
+      .select('id, status, created_at, expires_at')
+      .eq('invited_user_id', s.user.id)
+      .eq('status', 'pending')
+      .maybeSingle();
+    if (error) { console.warn('loadMyAdminInvite failed:', error); return; }
+    set({ myAdminInvite: data || null });
+  }, [set, s.user?.id]);
+
+  const respondToAdminInvite = useCallback(async (inviteId, accept) => {
+    const { data, error } = await supabase.rpc('respond_to_admin_invite', { p_invite_id: inviteId, p_accept: accept });
+    if (error || data?.success === false) { console.warn('respondToAdminInvite failed:', error || data); return false; }
+    set({ myAdminInvite: null });
+    // Accepting changes this account's own role server-side — patch the
+    // client's cached copy immediately (a direct, targeted re-read, same
+    // "don't just hide a tab until next login" requirement this
+    // migration's own revoke_admin()/admin_access_revoked path also
+    // honors below) rather than waiting for the next sign-in/token-refresh
+    // cycle to pick up the new role.
+    if (accept && s.user?.id) {
+      const { data: profile } = await supabase.from('profiles').select('role, can_manage_admins').eq('id', s.user.id).maybeSingle();
+      if (profile) set({ accountType: profile.role, canManageAdmins: profile.can_manage_admins === true });
+    }
+    return true;
+  }, [set, s.user]);
+
+  /** Manage-admins-capable admin only — both lists come back empty/denied
+   * under RLS for anyone else; this is a convenience fetch, not the real
+   * security boundary. */
+  const loadAdminTeam = useCallback(async () => {
+    if (!s.user?.id) return;
+    set({ adminTeamLoading: true });
+    const [{ data: roster, error: rosterError }, { data: invites, error: invitesError }] = await Promise.all([
+      supabase.rpc('list_admin_roster'),
+      supabase.from('admin_invites').select('id, invited_email, status, created_at, expires_at').order('created_at', { ascending: false }),
+    ]);
+    if (rosterError) console.warn('list_admin_roster failed:', rosterError);
+    if (invitesError) console.warn('loadAdminTeam invites failed:', invitesError);
+    set({ adminRoster: roster || [], adminInvites: invites || [], adminTeamLoading: false });
+  }, [set, s.user?.id]);
+
+  const setAdminInviteEmailDraft = useCallback((e) => set({ adminInviteEmailDraft: e.target.value, adminInviteError: '' }), [set]);
+
+  // Explicit confirmation of the intended recipient before anything is
+  // sent — opens a plain inline confirm (same lightweight pattern
+  // Dashboard.jsx's withdraw-submission row already uses), never sends on
+  // one tap.
+  const requestAdminInviteConfirm = useCallback(() => {
+    const email = s.adminInviteEmailDraft.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { set({ adminInviteError: T('Email không hợp lệ.', 'Invalid email address.') }); return; }
+    set({ adminInviteConfirmEmail: email });
+  }, [set, s.adminInviteEmailDraft, T]);
+  const cancelAdminInviteConfirm = useCallback(() => set({ adminInviteConfirmEmail: null }), [set]);
+
+  const ADMIN_INVITE_ERROR_MESSAGES = {
+    NOT_AUTHORIZED: T('Bạn không có quyền mời quản trị viên.', "You don't have permission to invite admins."),
+    INVALID_EMAIL: T('Email không hợp lệ.', 'Invalid email address.'),
+    ALREADY_ADMIN: T('Tài khoản này đã là quản trị viên.', 'That account is already an admin.'),
+    ALREADY_INVITED_PENDING: T('Đã có lời mời đang chờ cho email này.', 'There is already a pending invite for this email.'),
+  };
+  const confirmAdminInvite = useCallback(async () => {
+    const email = s.adminInviteConfirmEmail;
+    if (!email) return;
+    set({ adminInviteBusy: true, adminInviteError: '' });
+    const { data, error } = await supabase.rpc('create_admin_invite', { p_email: email });
+    set({ adminInviteBusy: false, adminInviteConfirmEmail: null });
+    if (error || data?.success === false) {
+      const code = data?.error;
+      set({ adminInviteError: ADMIN_INVITE_ERROR_MESSAGES[code] || T('Không gửi được lời mời.', 'Could not send the invite.') });
+      return;
+    }
+    set({ adminInviteEmailDraft: '' });
+    await loadAdminTeam();
+  }, [set, s.adminInviteConfirmEmail, loadAdminTeam, T]);
+
+  const requestRevokeAdminInviteConfirm = useCallback((id) => set({ revokeAdminInviteConfirmId: id }), [set]);
+  const cancelRevokeAdminInviteConfirm = useCallback(() => set({ revokeAdminInviteConfirmId: null }), [set]);
+  const confirmRevokeAdminInvite = useCallback(async () => {
+    const id = s.revokeAdminInviteConfirmId;
+    if (!id) return;
+    const { data, error } = await supabase.rpc('revoke_admin_invite', { p_invite_id: id });
+    set({ revokeAdminInviteConfirmId: null });
+    if (error || data?.success === false) { console.warn('revoke_admin_invite failed:', error || data); return; }
+    await loadAdminTeam();
+  }, [set, s.revokeAdminInviteConfirmId, loadAdminTeam]);
+
+  const requestRevokeAdminConfirm = useCallback((id) => set({ revokeAdminConfirmId: id }), [set]);
+  const cancelRevokeAdminConfirm = useCallback(() => set({ revokeAdminConfirmId: null }), [set]);
+  const REVOKE_ADMIN_ERROR_MESSAGES = {
+    NOT_AUTHORIZED: T('Bạn không có quyền này.', "You don't have this permission."),
+    CANNOT_REVOKE_SELF: T('Bạn không thể tự thu hồi quyền của chính mình.', 'You cannot revoke your own admin access.'),
+    LAST_ADMIN_CANNOT_BE_REVOKED: T('Không thể thu hồi quản trị viên cuối cùng.', 'The last remaining admin cannot be revoked.'),
+    TARGET_NOT_ADMIN: T('Tài khoản này không phải quản trị viên.', 'That account is not an admin.'),
+  };
+  const confirmRevokeAdmin = useCallback(async () => {
+    const id = s.revokeAdminConfirmId;
+    if (!id) return;
+    const { data, error } = await supabase.rpc('revoke_admin', { p_user_id: id });
+    set({ revokeAdminConfirmId: null });
+    if (error || data?.success === false) {
+      console.warn('revoke_admin failed:', error || data);
+      set({ adminInviteError: REVOKE_ADMIN_ERROR_MESSAGES[data?.error] || T('Không thực hiện được thao tác.', 'Could not complete that action.') });
+      return;
+    }
+    await loadAdminTeam();
+  }, [set, s.revokeAdminConfirmId, loadAdminTeam, T]);
+
   /** Owner/co-owner only — the FULL roster (every status), never shown to
    * anyone else. Direct select relies on organizer_members_select_owner. */
   const loadOrgTeamRoster = useCallback(async (organizerId) => {
@@ -8737,7 +8879,14 @@ export function GocProvider({ children }) {
       refundCenterClaims: [], refundCenterSelected: [], refundBatchError: '',
     });
     loadAttendanceGuests(key);
-  }, [set, loadAttendanceGuests]);
+    // 15-organizer-checkin.md: Attendance.jsx used to render `findEvent(key)`
+    // directly, whose own `|| EVENTS[0]` fallback silently substituted the
+    // first demo event ("Bếp Nhỏ №12") for any real, host-created event's
+    // key. Same canonical realEventsById cache/fetch `curEvent` already
+    // uses for EventDetail — a no-op if `key` is a bundled catalogue id or
+    // already cached/in flight.
+    if (key && !isCosmeticCatalogMatch(key)) loadRealEventsById([key]);
+  }, [set, loadAttendanceGuests, loadRealEventsById]);
   const backFromAttendance = useCallback(() => set(prev => ({ screen: prev.attendanceBack || 'dashboard' })), [set]);
 
   // Reopens the Confirmed/ticket screen for a specific booking — used when
@@ -9060,13 +9209,32 @@ export function GocProvider({ children }) {
       case 'event_credit_invite':
         set({ screen: 'profile', accountTab: 'personal' });
         break;
+      // Admin Team pass (2026-10-02) — the invitee's own pending invite
+      // lives on the SAME "Cá nhân" tab banner as a Team invite (never an
+      // admin-only destination — the whole point is this account isn't an
+      // admin yet); "someone responded" lands the manager back on the
+      // Admin Team group, permission-rechecked there like every other
+      // admin-only surface (openAccountGroup/AccountGroup.jsx's own gate).
+      case 'admin_invite':
+        set({ screen: 'profile', accountTab: 'personal' });
+        break;
+      case 'admin_invite_response':
+        if (s.canManageAdmins) { set({ accountTab: 'admin' }); openAccountGroup('adminTeam'); }
+        break;
+      case 'admin_access_revoked':
+        // Already handled proactively by the toast poll itself (see its
+        // own comment) the instant this notification is first seen — a
+        // later tap on the same notification just lands on a truthful,
+        // already-personal-tab Account screen.
+        set({ screen: 'profile', accountTab: 'personal' });
+        break;
       // 'guest_renamed': category B, informational only, no destination by
       // design — falls to default. markNotificationRead() above is the
       // whole "action."
       default:
         break;
     }
-  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, s.myOrganizerIds, openVerifications, openPaymentDetails, openDocumentFromNotification, reportStaleNotification, goEvent, goDashboard]);
+  }, [markNotificationRead, openThread, openAttendance, openBookingConfirmed, set, s.accountType, s.myOrgEventKeys, s.myOrganizerIds, s.canManageAdmins, openVerifications, openPaymentDetails, openDocumentFromNotification, reportStaleNotification, goEvent, goDashboard, openAccountGroup]);
   /**
    * The organizer's "mark as paid". confirm_payment issues the receipt in
    * the same transaction (migration 024) and notifies the guest, which is
@@ -9263,7 +9431,7 @@ export function GocProvider({ children }) {
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
@@ -9300,7 +9468,7 @@ export function GocProvider({ children }) {
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
-    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
+    goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,

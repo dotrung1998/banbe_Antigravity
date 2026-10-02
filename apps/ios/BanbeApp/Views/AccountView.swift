@@ -14,6 +14,7 @@ let ROW_ACCENT_COLORS: [String: Color] = [
     "preferences": ProfilePalette.all.first { $0.key == "ink" }!.color,
     "hostOps": ProfilePalette.all.first { $0.key == "moss" }!.color,
     "adminReview": ProfilePalette.all.first { $0.key == "rose" }!.color,
+    "adminTeam": ProfilePalette.all.first { $0.key == "ink" }!.color,
 ]
 
 /// Port of src/screens/Account.jsx — profile header with rename, the
@@ -122,7 +123,16 @@ struct AccountView: View {
             app.palette.paper.ignoresSafeArea()
         VStack(alignment: .leading, spacing: 0) {
             accountHeader
-            ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.accountScrollAnchorID, refreshIndicatorTopPadding: 24, onRefresh: {
+            // Fixed-header pass (2026-10-02) — tabs used to be the FIRST
+            // row inside `accountContent`'s own LazyVStack, i.e. inside the
+            // scrollable `ScreenScaffold` content: scrolling the Personal/
+            // Host/Admin body carried the tab pills away with it, so
+            // switching tabs required scrolling back to the top first.
+            // Pulled out as a second fixed sibling (same mechanism/doc
+            // comment as `accountHeader` just above) — only the selected
+            // tab's own body, inside ScreenScaffold, scrolls now.
+            accountTabsBar
+            ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: accountScrollAnchorBinding, refreshIndicatorTopPadding: 24, onRefresh: {
                 guard app.userID != nil else { return }
                 await app.loadPaymentBookings()
                 await app.loadMyRefunds()
@@ -139,6 +149,13 @@ struct AccountView: View {
         }
         .task { if app.userID != nil { await app.loadHomeStories() } }
         .task { if app.userID != nil { await app.loadMyOrganizerMemberships() } }
+        // Admin Team pass (2026-10-02) — this account's own pending admin
+        // invite (reachable regardless of role) and, for a manage-admins-
+        // capable admin, the roster/invites source for the Admin-tab
+        // badge — same "load it here so the badge is real, not stale"
+        // reasoning as pendingEventsCount below.
+        .task { if app.userID != nil { await app.loadMyAdminInvite() } }
+        .task { if app.canManageAdmins { await app.loadAdminTeam() } }
         .task { if app.userID != nil { await app.loadMyEventCredits() } }
         .task { if app.userID != nil { await app.loadMyConfirmedEventCredits() } }
         // TASK A (2026-10-01 UX foundation pass) — same canonical loaders
@@ -213,20 +230,25 @@ struct AccountView: View {
         .padding(.top, 16)
     }
 
+    /// Fixed-header pass (2026-10-02) — extracted out of `accountContent`
+    /// (see `body`'s own call-site comment) so switching tabs never
+    /// requires scrolling back to the top first. Same tab-button model
+    /// (`accountTabs`/`accountTabButton`) and `app.accountTab` state,
+    /// unchanged — purely a layout move, no new tab/navigation system.
+    private var accountTabsBar: some View {
+        HStack(spacing: 6) {
+            ForEach(accountTabs, id: \.0) { key, label, badge in
+                accountTabButton(key: key, label: label, badge: badge)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
+        .background(app.palette.paper)
+    }
+
     private var accountContent: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
-            // Account extension (2026-09-27, Stage 1) — "organizer mode
-            // OFF means host UI is OFF": the Tổ chức tab itself is gone
-            // while `organizerMode` is off, not just gated content inside
-            // it — `canHost` (eligibility, e.g. `hasHosted`) intentionally
-            // stays out of this condition, see applyOrganizerMode's own
-            // doc comment for why conflating the two was the earlier bug.
-            HStack(spacing: 6) {
-                ForEach(accountTabs, id: \.0) { key, label, badge in
-                    accountTabButton(key: key, label: label, badge: badge)
-                }
-            }
-
             // iPhone fix pass (2026-09-26) — this personal identity
             // card (and its story ring/"Đổi tên") used to render
             // regardless of `app.accountTab`, so it also showed on Tổ chức,
@@ -492,6 +514,28 @@ struct AccountView: View {
                 .accessibilityIdentifier("account.teamInviteBanner")
             }
 
+            // Admin Team pass (2026-10-02) — same banner shape as the Team
+            // invite above, reachable regardless of current role (the
+            // invitee isn't an admin yet).
+            if let invite = app.myAdminInvite {
+                Button { app.accountGroupKey = "adminTeam"; app.screen = .accountGroup } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.shield").font(.system(size: 16, weight: .medium)).frame(width: 30, height: 30)
+                            .background((ROW_ACCENT_COLORS["adminTeam"] ?? .clear).opacity(0.33), in: Circle())
+                        Text(app.T("Bạn có lời mời quản trị", "You have an admin invite")).font(.system(size: 14))
+                        Spacer()
+                        Text("›").font(.system(size: 15))
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(16)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 8)
+                .accessibilityIdentifier("account.adminInviteBanner")
+                .id(invite.id)
+            }
+
             // Account extension (2026-09-27, Stage 1) — "organizer mode
             // OFF means host UI is OFF": the whole Tổ chức tab disappears
             // while this is off, so the ON/OFF control itself (and any
@@ -574,6 +618,17 @@ struct AccountView: View {
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 20)
         .padding(.top, 16)
+        // Fixed-header pass (2026-10-02) — each tab's body is now a
+        // distinctly-identified subtree, so switching tabs tears down and
+        // recreates it (standard SwiftUI "new identity resets scroll
+        // offset" behavior) instead of silently keeping whatever physical
+        // scroll offset the PREVIOUS tab's (now-replaced) content happened
+        // to be at. Combined with `accountScrollAnchorBinding`'s own
+        // per-tab dictionary, a tab with a previously-stored anchor still
+        // restores to it on this same re-creation — same mechanism
+        // `retryScrollRestoreIfNeeded` already uses for a full screen
+        // return, just re-keyed per tab instead of per screen visit.
+        .id(app.accountTab)
     }
 
     // iPhone fix pass (2026-09-27), Issue 1 — consumes whichever highlight
@@ -1106,7 +1161,17 @@ struct AccountView: View {
     // migration 040) — RLS is the real backstop; openAdminDashboard()
     // guards again regardless.
     private var adminSection: some View {
-        groupCard(groupKey: "adminReview", icon: "exclamationmark.shield", label: app.T("Duyệt & Kiểm Duyệt", "Review & Moderation"), badge: app.pendingEventsCount, topPadding: 22)
+        VStack(spacing: 0) {
+            groupCard(groupKey: "adminReview", icon: "exclamationmark.shield", label: app.T("Duyệt & Kiểm Duyệt", "Review & Moderation"), badge: app.pendingEventsCount, topPadding: 22)
+            // Admin Team pass (2026-10-02) — reachable to every admin (a
+            // permission-less admin can at least see who the team is /
+            // why they can't manage it, AccountGroupView's own gate
+            // decides what renders inside); badge only ever counts real,
+            // still-pending invites (adminInvites is only populated for a
+            // canManageAdmins account — RLS denies the read otherwise, so
+            // a non-manager's badge is honestly 0, never a guessed number).
+            groupCard(groupKey: "adminTeam", icon: "person.3", label: app.T("Đội Ngũ Quản Trị", "Admin Team"), badge: app.adminInvites.filter { $0.status == "pending" }.count, topPadding: 10)
+        }
     }
 
     /// Host tab's OWN rounded profile card (Stage D) — organizer avatar/
@@ -1202,12 +1267,24 @@ struct AccountView: View {
     // equivalent async "feed" gate its own content is waiting on), so this
     // never needs to fall back to a delayed retry.
     private func retryScrollRestoreIfNeeded() {
-        guard !didAttemptScrollRestore, let target = app.accountScrollAnchorID else { return }
+        guard !didAttemptScrollRestore, let target = app.accountScrollAnchorIDByTab[app.accountTab] else { return }
         didAttemptScrollRestore = true
-        app.accountScrollAnchorID = nil
+        let tab = app.accountTab
+        app.accountScrollAnchorIDByTab[tab] = nil
         DispatchQueue.main.async {
-            app.accountScrollAnchorID = target
+            app.accountScrollAnchorIDByTab[tab] = target
         }
+    }
+
+    /// Fixed-header pass (2026-10-02) — per-tab scroll anchor (see
+    /// `AppState.accountScrollAnchorIDByTab`'s own doc comment), so
+    /// switching Personal/Host/Admin and coming back preserves EACH tab's
+    /// own position independently instead of one shared anchor.
+    private var accountScrollAnchorBinding: Binding<String?> {
+        Binding(
+            get: { app.accountScrollAnchorIDByTab[app.accountTab] },
+            set: { app.accountScrollAnchorIDByTab[app.accountTab] = $0 }
+        )
     }
 }
 

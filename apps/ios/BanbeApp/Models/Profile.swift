@@ -51,6 +51,11 @@ struct Profile: Codable, Identifiable, Hashable {
     // true server-side; optional here only because a row from before this
     // migration has no such column at all.
     var organizerModeEnabled: Bool?
+    // Admin Team pass (2026-10-02, migration 121) — distinct from `role`
+    // itself; see that migration's own doc comment for the full RBAC
+    // model. Optional only because a row from before this migration has
+    // no such column.
+    var canManageAdmins: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -76,6 +81,7 @@ struct Profile: Codable, Identifiable, Hashable {
         case introLong = "intro_long"
         case socialLinks = "social_links"
         case organizerModeEnabled = "organizer_mode_enabled"
+        case canManageAdmins = "can_manage_admins"
     }
 }
 

@@ -93,6 +93,75 @@ function FilledHeart({ size = 16 }) {
   );
 }
 
+// Expanded-panel redesign (2026-10-02) — "IMG_6770 still has wide filler
+// panels around the featured photo" + iOS's expanded media control (Now
+// Playing card) as the VISUAL/interaction reference, not an audio player.
+// Replaces BOTH the oversized bottom-sheet (`pulse-photo-sheet`, 66vh with
+// a fixed 2:1 media/footer split regardless of the real photo's aspect
+// ratio) and the plain no-image bottom sheet (`pulseOrganizerSheet`) with
+// ONE shared, centered floating glass card bounded to the viewport with
+// margins. The image sizes itself to its OWN aspect ratio (`maxHeight`
+// only, never a fixed box) instead of a fixed media region — mirrors
+// `apps/ios/BanbeApp/Views/PulseViewerView.swift`'s `pulseExpandedPanel`
+// exactly, same shared-backdrop-image / no-separate-boxed-media-panel
+// approach, so preview/expanded behavior matches on both platforms.
+function ExpandedPanel({ photoUrl, title, subtitle, metaLine, onClose, closeTestId, testId, children }) {
+  return (
+    <div
+      onClick={onClose}
+      data-testid={testId}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(20,18,15,0.55)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 70, padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'relative', width: '100%', maxWidth: 420, maxHeight: 'calc(100vh - 64px)',
+          display: 'flex', flexDirection: 'column', borderRadius: 26, overflow: 'hidden',
+          background: 'rgba(250,248,244,0.78)', backdropFilter: 'blur(26px) saturate(160%)', WebkitBackdropFilter: 'blur(26px) saturate(160%)',
+          boxShadow: '0 30px 60px rgba(0,0,0,0.32)', border: '1px solid rgba(255,255,255,0.35)',
+        }}
+        className="pulse-expanded-panel"
+      >
+        {/* Same-image soft backdrop, as part of the OVERALL panel (one
+            surface) rather than a second, visibly-separate rectangle
+            behind just the photo. */}
+        {photoUrl && (
+          <img
+            src={photoUrl} alt="" aria-hidden="true"
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(46px)', opacity: 0.35, transform: 'scale(1.2)', zIndex: 0 }}
+          />
+        )}
+        <span
+          onClick={onClose}
+          data-testid={closeTestId}
+          style={{
+            position: 'absolute', top: 10, right: 10, width: 44, height: 44, borderRadius: 999,
+            background: 'rgba(12,12,12,0.5)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', fontSize: 18, zIndex: 2,
+          }}
+        >×</span>
+        <div style={{ position: 'relative', zIndex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {photoUrl && (
+            // image-aware sizing: maxHeight only — never a fixed box, so a
+            // portrait photo stays tall/narrow and a landscape photo stays
+            // short/wide, both fully visible and un-cropped.
+            <img src={photoUrl} alt="" style={{ display: 'block', width: 'auto', maxWidth: '100%', maxHeight: '52vh', objectFit: 'contain', marginTop: 18 }} />
+          )}
+          <div style={{ padding: '14px 22px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: '100%', boxSizing: 'border-box' }}>
+            <span style={{ ...display(18), textAlign: 'center' }}>{title}</span>
+            {subtitle && <span style={{ fontSize: 12.5, color: ink, opacity: 0.75, textAlign: 'center' }}>{subtitle}</span>}
+            {metaLine && <span style={{ fontSize: 11, color: ink, opacity: 0.6, textAlign: 'center' }}>{metaLine}</span>}
+            <div style={{ marginTop: 6, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>{children}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ShareGlyph({ size = 15 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -124,7 +193,7 @@ const TABS = [
 export default function PulseViewer() {
   const {
     state, T, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer,
-    openPulsePhotoSheet, closePulsePhotoSheet, togglePhotoLike, sharePhoto, goEvent,
+    openPulsePhotoSheet, closePulsePhotoSheet, togglePhotoLike, sharePhoto, goEvent, openOrganizerProfile,
   } = useGoc();
   const s = state;
   const [dragX, setDragX] = useState(0);
@@ -428,131 +497,105 @@ export default function PulseViewer() {
         })}
       </div>
 
-      {/* B5 — the ranked-photo sheet: top 2/3 a large, clear image (a real
-          <img> with object-fit:contain, never a cropping background-cover,
-          so portrait/landscape photos both show honestly); bottom 1/3 the
-          existing host identity, counts, like/share, view-event actions. */}
+      {/* Expanded-panel redesign (2026-10-02) — see ExpandedPanel's own doc
+          comment. Like/Share permissions, counts, selected item, and
+          dismissal/return-state are all unchanged — only the surrounding
+          chrome moved from an oversized bottom-sheet to a centered,
+          image-aware floating card. */}
       {s.pulsePhotoSheet && (
-        <div onClick={closePulsePhotoSheet} style={{ position: 'fixed', inset: 0, background: 'rgba(12,12,12,0.6)', display: 'flex', alignItems: 'flex-end', zIndex: 70 }} data-testid="pulse-photo-sheet">
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ background: paper, width: '100%', height: '66vh', borderRadius: '18px 18px 0 0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-          >
-            <div style={{ position: 'relative', flex: '2 1 0', minHeight: 0, background: '#0C0B09', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-              {/* Black-bar fix (2026-10-25) — object-fit:contain against a
-                  fixed-aspect container left the solid #0C0B09 background
-                  showing as literal black panels (portrait: sides,
-                  landscape: top/bottom) whenever the photo's own aspect
-                  didn't match. Same recipe as PhotoViewer.jsx's existing
-                  aspect-fit/aspect-fill fix (.claude/notes/20-location-
-                  hierarchy-photo-viewer.md) — a blurred, dimmed cover-fit
-                  copy of the SAME <img src>, which browsers already resolve
-                  from the shared HTTP cache (no duplicate request), behind
-                  the untouched contain-fit foreground. overflow:hidden on
-                  this container (new) clips the blur to the media area, so
-                  it can't bleed into the caption/footer panel below. */}
-              {(() => {
-                const src = eventPhotoUrl(s.pulsePhotoSheet.photo_path);
-                if (!src) return null;
-                return (
-                  <>
-                    <img
-                      src={src} alt="" aria-hidden="true"
-                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(28px)', transform: 'scale(1.15)' }}
-                    />
-                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} />
-                    <img src={src} alt="" style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                  </>
-                );
-              })()}
-              <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', width: 36, height: 4, background: 'rgba(255,255,255,0.55)', borderRadius: 2 }} />
-              <span
-                onClick={closePulsePhotoSheet}
-                data-testid="pulse-photo-sheet-close"
-                style={{ position: 'absolute', top: 12, right: 12, width: 30, height: 30, borderRadius: 999, background: 'rgba(12,12,12,0.5)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 18 }}
-              >×</span>
+        <ExpandedPanel
+          testId="pulse-photo-sheet"
+          photoUrl={eventPhotoUrl(s.pulsePhotoSheet.photo_path)}
+          title={s.pulsePhotoSheet.event_name}
+          subtitle={s.pulsePhotoSheet.organizer_name + (s.pulsePhotoSheet.organizer_verified ? ' ✓' : '')}
+          onClose={closePulsePhotoSheet}
+          closeTestId="pulse-photo-sheet-close"
+        >
+          <div style={{ display: 'flex', gap: 10 }}>
+            {/* Heart rule (Task 3) — the glyph itself only ever renders
+                filled (liked) or not at all (not liked); no outline/empty
+                heart state. */}
+            <div
+              onClick={() => togglePhotoLike(s.pulsePhotoSheet.photo_id)}
+              data-testid="pulse-photo-like"
+              style={{
+                fontSize: 13, fontWeight: 600, padding: '10px 20px', minHeight: 44, boxSizing: 'border-box', borderRadius: 999, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: s.photoEngagement[s.pulsePhotoSheet.photo_id]?.likedByMe ? ink : 'transparent',
+                color: s.photoEngagement[s.pulsePhotoSheet.photo_id]?.likedByMe ? paper : ink,
+                border: s.photoEngagement[s.pulsePhotoSheet.photo_id]?.likedByMe ? 'none' : `1px solid ${rule}`,
+                opacity: s.photoEngagementBusy[s.pulsePhotoSheet.photo_id] ? 0.6 : 1,
+                transition: 'opacity .15s ease',
+              }}
+            >
+              {s.photoEngagement[s.pulsePhotoSheet.photo_id]?.likedByMe && <FilledHeart size={14} />}
+              <span>{T('Thích', 'Like')} · {s.photoEngagement[s.pulsePhotoSheet.photo_id]?.likeCount ?? s.pulsePhotoSheet.like_count}</span>
             </div>
-            <div style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto', padding: '14px 22px 26px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-              <span style={{ ...display(16) }}>{s.pulsePhotoSheet.organizer_name}{s.pulsePhotoSheet.organizer_verified ? ' ✓' : ''}</span>
-              {s.pulsePhotoSheet.organizer_verified && (
-                <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T('Đã xác minh', 'Verified')}</span>
-              )}
-              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                {/* Heart rule (Task 3) — the glyph itself only ever renders
-                    filled (liked) or not at all (not liked); no outline/empty
-                    heart state. */}
-                <div
-                  onClick={() => togglePhotoLike(s.pulsePhotoSheet.photo_id)}
-                  data-testid="pulse-photo-like"
-                  style={{
-                    fontSize: 13, fontWeight: 600, padding: '10px 20px', borderRadius: 999, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    background: s.photoEngagement[s.pulsePhotoSheet.photo_id]?.likedByMe ? ink : 'transparent',
-                    color: s.photoEngagement[s.pulsePhotoSheet.photo_id]?.likedByMe ? paper : ink,
-                    border: s.photoEngagement[s.pulsePhotoSheet.photo_id]?.likedByMe ? 'none' : `1px solid ${rule}`,
-                    opacity: s.photoEngagementBusy[s.pulsePhotoSheet.photo_id] ? 0.6 : 1,
-                    transition: 'opacity .15s ease',
-                  }}
-                >
-                  {s.photoEngagement[s.pulsePhotoSheet.photo_id]?.likedByMe && <FilledHeart size={14} />}
-                  <span>{T('Thích', 'Like')} · {s.photoEngagement[s.pulsePhotoSheet.photo_id]?.likeCount ?? s.pulsePhotoSheet.like_count}</span>
-                </div>
-                <div
-                  onClick={() => sharePhoto(s.pulsePhotoSheet)}
-                  data-testid="pulse-photo-share"
-                  style={{ fontSize: 13, fontWeight: 600, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: `1px solid ${rule}`, color: ink }}
-                >
-                  {T('Chia sẻ', 'Share')} · {s.photoEngagement[s.pulsePhotoSheet.photo_id]?.shareCount ?? s.pulsePhotoSheet.share_count}
-                </div>
-              </div>
-              <div
-                onClick={() => { closePulsePhotoSheet(); closePulseViewer(); goEvent(s.pulsePhotoSheet.event_id); }}
-                data-testid="pulse-photo-view-event"
-                style={{ marginTop: 2, fontSize: 12, color: ink, textDecoration: 'underline', cursor: 'pointer' }}
-              >
-                {T('Xem sự kiện / trang tổ chức', 'View event / host page')}
-              </div>
+            <div
+              onClick={() => sharePhoto(s.pulsePhotoSheet)}
+              data-testid="pulse-photo-share"
+              style={{ fontSize: 13, fontWeight: 600, padding: '10px 20px', minHeight: 44, boxSizing: 'border-box', display: 'flex', alignItems: 'center', borderRadius: 999, cursor: 'pointer', border: `1px solid ${rule}`, color: ink }}
+            >
+              {T('Chia sẻ', 'Share')} · {s.photoEngagement[s.pulsePhotoSheet.photo_id]?.shareCount ?? s.pulsePhotoSheet.share_count}
             </div>
           </div>
-        </div>
+          <div
+            onClick={() => { closePulsePhotoSheet(); closePulseViewer(); goEvent(s.pulsePhotoSheet.event_id); }}
+            data-testid="pulse-photo-view-event"
+            style={{ marginTop: 2, fontSize: 12, color: ink, textDecoration: 'underline', cursor: 'pointer', minHeight: 44, display: 'flex', alignItems: 'center' }}
+          >
+            {T('Xem sự kiện / trang tổ chức', 'View event / host page')}
+          </div>
+        </ExpandedPanel>
       )}
 
-      {/* B3 — tapping a ranked EVENT card opens this sheet (was previously
-          only reachable via the organizer-name text); two large, equal,
-          adjacent rounded buttons, same visual language as the app's other
-          confirmation buttons (solid ink primary, ink-bordered ghost
-          secondary) rather than a new one. */}
+      {/* B3 — tapping a ranked EVENT card opens this panel; now shows the
+          event's own real photo + the same honest rank/category/booking/
+          check-in breakdown the card itself already shows (never
+          fabricated), plus View Host alongside the existing Follow/View
+          event actions. */}
       {s.pulseOrganizerSheet && (
-        <div onClick={closePulseOrganizerSheet} style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.45)', display: 'flex', alignItems: 'flex-end', zIndex: 70 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: paper, width: '100%', borderRadius: '18px 18px 0 0', padding: '20px 22px 34px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 36, height: 4, background: rule, borderRadius: 2 }} />
-            <span style={{ ...display(19), marginTop: 8 }}>{s.pulseOrganizerSheet.organizer_name}</span>
-            {s.pulseOrganizerSheet.organizer_verified && (
-              <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T('Đã xác minh', 'Verified')}</span>
-            )}
-            <div style={{ display: 'flex', gap: 10, width: '100%', marginTop: 10 }}>
-              <div
-                onClick={() => followPulseOrganizer(s.pulseOrganizerSheet.organizer_id)}
-                data-testid="pulse-follow"
-                style={{
-                  flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 600, padding: '14px 10px', borderRadius: 18, cursor: 'pointer',
-                  background: s.pulseOrganizerSheet.following ? 'transparent' : ink,
-                  color: s.pulseOrganizerSheet.following ? ink : paper,
-                  border: s.pulseOrganizerSheet.following ? `1px solid ${rule}` : 'none',
-                }}
-              >
-                {s.pulseOrganizerSheet.following ? T('Đang theo dõi', 'Following') : T('Theo dõi', 'Follow')}
-              </div>
-              <div
-                onClick={() => { closePulseViewer(); goEvent(s.pulseOrganizerSheet.event_id); }}
-                data-testid="pulse-view-event"
-                style={{ flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 600, padding: '14px 10px', borderRadius: 18, cursor: 'pointer', background: ink, color: paper }}
-              >
-                {T('Xem sự kiện', 'View event')}
-              </div>
+        <ExpandedPanel
+          photoUrl={eventPhotoUrl(s.pulseOrganizerSheet.photo_path)}
+          title={s.pulseOrganizerSheet.event_name}
+          subtitle={s.pulseOrganizerSheet.organizer_name + (s.pulseOrganizerSheet.organizer_verified ? ' ✓' : '')}
+          metaLine={[
+            s.pulseOrganizerSheet.cat_label,
+            T(`${s.pulseOrganizerSheet.booking_count ?? 0} vé`, `${s.pulseOrganizerSheet.booking_count ?? 0} bookings`),
+            T(`${s.pulseOrganizerSheet.checkin_count ?? 0} check-in`, `${s.pulseOrganizerSheet.checkin_count ?? 0} check-ins`),
+          ].filter(Boolean).join(' ▪︎ ')}
+          onClose={closePulseOrganizerSheet}
+          closeTestId="pulse-organizer-sheet-close"
+        >
+          <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+            <div
+              onClick={() => followPulseOrganizer(s.pulseOrganizerSheet.organizer_id)}
+              data-testid="pulse-follow"
+              style={{
+                flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 600, padding: '14px 10px', minHeight: 44, boxSizing: 'border-box', borderRadius: 18, cursor: 'pointer',
+                background: s.pulseOrganizerSheet.following ? 'transparent' : ink,
+                color: s.pulseOrganizerSheet.following ? ink : paper,
+                border: s.pulseOrganizerSheet.following ? `1px solid ${rule}` : 'none',
+              }}
+            >
+              {s.pulseOrganizerSheet.following ? T('Đang theo dõi', 'Following') : T('Theo dõi', 'Follow')}
+            </div>
+            <div
+              onClick={() => { closePulseOrganizerSheet(); closePulseViewer(); goEvent(s.pulseOrganizerSheet.event_id); }}
+              data-testid="pulse-view-event"
+              style={{ flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 600, padding: '14px 10px', minHeight: 44, boxSizing: 'border-box', borderRadius: 18, cursor: 'pointer', background: ink, color: paper }}
+            >
+              {T('Xem sự kiện', 'View event')}
             </div>
           </div>
-        </div>
+          <div
+            onClick={() => { closePulseOrganizerSheet(); closePulseViewer(); openOrganizerProfile(s.pulseOrganizerSheet.organizer_id); }}
+            data-testid="pulse-view-host"
+            style={{ fontSize: 12.5, fontWeight: 600, color: ink, textDecoration: 'underline', cursor: 'pointer', minHeight: 44, display: 'flex', alignItems: 'center' }}
+          >
+            {T('Xem trang tổ chức', 'View host page')}
+          </div>
+        </ExpandedPanel>
       )}
     </div>
   );

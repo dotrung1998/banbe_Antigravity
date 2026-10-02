@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
-import { findEvent } from '../data/events.js';
+import { useGoc, shapeRealEventAsCurEvent } from '../state/GocContext.jsx';
+import { findEvent, isCosmeticCatalogMatch } from '../data/events.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { liveEventOverrides } from '../lib/countdown.js';
 import { formatShortDate } from '../lib/paymentDocument.js';
@@ -143,13 +143,37 @@ export default function Attendance() {
     if (ok) { setPendingReplace(null); setReplaceReason(''); }
   };
 
+  // 15-organizer-checkin.md: `findEvent(attKey)` always returns SOMETHING —
+  // it falls back to `EVENTS[0]` ("Bếp Nhỏ №12") for any key that isn't one
+  // of the 20 static demo ids, which is true for EVERY real, organizer-
+  // created event. Resolve through the same canonical `realEventsById`
+  // cache `curEvent`/EventDetail already use for real events instead
+  // (openAttendance() kicks off the fetch) — a cosmetic catalogue key still
+  // goes straight to `findEvent`, unchanged.
   const attKey = s.attendanceEventKey;
-  const attEv = attKey ? findEvent(attKey) : null;
+  const attKeyIsCatalog = attKey ? isCosmeticCatalogMatch(attKey) : false;
+  const attEvReal = attKey && !attKeyIsCatalog ? s.realEventsById[attKey] : undefined;
+  // `attEvReal === null` is the canonical "confirmed missing/RLS-denied"
+  // signal (loadRealEventsById's own contract); `undefined` means still
+  // loading — both are an honest state, never the wrong demo event.
+  const attEvUnavailable = attKey && !attKeyIsCatalog && attEvReal === null;
+  const attEvLoading = attKey && !attKeyIsCatalog && attEvReal === undefined;
+  const attEv = !attKey ? null
+    : attKeyIsCatalog ? findEvent(attKey)
+    : attEvReal ? shapeRealEventAsCurEvent(attEvReal)
+    : null;
 
-  if (!attEv) {
+  if (!attKey || attEvLoading || attEvUnavailable) {
     return (
       <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
         <div onClick={backFromAttendance} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
+        {attKey && (
+          <p style={{ padding: '40px 22px', fontSize: 13, color: ink }}>
+            {attEvUnavailable
+              ? T('Không tải được thông tin sự kiện này.', "Couldn't load this event.")
+              : T('Đang tải sự kiện…', 'Loading event…')}
+          </p>
+        )}
       </div>
     );
   }
@@ -160,8 +184,12 @@ export default function Attendance() {
   // calculation. When true, no actionable guest control below is reachable
   // any more — server-side RPCs would reject them anyway (BOOKING_CANNOT_
   // BE_CANCELLED, etc.) but this keeps the host from even seeing them.
-  const attEvLiveOverrides = liveEventOverrides(s.homeLiveEvents[attKey], attEv);
-  const attEvLive = attEvLiveOverrides ? { ...attEv, ...attEvLiveOverrides } : attEv;
+  // A real (non-catalogue) event's `attEv` is already live data (no frozen
+  // catalogue copy to merge against) — the override merge only applies to
+  // a genuine catalogue match, same as `curEvent`'s own split.
+  const attEvLive = attKeyIsCatalog
+    ? (() => { const o = liveEventOverrides(s.homeLiveEvents[attKey], attEv); return o ? { ...attEv, ...o } : attEv; })()
+    : attEv;
   const eventEnded = !!attEvLive.cancelled || attEvLive.endedHoursAgo != null;
 
   if (eventEnded) {
@@ -194,11 +222,16 @@ export default function Attendance() {
         </div>
         <div onClick={openQrScan} style={{ flex: 'none', fontSize: 12, fontWeight: 600, color: paper, background: ink, borderRadius: 12, padding: '9px 14px', cursor: 'pointer', whiteSpace: 'nowrap' }}>{T('Quét QR', 'Scan QR')}</div>
       </div>
-      <div style={{ margin: '18px 22px 0', background: ink, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* Same corner-radius language as the Scan QR control above
+          (borderRadius: 12) — this panel used to be a sharp rectangle, the
+          only un-rounded surface on the screen. */}
+      <div style={{ margin: '18px 22px 0', background: ink, borderRadius: 12, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: 12.5, color: paper }}>{T('Đã đến', 'Checked in')}</span>
         <span style={{ fontFamily: "'Be Vietnam Pro', sans-serif", fontWeight: 600, letterSpacing: '-0.02em', fontSize: 24, color: paper }}>{checkedCount} / {guests.length}</span>
       </div>
-      <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, margin: '10px 22px 0' }}>{T('Chạm vào tên khách hoặc quét mã QR vé khi họ tới nơi.', "Tap a guest's name, or scan their ticket QR, when they arrive.")}</p>
+      {/* Modest breathing room below the now-rounded panel — bumped from
+          10px into this screen's own 12-16px spacing ladder. */}
+      <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, margin: '14px 22px 0' }}>{T('Chạm vào tên khách hoặc quét mã QR vé khi họ tới nơi.', "Tap a guest's name, or scan their ticket QR, when they arrive.")}</p>
       <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '6px 22px 0' }}>{T('Đánh dấu "Đã thanh toán" khi bạn thấy tiền vào tài khoản, rồi tải lên hoá đơn/biên nhận thật của bạn cho khách.', 'Mark a guest paid once you see the money arrive, then upload your own real invoice/receipt for them.')}</p>
       <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: 'none' }} onChange={onReceiptFileChosen} data-testid="attendance-receipt-input" />
       <div style={{ ...fieldGlass({ margin: '14px 22px 0', display: 'flex', flexDirection: 'column' }) }}>

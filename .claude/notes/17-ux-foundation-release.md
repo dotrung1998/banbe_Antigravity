@@ -407,3 +407,104 @@ picked up) + `xcodebuild -scheme PersonalTeamDebug -configuration Debug
 reposition, Title Case corrections and KPI label translations were all
 verified by reading the code and tracing the exact reference frames/data
 sources, not by observing them render.
+
+## Fix pass (2026-10-02) — Pulse expanded panel redesign, fixed Account header+tabs
+
+Two unrelated tickets, bundled. `npx vite build` clean;
+`xcodebuild -scheme PersonalTeamDebug -sdk iphonesimulator build` → BUILD
+SUCCEEDED; `npm run test:unit` 24/24 (pre-existing suite, unaffected). No
+simulator/device UI run this pass — both are visual/interaction changes
+the user's own iPhone is the real check for.
+
+### Pulse — expanded panel: centered floating glass card, image-aware sizing
+
+**Real bug, both platforms**: the ranked-photo popup (`photoSheet`/
+`PulseViewer.jsx`'s `pulse-photo-sheet`) was a native/CSS bottom sheet
+fixed at 66% of screen height with a hardcoded 2:1 media/footer split —
+"wide filler panels around the featured photo" whenever a photo's real
+aspect ratio didn't match that fixed box (the fix already in place,
+2026-10-25, only blurred/dimmed the gap, never removed it). The ranked-
+EVENT popup (`organizerSheet`/`pulseOrganizerSheet`) had no photo at all.
+
+**Fix**: one shared, reusable presentation on each platform —
+`pulseExpandedPanel` (iOS, `PulseViewerView.swift`) / `ExpandedPanel` (web,
+`PulseViewer.jsx`) — a centered, rounded glass card (`.ultraThinMaterial`/
+CSS `backdrop-filter: blur()`) over a dimmed/blurred scrim, bounded to the
+real viewport with margins (`maxWidth`/`maxHeight`, never a fixed
+fraction). The photo sizes itself to its OWN aspect ratio
+(`.aspectRatio(contentMode: .fit)` with only max-constraints / CSS
+`maxHeight` + `object-fit: contain`) instead of a fixed media box — no
+more gap to fill. The one blurred backdrop that remains is the SAME
+loaded image behind the WHOLE card (one surface), not a second,
+visibly-separate rectangle behind just the photo. `.ultraThinMaterial`
+auto-respects Reduce Transparency; the panel's own appear/disappear
+transition is skipped (not the content) under Reduce Motion (iOS:
+`.animation(reduceMotion ? nil : ..., value:)`).
+
+Both `photoSheet` (Featured Photos) and `organizerSheet` (Top Events →
+Today/This Week — previously photo-less) now render through this one
+component. The event panel gained an honest meta line (category + real
+`booking_count`/`checkin_count`, the same breakdown the ranked-list row
+already shows — never a fabricated engagement count or a changed ranking)
+and a new "Xem trang tổ chức"/"View host page" action
+(`openOrganizerProfile`) alongside the existing Follow/"Xem sự kiện". No
+real date/price field exists in `goc_pulse_ranked()`'s own payload (traced,
+not assumed — confirmed by reading migration 086's `SELECT` list) — not
+fabricated, left out rather than guessed; a future pass wanting it needs
+its own migration.
+
+Like/Share permissions, counts, selected item, dismissal, return state and
+dock-hiding are completely unchanged — only the surrounding chrome moved.
+Close "×"/X is a 44×44pt tappable target on both platforms.
+
+**Files**: iOS `Views/PulseViewerView.swift` (`pulseExpandedPanel`,
+`organizerSheet`/`photoSheet` rewritten to use it, `reduceMotion`
+environment value); web `src/screens/sheets/PulseViewer.jsx`
+(`ExpandedPanel`, both sheet blocks rewritten, `openOrganizerProfile` added
+to the `useGoc()` destructure).
+
+### Fixed Account header + tabs
+
+**Web**: title row + Personal/Host/Admin tab pills wrapped in one
+`position: sticky; top: 0` container (`data-testid="account-fixed-header"`)
+— stays stationary while the shared scroll container (App.jsx's Shell)
+scrolls the tab panels below it. Each tab panel keeps its existing
+`display: none/block` toggle (never unmounted) — unchanged.
+
+**iOS**: `accountHeader` was already a fixed sibling above `ScreenScaffold`
+(2026-09-29 follow-up); the Personal/Host/Admin tab pills (`HStack`) used
+to be the FIRST row INSIDE `accountContent`'s own scrollable `LazyVStack`
+— pulled out into a new `accountTabsBar`, a second fixed sibling between
+`accountHeader` and `ScreenScaffold`, so switching tabs while scrolled no
+longer requires scrolling back to the top first.
+
+**Independent per-tab scroll position (new on iOS — was a documented
+"not built this pass" simplification, Stage D's own comment)**:
+`AppState.accountScrollAnchorID` (single, shared anchor across all three
+tabs) replaced with `accountScrollAnchorIDByTab: [String: String]`, keyed
+by `accountTab`, read/written through a computed `accountScrollAnchorBinding`
+in `AccountView.swift`. `accountContent`'s `LazyVStack` also gained
+`.id(app.accountTab)` — switching tabs now tears down and recreates that
+subtree (standard SwiftUI "new identity resets scroll offset"), and
+`ScreenScaffold`'s existing `scrollPosition(id:)` restore mechanism
+(`retryScrollRestoreIfNeeded`, already used for a full screen return)
+naturally re-applies per-tab on that same recreation. Web's existing
+per-tab scroll behavior (all three panels stay mounted, `display:none`
+toggle, raw `scrollTop` carries over) is unchanged by this pass — not a
+true per-tab independent position the way the web panels' own "both panes
+keep their scrollTop" comment implies, since the shared scroll container
+is keyed by SCREEN (`App.jsx`'s `scrollPositions`), not by tab; flagged,
+not silently fixed, since refactoring web's scroll-ownership model here
+risked the gesture/swipe system this pass didn't otherwise touch.
+
+Back/swipe-return, badges, role gates (organizer-mode/admin tab
+visibility), the Hosting toggle, and pull-to-refresh are all unchanged —
+this pass only moved WHERE the tab row renders and added the per-tab
+anchor map, never the tab-switch/role-gate logic itself. Root/dock swipe
+behavior is untouched (no changes outside `AccountView.swift`/
+`Account.jsx`).
+
+**Files**: iOS `Views/AccountView.swift` (`accountTabsBar`, `accountContent`'s
+`.id`, `accountScrollAnchorBinding`, `retryScrollRestoreIfNeeded`),
+`State/AppState.swift` (`accountScrollAnchorIDByTab`); web
+`src/screens/Account.jsx` (sticky header wrapper).
