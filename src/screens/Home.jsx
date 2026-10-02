@@ -920,9 +920,39 @@ export default function Home() {
           same dedup key, so a render-level duplicate is structurally
           impossible here too. */}
       <div style={{ padding: '0 20px 16px' }} data-testid="home-survey-discovery-section">
-        <div style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7, marginBottom: 10 }}>
-          {T('Góp ý cho sự kiện sắp tới', 'Help Shape Upcoming Events')}
+        {/* Collapse/expand pass — collapsed by default; the compact
+            horizontal strip below (already the "compact cards, not a tall
+            stack" shape this ticket asks for) only renders while expanded.
+            `homeSurveyDiscoveryExpanded` lives in GocContext state, not
+            local component state, so it survives Home unmounting/remounting
+            around a trip into the survey modal and back. */}
+        <div
+          onClick={() => set({ homeSurveyDiscoveryExpanded: !s.homeSurveyDiscoveryExpanded })}
+          data-testid="home-survey-discovery-toggle"
+          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', minHeight: 32 }}
+        >
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }}>
+            {T('Góp ý cho sự kiện sắp tới', 'Help Shape Upcoming Events')}
+          </span>
+          {!s.homeSurveyDiscoveryLoading && !s.homeSurveyDiscoveryError && s.homeSurveyDiscovery.length > 0 && (
+            // `.slice(0, 20)` below means an exact count of 20 may not be
+            // the real total — an honest "20+" rather than a fabricated
+            // precise number.
+            <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.7, background: `${ink}1a`, borderRadius: 999, padding: '2px 7px' }}>
+              {s.homeSurveyDiscovery.length >= 20 ? '20+' : s.homeSurveyDiscovery.length}
+            </span>
+          )}
+          <span style={{ flex: 1 }} />
+          <span style={{
+            fontSize: 11, color: ink, opacity: 0.5,
+            transform: s.homeSurveyDiscoveryExpanded ? 'rotate(180deg)' : 'none',
+            transition: 'transform 0.15s ease',
+          }}>
+            ▾
+          </span>
         </div>
+        {s.homeSurveyDiscoveryExpanded && (
+        <div style={{ marginTop: 10 }}>
         {s.homeSurveyDiscoveryLoading && !s.homeSurveyDiscovery.length && (
           <div style={{ fontSize: 12, opacity: 0.6 }} data-testid="home-survey-discovery-loading">{T('Đang tải…', 'Loading…')}</div>
         )}
@@ -959,6 +989,8 @@ export default function Home() {
               </div>
             ))}
           </div>
+        )}
+        </div>
         )}
       </div>
 

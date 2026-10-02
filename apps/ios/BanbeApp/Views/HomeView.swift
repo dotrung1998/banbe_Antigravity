@@ -574,57 +574,94 @@ struct HomeView: View {
     /// loadHomeStories()'s own comment — never mixed into the follow-gated
     /// `storyRow` above). Tapping a card opens the same in-app response
     /// modal a story's own "Answer Survey" CTA does.
-    /// Visibility-investigation fix — ALWAYS rendered (title + one of
+    /// Visibility-investigation fix — ALWAYS rendered (header + one of
     /// loading/error/empty/cards), not only when cards already exist, so a
     /// real load failure is never indistinguishable from the section
     /// simply not existing. Dedup is handled server-side in
     /// loadHomeStories() (one card per organizer, deduped by survey_id
     /// first); `SurveyDiscoveryCard.id == surveyId` as the ForEach id is
     /// the same dedup key.
+    ///
+    /// Collapse/expand pass — collapsed by default (`app.homeSurveyDiscoveryExpanded`,
+    /// lives on AppState, not local `@State`, so it isn't lost across a trip
+    /// into the survey modal and back — see that field's own doc comment).
+    /// Collapsed shows only this compact header (title + an honest active
+    /// count + chevron); expanding reveals the SAME horizontal compact-card
+    /// strip this section already rendered unconditionally before — reused
+    /// as-is, not rebuilt as a taller stack, since it was already the
+    /// "compact strip, not full cards" shape this ticket asks for.
     private var surveyDiscoveryRow: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(app.T("Góp ý cho sự kiện sắp tới", "Help Shape Upcoming Events"))
-                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
-                .padding(.horizontal, 20)
-            if app.homeSurveyDiscoveryLoading && app.homeSurveyDiscovery.isEmpty {
-                Text(app.T("Đang tải…", "Loading…")).font(.system(size: 12)).opacity(0.6).padding(.horizontal, 20)
-            } else if !app.homeSurveyDiscoveryError.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(app.homeSurveyDiscoveryError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
-                    Button(app.T("Thử lại", "Retry")) { Task { await app.loadHomeStories() } }
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .padding(.horizontal, 20)
-            } else if app.homeSurveyDiscovery.isEmpty {
-                Text(app.T("Chưa có khảo sát công khai nào.", "No public surveys right now."))
-                    .font(.system(size: 12)).opacity(0.6).padding(.horizontal, 20)
-            } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(app.homeSurveyDiscovery) { card in
-                        Button {
-                            Task { await app.openSurveyStoryModal(publicID: card.publicId) }
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(card.hostName).font(.system(size: 10.5)).opacity(0.6)
-                                Text(card.title).font(.system(size: 13.5, weight: .semibold)).lineLimit(2)
-                                if let closesAt = card.closesAt {
-                                    Text("\(app.T("Hạn", "Deadline")): \(closesAt.formatted(date: .abbreviated, time: .omitted))")
-                                        .font(.system(size: 10.5)).opacity(0.6)
-                                }
-                                Text(app.T("Trả lời khảo sát", "Answer Survey"))
-                                    .font(.system(size: 11.5, weight: .semibold)).underline()
-                            }
-                            .padding(14)
-                            .frame(width: 220, alignment: .leading)
-                            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("home.surveyDiscoveryCard")
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) { app.homeSurveyDiscoveryExpanded.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(app.T("Góp ý cho sự kiện sắp tới", "Help Shape Upcoming Events"))
+                        .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    if !app.homeSurveyDiscoveryLoading && app.homeSurveyDiscoveryError.isEmpty && !app.homeSurveyDiscovery.isEmpty {
+                        // `.prefix(20)` in loadHomeStories() means an exact
+                        // count of 20 may not be the real total — an honest
+                        // "20+" rather than a fabricated precise number.
+                        Text(app.homeSurveyDiscovery.count >= 20 ? "20+" : "\(app.homeSurveyDiscovery.count)")
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(app.palette.ink.opacity(0.1), in: Capsule())
+                            .foregroundStyle(app.palette.ink.opacity(0.7))
                     }
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(app.palette.ink.opacity(0.5))
+                        .rotationEffect(.degrees(app.homeSurveyDiscoveryExpanded ? 180 : 0))
                 }
                 .padding(.horizontal, 20)
+                .frame(minHeight: 32)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("home.surveyDiscoveryToggle")
+
+            if app.homeSurveyDiscoveryExpanded {
+                if app.homeSurveyDiscoveryLoading && app.homeSurveyDiscovery.isEmpty {
+                    Text(app.T("Đang tải…", "Loading…")).font(.system(size: 12)).opacity(0.6).padding(.horizontal, 20)
+                } else if !app.homeSurveyDiscoveryError.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(app.homeSurveyDiscoveryError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                        Button(app.T("Thử lại", "Retry")) { Task { await app.loadHomeStories() } }
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .padding(.horizontal, 20)
+                } else if app.homeSurveyDiscovery.isEmpty {
+                    Text(app.T("Chưa có khảo sát công khai nào.", "No public surveys right now."))
+                        .font(.system(size: 12)).opacity(0.6).padding(.horizontal, 20)
+                } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(app.homeSurveyDiscovery) { card in
+                            Button {
+                                Task { await app.openSurveyStoryModal(publicID: card.publicId) }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(card.hostName).font(.system(size: 10.5)).opacity(0.6)
+                                    Text(card.title).font(.system(size: 13.5, weight: .semibold)).lineLimit(2)
+                                    if let closesAt = card.closesAt {
+                                        Text("\(app.T("Hạn", "Deadline")): \(closesAt.formatted(date: .abbreviated, time: .omitted))")
+                                            .font(.system(size: 10.5)).opacity(0.6)
+                                    }
+                                    Text(app.T("Trả lời khảo sát", "Answer Survey"))
+                                        .font(.system(size: 11.5, weight: .semibold)).underline()
+                                }
+                                .padding(14)
+                                .frame(width: 220, alignment: .leading)
+                                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("home.surveyDiscoveryCard")
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+                }
             }
         }
         .padding(.top, 4)

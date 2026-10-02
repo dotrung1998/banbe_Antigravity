@@ -732,6 +732,13 @@ const initialState = {
   // "nothing here" either.
   homeSurveyDiscoveryLoading: true,
   homeSurveyDiscoveryError: '',
+  // Compact Home discovery pass — collapsed by default (the section takes
+  // too much vertical space once many hosts publish). Lives in GocContext
+  // state, not local component state, so it survives Home re-rendering
+  // around a trip into the survey modal and back; reset to false on
+  // logout (see `logout()` below) and on a signed-out loadHomeStories()
+  // call so a new account never inherits a stale previous user's choice.
+  homeSurveyDiscoveryExpanded: false,
   surveyPublic: null, surveyPublicLoading: false, surveyPublicError: '', surveyPublicBack: 'home', surveyPublicId: '',
   // The signed-in respondent's own current answer (or null if none yet) —
   // loaded separately since get_survey_public is anon-reachable and must
@@ -4608,7 +4615,7 @@ export function GocProvider({ children }) {
   // They're routed into a separate `homeSurveyDiscovery` bucket instead, one
   // real `follows` lookup below is what tells the two cases apart.
   const loadHomeStories = useCallback(async () => {
-    if (!s.user) return set({ homeStories: [], homeSurveyDiscovery: [], homeSurveyDiscoveryLoading: false, homeSurveyDiscoveryError: '' });
+    if (!s.user) return set({ homeStories: [], homeSurveyDiscovery: [], homeSurveyDiscoveryLoading: false, homeSurveyDiscoveryError: '', homeSurveyDiscoveryExpanded: false });
     set({ homeSurveyDiscoveryLoading: true, homeSurveyDiscoveryError: '' });
     const { data: rows, error } = await supabase
       .from('stories')
@@ -4632,7 +4639,15 @@ export function GocProvider({ children }) {
     const isMineOrFollowed = (organizerId) => s.myOrganizerIds.includes(organizerId) || followedOrgIds.has(organizerId);
 
     const ownRows = rows.filter(r => isMineOrFollowed(r.organizer_id));
-    const discoveryRows = rows.filter(r => r.kind === 'survey_share' && !isMineOrFollowed(r.organizer_id));
+    // Real-device report — a host viewing their OWN just-published survey
+    // correctly saw it missing from "Help Shape Upcoming Events" because
+    // this used to exclude `isMineOrFollowed` organizers entirely. A host
+    // should always be able to find their own published survey the same
+    // way any other viewer does, so this bucket is every `survey_share` row,
+    // independent of `ownRows`/the normal story ring (unchanged, still
+    // follow/ownership-gated exactly as before) — the harmless duplication
+    // of also seeing it here is a better trade-off than hiding it.
+    const discoveryRows = rows.filter(r => r.kind === 'survey_share');
 
     const orgIds = [...new Set(rows.map(r => r.organizer_id))];
     const { data: orgRows } = await supabase.from('organizers').select('id, name, owner_id, user_id').in('id', orgIds);
@@ -4723,14 +4738,17 @@ export function GocProvider({ children }) {
       return aMine - bMine;
     });
 
-    // Section 5 — "Help Shape Upcoming Events": one card per organizer
-    // (their single newest survey_share story — DISTINCT ON, same capping
-    // idea migration 080's goc_pulse_ranked() already uses for "one row per
-    // organizer"), newest-organizer-first, capped to a reasonable count.
-    // Deduplicated by survey_id defensively too, in case an organizer ever
-    // shares the same survey to a second story. A card whose live
-    // get_survey_card() came back null (survey deleted / RPC error) is
-    // dropped here rather than ever rendered — never a broken card.
+    // Section 5 — "Help Shape Upcoming Events": one card per DISTINCT
+    // published survey (fast follow-up fix — this used to also collapse to
+    // one card per ORGANIZER via a second `byOrgNewest` pass below this
+    // comment, which meant a second survey published by an organizer who
+    // already had one showing silently replaced it instead of appearing
+    // alongside it, confirmed as the reported bug). Deduplicated by
+    // survey_id (an organizer sharing the same survey to a second story
+    // still shows once, newest share wins), newest-first, capped to a
+    // reasonable count. A card whose live get_survey_card() came back null
+    // (survey deleted / RPC error) is dropped here rather than ever
+    // rendered — never a broken card.
     const bySurveyNewest = new Map();
     for (const r of discoveryRows) {
       const card = surveyCardById[r.survey_id];
@@ -4740,12 +4758,7 @@ export function GocProvider({ children }) {
         bySurveyNewest.set(r.survey_id, { storyId: r.id, organizerId: r.organizer_id, createdAt: r.created_at, card });
       }
     }
-    const byOrgNewest = new Map();
-    for (const entry of bySurveyNewest.values()) {
-      const existing = byOrgNewest.get(entry.organizerId);
-      if (!existing || new Date(entry.createdAt) > new Date(existing.createdAt)) byOrgNewest.set(entry.organizerId, entry);
-    }
-    const discovery = [...byOrgNewest.values()]
+    const discovery = [...bySurveyNewest.values()]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, 20)
       .map(entry => ({ storyId: entry.storyId, organizerId: entry.organizerId, ...entry.card }));
@@ -5535,6 +5548,7 @@ export function GocProvider({ children }) {
       // the next account signing in) must never see a stale prior count.
       pendingEventsCount: 0,
       referralCode: null, orgRegName: '', favorites: [],
+      homeSurveyDiscoveryExpanded: false,
       // TASK A point 8 — every refund-related cache belongs to the account
       // that just left; leaving it in state risks the next sign-in (on the
       // same device/session, without a full page reload) briefly rendering

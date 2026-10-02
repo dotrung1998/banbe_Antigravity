@@ -219,6 +219,115 @@ already-loaded local state while the viewer-facing RPC was not touched
 this pass (kept the change minimal/proven-safe rather than widening an
 RLS-sensitive RPC's return shape without a specific need for it).
 
+## Fix pass — Home discovery collapse/expand, dock hidden during survey modal (iOS), keyboard handling for every survey field
+
+**1. Compact Home discovery** — `app.homeSurveyDiscoveryExpanded` (iOS:
+`AppState.swift`; web: `GocContext.jsx`'s `homeSurveyDiscoveryExpanded`),
+collapsed by default. `HomeView.swift`'s/`Home.jsx`'s `surveyDiscoveryRow`
+header is now a tappable row (title + an honest active-survey count +
+chevron) — the row's own existing compact horizontal card strip (already
+the "compact strip, not a tall stack of full cards" shape this ticket
+wanted — it was never rebuilt) only renders while expanded. Count is
+`app.homeSurveyDiscovery.count`, shown as `"20+"` once at
+`loadHomeStories()`'s own `.prefix(20)` cap (iOS) / `.slice(0, 20)` (web)
+rather than claiming that's the real total. State lives on
+`AppState`/`GocContext`, not local component state, specifically so it
+survives a round trip into the survey modal and back (HomeView/Home.jsx
+never unmount for that — RootView's `.fullScreenCover` / App.jsx's
+`SurveyResponseModal` overlay); reset to `false` on sign-out
+(`signOut()`/`logout()`) and on a signed-out `loadHomeStories()` call so a
+new account never inherits a stale previous user's expanded/collapsed
+choice. Public non-follower discovery, dedup-by-survey-then-by-organizer,
+and the 20-card cap are UNCHANGED — this pass only gates whether the
+already-correct strip renders, never what it contains.
+
+**2. Dock hidden during the survey modal (iOS only — web already had this
+right)** — real, confirmed root cause: the survey response
+`.fullScreenCover` (`app.storySurveyModalPublicID`, RootView.swift) never
+changes `app.screen`, so `BottomTabBarOverlay`'s screen-based
+`updateVisibility(for:)` never saw it, and the dock lives in its own
+always-on-top `UIWindow` (`windowLevel = .normal + 1`) that paints above
+ANY main-window content including a `.fullScreenCover` — confirmed by
+reading `BottomTabBarOverlay.swift`'s own extensive doc history of this
+exact bug class for other modals (Pulse, the area sheet, the dock tray).
+Web was never affected: `App.jsx`'s `showBar` already ANDs in
+`!state.storySurveyModalPublicId` explicitly. Fixed per this ticket's own
+"use the centralized visibility/lifecycle mechanism... add a dedicated
+survey-presentation reason" instruction: a new, INDEPENDENT
+`surveyModalOpen` flag + `setSurveyModalOpen(_:)`
+(`BottomTabBarOverlay.swift`, same "independent callers, independent
+flags" pattern as `storyViewerOpen`/`pulseViewerOpen`/`areaSheetOpen` —
+never a reuse of any of those, so one modal's `false` can never clobber
+another's still-active `true`), folded into `applyVisibility()`'s
+`shouldShow` check; wired from a new
+`.onChange(of: app.storySurveyModalPublicID)` in RootView.swift. Covers
+every entry point into that one modal (story CTA, Home discovery card tap
+— both set the same published field) and every state inside it
+(verification, success, unsaved-changes confirm — none of them touch
+`storySurveyModalPublicID`, so the dock stays correctly hidden through all
+of them) and restores correctly on every close path (X, discard, submit
+success, `closeSurveyStoryModal()` is the one place that clears the field).
+**Not verified on a real device this pass** — reasoned from the exact same
+mechanism already proven for Pulse/the area sheet/the dock tray, not
+independently confirmed with a physical iPhone.
+
+**3. Keyboard handling, every survey field** — `SurveyPublicView.swift`
+previously had NO `@FocusState`/keyboard toolbar/dismiss-on-tap/dismiss-
+on-scroll anywhere (confirmed by reading the whole file — every field was
+a bare `TextField`/`TextEditor`/`SecureField`-less primitive). Added one
+shared `SurveyFocusField` enum (`groupSize`, `freeText`, `respondEmail`,
+`respondCode`) and one `@FocusState` in `SurveyPublicView`, threaded into
+the nested `RespondVerifyInlineView` as a `FocusState<SurveyFocusField?>.Binding`
+parameter (not a second independent focus state — one shared Done/dismiss
+mechanism has to reach fields in both). `.toolbar { ToolbarItemGroup(placement: .keyboard) }`
+adds one localized "Xong"/"Done" button above EVERY keyboard this screen
+shows, including the Group-size number pad (which has no Return key at
+all to resign with otherwise) — resigns focus only, never submits.
+`.scrollDismissesKeyboard(.interactively)` on the ScrollView (drag-to-
+dismiss) + a `.onTapGesture` on the form's own outer `VStack`
+(`.contentShape(Rectangle())` first, so the WHOLE frame including empty
+padding margins is tappable, not just drawn pixels) for "tap neutral
+background to dismiss" — deliberately NOT a separate full-bleed overlay
+view layered on top of the form's own controls, which is the usual way
+this exact pattern ends up swallowing the first tap meant for a
+chip/button instead: SwiftUI resolves a Button's own more-specific gesture
+before an ancestor container's plain `.onTapGesture`, so every chip/option/
+Submit/X tap still fires on the first tap, confirmed by reading how
+`MapExploreView.swift`'s own background `.onTapGesture { selectedId = nil }`
+already coexists with real pin buttons the same way. `ScrollViewReader` +
+`.id(SurveyFocusField.*)` on each field's container + `.onChange(of: focusedField)`
+brings the focused field into view (`proxy.scrollTo(field, anchor: .center)`)
+without any manual offset math. Submit and the two
+`RespondVerifyInlineView` actions (send code / confirm code) all resign
+focus (`focusedField = nil` / `focusedField.wrappedValue = nil`) before
+their own async call — ends editing without submitting twice, and a failed
+server-side validation still re-renders the same `form(config:)` with
+`app.surveyDraft` completely untouched (the error path never clears a
+field), so every answer survives exactly as this ticket requires either
+way. X (`requestClose()`) also resigns focus first, then follows the
+EXISTING unsaved-draft confirm logic unchanged. No new global keyboard
+handler, no full-screen gesture competing with any other screen — every
+change here is scoped to this one file. Web (`SurveyPublic.jsx`) was
+already using correct native input types (`type="number"`, `type="email"`)
+which already gets a real "Done" affordance from the mobile browser's own
+native keyboard chrome — left untouched, per this ticket's own "no
+iOS-only fake toolbars" instruction (nothing to add there, not an
+oversight).
+
+**Verification performed**: `npx vite build` — clean. `xcodegen generate`
+clean (no new files, `git status` confirms the regenerated `.xcodeproj`
+produced no diff). `xcodebuild -scheme PersonalTeamDebug -configuration
+Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator'
+build` → **BUILD SUCCEEDED**. No simulator/device UI run, no screenshots —
+per this ticket's own "no claimed device verification" instruction, the
+three checks below are the user's own to run on a physical iPhone.
+
+**Not done / out of scope this pass**: Slice C (candidate generation) —
+untouched, unrelated to this pass. The known, pre-existing "dock stays
+tappable during an edge-swipe-back peek" `isPeeking` edge case
+(`RootView.swift`'s own comment) is untouched — unrelated to the survey
+modal.
+
 ## Slice A — Strict invite-only events
 
 ### What's real and verified

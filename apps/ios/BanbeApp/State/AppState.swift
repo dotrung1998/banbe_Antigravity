@@ -1169,6 +1169,16 @@ final class AppState: ObservableObject {
     /// first paint doesn't flash "nothing here" either.
     @Published var homeSurveyDiscoveryLoading = true
     @Published var homeSurveyDiscoveryError = ""
+    // Compact Home discovery pass — collapsed by default (section takes too
+    // much vertical space once many hosts publish). Lives on AppState, not
+    // local `@State` in HomeView, so it survives a round trip to the survey
+    // modal and back untouched (HomeView itself never unmounts for that —
+    // see RootView's `.fullScreenCover` — but AppState is the one place this
+    // is guaranteed regardless of how the screen gets there). Reset to
+    // false on sign-out/account switch (`signOut()`, `loadHomeStories()`'s
+    // own signed-out guard) so a new account never inherits a stale
+    // previous user's expanded/collapsed choice.
+    @Published var homeSurveyDiscoveryExpanded = false
     // Section 2 — a story's "Answer Survey" CTA opens SurveyPublicView
     // inside a `.fullScreenCover` instead of navigating `screen` away, so
     // whatever's underneath (the story, paused via StoryViewerView's

@@ -1012,6 +1012,16 @@ struct RootView: View {
         .onChange(of: app.storyViewer) { _, viewer in
             BottomTabBarOverlay.shared.setStoryViewerOpen(viewer != nil)
         }
+        // Survey discovery/dock pass — the survey response `.fullScreenCover`
+        // below (`storySurveyModalPublicID`) is presented over Home/the
+        // story viewer without ever changing `app.screen`, so the
+        // `.onChange(of: app.screen)` handler never sees it either — same
+        // reasoning as storyViewer/pulseOpen above. A dedicated overlay flag
+        // (`setSurveyModalOpen`, BottomTabBarOverlay.swift) so this can never
+        // be clobbered by, or clobber, any other modal's own hide reason.
+        .onChange(of: app.storySurveyModalPublicID) { _, publicID in
+            BottomTabBarOverlay.shared.setSurveyModalOpen(publicID != nil)
+        }
         // TASK E (2026-10-01 UX foundation pass) — same reasoning as
         // storyViewer above.
         .onChange(of: app.pulseOpen) { _, open in

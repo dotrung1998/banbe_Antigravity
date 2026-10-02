@@ -1,5 +1,14 @@
 import SwiftUI
 
+/// Keyboard pass — every editable field in this screen (its own form AND
+/// the nested `RespondVerifyInlineView`) shares ONE `@FocusState`, so a
+/// single "Done" toolbar / background tap / Submit / X can always resign
+/// whichever field actually has focus, instead of each sub-view needing its
+/// own private focus state and its own copy of the dismiss plumbing.
+private enum SurveyFocusField: Hashable {
+    case groupSize, freeText, respondEmail, respondCode
+}
+
 private func chip(_ label: String, active: Bool, palette: Palette) -> some View {
     Text(label)
         .font(.system(size: 13))
@@ -27,6 +36,19 @@ struct SurveyPublicView: View {
     /// "reuse the existing screen; change its presentation" rule.
     var asModal: Bool = false
     @State private var closeConfirmOpen = false
+    @FocusState private var focusedField: SurveyFocusField?
+    // Fast follow-up fix (reported: "Additional suggestions" still hidden
+    // under the keyboard) — the REAL root cause: `content`'s own bottom
+    // padding is a fixed 60pt, far less than the keyboard's real height
+    // (~300pt+ with the suggestions bar) — the earlier delayed/`.bottom`-
+    // anchored `scrollTo` fix was correct but had nowhere left to scroll
+    // TO, since there was never enough scrollable room below a
+    // near-the-end field like this one to begin with. Tracking the real
+    // keyboard height and padding the content by that much (added ON TOP
+    // of, not instead of, the existing fixed padding below) guarantees
+    // every field — not just this one — can actually be scrolled clear of
+    // the keyboard.
+    @State private var keyboardHeight: CGFloat = 0
 
     private static let deadlineFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -41,6 +63,12 @@ struct SurveyPublicView: View {
             || !d.freeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || d.contactConsent
     }
     private func requestClose() {
+        // X ends editing first (per this ticket's "X ends editing and
+        // follows existing unsaved-draft confirmation rules") — resigning
+        // focus doesn't touch `isDraftDirty` (it reads submitted draft
+        // fields, not focus), so the confirm-alert decision below is
+        // unaffected either way.
+        focusedField = nil
         if isDraftDirty && !app.surveyResponseSuccess { closeConfirmOpen = true; return }
         if asModal { app.closeSurveyStoryModal() } else { app.goBack() }
     }
@@ -48,8 +76,25 @@ struct SurveyPublicView: View {
         closeConfirmOpen = false
         if asModal { app.closeSurveyStoryModal(discard: discard) } else { app.goBack() }
     }
+    /// Deferred one run-loop tick, same reasoning `FocusableTextField`
+    /// (Components.swift) already established elsewhere in this app:
+    /// calling into layout-dependent machinery in the SAME tick a state
+    /// change that affects that layout (`keyboardHeight`, here) was just
+    /// written is unreliable — SwiftUI hasn't re-rendered yet. Yielding to
+    /// the next turn first lets that update commit before this reacts to it.
+    private func scrollToField(_ field: SurveyFocusField, proxy: ScrollViewProxy) {
+        DispatchQueue.main.async {
+            withAnimation { proxy.scrollTo(field, anchor: .bottom) }
+        }
+    }
 
     var body: some View {
+        // `ScrollViewReader` — "bring the focused field into view" below,
+        // keyed on `focusedField` itself (the one signal already common to
+        // every field on this screen, including the ones nested inside
+        // `RespondVerifyInlineView`) rather than a per-field scroll offset
+        // this screen never previously tracked.
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
@@ -76,10 +121,98 @@ struct SurveyPublicView: View {
                     content
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // `.contentShape` makes the WHOLE frame above (including the
+            // empty padding margins between sections, not just the pixels
+            // text/controls actually paint) hit-testable for the tap gesture
+            // below — otherwise a plain VStack only responds where a child
+            // already draws something.
+            .contentShape(Rectangle())
+            // Keyboard pass — tapping neutral form background dismisses the
+            // keyboard without intercepting any real control: `.onTapGesture`
+            // on this container only ever fires for a touch that doesn't
+            // land on one of its interactive children (a chip/option Button,
+            // a field, Submit, X) in the first place — SwiftUI resolves the
+            // more specific child gesture first — so it can never swallow a
+            // tap meant for one of them.
+            .onTapGesture { focusedField = nil }
+            // Second fast follow-up (reported: field no longer covered, but
+            // only visible after a MANUAL scroll — the auto-scroll itself
+            // wasn't actually landing). Real cause: this additive bottom
+            // spacer only grew the ScrollView's CONTENT, never its
+            // effective VIEWPORT — `scrollTo(anchor: .bottom)` anchors
+            // against the scroll view's own bounds, which (thanks to this
+            // whole screen's `.ignoresSafeArea(edges: .bottom)`) still
+            // reported the FULL, un-shrunk screen height, i.e. still
+            // including the area the keyboard physically covers. A
+            // `.safeAreaInset`, unlike a plain content row, genuinely
+            // shrinks what `anchor: .bottom` considers "the bottom of the
+            // visible area" by exactly the keyboard's height, so scrolling
+            // a field to `.bottom` now actually lands it just above the
+            // keyboard instead of still underneath it.
+            .safeAreaInset(edge: .bottom) { Color.clear.frame(height: keyboardHeight) }
+        }
+        .onChange(of: focusedField) { _, field in
+            // Covers moving focus from one field to another while the
+            // keyboard is ALREADY up — `keyboardWillShowNotification` only
+            // fires once, when the keyboard first rises, so switching
+            // fields afterward needs its own trigger.
+            guard let field else { return }
+            scrollToField(field, proxy: proxy)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
+            guard let frame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
+            // Third fast follow-up (reported: still not auto-scrolling at
+            // all) — real bug: this used to set `keyboardHeight` AND call
+            // `proxy.scrollTo` in the very same closure/tick. SwiftUI only
+            // re-renders (and only THEN does the `.safeAreaInset` below
+            // actually grow) on the NEXT run-loop pass — `scrollTo` was
+            // therefore always computing against the OLD, zero-height
+            // layout, every single time, which is why nothing visibly
+            // moved. Setting the height here and leaving the actual scroll
+            // to `.onChange(of: keyboardHeight)` below (which only fires
+            // AFTER that re-render has happened) is what fixes it.
+            keyboardHeight = frame.height
+        }
+        .onChange(of: keyboardHeight) { _, height in
+            guard height > 0, let field = focusedField else { return }
+            scrollToField(field, proxy: proxy)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardHeight = 0
+        }
+        }
+        // Lets a drag-to-scroll gesture dismiss the keyboard too, per this
+        // ticket's "allow keyboard dismissal by scrolling interactively".
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            // Number-pad keyboards (Group size) have no Return key at all,
+            // and most of this form's other fields are optional chips/
+            // checkboxes with no natural "next field" — one shared Done
+            // action, above every keyboard this screen ever shows, resigns
+            // focus without submitting anything.
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button(app.T("Xong", "Done")) { focusedField = nil }
+                    .font(.system(size: 14, weight: .semibold))
+            }
         }
         .background(app.palette.paper)
         .foregroundStyle(app.palette.ink)
-        .ignoresSafeArea(edges: .bottom)
+        // REAL root cause of three failed keyboard-scroll attempts in a
+        // row: this used to unconditionally ignore the bottom safe area
+        // (so the paper background extends behind the home indicator when
+        // nothing is focused). The system models keyboard intrusion AS an
+        // additional bottom safe-area inset on the hosting controller — a
+        // view that's told to ignore that edge also stops reacting to that
+        // inset changing, which silently cancelled BOTH SwiftUI's own
+        // built-in "scrollable content avoids the keyboard automatically"
+        // behavior AND every manual `.safeAreaInset`/`scrollTo` patch tried
+        // above it, no matter how correctly timed. Only ignoring it while
+        // NO field is focused keeps the home-indicator cosmetic exactly as
+        // before and lets the real keyboard-avoidance mechanism run while
+        // editing.
+        .ignoresSafeArea(edges: focusedField == nil ? .bottom : [])
         .alert(app.T("Bạn có câu trả lời chưa gửi", "You have unsent answers"), isPresented: $closeConfirmOpen) {
             Button(app.T("Giữ nháp", "Keep draft")) { confirmClose(discard: false) }
             Button(app.T("Bỏ đi", "Discard"), role: .destructive) { confirmClose(discard: true) }
@@ -212,10 +345,12 @@ struct SurveyPublicView: View {
                 Text(app.T("Số người (tính cả bạn)", "Group size (including you)")).font(.system(size: 12)).opacity(0.7)
                 TextField("", value: $app.surveyDraft.groupSize, format: .number)
                     .keyboardType(.numberPad)
+                    .focused($focusedField, equals: .groupSize)
                     .padding(10)
                     .frame(width: 100)
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(app.palette.rule))
             }
+            .id(SurveyFocusField.groupSize)
 
             if !config.budgetOptions.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -236,9 +371,11 @@ struct SurveyPublicView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(app.T("Góp ý thêm (không bắt buộc)", "Additional suggestions (optional)")).font(.system(size: 12)).opacity(0.7)
                 TextEditor(text: $app.surveyDraft.freeText)
+                    .focused($focusedField, equals: .freeText)
                     .frame(height: 80)
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(app.palette.rule))
             }
+            .id(SurveyFocusField.freeText)
 
             Button {
                 app.surveyDraft.contactConsent.toggle()
@@ -264,7 +401,7 @@ struct SurveyPublicView: View {
             // story behind it.
             if !app.isSignedIn {
                 VStack(alignment: .leading, spacing: 10) {
-                    RespondVerifyInlineView()
+                    RespondVerifyInlineView(focusedField: $focusedField)
                     if !asModal {
                         Button(app.T("Hoặc đăng nhập bằng tài khoản banbe có sẵn", "Or sign in with an existing banbe account")) {
                             app.requireAuth(returnTo: .surveyPublic, backTo: .surveyPublic)
@@ -275,6 +412,12 @@ struct SurveyPublicView: View {
                 }
             } else {
                 Button {
+                    // Submit ends editing first — a failed server-side
+                    // validation re-renders this same `form(config:)` with
+                    // `app.surveyDraft` untouched (the error path never
+                    // clears any answer), so every field's current value is
+                    // retained exactly as this ticket requires either way.
+                    focusedField = nil
                     Task { await app.submitSurveyResponse() }
                 } label: {
                     Text(app.mySurveyResponse != nil ? app.T("Cập nhật câu trả lời", "Update response") : app.T("Gửi câu trả lời", "Submit response"))
@@ -323,6 +466,7 @@ struct SurveyPublicView: View {
 private struct RespondVerifyInlineView: View {
     @EnvironmentObject var app: AppState
     @State private var email = ""
+    var focusedField: FocusState<SurveyFocusField?>.Binding
 
     var body: some View {
         if app.surveyRespondStep == "codeSent" {
@@ -333,12 +477,14 @@ private struct RespondVerifyInlineView: View {
                     .font(.system(size: 12.5))
                 TextField(app.T("Mã 8 chữ số", "8-digit code"), text: $app.surveyRespondCode)
                     .keyboardType(.numberPad)
+                    .focused(focusedField, equals: .respondCode)
                     .padding(10)
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(app.palette.rule))
                 if !app.surveyRespondError.isEmpty {
                     Text(app.surveyRespondError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
                 }
                 Button(app.surveyRespondSending ? app.T("Đang xác nhận…", "Verifying…") : app.T("Xác nhận mã", "Confirm code")) {
+                    focusedField.wrappedValue = nil
                     Task { await app.verifySurveyRespondCode() }
                 }
                 .disabled(app.surveyRespondSending)
@@ -350,11 +496,15 @@ private struct RespondVerifyInlineView: View {
             }
             .padding(14)
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+            .id(SurveyFocusField.respondCode)
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 Text(app.T("Xác nhận email để gửi câu trả lời", "Verify your email to submit")).font(.system(size: 12.5, weight: .semibold))
                 TextField(app.T("Email của bạn", "Your email"), text: $email)
                     .keyboardType(.emailAddress).autocapitalization(.none)
+                    .focused(focusedField, equals: .respondEmail)
+                    .submitLabel(.send)
+                    .onSubmit { focusedField.wrappedValue = nil; Task { await app.sendSurveyRespondCode(email: email) } }
                     .padding(10)
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(app.palette.rule))
                 Button {
@@ -372,6 +522,7 @@ private struct RespondVerifyInlineView: View {
                     Text(app.surveyRespondError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
                 }
                 Button(app.surveyRespondSending ? app.T("Đang gửi…", "Sending…") : app.T("Gửi mã xác nhận", "Send verification code")) {
+                    focusedField.wrappedValue = nil
                     Task { await app.sendSurveyRespondCode(email: email) }
                 }
                 .disabled(app.surveyRespondSending)
@@ -383,6 +534,7 @@ private struct RespondVerifyInlineView: View {
             }
             .padding(14)
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
+            .id(SurveyFocusField.respondEmail)
         }
     }
 }
