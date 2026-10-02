@@ -668,7 +668,7 @@ final class AppState: ObservableObject {
     // stops rendering (e.g. the survey strip collapsing) cleanly disappears
     // from this dict on the very next preference pass, instead of leaving a
     // stale dead zone behind.
-    @Published var horizontalScrollZones: [String: CGRect] = [:]
+    @Published var rootGestureExclusionZones: [String: CGRect] = [:]
     // Pulse teaser pass (2026-09-27), reworked by the same-space pass
     // (2026-09-28, after a second real-device report of the bubble sitting
     // fixed on screen while the ring scrolled) — the teaser's own sequence
@@ -1191,8 +1191,16 @@ final class AppState: ObservableObject {
     // Already-answered respondents land on a read-only summary first; this
     // flips open the editable form (reset to false on every fresh load).
     @Published var surveyEditMode = false
-    // Section 5 — public (non-follower) survey-story discovery ("Help Shape
-    // Upcoming Events"), built in loadHomeStories() alongside homeStories.
+    // Section 5 — "Help Shape Upcoming Events". Source-of-discovery pass —
+    // loaded by its OWN `loadHomeSurveyDiscovery()`/`loadMoreHomeSurveyDiscovery()`
+    // (AppState+Surveys.swift), reading `get_public_survey_discovery()`
+    // (migration 120) directly, no longer built inside `loadHomeStories()`
+    // from `stories` rows — every PUBLISHED eligible public survey is
+    // discoverable now, whether or not it was ever explicitly shared to a
+    // story (that remains a separate, optional action — see
+    // `mySurveySharedIds`). Keyset-paginated: `homeSurveyDiscoveryHasMore`
+    // and the cursor pair below let "Show More" fetch the next page without
+    // re-fetching rows already loaded.
     @Published var homeSurveyDiscovery: [SurveyDiscoveryCard] = []
     /// Visibility-investigation fix — distinct loading/error states so a
     /// real query/decode failure is never silently indistinguishable from
@@ -1200,6 +1208,17 @@ final class AppState: ObservableObject {
     /// first paint doesn't flash "nothing here" either.
     @Published var homeSurveyDiscoveryLoading = true
     @Published var homeSurveyDiscoveryError = ""
+    @Published var homeSurveyDiscoveryLoadingMore = false
+    @Published var homeSurveyDiscoveryHasMore = false
+    var homeSurveyDiscoveryCursorCreatedAt: Date?
+    var homeSurveyDiscoveryCursorId: UUID?
+    // Stale-async-result guard (task's own "reject stale async results")
+    // — bumped on every fresh `loadHomeSurveyDiscovery()` call; a slower,
+    // older in-flight request landing after a newer one (or after account
+    // change) must never overwrite what the newer one already applied.
+    // Same token idiom `BottomTabBarOverlay.visibilityToken`/`navGeneration`
+    // already use elsewhere in this app for the identical class of race.
+    var homeSurveyDiscoveryGeneration = 0
     // Compact Home discovery pass — collapsed by default (section takes too
     // much vertical space once many hosts publish). Lives on AppState, not
     // local `@State` in HomeView, so it survives a round trip to the survey

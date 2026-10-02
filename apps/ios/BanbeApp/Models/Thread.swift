@@ -115,20 +115,27 @@ struct SurveyCard: Decodable, Equatable, Hashable {
     }
 }
 
-/// Section 5 — one card per organizer in Home's "Help Shape Upcoming
-/// Events" discovery row (built client-side in loadHomeStories(), not a DB
-/// row shape — mirrors web's homeSurveyDiscovery exactly).
+/// Section 5 — one row per DISTINCT eligible public survey in Home's "Help
+/// Shape Upcoming Events" vertical list. Source-of-discovery pass — this is
+/// now the real shape `get_public_survey_discovery()` (migration 120)
+/// returns, loaded directly by `loadPublicSurveyDiscovery()` — no longer
+/// built by scanning `stories` for `survey_share` rows (that required an
+/// explicit, separate Share-To-Story action AND a still-unexpired story row,
+/// which is why a published-but-unshared or story-expired survey used to
+/// vanish from discovery while still fully active/answerable). `hostAvatarURL`
+/// is resolved client-side from the RPC's own `host_avatar_path`, through
+/// the SAME `organizer-photos` public-bucket resolver every other organizer
+/// avatar in this app already uses.
 struct SurveyDiscoveryCard: Identifiable, Equatable {
     var id: UUID { surveyId }
-    let storyId: UUID
     let organizerId: String
     let surveyId: UUID
     let publicId: String
     let title: String
-    let description: String
     let hostName: String
+    let hostAvatarURL: URL?
     let closesAt: Date?
-    let status: String
+    let createdAt: Date
 }
 
 /// A denormalized snapshot of the shared event's own catalogue fields, so

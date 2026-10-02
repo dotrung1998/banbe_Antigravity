@@ -393,10 +393,30 @@ export default function Home() {
     loadHomeStories, openStoryViewer, openSurveyStoryModal,
     loadMyRefunds, openMyRefunds, loadRefundQueue, goNotifications,
     openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, loadPulse,
+    loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery,
   } = useGoc();
 
   const s = state;
   const hasHosted = s.hasHosted;
+  // Compact-vertical-list pass — see iOS HomeView.swift's
+  // `visibleSurveyDiscoveryCount` for the full reasoning: deliberately
+  // SEPARATE from both `s.homeSurveyDiscovery.length` and
+  // `s.homeSurveyDiscoveryHasMore` (the real "more exist on the server"
+  // signal) so a preview-row cap is never confused with the true total.
+  const [visibleSurveyDiscoveryCount, setVisibleSurveyDiscoveryCount] = useState(3);
+  // Reset-on-account-change — this component can stay mounted across a
+  // sign-out/sign-in within the same session, so a new account must not
+  // inherit a previous account's "already revealed 23 rows" state.
+  useEffect(() => { setVisibleSurveyDiscoveryCount(3); }, [s.user?.id]);
+  const revealMoreSurveyDiscovery = async () => {
+    // Reveals already-loaded rows first (no network call); once that's
+    // exhausted, fetches a real next page. Either way, +10 — a functional
+    // update, not a read of this render's own (by-then-stale) `s` snapshot.
+    if (visibleSurveyDiscoveryCount >= s.homeSurveyDiscovery.length) {
+      await loadMoreHomeSurveyDiscovery();
+    }
+    setVisibleSurveyDiscoveryCount(n => n + 10);
+  };
   const pulseRingRef = useRef(null);
 
   // Home search relocation (2026-09-28 dock/search pass) — the search
@@ -464,6 +484,9 @@ export default function Home() {
   useEffect(() => { loadWeekendEvents(); }, [loadWeekendEvents]);
   // Task 3.3 (07-notifications.md) — active stories row.
   useEffect(() => { if (s.user?.id) loadHomeStories(); }, [s.user?.id, loadHomeStories]);
+  // Source-of-discovery pass — independent of the story ring above; own
+  // initial load, own refresh, own pagination state.
+  useEffect(() => { if (s.user?.id) loadHomeSurveyDiscovery(); }, [s.user?.id, loadHomeSurveyDiscovery]);
   // Merges a real DB row's live status onto a static catalogue event —
   // same idea as curEvent's own single-event version (GocContext.jsx), just
   // applied to every event this screen might list instead of one.
@@ -935,11 +958,11 @@ export default function Home() {
             {T('Góp ý cho sự kiện sắp tới', 'Help Shape Upcoming Events')}
           </span>
           {!s.homeSurveyDiscoveryLoading && !s.homeSurveyDiscoveryError && s.homeSurveyDiscovery.length > 0 && (
-            // `.slice(0, 20)` below means an exact count of 20 may not be
-            // the real total — an honest "20+" rather than a fabricated
-            // precise number.
+            // Honest LOADED count, never a fabricated total — "+" only when
+            // the server told us more exist (`hasMore`), never guessed from
+            // a page-size cap.
             <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.7, background: `${ink}1a`, borderRadius: 999, padding: '2px 7px' }}>
-              {s.homeSurveyDiscovery.length >= 20 ? '20+' : s.homeSurveyDiscovery.length}
+              {s.homeSurveyDiscoveryHasMore ? `${s.homeSurveyDiscovery.length}+` : s.homeSurveyDiscovery.length}
             </span>
           )}
           <span style={{ flex: 1 }} />
@@ -959,7 +982,7 @@ export default function Home() {
         {!s.homeSurveyDiscoveryLoading && s.homeSurveyDiscoveryError && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="home-survey-discovery-error">
             <span style={{ fontSize: 12, color: alert }}>{s.homeSurveyDiscoveryError}</span>
-            <span onClick={loadHomeStories} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer', alignSelf: 'flex-start' }}>{T('Thử lại', 'Retry')}</span>
+            <span onClick={loadHomeSurveyDiscovery} style={{ fontSize: 12, textDecoration: 'underline', cursor: 'pointer', alignSelf: 'flex-start' }}>{T('Thử lại', 'Retry')}</span>
           </div>
         )}
         {!s.homeSurveyDiscoveryLoading && !s.homeSurveyDiscoveryError && s.homeSurveyDiscovery.length === 0 && (
@@ -968,37 +991,64 @@ export default function Home() {
           </div>
         )}
         {s.homeSurveyDiscovery.length > 0 && (
-          // Gesture fix — `data-hscroll="true"` is this app's existing,
-          // already-working convention (the two carousels above already use
-          // it) for "a touch/drag starting inside this element is a native
-          // scroll, never the root-screen swipe" (see App.jsx's
-          // onGesturePointerMove: `e.target?.closest?.('[data-hscroll]')`).
-          // This row never had it, which is the real cause of "swiping
-          // through survey cards also triggers root/dock-tab navigation" —
-          // it was being read as an ordinary horizontal screen-swipe the
-          // whole time, same bug class the OTHER carousels here already
-          // avoid.
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }} data-hscroll="true" data-testid="home-survey-discovery-row">
-            {s.homeSurveyDiscovery.map(card => (
+          // Compact-vertical-list pass — replaces the previous horizontal
+          // `data-hscroll` carousel entirely. Plain vertical flow inside
+          // Home's own page (no nested scroll container of any kind), so
+          // this never competes with the root-screen swipe gesture at
+          // all — that conflict was specific to HORIZONTAL motion inside a
+          // `overflowX: auto` row; a vertical list has nothing for that
+          // gesture to misread.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="home-survey-discovery-row">
+            {s.homeSurveyDiscovery.slice(0, visibleSurveyDiscoveryCount).map(card => (
               <div
                 key={card.survey_id}
                 onClick={() => openSurveyStoryModal(card.public_id)}
                 data-testid="home-survey-discovery-card"
-                style={{ ...fieldGlass({ flex: '0 0 190px', padding: 11, borderRadius: 14, cursor: 'pointer' }) }}
+                role="button"
+                tabIndex={0}
+                aria-label={card.closes_at
+                  ? T(`Trả lời khảo sát: ${card.title}, tổ chức bởi ${card.host_name}, hạn ${new Date(card.closes_at).toLocaleDateString('vi-VN')}`,
+                      `Answer survey: ${card.title}, hosted by ${card.host_name}, deadline ${new Date(card.closes_at).toLocaleDateString('vi-VN')}`)
+                  : T(`Trả lời khảo sát: ${card.title}, tổ chức bởi ${card.host_name}`, `Answer survey: ${card.title}, hosted by ${card.host_name}`)}
+                style={{ ...fieldGlass({ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 12px', borderRadius: 12, cursor: 'pointer' }) }}
               >
-                <div style={{ fontSize: 10, opacity: 0.6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.host_name}</div>
-                <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{card.title}</div>
-                {card.closes_at && (
-                  <div style={{ fontSize: 10, opacity: 0.6, marginTop: 5, display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
-                    <span aria-hidden="true">🕐</span>
-                    {T('Hạn', 'Deadline')}: {new Date(card.closes_at).toLocaleDateString('vi-VN')}
+                {card.host_avatar_url ? (
+                  <img src={card.host_avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }} />
+                ) : (
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 999, background: `${ink}1a`, flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: ink,
+                  }}>
+                    {(card.host_name || '?').charAt(0).toUpperCase()}
                   </div>
                 )}
-                <div style={{ marginTop: 8, fontSize: 11, fontWeight: 600, textDecoration: 'underline' }}>
-                  {T('Trả lời khảo sát', 'Answer Survey')}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.title}</div>
+                  <div style={{ fontSize: 11, color: ink, opacity: 0.65, marginTop: 2, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                    <span>{card.host_name}</span>
+                    {card.closes_at && (
+                      <>
+                        {/* Solid small square separator — decorative, hidden
+                            from accessibility, never a bullet/dash/large
+                            clock glyph. */}
+                        <span aria-hidden="true" style={{ width: 3, height: 3, borderRadius: 1, background: ink, opacity: 0.55, flexShrink: 0 }} />
+                        <span>{T('Hạn', 'Deadline')}: {new Date(card.closes_at).toLocaleDateString('vi-VN')}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
+                <span aria-hidden="true" style={{ fontSize: 13, color: ink, opacity: 0.35, flexShrink: 0, marginTop: 2 }}>›</span>
               </div>
             ))}
+            {(visibleSurveyDiscoveryCount < s.homeSurveyDiscovery.length || s.homeSurveyDiscoveryHasMore) && (
+              <div
+                onClick={revealMoreSurveyDiscovery}
+                data-testid="home-survey-discovery-show-more"
+                style={{ fontSize: 12, fontWeight: 600, color: ink, textAlign: 'center', cursor: 'pointer', padding: '8px 0' }}
+              >
+                {s.homeSurveyDiscoveryLoadingMore ? T('Đang tải…', 'Loading…') : T('Xem thêm', 'Show More')}
+              </div>
+            )}
           </div>
         )}
         </div>

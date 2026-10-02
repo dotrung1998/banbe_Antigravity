@@ -430,6 +430,150 @@ currently wired for the survey strip only, by design/scope — the other
 Home carousels' own narrower historical exposure to this bug class wasn't
 otherwise reported and was left untouched.
 
+## Source-of-discovery pass — replaced story-based Home discovery with a direct `surveys` query + vertical compact list + real gesture-coordinate-space fix
+
+**Product change, deliberate**: PUBLISHING an eligible public survey now
+makes it discoverable on Home — Share To Story goes back to being a
+separate, optional action, not a required one. Before this pass, Home's
+"Help Shape Upcoming Events" was built entirely by scanning `stories` for
+`kind='survey_share'` rows (`loadHomeStories()`, both platforms) — a real,
+confirmed bug (previous pass's own live DB query proved it): a published
+survey with no explicit Share-To-Story action, or whose `stories` row had
+simply expired (`stories.expires_at`, migration 066 prunes after 24h),
+silently vanished from discovery while still fully active/answerable via
+its direct link.
+
+**New migration — `20261101000120_120_public_survey_discovery.sql`,
+NOT YET DEPLOYED (blocker)**: `get_public_survey_discovery(p_cursor_created_at,
+p_cursor_id, p_limit)` reads `surveys` directly (authenticated-only,
+SECURITY DEFINER, allowlisted fields only — survey_id/public_id/title/
+organizer_id/host_name/host_avatar_path/closes_at/created_at, never
+`config`/respondent data/the raw table). Eligibility is the exact SAME
+"effective status" rule `get_survey_public()` (migration 114) already uses
+(`status NOT IN ('draft','closed','archived')`, `opens_at <= now()`,
+`closes_at > now()` or NULL) — never a second, differently-defined
+definition of "active". Ordering is one row per DISTINCT survey id (never
+collapsed by organizer), newest-`created_at`-first, keyset-paginated
+`(created_at, id)` DESC with a real `has_more` flag (fetches `limit+1` to
+compute it without a second COUNT). No follow/ownership filter anywhere —
+owner, followed and non-followed hosts are structurally equal callers of
+this function.
+
+**This environment has no `supabase` CLI/DB credentials to actually apply a
+migration** (same documented limitation as every other pass in this file)
+— **real verification instead via a throwaway local Postgres container**
+(Docker, available this session): applied the migration file verbatim
+against a minimal stub schema (`organizers`/`surveys`/a stand-in
+`auth.uid()`), seeded 2 hosts / 3 eligible surveys (one host with 2, one
+with 1, the single-survey host's row deliberately given NO story-share
+equivalent at all) / 5 ineligible rows (draft, closed, archived, not-yet-
+open, expired). Confirmed by REAL query results, not reasoning: exactly the
+3 eligible rows come back, newest-first, across BOTH hosts, with no
+exclusion by organizer relationship; a `limit=2` call returns the newest 2
+with `has_more: true`; a `limit=20` call returns all 3 with `has_more:
+false`. **Run `supabase db push` to deploy this migration before any of
+this pass's Home discovery actually works against the real project** — the
+client code below is written and build-verified against the NEW shape, but
+cannot be exercised against real production data from here, and a REAL
+non-owner/non-follower session (the thing this ticket explicitly asks to
+verify, "admin/service-role reads are not proof") cannot be confirmed until
+it's deployed.
+
+**Client rewrite, both platforms** — `loadHomeStories()` (iOS
+`AppState+Data.swift`, web `GocContext.jsx`) no longer builds
+`homeSurveyDiscovery` at all; it now only builds the ordinary follow/
+ownership-gated per-organizer story ring (unchanged behavior, just fewer
+RPC calls — `get_survey_card()` is now only fetched for THAT ring's own
+`survey_share` items, not for discovery). New, independent loaders: iOS
+`loadHomeSurveyDiscovery()`/`loadMoreHomeSurveyDiscovery()`
+(`AppState+Surveys.swift`, new `SurveyDiscoveryCard` shape in
+`Models/Thread.swift` — dropped `storyId`/`description`/`status`, added
+`hostAvatarURL`/`createdAt`); web's own pair in `GocContext.jsx`
+(`fetchSurveyDiscoveryPage`, a keyset cursor kept in a `useRef` outside
+React state). Both reject stale async results via a generation/seq token
+(same idiom `BottomTabBarOverlay.visibilityToken`/`navGeneration`/web's own
+`refundQueueSeq` already use elsewhere), reset fully on sign-out/account
+change, and wire into Home's existing pull-to-refresh
+(`ScreenScaffold`'s `onRefresh` / `App.jsx`'s `runRefresh('home')`) and
+initial-mount `.task`/`useEffect` alongside (not instead of)
+`loadHomeStories()`. Avatar resolution (`host_avatar_path` →
+`organizer-photos` public bucket) is unchanged in mechanism from the
+previous pass, just moved to the new loaders.
+
+**Compact vertical list, both platforms** — the previous horizontal
+carousel is gone entirely. iOS: a `LazyVStack` inside Home's own existing
+`ScreenScaffold` scroll (no nested scroll view), web: a plain
+`flexDirection: column` div inside Home's own page flow. Each row: a 28×28
+avatar (real image or the host's own initial, never blank — same
+`RemoteImage`/`PhotoLoader` cache iOS already uses elsewhere; web a plain
+`<img>`/initial fallback), one-line truncated title, one metadata line
+(host name · a solid 3×3pt square separator, never a bullet/dash/clock ·
+deadline) that wraps freely at larger Dynamic Type/zoom instead of
+truncating, and a trailing chevron — no repeated "Answer Survey" button
+inside each row anymore; the WHOLE row is the tap target, with an explicit
+`accessibilityLabel`/`aria-label` stating the action for VoiceOver/screen
+readers. Initially shows 3 rows; a "Show More" control reveals already-
+loaded rows first (no network call) and only triggers a real next-page
+fetch once every loaded row is already visible — `visibleSurveyDiscoveryCount`
+(iOS, local `@State`) / `visibleSurveyDiscoveryCount` (web, local
+`useState`) is deliberately a THIRD number, distinct from both the loaded
+array's `.length` and the real `hasMore` flag, so a preview-row cap can
+never be confused with the true total — reset to 3 on account change on
+both platforms. The header's own count badge now shows the honest LOADED
+count with a `+` only when the server's own `has_more` says so (never a
+guessed/capped number).
+
+**Gesture fix — real root cause found and fixed this time, not just
+"removed the `.global` zone check and hoped" — iOS**: the prior pass's
+fix (a `rootGestureExclusionZones` dict, zones registered via
+`GeometryReader`/`PreferenceKey` in `.global` coordinate space, checked in
+`RootView.swift`'s `tabSwipeGesture`) failed on a real device because
+`tabSwipeGesture`'s own `DragGesture` used `coordinateSpace: .local` — a
+DIFFERENT coordinate system than `.global`, silently assumed to share an
+origin with it. Anything between the real window origin and the view the
+gesture is attached to (`rootScreenStack`, wrapped in a `Group`) — a status
+bar, a safe-area inset, anything — makes those two systems disagree with no
+error, no crash, just a silently-wrong containment check. Fixed by naming
+ONE shared coordinate space (`.coordinateSpace(name: "rootGesture")` on
+that same `Group`) and switching BOTH `tabSwipeGesture`'s own
+`DragGesture` AND every registered exclusion zone
+(`RootGestureExclusionZonePreferenceKey`, `HomeView.swift`) to measure in
+`.named("rootGesture")` instead of mixing `.local`/`.global` — there is now
+only one coordinate system being compared against itself. The exclusion
+check itself is unchanged in spirit (a touch's START location inside a
+registered zone hands the WHOLE gesture off to Home's own scroll, decided
+once, never re-evaluated mid-drag — covers a diagonal drag same as before);
+only the carousel-specific zone itself was replaced with one scoped to the
+new vertical list's own bounds (still registered only while expanded).
+**Web**: this carousel simply never had the `data-hscroll="true"` attribute
+every other horizontal row in this app already uses for this exact
+purpose — now moot, since the new vertical list has no horizontal
+`overflowX` container left to misread as a screen-swipe at all; nothing
+else needed changing there.
+
+**Verified this pass**: migration 120 — real local-Postgres-container
+query results (above), not reasoning; `supabase db push` NOT run (no
+credentials). `npx vite build` clean. `xcodebuild -scheme PersonalTeamDebug
+-sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build`
+→ **BUILD SUCCEEDED**. No simulator/device UI run — the vertical list
+layout, Show More reveal-then-fetch sequencing, and the named-coordinate-
+space gesture fix are all verified by reading/local-Postgres testing, not
+by observing them run on a real screen.
+
+**Remaining blockers**: migration 120 must be deployed (`supabase db push`)
+before ANY of Home's new discovery behavior is live — until then, Home
+falls back to showing nothing new (the old `stories`-based code path is
+gone, so `homeSurveyDiscovery` will simply stay empty/error against the
+OLD deployed schema, since the RPC doesn't exist there yet). A real
+non-owner/non-follower device session against the deployed function is the
+user's own to confirm once deployed — the local-Postgres test proves the
+QUERY logic, not RLS/grants against the real project (though
+`REVOKE ... FROM PUBLIC` + `GRANT ... TO authenticated` mirrors every other
+allowlisted RPC in this codebase exactly). The real-device gesture fix
+(named coordinate space) is reasoned from a concrete, plausible root cause
+for the PRIOR fix's reported failure, not confirmed fixed on a physical
+iPhone — the user's own iPhone 6788 repro is the next real test.
+
 ## Slice A — Strict invite-only events
 
 ### What's real and verified

@@ -719,20 +719,25 @@ const initialState = {
   // screen. `surveyPublic` is exactly get_survey_public()'s return shape
   // (never raw table rows) so the public route can never expose more than
   // that RPC's own allowlisted fields.
-  // Section 5 — public (non-follower) survey-story discovery group on
-  // Home ("Help Shape Upcoming Events"), built in loadHomeStories() below:
-  // one card per organizer (newest active survey_share first), newest-
-  // organizer-first, capped — see that function's own comment for why this
-  // is a SEPARATE bucket from the normal, still-follow-gated `homeStories`.
+  // Section 5 — "Help Shape Upcoming Events". Source-of-discovery pass —
+  // loaded by its OWN `loadHomeSurveyDiscovery()`/`loadMoreHomeSurveyDiscovery()`,
+  // reading `get_public_survey_discovery()` (migration 120) directly, no
+  // longer built inside `loadHomeStories()` from `stories` rows — every
+  // PUBLISHED eligible public survey is discoverable, whether or not it was
+  // ever explicitly shared to a story. One row per DISTINCT survey id
+  // (never collapsed by organizer).
   homeSurveyDiscovery: [],
   // Visibility-investigation fix — distinct loading/error states so a real
   // query/decode failure is never silently indistinguishable from "no
-  // public surveys right now" ("never silently treat query/decode errors
-  // as an empty discovery feed"). Loading starts true so the very first
-  // paint (before loadHomeStories' first call resolves) doesn't flash
-  // "nothing here" either.
+  // public surveys right now". Loading starts true so the very first paint
+  // doesn't flash "nothing here" either.
   homeSurveyDiscoveryLoading: true,
   homeSurveyDiscoveryError: '',
+  homeSurveyDiscoveryLoadingMore: false,
+  // Real "more exist on the server" signal (keyset pagination) — distinct
+  // from the loaded array's own `.length`, so a preview-row cap on Home is
+  // never confused with the true total.
+  homeSurveyDiscoveryHasMore: false,
   // Compact Home discovery pass — collapsed by default (the section takes
   // too much vertical space once many hosts publish). Lives in GocContext
   // state, not local component state, so it survives Home re-rendering
@@ -4606,49 +4611,29 @@ export function GocProvider({ children }) {
   // or a followed organizer) — so this just groups+signs what comes back,
   // no client-side re-filtering.
   //
-  // Survey-sharing pass (section 5) — migration 117 ADDITIVELY widens that
-  // RLS to also return a `kind='survey_share'` row for ANY organizer, not
-  // just followed ones (the whole point: public, non-follower discovery).
-  // That means a row can now come back here for an organizer this account
-  // neither owns nor follows — those must NOT be folded into the normal
-  // per-organizer `homeStories` rings (which stay exactly as
-  // follow/ownership-gated as before — "keep Following stories unchanged").
-  // They're routed into a separate `homeSurveyDiscovery` bucket instead, one
-  // real `follows` lookup below is what tells the two cases apart.
+  // Source-of-discovery pass — Section 5's own "Help Shape Upcoming Events"
+  // no longer lives in this function at all (see `loadHomeSurveyDiscovery()`
+  // below, which reads `get_public_survey_discovery()`, migration 120,
+  // directly — every published, currently-open public survey, whether or
+  // not it was ever shared to a story). This function now only builds the
+  // ordinary follow/ownership-gated per-organizer story ring.
   const loadHomeStories = useCallback(async () => {
-    if (!s.user) return set({ homeStories: [], homeSurveyDiscovery: [], homeSurveyDiscoveryLoading: false, homeSurveyDiscoveryError: '', homeSurveyDiscoveryExpanded: false });
-    set({ homeSurveyDiscoveryLoading: true, homeSurveyDiscoveryError: '' });
+    if (!s.user) return set({ homeStories: [] });
     const { data: rows, error } = await supabase
       .from('stories')
       .select('id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at, kind, event_id, survey_id')
       .order('created_at', { ascending: true });
-    // Visibility-investigation fix — a real query error must never render
-    // the same as "genuinely nothing to discover." Only a true empty
-    // result (no error, zero rows) clears both buckets with no error text.
     if (error) {
       if (import.meta.env?.DEV) console.warn('loadHomeStories failed:', { code: error.code, message: error.message });
-      set({
-        homeSurveyDiscoveryLoading: false,
-        homeSurveyDiscoveryError: T('Không thể tải khảo sát công khai. Vui lòng thử lại.', 'Could not load public surveys. Please try again.'),
-      });
       return;
     }
-    if (!rows?.length) return set({ homeStories: [], homeSurveyDiscovery: [], homeSurveyDiscoveryLoading: false, homeSurveyDiscoveryError: '' });
+    if (!rows?.length) return set({ homeStories: [] });
 
     const { data: followRows } = await supabase.from('follows').select('organizer_id').eq('user_id', s.user.id);
     const followedOrgIds = new Set((followRows || []).map(f => f.organizer_id));
     const isMineOrFollowed = (organizerId) => s.myOrganizerIds.includes(organizerId) || followedOrgIds.has(organizerId);
 
     const ownRows = rows.filter(r => isMineOrFollowed(r.organizer_id));
-    // Real-device report — a host viewing their OWN just-published survey
-    // correctly saw it missing from "Help Shape Upcoming Events" because
-    // this used to exclude `isMineOrFollowed` organizers entirely. A host
-    // should always be able to find their own published survey the same
-    // way any other viewer does, so this bucket is every `survey_share` row,
-    // independent of `ownRows`/the normal story ring (unchanged, still
-    // follow/ownership-gated exactly as before) — the harmless duplication
-    // of also seeing it here is a better trade-off than hiding it.
-    const discoveryRows = rows.filter(r => r.kind === 'survey_share');
 
     const orgIds = [...new Set(rows.map(r => r.organizer_id))];
     const { data: orgRows } = await supabase.from('organizers').select('id, name, owner_id, user_id, avatar_path').in('id', orgIds);
@@ -4682,13 +4667,11 @@ export function GocProvider({ children }) {
       : { data: [] };
     const urlByPath = Object.fromEntries((signed || []).filter(r => r.signedUrl && !r.error).map(r => [r.path, r.signedUrl]));
 
-    // One get_survey_card() per distinct survey referenced by EITHER bucket
-    // — authenticated-only, allowlisted-field RPC (migration 117), never a
-    // direct `surveys` table read from the client. Fetched live on every
-    // load (never cached/frozen at share time) so a card always shows the
-    // survey's REAL current status, even if it closed after the story was
-    // posted — "closing the survey updates the viewer's truthful state."
-    const surveyIds = [...new Set(rows.filter(r => r.kind === 'survey_share' && r.survey_id).map(r => r.survey_id))];
+    // One get_survey_card() per distinct survey referenced by the STORY
+    // RING only now (`ownRows` — mine/followed) — Section 5's own discovery
+    // no longer needs this at all, since `get_public_survey_discovery()`
+    // already returns everything a discovery row needs directly.
+    const surveyIds = [...new Set(ownRows.filter(r => r.kind === 'survey_share' && r.survey_id).map(r => r.survey_id))];
     const surveyCardEntries = await Promise.all(surveyIds.map(async (id) => {
       const { data } = await supabase.rpc('get_survey_card', { p_survey_id: id });
       return [id, data?.success ? data : null];
@@ -4754,33 +4737,98 @@ export function GocProvider({ children }) {
       return aMine - bMine;
     });
 
-    // Section 5 — "Help Shape Upcoming Events": one card per DISTINCT
-    // published survey (fast follow-up fix — this used to also collapse to
-    // one card per ORGANIZER via a second `byOrgNewest` pass below this
-    // comment, which meant a second survey published by an organizer who
-    // already had one showing silently replaced it instead of appearing
-    // alongside it, confirmed as the reported bug). Deduplicated by
-    // survey_id (an organizer sharing the same survey to a second story
-    // still shows once, newest share wins), newest-first, capped to a
-    // reasonable count. A card whose live get_survey_card() came back null
-    // (survey deleted / RPC error) is dropped here rather than ever
-    // rendered — never a broken card.
-    const bySurveyNewest = new Map();
-    for (const r of discoveryRows) {
-      const card = surveyCardById[r.survey_id];
-      if (!card) continue;
-      const existing = bySurveyNewest.get(r.survey_id);
-      if (!existing || new Date(r.created_at) > new Date(existing.createdAt)) {
-        bySurveyNewest.set(r.survey_id, { storyId: r.id, organizerId: r.organizer_id, createdAt: r.created_at, card });
-      }
-    }
-    const discovery = [...bySurveyNewest.values()]
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .slice(0, 20)
-      .map(entry => ({ storyId: entry.storyId, organizerId: entry.organizerId, ...entry.card }));
-
-    set({ homeStories: groups, homeSurveyDiscovery: discovery, homeSurveyDiscoveryLoading: false, homeSurveyDiscoveryError: '' });
+    set({ homeStories: groups });
   }, [set, s.user, s.myOrganizerIds]);
+
+  // ============ Section 5 — Home survey discovery (source-of-discovery
+  // pass, migration 120) ============
+  // Replaces the old `stories`/`survey_share`-row-based feed entirely:
+  // PUBLISHING an eligible public survey makes it discoverable, whether or
+  // not it was ever explicitly shared to a story — that remains a separate,
+  // optional action (Share To Story). Reads `get_public_survey_discovery()`
+  // directly, an authenticated-only, allowlisted-field RPC — never the raw
+  // `surveys` table, and never respondent data. Keyset-paginated
+  // (created_at, id) DESC — `surveyDiscoveryCursorRef` holds the next
+  // page's cursor outside React state (no re-render needed just to remember
+  // it), reset on every fresh load.
+  const surveyDiscoveryCursorRef = useRef({ createdAt: null, id: null });
+  const SURVEY_DISCOVERY_INITIAL_PAGE = 3;
+  const SURVEY_DISCOVERY_PAGE = 10;
+
+  const fetchSurveyDiscoveryPage = useCallback(async (limit) => {
+    const { createdAt, id } = surveyDiscoveryCursorRef.current;
+    const { data, error } = await supabase.rpc('get_public_survey_discovery', {
+      p_cursor_created_at: createdAt, p_cursor_id: id, p_limit: limit,
+    });
+    if (error || data?.success === false) throw new Error(data?.error || error?.message || 'unknown');
+    const cards = (data.surveys || []).map(row => ({
+      survey_id: row.survey_id, public_id: row.public_id, title: row.title, organizer_id: row.organizer_id,
+      host_name: row.host_name || '', closes_at: row.closes_at, created_at: row.created_at,
+      // Avatar pass — same public-bucket resolver (`organizer-photos`,
+      // synchronous `getPublicUrl`) every other organizer avatar in this
+      // app already uses — no signing, no extra network call.
+      host_avatar_url: row.host_avatar_path ? supabase.storage.from('organizer-photos').getPublicUrl(row.host_avatar_path).data.publicUrl : null,
+    }));
+    return { cards, hasMore: !!data.has_more };
+  }, []);
+
+  // Stale-async-result guard (task's own "reject stale async results") —
+  // bumped on every fresh call; a slower, older in-flight request landing
+  // after a newer one (or after account change) must never overwrite what
+  // the newer one already applied. Same token idiom already used elsewhere
+  // in this codebase for the identical class of race (e.g. `refundQueueSeq`
+  // above).
+  const surveyDiscoverySeq = useRef(0);
+
+  const loadHomeSurveyDiscovery = useCallback(async () => {
+    if (!s.user) {
+      surveyDiscoveryCursorRef.current = { createdAt: null, id: null };
+      return set({
+        homeSurveyDiscovery: [], homeSurveyDiscoveryLoading: false, homeSurveyDiscoveryError: '',
+        homeSurveyDiscoveryHasMore: false, homeSurveyDiscoveryExpanded: false,
+      });
+    }
+    const seq = ++surveyDiscoverySeq.current;
+    surveyDiscoveryCursorRef.current = { createdAt: null, id: null };
+    set({ homeSurveyDiscoveryLoading: true, homeSurveyDiscoveryError: '' });
+    try {
+      const { cards, hasMore } = await fetchSurveyDiscoveryPage(SURVEY_DISCOVERY_INITIAL_PAGE);
+      if (seq !== surveyDiscoverySeq.current) return;
+      if (cards.length) {
+        const last = cards[cards.length - 1];
+        surveyDiscoveryCursorRef.current = { createdAt: last.created_at, id: last.survey_id };
+      }
+      set({ homeSurveyDiscovery: cards, homeSurveyDiscoveryHasMore: hasMore, homeSurveyDiscoveryLoading: false, homeSurveyDiscoveryError: '' });
+    } catch (e) {
+      if (seq !== surveyDiscoverySeq.current) return;
+      if (import.meta.env?.DEV) console.warn('loadHomeSurveyDiscovery failed:', e);
+      set({ homeSurveyDiscoveryLoading: false, homeSurveyDiscoveryError: T('Không thể tải khảo sát công khai. Vui lòng thử lại.', 'Could not load public surveys. Please try again.') });
+    }
+  }, [set, s.user, T, fetchSurveyDiscoveryPage]);
+
+  // "Show More" — appends the next page without disturbing rows already
+  // rendered (preserves Home's own scroll position).
+  const loadMoreHomeSurveyDiscovery = useCallback(async () => {
+    if (s.homeSurveyDiscoveryLoadingMore || !s.homeSurveyDiscoveryHasMore) return;
+    const seq = surveyDiscoverySeq.current;
+    set({ homeSurveyDiscoveryLoadingMore: true });
+    try {
+      const { cards, hasMore } = await fetchSurveyDiscoveryPage(SURVEY_DISCOVERY_PAGE);
+      if (seq !== surveyDiscoverySeq.current) return;
+      if (cards.length) {
+        const last = cards[cards.length - 1];
+        surveyDiscoveryCursorRef.current = { createdAt: last.created_at, id: last.survey_id };
+      }
+      set(prev => ({
+        homeSurveyDiscovery: [...prev.homeSurveyDiscovery, ...cards],
+        homeSurveyDiscoveryHasMore: hasMore, homeSurveyDiscoveryLoadingMore: false,
+      }));
+    } catch (e) {
+      if (seq !== surveyDiscoverySeq.current) return;
+      if (import.meta.env?.DEV) console.warn('loadMoreHomeSurveyDiscovery failed:', e);
+      set({ homeSurveyDiscoveryLoadingMore: false, homeSurveyDiscoveryError: T('Không thể tải thêm khảo sát. Vui lòng thử lại.', 'Could not load more surveys. Please try again.') });
+    }
+  }, [set, s.homeSurveyDiscoveryLoadingMore, s.homeSurveyDiscoveryHasMore, T, fetchSurveyDiscoveryPage]);
 
   // Records a real story_views row (idempotent — PK on story_id+viewer_id,
   // an upsert never duplicates a re-view) and updates local state
@@ -9224,7 +9272,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, openStoryLibraryPicker, openStoryCameraPicker, closeStoryPickerRequests, publishStory, createEventShareStory, goEventFromStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, openStoryLibraryPicker, openStoryCameraPicker, closeStoryPickerRequests, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
@@ -9261,7 +9309,7 @@ export function GocProvider({ children }) {
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, openStoryLibraryPicker, openStoryCameraPicker, closeStoryPickerRequests, publishStory, createEventShareStory, goEventFromStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, openStoryLibraryPicker, openStoryCameraPicker, closeStoryPickerRequests, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,

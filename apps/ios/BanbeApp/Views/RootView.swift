@@ -184,7 +184,7 @@ struct RootView: View {
     private let tabSwipeCommitDistance: CGFloat = 70
 
     private var tabSwipeGesture: some Gesture {
-        DragGesture(minimumDistance: 8, coordinateSpace: .local)
+        DragGesture(minimumDistance: 8, coordinateSpace: .named("rootGesture"))
             .onChanged { value in
                 guard BottomTabBar.visibleScreens.contains(app.screen) else { return }
                 if tabSwipeDirection == nil {
@@ -224,16 +224,16 @@ struct RootView: View {
                     // Inbox-row frame check above (reintroduced for a new
                     // case, not a reuse of dead code): a touch starting
                     // inside a currently-registered horizontal-scroll zone
-                    // (`app.horizontalScrollZones` — HomeView's survey
+                    // (`app.rootGestureExclusionZones` — HomeView's survey
                     // discovery strip while expanded, published via
-                    // `HorizontalScrollZonePreferenceKey`) hands off to that
+                    // `RootGestureExclusionZonePreferenceKey`) hands off to that
                     // child ScrollView for this gesture's entire duration,
                     // exactly like the edge-strip checks above. Decided once,
                     // from the START location only — a drag that later
                     // reaches either end of the strip (where it keeps
                     // scrolling, or stops) never flips back to "horizontal"
                     // mid-gesture, since this branch already returned.
-                    if app.horizontalScrollZones.values.contains(where: { $0.contains(value.startLocation) }) {
+                    if app.rootGestureExclusionZones.values.contains(where: { $0.contains(value.startLocation) }) {
                         tabSwipeDirection = "vertical"
                         return
                     }
@@ -600,6 +600,24 @@ struct RootView: View {
                     rootScreenStack
                 }
             }
+            // Survey-list gesture fix (real-device report: the earlier
+            // `.global`-space zone check still let a survey-row drag commit
+            // a tab swipe) — root cause: `.global` measures from the
+            // WINDOW's own origin, while `tabSwipeGesture`'s `value.
+            // startLocation` was `.local` to THIS Group — if anything
+            // between the window root and this Group ever insets/offsets
+            // it (status bar, safe area, a future wrapper), the two
+            // coordinate systems silently disagree and a zone-containment
+            // check built from one can misfire against the other with no
+            // error, no crash — exactly a silent real-device-only failure.
+            // Naming THIS Group's own coordinate space and switching BOTH
+            // `tabSwipeGesture` (below) and every registered exclusion zone
+            // (`AppState.rootGestureExclusionZones`, HomeView.swift) to measure
+            // in `.named("rootGesture")` instead removes the ambiguity
+            // entirely — there is only one coordinate system being
+            // compared against itself, not two independent ones assumed to
+            // agree.
+            .coordinateSpace(name: "rootGesture")
             .onChange(of: isScreenLevelSwipeActive) { _, active in
                 if active { app.isRootSwipeActive = true } else { app.isRootSwipeActive = false }
             }

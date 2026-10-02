@@ -83,7 +83,10 @@ struct HomeView: View {
                 await app.loadHomeLiveEvents()
                 await app.loadWeekendEvents()
                 await app.loadDiscoveryEvents()
-                if app.userID != nil { await app.loadHomeStories() }
+                if app.userID != nil {
+                    await app.loadHomeStories()
+                    await app.loadHomeSurveyDiscovery()
+                }
             }) {
                 // Lazy, so only the cards actually on screen fetch their photo —
                 // the eager VStack kicked off all ~21 hero downloads at launch
@@ -139,6 +142,9 @@ struct HomeView: View {
         .task { await app.loadHomeLiveEvents() }
         // Task 3.3 (07-notifications.md) — active-story row.
         .task { if app.userID != nil { await app.loadHomeStories() } }
+        // Source-of-discovery pass — independent of the story ring above;
+        // own initial load, own refresh, own pagination state.
+        .task { if app.userID != nil { await app.loadHomeSurveyDiscovery() } }
         // Retention roadmap P1 ("Cuối tuần này") — public info, same as
         // loadHomeLiveEvents above (runs for every visitor).
         .task { await app.loadWeekendEvents() }
@@ -161,7 +167,12 @@ struct HomeView: View {
         // shrink-toward-ring transition (see AppState.swift's own comment
         // on storyRingFrames).
         .onPreferenceChange(StoryRingFramePreferenceKey.self) { app.storyRingFrames = $0 }
-        .onPreferenceChange(HorizontalScrollZonePreferenceKey.self) { app.horizontalScrollZones = $0 }
+        .onPreferenceChange(RootGestureExclusionZonePreferenceKey.self) { app.rootGestureExclusionZones = $0 }
+        // Reset-on-account-change — `visibleSurveyDiscoveryCount` is plain
+        // local `@State` (HomeView can stay mounted across a sign-out/
+        // sign-in within the same session), so a new account must not
+        // inherit a previous account's "already revealed 23 rows" state.
+        .onChange(of: app.userID) { _, _ in visibleSurveyDiscoveryCount = 3 }
         // The Pulse RING's frame is no longer tracked anywhere at all — no
         // PreferenceKey, no probe, no `AppState` property. The teaser bubble
         // is drawn inside `storyRow`'s own content these days, so there is
@@ -570,27 +581,30 @@ struct HomeView: View {
         .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
     }
 
-    /// Section 5 — public survey-story discovery, independent of follow
-    /// status (`app.homeSurveyDiscovery` is built that way in
-    /// loadHomeStories()'s own comment — never mixed into the follow-gated
-    /// `storyRow` above). Tapping a card opens the same in-app response
+    /// Section 5 — public survey discovery. Source-of-discovery pass —
+    /// `app.homeSurveyDiscovery` is now loaded directly from
+    /// `get_public_survey_discovery()` (`loadHomeSurveyDiscovery()`,
+    /// AppState+Surveys.swift) — every PUBLISHED, currently-open public
+    /// survey, whether or not it was ever shared to a story, one row per
+    /// DISTINCT survey id (never collapsed by organizer — the same host can
+    /// have several rows). Tapping a row opens the same in-app response
     /// modal a story's own "Answer Survey" CTA does.
     /// Visibility-investigation fix — ALWAYS rendered (header + one of
-    /// loading/error/empty/cards), not only when cards already exist, so a
+    /// loading/error/empty/rows), not only when rows already exist, so a
     /// real load failure is never indistinguishable from the section
-    /// simply not existing. Dedup is handled server-side in
-    /// loadHomeStories() (one card per organizer, deduped by survey_id
-    /// first); `SurveyDiscoveryCard.id == surveyId` as the ForEach id is
-    /// the same dedup key.
+    /// simply not existing.
     ///
     /// Collapse/expand pass — collapsed by default (`app.homeSurveyDiscoveryExpanded`,
     /// lives on AppState, not local `@State`, so it isn't lost across a trip
     /// into the survey modal and back — see that field's own doc comment).
-    /// Collapsed shows only this compact header (title + an honest active
-    /// count + chevron); expanding reveals the SAME horizontal compact-card
-    /// strip this section already rendered unconditionally before — reused
-    /// as-is, not rebuilt as a taller stack, since it was already the
-    /// "compact strip, not full cards" shape this ticket asks for.
+    ///
+    /// Compact-vertical-list pass — replaces the previous horizontal
+    /// carousel entirely. A `LazyVStack` inside HOME'S OWN existing vertical
+    /// scroll (no nested scroll view of any kind), initially showing only
+    /// the first 3 loaded rows with a "Show More" control below (distinct
+    /// from `homeSurveyDiscoveryHasMore`, the REAL signal for "more exist on
+    /// the server" — see `visibleSurveyDiscoveryCount`'s own doc comment for
+    /// why these two are never conflated).
     private var surveyDiscoveryRow: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
@@ -600,10 +614,10 @@ struct HomeView: View {
                     Text(app.T("Góp ý cho sự kiện sắp tới", "Help Shape Upcoming Events"))
                         .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
                     if !app.homeSurveyDiscoveryLoading && app.homeSurveyDiscoveryError.isEmpty && !app.homeSurveyDiscovery.isEmpty {
-                        // `.prefix(20)` in loadHomeStories() means an exact
-                        // count of 20 may not be the real total — an honest
-                        // "20+" rather than a fabricated precise number.
-                        Text(app.homeSurveyDiscovery.count >= 20 ? "20+" : "\(app.homeSurveyDiscovery.count)")
+                        // Honest LOADED count, never a fabricated total —
+                        // "+" only when the server told us more exist
+                        // (`hasMore`), never guessed from a page-size cap.
+                        Text(app.homeSurveyDiscoveryHasMore ? "\(app.homeSurveyDiscovery.count)+" : "\(app.homeSurveyDiscovery.count)")
                             .font(.system(size: 10.5, weight: .semibold))
                             .padding(.horizontal, 7).padding(.vertical, 2)
                             .background(app.palette.ink.opacity(0.1), in: Capsule())
@@ -628,7 +642,7 @@ struct HomeView: View {
                 } else if !app.homeSurveyDiscoveryError.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(app.homeSurveyDiscoveryError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
-                        Button(app.T("Thử lại", "Retry")) { Task { await app.loadHomeStories() } }
+                        Button(app.T("Thử lại", "Retry")) { Task { await app.loadHomeSurveyDiscovery() } }
                             .font(.system(size: 12, weight: .semibold))
                     }
                     .padding(.horizontal, 20)
@@ -636,56 +650,43 @@ struct HomeView: View {
                     Text(app.T("Chưa có khảo sát công khai nào.", "No public surveys right now."))
                         .font(.system(size: 12)).opacity(0.6).padding(.horizontal, 20)
                 } else {
-                // Gesture fix — this strip's own real screen-space bounds,
-                // published only while it's actually in the tree (expanded,
-                // this branch), so RootView's `tabSwipeGesture` can hand off
-                // to this ScrollView entirely for any touch starting inside
-                // it. See `AppState.horizontalScrollZones`'s own doc comment.
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(app.homeSurveyDiscovery) { card in
-                            Button {
-                                Task { await app.openSurveyStoryModal(publicID: card.publicId) }
-                            } label: {
-                                // Compact-card pass — narrower/shorter (220→190
-                                // wide, 14→11 padding) while keeping every
-                                // existing piece of content (host, 2-line
-                                // title, deadline, Answer Survey) and the
-                                // same ≥44pt-tall tappable card this ticket's
-                                // own "do not shrink tap targets" rule
-                                // requires — only the padding/typography
-                                // shrank, not the number of rows or the
-                                // card's role as one single big tap target.
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(card.hostName).font(.system(size: 10)).opacity(0.6).lineLimit(1)
-                                    Text(card.title).font(.system(size: 12.5, weight: .semibold)).lineLimit(2)
-                                    if let closesAt = card.closesAt {
-                                        HStack(spacing: 3) {
-                                            Image(systemName: "clock")
-                                                .font(.system(size: 9))
-                                            Text("\(app.T("Hạn", "Deadline")): \(closesAt.formatted(date: .abbreviated, time: .omitted))")
-                                                .font(.system(size: 10)).lineLimit(1)
-                                        }
-                                        .opacity(0.6)
-                                    }
-                                    Text(app.T("Trả lời khảo sát", "Answer Survey"))
-                                        .font(.system(size: 11, weight: .semibold)).underline()
-                                }
-                                .padding(11)
-                                .frame(width: 190, alignment: .leading)
-                                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("home.surveyDiscoveryCard")
-                        }
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(app.homeSurveyDiscovery.prefix(visibleSurveyDiscoveryCount)) { card in
+                        surveyDiscoveryCardRow(card)
                     }
-                    .padding(.horizontal, 20)
+                    if visibleSurveyDiscoveryCount < app.homeSurveyDiscovery.count || app.homeSurveyDiscoveryHasMore {
+                        Button {
+                            Task { await revealMoreSurveyDiscovery() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if app.homeSurveyDiscoveryLoadingMore { ProgressView().controlSize(.small) }
+                                Text(app.T("Xem thêm", "Show More"))
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 32)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(app.homeSurveyDiscoveryLoadingMore)
+                        .accessibilityIdentifier("home.surveyDiscoveryShowMore")
+                    }
                 }
+                .padding(.horizontal, 20)
+                // Gesture fix — the WHOLE expanded list's real screen-space
+                // bounds, published only while actually in the tree
+                // (expanded, this branch), measured in the SAME named
+                // coordinate space `tabSwipeGesture` itself now uses
+                // (RootView.swift's `.coordinateSpace(name: "rootGesture")`)
+                // instead of `.global` — see that modifier's own doc
+                // comment for why a plain `.global`/`.local` pairing was the
+                // real cause of the earlier real-device failure. A vertical
+                // OR diagonal drag starting anywhere in this list now hands
+                // off to Home's own scroll entirely, for the gesture's whole
+                // duration — it can never commit a tab change.
                 .background(
                     GeometryReader { geo in
                         Color.clear.preference(
-                            key: HorizontalScrollZonePreferenceKey.self,
-                            value: ["surveyDiscovery": geo.frame(in: .global)]
+                            key: RootGestureExclusionZonePreferenceKey.self,
+                            value: ["surveyDiscovery": geo.frame(in: .named("rootGesture"))]
                         )
                     }
                 )
@@ -694,6 +695,101 @@ struct HomeView: View {
         }
         .padding(.top, 4)
         .padding(.bottom, 10)
+    }
+
+    /// How many of the already-loaded `app.homeSurveyDiscovery` rows are
+    /// currently rendered — deliberately a SEPARATE number from both the
+    /// array's own `.count` and `app.homeSurveyDiscoveryHasMore` (the real
+    /// "more exist on the server" signal), so a preview-row cap is never
+    /// confused with the true total. "Show More" first reveals rows already
+    /// in memory (no network call) and only fetches a real next page once
+    /// every loaded row is already visible — see `revealMoreSurveyDiscovery()`.
+    @State private var visibleSurveyDiscoveryCount = 3
+
+    private func revealMoreSurveyDiscovery() async {
+        if visibleSurveyDiscoveryCount < app.homeSurveyDiscovery.count {
+            visibleSurveyDiscoveryCount += 10
+            return
+        }
+        await app.loadMoreHomeSurveyDiscovery()
+        visibleSurveyDiscoveryCount = app.homeSurveyDiscovery.count
+    }
+
+    /// One compact row: small avatar, one-line title, a single metadata
+    /// line (host · deadline) using the app's solid-square separator glyph,
+    /// never a bullet/dash/large clock — content-driven height (no fixed
+    /// frame), ~60–76pt at standard text size. The ENTIRE row is one big
+    /// tap target (no repeated "Answer Survey" button inside it); the
+    /// accessibility label states the action explicitly for VoiceOver.
+    @ViewBuilder
+    private func surveyDiscoveryCardRow(_ card: SurveyDiscoveryCard) -> some View {
+        Button {
+            Task { await app.openSurveyStoryModal(publicID: card.publicId) }
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                surveyDiscoveryAvatar(card)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(card.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    HStack(spacing: 5) {
+                        Text(card.hostName)
+                        if let closesAt = card.closesAt {
+                            // Solid small square separator — decorative,
+                            // hidden from accessibility (never a bullet/
+                            // dash, per this ticket's own convention).
+                            Rectangle()
+                                .fill(app.palette.ink.opacity(0.35))
+                                .frame(width: 3, height: 3)
+                                .accessibilityHidden(true)
+                            Text("\(app.T("Hạn", "Deadline")): \(closesAt.formatted(date: .abbreviated, time: .omitted))")
+                        }
+                    }
+                    .font(.system(size: 11))
+                    .foregroundStyle(app.palette.ink.opacity(0.65))
+                    // No `.lineLimit` here — lets this line wrap onto a
+                    // second line at larger Dynamic Type sizes instead of
+                    // truncating/clipping.
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(app.palette.ink.opacity(0.35))
+                    .padding(.top, 2)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 11)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("home.surveyDiscoveryCard")
+        .accessibilityLabel(
+            card.closesAt != nil
+                ? app.T(
+                    "Trả lời khảo sát: \(card.title), tổ chức bởi \(card.hostName), hạn \(card.closesAt!.formatted(date: .abbreviated, time: .omitted))",
+                    "Answer survey: \(card.title), hosted by \(card.hostName), deadline \(card.closesAt!.formatted(date: .abbreviated, time: .omitted))"
+                )
+                : app.T("Trả lời khảo sát: \(card.title), tổ chức bởi \(card.hostName)", "Answer survey: \(card.title), hosted by \(card.hostName)")
+        )
+    }
+
+    /// 28×28 — a real avatar when resolved, the host's own initial as a
+    /// deliberate fallback otherwise (never a blank circle), through the
+    /// SAME cache/loader (`RemoteImage`/`PhotoLoader`) every other photo in
+    /// this app already uses — no URL churn, no duplicate downloads.
+    @ViewBuilder
+    private func surveyDiscoveryAvatar(_ card: SurveyDiscoveryCard) -> some View {
+        ZStack {
+            Circle().fill(app.palette.ink.opacity(0.1))
+            Text(String((card.hostName.isEmpty ? "?" : card.hostName).prefix(1)).uppercased())
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(app.palette.ink)
+            if let url = card.hostAvatarURL {
+                RemoteImage(path: url.absoluteString, maxPixel: 56)
+                    .clipShape(Circle())
+            }
+        }
+        .frame(width: 28, height: 28)
     }
 
     /// The Pulse ring's centre point inside `storyRow`'s own content space —
@@ -969,13 +1065,13 @@ struct StoryRingFramePreferenceKey: PreferenceKey {
     }
 }
 
-/// Survey-strip gesture fix — see `AppState.horizontalScrollZones`'s own
+/// Survey-strip gesture fix — see `AppState.rootGestureExclusionZones`'s own
 /// doc comment. Same shape/merge rule as `StoryRingFramePreferenceKey`
 /// above, kept as a separate key (not a reuse of that one) since the two
 /// track unrelated things — ring-frame lookups by organizer id vs.
 /// gesture-exclusion zones by row id — and conflating them would make
 /// either one's future changes risk the other's behavior.
-struct HorizontalScrollZonePreferenceKey: PreferenceKey {
+struct RootGestureExclusionZonePreferenceKey: PreferenceKey {
     static var defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { _, new in new }

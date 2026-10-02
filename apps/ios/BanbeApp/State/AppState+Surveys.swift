@@ -509,4 +509,140 @@ extension AppState {
                 : T("Không thể đăng lên story. Vui lòng thử lại.", "Could not post to story. Please try again.")
         }
     }
+
+    // ============ Section 5 — Home survey discovery (source-of-discovery
+    // pass, migration 120) ============
+    // Replaces the old `stories`/`survey_share`-row-based feed entirely:
+    // PUBLISHING an eligible public survey makes it discoverable, whether
+    // or not it was ever explicitly shared to a story — that remains a
+    // separate, optional action (Share To Story / `mySurveySharedIds`
+    // above). Reads `get_public_survey_discovery()` directly, an
+    // authenticated-only, allowlisted-field RPC — never the raw `surveys`
+    // table, and never respondent data.
+
+    private static let surveyDiscoveryInitialPageSize = 3
+    private static let surveyDiscoveryPageSize = 10
+
+    private struct SurveyDiscoveryRow: Decodable {
+        let surveyId: UUID
+        let publicId: String
+        let title: String
+        let organizerId: String
+        let hostName: String?
+        let hostAvatarPath: String?
+        let closesAt: Date?
+        let createdAt: Date
+        enum CodingKeys: String, CodingKey {
+            case surveyId = "survey_id", publicId = "public_id", title
+            case organizerId = "organizer_id", hostName = "host_name", hostAvatarPath = "host_avatar_path"
+            case closesAt = "closes_at", createdAt = "created_at"
+        }
+    }
+    private struct SurveyDiscoveryResponse: Decodable {
+        let success: Bool
+        let error: String?
+        let surveys: [SurveyDiscoveryRow]?
+        let hasMore: Bool?
+        enum CodingKeys: String, CodingKey { case success, error, surveys, hasMore = "has_more" }
+    }
+    private struct SurveyDiscoveryParams: Encodable {
+        let cursorCreatedAt: Date?
+        let cursorId: String?
+        let limit: Int
+        enum CodingKeys: String, CodingKey {
+            case cursorCreatedAt = "p_cursor_created_at", cursorId = "p_cursor_id", limit = "p_limit"
+        }
+    }
+
+    private func fetchSurveyDiscoveryPage(cursorCreatedAt: Date?, cursorId: UUID?, limit: Int) async throws -> ([SurveyDiscoveryCard], Bool) {
+        let response: SurveyDiscoveryResponse = try await SupabaseService.client
+            .rpc("get_public_survey_discovery", params: SurveyDiscoveryParams(
+                cursorCreatedAt: cursorCreatedAt, cursorId: cursorId?.uuidString, limit: limit
+            ))
+            .execute().value
+        guard response.success else {
+            throw NSError(domain: "SurveyDiscovery", code: 0, userInfo: [NSLocalizedDescriptionKey: response.error ?? "unknown"])
+        }
+        let cards = (response.surveys ?? []).map { row -> SurveyDiscoveryCard in
+            // Avatar pass — same public-bucket resolver (`organizer-photos`,
+            // synchronous `getPublicURL`) every other organizer avatar in
+            // this app already uses — no signing, no extra network call.
+            let avatarURL: URL? = {
+                guard let path = row.hostAvatarPath, !path.isEmpty else { return nil }
+                return try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: path)
+            }()
+            return SurveyDiscoveryCard(
+                organizerId: row.organizerId, surveyId: row.surveyId, publicId: row.publicId,
+                title: row.title, hostName: row.hostName ?? "", hostAvatarURL: avatarURL,
+                closesAt: row.closesAt, createdAt: row.createdAt
+            )
+        }
+        return (cards, response.hasMore ?? false)
+    }
+
+    /// Fresh load — called on Home's initial mount, pull-to-refresh, and
+    /// after an account change. Resets pagination state entirely so a new
+    /// account (or a re-sign-in) never inherits a stale cursor/page from
+    /// the previous session. Starts at a small page (3) so the collapsed→
+    /// expanded header always opens onto a short, immediately-readable list
+    /// — `loadMoreHomeSurveyDiscovery()` below fetches larger pages after.
+    func loadHomeSurveyDiscovery() async {
+        guard userID != nil else {
+            homeSurveyDiscovery = []
+            homeSurveyDiscoveryLoading = false; homeSurveyDiscoveryError = ""
+            homeSurveyDiscoveryHasMore = false
+            homeSurveyDiscoveryCursorCreatedAt = nil; homeSurveyDiscoveryCursorId = nil
+            homeSurveyDiscoveryExpanded = false
+            return
+        }
+        homeSurveyDiscoveryGeneration += 1
+        let generation = homeSurveyDiscoveryGeneration
+        homeSurveyDiscoveryLoading = true
+        homeSurveyDiscoveryError = ""
+        do {
+            let (cards, hasMore) = try await fetchSurveyDiscoveryPage(cursorCreatedAt: nil, cursorId: nil, limit: Self.surveyDiscoveryInitialPageSize)
+            // Stale-async-result guard — a newer call (or a sign-out/
+            // account-switch) already superseded this one; never let a
+            // slow, older response overwrite the current, correct state.
+            guard generation == homeSurveyDiscoveryGeneration else { return }
+            homeSurveyDiscovery = cards
+            homeSurveyDiscoveryHasMore = hasMore
+            homeSurveyDiscoveryCursorCreatedAt = cards.last?.createdAt
+            homeSurveyDiscoveryCursorId = cards.last?.surveyId
+            homeSurveyDiscoveryLoading = false
+        } catch {
+            guard generation == homeSurveyDiscoveryGeneration else { return }
+            print("loadHomeSurveyDiscovery failed:", error)
+            homeSurveyDiscoveryLoading = false
+            homeSurveyDiscoveryError = T("Không thể tải khảo sát công khai. Vui lòng thử lại.", "Could not load public surveys. Please try again.")
+        }
+    }
+
+    /// "Show More" — appends the next page without disturbing rows already
+    /// loaded/rendered (preserves Home's own scroll position, since nothing
+    /// above this list re-renders).
+    func loadMoreHomeSurveyDiscovery() async {
+        guard !homeSurveyDiscoveryLoadingMore, homeSurveyDiscoveryHasMore else { return }
+        let generation = homeSurveyDiscoveryGeneration
+        homeSurveyDiscoveryLoadingMore = true
+        do {
+            let (cards, hasMore) = try await fetchSurveyDiscoveryPage(
+                cursorCreatedAt: homeSurveyDiscoveryCursorCreatedAt, cursorId: homeSurveyDiscoveryCursorId,
+                limit: Self.surveyDiscoveryPageSize
+            )
+            guard generation == homeSurveyDiscoveryGeneration else { return }
+            homeSurveyDiscovery.append(contentsOf: cards)
+            homeSurveyDiscoveryHasMore = hasMore
+            if let last = cards.last {
+                homeSurveyDiscoveryCursorCreatedAt = last.createdAt
+                homeSurveyDiscoveryCursorId = last.surveyId
+            }
+            homeSurveyDiscoveryLoadingMore = false
+        } catch {
+            guard generation == homeSurveyDiscoveryGeneration else { return }
+            print("loadMoreHomeSurveyDiscovery failed:", error)
+            homeSurveyDiscoveryLoadingMore = false
+            homeSurveyDiscoveryError = T("Không thể tải thêm khảo sát. Vui lòng thử lại.", "Could not load more surveys. Please try again.")
+        }
+    }
 }

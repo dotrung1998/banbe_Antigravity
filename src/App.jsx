@@ -183,7 +183,7 @@ function Shell() {
   const {
     state, T,
     goHome, goMapExplore, goNotifications, goInbox, goProfile,
-    loadHomeLiveEvents, loadDiscoveryEvents, loadWeekendEvents, loadHomeStories,
+    loadHomeLiveEvents, loadDiscoveryEvents, loadWeekendEvents, loadHomeStories, loadHomeSurveyDiscovery,
     loadNotifications, loadInboxThreads,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadMyOrgStats,
     canHost,
@@ -288,7 +288,7 @@ function Shell() {
     if (screen === 'home') {
       await Promise.all([
         loadHomeLiveEvents(), loadDiscoveryEvents(), loadWeekendEvents(),
-        ...(s.user?.id ? [loadHomeStories()] : []),
+        ...(s.user?.id ? [loadHomeStories(), loadHomeSurveyDiscovery()] : []),
       ]);
     } else if (screen === 'notifications') {
       await loadNotifications();

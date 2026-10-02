@@ -3198,13 +3198,9 @@ extension AppState {
 
     func loadHomeStories() async {
         guard let uid = userID else {
-            homeStories = []; homeSurveyDiscovery = []
-            homeSurveyDiscoveryLoading = false; homeSurveyDiscoveryError = ""
-            homeSurveyDiscoveryExpanded = false
+            homeStories = []
             return
         }
-        homeSurveyDiscoveryLoading = true
-        homeSurveyDiscoveryError = ""
         do {
             let rows: [Story] = try await SupabaseService.client
                 .from("stories")
@@ -3212,19 +3208,17 @@ extension AppState {
                 .order("created_at", ascending: true)
                 .execute().value
             guard !rows.isEmpty else {
-                homeStories = []; homeSurveyDiscovery = []
-                homeSurveyDiscoveryLoading = false; homeSurveyDiscoveryError = ""
+                homeStories = []
                 return
             }
 
-            // Survey-sharing pass (section 5) — migration 117 ADDITIVELY
-            // widens stories RLS so a `kind = "survey_share"` row can also
-            // come back for an organizer this account neither owns nor
-            // follows (the whole point: public, non-follower discovery).
-            // Those rows must NOT fold into the normal per-organizer rings
-            // below (which stay exactly as follow-gated as before) — a real
-            // `follows` lookup is what tells the two cases apart, same as
-            // web's loadHomeStories().
+            // A real `follows` lookup is what tells "mine/followed" (the
+            // normal per-organizer story ring) apart from everyone else —
+            // Section 5's own public survey DISCOVERY no longer depends on
+            // this at all (see `loadHomeSurveyDiscovery()`, AppState+Surveys.swift
+            // — it reads `surveys` directly now, independent of `stories`/
+            // follow status). This lookup still matters here for the
+            // ordinary story ring below, unchanged.
             struct FollowRow: Decodable { let organizerId: String
                 enum CodingKeys: String, CodingKey { case organizerId = "organizer_id" } }
             let followRows: [FollowRow] = (try? await SupabaseService.client
@@ -3235,28 +3229,6 @@ extension AppState {
             func isMineOrFollowed(_ organizerId: String) -> Bool { myOrgIds.contains(organizerId) || followedOrgIds.contains(organizerId) }
 
             let ownRows = rows.filter { isMineOrFollowed($0.organizerId) }
-            // Real-device report — a host testing their OWN just-published
-            // survey correctly saw it disappear from "Help Shape Upcoming
-            // Events" the moment they were signed in as its own organizer,
-            // because this used to exclude `isMineOrFollowed` organizers
-            // entirely (the original, narrower intent: never show a
-            // redundant discovery card for an organizer already surfaced in
-            // the normal story ring above). That's a worse trade-off than
-            // the harmless duplication of also seeing your own survey here
-            // — a host should always be able to find and open their own
-            // published survey the same way any other viewer does, so this
-            // bucket is now every `survey_share` row, period, independent of
-            // `ownRows`/the normal ring above (which is unchanged and still
-            // follow/ownership-gated exactly as before).
-            let discoveryRows = rows.filter { $0.kind == "survey_share" }
-            // Diagnostic pass — see this survey's own card-fetch loop below
-            // for why: shows EVERY survey_share story this query actually
-            // got back (so we can tell "the story row was never created at
-            // all" apart from "it was created but filtered/dropped
-            // somewhere after").
-            for r in rows where r.kind == "survey_share" {
-                print("loadHomeStories: survey_share story \(r.id) survey=\(r.surveyId?.uuidString ?? "nil") org=\(r.organizerId) isMineOrFollowed=\(isMineOrFollowed(r.organizerId)) createdAt=\(r.createdAt)")
-            }
 
             let orgIds = Array(Set(rows.map(\.organizerId)))
             let orgRows: [OrganizerRow] = try await SupabaseService.client
@@ -3294,32 +3266,18 @@ extension AppState {
                 }
             }
 
-            // One get_survey_card() per distinct survey referenced by
-            // EITHER bucket — authenticated-only, allowlisted-field RPC
-            // (migration 117), never a direct `surveys` table read.
-            let surveyIds = Array(Set(rows.filter { $0.kind == "survey_share" }.compactMap(\.surveyId)))
+            // One get_survey_card() per distinct survey referenced by the
+            // STORY RING only now (`ownRows` — mine/followed) — Section 5's
+            // own discovery no longer needs this at all, since
+            // `get_public_survey_discovery()` already returns everything a
+            // discovery card needs directly (see `loadHomeSurveyDiscovery()`).
+            let surveyIds = Array(Set(ownRows.filter { $0.kind == "survey_share" }.compactMap(\.surveyId)))
             var cardBySurveyId: [UUID: SurveyCard] = [:]
-            // Diagnostic pass — a per-survey failure here used to be a bare
-            // `try?`, silently dropping that ONE card with zero trace
-            // anywhere (not even a console log), which is exactly why "a
-            // second published+shared survey doesn't show, the first one
-            // does" was unverifiable from the client alone. Every outcome
-            // (decode success, decode success but `success:false` from the
-            // RPC itself, or a thrown error) is now printed with the real
-            // survey id, so the actual reason is visible in the Xcode
-            // console on the next run instead of being guessed at again.
             for surveyId in surveyIds {
-                do {
-                    let card: SurveyCard = try await SupabaseService.client
-                        .rpc("get_survey_card", params: ["p_survey_id": surveyId.uuidString]).execute().value
-                    if card.success == true {
-                        cardBySurveyId[surveyId] = card
-                        print("loadHomeStories: get_survey_card OK for \(surveyId) — status=\(card.status ?? "nil")")
-                    } else {
-                        print("loadHomeStories: get_survey_card returned success=false for \(surveyId) (card: \(card))")
-                    }
-                } catch {
-                    print("loadHomeStories: get_survey_card FAILED for \(surveyId):", error)
+                if let card: SurveyCard = try? await SupabaseService.client
+                    .rpc("get_survey_card", params: ["p_survey_id": surveyId.uuidString]).execute().value,
+                   card.success == true {
+                    cardBySurveyId[surveyId] = card
                 }
             }
 
@@ -3372,43 +3330,8 @@ extension AppState {
                 return aMine != bMine ? aMine < bMine : a.orgName < b.orgName
             }
 
-            // Section 5 — "Help Shape Upcoming Events": one card per
-            // DISTINCT published survey (not one card per organizer — a
-            // fast follow-up fix: the previous `newestByOrg` collapse below
-            // this comment meant a second survey published by an organizer
-            // who already had one showing silently replaced it instead of
-            // appearing alongside it, confirmed as the reported bug). Still
-            // deduped by survey id (a survey shared to multiple stories
-            // only ever shows once, newest share wins) and still
-            // newest-first, capped. A card whose live get_survey_card()
-            // came back nil (deleted/error) is dropped, never rendered broken.
-            var newestBySurvey: [UUID: (storyId: UUID, organizerId: String, createdAt: Date, card: SurveyCard)] = [:]
-            for r in discoveryRows {
-                guard let surveyId = r.surveyId, let card = cardBySurveyId[surveyId] else { continue }
-                if let existing = newestBySurvey[surveyId], existing.createdAt >= r.createdAt { continue }
-                newestBySurvey[surveyId] = (r.id, r.organizerId, r.createdAt, card)
-            }
-            homeSurveyDiscovery = newestBySurvey.values
-                .sorted { $0.createdAt > $1.createdAt }
-                .prefix(20)
-                .compactMap { entry in
-                    guard let surveyId = entry.card.surveyId, let publicId = entry.card.publicId, let status = entry.card.status else { return nil }
-                    return SurveyDiscoveryCard(
-                        storyId: entry.storyId, organizerId: entry.organizerId, surveyId: surveyId, publicId: publicId,
-                        title: entry.card.title ?? "", description: entry.card.description ?? "",
-                        hostName: entry.card.hostName ?? "", closesAt: entry.card.closesAt, status: status
-                    )
-                }
-            homeSurveyDiscoveryLoading = false
         } catch {
             print("loadHomeStories failed:", error)
-            // Visibility-investigation fix — a real query/decode failure is
-            // now surfaced distinctly, never silently rendered as "no
-            // public surveys right now" (homeStories/homeSurveyDiscovery
-            // are left at whatever they were — only the discovery feed's
-            // own error text is new; see HomeView's render of this field).
-            homeSurveyDiscoveryLoading = false
-            homeSurveyDiscoveryError = T("Không thể tải khảo sát công khai. Vui lòng thử lại.", "Could not load public surveys. Please try again.")
         }
     }
 
