@@ -919,8 +919,9 @@ struct HomeView: View {
     // MARK: Filters
 
     private var filterTabs: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+        // Wraps (FlowLayout) instead of scrolling so no chip is ever cut
+        // off at the screen edge — same as the status chip row below.
+        FlowLayout(spacing: 8, lineSpacing: 8) {
                 ForEach(filters, id: \.key) { filter in
                     let active = app.filter == filter.key
                     SwipeSafeButton { app.pickFilter(filter.key) } label: {
@@ -934,9 +935,8 @@ struct HomeView: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("filter.\(filter.key)")
                 }
-            }
-            .padding(.horizontal, 20)
         }
+        .padding(.horizontal, 20)
         .foregroundStyle(app.palette.ink)
         .padding(.top, 16)
         .padding(.bottom, 14)
