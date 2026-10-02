@@ -14,6 +14,15 @@ struct EventListView: View {
         }
     }
 
+    /// Same SF Symbols as the Account rows that open each list.
+    private var titleIcon: String {
+        switch app.eventListMode {
+        case .going: return "checkmark.circle"
+        case .saved: return "bookmark"
+        case .completed: return "calendar.badge.checkmark"
+        }
+    }
+
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
@@ -23,9 +32,13 @@ struct EventListView: View {
                 // under, e.g. "Tickets & activity" for Completed events),
                 // same convention as PreferencesView/SecurityView/PayoutView.
                 BackLink(label: app.backLabel(for: app.eventListBack)) { app.backFromEventList() }
-                Text(app.eventListTitle)
-                    .font(BanbeTheme.display(24))
-                    .padding(.top, 10)
+                HStack(spacing: 10) {
+                    Image(systemName: titleIcon)
+                        .font(.system(size: 22, weight: .medium))
+                    Text(app.eventListTitle)
+                        .font(BanbeTheme.display(24))
+                }
+                .padding(.top, 10)
 
                 let events = app.eventListEvents
                 if events.isEmpty {

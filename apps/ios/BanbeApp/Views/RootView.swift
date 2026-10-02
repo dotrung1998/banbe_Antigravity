@@ -184,13 +184,13 @@ struct RootView: View {
     private let tabSwipeCommitDistance: CGFloat = 70
 
     private var tabSwipeGesture: some Gesture {
-        DragGesture(minimumDistance: 8, coordinateSpace: .named("rootGesture"))
+        DragGesture(minimumDistance: 6, coordinateSpace: .named("rootGesture"))
             .onChanged { value in
                 guard BottomTabBar.visibleScreens.contains(app.screen) else { return }
                 if tabSwipeDirection == nil {
                     let dx = value.translation.width
                     let dy = value.translation.height
-                    if abs(dx) < 10 && abs(dy) < 10 { return }
+                    if abs(dx) < 6 && abs(dy) < 6 { return }
                     if abs(dy) >= abs(dx) {
                         tabSwipeDirection = "vertical"
                         return

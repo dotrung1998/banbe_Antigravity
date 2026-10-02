@@ -891,7 +891,7 @@ struct SwipeSafeButton<Label: View>: View {
         label()
             .contentShape(Rectangle())
             .accessibilityAddTraits(.isButton)
-            .onLongPressGesture(minimumDuration: 0, maximumDistance: 12, perform: {
+            .onLongPressGesture(minimumDuration: 0, maximumDistance: 10, perform: {
                 if !sawSwipeDuringPress { action() }
             }, onPressingChanged: { pressing in
                 // Reset at the START of a new press to whatever's

@@ -232,7 +232,7 @@ struct AccountView: View {
             BanbeLogo(kind: .wordmark, width: BanbeLogo.headerWordmarkWidth)
             Text(app.T("Tài khoản", "Account")).font(BanbeTheme.display(27))
             Spacer()
-            Button(app.T("Xong", "Done")) { app.goHome() }
+            SwipeSafeButton { app.goHome() } label: { Text(app.T("Xong", "Done")) }
                 .font(.system(size: 12)).buttonStyle(.plain)
         }
         .foregroundStyle(app.palette.ink)
@@ -284,7 +284,7 @@ struct AccountView: View {
                 // subdued once every active story has been viewed; no
                 // ring with no active story. Tap opens the viewer only
                 // when there's something to view.
-                Button {
+                SwipeSafeButton {
                     if let g = myStoryGroup { app.openStoryViewer(g.organizerId) }
                 } label: {
                     ZStack {
@@ -315,7 +315,7 @@ struct AccountView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(app.displayName).font(BanbeTheme.display(22)).lineLimit(1)
                         if app.isSignedIn {
-                            Button {
+                            SwipeSafeButton {
                                 app.goEditName()
                             } label: {
                                 Label(app.T("Đổi tên", "Rename"), systemImage: "pencil")
@@ -339,12 +339,12 @@ struct AccountView: View {
                             // Task 1 — icons on each row, matching the
                             // chat composer's "+" menu exactly (same SF
                             // Symbols) so the two read as one family.
-                            Button {
+                            SwipeSafeButton {
                                 app.storyLibraryPickerOpen = true
                             } label: {
                                 Label(app.T("Thư Viện Ảnh", "Photo Library"), systemImage: "photo.on.rectangle")
                             }
-                            Button {
+                            SwipeSafeButton {
                                 app.storyCameraOpen = true
                             } label: {
                                 Label(app.T("Camera", "Camera"), systemImage: "camera")
@@ -365,7 +365,7 @@ struct AccountView: View {
                     // handle (`isOwnProfile` there is what surfaces its
                     // own "Chỉnh sửa hồ sơ" row) — editing is one tap
                     // further in, not the arrow's own destination.
-                    Button {
+                    SwipeSafeButton {
                         if let handle = app.user?.handle, !handle.isEmpty {
                             app.openPublicProfile(handle: handle, back: .profile)
                         }
@@ -461,7 +461,7 @@ struct AccountView: View {
             // these three were separate floating cards, now one contiguous
             // container. Content/routes/identifiers unchanged.
             groupedContainer {
-                Button {
+                SwipeSafeButton {
                     if let handle = app.user?.handle, !handle.isEmpty {
                         app.openPublicProfile(handle: handle, back: .profile)
                     }
@@ -485,7 +485,7 @@ struct AccountView: View {
                 // identifier/route unchanged.
                 groupCardRow(groupKey: "preferences", icon: "slider.horizontal.3", label: app.T("Tùy Chỉnh", "App Preferences"))
                 groupDivider()
-                Button { app.openPolicy() } label: {
+                SwipeSafeButton { app.openPolicy() } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "lock.shield").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
                         Text(app.T("Trợ Giúp & Pháp Lý", "Help & Legal")).font(.system(size: 14))
@@ -516,7 +516,7 @@ struct AccountView: View {
             // [+ myEventCredits]) — never a second independently-derived
             // count, never shown at the same time as that card.
             if !app.organizerMode && !app.myOrganizerInvites.isEmpty {
-                Button { app.accountGroupKey = "team"; app.screen = .accountGroup } label: {
+                SwipeSafeButton { app.accountGroupKey = "team"; app.screen = .accountGroup } label: {
                     HStack(spacing: 12) {
                         // 2026-10-02 fix — size/no-background standardized
                         // to match every other row icon on this screen.
@@ -544,7 +544,7 @@ struct AccountView: View {
             // invite above, reachable regardless of current role (the
             // invitee isn't an admin yet).
             if let invite = app.myAdminInvite {
-                Button { app.accountGroupKey = "adminTeam"; app.screen = .accountGroup } label: {
+                SwipeSafeButton { app.accountGroupKey = "adminTeam"; app.screen = .accountGroup } label: {
                     HStack(spacing: 12) {
                         // 2026-10-02 fix — was "exclamationmark.shield", a
                         // duplicate of the UNRELATED "adminReview" row's own
@@ -611,7 +611,7 @@ struct AccountView: View {
             // without affecting drafts/sessions/tickets, which PhotoLoader's
             // caches never touch in the first place. See
             // .claude/notes/22-supabase-bandwidth-optimization.md.
-            Button {
+            SwipeSafeButton {
                 PhotoLoader.clearCache()
                 imageCacheClearedAt = Date()
             } label: {
@@ -629,7 +629,7 @@ struct AccountView: View {
             .accessibilityIdentifier("account.clearImageCache")
             .padding(.top, 24)
 
-            Button {
+            SwipeSafeButton {
                 if app.isSignedIn { Task { await app.signOut() } } else { app.goLogin() }
             } label: {
                 Label(
@@ -722,9 +722,32 @@ struct AccountView: View {
         return tabs
     }
 
+    /// Same Liquid Glass capsule as Home's header buttons (`homeGlassCapsule`
+    /// in HomeView), so Account's tab pills match them.
+    @ViewBuilder
+    private func accountGlassCapsule(active: Bool) -> some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer {
+                Capsule()
+                    .fill(active
+                          ? app.palette.ink.opacity(0.92)
+                          : app.palette.ink.opacity(0.04 + 0.20 * app.glassOpacity))
+                    .glassEffect(.regular.interactive(), in: Capsule())
+                    .opacity(active ? 1 : app.glassOpacity)
+            }
+        } else if active {
+            Capsule().fill(app.palette.ink)
+        } else {
+            Capsule()
+                .fill(app.palette.ink.opacity(0.04 + 0.20 * app.glassOpacity))
+                .background(.thinMaterial, in: Capsule())
+                .opacity(app.glassOpacity)
+        }
+    }
+
     @ViewBuilder
     private func accountTabButton(key: String, label: String, badge: Int = 0) -> some View {
-        Button { app.accountTab = key } label: {
+        SwipeSafeButton { app.accountTab = key } label: {
             HStack(spacing: 6) {
                 Text(label).font(.system(size: 13, weight: .semibold))
                 if badge > 0 {
@@ -739,8 +762,7 @@ struct AccountView: View {
                 }
             }
                 .padding(.horizontal, 16).padding(.vertical, 9)
-                .background(app.accountTab == key ? app.palette.ink : .clear, in: Capsule())
-                .overlay(Capsule().stroke(app.accountTab == key ? .clear : app.palette.rule, lineWidth: 1))
+                .background { accountGlassCapsule(active: app.accountTab == key) }
                 .foregroundStyle(app.accountTab == key ? app.palette.paper : app.palette.ink)
         }
         .buttonStyle(.plain)
@@ -763,7 +785,7 @@ struct AccountView: View {
         // whatever's underneath it. Assigning the same `app.accountTab`
         // value the Button's own action also sets is idempotent — never a
         // double-toggle — so both handlers safely agree.
-        .highPriorityGesture(TapGesture().onEnded { app.accountTab = key })
+        .highPriorityGesture(TapGesture().onEnded { if !app.isRootSwipeActive { app.accountTab = key } })
         .accessibilityIdentifier("account.tab.\(key)")
     }
 
@@ -783,7 +805,7 @@ struct AccountView: View {
     }
 
     private func reportsRow(_ title: String, identifier: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        SwipeSafeButton(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: "chart.bar.doc.horizontal")
                     .font(.system(size: 16, weight: .medium))
@@ -843,7 +865,7 @@ struct AccountView: View {
     // treatment; distinctness now comes only from each icon's own glyph,
     // not a second, redundant color layer.
     private func groupCardRow(groupKey: String, icon: String, label: String, badge: Int = 0) -> some View {
-        return Button { app.accountGroupKey = groupKey; app.screen = .accountGroup } label: {
+        return SwipeSafeButton { app.accountGroupKey = groupKey; app.screen = .accountGroup } label: {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 16, weight: .medium))
@@ -872,7 +894,7 @@ struct AccountView: View {
 
     /// Same content as `reportsRow` below, minus its own background/padding.
     private func reportsGroupRow(_ title: String, identifier: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        SwipeSafeButton(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: "chart.bar.doc.horizontal")
                     .font(.system(size: 16, weight: .medium))
@@ -898,7 +920,7 @@ struct AccountView: View {
     // other row icon on this screen now uses (was 20x20/15pt, its own
     // third size on top of the 30x30-with-circle outlier fixed above).
     private func counterGroupRow(value: Int, label: String, icon: String, identifier: String? = nil, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        SwipeSafeButton(action: action) {
             VStack(alignment: .leading, spacing: 3) {
                 Image(systemName: icon)
                     .font(.system(size: 16, weight: .medium))
@@ -918,7 +940,7 @@ struct AccountView: View {
 
     private func row(_ title: String, identifier: String? = nil, icon: String, trailing: String,
                      action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        SwipeSafeButton(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 16, weight: .medium))
@@ -957,7 +979,7 @@ struct AccountView: View {
                         .font(.system(size: 13))
                     HStack(spacing: 8) {
                         InkButton(title: app.T("Chấp nhận", "Accept")) { Task { await app.respondToOrganizerInvite(membershipID: inv.id, accept: true) } }
-                        Button(app.T("Từ chối", "Decline")) { Task { await app.respondToOrganizerInvite(membershipID: inv.id, accept: false) } }
+                        SwipeSafeButton { Task { await app.respondToOrganizerInvite(membershipID: inv.id, accept: false) } } label: { Text(app.T("Từ chối", "Decline")) }
                             .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                             .frame(maxWidth: .infinity).padding(.vertical, 10)
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
@@ -981,7 +1003,7 @@ struct AccountView: View {
                         Text(m.publicRole).font(.system(size: 11)).opacity(0.65)
                     }
                     Spacer()
-                    Button {
+                    SwipeSafeButton {
                         Task { await app.setOrganizerMemberVisibility(membershipID: m.id, visible: !m.publicVisible) }
                     } label: {
                         HStack(spacing: 6) {
@@ -1018,7 +1040,7 @@ struct AccountView: View {
                     )).font(.system(size: 13))
                     HStack(spacing: 8) {
                         InkButton(title: app.T("Chấp nhận", "Accept")) { Task { await app.respondToEventCredit(creditID: c.id, accept: true) } }
-                        Button(app.T("Từ chối", "Decline")) { Task { await app.respondToEventCredit(creditID: c.id, accept: false) } }
+                        SwipeSafeButton { Task { await app.respondToEventCredit(creditID: c.id, accept: false) } } label: { Text(app.T("Từ chối", "Decline")) }
                             .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
                             .frame(maxWidth: .infinity).padding(.vertical, 10)
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(app.palette.rule))
@@ -1042,7 +1064,7 @@ struct AccountView: View {
         if !app.myConfirmedEventCredits.isEmpty {
             Text(app.T("Đóng góp sự kiện: đã xác nhận", "Event contributions: confirmed")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myConfirmedEventCredits) { c in
-                Button { app.goEvent(c.eventId) } label: {
+                SwipeSafeButton { app.goEvent(c.eventId) } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(c.events?.name ?? app.T("Một sự kiện", "An event")).font(.system(size: 13, weight: .semibold))
@@ -1072,7 +1094,7 @@ struct AccountView: View {
             .font(.system(size: 11.5, weight: .semibold))
             .padding(.top, 22)
 
-        Button { app.toggleOrganizerMode() } label: {
+        SwipeSafeButton { app.toggleOrganizerMode() } label: {
             // TASK 2 (2026-10-05 fix pass) — `.opacity`, not a
             // spinner: this toggle's own round-trip is already
             // near-instant on a normal connection, and a flashing
@@ -1209,7 +1231,7 @@ struct AccountView: View {
                     // list. Badge honestly 0 for now — the unseen/actionable
                     // candidate count this badge is meant to carry (candidate
                     // generation) is not implemented yet.
-                    Button { app.screen = .surveysHosting } label: {
+                    SwipeSafeButton { app.screen = .surveysHosting } label: {
                         HStack(spacing: 12) {
                             // 2026-10-02 fix — was "checklist", a duplicate
                             // of this SAME container's own "Event
@@ -1283,7 +1305,7 @@ struct AccountView: View {
     @ViewBuilder
     private func orgProfileCard() -> some View {
         if app.canHost, app.myOrganizerID != nil {
-            Button {
+            SwipeSafeButton {
                 app.goDashboard(back: .profile)
             } label: {
                 VStack(alignment: .leading, spacing: 8) {
@@ -1403,7 +1425,7 @@ struct StoryCreatePreviewView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 HStack(spacing: 10) {
-                    Button {
+                    SwipeSafeButton {
                         app.storyCreatePreviewImage = nil
                         app.storyCameraOpen = true
                     } label: {
@@ -1415,7 +1437,7 @@ struct StoryCreatePreviewView: View {
                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.35)))
                     }
                     .accessibilityIdentifier("story.retake")
-                    Button {
+                    SwipeSafeButton {
                         Task { _ = await app.publishStory() }
                     } label: {
                         Text(app.storyCreateBusy ? app.T("Đang đăng…", "Posting…") : app.T("Dùng ảnh", "Use photo"))
