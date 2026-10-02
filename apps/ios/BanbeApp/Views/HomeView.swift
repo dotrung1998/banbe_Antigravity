@@ -5,6 +5,7 @@ import SwiftUI
 /// banner, the "Your events" strip, category filters, and the photo cards.
 struct HomeView: View {
     @EnvironmentObject var app: AppState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var tickTask: Task<Void, Never>?
     @State private var tick = Date()
     // TASK 4 (2026-09-22 nineteenth follow-up) — one-shot guard so the
@@ -118,6 +119,21 @@ struct HomeView: View {
                 .padding(.bottom, 100)
             }
         }
+        }
+        // 2026-10-02 fix — "refresh correctly on foreground": these loads
+        // only ever ran once, on this view's own mount (`.task` below) —
+        // a booking cancelled/refunded on another device, or by the host,
+        // while this device sat backgrounded never updated the "Going"
+        // chip until Home happened to remount. Re-runs the same loads
+        // (idempotent re-fetch, same as every other "also loaded here"
+        // source in this codebase) on returning to the foreground.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, app.userID != nil else { return }
+            Task {
+                await app.loadPaymentBookings()
+                await app.loadMyRefunds()
+                await app.loadMyEvents()
+            }
         }
         .task {
             guard app.userID != nil else { return }

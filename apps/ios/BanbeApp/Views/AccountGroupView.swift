@@ -24,6 +24,10 @@ struct AccountGroupView: View {
         case "preferences": return "slider.horizontal.3"
         case "hostOps": return "checklist"
         case "adminReview": return "exclamationmark.shield"
+        // 2026-10-02 fix — was missing entirely, falling to the generic
+        // "circle" placeholder below; matches the Admin Team row's own
+        // icon (AccountView.swift's groupCardRow call).
+        case "adminTeam": return "person.3.fill"
         default: return "circle"
         }
     }
@@ -234,47 +238,60 @@ struct AccountGroupView: View {
         } else {
             let active = app.paymentBookings.filter { ["pending", "confirmed", "attended"].contains($0.status) }
             let inactive = app.paymentBookings.filter { ["cancelled", "expired", "no_show"].contains($0.status) }
+            // 2026-10-02 fix — "connected account row groups": these used
+            // to be N separate rounded cards with gaps between them (one
+            // `.background(_, in: RoundedRectangle)` per row); grouped into
+            // ONE rounded tinted container per section with subtle
+            // internal `Divider`s, matching `hostOpsContent`'s/
+            // `paymentsContent`'s own established styling exactly — same
+            // row padding/corner radius/tap targets, just contiguous.
             if !active.isEmpty {
                 Text(app.T("Vé của tôi", "My Tickets")).font(.system(size: 11.5, weight: .semibold))
-                ForEach(active) { b in
-                    Button {
-                        Task { _ = await app.openBookingConfirmed(bookingID: b.id, eventKey: b.eventKey, back: .accountGroup) }
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
-                                Text(ticketStatusLabel(b)).font(.system(size: 11)).opacity(0.85)
+                VStack(spacing: 0) {
+                    ForEach(Array(active.enumerated()), id: \.element.id) { i, b in
+                        Button {
+                            Task { _ = await app.openBookingConfirmed(bookingID: b.id, eventKey: b.eventKey, back: .accountGroup) }
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
+                                    Text(ticketStatusLabel(b)).font(.system(size: 11)).opacity(0.85)
+                                }
+                                Spacer(minLength: 0)
+                                Text("›").font(.system(size: 18)).opacity(0.5)
                             }
-                            Spacer(minLength: 0)
-                            Text("›").font(.system(size: 18)).opacity(0.5)
+                            .foregroundStyle(app.palette.ink)
+                            .padding(14)
+                            .contentShape(Rectangle())
                         }
-                        .foregroundStyle(app.palette.ink)
-                        .padding(14)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("myTicket.\(b.id)")
+                        if i < active.count - 1 { Divider().overlay(app.palette.rule) }
                     }
-                    .buttonStyle(.plain)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .padding(.top, 8)
-                    .accessibilityIdentifier("myTicket.\(b.id)")
                 }
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 8)
             }
             if !inactive.isEmpty {
                 Text(app.T("Đã hủy / hết hạn", "Cancelled / expired")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
-                ForEach(inactive) { b in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
-                            Text(terminalStatusLabel(b)).font(.system(size: 11))
+                VStack(spacing: 0) {
+                    ForEach(Array(inactive.enumerated()), id: \.element.id) { i, b in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
+                                Text(terminalStatusLabel(b)).font(.system(size: 11))
+                            }
+                            Spacer(minLength: 0)
                         }
-                        Spacer(minLength: 0)
+                        .foregroundStyle(app.palette.ink)
+                        .padding(14)
+                        .opacity(0.65)
+                        .accessibilityIdentifier("myTicketInactive.\(b.id)")
+                        if i < inactive.count - 1 { Divider().overlay(app.palette.rule).opacity(0.65) }
                     }
-                    .foregroundStyle(app.palette.ink)
-                    .padding(14)
-                    .opacity(0.65)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .padding(.top, 8)
-                    .accessibilityIdentifier("myTicketInactive.\(b.id)")
                 }
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.top, 8)
             }
         }
 
@@ -295,13 +312,34 @@ struct AccountGroupView: View {
         return app.T("Đang xử lý", "In progress")
     }
 
+    // 2026-10-02 fix — "truthful refund status" requirement: refund status
+    // describes MONEY, not ticket validity, so it's layered on top of (not
+    // instead of) the plain terminal booking status. Reuses the SAME
+    // active-claim list (`app.myRefunds`, already loaded by AccountView's
+    // own `.task`s) and the exact copy `MyRefundsView.statusLabel(_:)`
+    // already established — never a second, independently-worded set of
+    // refund strings. `app.myRefunds` only ever holds ACTIVE claims
+    // (owed/host_marked_sent/disputed — `loadMyRefunds()`'s own query
+    // filter) — a cancelled booking with no matching entry here either
+    // never needed a refund (free/no payment) or one already completed;
+    // not fabricated as "Refunded" without a real signal to confirm which.
     private func terminalStatusLabel(_ b: PayableBooking) -> String {
+        let base: String
         switch b.status {
-        case "cancelled": return app.T("Đã hủy", "Cancelled")
-        case "expired": return app.T("Đã hết hạn", "Expired")
-        case "no_show": return app.T("Không tham dự", "No-show")
-        default: return b.status
+        case "cancelled": base = app.T("Đã hủy", "Cancelled")
+        case "expired": base = app.T("Đã hết hạn", "Expired")
+        case "no_show": base = app.T("Không tham dự", "No-show")
+        default: base = b.status
         }
+        guard let claim = app.myRefunds.first(where: { $0.bookingId == b.id }) else { return base }
+        let refundLabel: String
+        switch claim.status {
+        case "owed": refundLabel = app.T("Đang chờ hoàn tiền", "Refund Pending")
+        case "host_marked_sent": refundLabel = app.T("Đang chờ bạn xác nhận đã nhận tiền", "Awaiting Refund Confirmation")
+        case "disputed": refundLabel = app.T("Hoàn tiền đang tranh chấp", "Refund Disputed")
+        default: return base
+        }
+        return "\(base) ▪︎ \(refundLabel)"
     }
 
     @ViewBuilder
@@ -387,7 +425,9 @@ struct AccountGroupView: View {
             // term the row above's own sum already includes).
             row(app.T("Hoàn tiền", "Refunds"), identifier: "host.refunds", icon: "banknote", trailing: "›", badge: AccountBadges.refundActionCount(organizerMode: app.organizerMode, refundQueue: app.refundQueue)) { app.openVerificationsRefunds(back: .accountGroup) }
             Divider().overlay(app.palette.rule)
-            row(app.T("Nhận thanh toán", "Getting Paid"), identifier: "host.payout", icon: "banknote", trailing: "›") { app.openPayout() }
+            // 2026-10-02 fix — was "banknote", a duplicate of "Refunds"
+            // directly above in this SAME container; a distinct glyph.
+            row(app.T("Nhận thanh toán", "Getting Paid"), identifier: "host.payout", icon: "creditcard", trailing: "›") { app.openPayout() }
             Divider().overlay(app.palette.rule)
             row(app.T("Hoá đơn đã phát hành", "Invoices Issued"), identifier: "host.invoices", icon: "doc.text", trailing: "›") { app.openDocuments(kind: "invoice", role: "host") }
             Divider().overlay(app.palette.rule)
@@ -410,12 +450,15 @@ struct AccountGroupView: View {
     // Panel" below still opens the same screen for its other admin tools;
     // both rows are legitimately two doors into one destination, not a
     // duplicate feature.
+    // 2026-10-02 fix — all three rows used the identical "exclamationmark.
+    // shield" glyph, with no visual way to tell them apart at a glance;
+    // each now has its own distinct icon (destinations/badges unchanged).
     @ViewBuilder
     private var adminReviewContent: some View {
         VStack(spacing: 0) {
-            row(app.T("Tranh Chấp Thanh Toán", "Payment Disputes"), identifier: "admin.disputes", icon: "exclamationmark.shield", trailing: "›") { app.openAdminDashboard() }
+            row(app.T("Tranh Chấp Thanh Toán", "Payment Disputes"), identifier: "admin.disputes", icon: "exclamationmark.bubble", trailing: "›") { app.openAdminDashboard() }
             Divider().overlay(app.palette.rule)
-            row(app.T("Bảng quản trị", "Admin Panel"), identifier: "admin.panel", icon: "exclamationmark.shield", trailing: "›") { app.openAdminDashboard() }
+            row(app.T("Bảng quản trị", "Admin Panel"), identifier: "admin.panel", icon: "square.grid.2x2", trailing: "›") { app.openAdminDashboard() }
             Divider().overlay(app.palette.rule)
             row(app.T("Sự Kiện Chờ Duyệt", "Pending Events"), identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›", badge: app.pendingEventsCount) { app.openAdminEvents() }
         }

@@ -63,8 +63,19 @@ struct ReportsView: View {
                 BackLink(label: app.T("Quay lại", "Back")) { app.backFromReports() }
                     .padding(.top, 16)
 
-                Text(app.T("Số liệu & báo cáo", "Metrics & Reports"))
-                    .font(BanbeTheme.display(24)).padding(.top, 10)
+                // 2026-10-02 fix — "Metrics & Reports" had no icon at all
+                // in its header, unlike AccountGroupView's own page
+                // headers; same icon the entry row uses on every tab it's
+                // reachable from, tinted with the shared "reports" accent.
+                HStack(spacing: 10) {
+                    Image(systemName: "chart.bar.doc.horizontal")
+                        .font(.system(size: 20, weight: .medium))
+                        .frame(width: 34, height: 34)
+                        .background((ROW_ACCENT_COLORS["reports"] ?? .clear).opacity(0.33), in: Circle())
+                    Text(app.T("Số liệu & báo cáo", "Metrics & Reports"))
+                        .font(BanbeTheme.display(24))
+                }
+                .padding(.top, 10)
                 Text(roleLabel).font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.65))
 
                 rangePicker.padding(.top, 16)

@@ -42,15 +42,24 @@ struct AdminEventsView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Tài khoản", "Account")) { app.screen = .profile }
+                // 2026-10-02 fix — only ever reached from AccountGroupView's
+                // "adminReview" (Review & Moderation) rows now; same fix as
+                // AdminDashboardView's own BackLink.
+                BackLink(label: app.T("Duyệt & Kiểm Duyệt", "Review & Moderation")) { app.screen = .accountGroup }
                     .padding(.top, 8)
                     .accessibilityIdentifier("adminEvents.back")
 
                 HStack(alignment: .lastTextBaseline) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(app.T("Sự Kiện Chờ Duyệt", "Pending Events"))
-                            .font(BanbeTheme.display(24))
-                            .accessibilityIdentifier("adminEvents.title")
+                        HStack(spacing: 10) {
+                            Image(systemName: "exclamationmark.shield")
+                                .font(.system(size: 20, weight: .medium))
+                                .frame(width: 34, height: 34)
+                                .background((ROW_ACCENT_COLORS["adminReview"] ?? .clear).opacity(0.33), in: Circle())
+                            Text(app.T("Sự Kiện Chờ Duyệt", "Pending Events"))
+                                .font(BanbeTheme.display(24))
+                                .accessibilityIdentifier("adminEvents.title")
+                        }
                         Text(app.T("Sự kiện chỉ hiển thị công khai sau khi được duyệt ở đây.", "An event only shows publicly once approved here."))
                             .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                     }

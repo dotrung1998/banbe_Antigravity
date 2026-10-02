@@ -14,7 +14,17 @@ let ROW_ACCENT_COLORS: [String: Color] = [
     "preferences": ProfilePalette.all.first { $0.key == "ink" }!.color,
     "hostOps": ProfilePalette.all.first { $0.key == "moss" }!.color,
     "adminReview": ProfilePalette.all.first { $0.key == "rose" }!.color,
-    "adminTeam": ProfilePalette.all.first { $0.key == "ink" }!.color,
+    // 2026-10-02 fix — standalone screens reached from an Account row but
+    // not themselves an `accountGroupKey` (Reports, Getting Paid, Refunds/
+    // refund accounts, Security, Organizer Team) each get the SAME accent
+    // their own entry row already uses, so their own header icon (added
+    // below) reads as part of one consistent color scheme, never a new
+    // ad-hoc color per screen.
+    "reports": ProfilePalette.all.first { $0.key == "moss" }!.color,
+    // 2026-10-02 fix — was "ink" (a dark neutral), which at 0.33 opacity
+    // renders as a plain GRAY circle — reading as "no color"/missing,
+    // not a real accent. "sand" is a genuinely visible, distinct hue.
+    "adminTeam": ProfilePalette.all.first { $0.key == "sand" }!.color,
 ]
 
 /// Port of src/screens/Account.jsx — profile header with rename, the
@@ -400,22 +410,33 @@ struct AccountView: View {
             // bookings (`AccountBadges.myTicketsActionCount`, reading the
             // SAME `paymentBookings` array already loaded for the Action
             // Center above — no new query).
-            groupCard(groupKey: "activity", icon: "calendar.badge.checkmark", label: app.T("Vé & Đặt Chỗ", "Tickets & Bookings"), badge: AccountBadges.myTicketsActionCount(paymentBookings: app.paymentBookings), topPadding: 14)
-
-            HStack(spacing: 10) {
-                counter(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going"), icon: "calendar.badge.checkmark", identifier: "account.goingCard") { app.goGoingList() }
-                // Relabeled "Đã lưu"/"Saved" (generic) -> "Sự Kiện Đã Lưu"/
-                // "Saved Events"; destination/identifier unchanged.
-                counter(value: app.favorites.count, label: app.T("Sự Kiện Đã Lưu", "Saved Events"), icon: "bookmark", identifier: "account.savedCard") { app.goSavedList() }
+            // 2026-10-02 fix — these four used to be four separate floating
+            // cards with gaps between them; same grouping styling as
+            // "Event Operations & Payments" now applies here too — one
+            // contiguous container, same content/order/routes/badges.
+            groupedContainer {
+                groupCardRow(groupKey: "activity", icon: "calendar.badge.checkmark", label: app.T("Vé & Đặt Chỗ", "Tickets & Bookings"), badge: AccountBadges.myTicketsActionCount(paymentBookings: app.paymentBookings))
+                groupDivider()
+                HStack(spacing: 0) {
+                    // 2026-10-02 fix — was "calendar.badge.checkmark", the
+                    // exact same glyph the "Tickets & Bookings" row directly
+                    // above already uses in this same container; a distinct
+                    // glyph instead (still legible as "confirmed/going").
+                    counterGroupRow(value: app.goingEventsCount, label: app.T("Đang tham gia", "Going"), icon: "checkmark.circle", identifier: "account.goingCard") { app.goGoingList() }
+                    groupDivider()
+                    // Relabeled "Đã lưu"/"Saved" (generic) -> "Sự Kiện Đã Lưu"/
+                    // "Saved Events"; destination/identifier unchanged.
+                    counterGroupRow(value: app.favorites.count, label: app.T("Sự Kiện Đã Lưu", "Saved Events"), icon: "bookmark", identifier: "account.savedCard") { app.goSavedList() }
+                }
+                .id("account-stats")
+                groupDivider()
+                groupCardRow(groupKey: "payments", icon: "banknote", label: app.T("Thanh Toán & Giấy Tờ", "Payments & Documents"))
+                groupDivider()
+                reportsGroupRow(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsPersonal") {
+                    app.openReports(scope: "personal", back: .profile)
+                }
             }
             .padding(.top, 14)
-            .id("account-stats")
-
-            groupCard(groupKey: "payments", icon: "banknote", label: app.T("Thanh Toán & Giấy Tờ", "Payments & Documents"), topPadding: 14)
-
-            reportsRow(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsPersonal") {
-                app.openReports(scope: "personal", back: .profile)
-            }
 
             // Account IA reorder pass (2026-09-30 second) — second cluster:
             // account-level settings. The `team` group card used to always
@@ -436,55 +457,58 @@ struct AccountView: View {
             sectionHeader(app.T("Tài Khoản & Cài Đặt", "Account & Settings"), topPadding: 22)
                 .accessibilityIdentifier("account.section.settings")
 
-            Button {
-                if let handle = app.user?.handle, !handle.isEmpty {
-                    app.openPublicProfile(handle: handle, back: .profile)
+            // 2026-10-02 fix — same grouping as the Activity cluster above:
+            // these three were separate floating cards, now one contiguous
+            // container. Content/routes/identifiers unchanged.
+            groupedContainer {
+                Button {
+                    if let handle = app.user?.handle, !handle.isEmpty {
+                        app.openPublicProfile(handle: handle, back: .profile)
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.crop.circle").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
+                        Text(app.T("Hồ Sơ Cá Nhân", "Personal Profile")).font(.system(size: 14))
+                        Spacer()
+                        Text("›").font(.system(size: 15)).opacity(0.85)
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(.horizontal, 16).padding(.vertical, 15)
+                    .contentShape(Rectangle())
                 }
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "person.crop.circle").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
-                    Text(app.T("Hồ Sơ Cá Nhân", "Personal Profile")).font(.system(size: 14))
-                    Spacer()
-                    Text("›").font(.system(size: 15)).opacity(0.85)
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("account.personalProfile")
+                groupDivider()
+                // Relabeled "Tùy Chỉnh"/"Preferences" -> "Cài Đặt"/"Settings"
+                // (reads more accurately for its actual contents). `groupKey`/
+                // identifier/route unchanged.
+                groupCardRow(groupKey: "preferences", icon: "slider.horizontal.3", label: app.T("Cài Đặt", "Settings"))
+                groupDivider()
+                Button { app.openPolicy() } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "lock.shield").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
+                        Text(app.T("Trợ Giúp & Pháp Lý", "Help & Legal")).font(.system(size: 14))
+                        Spacer()
+                        Text("›").font(.system(size: 15)).opacity(0.85)
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(.horizontal, 16).padding(.vertical, 15)
+                    .contentShape(Rectangle())
                 }
-                .foregroundStyle(app.palette.ink)
-                .padding(.horizontal, 16).padding(.vertical, 15)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("account.helpLegal")
             }
-            .buttonStyle(.plain)
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .padding(.top, 14)
-            .accessibilityIdentifier("account.personalProfile")
-
-            // Relabeled "Tùy Chỉnh"/"Preferences" -> "Cài Đặt"/"Settings"
-            // (reads more accurately for its actual contents). `groupKey`/
-            // identifier/route unchanged.
-            groupCard(groupKey: "preferences", icon: "slider.horizontal.3", label: app.T("Cài Đặt", "Settings"))
-            // "Help & Legal" — no dedicated in-app Help/Support screen
-            // exists anywhere in this codebase (searched for one); only the
-            // real, already-wired Policy screen (`app.openPolicy()`/
-            // `PolicyView.swift`, the same bilingual policy text used at
-            // signup consent, reachable read-only here — its own "‹ Back"
-            // returns to `app.policyBackScreen`, set to whichever screen
-            // opened it). This row is therefore the Legal half only — the "Help"
-            // half has no real destination yet, a genuine gap flagged in
-            // 09-auth-onboarding.md's dated fix-pass section, not
-            // fabricated here.
-            Button { app.openPolicy() } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "lock.shield").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
-                    Text(app.T("Trợ Giúp & Pháp Lý", "Help & Legal")).font(.system(size: 14))
-                    Spacer()
-                    Text("›").font(.system(size: 15)).opacity(0.85)
-                }
-                .foregroundStyle(app.palette.ink)
-                .padding(.horizontal, 16).padding(.vertical, 15)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(.top, 8)
-            .accessibilityIdentifier("account.helpLegal")
+            // "Help & Legal" (grouped above) — no dedicated in-app Help/
+            // Support screen exists anywhere in this codebase (searched for
+            // one); only the real, already-wired Policy screen
+            // (`app.openPolicy()`/`PolicyView.swift`, the same bilingual
+            // policy text used at signup consent, reachable read-only here
+            // — its own "‹ Back" returns to `app.policyBackScreen`, set to
+            // whichever screen opened it). That row is therefore the Legal
+            // half only — the "Help" half has no real destination yet, a
+            // genuine gap flagged in 09-auth-onboarding.md's dated fix-pass
+            // section, not fabricated here.
 
             // The lightweight conditional invite row described above. Same
             // badge SOURCE as the Host-tab "team" card (myOrganizerInvites
@@ -493,8 +517,9 @@ struct AccountView: View {
             if !app.organizerMode && !app.myOrganizerInvites.isEmpty {
                 Button { app.accountGroupKey = "team"; app.screen = .accountGroup } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: "person.3").font(.system(size: 16, weight: .medium)).frame(width: 30, height: 30)
-                            .background((ROW_ACCENT_COLORS["team"] ?? .clear).opacity(0.33), in: Circle())
+                        // 2026-10-02 fix — size/no-background standardized
+                        // to match every other row icon on this screen.
+                        Image(systemName: "person.3").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
                         Text(app.T("Bạn có lời mời Team", "You have a team invite")).font(.system(size: 14))
                         Spacer()
                         Text("\(app.myOrganizerInvites.count)")
@@ -520,8 +545,14 @@ struct AccountView: View {
             if let invite = app.myAdminInvite {
                 Button { app.accountGroupKey = "adminTeam"; app.screen = .accountGroup } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: "exclamationmark.shield").font(.system(size: 16, weight: .medium)).frame(width: 30, height: 30)
-                            .background((ROW_ACCENT_COLORS["adminTeam"] ?? .clear).opacity(0.33), in: Circle())
+                        // 2026-10-02 fix — was "exclamationmark.shield", a
+                        // duplicate of the UNRELATED "adminReview" row's own
+                        // icon elsewhere on this tab, and didn't match this
+                        // banner's real destination (adminTeam, same as the
+                        // Admin Team row/"person.3.fill" below) — also
+                        // standardized to size/no-background like every
+                        // other row icon here.
+                        Image(systemName: "person.3.fill").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
                         Text(app.T("Bạn có lời mời quản trị", "You have an admin invite")).font(.system(size: 14))
                         Spacer()
                         Text("›").font(.system(size: 15))
@@ -735,29 +766,6 @@ struct AccountView: View {
         .accessibilityIdentifier("account.tab.\(key)")
     }
 
-    // TASK 3C (2026-09-22 twenty-first follow-up) — leading icon on every
-    // Account action row/card, one coherent SF Symbols language (16pt
-    // medium weight, 22x22 container, 0.72 opacity — matches the ink/rule/
-    // paper tokens already in use here, no new colors).
-    private func counter(value: Int, label: String, icon: String, identifier: String? = nil, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 3) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .medium))
-                    .frame(width: 20, height: 20)
-                    .opacity(0.72)
-                Text("\(value)").font(BanbeTheme.display(24))
-                Text(label).font(.system(size: 11))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16).padding(.vertical, 14)
-            .foregroundStyle(app.palette.ink)
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(identifier ?? label)
-    }
-
     // Account extension (2026-09-27, Stage 3) — the one recognizable "Số
     // liệu & báo cáo" entry point every visible tab gets, near its own top.
     // Account IA reorder pass (2026-09-30 second) — mirrors web's
@@ -800,19 +808,48 @@ struct AccountView: View {
     // ... at the group entry" instruction) + chevron, opening the shared
     // AccountGroupView. `groupKey` doubles as the accent-color lookup AND
     // the accessibility identifier/route id both platforms share.
-    private func groupCard(groupKey: String, icon: String, label: String, badge: Int = 0, topPadding: CGFloat = 8) -> some View {
+    // 2026-10-02 fix — "connected account row groups": the top-level
+    // Personal-tab cards (Tickets & Bookings / Going-Saved stats /
+    // Payments & Documents / Metrics & Reports, then Personal Profile /
+    // Settings / Help & Legal) each had their OWN separate rounded
+    // `.background(...)` with a gap before it — N floating cards instead
+    // of ONE contiguous grouped container, unlike "Event Operations &
+    // Payments" (`hostManagementRows`/`AccountGroupView.hostOpsContent`),
+    // which this reuses as its styling source exactly: one shared
+    // background, internal `Divider()`s, same row padding/corner radius/
+    // tap targets — not a new visual language. `groupedContainer` wraps
+    // any number of these bare row-content builders (below) in that one
+    // shared surface; `groupCard`/`reportsRow`/`counter` above are
+    // UNCHANGED and still used as-is everywhere else (Host/Admin tabs),
+    // so nothing there is touched by this.
+    private func groupedContainer<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(spacing: 0, content: content)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func groupDivider() -> some View { Divider().overlay(app.palette.rule) }
+
+    /// Same content as `groupCard` below, minus the background/top-padding
+    /// a `groupedContainer` already supplies once for the whole group.
+    // 2026-10-02 fix — "icons inconsistent in size, some duplication":
+    // this used to be its own 30x30 frame with a `ROW_ACCENT_COLORS`-
+    // tinted circle behind it — the ONE outlier size/treatment on this
+    // whole screen (every other row icon here — `row`/`reportsRow`/
+    // `reportsGroupRow`/the inline Personal Profile & Help & Legal
+    // buttons — is a plain 22x22/16pt/0.72-opacity glyph with no
+    // background of its own, since the row already sits on the group's
+    // shared container background). Standardized to that same size/
+    // treatment; distinctness now comes only from each icon's own glyph,
+    // not a second, redundant color layer.
+    private func groupCardRow(groupKey: String, icon: String, label: String, badge: Int = 0) -> some View {
         Button { app.accountGroupKey = groupKey; app.screen = .accountGroup } label: {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 16, weight: .medium))
-                    .frame(width: 30, height: 30)
-                    .background((ROW_ACCENT_COLORS[groupKey] ?? .clear).opacity(0.33), in: Circle())
+                    .frame(width: 22, height: 22)
+                    .opacity(0.72)
                 Text(label).font(.system(size: 14))
                 Spacer()
-                // TASK 5 (Account badges pass) — "99+" display, same cap
-                // convention BottomTabBar.swift's own Notifications badge
-                // already uses, with the real count kept in the
-                // accessibility label (never lost, just not rendered).
                 if badge > 0 {
                     Text(badge > 99 ? "99+" : "\(badge)")
                         .font(.system(size: 11, weight: .bold))
@@ -826,11 +863,56 @@ struct AccountView: View {
             }
             .foregroundStyle(app.palette.ink)
             .padding(16)
-            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.top, topPadding)
         .accessibilityIdentifier("account.group.\(groupKey)")
+    }
+
+    /// Same content as `reportsRow` below, minus its own background/padding.
+    private func reportsGroupRow(_ title: String, identifier: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: "chart.bar.doc.horizontal")
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 22, height: 22)
+                    .opacity(0.72)
+                Text(title).font(.system(size: 14))
+                Spacer()
+                Text("›").font(.system(size: 15))
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier)
+    }
+
+    /// Same content as `counter` below, minus its own background — used
+    /// side by side inside `groupedContainer`, where a `Divider()` between
+    /// them (SwiftUI renders it vertical inside an `HStack`) stands in for
+    /// the group's usual horizontal separator.
+    // 2026-10-02 fix — size standardized to the same 22x22/16pt every
+    // other row icon on this screen now uses (was 20x20/15pt, its own
+    // third size on top of the 30x30-with-circle outlier fixed above).
+    private func counterGroupRow(value: Int, label: String, icon: String, identifier: String? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 22, height: 22)
+                    .opacity(0.72)
+                Text("\(value)").font(BanbeTheme.display(24))
+                Text(label).font(.system(size: 11))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .foregroundStyle(app.palette.ink)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier ?? label)
     }
 
     private func row(_ title: String, identifier: String? = nil, icon: String, trailing: String,
@@ -1096,55 +1178,66 @@ struct AccountView: View {
     // invented.
     private var hostManagementRows: some View {
         Group {
+            // 2026-10-02 fix — "connected account row groups": these three
+            // were separate floating cards; grouped into one contiguous
+            // container, same styling source as before (this group WAS
+            // already the reference — now actually applied to itself too).
             if app.canHost {
-                groupCard(
-                    groupKey: "hostOps", icon: "checklist",
-                    label: app.T("Vận Hành & Thanh Toán Tổ Chức", "Event Operations & Payments"),
-                    // Stale-badge fix pass — was a raw `refundQueue.count`,
-                    // bypassing `AccountBadges.hostActionCount` entirely
-                    // (the one place this app already decides what's
-                    // actually host-actionable) — same staleness bug every
-                    // other raw-count call site this pass fixes.
-                    badge: AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueue: app.refundQueue),
-                    topPadding: 22
-                )
-                // Account IA reorder pass (2026-09-30 second) — the Host
-                // tab's own entry point into the SAME "team" screen the
-                // Personal tab's conditional invite row also opens (see
-                // that row's own comment for the full "two doors, one
-                // destination" reasoning — mirrors the Payment Disputes
-                // row's existing pattern). Gated `canHost`, matching
-                // hostOps above.
-                groupCard(
-                    groupKey: "team", icon: "person.3",
-                    label: app.T("Hồ Sơ & Team Tổ Chức", "Organizer Profile & Team"),
-                    badge: app.myOrganizerInvites.count + app.myEventCredits.count,
-                    topPadding: 8
-                )
-                // Interest surveys (Slice B) — a standalone screen
-                // (SurveysHostingView), not a case inside AccountGroupView's
-                // switch, since it has its own tabs (Active/Closed/
-                // Suggested Drafts) and a create form, not a simple flat
-                // list. Badge honestly 0 for now — the unseen/actionable
-                // candidate count this badge is meant to carry (candidate
-                // generation) is not implemented yet.
-                Button { app.screen = .surveysHosting } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "checklist")
-                            .font(.system(size: 16, weight: .medium))
-                            .frame(width: 30, height: 30)
-                            .background((ROW_ACCENT_COLORS["hostOps"] ?? .clear).opacity(0.33), in: Circle())
-                        Text(app.T("Khảo Sát & Ý Tưởng Sự Kiện", "Surveys & Event Ideas")).font(.system(size: 14))
-                        Spacer()
-                        Text("›").font(.system(size: 15))
+                groupedContainer {
+                    groupCardRow(
+                        groupKey: "hostOps", icon: "checklist",
+                        label: app.T("Vận Hành & Thanh Toán Tổ Chức", "Event Operations & Payments"),
+                        // Stale-badge fix pass — was a raw `refundQueue.count`,
+                        // bypassing `AccountBadges.hostActionCount` entirely
+                        // (the one place this app already decides what's
+                        // actually host-actionable) — same staleness bug every
+                        // other raw-count call site this pass fixes.
+                        badge: AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueue: app.refundQueue)
+                    )
+                    groupDivider()
+                    // Account IA reorder pass (2026-09-30 second) — the Host
+                    // tab's own entry point into the SAME "team" screen the
+                    // Personal tab's conditional invite row also opens (see
+                    // that row's own comment for the full "two doors, one
+                    // destination" reasoning — mirrors the Payment Disputes
+                    // row's existing pattern). Gated `canHost`, matching
+                    // hostOps above.
+                    groupCardRow(
+                        groupKey: "team", icon: "person.3",
+                        label: app.T("Hồ Sơ & Team Tổ Chức", "Organizer Profile & Team"),
+                        badge: app.myOrganizerInvites.count + app.myEventCredits.count
+                    )
+                    groupDivider()
+                    // Interest surveys (Slice B) — a standalone screen
+                    // (SurveysHostingView), not a case inside AccountGroupView's
+                    // switch, since it has its own tabs (Active/Closed/
+                    // Suggested Drafts) and a create form, not a simple flat
+                    // list. Badge honestly 0 for now — the unseen/actionable
+                    // candidate count this badge is meant to carry (candidate
+                    // generation) is not implemented yet.
+                    Button { app.screen = .surveysHosting } label: {
+                        HStack(spacing: 12) {
+                            // 2026-10-02 fix — was "checklist", a duplicate
+                            // of this SAME container's own "Event
+                            // Operations & Payments" row above; "lightbulb"
+                            // fits "Event Ideas" literally and is distinct.
+                            // Size/no-background standardized too.
+                            Image(systemName: "lightbulb")
+                                .font(.system(size: 16, weight: .medium))
+                                .frame(width: 22, height: 22)
+                                .opacity(0.72)
+                            Text(app.T("Khảo Sát & Ý Tưởng Sự Kiện", "Surveys & Event Ideas")).font(.system(size: 14))
+                            Spacer()
+                            Text("›").font(.system(size: 15))
+                        }
+                        .foregroundStyle(app.palette.ink)
+                        .padding(16)
+                        .contentShape(Rectangle())
                     }
-                    .foregroundStyle(app.palette.ink)
-                    .padding(16)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("account.group.surveys")
                 }
-                .buttonStyle(.plain)
-                .padding(.top, 8)
-                .accessibilityIdentifier("account.group.surveys")
+                .padding(.top, 22)
             }
         }
     }
@@ -1161,8 +1254,13 @@ struct AccountView: View {
     // migration 040) — RLS is the real backstop; openAdminDashboard()
     // guards again regardless.
     private var adminSection: some View {
-        VStack(spacing: 0) {
-            groupCard(groupKey: "adminReview", icon: "exclamationmark.shield", label: app.T("Duyệt & Kiểm Duyệt", "Review & Moderation"), badge: app.pendingEventsCount, topPadding: 22)
+        // 2026-10-02 fix — "connected account row groups": these two were
+        // still two separate floating cards despite already being stacked
+        // in one VStack (each kept its OWN background/top-padding) — now
+        // one contiguous container with an internal divider.
+        groupedContainer {
+            groupCardRow(groupKey: "adminReview", icon: "exclamationmark.shield", label: app.T("Duyệt & Kiểm Duyệt", "Review & Moderation"), badge: app.pendingEventsCount)
+            groupDivider()
             // Admin Team pass (2026-10-02) — reachable to every admin (a
             // permission-less admin can at least see who the team is /
             // why they can't manage it, AccountGroupView's own gate
@@ -1170,8 +1268,12 @@ struct AccountView: View {
             // still-pending invites (adminInvites is only populated for a
             // canManageAdmins account — RLS denies the read otherwise, so
             // a non-manager's badge is honestly 0, never a guessed number).
-            groupCard(groupKey: "adminTeam", icon: "person.3", label: app.T("Đội Ngũ Quản Trị", "Admin Team"), badge: app.adminInvites.filter { $0.status == "pending" }.count, topPadding: 10)
+            // 2026-10-02 fix — "person.3.fill" (was "person.3", the exact
+            // same glyph the Host tab's UNRELATED "Organizer Profile &
+            // Team" row uses) — distinct glyph for a distinct destination.
+            groupCardRow(groupKey: "adminTeam", icon: "person.3.fill", label: app.T("Đội Ngũ Quản Trị", "Admin Team"), badge: app.adminInvites.filter { $0.status == "pending" }.count)
         }
+        .padding(.top, 22)
     }
 
     /// Host tab's OWN rounded profile card (Stage D) — organizer avatar/

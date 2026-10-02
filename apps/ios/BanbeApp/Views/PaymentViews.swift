@@ -992,9 +992,19 @@ struct PayoutView: View {
                 BackLink(label: app.backLabel(for: app.backTargetScreen)) { app.goBack() }
                     .padding(.top, 8)
 
-                Text(app.T("Nhận thanh toán", "Getting paid"))
-                    .font(BanbeTheme.display(24)).foregroundStyle(app.palette.ink)
-                    .padding(.top, 14)
+                // 2026-10-02 fix — "Getting Paid" had no header icon;
+                // matches its own entry row's icon (hostOpsContent,
+                // AccountGroupView.swift), tinted with the same "hostOps"
+                // accent that row/group already uses.
+                HStack(spacing: 10) {
+                    Image(systemName: "creditcard")
+                        .font(.system(size: 20, weight: .medium))
+                        .frame(width: 34, height: 34)
+                        .background((ROW_ACCENT_COLORS["hostOps"] ?? .clear).opacity(0.33), in: Circle())
+                    Text(app.T("Nhận thanh toán", "Getting paid"))
+                        .font(BanbeTheme.display(24)).foregroundStyle(app.palette.ink)
+                }
+                .padding(.top, 14)
                 Text(app.T("Khách chuyển khoản thẳng cho bạn. banbe không giữ tiền và không thu phí.",
                            "Guests transfer straight to you. banbe never holds the money and takes no cut."))
                     .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))

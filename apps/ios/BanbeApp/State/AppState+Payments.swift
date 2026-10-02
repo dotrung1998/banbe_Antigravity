@@ -11,10 +11,12 @@ extension AppState {
 
     func loadPaymentBookings() async {
         guard let uid = userID else {
+            paymentBookingsSeq += 1
             paymentBookings = []
             paymentsLoading = false
             return
         }
+        let seq = { paymentBookingsSeq += 1; return paymentBookingsSeq }()
         paymentsLoading = true
         do {
             let rows: [PayableBookingRow] = try await SupabaseService.client
@@ -28,10 +30,14 @@ extension AppState {
                 .eq("user_id", value: uid.uuidString)
                 .order("created_at", ascending: false)
                 .execute().value
+            // Only the newest in-flight call may write state — see
+            // paymentBookingsSeq's own doc comment (AppState.swift).
+            guard seq == paymentBookingsSeq else { return }
             paymentBookings = rows.map(\.asPayable)
             paymentsLoading = false
         } catch {
             print("loadPaymentBookings failed:", error)
+            guard seq == paymentBookingsSeq else { return }
             paymentBookings = []
             paymentsLoading = false
         }

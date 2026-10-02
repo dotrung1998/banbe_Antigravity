@@ -170,3 +170,190 @@ only view — no equivalent staleness found there.
 No simulator/device UI run — the three badge-count call sites and the
 `isActive`/`isActiveRefundStatus` field reuse were verified by reading,
 not by observing a real empty-queue account on a device.
+
+## 2026-10-02 — iOS-only: stale "Going" after cancel/refund, Account row grouping
+
+**Real root cause, confirmed by reading**: `cancel_booking()`
+(`20260924000070_070...sql:73-77`) sets `bookings.status = 'cancelled'`
+but NEVER touches `payment_state` — a booking that was `payment_state =
+'confirmed'` before cancellation (the common already-paid case) stays
+`payment_state = 'confirmed'` forever after. `AppState.isGoing(_:)`
+(`AppState.swift`) checked `paymentState == .confirmed` alone with no
+`status` check at all — so a cancelled-and-refunded booking showed
+"Going" indefinitely on Home's saved-strip chip. `payment_state` describes
+whether money was ever confirmed; it is not ticket validity. Not a feed/
+label-mapping bug — the predicate itself was wrong.
+
+**Fix**: `isGoing(_:)` now also requires `["pending", "confirmed",
+"attended"].contains(status)` — the same "is this booking still actually
+live" status set `Booking.isTicket`/`isAwaitingConfirmation` already
+established, reused rather than reinvented. `.contains` over ALL
+`paymentBookings` for the event was already correct (never a first/latest-
+row decision) — another valid booking on the same event still counts.
+`EventDetailView.myBooking` was re-checked and was ALREADY correct (same
+status set, confirmed by reading — not where the bug was).
+
+**Three supporting staleness gaps, same root cause class, all fixed
+together**: (1) a guest's own `cancel_booking()` call (`submitReason()`,
+`AppState+Data.swift`) never patched/refreshed `paymentBookings` at all —
+only `loadAttendanceGuests` (the HOST side); now patches the booking's
+`status` in place immediately, bumps a new `paymentBookingsSeq` guard
+(mirrors `attendanceGuestsSeq`/`refundQueueSeq`) so a slower, already-in-
+flight stale reload can't land afterward and resurrect it, then kicks off
+a real background reload. (2) the SAME patch added to the existing 5s
+notification poll's `cancellationKinds` branch, for a HOST-initiated
+cancel (the guest's own client never calls `submitReason()` for that
+case). (3) `applySession(nil)` (sign-out) never cleared `paymentBookings`/
+`myRefunds` at all, unlike every other per-account array right next to it
+— a shared-device sign-out/account-switch kept showing the PREVIOUS
+account's bookings/refund status. (4) Home's `loadPaymentBookings`/
+`loadMyRefunds`/`loadMyEvents` only ever ran once on mount — added a
+`scenePhase` foreground refresh (`HomeView.swift`) so a cancellation that
+happened while backgrounded is picked up without needing a remount.
+
+**Refund status labels (Account → Vé & Đặt Chỗ → "Đã hủy / hết hạn")**:
+`terminalStatusLabel(_:)` (`AccountGroupView.swift`) now cross-references
+`app.myRefunds` (already-loaded active claims) by booking id and appends
+the EXACT same copy `MyRefundsView.statusLabel(_:)` already established
+("Đang chờ hoàn tiền"/"Refund Pending", "Đang chờ bạn xác nhận đã nhận
+tiền"/"Awaiting Refund Confirmation", "Hoàn tiền đang tranh chấp"/"Refund
+Disputed") — never a second, independently-worded set. `loadMyRefunds()`'s
+own query deliberately excludes resolved (`guest_confirmed`) claims, so a
+cancelled booking with no active claim falls back to the plain "Đã hủy"
+label rather than a fabricated "Refunded" with no real signal behind it.
+
+**Account row grouping**: `activityContent`'s "Vé của tôi"/"Đã hủy / hết
+hạn" sections used to render each booking as its OWN separate rounded
+card with gaps between them — now ONE `VStack(spacing: 0)` per section
+with internal `Divider()`s, `.background(app.palette.field, in:
+RoundedRectangle(cornerRadius: 14))` applied once to the whole group —
+matching `hostOpsContent`'s/`paymentsContent`'s already-established
+styling exactly (same row padding/corner radius/tap targets reused, no
+new ones). No IA change — same rows, same routes/badges, just contiguous.
+
+**Follow-up, same day — the top-level Account cards (`AccountView.swift`)
+had the identical gap-between-floating-cards issue**, confirmed by a real
+device screenshot: Personal tab's "Vé & Đặt Chỗ"/Going-Saved stats/
+"Thanh Toán & Giấy Tờ"/"Số Liệu & Báo Cáo" were four separate cards, and
+even "Event Operations & Payments" itself (the ticket's own styling
+SOURCE) was never actually applied to its own Host-tab entry row — it and
+"Organizer Profile & Team"/"Surveys & Event Ideas" were three separate
+cards too, as was Admin tab's "Review & Moderation"/"Admin Team" pair
+(already a `VStack`, but each child still carried its OWN background).
+Fixed with three new, additive helpers (`groupedContainer`, `groupCardRow`,
+`groupDivider`, `reportsGroupRow`, `counterGroupRow` — all in
+`AccountView.swift`) that render the SAME row content as the pre-existing
+`groupCard`/`reportsRow`/`counter` but without each one's own background/
+top-padding, so a whole cluster shares ONE `groupedContainer` surface with
+internal dividers instead. Applied to: Personal tab's Activity cluster
+(Tickets & Bookings row, Going|Saved stat pair — a `Divider()` between the
+two stat buttons inside the same `HStack` renders as the vertical
+separator the two-column layout needs — Payments & Documents row, Metrics
+& Reports row, all one container); Personal tab's Settings cluster
+(Personal Profile, Settings, Help & Legal, one container); Host tab's
+`hostManagementRows` (Event Operations & Payments, Organizer Profile &
+Team, Surveys & Event Ideas, one container); Admin tab's `adminSection`
+(Review & Moderation, Admin Team, one container). The OLD `groupCard`/
+`counter` functions became fully unused by this and were deleted (confirmed
+zero remaining call sites by grep first); `reportsRow` is KEPT — still
+used by Host/Admin tabs' own standalone Reports row, which stays a
+separate, un-grouped entry exactly as before (a deliberate, pre-existing
+separation, not something this pass's own grouping touched). Conditional
+banners (Team invite, Admin invite) and `hostingSection`'s toggle are
+unchanged — intentionally NOT merged into either cluster, matching the
+ticket's own "no merging unrelated actions" rule (a contextual alert and a
+settings row are not the same kind of thing).
+
+**Verified**: `xcodebuild -scheme PersonalTeamDebug -sdk iphonesimulator
+build` → BUILD SUCCEEDED, including after deleting the two now-dead
+functions. No simulator/device UI run.
+
+## 2026-10-02, same day — icon size/duplication cleanup + Help & Legal swipe-back
+
+**Icon sizes standardized**: `groupCardRow` (AccountView.swift) was the
+one outlier — a 30x30 frame with a `ROW_ACCENT_COLORS`-tinted `Circle()`
+background, vs. every other row icon on this screen (`row`/`reportsRow`/
+`reportsGroupRow`/the inline Personal Profile & Help & Legal buttons), a
+plain 22x22/16pt/0.72-opacity glyph with no background (the row already
+sits on its group's shared container background — a second color layer
+per icon was redundant, not needed for "distinct"). `counterGroupRow` was
+a THIRD size (20x20/15pt). All now 22x22/16pt/no-background; the
+team-invite/admin-invite banners' own inline icons (also 30x30+circle)
+match too. Distinctness now comes only from each icon's own glyph.
+
+**Duplicate glyphs fixed** (same icon used for two different things,
+visible in the same or an adjacent container): "Going" stat
+(`checkmark.circle`, was `calendar.badge.checkmark` — duplicate of
+"Tickets & Bookings" directly above it in the same group); Admin Team
+row/invite banner (`person.3.fill`, was `person.3`/`exclamationmark.
+shield` — duplicated "Organizer Profile & Team"'s icon, and the invite
+banner's own icon didn't even match its real destination); Surveys &
+Event Ideas (`lightbulb`, was `checklist` — duplicate of "Event
+Operations & Payments" in the same container); Host tab's "Getting Paid"
+(`creditcard`, was `banknote` — duplicate of "Refunds" directly above it);
+`adminReviewContent`'s three rows (Payment Disputes/Admin Panel/Pending
+Events, `AccountGroupView.swift`) ALL used the identical
+`exclamationmark.shield` with no way to tell them apart — now
+`exclamationmark.bubble`/`square.grid.2x2`/`exclamationmark.shield`
+respectively. Also found and fixed while here: `AccountGroupView.
+titleIcon` had no `"adminTeam"` case at all, falling to the generic
+`"circle"` placeholder on that page's own header — added, matching the
+row's icon.
+
+**"Help & Legal" didn't support swipe-to-go-back — confirmed root cause,
+NOT a gesture-recognition issue**: `.policy` (`AppState.swift`) had no
+case in either `goBack()` or `backTargetScreen` — the exact same missing-
+switch-case bug class this file's own `.refundAccounts`/`.organizerTeam`
+fixes already document. A completed edge-swipe fell to `goBack()`'s
+`default: break` (no-op — `app.screen` never changed, though RootView's
+slide-off animation still played and then reverted, reading as "swipe
+doesn't work here"), and `backTargetScreen` fell to `default: return
+.home` (the swipe's live peek-behind showed Home instead of wherever Help
+& Legal was actually opened from). Fixed by adding `case .policy: screen
+= policyBackScreen` / `case .policy: return policyBackScreen` to both —
+reuses the exact same target the in-screen "‹ Back" link
+(`app.openPolicy()`/`policyBackScreen`) already uses, so both exit paths
+can't drift apart.
+
+**Verified**: `xcodebuild -scheme PersonalTeamDebug -sdk iphonesimulator
+build` → BUILD SUCCEEDED. No simulator/device UI run — the user's own
+iPhone is the real check for icon legibility and the swipe-back feel.
+
+## 2026-10-02, same day — Review & Moderation sub-screens: back target + header icon
+
+**Real bug, confirmed by reading**: `AdminDashboardView`/`AdminEventsView`
+("Payment Disputes"/"Admin Panel"/"Pending Events", reached from
+`AccountGroupView`'s `adminReviewContent` rows) hardcoded their own
+`BackLink` straight to `app.screen = .profile` ("Account") — skipping the
+"Review & Moderation" group page entirely, even though that's the only
+place either screen is ever opened from (confirmed by grep: zero other
+call sites for `openAdminDashboard()`/`openAdminEvents()`).
+`AppState.swift`'s `goBack()`/`backTargetScreen` (the edge-swipe's own
+exit path) had the identical `.profile` target hardcoded for `.disputes`/
+`.adminEvents` — same sub-section-of-a-group bug class this file's own
+`.preferences`/`.payout`/`.policy` fixes already document. Both the
+on-screen BackLink AND the edge-swipe now go to `.accountGroup` (which
+still shows "Review & Moderation" — `accountGroupKey` is never touched by
+either sub-screen).
+
+**Header icon + consistent color added**: neither screen had an icon in
+its header at all (title text only), unlike `AccountGroupView`'s own page
+header (`titleIcon` in a `ROW_ACCENT_COLORS`-tinted circle). Added the
+same treatment: `AdminDashboardView` gets `exclamationmark.bubble`
+("Payment Disputes" — its own row's icon, since "Admin Panel" is the
+SAME destination's second door, not a second title); `AdminEventsView`
+gets `exclamationmark.shield` ("Pending Events"'s own icon). Both tinted
+with `ROW_ACCENT_COLORS["adminReview"]` — the parent group's own accent,
+for a consistent color scheme with the rest of Account rather than a new
+ad-hoc color per sub-screen.
+
+**Files**: `AppState.swift` (`goBack()`/`backTargetScreen`'s `.disputes`/
+`.adminEvents` cases), `AdminDashboardView.swift`, `AdminEventsView.swift`.
+**Verified**: `xcodebuild -scheme PersonalTeamDebug -sdk iphonesimulator
+build` → BUILD SUCCEEDED. No simulator/device UI run.
+
+**Verified**: `xcodebuild -scheme PersonalTeamDebug -sdk iphonesimulator
+build` → BUILD SUCCEEDED. No existing unit test touches this logic (no
+Swift unit-test target covers `isGoing`/`paymentBookings` — confirmed by
+grep). No simulator/device UI run — this pass is iOS-only per its own
+scope; web was not read, built, or compared for parity.

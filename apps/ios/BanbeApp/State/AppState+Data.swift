@@ -438,6 +438,17 @@ extension AppState {
             // to it, not to whoever signs in next on this device.
             favorites = []
             favoritesLoadedForUID = nil
+            // 2026-10-02 fix — real bug: paymentBookings/myRefunds (isGoing's
+            // own source, and the "Refunds" list) were never cleared on
+            // sign-out, unlike every other per-account array just above —
+            // a sign-out/account-switch on a shared device kept showing
+            // the PREVIOUS account's bookings/refund status under the new
+            // one until something unrelated happened to reload them.
+            // Bumping paymentBookingsSeq also invalidates any load still
+            // in flight for the account that just signed out.
+            paymentBookingsSeq += 1
+            paymentBookings = []
+            myRefunds = []
             return
         }
         userID = session.user.id
@@ -1819,6 +1830,21 @@ extension AppState {
                                let bookingID = UUID(uuidString: bookingIDString),
                                self.booking?.id == bookingID {
                                 self.booking?.status = "cancelled"
+                            }
+                            // 2026-10-02 fix — same reasoning, for isGoing()'s
+                            // own source: a HOST-initiated cancel/decline
+                            // (this poll's only way to learn about it, since
+                            // it never goes through this guest's own
+                            // submitReason() patch) left paymentBookings
+                            // stale until some unrelated screen happened to
+                            // reload it. Patched in place here too, the one
+                            // place every cancellation source already
+                            // converges regardless of who initiated it.
+                            if let bookingIDString = row.data["booking_id"]?.stringValue,
+                               let bookingID = UUID(uuidString: bookingIDString),
+                               let idx = self.paymentBookings.firstIndex(where: { $0.id == bookingID }) {
+                                self.paymentBookingsSeq += 1
+                                self.paymentBookings[idx].status = "cancelled"
                             }
                         }
                         // Admin Team pass (2026-10-02, migration 121) —
@@ -4012,6 +4038,28 @@ extension AppState {
 
             reasonPrompt = nil
             reasonPromptBusy = false
+            // 2026-10-02 fix — real bug: a successful cancel_booking() never
+            // patched/refreshed this guest's OWN paymentBookings/attending
+            // at all (only loadAttendanceGuests above, the HOST side of a
+            // host-initiated cancel) — isGoing() reads paymentBookings, so
+            // "Going" stayed stale until something unrelated happened to
+            // reload it. Patched in place immediately (bumping
+            // paymentBookingsSeq first invalidates any older in-flight
+            // loadPaymentBookings() call, so a slow stale response can't
+            // land afterward and resurrect it — see that seq's own doc
+            // comment), then a real background reload confirms it and
+            // picks up the resulting refund_claims row elsewhere. attending
+            // (loadMyEvents()'s own server-filtered list) already excludes
+            // 'cancelled' at the query level, so a plain reload there is
+            // sufficient — no in-place patch needed for it specifically.
+            if prompt.kind == .cancelBooking {
+                paymentBookingsSeq += 1
+                if let idx = paymentBookings.firstIndex(where: { $0.id == prompt.bookingID }) {
+                    paymentBookings[idx].status = "cancelled"
+                }
+                Task { await loadPaymentBookings() }
+                Task { await loadMyEvents() }
+            }
             if let key = attendanceEventKey { await loadAttendanceGuests(key) }
             // reject_pending_guest() already inserts the guest's chat
             // message + bell notification itself (migration 059) — no

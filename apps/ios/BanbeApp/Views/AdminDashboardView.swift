@@ -21,13 +21,26 @@ struct AdminDashboardView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Tài khoản", "Account")) { app.screen = .profile }
+                // 2026-10-02 fix — only ever reached from AccountGroupView's
+                // "adminReview" (Review & Moderation) rows now; this used to
+                // hardcode both the label AND the action straight to
+                // Account, skipping that page entirely (the same
+                // sub-section-of-a-group bug AppState.swift's goBack()/
+                // backTargetScreen just got fixed for too).
+                BackLink(label: app.T("Duyệt & Kiểm Duyệt", "Review & Moderation")) { app.screen = .accountGroup }
                     .padding(.top, 8)
                     .accessibilityIdentifier("admin.back")
 
-                Text(app.T("Tranh chấp thanh toán", "Payment Disputes"))
-                    .font(BanbeTheme.display(24)).padding(.top, 14)
-                    .accessibilityIdentifier("admin.title")
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.bubble")
+                        .font(.system(size: 20, weight: .medium))
+                        .frame(width: 34, height: 34)
+                        .background((ROW_ACCENT_COLORS["adminReview"] ?? .clear).opacity(0.33), in: Circle())
+                    Text(app.T("Tranh chấp thanh toán", "Payment Disputes"))
+                        .font(BanbeTheme.display(24))
+                        .accessibilityIdentifier("admin.title")
+                }
+                .padding(.top, 14)
                 Text(app.T("Khách khẳng định đã chuyển, người tổ chức không tìm thấy. Chỗ vẫn đang bị khoá cho tới khi có quyết định.",
                            "The guest says they paid; the organizer can't find it. The seat stays locked until this is decided."))
                     .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))

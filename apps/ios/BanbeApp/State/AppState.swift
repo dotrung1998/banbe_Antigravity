@@ -1095,6 +1095,13 @@ final class AppState: ObservableObject {
     // write refundQueue; see that function's own doc comment
     // (AppState+Payments.swift). Same pattern as attendanceGuestsSeq above.
     var refundQueueSeq = 0
+    // 2026-10-02 fix — same pattern as attendanceGuestsSeq/refundQueueSeq:
+    // only the newest loadPaymentBookings() call may write paymentBookings.
+    // Without this, a slow reload already in flight when a cancellation
+    // patches state in place (submitReason's .cancelBooking success path)
+    // could land afterward with STALE pre-cancel data and silently
+    // resurrect the "Going" status it just correctly cleared.
+    var paymentBookingsSeq = 0
     @Published var refundActionBusy: UUID?
     @Published var paymentRefundClaim: RefundClaim?
     // Set by openNotification()'s refund_confirmed/_disputed/_overdue cases
@@ -1865,8 +1872,25 @@ final class AppState: ObservableObject {
     // (HomeView.swift, this file's own `feed`) confirmed by repo-wide grep
     // before narrowing — `attending` itself (Account/EventList's own
     // "Going" counts) is UNCHANGED, still seat-holding, out of scope here.
+    // 2026-10-02 fix — real bug: `cancel_booking()` (supabase/migrations/
+    // 20260924000070_070_fix_cancel_booking_refund_reason_cast.sql:73-77)
+    // sets `status = 'cancelled'` but NEVER touches `payment_state` — a
+    // booking that was `payment_state = 'confirmed'` before cancellation
+    // (the common case: cancelling an already-paid ticket) stays
+    // `payment_state = 'confirmed'` forever after. This check used to read
+    // `paymentState == .confirmed` alone, so a cancelled-and-refunded
+    // booking showed "Going" indefinitely — `payment_state` describes
+    // whether the MONEY was ever confirmed, never whether the booking
+    // itself is still a live, current entitlement. Same `status` set
+    // `isAwaitingConfirmation` below and `isTicket`/`Booking.isTicket`
+    // already use for "is this booking still actually live" — reused, not
+    // reinvented. `.contains` already checks EVERY booking for this event,
+    // not just the first/latest, so another valid booking on the same
+    // event correctly still counts as Going.
     func isGoing(_ key: String) -> Bool {
-        paymentBookings.contains { $0.eventKey == key && $0.paymentState == .confirmed }
+        paymentBookings.contains {
+            $0.eventKey == key && ["pending", "confirmed", "attended"].contains($0.status) && $0.paymentState == .confirmed
+        }
     }
     /// The new "notConfirmed" filter's own predicate — has an active
     /// booking for this event that ISN'T confirmed yet (still holding, or
@@ -2899,7 +2923,11 @@ final class AppState: ObservableObject {
         case .documents: screen = documentsListBack
         case .documentView: screen = documentBack
         case .verifications: screen = verificationsBack
-        case .disputes, .adminEvents: screen = .profile
+        // 2026-10-02 fix — both are only ever reached from AccountGroupView's
+        // "adminReview" (Review & Moderation) rows now, not straight from
+        // Account itself — same sub-section-of-a-group class of bug the
+        // `.preferences`/`.security`/`.payout` cases above already fixed.
+        case .disputes, .adminEvents: screen = .accountGroup
         case .mapExplore: goHome()
         // TASK A fix — these two cases were simply missing, so the shared
         // edge-swipe gesture's goBack() fell to `default: break` and did
@@ -2930,6 +2958,17 @@ final class AppState: ObservableObject {
         // AccountGroupView, so returning to `.profile` always lands back
         // on whichever tab was already showing.
         case .accountGroup: screen = .profile
+        // 2026-10-02 fix — same confirmed bug class as `.refundAccounts`/
+        // `.organizerTeam` above: `.policy` ("Help & Legal") had no case
+        // here at all, so a completed edge-swipe fell to `default: break`
+        // — a real no-op. RootView's own slide-off animation still played
+        // and then reverted, reading as "swipe-to-back doesn't work on
+        // this one screen" while every sibling row's own destination
+        // (which DOES have a case here) worked fine. Reuses the exact
+        // same target the in-screen "‹ Back" link already uses
+        // (`policyBackScreen`, set by `openPolicy()`), so both exit paths
+        // can never drift apart.
+        case .policy: screen = policyBackScreen
         default: break
         }
     }
@@ -3004,7 +3043,7 @@ final class AppState: ObservableObject {
         case .documents: return documentsListBack
         case .documentView: return documentBack
         case .verifications: return verificationsBack
-        case .disputes, .adminEvents: return .profile
+        case .disputes, .adminEvents: return .accountGroup
         case .mapExplore: return .home
         // TASK A fix — same missing-case bug as goBack() above: without
         // these, an in-progress edge swipe from RefundAccounts/MyRefunds
@@ -3028,6 +3067,12 @@ final class AppState: ObservableObject {
         case .organizerTeam: return organizerTeamBackScreen
         case .reports: return reportsBackScreen
         case .accountGroup: return .profile
+        // 2026-10-02 fix — matches goBack()'s own new `.policy` case: same
+        // missing-case bug, this half controlling what peeks in behind the
+        // screen during the drag itself (would have shown Home instead of
+        // wherever Help & Legal was actually opened from, same as every
+        // other screen this exact bug class already hit).
+        case .policy: return policyBackScreen
         default: return .home
         }
     }
