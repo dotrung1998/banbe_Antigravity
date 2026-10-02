@@ -538,7 +538,17 @@ struct BottomTabBar: View {
                     .onChange(of: proxy.size) { _, _ in resolveFrames(anchors, proxy) }
             }
         }
-        .background(.thinMaterial, in: Capsule())
+        .background {
+            if #available(iOS 26.0, *), !reduceMotion {
+                GlassEffectContainer {
+                    Capsule()
+                        .fill(.clear)
+                        .glassEffect(.regular, in: Capsule())
+                }
+            } else {
+                Capsule().fill(.regularMaterial)
+            }
+        }
         .overlay(Capsule().strokeBorder(app.palette.ink.opacity(0.06)))
         .shadow(color: .black.opacity(0.16), radius: 14, x: 0, y: 6)
         // BUG (2026-10-06 fix pass) — the shrink-on-scroll `.scaleEffect`

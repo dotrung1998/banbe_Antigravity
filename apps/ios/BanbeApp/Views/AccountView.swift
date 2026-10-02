@@ -1094,32 +1094,15 @@ struct AccountView: View {
                         .multilineTextAlignment(.leading)
                 }
                 Spacer(minLength: 0)
-                // TASK B (2026-10-03 fix pass) — THE visual bug:
-                // this switch was bound to canHost (eligibility,
-                // permanently true once a real host), never
-                // organizerMode (the actual current preference) —
-                // so it visually looked stuck "on" for any real
-                // host regardless of what the toggle really did
-                // underneath. See AppState+Data.swift's
-                // applyOrganizerMode for the matching state-side
-                // root cause.
-                ZStack(alignment: app.organizerMode ? .trailing : .leading) {
-                    Capsule()
-                        .fill(app.organizerMode ? app.palette.ink : app.palette.ink.opacity(0.18))
-                        .frame(width: 44, height: 26)
-                    if #available(iOS 26.0, *) {
-                        GlassEffectContainer {
-                            Circle()
-                                .fill(.clear)
-                                .frame(width: 20, height: 20)
-                                .glassEffect(.regular.interactive(), in: Circle())
-                        }
-                        .padding(3)
-                    } else {
-                        Circle().fill(.regularMaterial).frame(width: 20, height: 20).padding(3)
+                Toggle("", isOn: Binding(
+                    get: { app.organizerMode },
+                    set: { enabled in
+                        guard enabled != app.organizerMode else { return }
+                        app.toggleOrganizerMode()
                     }
-                }
-                .animation(.easeInOut(duration: 0.15), value: app.organizerMode)
+                ))
+                .labelsHidden()
+                .toggleStyle(BanbeLiquidToggleStyle())
             }
             .foregroundStyle(app.palette.ink)
             .padding(16)

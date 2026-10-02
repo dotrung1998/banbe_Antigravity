@@ -8,36 +8,67 @@ import ImageIO
 /// existing material language on older systems.
 struct BanbeLiquidToggleStyle: ToggleStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var dragTranslation: CGFloat = 0
 
     func makeBody(configuration: Configuration) -> some View {
-        Button {
-            let change = {
-                configuration.isOn.toggle()
+        HStack(spacing: 12) {
+            configuration.label
+            Spacer(minLength: 8)
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(configuration.isOn ? Color.primary : Color.primary.opacity(0.18))
+                    .frame(width: 44, height: 26)
+                knob
+                    .padding(3)
+                    .offset(x: knobOffset(isOn: configuration.isOn))
             }
+            .frame(width: 44, height: 26)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 4)
+                    .updating($dragTranslation) { value, state, _ in
+                        state = value.translation.width
+                    }
+                    .onEnded { value in
+                        let travel: CGFloat = 18
+                        let base = configuration.isOn ? travel : 0
+                        let proposed = min(travel, max(0, base + value.translation.width))
+                        let newValue: Bool
+                        if abs(value.translation.width) < 4 {
+                            newValue = !configuration.isOn
+                        } else {
+                            newValue = proposed >= travel / 2
+                        }
+                        guard newValue != configuration.isOn else { return }
+                        if reduceMotion {
+                            configuration.isOn = newValue
+                        } else {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                                configuration.isOn = newValue
+                            }
+                        }
+                    }
+            )
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard abs(dragTranslation) < 4 else { return }
             if reduceMotion {
-                change()
+                configuration.isOn.toggle()
             } else {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
-                    change()
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                    configuration.isOn.toggle()
                 }
-            }
-        } label: {
-            HStack(spacing: 12) {
-                configuration.label
-                Spacer(minLength: 8)
-                ZStack(alignment: configuration.isOn ? .trailing : .leading) {
-                    Capsule()
-                        .fill(configuration.isOn ? Color.primary : Color.primary.opacity(0.18))
-                        .frame(width: 44, height: 26)
-                    knob
-                        .padding(3)
-                }
-                .frame(width: 44, height: 26)
             }
         }
-        .buttonStyle(.plain)
         .accessibilityAddTraits(.isToggle)
         .accessibilityValue(configuration.isOn ? "On" : "Off")
+    }
+
+    private func knobOffset(isOn: Bool) -> CGFloat {
+        let travel: CGFloat = 18
+        let base = isOn ? travel : 0
+        return min(travel, max(0, base + dragTranslation))
     }
 
     @ViewBuilder

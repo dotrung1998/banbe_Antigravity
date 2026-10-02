@@ -238,6 +238,11 @@ struct RootView: View {
                         return
                     }
                     tabSwipeDirection = "horizontal"
+                    // Lock interaction immediately when the drag is
+                    // classified as a root-tab swipe. Waiting for the
+                    // published state observer leaves a brief window where
+                    // an Account button under the finger can still fire.
+                    app.isRootSwipeActive = true
                 }
                 guard tabSwipeDirection == "horizontal" else { return }
                 let idx = BottomTabBar.dockOrder.firstIndex(of: app.screen)

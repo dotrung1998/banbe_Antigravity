@@ -487,6 +487,18 @@ struct HomeView: View {
         .padding(.horizontal, 20)
         .padding(.top, 16)
         .padding(.bottom, 12)
+        // The events strip owns horizontal scrolling. Register its real
+        // bounds in the same root coordinate space used by tabSwipeGesture,
+        // so a swipe that starts on an event stays with this ScrollView
+        // instead of committing Home -> Map.
+        .background {
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: RootGestureExclusionZonePreferenceKey.self,
+                    value: ["savedEvents": geo.frame(in: .named("rootGesture"))]
+                )
+            }
+        }
         .overlay(alignment: .bottom) { Rectangle().fill(app.palette.rule).frame(height: 1) }
     }
 
