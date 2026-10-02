@@ -32,9 +32,12 @@ struct BottomSheet<Content: View>: View {
 /// requests location permission; only the explicit toggle below does.
 struct AreaSheetView: View {
     @EnvironmentObject var app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var revealProgress: CGFloat = 0
 
-    var body: some View {
-        BottomSheet(onDismiss: { app.areaAsking = false }) {
+    @ViewBuilder
+    private var areaContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Khu vực").font(.system(size: 11.5, weight: .semibold))
                 Spacer()
@@ -42,7 +45,7 @@ struct AreaSheetView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(app.palette.ink.opacity(0.6))
-                        .padding(4)
+                        .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("area.close")
@@ -60,6 +63,63 @@ struct AreaSheetView: View {
             .padding(.top, 14)
             .buttonStyle(.plain)
         }
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .padding(.bottom, 8)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let panelWidth = min(geo.size.width - 32, 560)
+            let panelHeight = min(geo.size.height - 96, 560)
+            let source = app.areaSourceFrame
+            let hasSource = source.map { $0.width > 1 && $0.height > 1 } ?? false
+            let sourceScale = hasSource ? min(source!.width / panelWidth, source!.height / panelHeight) : 0.82
+            let sourceOffsetX = hasSource ? source!.midX - geo.size.width / 2 : 0
+            let sourceOffsetY = hasSource ? source!.midY - geo.size.height / 2 : 0
+            let progress = reduceMotion ? 1 : revealProgress
+
+            ZStack {
+                Color.black.opacity(0.42 * Double(progress))
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { app.areaAsking = false }
+
+                areaContent
+                    .frame(width: panelWidth, height: panelHeight)
+                    .background {
+                        if #available(iOS 26.0, *) {
+                            GlassEffectContainer {
+                                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                                    .fill(.clear)
+                                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                                    .opacity(app.glassOpacity)
+                            }
+                        } else {
+                            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                                .fill(app.palette.paper.opacity(0.28 * app.glassOpacity))
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                                .opacity(app.glassOpacity)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .stroke(app.palette.rule.opacity(0.65), lineWidth: 1)
+                    }
+                    .scaleEffect(sourceScale + (1 - sourceScale) * progress)
+                    .offset(x: sourceOffsetX * (1 - progress), y: sourceOffsetY * (1 - progress))
+                    .onAppear {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        guard !reduceMotion else { return }
+                        withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+                            revealProgress = 1
+                        }
+                    }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .ignoresSafeArea()
     }
 }
 

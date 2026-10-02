@@ -466,7 +466,7 @@ private struct FeedbackFlowView: View {
                     HStack {
                         Text(app.T("Tôi đang báo lỗi", "I'm reporting a bug")).font(.system(size: 14))
                         Spacer()
-                        Toggle("", isOn: $isBug).labelsHidden().tint(app.palette.ink)
+                        Toggle("", isOn: $isBug).labelsHidden().toggleStyle(BanbeLiquidToggleStyle())
                     }
                     .padding(.top, 16)
 

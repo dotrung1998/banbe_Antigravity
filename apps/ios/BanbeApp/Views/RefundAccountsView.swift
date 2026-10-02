@@ -85,8 +85,15 @@ struct RefundAccountsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 BackLink(label: app.backLabel(for: app.refundAccountsBackScreen)) { app.backFromRefundAccounts() }
 
-                Text(app.T("Tài khoản nhận hoàn tiền", "Refund accounts"))
-                    .font(BanbeTheme.display(24)).padding(.top, 14)
+                HStack(spacing: 10) {
+                    Image(systemName: "banknote")
+                        .font(.system(size: 20, weight: .medium))
+                        .frame(width: 34, height: 34)
+                        .background((ROW_ACCENT_COLORS["payments"] ?? .clear).opacity(0.33), in: Circle())
+                    Text(app.T("Tài khoản nhận hoàn tiền", "Refund accounts"))
+                        .font(BanbeTheme.display(24))
+                }
+                .padding(.top, 10)
                 if app.refundDestinations.count > 1 {
                     Text(app.T("Kéo để sắp xếp", "Drag to reorder"))
                         .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6)).padding(.top, 6)
@@ -246,9 +253,11 @@ struct RefundAccountsView: View {
             Toggle(isOn: $setDefault) {
                 Text(app.T("Đặt làm tài khoản mặc định", "Set as default account")).font(.system(size: 12))
             }
+            .toggleStyle(BanbeLiquidToggleStyle())
             Toggle(isOn: $confirmed) {
                 Text(app.T("Tôi xác nhận thông tin tài khoản trên là chính xác.", "I confirm this account information is correct.")).font(.system(size: 12))
             }
+            .toggleStyle(BanbeLiquidToggleStyle())
             .accessibilityIdentifier("refund.accountConfirmToggle")
             if !app.refundDestinationError.isEmpty {
                 Text(app.refundDestinationError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)

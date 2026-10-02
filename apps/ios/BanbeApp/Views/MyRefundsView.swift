@@ -26,7 +26,15 @@ struct MyRefundsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 BackLink(label: app.backLabel(for: app.myRefundsBackScreen)) { app.backFromMyRefunds() }
 
-                Text(app.T("Hoàn tiền", "Refunds")).font(BanbeTheme.display(24)).padding(.top, 14)
+                HStack(spacing: 10) {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 20, weight: .medium))
+                        .frame(width: 34, height: 34)
+                        .background((ROW_ACCENT_COLORS["payments"] ?? .clear).opacity(0.33), in: Circle())
+                    Text(app.T("Hoàn tiền", "Refunds"))
+                        .font(BanbeTheme.display(24))
+                }
+                .padding(.top, 10)
                 Text(app.T("Các khoản hoàn tiền đang cần xử lý của bạn.", "Your refund claims that are still active."))
                     .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)
 

@@ -1,6 +1,31 @@
 import SwiftUI
 import UIKit
 
+private struct PulseSourceFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private struct PulsePanelContentHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct PulsePressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.975 : 1)
+            .offset(y: configuration.isPressed ? 2 : 0)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
 /// TASK E (2026-10-01 UX foundation pass) — two tabs ("Hôm nay"/"Tuần
 /// này") of ranked public event/organizer cards. Tapping an unfollowed
 /// organizer's identity opens a compact sheet with a Follow CTA (never
@@ -17,6 +42,7 @@ private func eventPhotoURL(_ path: String?) -> String? {
 struct PulseViewerView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     // iOS/Map UX pass (2026-09-27) — Pulse used to be a `.fullScreenCover`,
     // a wholly separate UIKit presentation layer with no access to
@@ -70,6 +96,25 @@ struct PulseViewerView: View {
     // there's nothing left to wait for.
     @State private var loadedPhotoURLs: Set<String> = []
     @State private var erroredPhotoURLs: Set<String> = []
+    @State private var pulseSourceFrames: [String: CGRect] = [:]
+    @State private var expandedPanelProgress: CGFloat = 1
+    @State private var expandedPanelKey: String?
+    @State private var expandedPanelHapticKey: String?
+    @State private var expandedPanelImage: UIImage?
+    @State private var expandedPanelContentHeight: CGFloat = 1
+
+    private func pulseSourceKey(_ id: String) -> String { "pulse-item-\(id)" }
+    private func pulsePhotoSourceKey(_ id: String) -> String { "pulse-photo-\(id)" }
+
+    private func prepareExpandedPanel(key: String) {
+        expandedPanelKey = key
+        expandedPanelProgress = reduceMotion ? 1 : 0
+        expandedPanelImage = nil
+        expandedPanelContentHeight = 1
+        guard expandedPanelHapticKey != key else { return }
+        expandedPanelHapticKey = key
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
 
     private func markPhotoLoaded(_ url: String) { loadedPhotoURLs.insert(url) }
     private func markPhotoErrored(_ url: String) { erroredPhotoURLs.insert(url) }
@@ -285,6 +330,8 @@ struct PulseViewerView: View {
                     .zIndex(20)
             }
         }
+        .coordinateSpace(name: "pulse.overlay")
+        .onPreferenceChange(PulseSourceFramePreferenceKey.self) { pulseSourceFrames = $0 }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: app.pulseOrganizerSheet)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: app.pulsePhotoSheet)
         // Mirrors RootView's own `.onChange(of: isCommittingBack)` exactly —
@@ -365,6 +412,7 @@ struct PulseViewerView: View {
     @ViewBuilder
     private func pulseCard(_ item: PulseItem, rank: Int) -> some View {
         Button {
+            prepareExpandedPanel(key: pulseSourceKey(item.id))
             app.openPulseOrganizerSheet(item)
         } label: {
             HStack(spacing: 0) {
@@ -445,6 +493,7 @@ struct PulseViewerView: View {
             }
         }
         .buttonStyle(.plain)
+        .buttonStyle(PulsePressButtonStyle())
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         // Left-corner-rounding fix (2026-09-28 pass) — real root cause:
         // `.background(_, in: shape)` only clips the BACKGROUND fill to
@@ -458,6 +507,11 @@ struct PulseViewerView: View {
         // (including that photo tile) to the same rounded rect the
         // background already uses, making left/right symmetric.
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(key: PulseSourceFramePreferenceKey.self, value: [pulseSourceKey(item.id): proxy.frame(in: .named("pulse.overlay"))])
+            }
+        }
         .accessibilityIdentifier("pulse.card")
     }
 
@@ -487,105 +541,142 @@ struct PulseViewerView: View {
         title: String,
         subtitle: String?,
         metaLine: String?,
+        sourceKey: String,
         accessibilityCloseID: String,
         onClose: @escaping () -> Void,
         @ViewBuilder actions: @escaping () -> Actions
     ) -> some View {
         GeometryReader { geo in
-            let url = photoURLString.flatMap(URL.init(string:))
-            let maxPanelWidth: CGFloat = min(geo.size.width - 40, 420)
-            let maxPanelHeight: CGFloat = geo.size.height - 64
-            // Available-height limit for the photo region specifically —
-            // the rest (title/meta/actions) gets whatever it needs below,
-            // capped overall by maxPanelHeight on the outer card itself.
-            let maxImageHeight: CGFloat = maxPanelHeight * 0.58
+            let panelWidth = min(geo.size.width * 0.8, 520)
+            let maxImageWidth = max(1, panelWidth - 32)
+            let maxImageHeight = max(120, geo.size.height * 0.42)
+            let sourceRect = pulseSourceFrames[sourceKey]
+            let validSource = sourceRect.map { $0.width > 1 && $0.height > 1 } ?? false
+            let sourceScale = validSource ? min(sourceRect!.width / panelWidth, sourceRect!.height / 160) : 0.96
+            let sourceOffsetX = validSource ? sourceRect!.midX - geo.size.width / 2 : 0
+            let sourceOffsetY = validSource ? sourceRect!.midY - geo.size.height / 2 : 0
+            let progress = reduceMotion ? 1 : expandedPanelProgress
 
             ZStack {
-                // Dimmed/blurred background — tap outside the card to
-                // dismiss, same as tapping the X. Never blocks the card's
-                // OWN taps (it sits behind, sized to the full viewport).
+                // The scrim has its own fade, independent of the panel's
+                // source expansion, so the underlying Pulse screen stays put.
                 Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .overlay(Color.black.opacity(0.35))
+                    .fill(.black.opacity(0.38 * Double(progress)))
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
-                    .onTapGesture { onClose() }
+                    .onTapGesture { closeExpandedPanel(onClose: onClose) }
                     .accessibilityHidden(true)
 
-                VStack(spacing: 0) {
-                    if let url {
-                        AsyncImage(url: url) { phase in
-                            if let img = phase.image {
-                                img.resizable().aspectRatio(contentMode: .fit)
-                                    .frame(maxWidth: maxPanelWidth, maxHeight: maxImageHeight)
-                            } else {
-                                // Honest loading placeholder — never a wrong
-                                // cached photo, never a layout-shifting blank.
-                                Rectangle().fill(app.palette.field)
-                                    .frame(height: min(180, maxImageHeight))
-                            }
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        if let image = expandedPanelImage {
+                            let aspect = max(image.size.width / max(image.size.height, 1), 0.1)
+                            let imageWidth = min(maxImageWidth, maxImageHeight * aspect)
+                            let imageHeight = imageWidth / aspect
+                            Image(uiImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: imageWidth, height: imageHeight)
+                                .shadow(color: .black.opacity(0.24), radius: 10, y: 5)
+                                .scaleEffect(0.97 + 0.03 * progress)
+                                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                                }
+                                .padding(.top, 16)
+                        } else if photoURLString != nil {
+                            ProgressView().frame(width: maxImageWidth, height: min(160, maxImageHeight)).padding(.top, 16)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 18)
-                    }
 
-                    VStack(spacing: 8) {
-                        Text(title).font(BanbeTheme.display(18)).multilineTextAlignment(.center).lineLimit(2)
-                        if let subtitle, !subtitle.isEmpty {
-                            Text(subtitle).font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
-                                .multilineTextAlignment(.center)
-                        }
-                        if let metaLine, !metaLine.isEmpty {
-                            Text(metaLine).font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.6))
-                                .multilineTextAlignment(.center)
-                        }
-                        actions().padding(.top, 8)
-                    }
-                    .padding(.horizontal, 22)
-                    .padding(.top, 14)
-                    .padding(.bottom, 22)
-                }
-                .frame(maxWidth: maxPanelWidth)
-                .frame(maxHeight: maxPanelHeight)
-                .background(
-                    ZStack {
-                        // Same-image soft backdrop, as part of the OVERALL
-                        // panel (one surface) rather than a second,
-                        // visibly-separate rectangle behind just the photo.
-                        if let url {
-                            AsyncImage(url: url) { phase in
-                                if let img = phase.image {
-                                    img.resizable().scaledToFill().blur(radius: 46, opaque: true).opacity(0.45)
-                                } else { Color.clear }
+                        VStack(spacing: 8) {
+                            Text(title).font(BanbeTheme.display(18)).multilineTextAlignment(.center).lineLimit(3)
+                            if let subtitle, !subtitle.isEmpty {
+                                Text(subtitle).font(.subheadline).foregroundStyle(app.palette.ink.opacity(0.75))
+                                    .multilineTextAlignment(.center)
                             }
+                            if let metaLine, !metaLine.isEmpty {
+                                Text(metaLine).font(.footnote).foregroundStyle(app.palette.ink.opacity(0.6))
+                                    .multilineTextAlignment(.center)
+                            }
+                            actions().padding(.top, 6)
                         }
-                        Rectangle().fill(.ultraThinMaterial)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 14)
+                        .padding(.bottom, 18)
                     }
-                )
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: PulsePanelContentHeightPreferenceKey.self, value: proxy.size.height)
+                        }
+                    }
+                }
+                .frame(width: panelWidth)
+                .frame(height: min(max(expandedPanelContentHeight, 1), geo.size.height - 32))
+                .onPreferenceChange(PulsePanelContentHeightPreferenceKey.self) { height in
+                    expandedPanelContentHeight = height
+                }
+                .background {
+                    ZStack {
+                        if let image = expandedPanelImage {
+                            Image(uiImage: image).resizable().scaledToFill().blur(radius: 28).opacity(0.08)
+                        }
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .fill(app.palette.paper.opacity(0.28))
+                        if #available(iOS 26.0, *), !reduceTransparency {
+                            GlassEffectContainer {
+                                Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                                    .opacity(app.glassOpacity)
+                            }
+                        } else {
+                            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                                .fill(app.palette.paper.opacity(0.28 * app.glassOpacity))
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                                .opacity(app.glassOpacity)
+                        }
+                    }
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(Color.white.opacity(0.18), lineWidth: 1))
-                .shadow(color: .black.opacity(0.28), radius: 30, y: 14)
+                .shadow(color: .black.opacity(0.28), radius: 22, y: 12)
                 .foregroundStyle(app.palette.ink)
                 .overlay(alignment: .topTrailing) {
-                    // Kept clear of the image/content, always tappable —
-                    // minimum 44x44 target per this ticket's own accessible-
-                    // target requirement.
-                    Button(action: onClose) {
+                    Button { closeExpandedPanel(onClose: onClose) } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(app.palette.ink)
                             .frame(width: 44, height: 44)
-                            .background(Color.black.opacity(0.45), in: Circle())
+                            .background(.regularMaterial, in: Circle())
                     }
                     .buttonStyle(.plain)
                     .padding(6)
                     .accessibilityIdentifier(accessibilityCloseID)
                     .accessibilityLabel(app.T("Đóng", "Close"))
                 }
+                .scaleEffect(sourceScale + (1 - sourceScale) * progress)
+                .offset(x: sourceOffsetX * (1 - progress), y: sourceOffsetY * (1 - progress))
+                .task(id: photoURLString) {
+                    guard let photoURLString else { return }
+                    let image = await PhotoLoader.load(path: photoURLString, maxPixel: 1800)
+                    guard !Task.isCancelled, expandedPanelKey == sourceKey else { return }
+                    expandedPanelImage = image
+                }
+                .onAppear {
+                    guard expandedPanelKey == sourceKey else { return }
+                    guard !reduceMotion else { return }
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) { expandedPanelProgress = 1 }
+                }
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
-        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        .transition(.opacity)
+    }
+
+    private func closeExpandedPanel(onClose: @escaping () -> Void) {
+        guard !reduceMotion, expandedPanelProgress > 0.01 else { onClose(); return }
+        withAnimation(.spring(response: 0.26, dampingFraction: 0.9), completionCriteria: .logicallyComplete, {
+            expandedPanelProgress = 0
+        }, completion: onClose)
     }
 
     // B3 — two large, equal-width, side-by-side rounded buttons instead of
@@ -610,6 +701,7 @@ struct PulseViewerView: View {
             title: item.eventName,
             subtitle: item.organizerName + (item.organizerVerified ? " ✓" : ""),
             metaLine: metaParts.joined(separator: " ▪︎ "),
+            sourceKey: pulseSourceKey(item.id),
             accessibilityCloseID: "pulse.organizerSheet.close",
             onClose: { app.closePulseOrganizerSheet() }
         ) {
@@ -753,11 +845,19 @@ struct PulseViewerView: View {
             .padding(.trailing, 12)
         }
         .contentShape(Rectangle())
-        .onTapGesture { app.openPulsePhotoSheet(item) }
+        .onTapGesture {
+            prepareExpandedPanel(key: pulsePhotoSourceKey(item.id))
+            app.openPulsePhotoSheet(item)
+        }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         // Left-corner-rounding fix — same root cause/fix as `pulseCard`
         // above: `.background(_, in:)` never clipped the actual content.
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(key: PulseSourceFramePreferenceKey.self, value: [pulsePhotoSourceKey(item.id): proxy.frame(in: .named("pulse.overlay"))])
+            }
+        }
         .accessibilityIdentifier("pulse.photoCard")
     }
 
@@ -777,6 +877,7 @@ struct PulseViewerView: View {
             title: item.eventName,
             subtitle: item.organizerName + (item.organizerVerified ? " ✓" : ""),
             metaLine: nil,
+            sourceKey: pulsePhotoSourceKey(item.id),
             accessibilityCloseID: "pulse-photo-sheet-close",
             onClose: { app.closePulsePhotoSheet() }
         ) {

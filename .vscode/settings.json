@@ -10,5 +10,8 @@
     "sweetpad.build.destination": {
         "id": "iossimulator-EDC78AEE-0643-474E-85CB-DAC5051F561F",
         "type": "iOSSimulator"
+    },
+    "chat.tools.terminal.autoApprove": {
+        "xcodebuild": true
     }
 }

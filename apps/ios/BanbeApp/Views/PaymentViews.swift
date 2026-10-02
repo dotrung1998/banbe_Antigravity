@@ -1001,7 +1001,7 @@ struct PayoutView: View {
                         .font(.system(size: 20, weight: .medium))
                         .frame(width: 34, height: 34)
                         .background((ROW_ACCENT_COLORS["hostOps"] ?? .clear).opacity(0.33), in: Circle())
-                    Text(app.T("Nhận thanh toán", "Getting paid"))
+                    Text(app.T("Nhận thanh toán", "Getting Paid"))
                         .font(BanbeTheme.display(24)).foregroundStyle(app.palette.ink)
                 }
                 .padding(.top, 14)

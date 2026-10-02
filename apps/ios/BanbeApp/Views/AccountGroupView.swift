@@ -51,9 +51,10 @@ struct AccountGroupView: View {
                     Image(systemName: titleIcon)
                         .font(.system(size: 20, weight: .medium))
                         .frame(width: 34, height: 34)
-                        .background(ROW_ACCENT_COLORS[app.accountGroupKey ?? ""]?.opacity(0.33) ?? .clear, in: Circle())
-                    Text(title).font(BanbeTheme.display(27))
+                        .background((ROW_ACCENT_COLORS[app.accountGroupKey ?? ""] ?? .clear).opacity(0.33), in: Circle())
+                    Text(title).font(BanbeTheme.display(24))
                 }
+                .padding(.top, 10)
                 .padding(.top, 16)
 
                 Group {
@@ -355,6 +356,27 @@ struct AccountGroupView: View {
             row(app.T("Tài khoản thanh toán & nhận hoàn tiền", "Payment & refund accounts"), identifier: "account.refundAccounts", icon: "banknote", trailing: "›") { app.openRefundAccounts(back: .accountGroup) }
             Divider().overlay(app.palette.rule)
             row(app.T("Hoàn tiền", "Refunds"), identifier: "account.refunds", icon: "checklist", trailing: "›") { app.openMyRefunds(back: .accountGroup) }
+            Divider().overlay(app.palette.rule)
+            HStack(spacing: 12) {
+                Image(systemName: "envelope.badge")
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 22, height: 22)
+                    .opacity(0.72)
+                Text(app.T("Gửi email chứng từ thanh toán", "Email payment documents"))
+                    .font(.system(size: 14))
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { app.autoEmailDocuments },
+                    set: { enabled in
+                        if enabled != app.autoEmailDocuments { app.toggleAutoEmailDocuments() }
+                    }
+                ))
+                .labelsHidden()
+                .toggleStyle(BanbeLiquidToggleStyle())
+                .accessibilityIdentifier("account.autoEmailDocuments")
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 16).padding(.vertical, 12)
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
@@ -362,10 +384,9 @@ struct AccountGroupView: View {
     @ViewBuilder
     private var preferencesContent: some View {
         VStack(spacing: 0) {
-            row(app.T("Tùy chỉnh ứng dụng", "App Preferences"),
+            row(app.T("Ngôn ngữ & Hiển thị", "Language & Appearance"),
                 identifier: "account.preferences", icon: "slider.horizontal.3",
-                trailing: (app.lang == "en" ? "English" : "Tiếng Việt") + " ▪︎ "
-                    + (app.theme == "dark" ? app.T("Tối", "Dark") : app.T("Sáng", "Light"))) {
+                trailing: "›") {
                 app.openPreferences()
             }
             Divider().overlay(app.palette.rule)

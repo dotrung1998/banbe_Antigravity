@@ -1,4 +1,25 @@
 import SwiftUI
+import UIKit
+
+private struct HomeControlPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .offset(y: configuration.isPressed ? 1 : 0)
+            .animation(
+                .spring(response: 0.42, dampingFraction: 0.72, blendDuration: 0.14),
+                value: configuration.isPressed
+            )
+    }
+}
+
+private struct HomeAreaFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect?
+
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
+        value = nextValue() ?? value
+    }
+}
 
 /// The feed — a port of src/screens/Home.jsx: header (wordmark, language
 /// toggle, area picker, notification bell, messages, account), the held-spot
@@ -309,6 +330,29 @@ struct HomeView: View {
 
     // MARK: Header
 
+    @ViewBuilder
+    private func homeGlassCapsule(active: Bool = false) -> some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer {
+                Capsule()
+                    .fill(active
+                          ? app.palette.ink.opacity(0.92)
+                          : app.palette.ink.opacity(0.04 + 0.20 * app.glassOpacity))
+                    .glassEffect(.regular.interactive(), in: Capsule())
+                      .opacity(active ? 1 : app.glassOpacity)
+            }
+        } else {
+            if active {
+                Capsule().fill(app.palette.ink)
+            } else {
+                Capsule()
+                    .fill(app.palette.ink.opacity(0.04 + 0.20 * app.glassOpacity))
+                    .background(.thinMaterial, in: Capsule())
+                    .opacity(app.glassOpacity)
+            }
+        }
+    }
+
     // Task 2c (2026-09-21 follow-up) — a quick Appearance (light/dark)
     // toggle next to the existing language/area switchers, separated by
     // this app's own "▪" glyph (already used throughout its copy, e.g.
@@ -324,63 +368,77 @@ struct HomeView: View {
         // Centering keeps every sibling vertically centered in the row
         // regardless of the wordmark's height, so the lang/area/theme
         // buttons stay fully visible at any wordmark size.
-        HStack(alignment: .center) {
-            HStack(spacing: 10) {
-                BanbeLogo(kind: .wordmark, width: BanbeLogo.headerWordmarkWidth)
-                // Home-specific label (2026-09-29, restyled 2026-09-29
-                // follow-up) — Notifications/Messages/Account each got the
-                // SAME wordmark placed before their own title (this pass),
-                // so Home's own copy now says which section it is too,
-                // in the SAME font/color those titles use
-                // (`BanbeTheme.display`/full ink, not a small dim label) —
-                // kept in this same leading `HStack`, before the `Spacer`,
-                // so the language/area/theme controls on the trailing side
-                // don't move at all.
-                Text(app.T("Nhà", "Home"))
-                    .font(BanbeTheme.display(27))
-                    .foregroundStyle(app.palette.ink)
-                // Home quick event search moved OUT of this header
-                // (2026-09-28 follow-up, real-device report) — see
-                // `HomeSearchFabView`, overlaid on the whole screen from
-                // `body`'s own modifier chain above (floating, lower-right,
-                // above the dock). Kept here only as the comment marker for
-                // why the slot beside the wordmark is now empty.
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center) {
+                HStack(spacing: 10) {
+                    BanbeLogo(kind: .wordmark, width: BanbeLogo.headerWordmarkWidth)
+                    // Home-specific label (2026-09-29, restyled 2026-09-29
+                    // follow-up) — Notifications/Messages/Account each got the
+                    // SAME wordmark placed before their own title (this pass),
+                    // so Home's own copy now says which section it is too,
+                    // in the SAME font/color those titles use
+                    // (`BanbeTheme.display`/full ink, not a small dim label).
+                    Text(app.T("Nhà", "Home"))
+                        .font(BanbeTheme.display(27))
+                        .foregroundStyle(app.palette.ink)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 6) {
+            HStack {
+                Spacer(minLength: 0)
+                ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     // Bolder/larger + bigger hit-area (2026-09-29 follow-up)
                     // — bumped 13pt/semibold -> 15pt/bold and 4pt -> 7pt
                     // vertical padding on all three quick-switch buttons for
                     // easier tapping.
-                    Button(app.T("EN", "VN")) { app.toggleLang() }
+                    Button(app.T("EN", "VN")) {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        app.toggleLang()
+                    }
                         .font(.system(size: 15, weight: .bold))
-                        .padding(.vertical, 7)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background { homeGlassCapsule() }
+                        .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
+                        .buttonStyle(HomeControlPressStyle())
                         .accessibilityIdentifier("header.lang")
-                    Text("▪").font(.system(size: 9)).opacity(0.4)
                     // "banbe ▪︎" prefix dropped (2026-09-29 follow-up) — was
                     // crowding out the actual region name; the button's own
                     // accessibility identifier and action already make it
                     // unambiguous which control this is without a label
                     // prefix repeating the app's own name.
                     Button("\(app.currentAreaLabel) ▾") {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         app.openArea()
                     }
                     .font(.system(size: 15, weight: .bold))
-                    .padding(.vertical, 7)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background { homeGlassCapsule() }
+                    .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: HomeAreaFramePreferenceKey.self, value: proxy.frame(in: .global))
+                        }
+                    }
+                    .buttonStyle(HomeControlPressStyle())
                     .accessibilityIdentifier("header.area")
-                    Text("▪").font(.system(size: 9)).opacity(0.4)
                     // No `toggleTheme()` exists on iOS — Preferences.swift's
                     // own theme picker already uses `pickTheme(_:)` directly
                     // (the exact write path, incl. persistence); this just
                     // calls the same function with the flipped value rather
                     // than adding a parallel toggle.
                     Button(app.theme == "dark" ? app.T("Sáng", "Light") : app.T("Tối", "Dark")) {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         app.pickTheme(app.theme == "dark" ? "light" : "dark")
                     }
                     .font(.system(size: 15, weight: .bold))
-                    .padding(.vertical, 7)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background { homeGlassCapsule() }
+                    .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
+                    .buttonStyle(HomeControlPressStyle())
                     .accessibilityIdentifier("header.theme")
+                }
+                .fixedSize(horizontal: true, vertical: false)
                 }
             }
         }
@@ -388,10 +446,9 @@ struct HomeView: View {
         .foregroundStyle(app.palette.ink)
         // The web header fits in a narrower face; scale rather than clip if
         // a longer area name (or English) pushes the row past the edge.
-        .lineLimit(1)
-        .minimumScaleFactor(0.75)
         .padding(.horizontal, 20)
         .padding(.top, 16)
+        .onPreferenceChange(HomeAreaFramePreferenceKey.self) { app.areaSourceFrame = $0 }
     }
 
     // MARK: Your events
@@ -851,18 +908,16 @@ struct HomeView: View {
 
     private var filterTabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 20) {
+            HStack(spacing: 8) {
                 ForEach(filters, id: \.key) { filter in
                     let active = app.filter == filter.key
                     SwipeSafeButton { app.pickFilter(filter.key) } label: {
-                        VStack(spacing: 6) {
-                            Text(app.T(filter.vi, filter.en))
-                                .font(.system(size: 12.5, weight: active ? .semibold : .regular))
-                            Rectangle()
-                                .fill(active ? app.palette.ink : .clear)
-                                .frame(height: 2)
-                        }
-                        .fixedSize()
+                        Text(app.T(filter.vi, filter.en))
+                            .font(.system(size: 12.5, weight: active ? .semibold : .regular))
+                            .padding(.horizontal, 14).padding(.vertical, 8)
+                            .foregroundStyle(active ? app.palette.paper : app.palette.ink)
+                            .background { homeGlassCapsule(active: active) }
+                            .overlay(Capsule().stroke(active ? .clear : app.palette.rule.opacity(0.7), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("filter.\(filter.key)")
@@ -906,7 +961,8 @@ struct HomeView: View {
                     Text(app.T(chip.vi, chip.en))
                         .font(.system(size: 12, weight: chip.active ? .bold : .regular))
                         .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(.thinMaterial, in: Capsule())
+                        .foregroundStyle(chip.active ? app.palette.paper : app.palette.ink)
+                        .background { homeGlassCapsule(active: chip.active) }
                         .overlay(Capsule().stroke(chip.active ? app.palette.ink : .clear, lineWidth: 1))
                 }
                 .buttonStyle(.plain)

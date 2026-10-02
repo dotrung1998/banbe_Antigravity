@@ -555,6 +555,7 @@ struct AttendanceView: View {
                                     "I confirm I've transferred a total of \(formatVnd(selectedTotalVnd)) to \(selectedClaims.count) guests."))
                             .font(.system(size: 12))
                     }
+                            .toggleStyle(BanbeLiquidToggleStyle())
                     if !app.refundBatchError.isEmpty {
                         Text(app.refundBatchError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
                     }

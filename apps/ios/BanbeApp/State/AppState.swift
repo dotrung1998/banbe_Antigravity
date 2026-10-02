@@ -364,6 +364,12 @@ final class AppState: ObservableObject {
     @Published var theme: String = UserDefaults.standard.string(forKey: "banbe.theme") ?? "light" {
         didSet { UserDefaults.standard.set(theme, forKey: "banbe.theme") }
     }
+    /// Local appearance preference for the native Liquid Glass surfaces.
+    /// Kept device-local because the glass effect is an iOS presentation
+    /// setting, not profile data shared with the web client.
+    @Published var glassOpacity: Double = UserDefaults.standard.object(forKey: "banbe.glassOpacity") as? Double ?? 0.82 {
+        didSet { UserDefaults.standard.set(glassOpacity, forKey: "banbe.glassOpacity") }
+    }
     // Location hierarchy (migration 112) — now a `LocationHierarchy` node
     // ID ("all", "c:VN", "c:VN|a:Quận 1", …) instead of one of six
     // hardcoded keys. Still purely in-memory (it never was persisted —
@@ -539,6 +545,7 @@ final class AppState: ObservableObject {
     @Published var userCoords: Coordinates?
     @Published var askingLocation = false
     @Published var areaAsking = false
+    @Published var areaSourceFrame: CGRect?
 
     // MARK: Booking
     @Published var qty: Int = 1
@@ -2981,7 +2988,7 @@ final class AppState: ObservableObject {
     // Account IA reorg (2026-09-30) — "activity"'s visible label changed
     // to "Tickets & Bookings" (its content is now this account's REAL
     // bookings, see `AccountGroupView.activityContent`) and "preferences"
-    // relabeled to "Settings" for accuracy — mirrors web's
+    // relabeled to "App Preferences" for accuracy — mirrors web's
     // `AccountGroup.jsx` GROUP_META exactly. The keys themselves ("activity"/
     // "preferences") are UNCHANGED, only these display strings.
     func accountGroupTitle(for key: String?) -> String {
@@ -2989,7 +2996,7 @@ final class AppState: ObservableObject {
         case "team": return T("Hồ Sơ & Team", "Profile & Team")
         case "activity": return T("Vé & Đặt Chỗ", "Tickets & Bookings")
         case "payments": return T("Thanh Toán & Giấy Tờ", "Payments & Documents")
-        case "preferences": return T("Cài Đặt", "Settings")
+        case "preferences": return T("Tùy Chỉnh", "App Preferences")
         case "hostOps": return T("Vận Hành & Thanh Toán Tổ Chức", "Event Operations & Payments")
         case "adminReview": return T("Duyệt & Kiểm Duyệt", "Review & Moderation")
         case "adminTeam": return T("Đội Ngũ Quản Trị", "Admin Team")

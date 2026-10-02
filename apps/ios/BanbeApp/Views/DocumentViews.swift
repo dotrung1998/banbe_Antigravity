@@ -50,8 +50,15 @@ struct DocumentsView: View {
                     .padding(.top, 8)
                     .accessibilityIdentifier("documents.back")
 
-                Text(title).font(BanbeTheme.display(24)).foregroundStyle(app.palette.ink)
-                    .padding(.top, 14)
+                HStack(spacing: 10) {
+                    Image(systemName: isReceipt ? "receipt" : "doc.text")
+                        .font(.system(size: 20, weight: .medium))
+                        .frame(width: 34, height: 34)
+                        .background((ROW_ACCENT_COLORS["payments"] ?? .clear).opacity(0.33), in: Circle())
+                    Text(title).font(BanbeTheme.display(24))
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(.top, 10)
                     .accessibilityIdentifier("documents.title")
                 Text(subtitle).font(.system(size: 12.5))
                     .foregroundStyle(app.palette.ink.opacity(0.75)).padding(.top, 8)

@@ -136,6 +136,24 @@ iphonesimulator build` → BUILD SUCCEEDED; `npm run test:unit` 24/24
   reads/displays it yet (direct-query-only for now, same as every other
   not-yet-surfaced audit table in this schema).
 
+## 2026-10-02 deployment verification follow-up
+
+The existing iOS implementation was rechecked without changes: `Profile`
+decodes optional `can_manage_admins`, `applySession()` reads it from the
+server's full `profiles` select, and Account -> Admin -> Admin Team gates
+management UI on that server-refreshed value while all mutations remain RPCs.
+`PersonalTeamDebug` device-SDK compilation succeeded.
+
+Production verification/bootstrap was **not performed**. The workspace has no
+`supabase` CLI, no database connection credentials, and no running local
+Postgres/Docker validation container. Therefore migration 121 deployment
+state and the exact live permission value remain unread, and no production
+write or bootstrap was attempted. Safe next step: authenticate the Supabase
+CLI for project `ukchdgdnwytretvqjjqu`, read migration 121/status and the
+verified user row first, then obtain explicit approval before `db push` and
+the single-account bootstrap; a failed migration transaction should be
+allowed to roll back before any permission write.
+
 ## 2026-09-14 — "Khách đúng ▪︎ cấp vé" / "Mở lại chỗ" appeared to do nothing (see 03-dispute-chat.md diagnosis #3 for full detail)
 
 Not caused by the dispute-thread linkage bug (separate root cause). `resolveDispute`

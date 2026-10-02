@@ -3,6 +3,60 @@ import UIKit
 import CoreImage.CIFilterBuiltins
 import ImageIO
 
+/// Shared switch treatment: the track follows the Organizer mode control,
+/// while the knob stays native Liquid Glass on iOS 26 and falls back to the
+/// existing material language on older systems.
+struct BanbeLiquidToggleStyle: ToggleStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            let change = {
+                configuration.isOn.toggle()
+            }
+            if reduceMotion {
+                change()
+            } else {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                    change()
+                }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                configuration.label
+                Spacer(minLength: 8)
+                ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+                    Capsule()
+                        .fill(configuration.isOn ? Color.primary : Color.primary.opacity(0.18))
+                        .frame(width: 44, height: 26)
+                    knob
+                        .padding(3)
+                }
+                .frame(width: 44, height: 26)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityValue(configuration.isOn ? "On" : "Off")
+    }
+
+    @ViewBuilder
+    private var knob: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer {
+                Circle()
+                    .fill(.clear)
+                    .frame(width: 20, height: 20)
+                    .glassEffect(.regular.interactive(), in: Circle())
+            }
+        } else {
+            Circle()
+                .fill(.regularMaterial)
+                .frame(width: 20, height: 20)
+        }
+    }
+}
+
 /// Pulse/loading UX pass (2026-09-27) — the shared Banbe loading visual,
 /// used at every spot the ticket named: a fetching Pulse tab
 /// (PulseViewerView), the branded splash screen and Face ID wait screen

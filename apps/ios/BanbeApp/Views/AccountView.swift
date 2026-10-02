@@ -479,10 +479,11 @@ struct AccountView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("account.personalProfile")
                 groupDivider()
-                // Relabeled "Tùy Chỉnh"/"Preferences" -> "Cài Đặt"/"Settings"
+                // App Preferences is the destination name for language,
+                // appearance, and Liquid Glass controls.
                 // (reads more accurately for its actual contents). `groupKey`/
                 // identifier/route unchanged.
-                groupCardRow(groupKey: "preferences", icon: "slider.horizontal.3", label: app.T("Cài Đặt", "Settings"))
+                groupCardRow(groupKey: "preferences", icon: "slider.horizontal.3", label: app.T("Tùy Chỉnh", "App Preferences"))
                 groupDivider()
                 Button { app.openPolicy() } label: {
                     HStack(spacing: 12) {
@@ -842,7 +843,7 @@ struct AccountView: View {
     // treatment; distinctness now comes only from each icon's own glyph,
     // not a second, redundant color layer.
     private func groupCardRow(groupKey: String, icon: String, label: String, badge: Int = 0) -> some View {
-        Button { app.accountGroupKey = groupKey; app.screen = .accountGroup } label: {
+        return Button { app.accountGroupKey = groupKey; app.screen = .accountGroup } label: {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 16, weight: .medium))
@@ -1106,7 +1107,17 @@ struct AccountView: View {
                     Capsule()
                         .fill(app.organizerMode ? app.palette.ink : app.palette.ink.opacity(0.18))
                         .frame(width: 44, height: 26)
-                    Circle().fill(app.palette.paper).frame(width: 20, height: 20).padding(3)
+                    if #available(iOS 26.0, *) {
+                        GlassEffectContainer {
+                            Circle()
+                                .fill(.clear)
+                                .frame(width: 20, height: 20)
+                                .glassEffect(.regular.interactive(), in: Circle())
+                        }
+                        .padding(3)
+                    } else {
+                        Circle().fill(.regularMaterial).frame(width: 20, height: 20).padding(3)
+                    }
                 }
                 .animation(.easeInOut(duration: 0.15), value: app.organizerMode)
             }

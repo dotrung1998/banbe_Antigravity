@@ -46,8 +46,15 @@ struct VerificationsView: View {
                     .padding(.top, 8)
                     .accessibilityIdentifier("verifications.back")
 
-                Text(app.verificationsFocusBookingID != nil ? app.T("Chi tiết thanh toán", "Payment Detail") : app.T("Chờ xác nhận", "Awaiting Verification"))
-                    .font(BanbeTheme.display(24)).padding(.top, 14)
+                HStack(spacing: 10) {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 20, weight: .medium))
+                        .frame(width: 34, height: 34)
+                        .background((ROW_ACCENT_COLORS["hostOps"] ?? .clear).opacity(0.33), in: Circle())
+                    Text(app.verificationsFocusBookingID != nil ? app.T("Chi tiết thanh toán", "Payment Detail") : app.T("Chờ xác nhận", "Awaiting Verification"))
+                        .font(BanbeTheme.display(24))
+                }
+                .padding(.top, 10)
                     .accessibilityIdentifier("verifications.title")
                 Text(app.T("Khách đã báo chuyển khoản. Đối chiếu với sao kê rồi xác nhận: chỗ của họ đang được giữ và đồng hồ đã dừng.",
                            "These guests reported a transfer. Check your statement, then confirm: their seat is held and their clock has stopped."))

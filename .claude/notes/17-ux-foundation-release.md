@@ -185,6 +185,56 @@ Re-read the full pipeline end to end anyway (`toggleOrganizerMode` → `applyOrg
 
 ## Fix pass (2026-09-25, second) — iOS dock indicator (real fix this time), Pulse photo-ranking tab
 
+## Fix pass (2026-10-02, second) — compact iOS Pulse expanded panels
+
+iOS only: `PulseViewerView.swift` now uses one compact centered panel for all
+three Pulse tabs. Width is 80% of the actual container with a 520pt cap; the
+photo height is derived from the oriented cached image aspect ratio and capped
+by available geometry, so landscape panels are shorter and portrait/square
+photos remain aspect-fit without filler bands. The panel reuses one
+`PhotoLoader` request for both the sharp inset image and the soft panel tint.
+
+Each event/photo row publishes its stable-ID frame in the same named Pulse
+overlay coordinate space. Opening records that frame, applies a brief press
+compression, emits one light haptic, and springs only the panel/photo from the
+source while the scrim fades separately. Close uses the same source when the
+frame is valid and falls back to a fade under Reduce Motion or missing bounds.
+iOS 26+ uses the existing `glassEffect`/`GlassEffectContainer` pattern; older
+systems and Reduce Transparency use the existing material fallback. Existing
+close, outside-dismiss, engagement, follow, and navigation actions are kept.
+
+Validated with `xcodebuild -scheme PersonalTeamDebug -configuration
+PersonalTeamDebug -sdk iphonesimulator ... build CODE_SIGNING_ALLOWED=NO`.
+No simulator or physical-device UI verification was performed.
+
+Follow-up: the first compact renderer let its `ScrollView` accept the full
+overlay height, producing an oversized empty lower glass area on portrait
+photos. The panel now hugs intrinsic content height and only caps for genuine
+Dynamic Type/content overflow.
+
+Second follow-up: the scroll container could still receive a tall viewport
+proposal and center short content inside it. It now measures the rendered
+image/text/actions content and uses that height directly, with the viewport
+cap applied only when the measured content actually overflows.
+
+Third follow-up: the expanded image now applies its rounded mask after the
+source-transition scale, with a subtle edge stroke, so portrait photos keep
+rounded corners throughout the opening animation as well as at rest.
+
+Fourth follow-up: the photo frame now uses a stronger 28pt clip and matching
+stroke on the actual image bounds, making its own rounded edge visibly distinct
+from the larger glass-panel radius.
+
+Fifth follow-up: the shared blurred backdrop was visually filling the clipped
+photo corners with the same image colors. Its opacity is now muted and a light
+panel separation layer is added, preserving reuse without hiding the real
+photo-edge radius.
+
+Sixth follow-up: the aspect-fit image previously clipped a wider layout frame
+when its height was capped. The frame now uses the exact displayed width and
+height derived from the oriented image aspect ratio, so the rounded clip and
+stroke sit directly on the real photo pixels.
+
 ### iOS dock indicator — actually fixed
 The 2026-09-25 pass above only fixed WEB; iOS was assumed fine (Anchor/GeometryReader-based) but the user confirmed the same misalignment on-device. Root cause: `itemFrames` (used for the highlight's `.position`/`.frame(width:)`) is refreshed by a SEPARATE `backgroundPreferenceValue` GeometryReader's own `.onAppear`/`.onChange(of: proxy.size)` — a real caching layer, one layout pass removed from this view's own render, that can lag a genuine reflow (organizerMode's "+" button, DockRow's collapse `scaleEffect`). Fixed: `BottomTabBar.swift`'s highlight is now computed directly from a `GeometryReader` wrapping the whole body, as `geo.size.width * (index/count)` — a live fraction of the actual current render size, same "equal-flex slice of the live container" idea as the web CSS-percentage fix, ported to SwiftUI instead of reusing `itemFrames`. `itemFrames`/`resolveFrames` kept only for the scrub-drag `hitTest` (needs real touch-space rects; `DragGesture(.local)` was never affected by the ancestor-scale bug class).
 **Files**: `apps/ios/BanbeApp/Views/BottomTabBar.swift` (`activeIndex`, `GeometryReader`-wrapped body, highlight geometry).
