@@ -777,7 +777,12 @@ export default function Account() {
         <GroupCard
           groupKey="hostOps" iconKind="checklist"
           label={T('Vận Hành & Thanh Toán Tổ Chức', 'Event Operations & Payments')}
-          badge={(s.verifications || []).length + (s.refundQueue || []).length}
+          // Stale-badge fix pass — was a raw `refundQueue.length`, bypassing
+          // `computeHostActionCount` entirely (the one place this app
+          // already decides what's actually host-actionable) — the exact
+          // same staleness bug as every other raw-count call site this pass
+          // fixes, just one `badges.js` never caught before.
+          badge={computeHostActionCount(s)}
           onClick={() => openAccountGroup('hostOps')}
           marginTop={22}
         />

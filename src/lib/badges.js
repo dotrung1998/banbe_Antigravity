@@ -41,6 +41,21 @@ export function computeAdminModerationCount({ accountType, pendingEventsCount })
   return pendingEventsCount || 0;
 }
 
+// Stale-badge fix pass — `refundQueue` (from `get_host_refund_claims()`) is
+// every claim ever created for a host's events, not just outstanding ones;
+// `host_marked_sent`/`guest_confirmed`/`waived`/`resolved` all stay in that
+// array forever. Counting `refundQueue.length` directly (what this module
+// used to do) is exactly why a host could see every claim already resolved
+// — the Refunds/Verifications screen genuinely empty of actionable rows —
+// while the badge still showed a leftover positive count from old history.
+// `c.isActive` (`refundClaimPresentation()`, already spread onto every
+// loaded claim) is the SAME canonical "owed or disputed" check
+// Verifications.jsx's own active-rows filter uses — reused here, not
+// copied, so the two can never drift apart.
+function countActionableRefunds(refundQueue) {
+  return (refundQueue || []).filter(c => c.isActive).length;
+}
+
 /** Host's real outstanding duties: the payment-verification queue and the
  * refund queue both ultimately route to the SAME "Verifications" screen
  * (see `onOpenRefundCenter: () => openVerifications(...)` in Home/Account/
@@ -48,18 +63,17 @@ export function computeAdminModerationCount({ accountType, pendingEventsCount })
  * actually contains, not an invented aggregate. */
 export function computeHostActionCount({ organizerMode, verifications = [], refundQueue = [] }) {
   if (!organizerMode) return 0;
-  return (verifications?.length || 0) + (refundQueue?.length || 0);
+  return (verifications?.length || 0) + countActionableRefunds(refundQueue);
 }
 
 /** Refund-discoverability fix — a dedicated "Refunds" row (AccountGroup.jsx/
  * AccountGroupView.swift's `hostOps` section) needs its OWN badge, same
- * `refundQueue.length` term `computeHostActionCount` already sums in —
- * never a second, differently-defined count, so the two badges can never
- * silently drift apart (e.g. one counting only 'owed'/'disputed' while the
- * other counts every status). */
+ * actionable-refund count `computeHostActionCount` already sums in — never
+ * a second, differently-defined count, so the two badges can never silently
+ * drift apart. */
 export function computeRefundActionCount({ organizerMode, refundQueue = [] }) {
   if (!organizerMode) return 0;
-  return refundQueue?.length || 0;
+  return countActionableRefunds(refundQueue);
 }
 
 /** Account (dock/profile) icon badge — the top of the whole chain. Sums

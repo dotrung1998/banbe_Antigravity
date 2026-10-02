@@ -46,7 +46,7 @@ struct VerificationsView: View {
                     .padding(.top, 8)
                     .accessibilityIdentifier("verifications.back")
 
-                Text(app.verificationsFocusBookingID != nil ? app.T("Chi tiết thanh toán", "Payment detail") : app.T("Chờ xác nhận", "Awaiting verification"))
+                Text(app.verificationsFocusBookingID != nil ? app.T("Chi tiết thanh toán", "Payment Detail") : app.T("Chờ xác nhận", "Awaiting Verification"))
                     .font(BanbeTheme.display(24)).padding(.top, 14)
                     .accessibilityIdentifier("verifications.title")
                 Text(app.T("Khách đã báo chuyển khoản. Đối chiếu với sao kê rồi xác nhận: chỗ của họ đang được giữ và đồng hồ đã dừng.",

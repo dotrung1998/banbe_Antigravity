@@ -121,7 +121,7 @@ struct BottomTabBar: View {
             organizerMode: app.organizerMode,
             pendingEventsCount: app.pendingEventsCount,
             verificationsCount: app.verifications.count,
-            refundQueueCount: app.refundQueue.count
+            refundQueue: app.refundQueue
         )
     }
 

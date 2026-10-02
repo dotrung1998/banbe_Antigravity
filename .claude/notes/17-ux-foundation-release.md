@@ -323,3 +323,87 @@ Summary only — full detail in `.claude/notes/07-notifications.md`'s matching d
 **Files**: web `src/state/GocContext.jsx` (toast timer rewrite), `src/screens/ToastStack.jsx` (`ToastCard`, pause/resume/mark-visible wiring); iOS `apps/ios/BanbeApp/State/AppState.swift` (timer rewrite), `apps/ios/BanbeApp/Views/ToastOverlay.swift` (press gesture, `onAppear`, `ToastFramePreferenceKey`), `apps/ios/BanbeApp/Views/RootView.swift` (mount site removed), `apps/ios/BanbeApp/Views/BottomTabBarOverlay.swift` (`toastRect`, `setToastRect`, `ToastOverlay()` mount — additive only).
 
 **Build verification (this pass)**: `vite build` clean (461/462 modules, no errors, only the pre-existing >500kB chunk-size warning). `xcodegen generate` clean; `xcodebuild -scheme PersonalTeamDebug -configuration PersonalTeamDebug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build` → **BUILD SUCCEEDED** (re-run after every batch of changes in this pass, all green). `npm run test:unit` → 16/16 passing (5 new account-deletion-eligibility cases + 11 pre-existing). No simulator/device UI interaction this session — every UI/behavior claim above is verified by reading the code, not by observing it run.
+
+## Fast cleanup pass — Inbox loading-icon position, remaining Title Case gaps, Metrics & Reports localization leak
+
+The stale refund badge from this same pass is documented in
+`.claude/notes/16-refund-lifecycle.md` instead (refund-specific root cause),
+not duplicated here.
+
+**1 — Inbox loading icon too close to header (iOS only; web's pull-to-
+refresh indicator is one shared implementation in `App.jsx`, not duplicated
+per screen, so it never had this inconsistency)**: real root cause —
+`InboxView`'s `RootRefreshIndicator` was a sibling of the WHOLE top-level
+`VStack` (header included), top-aligned against the FULL screen with a flat
+`.padding(.top, 54)` — measured from the screen's own top edge, not from
+the bottom of `header`. Home/NotificationsView place the exact same
+indicator via `ScreenScaffold`'s `refreshIndicatorTopPadding: 16`, but
+THAT padding is measured from the top of their scroll content, which is
+already below their own header (a sibling ABOVE `ScreenScaffold`, same
+shape as `InboxView`'s own `header`) — so "54" and "16" were never
+comparable numbers to begin with, and 54-from-the-screen-top landed the
+spinner far closer to (this header being taller, almost touching) the
+header's own bottom edge than intended. Fixed by scoping a new
+`ZStack(alignment: .top)` to the content BELOW `header` only (mirroring
+`ScreenScaffold`'s own reference frame exactly) and reusing the SAME
+established `16` value Home/Notifications already use — `header` itself,
+the `ScaffoldScrollProbe`/pull-gesture wiring, and the List/empty-state
+branches are all untouched. `apps/ios/BanbeApp/Views/MessagingViews.swift`
+(`InboxView.body`).
+
+**2 — remaining Title Case gaps**: `src/screens/Reports.jsx`'s own screen
+title was still `'Metrics & reports'` (lowercase "reports") despite every
+OTHER call site of the same string (`Account.jsx` x3, iOS `AccountView.
+swift`/`ReportsView.swift`) already being correct — the one place that
+actually renders as this screen's own `<h1>`-equivalent was the one place
+missed. Also fixed, both platforms: "Awaiting verification" → "Awaiting
+Verification" (`AccountGroup.jsx`/`AccountGroupView.swift`'s host-ops row +
+booking-status label, `Verifications.jsx`/`VerificationsView.swift`'s own
+screen title), "Payment detail" → "Payment Detail" (same screen title,
+focused-booking variant), "Underlying data" → "Underlying Data"
+(`Reports.jsx`/`ReportsView.swift`'s expanded-card subsection header), and
+a cluster of `AccountGroup.jsx`/`AccountGroupView.swift` row labels that
+were never Title Cased in the first place: "Team invites", "My teams", "My
+tickets", "App preferences", "Getting paid", "Invoices issued", "Receipts
+issued" (web only — iOS's own copies of all of these were already
+correct), and web-only "Payment disputes" (iOS's own row already said
+"Payment Disputes"). One VI-side inconsistency also fixed for consistency
+with every other call site of the same string: `SurveysHosting.jsx`'s own
+`<h1>` had `'Khảo sát & Ý tưởng sự kiện'` (lowercase) while every other
+occurrence of this exact string elsewhere in the app is fully capitalized.
+Left untouched, deliberately: action/button-style labels ("Save image",
+"Download CSV", "Expand all", "Retry", "Invite friends", etc.) — sentence-
+case CTAs are this app's own established convention (matches "Preview"/
+"Retry" everywhere else), not a missed heading.
+
+**3 — Metrics & Reports English localization leak (real, confirmed)**:
+`get_account_kpis()` (migration 097) hardcodes every metric's `label` as a
+single Vietnamese string server-side, with NO English counterpart in the
+payload at all — switching the app to English never translated a single
+KPI card title, chart title, or PDF line, because nothing client-side was
+even trying to. No migration/schema change this pass (out of scope) —
+translated client-side instead, keyed by the metric's own stable `key`
+(16 known keys from migration 097, read directly from that file, not
+guessed): new `src/lib/reportMetricLabels.js` (`metricLabel(metric, T)`)
+and iOS `apps/ios/BanbeApp/Lib/ReportMetricLabels.swift`
+(`ReportMetricLabels.label(metric, T)`) — ONE shared module per platform,
+reused by both the on-screen cards/chart (`Reports.jsx`'s `MetricCard`/
+`MiniChart`, iOS `ReportsView.swift`'s `ReportChartView`/the collapsed-card
+row) and the PDF export (`GocContext.jsx`'s `exportReportsPdf`, iOS
+`AppState+Reports.swift`'s PDF draw loop) so the two can never show
+different English wording for the same metric. Falls back to the raw
+server (Vietnamese) label if a metric key is ever missing from the map (a
+future new KPI), so this can never render blank. Left untouched,
+deliberately: the JSON export (`exportReportsJson`) keeps the raw server
+label — a downloaded data file, not on-screen UI copy, same reasoning as
+"don't translate database content." Table column headers in the expanded-
+card detail rows (`Object.keys(rows[0])`) are raw database column names,
+also left untouched for the same reason.
+
+**Verified**: `npx vite build` clean. `xcodegen generate` (new Swift file
+picked up) + `xcodebuild -scheme PersonalTeamDebug -configuration Debug
+-sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build`
+→ **BUILD SUCCEEDED**. No simulator/device UI run — the Inbox spinner
+reposition, Title Case corrections and KPI label translations were all
+verified by reading the code and tracing the exact reference frames/data
+sources, not by observing them render.

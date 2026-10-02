@@ -84,7 +84,7 @@ struct AccountGroupView: View {
     @ViewBuilder
     private var teamContent: some View {
         if !app.myOrganizerInvites.isEmpty {
-            Text(app.T("Lời mời Team", "Team invites")).font(.system(size: 11.5, weight: .semibold))
+            Text(app.T("Lời mời Team", "Team Invites")).font(.system(size: 11.5, weight: .semibold))
             ForEach(app.myOrganizerInvites) { inv in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(app.T("\(inv.organizers?.name ?? "Một tổ chức") mời bạn làm \(inv.publicRole)", "\(inv.organizers?.name ?? "An organizer") invited you as \(inv.publicRole)"))
@@ -104,7 +104,7 @@ struct AccountGroupView: View {
             }
         }
         if !app.myTeamMemberships.isEmpty {
-            Text(app.T("Đội ngũ của tôi", "My teams")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            Text(app.T("Đội ngũ của tôi", "My Teams")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
             ForEach(app.myTeamMemberships) { m in
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
@@ -224,7 +224,7 @@ struct AccountGroupView: View {
             let active = app.paymentBookings.filter { ["pending", "confirmed", "attended"].contains($0.status) }
             let inactive = app.paymentBookings.filter { ["cancelled", "expired", "no_show"].contains($0.status) }
             if !active.isEmpty {
-                Text(app.T("Vé của tôi", "My tickets")).font(.system(size: 11.5, weight: .semibold))
+                Text(app.T("Vé của tôi", "My Tickets")).font(.system(size: 11.5, weight: .semibold))
                 ForEach(active) { b in
                     Button {
                         Task { _ = await app.openBookingConfirmed(bookingID: b.id, eventKey: b.eventKey, back: .accountGroup) }
@@ -279,7 +279,7 @@ struct AccountGroupView: View {
     private func ticketStatusLabel(_ b: PayableBooking) -> String {
         if b.isTicket { return app.T("Vé đã sẵn sàng", "Ticket ready") }
         if b.status == "attended" { return app.T("Đã tham dự", "Attended") }
-        if b.paymentState == .pendingVerification { return app.T("Chờ xác nhận thanh toán", "Awaiting verification") }
+        if b.paymentState == .pendingVerification { return app.T("Chờ xác nhận thanh toán", "Awaiting Verification") }
         if b.status == "pending" { return app.T("Đang giữ chỗ", "Holding") }
         return app.T("Đang xử lý", "In progress")
     }
@@ -313,7 +313,7 @@ struct AccountGroupView: View {
     @ViewBuilder
     private var preferencesContent: some View {
         VStack(spacing: 0) {
-            row(app.T("Tùy chỉnh ứng dụng", "App preferences"),
+            row(app.T("Tùy chỉnh ứng dụng", "App Preferences"),
                 identifier: "account.preferences", icon: "slider.horizontal.3",
                 trailing: (app.lang == "en" ? "English" : "Tiếng Việt") + " ▪︎ "
                     + (app.theme == "dark" ? app.T("Tối", "Dark") : app.T("Sáng", "Light"))) {
@@ -365,7 +365,7 @@ struct AccountGroupView: View {
             // established: both verifications AND refundQueue land on
             // THIS exact screen (openVerifications), so this row's badge
             // is the same sum, not a second independently-derived count.
-            row(app.T("Chờ xác nhận thanh toán", "Awaiting verification"), identifier: "host.verifications", icon: "checklist", trailing: "›", badge: AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueueCount: app.refundQueue.count)) { app.openVerifications(back: .accountGroup) }
+            row(app.T("Chờ xác nhận thanh toán", "Awaiting Verification"), identifier: "host.verifications", icon: "checklist", trailing: "›", badge: AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueue: app.refundQueue)) { app.openVerifications(back: .accountGroup) }
             Divider().overlay(app.palette.rule)
             // Refund-discoverability fix — refunds previously only lived
             // inside the row above, with no mention of the word "refund"
@@ -374,13 +374,13 @@ struct AccountGroupView: View {
             // the SAME openVerifications() call), own badge
             // (AccountBadges.refundActionCount — the same refundQueue.count
             // term the row above's own sum already includes).
-            row(app.T("Hoàn tiền", "Refunds"), identifier: "host.refunds", icon: "banknote", trailing: "›", badge: AccountBadges.refundActionCount(organizerMode: app.organizerMode, refundQueueCount: app.refundQueue.count)) { app.openVerificationsRefunds(back: .accountGroup) }
+            row(app.T("Hoàn tiền", "Refunds"), identifier: "host.refunds", icon: "banknote", trailing: "›", badge: AccountBadges.refundActionCount(organizerMode: app.organizerMode, refundQueue: app.refundQueue)) { app.openVerificationsRefunds(back: .accountGroup) }
             Divider().overlay(app.palette.rule)
-            row(app.T("Nhận thanh toán", "Getting paid"), identifier: "host.payout", icon: "banknote", trailing: "›") { app.openPayout() }
+            row(app.T("Nhận thanh toán", "Getting Paid"), identifier: "host.payout", icon: "banknote", trailing: "›") { app.openPayout() }
             Divider().overlay(app.palette.rule)
-            row(app.T("Hoá đơn đã phát hành", "Invoices issued"), identifier: "host.invoices", icon: "doc.text", trailing: "›") { app.openDocuments(kind: "invoice", role: "host") }
+            row(app.T("Hoá đơn đã phát hành", "Invoices Issued"), identifier: "host.invoices", icon: "doc.text", trailing: "›") { app.openDocuments(kind: "invoice", role: "host") }
             Divider().overlay(app.palette.rule)
-            row(app.T("Biên nhận đã phát hành", "Receipts issued"), identifier: "host.receipts", icon: "receipt", trailing: "›") { app.openDocuments(kind: "receipt", role: "host") }
+            row(app.T("Biên nhận đã phát hành", "Receipts Issued"), identifier: "host.receipts", icon: "receipt", trailing: "›") { app.openDocuments(kind: "receipt", role: "host") }
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }

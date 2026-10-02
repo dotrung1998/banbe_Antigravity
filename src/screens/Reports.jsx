@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, alert, display, cardGlass, fieldGlass, inkButton } from '../theme.js';
+import { metricLabel } from '../lib/reportMetricLabels.js';
 
 const ROLE_LABEL = { personal: ['Cá nhân', 'Personal'], host: ['Tổ chức', 'Host'], admin: ['Quản trị', 'Admin'] };
 
@@ -20,7 +21,7 @@ function formatVnDate(iso) {
 /// makes "Lưu ảnh" trivial (`canvas.toDataURL()` — the title/range/labels
 /// are baked into the SAME canvas draw, not a separate overlay, so the
 /// saved PNG always matches what's on screen).
-function MiniChart({ metric, rangeLabel, canvasRef }) {
+function MiniChart({ metric, rangeLabel, canvasRef, T }) {
   const localRef = useRef(null);
   const ref = canvasRef || localRef;
   useEffect(() => {
@@ -36,7 +37,7 @@ function MiniChart({ metric, rangeLabel, canvasRef }) {
     c.fillRect(0, 0, W, H);
     c.fillStyle = ink;
     c.font = '600 13px sans-serif';
-    c.fillText(metric.label, 12, 20);
+    c.fillText(metricLabel(metric, T), 12, 20);
     c.font = '11px sans-serif';
     c.globalAlpha = 0.65;
     c.fillText(rangeLabel, 12, 36);
@@ -64,7 +65,7 @@ function MiniChart({ metric, rangeLabel, canvasRef }) {
     const lastLabel = formatVnDate(series[series.length - 1].d);
     c.fillText(lastLabel, chartRight - c.measureText(lastLabel).width, H - 10);
     c.globalAlpha = 1;
-  }, [metric, rangeLabel, ref]);
+  }, [metric, rangeLabel, ref, T]);
   return <canvas ref={ref} style={{ width: '100%', maxWidth: 560, display: 'block', borderRadius: 10 }} />;
 }
 
@@ -87,7 +88,7 @@ function MetricCard({ metric, expanded, onToggle, rangeLabel, T, onExportCsv }) 
         data-testid={`kpi-card-toggle-${metric.key}`}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: ink }}>{metric.label}</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: ink }}>{metricLabel(metric, T)}</span>
           <span style={{ fontSize: 11, color: ink, opacity: 0.6 }}>{rangeLabel}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -101,7 +102,7 @@ function MetricCard({ metric, expanded, onToggle, rangeLabel, T, onExportCsv }) 
         <div style={{ padding: '0 16px 16px', borderTop: `1px solid ${rule}` }}>
           {metric.series?.length ? (
             <div style={{ paddingTop: 14 }}>
-              <MiniChart metric={metric} rangeLabel={rangeLabel} canvasRef={canvasRef} />
+              <MiniChart metric={metric} rangeLabel={rangeLabel} canvasRef={canvasRef} T={T} />
               <div
                 onClick={() => saveCanvasPng(canvasRef.current, `banbe-${metric.key}.png`)}
                 data-testid={`kpi-save-png-${metric.key}`}
@@ -116,7 +117,7 @@ function MetricCard({ metric, expanded, onToggle, rangeLabel, T, onExportCsv }) 
             </p>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 14 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Dữ liệu chi tiết', 'Underlying data')}</span>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Dữ liệu chi tiết', 'Underlying Data')}</span>
             <div onClick={() => onExportCsv(metric.key)} data-testid={`kpi-export-csv-${metric.key}`} style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>
               {T('Tải CSV', 'Download CSV')}
             </div>
@@ -178,7 +179,7 @@ export default function Reports() {
         <span onClick={backFromReports} style={{ fontSize: 13, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</span>
       </div>
       <div style={{ padding: '10px 20px 0' }}>
-        <span style={{ ...display(24) }}>{T('Số liệu & báo cáo', 'Metrics & reports')}</span>
+        <span style={{ ...display(24) }}>{T('Số liệu & báo cáo', 'Metrics & Reports')}</span>
         <p style={{ fontSize: 12, color: ink, opacity: 0.65, margin: '4px 0 0' }}>{roleLabel}</p>
       </div>
 

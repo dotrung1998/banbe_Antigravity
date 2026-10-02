@@ -10,6 +10,7 @@ import { POLICY_VERSION } from '../lib/policy.js';
 import { refundClaimPresentation } from '../lib/refundPresentation.js';
 import { buildLocationTree, eventMatchesLocation, locationShortLabel, migrateLegacyAreaKey, LOCATION_ALL } from '../lib/locationTree.js';
 import { surveyPublicUrl } from '../lib/surveyLink.js';
+import { metricLabel } from '../lib/reportMetricLabels.js';
 
 const GocCtx = createContext(null);
 
@@ -6334,7 +6335,7 @@ export function GocProvider({ children }) {
       for (const metric of s.reportsData.metrics) {
         if (y > 760) { doc.addPage(); y = 50; }
         doc.setFontSize(12);
-        doc.text(metric.label, marginX, y);
+        doc.text(metricLabel(metric, T), marginX, y);
         doc.setFontSize(11);
         const displayValue = metric.unit === 'vnd' ? `${Number(metric.value).toLocaleString('vi-VN')} đ` : String(metric.value);
         doc.text(displayValue, 400, y);

@@ -300,7 +300,7 @@ extension AppState {
             y += 24
             for metric in report.metrics ?? [] {
                 if y > pageHeight - 80 { ctx.beginPage(); y = 40 }
-                metric.label.draw(at: CGPoint(x: 40, y: y), withAttributes: [.font: UIFont.boldSystemFont(ofSize: 12)])
+                ReportMetricLabels.label(metric, T).draw(at: CGPoint(x: 40, y: y), withAttributes: [.font: UIFont.boldSystemFont(ofSize: 12)])
                 let displayValue = metric.unit == "vnd"
                     ? "\(Int(numberFrom(metric.value)).formattedVnd()) đ"
                     : metric.value.displayString

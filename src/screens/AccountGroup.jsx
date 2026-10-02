@@ -105,7 +105,7 @@ export default function AccountGroup() {
           <>
             {s.myOrganizerInvites.length > 0 && (
               <div style={{ marginTop: 24 }} data-testid="account-team-invites">
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Lời mời Team', 'Team invites')}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Lời mời Team', 'Team Invites')}</span>
                 {s.myOrganizerInvites.map(inv => (
                   <div key={inv.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`team-invite-${inv.id}`}>
                     <span style={{ fontSize: 13, color: ink }}>
@@ -121,7 +121,7 @@ export default function AccountGroup() {
             )}
             {s.myTeamMemberships.length > 0 && (
               <div style={{ marginTop: 24 }} data-testid="account-team-memberships">
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đội ngũ của tôi', 'My teams')}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đội ngũ của tôi', 'My Teams')}</span>
                 {s.myTeamMemberships.map(m => (
                   <div key={m.id} style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`team-membership-${m.id}`}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
@@ -223,7 +223,7 @@ export default function AccountGroup() {
               const statusLabel = (b) => {
                 if (isBookingTicket(b)) return T('Vé đã sẵn sàng', 'Ticket ready');
                 if (b.status === 'attended') return T('Đã tham dự', 'Attended');
-                if (b.payment_state === 'pending_verification') return T('Chờ xác nhận thanh toán', 'Awaiting verification');
+                if (b.payment_state === 'pending_verification') return T('Chờ xác nhận thanh toán', 'Awaiting Verification');
                 if (b.status === 'pending') return T('Đang giữ chỗ', 'Holding');
                 return T('Đang xử lý', 'In progress');
               };
@@ -236,7 +236,7 @@ export default function AccountGroup() {
                 <>
                   {active.length > 0 && (
                     <div style={{ marginTop: 24 }} data-testid="my-tickets-active">
-                      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Vé của tôi', 'My tickets')}</span>
+                      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Vé của tôi', 'My Tickets')}</span>
                       {active.map(b => (
                         <div
                           key={b.id}
@@ -295,7 +295,7 @@ export default function AccountGroup() {
         {key === 'preferences' && (
           <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
             <Row
-              icon="sliders" label={T('Tùy chỉnh ứng dụng', 'App preferences')}
+              icon="sliders" label={T('Tùy chỉnh ứng dụng', 'App Preferences')}
               trailing={`${s.lang === 'en' ? 'English' : 'Tiếng Việt'} ▪︎ ${s.theme === 'dark' ? T('Tối', 'Dark') : T('Sáng', 'Light')}`}
               testId="account-preferences"
               onClick={openPreferences}
@@ -337,7 +337,7 @@ export default function AccountGroup() {
                 below: both verifications AND refundQueue land on THIS exact
                 screen (openVerifications), so this row's badge is the same
                 sum, not a second independently-derived count. */}
-            <Row icon="checklist" label={T('Chờ xác nhận thanh toán', 'Awaiting verification')} trailing="›" testId="host-verifications" onClick={openVerifications} badge={computeHostActionCount(s)} />
+            <Row icon="checklist" label={T('Chờ xác nhận thanh toán', 'Awaiting Verification')} trailing="›" testId="host-verifications" onClick={openVerifications} badge={computeHostActionCount(s)} />
             {/* Refund-discoverability fix — refunds previously only lived
                 inside the row above, with no mention of the word "refund"
                 anywhere in this group's own labels. Same screen/data
@@ -347,15 +347,15 @@ export default function AccountGroup() {
                 the row above's own sum already includes, never a second,
                 differently-defined count). */}
             <Row icon="banknote" label={T('Hoàn tiền', 'Refunds')} trailing="›" testId="host-refunds" onClick={openVerificationsRefunds} badge={computeRefundActionCount(s)} />
-            <Row icon="banknote" label={T('Nhận thanh toán', 'Getting paid')} trailing="›" testId="host-payout" onClick={openPayout} />
-            <Row icon="document" label={T('Hoá đơn đã phát hành', 'Invoices issued')} trailing="›" testId="host-invoices" onClick={() => openDocuments('invoice', 'host')} />
-            <Row icon="receipt" label={T('Biên nhận đã phát hành', 'Receipts issued')} trailing="›" testId="host-receipts" onClick={() => openDocuments('receipt', 'host')} border={false} />
+            <Row icon="banknote" label={T('Nhận thanh toán', 'Getting Paid')} trailing="›" testId="host-payout" onClick={openPayout} />
+            <Row icon="document" label={T('Hoá đơn đã phát hành', 'Invoices Issued')} trailing="›" testId="host-invoices" onClick={() => openDocuments('invoice', 'host')} />
+            <Row icon="receipt" label={T('Biên nhận đã phát hành', 'Receipts Issued')} trailing="›" testId="host-receipts" onClick={() => openDocuments('receipt', 'host')} border={false} />
           </div>
         )}
 
         {key === 'adminReview' && (
           <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
-            <Row icon="alertShield" label={T('Tranh chấp thanh toán', 'Payment disputes')} trailing="›" testId="admin-disputes" onClick={openDisputes} />
+            <Row icon="alertShield" label={T('Tranh chấp thanh toán', 'Payment Disputes')} trailing="›" testId="admin-disputes" onClick={openDisputes} />
             <Row icon="alertShield" label={T('Sự Kiện Chờ Duyệt', 'Pending Events')} trailing="›" testId="admin-events" onClick={openAdminEvents} border={false} badge={s.pendingEventsCount} />
           </div>
         )}

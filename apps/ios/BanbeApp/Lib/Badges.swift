@@ -26,31 +26,47 @@ enum AccountBadges {
         return pendingEventsCount
     }
 
+    // Stale-badge fix pass — `app.refundQueue` (`get_host_refund_claims()`)
+    // is every claim ever created for a host's events, not just outstanding
+    // ones; `host_marked_sent`/`guest_confirmed`/`waived`/`resolved` all
+    // stay in that array forever. Every call site below used to pass a raw
+    // `.count`, which is exactly why a host could see the Refunds/
+    // Verifications screen genuinely empty of actionable rows while the
+    // badge still showed a leftover positive number from old history.
+    // `RefundClaim.isActiveRefundStatus` (AppState+Payments.swift, already
+    // the same canonical check `VerificationsView`'s own active-rows filter
+    // uses) is reused here, not copied — mirrors `src/lib/badges.js`'s own
+    // `countActionableRefunds` fix exactly: ONE place filters, every caller
+    // just passes the raw array through.
+    private static func actionableRefundCount(_ refundQueue: [RefundClaim]) -> Int {
+        refundQueue.filter(\.isActiveRefundStatus).count
+    }
+
     /// Host's real outstanding duties. `verifications` and `refundQueue`
     /// both ultimately route to the same Verifications screen
     /// (`app.openVerifications`/`onOpenRefundCenter` equivalents), so
     /// summing them here is exactly what that shared destination actually
     /// contains, not an invented aggregate.
-    static func hostActionCount(organizerMode: Bool, verificationsCount: Int, refundQueueCount: Int) -> Int {
+    static func hostActionCount(organizerMode: Bool, verificationsCount: Int, refundQueue: [RefundClaim]) -> Int {
         guard organizerMode else { return 0 }
-        return verificationsCount + refundQueueCount
+        return verificationsCount + actionableRefundCount(refundQueue)
     }
 
     /// Refund-discoverability fix — a dedicated "Refunds" row's own badge,
-    /// same `refundQueueCount` term `hostActionCount` already sums in,
+    /// same actionable-refund count `hostActionCount` already sums in,
     /// never a second, differently-defined count.
-    static func refundActionCount(organizerMode: Bool, refundQueueCount: Int) -> Int {
+    static func refundActionCount(organizerMode: Bool, refundQueue: [RefundClaim]) -> Int {
         guard organizerMode else { return 0 }
-        return refundQueueCount
+        return actionableRefundCount(refundQueue)
     }
 
     /// Account (dock/profile) icon badge — top of the whole chain. Sums
     /// admin + host counts (never each other's own already-summed value)
     /// since a real admin queue item and a real host queue item are always
     /// distinct underlying rows.
-    static func accountDockBadge(accountType: String, organizerMode: Bool, pendingEventsCount: Int, verificationsCount: Int, refundQueueCount: Int) -> Int {
+    static func accountDockBadge(accountType: String, organizerMode: Bool, pendingEventsCount: Int, verificationsCount: Int, refundQueue: [RefundClaim]) -> Int {
         adminModerationCount(accountType: accountType, pendingEventsCount: pendingEventsCount)
-            + hostActionCount(organizerMode: organizerMode, verificationsCount: verificationsCount, refundQueueCount: refundQueueCount)
+            + hostActionCount(organizerMode: organizerMode, verificationsCount: verificationsCount, refundQueue: refundQueue)
     }
 
     /// Personal-tab "Tickets & Bookings" group badge (Account IA reorg,

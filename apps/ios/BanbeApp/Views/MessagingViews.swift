@@ -55,6 +55,27 @@ struct InboxView: View {
             app.palette.paper.ignoresSafeArea()
             VStack(alignment: .leading, spacing: 0) {
                 header
+                // Loading-icon-position fix pass — `RootRefreshIndicator`
+                // used to be a sibling of this WHOLE `VStack` (header
+                // included), overlaid top-aligned against the FULL screen
+                // with a flat `.padding(.top, 54)` — measured from the top
+                // of the SCREEN, behind/above where `header` itself sits.
+                // Home/Notifications place the exact same indicator via
+                // `ScreenScaffold`'s own `refreshIndicatorTopPadding: 16`,
+                // but that padding is measured from the top of THEIR
+                // scroll content, which is already below their own header
+                // (a sibling above `ScreenScaffold`, same shape as `header`
+                // here) — so their "16" and this view's old "54" were never
+                // comparable numbers, and 54 measured from the screen top
+                // landed the spinner far too close to (and this view's
+                // taller header could even visually sit AT) this header's
+                // own bottom edge. Scoping this ZStack to the content BELOW
+                // `header` — the same reference frame `refreshIndicatorTopPadding`
+                // already uses — and reusing that exact established `16`
+                // value fixes it without touching `header` or the pull/
+                // refresh mechanics below.
+                ZStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 0) {
                 if effectiveInboxView == .archived {
                     Button("‹ " + app.T("Quay lại Tin nhắn", "Back to Messages")) { app.inboxView = .active }
                         .font(.system(size: 12.5)).buttonStyle(.plain)
@@ -115,12 +136,14 @@ struct InboxView: View {
                     // `AppState.rootPullContentOffset`'s own doc comment.
                     .offset(y: app.rootPullContentOffset)
                 }
-            }
-            if app.rootPullProgress > 0 || app.rootRefreshing {
-                RootRefreshIndicator(screen: .inbox, progress: app.rootPullProgress, refreshing: app.rootRefreshing)
-                    .padding(.top, 54)
-                    .allowsHitTesting(false)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
+                if app.rootPullProgress > 0 || app.rootRefreshing {
+                    RootRefreshIndicator(screen: .inbox, progress: app.rootPullProgress, refreshing: app.rootRefreshing)
+                        .padding(.top, 16)
+                        .allowsHitTesting(false)
+                        .frame(maxWidth: .infinity, alignment: .top)
+                }
+                }
             }
         }
         .task { await app.loadInboxThreads() }

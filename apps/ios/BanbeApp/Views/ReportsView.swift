@@ -20,12 +20,13 @@ private func vnDate(_ iso: String) -> String {
 /// rasterizing THIS exact view for "Lưu ảnh" already carries them, per the
 /// ticket's own "PNG with title, range and readable labels" ask).
 struct ReportChartView: View {
+    @EnvironmentObject private var app: AppState
     let metric: AccountKpiMetric
     let rangeLabel: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(metric.label).font(.system(size: 13, weight: .semibold))
+            Text(ReportMetricLabels.label(metric, app.T)).font(.system(size: 13, weight: .semibold))
             Text(rangeLabel).font(.system(size: 11)).opacity(0.6)
             if let series = metric.series, !series.isEmpty {
                 Chart(series) { point in
@@ -176,7 +177,7 @@ private struct MetricCardView: View {
             Button { app.toggleReportCard(metric.key) } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(metric.label).font(.system(size: 13, weight: .semibold))
+                        Text(ReportMetricLabels.label(metric, app.T)).font(.system(size: 13, weight: .semibold))
                         Text(metric.series?.isEmpty == false ? rangeLabel : app.T("Hiện tại", "Right now"))
                             .font(.system(size: 11)).opacity(0.6)
                     }
@@ -214,7 +215,7 @@ private struct MetricCardView: View {
                     }
 
                     HStack {
-                        Text(app.T("Dữ liệu chi tiết", "Underlying data")).font(.system(size: 11.5, weight: .semibold))
+                        Text(app.T("Dữ liệu chi tiết", "Underlying Data")).font(.system(size: 11.5, weight: .semibold))
                         Spacer()
                         Button(app.T("Tải CSV", "Download CSV")) { app.exportReportCardCsv(metric.key) }
                             .font(.system(size: 11.5, weight: .semibold))

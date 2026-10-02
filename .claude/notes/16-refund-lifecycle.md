@@ -115,3 +115,58 @@ Product rule required preserving Account's scroll position across a push into a 
 
 ## Point 2 — richer refund-queue diagnostics (2026-10-?? pass)
 `loadRefundQueue()` (both platforms) now distinguishes failure STAGE explicitly — transport exception vs. a resolved PostgREST/RPC error vs. a client-side decode error — and stores the server's own safe `code`/`message`/`details`/`hint` (web: `refundQueueErrorDetail`; iOS: `refundQueueErrorStage`/`Code`/`Message`) for the existing opt-in diagnostics panel (5-tap on the "Hoàn tiền"/"Refunds" title, Verifications.jsx/VerificationsView.swift) to display — never logged/shown as a full payload, token, or bank detail.
+
+## Fix pass — stale host refund/verification badge (confirmed real, root cause found)
+
+**Real root cause**: `get_host_refund_claims()` (migration 078) has NO status
+filter at all — it returns every claim ever created for a host's events,
+regardless of status (`owed`/`disputed`/`host_marked_sent`/
+`guest_confirmed`/`waived`/`resolved`). `refundQueue` (the client array this
+RPC fills) therefore holds full history, not just outstanding work. Every
+badge in this app's navigation chain (`src/lib/badges.js`'s
+`computeHostActionCount`/`computeRefundActionCount`, iOS's
+`Lib/Badges.swift`'s `hostActionCount`/`refundActionCount`) summed
+`refundQueue.length`/`.count` DIRECTLY — raw, unfiltered — so a host whose
+Refunds/Verifications screen was genuinely empty (every real claim already
+sent/confirmed/waived/resolved) still saw a leftover positive badge from
+old history. Verifications.jsx/VerificationsView.swift's own DISPLAY logic
+was already correct (`status === 'owed' || 'disputed'` for the active
+section) — only the BADGE skipped that filter, exactly the "copied string
+check drifted from the real UI" failure mode a single canonical helper is
+supposed to prevent.
+
+**Fix**: `src/lib/refundPresentation.js`'s `refundClaimPresentation()`
+(already spread onto every loaded claim, both at initial load and at
+per-claim patch-on-mutation) now EXPOSES the `isActive` boolean it already
+computed internally but never returned — the exact same "owed or disputed"
+check `VerificationsView.swift`'s own `RefundClaim.isActiveRefundStatus`
+(`AppState+Payments.swift`) already was on iOS. `badges.js`'s
+`countActionableRefunds()` and iOS's new `AccountBadges.actionableRefundCount()`
+both now filter `refundQueue` by this ONE field before counting — reused,
+not copied, on both platforms. Found and fixed the SAME raw-count bug at
+two more call sites that bypassed the shared helpers entirely:
+`Account.jsx`'s `hostOps` GroupCard badge (was `verifications.length +
+refundQueue.length` inline) and iOS `AccountView.swift`'s equivalent
+`hostManagementRows` badge (was `app.verifications.count +
+app.refundQueue.count` inline) — both now call
+`computeHostActionCount(s)`/`AccountBadges.hostActionCount(...)` like every
+other badge site. `Verifications.jsx`'s own `activeCount`/`activeRows`
+local re-derivations were also switched to read `c.isActive`/
+`c.pendingConfirmation` from the shared mapper instead of keeping their own
+duplicate `status === 'owed' || 'disputed'` string check (now genuinely
+ONE place decides this, not two that happened to agree).
+
+**Not changed**: `get_host_refund_claims()` itself (no migration/schema
+change this pass — client-side filtering is correct and sufficient here,
+since the RPC's full-history shape is intentionally reused by the
+diagnostics panel/CSV-style views that DO want every claim, not just
+actionable ones). `v_pending_verifications` (the `verifications` array's
+own source) was re-checked and already named/scoped as a genuinely pending-
+only view — no equivalent staleness found there.
+
+**Verified**: `npx vite build` clean. `xcodegen generate` + `xcodebuild
+-scheme PersonalTeamDebug -configuration Debug -sdk iphonesimulator
+-destination 'generic/platform=iOS Simulator' build` → **BUILD SUCCEEDED**.
+No simulator/device UI run — the three badge-count call sites and the
+`isActive`/`isActiveRefundStatus` field reuse were verified by reading,
+not by observing a real empty-queue account on a device.

@@ -625,7 +625,7 @@ struct AccountView: View {
     private var accountTabs: [(String, String, Int)] {
         var tabs: [(String, String, Int)] = [("personal", app.T("Cá Nhân", "Personal"), 0)]
         if app.organizerMode {
-            let hostBadge = AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueueCount: app.refundQueue.count)
+            let hostBadge = AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueue: app.refundQueue)
             tabs.append(("host", app.T("Tổ Chức", "Host"), hostBadge))
         }
         if app.accountType == "admin" {
@@ -1045,7 +1045,12 @@ struct AccountView: View {
                 groupCard(
                     groupKey: "hostOps", icon: "checklist",
                     label: app.T("Vận Hành & Thanh Toán Tổ Chức", "Event Operations & Payments"),
-                    badge: app.verifications.count + app.refundQueue.count,
+                    // Stale-badge fix pass — was a raw `refundQueue.count`,
+                    // bypassing `AccountBadges.hostActionCount` entirely
+                    // (the one place this app already decides what's
+                    // actually host-actionable) — same staleness bug every
+                    // other raw-count call site this pass fixes.
+                    badge: AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueue: app.refundQueue),
                     topPadding: 22
                 )
                 // Account IA reorder pass (2026-09-30 second) — the Host

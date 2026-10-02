@@ -134,7 +134,7 @@ export default function SurveysHosting() {
     <div style={{ minHeight: '100vh', background: paper, color: ink }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: `1px solid ${rule}` }}>
         <span onClick={goHome} style={{ cursor: 'pointer', fontSize: 18 }}>←</span>
-        <h1 style={{ ...display(16, { margin: 0 }) }}>{T('Khảo sát & Ý tưởng sự kiện', 'Surveys & Event Ideas')}</h1>
+        <h1 style={{ ...display(16, { margin: 0 }) }}>{T('Khảo Sát & Ý Tưởng Sự Kiện', 'Surveys & Event Ideas')}</h1>
         <span style={{ width: 18 }} />
       </div>
 

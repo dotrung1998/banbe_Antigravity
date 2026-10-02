@@ -32,8 +32,8 @@ function RefundDiagnosticsPanel({ s, T }) {
     return () => { active = false; };
   }, []);
 
-  const activeCount = s.refundQueue.filter(c => c.status === 'owed' || c.status === 'disputed').length;
-  const pendingCount = s.refundQueue.filter(c => c.status === 'host_marked_sent').length;
+  const activeCount = s.refundQueue.filter(c => c.isActive).length;
+  const pendingCount = s.refundQueue.filter(c => c.pendingConfirmation).length;
   const hidingReason = s.verificationsFocusBookingId
     ? 'verifications-focus-booking-id-set (section hidden entirely — notification/Attendance "Check payment" deep link)'
     : 'not-hidden-by-focus';
@@ -177,7 +177,7 @@ export default function Verifications() {
       </div>
       <div style={{ padding: '14px 22px 0' }}>
         <h1 style={{ ...display(24, { margin: 0 }) }} data-testid="verifications-title">
-          {focusId ? T('Chi tiết thanh toán', 'Payment detail') : T('Chờ xác nhận', 'Awaiting verification')}
+          {focusId ? T('Chi tiết thanh toán', 'Payment Detail') : T('Chờ xác nhận', 'Awaiting Verification')}
         </h1>
         <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
           {T('Khách đã báo chuyển khoản. Đối chiếu với sao kê rồi xác nhận: chỗ của họ đang được giữ và đồng hồ đã dừng.',
@@ -372,8 +372,8 @@ export default function Verifications() {
           silently dropped. Hidden while focused on one verification
           booking, same reasoning as the dispute section above. */}
       {!focusId && (() => {
-        const activeRows = s.refundQueue.filter(c => c.status === 'owed' || c.status === 'disputed');
-        const pendingRows = s.refundQueue.filter(c => c.status === 'host_marked_sent');
+        const activeRows = s.refundQueue.filter(c => c.isActive);
+        const pendingRows = s.refundQueue.filter(c => c.pendingConfirmation);
         const hasRows = activeRows.length > 0 || pendingRows.length > 0;
         // Investigation fix — distinguish "still checking whether you
         // organize anything" / "that check failed" / "failed to load" /

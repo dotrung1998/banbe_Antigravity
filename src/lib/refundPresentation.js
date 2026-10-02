@@ -19,6 +19,20 @@ export function refundClaimPresentation(c) {
     || (c.status === 'disputed' && c.host_response_due_at && new Date(c.host_response_due_at).getTime() < now);
   return {
     hasDestination,
+    // Stale-badge fix pass — `get_host_refund_claims()` returns EVERY claim
+    // ever created for a host's events, with no status filter at all (by
+    // design — Verifications.jsx's own activeRows/pendingRows filter what's
+    // DISPLAYED). `isActive` was already computed here but never exposed on
+    // the returned object, so every caller that needed "is this claim
+    // actually outstanding" ended up re-deriving the same
+    // `status === 'owed' || status === 'disputed'` check independently —
+    // exactly the copy-the-check-into-each-view drift this module exists to
+    // prevent. Exposed now so `src/lib/badges.js`'s host/refund badge counts
+    // (previously a raw, unfiltered `refundQueue.length` — the actual cause
+    // of a badge surviving after every claim was marked sent/confirmed/
+    // waived/resolved) and Verifications.jsx's own row filters can both
+    // read this ONE field instead of each keeping their own copy.
+    isActive,
     // "eligible" — can be included in a batch/bulk selection right now.
     // Matches create_and_confirm_refund_batch()'s own accepted statuses
     // exactly (owed OR disputed — a disputed claim can still be resolved by
