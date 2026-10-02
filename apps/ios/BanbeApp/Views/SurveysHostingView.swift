@@ -120,6 +120,19 @@ struct SurveysHostingView: View {
                     .opacity(0.6)
                     .onTapGesture { UIPasteboard.general.string = link }
             }
+            // Discovery-completeness pass — a published survey with no
+            // `stories` row is real, expected state (Share To Story is a
+            // separate, explicit action), not a bug — but it looked exactly
+            // like one from the host's own side, since nothing distinguished
+            // it from an already-shared survey. This is the distinction made
+            // visible, right where the host can act on it (`mySurveySharedIds`,
+            // AppState.swift — populated by `loadMySurveys()`).
+            if survey.status == "active" && !app.mySurveySharedIds.contains(survey.id) {
+                Text(app.T("Chưa chia sẻ lên story", "Not Shared To Story"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(BanbeTheme.alert)
+                    .accessibilityIdentifier("survey-not-shared-badge")
+            }
             HStack(spacing: 14) {
                 Button(app.T("Xem trước", "Preview")) {
                     Task { await app.openSurveyPublic(publicID: survey.publicId, back: .surveysHosting) }

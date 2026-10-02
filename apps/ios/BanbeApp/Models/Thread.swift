@@ -176,6 +176,18 @@ struct StoryItem: Identifiable, Hashable {
     // survey_share item; `nil` (RPC failed/survey deleted) renders as "no
     // longer available", same honesty rule as a missing eventSnapshot.
     var surveyCard: SurveyCard?
+    // Avatar pass — real, confirmed bug: `get_survey_card()` (migration 117)
+    // does not return an avatar field at all (see note 21's own "not done
+    // this pass" list), so `SurveyShareCard` (StoryViewerView.swift) always
+    // passed `hostAvatarURL: nil`, rendering the blank/white placeholder for
+    // EVERY survey story, not just ones missing a real photo. Resolved
+    // client-side instead of widening that RPC: `loadHomeStories()` already
+    // fetches this story's own `organizers` row (for `orgName`) — its real
+    // `avatar_path`, resolved through the SAME public-bucket URL builder
+    // `organizer-photos` avatars already use elsewhere (AppState+Data.swift's
+    // notification-avatar map, AccountView/DashboardView's own
+    // `organizerAvatarURL`), travels alongside it on the `StoryItem` itself.
+    var hostAvatarURL: URL?
 }
 
 /// One host's set of active stories, grouped for the ring/row UI.

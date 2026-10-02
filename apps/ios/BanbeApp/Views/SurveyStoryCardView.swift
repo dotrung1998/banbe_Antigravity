@@ -36,18 +36,41 @@ struct SurveyStoryCardView: View {
 
     private var closed: Bool { (status ?? "active") != "active" }
 
+    private var initialGlyph: some View {
+        Text(String((hostName.isEmpty ? "?" : hostName).prefix(1)).uppercased())
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(app.palette.ink)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                if let url = hostAvatarURL {
-                    AsyncImage(url: url) { phase in
-                        if let image = phase.image { image.resizable().scaledToFill() } else { Color.white.opacity(0.5) }
+                // Avatar pass — a missing/loading/failed avatar now falls
+                // back to the host's own initial (same convention
+                // HomeView's story-ring avatars already use), never the
+                // blank white circle this used to show for EVERY card
+                // whose avatar hadn't loaded yet (or, before `hostAvatarURL`
+                // was wired up at all, every card period) — a flat white
+                // tile reads as broken, not as "no photo set."
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.5))
+                    initialGlyph
+                    // `RemoteImage` (Components.swift/PhotoLoader.swift), not
+                    // a raw `AsyncImage` — the SAME memory+disk cache and
+                    // in-flight-request de-duping every other photo in this
+                    // app already goes through, so revisiting this card (or
+                    // the publish preview showing the same host) never
+                    // re-downloads the avatar. It already handles an
+                    // absolute `https://` URL directly (no bucket-specific
+                    // code needed here), and paints `Color.clear` while
+                    // empty/failed — the `initialGlyph` underneath is what's
+                    // actually visible until then, so there's no blank gap.
+                    if let url = hostAvatarURL {
+                        RemoteImage(path: url.absoluteString, maxPixel: 68)
                     }
-                    .frame(width: 34, height: 34)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                } else {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.5)).frame(width: 34, height: 34)
                 }
+                .frame(width: 34, height: 34)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 Text(hostName.isEmpty ? app.T("Người tổ chức", "Organizer") : hostName)
                     .font(.system(size: 12.5, weight: .bold)).foregroundStyle(app.palette.ink).lineLimit(1)
             }

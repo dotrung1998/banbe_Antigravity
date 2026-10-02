@@ -649,6 +649,26 @@ final class AppState: ObservableObject {
     // time (RootView.swift's ZStack), so this dictionary keeps updating even
     // while visually covered.
     @Published var storyRingFrames: [String: CGRect] = [:]
+    // Survey-strip gesture fix — RootView's own `tabSwipeGesture` (a
+    // `.simultaneousGesture` DragGesture spanning the whole root screen
+    // stack, Stage 2's root-tab-swipe) only ever special-cases its OWN
+    // leading-edge reservation (`edgeSwipeZoneWidth`) and a Map-specific
+    // strip — any OTHER horizontal drag on Home, e.g. through the survey
+    // discovery strip's own `ScrollView(.horizontal)`, was read as a
+    // "horizontal" root-tab swipe (just dx vs dy, nothing else) at the exact
+    // same time the child ScrollView was also scrolling it, so a swipe
+    // through the cards could also commit a tab change. This dictionary —
+    // published by any horizontally-scrolling Home row via a GeometryReader
+    // + PreferenceKey (same established pattern as `storyRingFrames` just
+    // above), global-space, updated only on real layout changes (never per
+    // touch-pixel) — lets `tabSwipeGesture` hand off entirely (same
+    // treatment as the edge strip) for a touch that STARTS inside one of
+    // these zones, for that gesture's whole duration, since direction is
+    // decided once and latched. Keyed by a stable row id so a row that
+    // stops rendering (e.g. the survey strip collapsing) cleanly disappears
+    // from this dict on the very next preference pass, instead of leaving a
+    // stale dead zone behind.
+    @Published var horizontalScrollZones: [String: CGRect] = [:]
     // Pulse teaser pass (2026-09-27), reworked by the same-space pass
     // (2026-09-28, after a second real-device report of the bubble sitting
     // fixed on screen while the ring scrolled) — the teaser's own sequence
@@ -1155,6 +1175,17 @@ final class AppState: ObservableObject {
     @Published var surveyResponseSuccess = false
     @Published var mySurveys: [SurveySummary] = []
     @Published var mySurveysLoading = false
+    // Discovery-completeness pass — real, confirmed-by-query fact: a survey
+    // can be `status == 'active'` (published) with NO `stories` row at all
+    // (publish and "Share To Story" are two separate, explicit actions —
+    // `create_survey_share_story` only ever runs when the host taps the
+    // dedicated button, never automatically on publish). Home's "Help Shape
+    // Upcoming Events" is correctly empty for such a survey — there is
+    // nothing to show there — but SurveysHostingView had no way to tell the
+    // host apart "published, not yet shared" from "published AND shared"
+    // before this, which is exactly what looked like a missing-survey bug.
+    // Populated by `loadMySurveys()` alongside `mySurveys` itself.
+    @Published var mySurveySharedIds: Set<UUID> = []
     @Published var mySurveyCreateBusy = false
     @Published var mySurveyCreateError = ""
     // Already-answered respondents land on a read-only summary first; this

@@ -220,6 +220,23 @@ struct RootView: View {
                         tabSwipeDirection = "vertical"
                         return
                     }
+                    // Survey-strip gesture fix — same shape as the removed
+                    // Inbox-row frame check above (reintroduced for a new
+                    // case, not a reuse of dead code): a touch starting
+                    // inside a currently-registered horizontal-scroll zone
+                    // (`app.horizontalScrollZones` — HomeView's survey
+                    // discovery strip while expanded, published via
+                    // `HorizontalScrollZonePreferenceKey`) hands off to that
+                    // child ScrollView for this gesture's entire duration,
+                    // exactly like the edge-strip checks above. Decided once,
+                    // from the START location only — a drag that later
+                    // reaches either end of the strip (where it keeps
+                    // scrolling, or stops) never flips back to "horizontal"
+                    // mid-gesture, since this branch already returned.
+                    if app.horizontalScrollZones.values.contains(where: { $0.contains(value.startLocation) }) {
+                        tabSwipeDirection = "vertical"
+                        return
+                    }
                     tabSwipeDirection = "horizontal"
                 }
                 guard tabSwipeDirection == "horizontal" else { return }

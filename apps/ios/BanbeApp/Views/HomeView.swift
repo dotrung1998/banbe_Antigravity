@@ -161,6 +161,7 @@ struct HomeView: View {
         // shrink-toward-ring transition (see AppState.swift's own comment
         // on storyRingFrames).
         .onPreferenceChange(StoryRingFramePreferenceKey.self) { app.storyRingFrames = $0 }
+        .onPreferenceChange(HorizontalScrollZonePreferenceKey.self) { app.horizontalScrollZones = $0 }
         // The Pulse RING's frame is no longer tracked anywhere at all — no
         // PreferenceKey, no probe, no `AppState` property. The teaser bubble
         // is drawn inside `storyRow`'s own content these days, so there is
@@ -635,24 +636,43 @@ struct HomeView: View {
                     Text(app.T("Chưa có khảo sát công khai nào.", "No public surveys right now."))
                         .font(.system(size: 12)).opacity(0.6).padding(.horizontal, 20)
                 } else {
+                // Gesture fix — this strip's own real screen-space bounds,
+                // published only while it's actually in the tree (expanded,
+                // this branch), so RootView's `tabSwipeGesture` can hand off
+                // to this ScrollView entirely for any touch starting inside
+                // it. See `AppState.horizontalScrollZones`'s own doc comment.
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         ForEach(app.homeSurveyDiscovery) { card in
                             Button {
                                 Task { await app.openSurveyStoryModal(publicID: card.publicId) }
                             } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(card.hostName).font(.system(size: 10.5)).opacity(0.6)
-                                    Text(card.title).font(.system(size: 13.5, weight: .semibold)).lineLimit(2)
+                                // Compact-card pass — narrower/shorter (220→190
+                                // wide, 14→11 padding) while keeping every
+                                // existing piece of content (host, 2-line
+                                // title, deadline, Answer Survey) and the
+                                // same ≥44pt-tall tappable card this ticket's
+                                // own "do not shrink tap targets" rule
+                                // requires — only the padding/typography
+                                // shrank, not the number of rows or the
+                                // card's role as one single big tap target.
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(card.hostName).font(.system(size: 10)).opacity(0.6).lineLimit(1)
+                                    Text(card.title).font(.system(size: 12.5, weight: .semibold)).lineLimit(2)
                                     if let closesAt = card.closesAt {
-                                        Text("\(app.T("Hạn", "Deadline")): \(closesAt.formatted(date: .abbreviated, time: .omitted))")
-                                            .font(.system(size: 10.5)).opacity(0.6)
+                                        HStack(spacing: 3) {
+                                            Image(systemName: "clock")
+                                                .font(.system(size: 9))
+                                            Text("\(app.T("Hạn", "Deadline")): \(closesAt.formatted(date: .abbreviated, time: .omitted))")
+                                                .font(.system(size: 10)).lineLimit(1)
+                                        }
+                                        .opacity(0.6)
                                     }
                                     Text(app.T("Trả lời khảo sát", "Answer Survey"))
-                                        .font(.system(size: 11.5, weight: .semibold)).underline()
+                                        .font(.system(size: 11, weight: .semibold)).underline()
                                 }
-                                .padding(14)
-                                .frame(width: 220, alignment: .leading)
+                                .padding(11)
+                                .frame(width: 190, alignment: .leading)
                                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             }
                             .buttonStyle(.plain)
@@ -661,6 +681,14 @@ struct HomeView: View {
                     }
                     .padding(.horizontal, 20)
                 }
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(
+                            key: HorizontalScrollZonePreferenceKey.self,
+                            value: ["surveyDiscovery": geo.frame(in: .global)]
+                        )
+                    }
+                )
                 }
             }
         }
@@ -935,6 +963,19 @@ struct EventCard: View {
 // only reads `app.storyRingFrames` itself, never this key directly, but the
 // `.onPreferenceChange` call above needs it visible from HomeView's body.
 struct StoryRingFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+/// Survey-strip gesture fix — see `AppState.horizontalScrollZones`'s own
+/// doc comment. Same shape/merge rule as `StoryRingFramePreferenceKey`
+/// above, kept as a separate key (not a reuse of that one) since the two
+/// track unrelated things — ring-frame lookups by organizer id vs.
+/// gesture-exclusion zones by row id — and conflating them would make
+/// either one's future changes risk the other's behavior.
+struct HorizontalScrollZonePreferenceKey: PreferenceKey {
     static var defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { _, new in new }

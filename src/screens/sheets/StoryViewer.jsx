@@ -761,7 +761,7 @@ function SurveyShareCard({ story, T }) {
   return (
     <div data-testid="story-survey-card" onClick={open} style={{ width: '86%', maxWidth: 340, height: '66%', maxHeight: 460, cursor: 'pointer' }}>
       <SurveyStoryCard
-        T={T} hostName={snap.host_name} title={snap.title} description={snap.description}
+        T={T} hostName={snap.host_name} hostAvatarUrl={story.hostAvatarUrl} title={snap.title} description={snap.description}
         closesAt={snap.closes_at} status={snap.status} onAnswerSurvey={open}
       />
     </div>

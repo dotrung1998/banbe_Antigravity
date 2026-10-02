@@ -328,6 +328,108 @@ tappable during an edge-swipe-back peek" `isPeeking` edge case
 (`RootView.swift`'s own comment) is untouched — unrelated to the survey
 modal.
 
+## Fix pass — discovery completeness (real cause found, not a bug), host avatars, compact cards + strip-swipe-vs-tab-swipe gesture conflict
+
+**1. "Missing third survey" — root cause found by directly querying the live
+project (service-role, `tests/e2e/loadEnv.mjs` + `.env.local`), not
+guessed**: only 2 `stories` rows exist with `kind='survey_share'` ("T2",
+org `org_a96236c5`; "Test", org `org_compound`). A third survey ("Tôi", same
+`org_compound`, `status='active'`) has **no `stories` row at all** —
+confirmed directly against the `surveys`/`stories` tables. Publish
+(`publish_survey`) and "Share To Story" (`create_survey_share_story`) are
+two separate, explicit host actions (`AppState+Surveys.swift:426`/`:489`,
+`SurveysHostingView.swift:128`/`:138`) — a published survey with no story
+share is real, expected state, not a missing-survey bug; `get_survey_card`/
+migration 118 (the earlier RLS fix) were re-verified live and are correct
+(`is_survey_publicly_shareable` returns `true`; the full non-owner/
+non-follower pipeline re-run via `tests/e2e/survey-story-visibility.
+integration.mjs` — **all PASS**, service-role seed + real anon-key viewer
+session, cleans up after itself). **Fix**: made the distinction visible to
+the host instead of leaving it silently ambiguous — `mySurveySharedIds`
+(iOS: `AppState.swift`, `AppState+Surveys.swift`'s `loadMySurveys()`/
+`confirmShareSurveyToStory()`) is a lightweight `stories` query scoped to
+the host's own organizer; `SurveysHostingView.swift` now shows a "Chưa chia
+sẻ lên story"/"Not Shared To Story" label on any `active` survey missing
+from that set, right next to the existing Share To Story button — no
+auto-publish-to-story invented, no change to `loadHomeStories()`'s own
+dedup logic (already correct from the previous pass — deduped by survey id,
+includes owner/followed/non-followed hosts alike, confirmed unchanged by
+re-reading it start to finish this pass).
+
+**Diagnostics added, not removed** (iOS `loadHomeStories()`,
+`AppState+Data.swift`): every `survey_share` story row and every
+`get_survey_card()` outcome (success / `success:false` / thrown error) is
+now printed — the per-survey `try?` that used to silently drop a failed
+card with zero trace is now a real `do/catch` with a console line per
+survey id.
+
+**2. Host avatar blank/white in the survey story** — real, confirmed bug:
+`get_survey_card()` (migration 117) returns no avatar field at all, and
+`SurveyShareCard` (iOS `StoryViewerView.swift`, web `StoryViewer.jsx`)
+always passed `hostAvatarURL`/`hostAvatarUrl` as `nil`/`undefined` — blank
+for EVERY survey story, not just ones missing a real photo. Fixed
+client-side (no RPC widened): `loadHomeStories()` on both platforms now
+also selects `organizers.avatar_path` and resolves it through the SAME
+public-bucket URL builder (`organizer-photos`) every other organizer avatar
+in this app already uses (iOS: `AppState+Data.swift`'s notification-avatar
+map pattern; web: `Account.jsx`/`Dashboard.jsx`/`OrganizerProfile.jsx`/
+`SurveysHosting.jsx`'s own `organizerAvatarUrl` helper) — travels on the
+story item itself (`StoryItem.hostAvatarURL` / `hostAvatarUrl`), not a
+widened RPC payload. `SurveyStoryCardView.swift`/`SurveyStoryCard.jsx` (the
+ONE shared renderer for both the publish preview and the real in-story
+card — both updated for free) now fall back to the host's own initial
+(same convention the main story ring already uses), never a blank tile,
+on missing OR failed-to-load avatar, with no layout shift. iOS reuses
+`RemoteImage`/`PhotoLoader` (the app's own memory+disk cache and in-flight
+de-dupe, not a raw `AsyncImage`) via its existing absolute-URL fast path.
+
+**3. Compact cards + exclusive horizontal scroll** — card width 220→190,
+padding 14→11, smaller type, a small inline clock glyph before the deadline
+(iOS: SF Symbol `clock`; web: 🕐), same host/2-line-title/deadline/Answer
+Survey content and the same full-card tap target, nothing removed.
+**Gesture conflict, root cause**: iOS's `RootView.swift` `tabSwipeGesture`
+(root-tab swipe, a `.simultaneousGesture` DragGesture spanning the whole
+screen) decided "horizontal" purely from dx-vs-dy with only an edge-strip/
+Map-specific exception — any OTHER horizontal drag (the survey strip's own
+`ScrollView(.horizontal)`) was read as a tab-swipe AT THE SAME TIME the
+child ScrollView was also scrolling it, so a swipe through the cards could
+commit a tab change. Fixed by reintroducing the same kind of frame-
+registration check a PRIOR pass already used for Inbox rows (removed only
+because Inbox stopped needing it, per that code's own comment) — generalized
+as `AppState.horizontalScrollZones` ([String: CGRect], published via a new
+`HorizontalScrollZonePreferenceKey`, same merge-latest shape as the
+existing `StoryRingFramePreferenceKey`), registered only by the survey
+strip for now, checked once (a touch's START location only — never
+re-decided mid-drag, so it can't flip back to "horizontal" at either
+scroll edge) alongside the existing edge-strip check. Web already HAD this
+exact mechanism (`data-hscroll="true"`, checked in `App.jsx`'s
+`onGesturePointerMove` via `e.target?.closest?.('[data-hscroll]')`) — the
+survey discovery row in `Home.jsx` was simply the one carousel missing the
+attribute every other Home carousel already has; added, nothing else
+touched.
+
+**Verification performed**: `tests/e2e/survey-story-visibility.
+integration.mjs` run against the live project — all PASS (real anon-key
+non-owner/non-follower session, service-role seed/cleanup only). Direct
+service-role read of `stories`/`surveys` confirmed the exact missing-share
+state above. `npx vite build` clean. `xcodebuild -scheme PersonalTeamDebug
+-sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build` →
+**BUILD SUCCEEDED**. No simulator/device UI run, no screenshots, no
+production data mutated (the integration test cleans up its own throwaway
+rows) — the three checks below are the user's own to run on a physical
+iPhone.
+
+**Remaining/not done**: no migration was written or deployed this pass
+(avatar resolved entirely client-side); `mySurveySharedIds` is a live
+`stories` query, not derived from a server-computed flag, so a *very*
+stale `loadMySurveys()` call (before a share completes) could in principle
+show "Not Shared" for a beat — `confirmShareSurveyToStory()` now reloads it
+immediately after a successful share, same as `loadHomeStories()` already
+did, so this should not be visible in practice. `horizontalScrollZones` is
+currently wired for the survey strip only, by design/scope — the other
+Home carousels' own narrower historical exposure to this bug class wasn't
+otherwise reported and was left untouched.
+
 ## Slice A — Strict invite-only events
 
 ### What's real and verified

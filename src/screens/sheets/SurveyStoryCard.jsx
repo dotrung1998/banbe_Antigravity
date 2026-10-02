@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { paper, ink, display } from '../../theme.js';
 
 // Section 4 redesign — ONE shared renderer for a survey story's card
@@ -18,6 +19,13 @@ export const SURVEY_STORY_GRADIENT = 'linear-gradient(150deg, #E7C9C2, #E3CFA6 5
 
 export default function SurveyStoryCard({ T, hostName, hostAvatarUrl, title, description, closesAt, status, onAnswerSurvey, fill = false }) {
   const closed = Boolean(status) && status !== 'active';
+  // A failed load (bad/stale path, offline) must fall back to the initial
+  // glyph too, not sit there as a broken-image icon — `onError` flips this
+  // per-instance so a NEW `hostAvatarUrl` (a different card) gets its own
+  // fresh attempt instead of being stuck permanently hidden.
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  useEffect(() => { setAvatarFailed(false); }, [hostAvatarUrl]);
+  const showAvatar = hostAvatarUrl && !avatarFailed;
   return (
     <div
       data-testid="survey-story-card"
@@ -32,10 +40,26 @@ export default function SurveyStoryCard({ T, hostName, hostAvatarUrl, title, des
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-        {hostAvatarUrl ? (
-          <img src={hostAvatarUrl} alt="" style={{ width: 34, height: 34, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />
+        {/* Avatar pass — a missing/failed avatar now falls back to the
+            host's own initial (same convention Home.jsx's story-ring
+            avatars already use), never the blank white tile this used to
+            show for EVERY card, period (hostAvatarUrl was never even wired
+            up before this pass) — a flat tile reads as broken, not as "no
+            photo set." */}
+        {showAvatar ? (
+          <img
+            key={hostAvatarUrl}
+            src={hostAvatarUrl} alt=""
+            style={{ width: 34, height: 34, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }}
+            onError={() => setAvatarFailed(true)}
+          />
         ) : (
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,0.5)', flexShrink: 0 }} />
+          <div style={{
+            width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,0.5)', flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: ink,
+          }}>
+            {(hostName || '?').charAt(0).toUpperCase()}
+          </div>
         )}
         <span style={{ fontSize: 12.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {hostName || T('Người tổ chức', 'Organizer')}

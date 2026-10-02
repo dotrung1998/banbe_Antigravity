@@ -3260,8 +3260,19 @@ extension AppState {
 
             let orgIds = Array(Set(rows.map(\.organizerId)))
             let orgRows: [OrganizerRow] = try await SupabaseService.client
-                .from("organizers").select("id, name").in("id", values: orgIds).execute().value
+                .from("organizers").select("id, name, avatar_path").in("id", values: orgIds).execute().value
             let orgById = Dictionary(uniqueKeysWithValues: orgRows.map { ($0.id, $0.name) })
+            // Avatar pass — see `StoryItem.hostAvatarURL`'s own doc comment.
+            // Same public-bucket resolver `AppState+Data.swift`'s
+            // notification-avatar map already uses (`organizer-photos`,
+            // synchronous `getPublicURL` — no signing needed, same as every
+            // other organizer avatar in this app).
+            let orgAvatarURLById: [String: URL] = Dictionary(uniqueKeysWithValues: orgRows.compactMap { o in
+                guard let path = o.avatarPath, !path.isEmpty,
+                      let url = try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: path)
+                else { return nil }
+                return (o.id, url)
+            })
 
             struct StoryViewIDRow: Decodable { let storyId: UUID
                 enum CodingKeys: String, CodingKey { case storyId = "story_id" } }
@@ -3350,7 +3361,7 @@ extension AppState {
                     return StoryEventSnapshot(eventKey: ev.key, img: ev.img, name: ev.name, when: ev.when, location: ev.where, lat: ev.lat, lng: ev.lng)
                 }()
                 let card: SurveyCard? = r.kind == "survey_share" ? r.surveyId.flatMap { cardBySurveyId[$0] } : nil
-                let item = StoryItem(id: r.id, mediaPath: r.mediaPath, url: urlByPath[r.mediaPath], width: r.width, height: r.height, createdAt: r.createdAt, viewed: viewedSet.contains(r.id), kind: r.kind, eventSnapshot: snapshot, surveyCard: card)
+                let item = StoryItem(id: r.id, mediaPath: r.mediaPath, url: urlByPath[r.mediaPath], width: r.width, height: r.height, createdAt: r.createdAt, viewed: viewedSet.contains(r.id), kind: r.kind, eventSnapshot: snapshot, surveyCard: card, hostAvatarURL: orgAvatarURLById[r.organizerId])
                 if byOrg[r.organizerId] != nil { byOrg[r.organizerId]!.stories.append(item) }
                 else { byOrg[r.organizerId] = StoryGroup(organizerId: r.organizerId, orgName: name, stories: [item]) }
             }

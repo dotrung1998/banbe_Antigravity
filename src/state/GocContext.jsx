@@ -4650,8 +4650,22 @@ export function GocProvider({ children }) {
     const discoveryRows = rows.filter(r => r.kind === 'survey_share');
 
     const orgIds = [...new Set(rows.map(r => r.organizer_id))];
-    const { data: orgRows } = await supabase.from('organizers').select('id, name, owner_id, user_id').in('id', orgIds);
+    const { data: orgRows } = await supabase.from('organizers').select('id, name, owner_id, user_id, avatar_path').in('id', orgIds);
     const orgById = Object.fromEntries((orgRows || []).map(o => [o.id, o]));
+    // Avatar pass — real, confirmed bug: `get_survey_card()` (migration 117)
+    // returns no avatar field at all (see note 21's own "not done this pass"
+    // list), so `SurveyShareCard` (StoryViewer.jsx) always passed
+    // `hostAvatarUrl: undefined`, rendering the blank placeholder for EVERY
+    // survey story, not just ones missing a real photo. Resolved
+    // client-side instead of widening that RPC: this query already fetches
+    // each story's own `organizers` row (for `orgName`) — its real
+    // `avatar_path`, resolved through the SAME public-bucket URL helper
+    // `organizer-photos` avatars already use elsewhere (Account.jsx/
+    // Dashboard.jsx/OrganizerProfile.jsx/SurveysHosting.jsx's own
+    // `organizerAvatarUrl`), travels alongside it on the story item itself.
+    const orgAvatarUrlById = Object.fromEntries(
+      (orgRows || []).filter(o => o.avatar_path).map(o => [o.id, supabase.storage.from('organizer-photos').getPublicUrl(o.avatar_path).data.publicUrl])
+    );
 
     const { data: viewRows } = await supabase.from('story_views').select('story_id').eq('viewer_id', s.user.id).in('story_id', ownRows.map(r => r.id));
     const viewedSet = new Set([...(viewRows || []).map(v => v.story_id), ...storyViewedIdsRef.current]);
@@ -4727,6 +4741,7 @@ export function GocProvider({ children }) {
         // real, renderable state: SurveyShareCard shows "no longer
         // available" for it, same honesty rule as a missing eventSnapshot.
         surveySnapshot: r.kind === 'survey_share' ? (surveyCardById[r.survey_id] || null) : null,
+        hostAvatarUrl: orgAvatarUrlById[r.organizer_id] || null,
       });
     }
     const groups = Object.values(byOrg).map(g => ({ ...g, allViewed: g.stories.every(st => st.viewed) }));

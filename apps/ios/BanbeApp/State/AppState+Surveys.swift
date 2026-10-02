@@ -375,9 +375,23 @@ extension AppState {
                 .order("created_at", ascending: false)
                 .execute().value
             mySurveys = rows
+            // "Not Shared To Story" status — see `mySurveySharedIds`'s own
+            // doc comment (AppState.swift). One lightweight query, scoped to
+            // this organizer's own rows (ordinary host-owner RLS, the same
+            // access `loadHomeStories()`'s own `ownRows` branch already
+            // relies on) — never a guess from `mySurveys` alone, which has
+            // no way to know whether a `stories` row exists for a survey.
+            struct ShareRow: Decodable { let surveyId: UUID?
+                enum CodingKeys: String, CodingKey { case surveyId = "survey_id" } }
+            let shareRows: [ShareRow] = (try? await SupabaseService.client
+                .from("stories").select("survey_id")
+                .eq("organizer_id", value: organizerID).eq("kind", value: "survey_share")
+                .execute().value) ?? []
+            mySurveySharedIds = Set(shareRows.compactMap(\.surveyId))
         } catch {
             print("loadMySurveys failed:", error)
             mySurveys = []
+            mySurveySharedIds = []
         }
         mySurveysLoading = false
     }
@@ -481,6 +495,11 @@ extension AppState {
                 .rpc("create_survey_share_story", params: ["p_survey_id": survey.id.uuidString]).execute().value
             surveyShareToStoryBusy = false
             surveyShareToStoryTarget = nil
+            // Refreshes `mySurveySharedIds` too — without this, the "Not
+            // Shared To Story" label this pass adds would keep showing
+            // stale right after a successful share, on the very screen the
+            // host just acted from.
+            await loadMySurveys()
             await loadHomeStories()
         } catch {
             let code = (error as? PostgrestError)?.message ?? ""

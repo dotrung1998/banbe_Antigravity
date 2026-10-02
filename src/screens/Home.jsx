@@ -968,22 +968,33 @@ export default function Home() {
           </div>
         )}
         {s.homeSurveyDiscovery.length > 0 && (
-          <div style={{ display: 'flex', gap: 10, overflowX: 'auto' }} data-testid="home-survey-discovery-row">
+          // Gesture fix — `data-hscroll="true"` is this app's existing,
+          // already-working convention (the two carousels above already use
+          // it) for "a touch/drag starting inside this element is a native
+          // scroll, never the root-screen swipe" (see App.jsx's
+          // onGesturePointerMove: `e.target?.closest?.('[data-hscroll]')`).
+          // This row never had it, which is the real cause of "swiping
+          // through survey cards also triggers root/dock-tab navigation" —
+          // it was being read as an ordinary horizontal screen-swipe the
+          // whole time, same bug class the OTHER carousels here already
+          // avoid.
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }} data-hscroll="true" data-testid="home-survey-discovery-row">
             {s.homeSurveyDiscovery.map(card => (
               <div
                 key={card.survey_id}
                 onClick={() => openSurveyStoryModal(card.public_id)}
                 data-testid="home-survey-discovery-card"
-                style={{ ...fieldGlass({ flex: '0 0 220px', padding: 14, borderRadius: 14, cursor: 'pointer' }) }}
+                style={{ ...fieldGlass({ flex: '0 0 190px', padding: 11, borderRadius: 14, cursor: 'pointer' }) }}
               >
-                <div style={{ fontSize: 10.5, opacity: 0.6 }}>{card.host_name}</div>
-                <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 4 }}>{card.title}</div>
+                <div style={{ fontSize: 10, opacity: 0.6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.host_name}</div>
+                <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{card.title}</div>
                 {card.closes_at && (
-                  <div style={{ fontSize: 10.5, opacity: 0.6, marginTop: 6 }}>
+                  <div style={{ fontSize: 10, opacity: 0.6, marginTop: 5, display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
+                    <span aria-hidden="true">🕐</span>
                     {T('Hạn', 'Deadline')}: {new Date(card.closes_at).toLocaleDateString('vi-VN')}
                   </div>
                 )}
-                <div style={{ marginTop: 10, fontSize: 11.5, fontWeight: 600, textDecoration: 'underline' }}>
+                <div style={{ marginTop: 8, fontSize: 11, fontWeight: 600, textDecoration: 'underline' }}>
                   {T('Trả lời khảo sát', 'Answer Survey')}
                 </div>
               </div>

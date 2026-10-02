@@ -652,7 +652,8 @@ private struct SurveyShareCard: View {
     var body: some View {
         if let card = story.surveyCard, let publicId = card.publicId {
             SurveyStoryCardView(
-                hostName: card.hostName ?? "", title: card.title ?? "", description: card.description,
+                hostName: card.hostName ?? "", hostAvatarURL: story.hostAvatarURL,
+                title: card.title ?? "", description: card.description,
                 closesAt: card.closesAt, status: card.status,
                 onAnswerSurvey: { Task { await app.openSurveyStoryModal(publicID: publicId) } },
                 fill: false
