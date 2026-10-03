@@ -415,6 +415,10 @@ extension AppState {
     /// preferences and this account's real bookings/organizer events —
     /// the same work syncUser() does on the web.
     func applySession(_ session: Session?) async {
+        // Records WHICH session finished loading its account data, so the
+        // splash can wait for it (a nil run at launch must not count for a
+        // restored session that arrives a moment later).
+        defer { appliedSessionUID = session?.user.id }
         guard let session else {
             userID = nil
             userEmail = nil

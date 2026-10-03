@@ -534,9 +534,22 @@ struct MapExploreView: View {
         }
         .sheet(isPresented: $sheetPresented) {
             sheetContent
-                .sheet(isPresented: $locationPickerOpen) {
-                    MapLocationPickerSheet(isPresented: $locationPickerOpen)
-                        .environmentObject(app)
+                // The area picker is an overlay INSIDE this sheet (not a
+                // second nested sheet), so the event list stays in place
+                // underneath it instead of being covered.
+                .overlay {
+                    if locationPickerOpen {
+                        MapLocationPickerSheet(isPresented: $locationPickerOpen)
+                            .environmentObject(app)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(.easeOut(duration: 0.2), value: locationPickerOpen)
+                .onChange(of: locationPickerOpen) { _, open in
+                    // Give the card room if the sheet is peeked/collapsed.
+                    if open && sheetDetent != .fraction(0.72) {
+                        withAnimation(.easeOut(duration: 0.28)) { sheetDetent = .fraction(0.72) }
+                    }
                 }
                 // ANIMATION REQUIREMENT (11-realtime-map.md follow-up): a
                 // soft "bubble" settle layered ON TOP of the system's own
@@ -1346,23 +1359,25 @@ struct MapExploreView: View {
             // system drag indicator.
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 10)
 
-            // Task 2a (11-realtime-map.md follow-up): every category is
-            // visible up front now — wraps onto as many rows as needed
-            // instead of requiring the user to discover horizontal
-            // scrolling (`FlowLayout`, below).
-            FlowLayout(spacing: 8, lineSpacing: 8) {
-                ForEach(categories, id: \.key) { cat in
-                    Text("\(cat.glyph) \(app.T(cat.vi, cat.en))")
-                        .font(.system(size: 12, weight: catFilter == cat.key ? .bold : .regular))
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(.thinMaterial, in: Capsule())
-                        .onTapGesture { catFilter = cat.key }
+            // Two filter rows laid out like Home's: categories on top,
+            // area / open-now / nearby below, each its own horizontally
+            // swipeable row. Chip design is unchanged.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(categories, id: \.key) { cat in
+                        Text("\(cat.glyph) \(app.T(cat.vi, cat.en))")
+                            .font(.system(size: 12, weight: catFilter == cat.key ? .bold : .regular))
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(.thinMaterial, in: Capsule())
+                            .onTapGesture { catFilter = cat.key }
+                    }
                 }
+                .padding(.horizontal, 16)
             }
-            .padding(.horizontal, 16)
             .padding(.top, 8)
 
-            HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+              HStack(spacing: 8) {
                 Text("\(app.currentAreaLabel) ▾")
                     .font(.system(size: 11, weight: app.area == LocationHierarchy.allID ? .regular : .bold))
                     .lineLimit(1)
@@ -1383,9 +1398,9 @@ struct MapExploreView: View {
                         .background(.thinMaterial, in: Capsule())
                         .onTapGesture { sortByDistance.toggle() }
                 }
-                Spacer()
+              }
+              .padding(.horizontal, 16)
             }
-            .padding(.horizontal, 16)
             .padding(.top, 8)
 
             ScrollViewReader { proxy in

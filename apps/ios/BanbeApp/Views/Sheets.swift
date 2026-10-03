@@ -34,6 +34,19 @@ struct AreaSheetView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var revealProgress: CGFloat = 0
+    /// Called once the reverse animation has finished, so RootView can
+    /// actually unmount this view.
+    var onDismissed: () -> Void = {}
+
+    private func animateOut() {
+        guard !reduceMotion else { onDismissed(); return }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) { revealProgress = 0 }
+        // The view stays mounted for the spring's visible duration.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+            // Reopened mid-close — keep it.
+            if !app.areaAsking { onDismissed() }
+        }
+    }
 
     @ViewBuilder
     private var areaContent: some View {
@@ -87,26 +100,7 @@ struct AreaSheetView: View {
 
                 areaContent
                     .frame(width: panelWidth, height: panelHeight)
-                    .background {
-                        if #available(iOS 26.0, *) {
-                            GlassEffectContainer {
-                                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                                    .fill(.clear)
-                                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                                    .opacity(app.glassOpacity)
-                            }
-                        } else {
-                            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                                .fill(app.palette.paper.opacity(0.28 * app.glassOpacity))
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                                .opacity(app.glassOpacity)
-                        }
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 26, style: .continuous)
-                            .stroke(app.palette.rule.opacity(0.65), lineWidth: 1)
-                    }
+                    .glassPanel()
                     .scaleEffect(sourceScale + (1 - sourceScale) * progress)
                     .offset(x: sourceOffsetX * (1 - progress), y: sourceOffsetY * (1 - progress))
                     .onAppear {
@@ -116,10 +110,53 @@ struct AreaSheetView: View {
                             revealProgress = 1
                         }
                     }
+                    .onChange(of: app.areaAsking) { _, open in
+                        if open {
+                            withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) { revealProgress = 1 }
+                        } else {
+                            animateOut()
+                        }
+                    }
             }
             .frame(width: geo.size.width, height: geo.size.height)
+            .allowsHitTesting(app.areaAsking)
         }
         .ignoresSafeArea()
+    }
+}
+
+extension View {
+    /// The floating Liquid Glass card used by Home's area picker (26pt
+    /// corners, glass fill following `glassOpacity`, hairline stroke), shared
+    /// so Map's picker looks identical.
+    func glassPanel() -> some View { modifier(GlassPanelModifier()) }
+}
+
+private struct GlassPanelModifier: ViewModifier {
+    @EnvironmentObject private var app: AppState
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                if #available(iOS 26.0, *) {
+                    GlassEffectContainer {
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .fill(.clear)
+                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                            .opacity(app.glassOpacity)
+                    }
+                } else {
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .fill(app.palette.paper.opacity(0.28 * app.glassOpacity))
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                        .opacity(app.glassOpacity)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .stroke(app.palette.rule.opacity(0.65), lineWidth: 1)
+            }
     }
 }
 
@@ -308,9 +345,9 @@ struct LocationPickerList: View {
     }
 }
 
-/// Map Explore's own copy of the picker, presented as a nested `.sheet`
-/// from inside the map's list sheet (RootView's `AreaSheetView` overlay
-/// would sit BEHIND that system sheet). Same shared `app.area` selection
+/// Map Explore's own copy of the picker, drawn as an overlay inside the
+/// map's list sheet (RootView's `AreaSheetView` overlay would sit BEHIND
+/// that system sheet). Same shared `app.area` selection
 /// as Home; no location-permission control here at all.
 struct MapLocationPickerSheet: View {
     @EnvironmentObject var app: AppState
@@ -334,14 +371,40 @@ struct MapLocationPickerSheet: View {
                 app.area = LocationHierarchy.migrateSelection(id)
                 isPresented = false
             }
-            Spacer(minLength: 0)
+
+            // Same location on/off toggle as Home's area picker.
+            Button(app.located == true
+                   ? app.T("Tắt vị trí ▪︎ đang hiển thị khoảng cách", "Turn off location ▪︎ showing distance")
+                   : app.T("Dùng vị trí của tôi để xem khoảng cách", "Use my location to show distance")) {
+                if app.located == true { app.denyLocation() } else { app.allowLocation() }
+            }
+            .font(.system(size: 13))
+            .frame(maxWidth: .infinity)
+            .padding(8)
+            .padding(.top, 8)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("map.area.locationToggle")
         }
+        // Same floating glass card as Home's area picker, inset from the
+        // sheet edges over a clear sheet background.
         .padding(.horizontal, 24)
         .padding(.top, 22)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(app.palette.paper)
+        .padding(.bottom, 16)
+        .frame(maxWidth: 560, maxHeight: .infinity, alignment: .topLeading)
+        .glassPanel()
+        .padding(.horizontal, 16)
+        // Keep the whole card (incl. the location toggle) above the floating
+        // dock, which overlays the bottom of this sheet.
+        .padding(.top, 4)
+        .padding(.bottom, BottomTabBar.barHeight + 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .background {
+            // Dim only the list sheet underneath; tap outside to close.
+            Color.black.opacity(0.32)
+                .contentShape(Rectangle())
+                .onTapGesture { isPresented = false }
+        }
         .foregroundStyle(app.palette.ink)
-        .presentationDetents([.large])
     }
 }
 

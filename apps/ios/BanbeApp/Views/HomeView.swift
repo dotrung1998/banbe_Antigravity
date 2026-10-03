@@ -123,8 +123,7 @@ struct HomeView: View {
                     if !app.savedStrip.isEmpty { savedStrip }
                     storyRow
                     surveyDiscoveryRow
-                    filterTabs
-                    homeExtraFilterChips
+                    filterSection
                     if app.feed.isEmpty {
                         emptyState
                     } else {
@@ -918,10 +917,36 @@ struct HomeView: View {
 
     // MARK: Filters
 
+    /// Two filter rows (categories on top, status chips below), each its OWN
+    /// horizontal ScrollView so they swipe independently. Like the "Your
+    /// events" strip, each row registers its real bounds as a root-gesture
+    /// exclusion zone, so a swipe starting on either row scrolls the chips
+    /// and never commits Home -> Map.
+    private var filterSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            filterRow(zone: "homeFilterCategories") { filterTabs }
+            filterRow(zone: "homeFilterStatus") { homeExtraFilterChips }
+        }
+        .padding(.top, 16)
+        .padding(.bottom, 14)
+    }
+
+    private func filterRow<Content: View>(zone: String, @ViewBuilder content: () -> Content) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            content().padding(.horizontal, 20)
+        }
+        .background {
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: RootGestureExclusionZonePreferenceKey.self,
+                    value: [zone: geo.frame(in: .named("rootGesture"))]
+                )
+            }
+        }
+    }
+
     private var filterTabs: some View {
-        // Wraps (FlowLayout) instead of scrolling so no chip is ever cut
-        // off at the screen edge — same as the status chip row below.
-        FlowLayout(spacing: 8, lineSpacing: 8) {
+        HStack(spacing: 8) {
                 ForEach(filters, id: \.key) { filter in
                     let active = app.filter == filter.key
                     SwipeSafeButton { app.pickFilter(filter.key) } label: {
@@ -936,10 +961,7 @@ struct HomeView: View {
                     .accessibilityIdentifier("filter.\(filter.key)")
                 }
         }
-        .padding(.horizontal, 20)
         .foregroundStyle(app.palette.ink)
-        .padding(.top, 16)
-        .padding(.bottom, 14)
     }
 
     // Second, independent chip row (12-home-filters.md) — multi-select,
@@ -967,7 +989,7 @@ struct HomeView: View {
             ("soldOut", "Hết chỗ", "Sold out", app.filterSoldOut),
             ("ended", "Đã kết thúc", "Ended", app.filterEnded),
         ]
-        return FlowLayout(spacing: 8, lineSpacing: 8) {
+        return HStack(spacing: 8) {
             ForEach(chips, id: \.key) { chip in
                 SwipeSafeButton { app.toggleHomeFilter(chip.key) } label: {
                     Text(app.T(chip.vi, chip.en))
@@ -981,9 +1003,7 @@ struct HomeView: View {
                 .accessibilityIdentifier("filter.\(chip.key.lowercased())")
             }
         }
-        .padding(.horizontal, 20)
         .foregroundStyle(app.palette.ink)
-        .padding(.bottom, 14)
     }
 
     // MARK: Empty / footer

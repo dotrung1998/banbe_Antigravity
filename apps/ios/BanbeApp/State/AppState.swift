@@ -596,6 +596,9 @@ final class AppState: ObservableObject {
     @Published var now = Date()
     @Published var reserveError = ""
     @Published var loading = false
+    /// UID whose `applySession` run (favorites, tickets, profile data) has
+    /// completed; nil until the first run finishes. SplashView waits on it.
+    @Published var appliedSessionUID: UUID? = nil
     // submitCreateEvent's own synchronous submit-in-flight guard (task 1) —
     // plain, non-`@Published` (same reasoning as `organizerModeInFlight`,
     // 17-ux-foundation-release.md's 2026-10-07 fix pass): a repeated tap on

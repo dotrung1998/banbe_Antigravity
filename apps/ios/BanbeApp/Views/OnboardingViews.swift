@@ -63,9 +63,10 @@ struct SplashView: View {
     // healthy load/play never hits it, short enough that a genuinely
     // broken WebView load doesn't strand the user on the splash screen.
     private static let fallbackTimeout: UInt64 = 6_000_000_000
-    // Hold the completed launch motion on screen for one extra second
-    // before advancing, normal (non-Reduce-Motion) path only.
-    private static let dwellDuration: UInt64 = 1_000_000_000
+    // Hold the completed launch motion on screen for three extra seconds
+    // before advancing (was 1s; +2s requested), normal (non-Reduce-Motion)
+    // path only.
+    private static let dwellDuration: UInt64 = 5_000_000_000
 
     /// Both real signals this screen waits on for the AUTOMATIC path.
     /// Reduce Motion and the bounded fallback both count as "ready"
@@ -74,7 +75,16 @@ struct SplashView: View {
     /// on top, same as before this pass.
     private var readyToAdvance: Bool {
         let motionReady = reduceMotion || fallbackFired || dwellElapsed
-        return motionReady && auth.sessionChecked
+        return motionReady && auth.sessionChecked && accountDataReady
+    }
+
+    /// A signed-in launch also waits for `applySession` to finish loading
+    /// the account's data, so the splash (and the Face ID prompt that
+    /// follows it) never beats the app's own loading. Signed-out launches
+    /// have nothing to load. `fallbackFired` bounds the wait.
+    private var accountDataReady: Bool {
+        guard let uid = auth.session?.user.id else { return true }
+        return fallbackFired || app.appliedSessionUID == uid
     }
 
     var body: some View {
@@ -96,6 +106,7 @@ struct SplashView: View {
             advance(force: false)
         }
         .onChange(of: auth.sessionChecked) { _, _ in advance(force: false) }
+        .onChange(of: app.appliedSessionUID) { _, _ in advance(force: false) }
         .task {
             try? await Task.sleep(nanoseconds: Self.fallbackTimeout)
             fallbackFired = true

@@ -17,6 +17,7 @@ struct RootView: View {
     // continuous, per-frame gesture value is what was making the drag feel
     // laggy, since it was smoothing toward a target that kept moving.
     @State private var dragTranslation: CGFloat = 0
+    @State private var areaSheetMounted = false
     @State private var isCommittingBack = false
     @State private var isDragTracking = false
     // Overlapping-headers fix (2026-09-29 follow-up, real-device report) —
@@ -688,7 +689,12 @@ struct RootView: View {
                 .frame(width: 0, height: 0)
                 .accessibilityIdentifier("screen.\(app.screen.rawValue)")
 
-            if app.areaAsking { AreaSheetView() }
+            // Stays mounted until AreaSheetView finishes its own reverse
+            // (shrink-back-to-source) animation, so closing isn't instant.
+            if areaSheetMounted {
+                AreaSheetView(onDismissed: { areaSheetMounted = false })
+                    .transition(.identity)
+            }
             if app.askingLocation { LocationSheetView() }
             if app.reasonPrompt != nil { ReasonSheetView() }
             if let photo = app.photoViewer { PhotoViewerView(item: photo) }
@@ -844,7 +850,7 @@ struct RootView: View {
             // simultaneously over it — held off while app.screen == .splash.
             if auth.isLocked && app.screen != .splash { FaceIDLockView() }
         }
-        .animation(.easeInOut(duration: 0.2), value: app.areaAsking)
+        .onChange(of: app.areaAsking) { _, open in if open { areaSheetMounted = true } }
         .animation(.easeInOut(duration: 0.2), value: app.askingLocation)
         .animation(.easeInOut(duration: 0.2), value: app.photoViewer)
         // The screen switch above is a plain ZStack, not a NavigationStack,
