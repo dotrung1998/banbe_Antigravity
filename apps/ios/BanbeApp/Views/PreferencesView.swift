@@ -4,6 +4,7 @@ import SwiftUI
 /// which follow the signed-in account (see AppState.persistPreference).
 struct PreferencesView: View {
     @EnvironmentObject var app: AppState
+    @AppStorage(Haptics.defaultsKey) private var hapticsEnabled = true
 
     var body: some View {
         ScreenScaffold {
@@ -53,6 +54,22 @@ struct PreferencesView: View {
                     .padding(.horizontal, 18).padding(.vertical, 15)
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+                }
+
+                section(app.T("Phản hồi xúc giác", "Haptic Feedback")) {
+                    Toggle(isOn: $hapticsEnabled) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(app.T("Rung nhẹ khi thao tác", "Haptic feedback")).font(.system(size: 14))
+                            Text(app.T("Rung nhẹ khi chọn, lưu và hoàn tất một thao tác.", "Light taps when you choose, save or finish something."))
+                                .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                        }
+                    }
+                    .toggleStyle(BanbeLiquidToggleStyle())
+                    .foregroundStyle(app.palette.ink)
+                    .padding(.horizontal, 18).padding(.vertical, 15)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .accessibilityIdentifier("pref.haptics")
+                    .onChange(of: hapticsEnabled) { _, on in if on { Haptics.light() } }
                 }
 
             }

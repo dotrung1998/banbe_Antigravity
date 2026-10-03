@@ -2544,8 +2544,10 @@ extension AppState {
             if !attending.contains(eventKey) { attending.append(eventKey) }
             loading = false
             screen = .confirmed
+            Haptics.success()
         } catch {
             loading = false
+            Haptics.error()
             // hold_seats() (031:38) raises one of these as a plain
             // `RAISE EXCEPTION '<CODE>'` — no ERRCODE/DETAIL beyond the
             // message itself, which `PostgrestError.message` carries
@@ -3458,6 +3460,7 @@ extension AppState {
                 NewStory(organizerId: orgId, authorId: uid, mediaPath: path, mediaType: "image/jpeg", width: dims.map { Int($0.width) }, height: dims.map { Int($0.height) })
             ).execute()
             storyCreatePreviewImage = nil
+            Haptics.success()
             await loadHomeStories()
             return true
         } catch {
@@ -3483,6 +3486,7 @@ extension AppState {
             _ = try await SupabaseService.client
                 .rpc("create_event_share_story", params: Params(pEventId: eventKey))
                 .execute()
+            Haptics.success()
             await loadHomeStories()
             return true
         } catch {
@@ -3949,6 +3953,7 @@ extension AppState {
                 .rpc("check_in_guest", params: ["p_reservation_id": bookingID.uuidString])
                 .execute().value
             guard result.success == true else { return false }
+            Haptics.success()
             await AuthAPIService.notify(path: "/api/notify", body: ["type": "check_in", "bookingId": bookingID.uuidString])
             return true
         } catch {
@@ -4502,6 +4507,7 @@ extension AppState {
 
             loading = false
             createSent = true
+            Haptics.success()
             hasHosted = true
             mode = "host"
             await loadMyEvents()

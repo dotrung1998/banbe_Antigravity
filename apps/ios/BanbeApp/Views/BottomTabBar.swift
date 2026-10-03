@@ -311,8 +311,24 @@ struct BottomTabBar: View {
                 let id = hitTest(value.location.x, barWidth: barWidth)
                 activeID = id
                 finishTouch()
-                if let id, let item = items.first(where: { $0.id == id }) { item.action() }
+                if let id, let item = items.first(where: { $0.id == id }) {
+                    // One selection tick, only when this lands on a DIFFERENT
+                    // tab than the screen already showing.
+                    if tabID(for: app.screen) != id { Haptics.selection() }
+                    item.action()
+                }
             }
+    }
+
+    private func tabID(for screen: Screen) -> String? {
+        switch screen {
+        case .home: return "home"
+        case .mapExplore: return "map"
+        case .notifications: return "notifications"
+        case .inbox: return "inbox"
+        case .profile: return "profile"
+        default: return nil
+        }
     }
 
     /// Ends a touch: hands the highlight back to the tab just chosen and

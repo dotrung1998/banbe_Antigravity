@@ -236,6 +236,7 @@ extension AppState {
                 .execute().value
             surveyResponseSubmitting = false
             surveyResponseSuccess = true
+            Haptics.success()
         } catch {
             surveyResponseSubmitting = false
             let code = (error as? PostgrestError)?.message ?? ""
@@ -441,6 +442,7 @@ extension AppState {
         do {
             let _: SurveySummary = try await SupabaseService.client
                 .rpc("publish_survey", params: ["p_survey_id": surveyID.uuidString]).execute().value
+            Haptics.success()
             await loadMySurveys()
         } catch { print("publishSurvey failed:", error) }
     }

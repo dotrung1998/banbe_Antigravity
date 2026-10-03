@@ -104,7 +104,7 @@ struct AreaSheetView: View {
                     .scaleEffect(sourceScale + (1 - sourceScale) * progress)
                     .offset(x: sourceOffsetX * (1 - progress), y: sourceOffsetY * (1 - progress))
                     .onAppear {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Haptics.light()
                         guard !reduceMotion else { return }
                         withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
                             revealProgress = 1

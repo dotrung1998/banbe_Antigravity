@@ -903,7 +903,7 @@ final class AppState: ObservableObject {
         if toasts.contains(where: { $0.notification.id == notification.id }) { return }
         let item = ToastItem(id: UUID(), notification: notification)
         toasts.append(item)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Haptics.light()
         // The auto-dismiss timer is armed by markToastVisible(_:), called
         // from ToastOverlay's own onAppear — NOT here — so the duration
         // starts when the banner is actually visible, not at enqueue time.
@@ -2569,9 +2569,7 @@ final class AppState: ObservableObject {
     /// its own doc comment), no separate `eventKey` param — each gallery
     /// entry carries its own `eventId`.
     func openPhoto(gallery: [PhotoGalleryItem], index: Int, organizer: String, originRect: CGRect) {
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.prepare()
-        generator.impactOccurred()
+        Haptics.light()
         photoViewer = PhotoViewerItem(gallery: gallery, index: index, organizer: organizer, originRect: originRect)
     }
     func closePhoto() { photoViewer = nil }
@@ -3106,6 +3104,7 @@ final class AppState: ObservableObject {
     // still the same signed-in account by the time the request settles.
     func toggleFavorite(_ key: String) {
         guard !favoriteToggleInFlight.contains(key) else { return }
+        Haptics.selection()
         let wasSaved = favorites.contains(key)
         if let index = favorites.firstIndex(of: key) { favorites.remove(at: index) } else { favorites.append(key) }
         guard let uid = userID else { return } // signed-out: local-only, same as before this ticket

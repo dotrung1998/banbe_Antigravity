@@ -566,6 +566,9 @@ private struct BottomTabBarOverlayRoot: View {
         // centered in the full-screen `DockOverlayWindow` instead of
         // sitting at its bottom.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        // Don't let the keyboard push the dock up: it stays at the bottom of
+        // the screen and the keyboard (a higher system window) covers it.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .onPreferenceChange(ToastFramePreferenceKey.self) { rect in
             BottomTabBarOverlay.shared.setToastRect(rect)
         }

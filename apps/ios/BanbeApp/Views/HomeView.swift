@@ -395,7 +395,7 @@ struct HomeView: View {
                     // vertical padding on all three quick-switch buttons for
                     // easier tapping.
                     Button(app.T("EN", "VN")) {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Haptics.light()
                         app.toggleLang()
                     }
                         .font(.system(size: 13, weight: .semibold))
@@ -410,7 +410,7 @@ struct HomeView: View {
                     // unambiguous which control this is without a label
                     // prefix repeating the app's own name.
                     Button("\(app.currentAreaLabel) ▾") {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Haptics.light()
                         app.openArea()
                     }
                     .font(.system(size: 13, weight: .semibold))
@@ -430,7 +430,7 @@ struct HomeView: View {
                     // calls the same function with the flipped value rather
                     // than adding a parallel toggle.
                     Button(app.theme == "dark" ? app.T("Sáng", "Light") : app.T("Tối", "Dark")) {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Haptics.light()
                         app.pickTheme(app.theme == "dark" ? "light" : "dark")
                     }
                     .font(.system(size: 13, weight: .semibold))
@@ -965,7 +965,10 @@ struct HomeView: View {
         HStack(spacing: 8) {
                 ForEach(filters, id: \.key) { filter in
                     let active = app.filter == filter.key
-                    SwipeSafeButton { app.pickFilter(filter.key) } label: {
+                    SwipeSafeButton {
+                        if app.filter != filter.key { Haptics.selection() }
+                        app.pickFilter(filter.key)
+                    } label: {
                         Text(app.T(filter.vi, filter.en))
                             .font(.system(size: 12.5, weight: active ? .semibold : .regular))
                             .padding(.horizontal, 14).padding(.vertical, 8)
@@ -1007,7 +1010,10 @@ struct HomeView: View {
         ]
         return HStack(spacing: 8) {
             ForEach(chips, id: \.key) { chip in
-                SwipeSafeButton { app.toggleHomeFilter(chip.key) } label: {
+                SwipeSafeButton {
+                    Haptics.selection()
+                    app.toggleHomeFilter(chip.key)
+                } label: {
                     Text(app.T(chip.vi, chip.en))
                         .font(.system(size: 12, weight: chip.active ? .bold : .regular))
                         .padding(.horizontal, 12).padding(.vertical, 6)
@@ -1257,7 +1263,7 @@ struct HomeSearchButton: View {
 
     var body: some View {
         SwipeSafeButton {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            Haptics.light()
             app.openEventSearch()
         } label: {
             Image(systemName: "magnifyingglass")

@@ -56,7 +56,7 @@ extension AppState {
     func copyPayField(_ field: String, _ value: String) {
         UIPasteboard.general.string = value
         paymentCopied = field
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Haptics.light()
         Task {
             try? await Task.sleep(nanoseconds: 1_600_000_000)
             if paymentCopied == field { paymentCopied = "" }
@@ -534,7 +534,7 @@ extension AppState {
             _ = try await SupabaseService.client
                 .rpc("confirm_payment", params: ["p_booking": bookingID.uuidString, "p_method": method])
                 .execute()
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Haptics.success()
             // 15-organizer-checkin.md follow-up: confirm_payment() (migration
             // 060) now flips payment_state to 'confirmed' server-side too,
             // not just status — but PaymentViews' countdown, both Home
@@ -764,7 +764,7 @@ extension AppState {
 
             paymentTxnId = ""
             paymentProofUploading = false
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Haptics.success()
             // Patch `paymentBookings` in place FIRST, before the refetch —
             // PaymentViews derives its rendered booking straight from this
             // array, so an immediate patch means the very next render
@@ -908,7 +908,7 @@ extension AppState {
                 .rpc("verify_payment", params: VerifyPaymentParams(
                     booking: bookingID.uuidString, via: "organizer", actorKind: "organizer"))
                 .execute()
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Haptics.success()
         } catch {
             print("approvePayment failed:", error)
         }
@@ -1131,6 +1131,7 @@ extension AppState {
                 .execute().value
             if result.success == true {
                 ok = true
+                Haptics.success()
                 if let canonical = result.claim {
                     // Never strip the claim out here — VerificationsView's
                     // own activeRefundRows/pendingRefundRows split (by
@@ -1182,6 +1183,7 @@ extension AppState {
             _ = try await SupabaseService.client
                 .rpc("confirm_refund_received", params: ["p_claim_id": claimID.uuidString])
                 .execute()
+            Haptics.success()
         } catch {
             print("confirmRefundReceived failed:", error)
         }
@@ -1403,6 +1405,7 @@ extension AppState {
                 .rpc("select_refund_destination", params: ["p_claim_id": claimID.uuidString, "p_destination_id": destinationID.uuidString])
                 .execute().value
             ok = result.success == true
+            if ok { Haptics.selection() }
             if !ok { refundDestinationError = T("Hiện chưa thể thực hiện. Vui lòng thử lại sau.", "This isn't available right now. Please try again later.") }
         } catch {
             print("selectRefundDestinationForClaim failed:", error)
@@ -1599,6 +1602,7 @@ extension AppState {
             // Server result is the sole source of truth from here — no
             // local amount/status patch, only a full canonical reload.
             refundBatchResult = result
+            Haptics.success()
             await loadRefundCenter(eventKey: eventKey)
             return result
         } catch {

@@ -113,7 +113,7 @@ struct PulseViewerView: View {
         expandedPanelContentHeight = 1
         guard expandedPanelHapticKey != key else { return }
         expandedPanelHapticKey = key
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Haptics.light()
     }
 
     private func markPhotoLoaded(_ url: String) { loadedPhotoURLs.insert(url) }

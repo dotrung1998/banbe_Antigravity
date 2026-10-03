@@ -37,7 +37,7 @@ struct PaymentQRPressable<Content: View>: View {
     private func trigger() {
         guard !busy else { return }
         busy = true
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Haptics.impact(.medium)
         Task {
             defer { busy = false }
             guard let text = await payload(), !text.isEmpty else {

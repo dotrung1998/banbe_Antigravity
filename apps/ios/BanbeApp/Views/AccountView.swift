@@ -937,7 +937,10 @@ struct AccountView: View {
 
     @ViewBuilder
     private func accountTabButton(key: String, label: String, badge: Int = 0) -> some View {
-        SwipeSafeButton { app.accountTab = key } label: {
+        SwipeSafeButton {
+            if app.accountTab != key { Haptics.selection() }
+            app.accountTab = key
+        } label: {
             HStack(spacing: 6) {
                 Text(label).font(.system(size: 13, weight: .semibold))
                 if badge > 0 {
@@ -975,7 +978,12 @@ struct AccountView: View {
         // whatever's underneath it. Assigning the same `app.accountTab`
         // value the Button's own action also sets is idempotent — never a
         // double-toggle — so both handlers safely agree.
-        .highPriorityGesture(TapGesture().onEnded { if !app.isRootSwipeActive { app.accountTab = key } })
+        .highPriorityGesture(TapGesture().onEnded {
+            if !app.isRootSwipeActive {
+                if app.accountTab != key { Haptics.selection() }
+                app.accountTab = key
+            }
+        })
         .accessibilityIdentifier("account.tab.\(key)")
     }
 

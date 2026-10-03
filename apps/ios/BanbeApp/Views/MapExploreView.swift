@@ -1369,7 +1369,10 @@ struct MapExploreView: View {
                             .font(.system(size: 12, weight: catFilter == cat.key ? .bold : .regular))
                             .padding(.horizontal, 12).padding(.vertical, 6)
                             .background(.thinMaterial, in: Capsule())
-                            .onTapGesture { catFilter = cat.key }
+                            .onTapGesture {
+                                if catFilter != cat.key { Haptics.selection() }
+                                catFilter = cat.key
+                            }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -1390,13 +1393,13 @@ struct MapExploreView: View {
                     .font(.system(size: 11, weight: openNowOnly ? .bold : .regular))
                     .padding(.horizontal, 10).padding(.vertical, 5)
                     .background(.thinMaterial, in: Capsule())
-                    .onTapGesture { openNowOnly.toggle() }
+                    .onTapGesture { Haptics.selection(); openNowOnly.toggle() }
                 if app.locationAuthStatus == .authorizedWhenInUse || app.locationAuthStatus == .authorizedAlways {
                     Text(app.T("Gần bạn", "Nearby"))
                         .font(.system(size: 11, weight: sortByDistance ? .bold : .regular))
                         .padding(.horizontal, 10).padding(.vertical, 5)
                         .background(.thinMaterial, in: Capsule())
-                        .onTapGesture { sortByDistance.toggle() }
+                        .onTapGesture { Haptics.selection(); sortByDistance.toggle() }
                 }
               }
               .padding(.horizontal, 16)

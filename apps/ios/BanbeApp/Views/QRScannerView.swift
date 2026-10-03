@@ -92,6 +92,7 @@ struct QRScannerView: View {
         pendingCode = nil
         Task {
             let ok = await app.checkInByScan(code)
+            if !ok { Haptics.error() } // success tick fires inside checkIn()
             status = ok
                 ? (true, app.T("Đã điểm danh ✓", "Checked in ✓"))
                 : (false, app.T("Mã không hợp lệ hoặc đã điểm danh rồi.", "Invalid code, or already checked in."))

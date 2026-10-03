@@ -454,6 +454,7 @@ struct CreateEventView: View {
                         VStack(spacing: 4) {
                             Button {
                                 guard index > 0 else { return }
+                                Haptics.selection()
                                 galleryItems.swapAt(index - 1, index)
                             } label: {
                                 Image(systemName: "chevron.up").font(.system(size: 11, weight: .semibold))
@@ -467,6 +468,7 @@ struct CreateEventView: View {
 
                             Button {
                                 guard index < galleryItems.count - 1 else { return }
+                                Haptics.selection()
                                 galleryItems.swapAt(index, index + 1)
                             } label: {
                                 Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold))

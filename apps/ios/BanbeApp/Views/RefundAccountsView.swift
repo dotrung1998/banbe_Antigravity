@@ -237,7 +237,7 @@ struct RefundAccountsView: View {
                     Text(app.T("Xoá tài khoản này?", "Delete this account?")).font(.system(size: 11.5))
                     Spacer()
                     Button(app.T("Huỷ", "Cancel")) { confirmDeleteID = nil }.font(.system(size: 11.5))
-                    Button(app.T("Xoá", "Delete")) { Task { await app.deleteRefundDestination(d.id); confirmDeleteID = nil } }
+                    Button(app.T("Xoá", "Delete")) { Haptics.warning(); Task { await app.deleteRefundDestination(d.id); confirmDeleteID = nil } }
                         .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                 }
             }
