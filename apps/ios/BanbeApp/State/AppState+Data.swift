@@ -587,6 +587,8 @@ extension AppState {
         // documents) must not survive into the next account on a shared
         // device — PhotoLoader's caches aren't scoped per-user, so drop them
         // outright rather than risk a cached signed-URL image reappearing.
+        accountSearchOpen = false
+        accountSearchQuery = ""
         PhotoLoader.clearCache()
         // Roles belong to the account that just left — leaving them behind
         // would leak the previous user's hosting state into the next sign-in.

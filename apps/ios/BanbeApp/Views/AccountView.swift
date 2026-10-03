@@ -111,8 +111,10 @@ struct AccountView: View {
     // only ever set by the user's own scrolling, never by any of this
     // screen's data loads.
     @State private var didAttemptScrollRestore = false
-    @State private var searchOpen = false
-    @State private var searchQuery = ""
+    // Search state lives on AppState (not here): this screen is rebuilt when you
+    // come back from a result, and going back must land on the same results.
+    private var searchOpen: Bool { app.accountSearchOpen }
+    private var searchQuery: String { app.accountSearchQuery }
     @FocusState private var searchFocused: Bool
     @State private var imageCacheClearedAt: Date?
 
@@ -144,7 +146,8 @@ struct AccountView: View {
             // Pulled out as a second fixed sibling (same mechanism/doc
             // comment as `accountHeader` just above) — only the selected
             // tab's own body, inside ScreenScaffold, scrolls now.
-            accountTabsBar
+            // Search spans every tab, so the tab pills are hidden while it's open.
+            if !searchOpen { accountTabsBar }
             ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: accountScrollAnchorBinding, refreshIndicatorTopPadding: 24, onRefresh: {
                 guard app.userID != nil else { return }
                 await app.loadPaymentBookings()
@@ -233,7 +236,7 @@ struct AccountView: View {
             // wordmark (HomeView.swift); Notifications/Messages got
             // the same addition in this pass.
             if searchOpen {
-                TextField(app.T("Tìm trong tài khoản…", "Search Account…"), text: $searchQuery)
+                TextField(app.T("Tìm trong tài khoản…", "Search Account…"), text: $app.accountSearchQuery)
                     .font(.system(size: 13.5))
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(app.palette.field, in: Capsule())
@@ -252,9 +255,9 @@ struct AccountView: View {
             // Search (replaces "Done") — same icon-over-label button as
             // Messages/Notifications.
             SwipeSafeButton {
-                if searchOpen { searchQuery = "" }
-                withAnimation(.easeInOut(duration: 0.22)) { searchOpen.toggle() }
-                searchFocused = searchOpen
+                if app.accountSearchOpen { app.accountSearchQuery = "" }
+                withAnimation(.easeInOut(duration: 0.22)) { app.accountSearchOpen.toggle() }
+                searchFocused = app.accountSearchOpen
             } label: {
                 VStack(spacing: 2) {
                     Image(systemName: searchOpen ? "xmark" : "magnifyingglass")
@@ -845,9 +848,9 @@ struct AccountView: View {
                     ForEach(Array(group.items.enumerated()), id: \.element.id) { i, entry in
                         SwipeSafeButton {
                             let tab = entry.tab
+                            // Keep the search open with its query, so swiping back
+                            // from the result returns to these same results.
                             searchFocused = false
-                            searchQuery = ""
-                            withAnimation(.easeInOut(duration: 0.22)) { searchOpen = false }
                             app.accountTab = tab
                             entry.action()
                         } label: {

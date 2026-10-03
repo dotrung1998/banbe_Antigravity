@@ -1009,6 +1009,9 @@ final class AppState: ObservableObject {
     /// Host promotional messages consent (nil = not loaded yet; default OFF).
     @Published var hostPromoConsent: Bool? = nil
     @Published var hostPromoConsentBusy = false
+    /// Account search (kept here so it survives opening a result and coming back).
+    @Published var accountSearchOpen = false
+    @Published var accountSearchQuery = ""
     @Published var hostPromoConsentError = ""
     @Published var payoutQRError = ""
     /// The host's QR for an event a payer is paying for, keyed by event key.
@@ -2409,7 +2412,9 @@ final class AppState: ObservableObject {
 
     func goHome() { screen = .home }
     func goMapExplore() { screen = .mapExplore }
-    func goProfile() { screen = .profile }
+    /// Dock tap on Account starts fresh (search closed); coming BACK from a
+    /// search result does not go through here, so its search is kept.
+    func goProfile() { accountSearchOpen = false; accountSearchQuery = ""; screen = .profile }
     // "organizer" is a pass-through, exactly like "event" itself already
     // is: entering an event from an organizer page keeps whatever back
     // target brought us into this event/organizer cluster in the first
