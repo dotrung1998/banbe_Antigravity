@@ -6,7 +6,7 @@ create function auth.jwt() returns jsonb language sql stable as $$ select coales
 create function auth.uid() returns uuid language sql stable as $$ select nullif(auth.jwt()->>'sub','')::uuid $$;
 grant usage on schema auth to anon, authenticated;
 grant execute on function auth.jwt(), auth.uid() to anon, authenticated;
-create table public.profiles(id uuid primary key, display_name text, locale text default 'vi');
+create table public.profiles(id uuid primary key, display_name text, locale text default 'vi', role text default 'participant');
 create table public.organizers(id text primary key, owner_id uuid, user_id uuid, name text);
 create table public.events(id text primary key, organizer_id text, name text);
 create table public.bookings(id uuid default gen_random_uuid(), event_id text, user_id uuid, status text);

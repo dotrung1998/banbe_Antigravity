@@ -689,6 +689,8 @@ struct RootView: View {
                 .frame(width: 0, height: 0)
                 .accessibilityIdentifier("screen.\(app.screen.rawValue)")
 
+            // Check-in scanner pop-up (Pulse-style card over a scrim).
+            if app.scanningQr { QRScannerView().transition(.identity) }
             // Stays mounted until AreaSheetView finishes its own reverse
             // (shrink-back-to-source) animation, so closing isn't instant.
             if areaSheetMounted {
@@ -916,7 +918,6 @@ struct RootView: View {
                 BottomTabBarOverlay.shared.attach(to: scene, appState: app)
             }
         }
-        .fullScreenCover(isPresented: $app.scanningQr) { QRScannerView() }
         // Account deletion (Task 2, Account/Settings pass) — opened from
         // AccountGroupView's `preferences` case (`app.deleteAccountOpen`).
         .fullScreenCover(isPresented: $app.deleteAccountOpen) { DeleteAccountView() }
