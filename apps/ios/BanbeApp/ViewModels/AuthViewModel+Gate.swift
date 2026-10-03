@@ -54,6 +54,7 @@ extension AuthViewModel {
         do {
             let status: AccountGateStatus = try await SupabaseService.client
                 .rpc("account_gate_status").execute().value
+            gateStatus = status
             let wasReady = gate == .ready
             gate = status.ready ? .ready : .blocked(status)
             // Profile reads were blocked by RLS while gated — load now.

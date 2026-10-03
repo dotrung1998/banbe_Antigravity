@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { rejectIfGated } from './_lib/accountGate.js';
 import { getMissingEmailVariables, sendWithGmail } from './_lib/email.js';
 import { renderEmail, renderEmailText, escapeHtml } from './_lib/emailTemplate.js';
 import { renderDisputeTranscript } from '../src/lib/disputeTranscript.js';
@@ -67,6 +68,8 @@ export default async function handler(req, res) {
   if (!token) return res.status(401).json({ error: 'AUTH_REQUIRED' });
   const { data: userData, error: userError } = await admin.auth.getUser(token);
   if (userError || !userData?.user) return res.status(401).json({ error: 'AUTH_REQUIRED' });
+
+  if (await rejectIfGated(res, token)) return;
 
   const { data: caller } = await admin.from('profiles').select('role').eq('id', userData.user.id).maybeSingle();
   if (caller?.role !== 'admin') return res.status(403).json({ error: 'ADMIN_ONLY' });

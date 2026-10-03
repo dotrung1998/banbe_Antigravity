@@ -137,104 +137,26 @@ private func dobProblemText(_ p: DateOfBirthInput.Problem, T: (String, String) -
     }
 }
 
-// MARK: - Phone verification (new registrations)
+// MARK: - Phone verification (shared by registration and Account -> Security)
 
-struct PhoneEnrollmentView: View {
-    @EnvironmentObject private var auth: AuthViewModel
-    @EnvironmentObject private var app: AppState
+/// State + actions for the SMS flow. The code is created and sent by Supabase
+/// Auth for the SIGNED-IN user (a pending phone change), so verifying can only
+/// ever attach the number to that same account — never create a second one.
+@MainActor
+final class PhoneVerificationModel: ObservableObject {
+    @Published var country = PhoneCountry.defaultCountry(regionCode: Locale.current.region?.identifier)
+    @Published var number = ""
+    @Published var e164 = ""
+    @Published var codeSent = false
+    @Published var code = ""
+    @Published var busy = false
+    @Published var message: String?
+    @Published var cooldown = 0
+    private var cooldownTask: Task<Void, Never>?
 
-    @State private var country = PhoneCountry.defaultCountry(regionCode: Locale.current.region?.identifier)
-    @State private var number = ""
-    @State private var e164 = ""
-    @State private var codeSent = false
-    @State private var code = ""
-    @State private var busy = false
-    @State private var message: String?
-    @State private var cooldown = 0
-    @State private var cooldownTask: Task<Void, Never>?
+    func stop() { cooldownTask?.cancel() }
 
-    var body: some View {
-        GateScaffold(
-            title: codeSent ? app.T("Nhập mã xác minh", "Enter the verification code")
-                            : app.T("Xác minh số điện thoại", "Verify your phone number"),
-            subtitle: codeSent
-                ? app.T("Chúng tôi đã gửi mã 6 số qua SMS tới \(e164). Mã chỉ xác minh bạn dùng được số này.",
-                        "We sent a 6-digit code by SMS to \(e164). It only confirms you can receive texts on this number.")
-                : app.T("Thêm số điện thoại có mã quốc gia để hoàn tất đăng ký. Chúng tôi sẽ gửi một mã SMS.",
-                        "Add a phone number with its country code to finish registering. We'll text you a code.")
-        ) {
-            if codeSent { codeStep } else { numberStep }
-            if let message {
-                Text(message).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
-                    .accessibilityIdentifier("gate.phone.error")
-            }
-        }
-        .onDisappear { cooldownTask?.cancel() }
-    }
-
-    private var numberStep: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                Menu {
-                    ForEach(PhoneCountry.all) { c in
-                        Button("\(c.flag) \(app.T(c.nameVi, c.nameEn)) (+\(c.dial))") { country = c }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(country.flag)
-                        Text("+\(country.dial)").font(.system(size: 16, weight: .medium))
-                        Image(systemName: "chevron.down").font(.system(size: 10))
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 13)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .accessibilityIdentifier("gate.phone.country")
-                TextField(app.T("Số điện thoại", "Phone number"), text: $number)
-                    .keyboardType(.phonePad)
-                    .textContentType(.telephoneNumber)
-                    .font(.system(size: 17))
-                    .padding(.horizontal, 14).padding(.vertical, 13)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .accessibilityIdentifier("gate.phone.number")
-            }
-            InkButton(title: busy ? app.T("Đang gửi…", "Sending…") : app.T("Gửi mã", "Send code"),
-                      enabled: !busy) { send() }
-                .accessibilityIdentifier("gate.phone.send")
-        }
-    }
-
-    private var codeStep: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            TextField("123456", text: $code)
-                .keyboardType(.numberPad)
-                .textContentType(.oneTimeCode)
-                .multilineTextAlignment(.center)
-                .font(.system(size: 24, weight: .semibold))
-                .padding(.vertical, 14)
-                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .onChange(of: code) { _, v in
-                    let d = DateOfBirthInput.digits(v, max: 6)
-                    if d != v { code = d }
-                }
-                .accessibilityIdentifier("gate.phone.code")
-            InkButton(title: busy ? app.T("Đang kiểm tra…", "Checking…") : app.T("Xác minh", "Verify"),
-                      enabled: !busy && code.count == 6) { verify() }
-                .accessibilityIdentifier("gate.phone.verify")
-            HStack {
-                Button(cooldown > 0
-                       ? app.T("Gửi lại sau \(cooldown)s", "Resend in \(cooldown)s")
-                       : app.T("Gửi lại mã", "Resend code")) { resend() }
-                    .disabled(cooldown > 0 || busy)
-                    .font(.system(size: 13))
-                Spacer()
-                Button(app.T("Đổi số", "Change number")) {
-                    codeSent = false; code = ""; message = nil
-                }
-                .font(.system(size: 13))
-            }
-            .buttonStyle(.plain)
-        }
-    }
+    func changeNumber() { codeSent = false; code = ""; message = nil }
 
     private func startCooldown() {
         cooldownTask?.cancel()
@@ -247,65 +169,206 @@ struct PhoneEnrollmentView: View {
         }
     }
 
-    private func send() {
+    func send(auth: AuthViewModel, T: @escaping (String, String) -> String) {
         message = nil
         guard let parsed = country.e164(from: number) else {
-            message = app.T("Số điện thoại chưa hợp lệ. Kiểm tra mã quốc gia và số.", "That phone number isn't valid. Check the country code and number.")
+            message = T("Số điện thoại chưa hợp lệ. Kiểm tra mã quốc gia và số.", "That phone number isn't valid. Check the country code and number.")
             return
         }
         busy = true
         Task {
             defer { busy = false }
-            if let failure = await auth.sendPhoneCode(e164: parsed) {
-                message = text(for: failure)
-                return
-            }
+            if let failure = await auth.sendPhoneCode(e164: parsed) { message = Self.text(failure, T); return }
             e164 = parsed
             codeSent = true
             startCooldown()
         }
     }
 
-    private func resend() {
+    func resend(auth: AuthViewModel, T: @escaping (String, String) -> String) {
         message = nil
         busy = true
         Task {
             defer { busy = false }
-            if let failure = await auth.resendPhoneCode(e164: e164) { message = text(for: failure); return }
+            if let failure = await auth.resendPhoneCode(e164: e164) { message = Self.text(failure, T); return }
             startCooldown()
         }
     }
 
-    private func verify() {
+    func verify(auth: AuthViewModel, T: @escaping (String, String) -> String) {
         message = nil
         busy = true
         Task {
             defer { busy = false }
             if let failure = await auth.verifyPhoneCode(e164: e164, code: code) {
                 code = ""
-                message = text(for: failure)
+                message = Self.text(failure, T)
             }
         }
     }
 
-    private func text(for failure: PhoneCodeFailure) -> String {
+    static func text(_ failure: PhoneCodeFailure, _ T: (String, String) -> String) -> String {
         switch failure {
         case .phoneInUse:
-            return app.T("Số này đã được liên kết với tài khoản khác. Hãy dùng số khác.", "This number is already linked to another account. Use a different number.")
+            return T("Số này đã được liên kết với tài khoản khác. Hãy dùng số khác.", "This number is already linked to another account. Use a different number.")
         case .rateLimited:
-            return app.T("Bạn đã yêu cầu quá nhiều mã. Vui lòng thử lại sau.", "Too many code requests. Please try again later.")
+            return T("Bạn đã yêu cầu quá nhiều mã. Vui lòng thử lại sau.", "Too many code requests. Please try again later.")
         case .providerUnavailable:
-            return app.T("Chưa gửi được SMS: dịch vụ SMS chưa được cấu hình hoặc đang lỗi. Số của bạn chưa được xác minh.", "Couldn't send the SMS: the SMS service isn't configured or is failing. Your number has NOT been verified.")
+            return T("Chưa gửi được SMS: dịch vụ SMS chưa được cấu hình hoặc đang lỗi. Số của bạn chưa được xác minh.", "Couldn't send the SMS: the SMS service isn't configured or is failing. Your number has NOT been verified.")
         case .invalidNumber:
-            return app.T("Số điện thoại chưa hợp lệ.", "That phone number isn't valid.")
+            return T("Số điện thoại chưa hợp lệ.", "That phone number isn't valid.")
         case .expired:
-            return app.T("Mã đã hết hạn. Hãy gửi lại mã mới.", "That code expired. Request a new one.")
+            return T("Mã đã hết hạn. Hãy gửi lại mã mới.", "That code expired. Request a new one.")
         case .wrongCode:
-            return app.T("Mã chưa đúng. Thử lại.", "That code isn't right. Try again.")
+            return T("Mã chưa đúng. Thử lại.", "That code isn't right. Try again.")
         case .network:
-            return app.T("Không có kết nối. Thử lại.", "No connection. Try again.")
+            return T("Không có kết nối. Thử lại.", "No connection. Try again.")
         case .other:
-            return app.T("Chưa thực hiện được. Thử lại sau.", "That didn't work. Please try again later.")
+            return T("Chưa thực hiện được. Thử lại sau.", "That didn't work. Please try again later.")
+        }
+    }
+}
+
+/// The number -> code form, without any screen chrome.
+struct PhoneVerificationForm: View {
+    @EnvironmentObject private var auth: AuthViewModel
+    @EnvironmentObject private var app: AppState
+    @ObservedObject var model: PhoneVerificationModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if model.codeSent { codeStep } else { numberStep }
+            if let message = model.message {
+                Text(message).font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                    .accessibilityIdentifier("gate.phone.error")
+            }
+        }
+        .onDisappear { model.stop() }
+    }
+
+    private var numberStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Menu {
+                    ForEach(PhoneCountry.all) { c in
+                        Button("\(c.flag) \(app.T(c.nameVi, c.nameEn)) (+\(c.dial))") { model.country = c }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(model.country.flag)
+                        Text("+\(model.country.dial)").font(.system(size: 16, weight: .medium))
+                        Image(systemName: "chevron.down").font(.system(size: 10))
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 13)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .accessibilityIdentifier("gate.phone.country")
+                TextField(app.T("Số điện thoại", "Phone number"), text: $model.number)
+                    .keyboardType(.phonePad)
+                    .textContentType(.telephoneNumber)
+                    .font(.system(size: 17))
+                    .padding(.horizontal, 14).padding(.vertical, 13)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityIdentifier("gate.phone.number")
+            }
+            InkButton(title: model.busy ? app.T("Đang gửi…", "Sending…") : app.T("Gửi mã", "Send code"),
+                      enabled: !model.busy) { model.send(auth: auth, T: app.T) }
+                .accessibilityIdentifier("gate.phone.send")
+        }
+    }
+
+    private var codeStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(app.T("Mã 6 số đã được gửi tới \(model.e164). Mã chỉ xác minh bạn nhận được tin nhắn trên số này.",
+                       "A 6-digit code was sent to \(model.e164). It only confirms you can receive texts on this number."))
+                .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+            TextField("123456", text: $model.code)
+                .keyboardType(.numberPad)
+                .textContentType(.oneTimeCode)
+                .multilineTextAlignment(.center)
+                .font(.system(size: 24, weight: .semibold))
+                .padding(.vertical, 14)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .onChange(of: model.code) { _, v in
+                    let d = DateOfBirthInput.digits(v, max: 6)
+                    if d != v { model.code = d }
+                }
+                .accessibilityIdentifier("gate.phone.code")
+            InkButton(title: model.busy ? app.T("Đang kiểm tra…", "Checking…") : app.T("Xác minh", "Verify"),
+                      enabled: !model.busy && model.code.count == 6) { model.verify(auth: auth, T: app.T) }
+                .accessibilityIdentifier("gate.phone.verify")
+            HStack {
+                Button(model.cooldown > 0
+                       ? app.T("Gửi lại sau \(model.cooldown)s", "Resend in \(model.cooldown)s")
+                       : app.T("Gửi lại mã", "Resend code")) { model.resend(auth: auth, T: app.T) }
+                    .disabled(model.cooldown > 0 || model.busy)
+                    .font(.system(size: 13))
+                Spacer()
+                Button(app.T("Đổi số", "Change number")) { model.changeNumber() }
+                    .font(.system(size: 13))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+/// Required step for a NEW registration.
+struct PhoneEnrollmentView: View {
+    @EnvironmentObject private var app: AppState
+    @StateObject private var model = PhoneVerificationModel()
+
+    var body: some View {
+        GateScaffold(
+            title: model.codeSent ? app.T("Nhập mã xác minh", "Enter the verification code")
+                                  : app.T("Xác minh số điện thoại", "Verify your phone number"),
+            subtitle: model.codeSent
+                ? app.T("Nhập mã 6 số vừa được gửi qua SMS.", "Enter the 6-digit code we just texted you.")
+                : app.T("Thêm số điện thoại có mã quốc gia để hoàn tất đăng ký. Chúng tôi sẽ gửi một mã SMS.",
+                        "Add a phone number with its country code to finish registering. We'll text you a code.")
+        ) {
+            PhoneVerificationForm(model: model)
+        }
+    }
+}
+
+/// Account -> Security: OPTIONAL phone verification for existing accounts.
+/// They keep their signup exemption either way; this only adds a verified
+/// number to the same account.
+struct PhoneVerificationSection: View {
+    @EnvironmentObject private var auth: AuthViewModel
+    @EnvironmentObject private var app: AppState
+    @StateObject private var model = PhoneVerificationModel()
+    @State private var open = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if auth.gateStatus?.phoneVerified == true {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.seal.fill").foregroundStyle(Color(red: 0.13, green: 0.58, blue: 0.33))
+                    Text(app.T("Số điện thoại đã được xác minh.", "Your phone number is verified."))
+                        .font(.system(size: 14))
+                }
+                .padding(.horizontal, 18).padding(.vertical, 15)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityIdentifier("security.phoneVerified")
+            } else {
+                Text(app.T("Không bắt buộc với tài khoản của bạn. Thêm và xác minh số điện thoại để bảo vệ tài khoản và nhận hỗ trợ dễ hơn. Mã chỉ xác minh bạn nhận được SMS trên số này — không xác minh danh tính.",
+                           "Optional for your account. Add and verify a phone number for easier account recovery. The code only confirms you can receive texts on this number — it doesn't verify who you are."))
+                    .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
+                if open {
+                    PhoneVerificationForm(model: model)
+                        .padding(16)
+                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                } else {
+                    Button(app.T("Xác minh số điện thoại", "Verify my phone number")) { open = true }
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 16).padding(.vertical, 11)
+                        .background(app.palette.field, in: Capsule())
+                        .accessibilityIdentifier("security.phoneVerify")
+                }
+            }
         }
     }
 }

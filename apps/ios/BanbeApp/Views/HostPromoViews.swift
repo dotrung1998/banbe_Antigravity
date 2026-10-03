@@ -17,7 +17,7 @@ struct HostPromoSheet: View {
         case recipient(PromoRecipient)
         case none
         case failed(String)
-        case finished(String)
+        case finished(String, retry: PromoRecipient?)
     }
 
     @State private var phase: Phase = .loading
@@ -56,9 +56,16 @@ struct HostPromoSheet: View {
                     .font(.system(size: 13))
             case .failed(let text):
                 Text(text).font(.system(size: 13)).foregroundStyle(BanbeTheme.alert)
-            case .finished(let text):
+            case .finished(let text, let retry):
                 VStack(alignment: .leading, spacing: 12) {
                     Text(text).font(.system(size: 13))
+                    // A cancelled / failed text doesn't use the person up: the
+                    // host can try again (a limited number of times). A text
+                    // that was sent is final for this event.
+                    if let retry {
+                        InkButton(title: app.T("Thử lại với \(retry.displayName)", "Try again with \(retry.displayName)")) { prepare(retry) }
+                            .accessibilityIdentifier("promo.retry")
+                    }
                     InkButton(title: app.T("Người tiếp theo", "Next recipient")) { Task { await loadNext() } }
                         .accessibilityIdentifier("promo.next")
                 }
@@ -82,7 +89,8 @@ struct HostPromoSheet: View {
                 default: outcome = "failed"
                 }
                 Task { await app.finishPromoCompose(logID: c.logId, result: outcome) }
-                phase = .finished(finishText(outcome))
+                let again = outcome == "sent" ? nil : PromoRecipient(id: c.recipientId, displayName: c.displayName, locale: c.locale)
+                phase = .finished(finishText(outcome), retry: again)
             }
             .ignoresSafeArea()
         }

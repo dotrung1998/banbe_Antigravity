@@ -51,6 +51,7 @@ struct SecurityView: View {
 
                 if auth.isSignedIn {
                     passwordSection
+                    section(app.T("Số điện thoại", "Phone number")) { PhoneVerificationSection() }
                     promoConsentSection
                 } else {
                     Text(app.T("Đăng nhập để đặt mật khẩu cho tài khoản.",
@@ -164,8 +165,8 @@ struct SecurityView: View {
             .buttonStyle(.plain)
             .disabled(app.hostPromoConsentBusy || app.hostPromoConsent == nil)
             .accessibilityIdentifier("security.hostPromoConsent")
-            Text(app.T("Host tự soạn và tự bấm gửi từng tin trong ứng dụng Tin nhắn của bạn; banbe không gửi hàng loạt hay tự động. Tắt mục này sẽ chặn các tin quảng bá do banbe hỗ trợ trong tương lai, nhưng không ảnh hưởng tới tin nhắn mà host gửi độc lập sau khi đã có số của bạn.",
-                       "Hosts write and send each text themselves in your Messages app — banbe never sends in bulk or automatically. Turning this off blocks future banbe-assisted promos, but doesn't affect messages a host sends independently after already having your number."))
+            Text(app.T("Host tự soạn và tự bấm gửi từng tin trong ứng dụng Tin nhắn của chính host (trên máy của host); banbe không gửi hàng loạt hay tự động, và không đảm bảo tin được nhận. Tắt mục này sẽ chặn các tin quảng bá do banbe hỗ trợ trong tương lai, nhưng không ảnh hưởng tới tin nhắn mà host gửi độc lập sau khi đã có số của bạn.",
+                       "Hosts write and send each text themselves from the host's own Messages app (on the host's phone) — banbe never sends in bulk or automatically and can't guarantee delivery. Turning this off blocks future banbe-assisted promos, but doesn't affect messages a host sends independently after already having your number."))
                 .font(.system(size: 11.5))
                 .foregroundStyle(app.palette.ink.opacity(0.7))
             if !app.hostPromoConsentError.isEmpty {
@@ -180,8 +181,8 @@ struct SecurityView: View {
             Button(app.T("Đồng ý", "I agree")) { Task { await app.setHostPromoConsent(true) } }
             Button(app.T("Huỷ", "Cancel"), role: .cancel) {}
         } message: {
-            Text(app.T("Host mà bạn đã tương tác có thể soạn tin SMS quảng bá sự kiện gửi tới số điện thoại đã xác minh của bạn. Bạn có thể tắt bất cứ lúc nào.",
-                       "Hosts you've interacted with may compose an event promo text to your verified phone number. You can turn this off any time."))
+            Text(app.T("Host mà bạn đã tương tác có thể soạn tin quảng bá sự kiện trong ứng dụng Tin nhắn của host, gửi tới số điện thoại đã xác minh của bạn. Host tự bấm gửi; banbe không gửi hộ. Bạn có thể tắt bất cứ lúc nào.",
+                       "Hosts you've interacted with may compose an event promo text in the host's own Messages app, addressed to your verified phone number. The host sends it themselves; banbe doesn't send for them. You can turn this off any time."))
         }
     }
 

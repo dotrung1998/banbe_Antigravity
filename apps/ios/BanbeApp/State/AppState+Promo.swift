@@ -15,6 +15,8 @@ struct PromoRecipient: Decodable, Equatable {
 
 struct PromoCompose: Decodable, Equatable {
     let logId: UUID
+    /// The recipient this compose was for (set by the client from the request).
+    var recipientId: UUID = UUID()
     let phone: String
     let displayName: String
     let locale: String
@@ -109,7 +111,7 @@ extension AppState {
                 .rpc("begin_promo_compose", params: ["p_event_id": eventKey, "p_recipient_id": recipientID.uuidString])
                 .execute().value
             guard r.success == true, let log = r.logId, let phone = r.phone else { return (nil, Self.promoError(r.error)) }
-            return (PromoCompose(logId: log, phone: phone, displayName: r.displayName ?? "", locale: r.locale ?? "vi",
+            return (PromoCompose(logId: log, recipientId: recipientID, phone: phone, displayName: r.displayName ?? "", locale: r.locale ?? "vi",
                                  eventName: r.eventName ?? "", organizerId: r.organizerId ?? "", organizerName: r.organizerName ?? ""), nil)
         } catch { return (nil, .other) }
     }

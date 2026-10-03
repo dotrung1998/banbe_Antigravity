@@ -87,6 +87,20 @@ Deno.serve(async (req) => {
     if (userErr || !userData?.user) return json({ error: 'INVALID_TOKEN' }, 401);
     const userId = userData.user.id;
 
+    // 1b. Account gate (migration 123/126). This function reads storage with
+    // the service role, so it must check the caller's own session itself: a
+    // session that hasn't finished enrollment / confirmed its date of birth
+    // gets nothing. (A missing function = migration not deployed = allowed.)
+    {
+      const { data: gateOk, error: gateErr } = await userClient.rpc('account_gate_ok');
+      const gateMissing = gateErr && (gateErr.code === 'PGRST202' || gateErr.code === '42883');
+      if (gateErr && !gateMissing) {
+        return json({ error: (gateErr as { code?: string }).code === 'PT403' ? 'ACCOUNT_GATE_REQUIRED' : 'GATE_CHECK_FAILED' },
+                    (gateErr as { code?: string }).code === 'PT403' ? 403 : 503);
+      }
+      if (!gateErr && gateOk !== true) return json({ error: 'ACCOUNT_GATE_REQUIRED' }, 403);
+    }
+
     // 2. Pull path + ttl
     let path: string | null = null;
     let expiresIn = DEFAULT_TTL;

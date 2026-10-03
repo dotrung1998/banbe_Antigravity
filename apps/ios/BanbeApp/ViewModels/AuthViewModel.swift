@@ -16,6 +16,9 @@ final class AuthViewModel: ObservableObject {
     /// "Confirm date of birth" step. RootView blocks the app while this isn't
     /// `.ready`; the SAME rule is enforced by RLS on the server.
     @Published var gate: AccountGateState = .unknown
+    /// The last status the server returned (booleans only) — e.g. whether this
+    /// account's phone is verified, for Account -> Security.
+    @Published var gateStatus: AccountGateStatus?
 
     /// True whenever there's a restored session but Face ID app-lock (see
     /// BiometricAuthService) hasn't cleared it yet this launch. RootView
@@ -73,6 +76,7 @@ final class AuthViewModel: ObservableObject {
                     self.profile = nil
                     self.isLocked = false
                     self.gate = .unknown
+                    self.gateStatus = nil
                 }
                 self.sessionChecked = true
             }

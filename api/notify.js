@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { rejectIfGated } from './_lib/accountGate.js';
 import { getMissingEmailVariables, sendWithGmail } from './_lib/email.js';
 import { getRedirectUrl } from './_lib/authLookup.js';
 import { renderEmail, renderEmailText, escapeHtml } from './_lib/emailTemplate.js';
@@ -612,6 +613,11 @@ export default async function handler(req, res) {
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   const type = getText(body.type);
+
+  // Account gate (migration 123/126): a session that hasn't finished
+  // enrollment / confirmed its date of birth can't trigger notifications
+  // — except the welcome email a brand-new registrant gets before enrolling.
+  if (type !== 'welcome' && (await rejectIfGated(res, token))) return;
 
   switch (type) {
     case 'booking_cancelled': return handleBookingCancelled(req, res, admin, userData, body);
