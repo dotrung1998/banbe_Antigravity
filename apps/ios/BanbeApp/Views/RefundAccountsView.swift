@@ -22,6 +22,9 @@ struct RefundAccountsView: View {
     @State private var confirmDeleteID: UUID?
     @State private var savedFlash = false
     @State private var openMenuID: UUID?
+    /// A QR chosen while ADDING an account (it has no id to attach to yet);
+    /// uploaded right after the account itself is saved.
+    @State private var pendingQR: PaymentQR.Prepared?
 
     private var canSave: Bool {
         !bank.trimmingCharacters(in: .whitespaces).isEmpty
@@ -31,12 +34,12 @@ struct RefundAccountsView: View {
     }
 
     private func openAddForm() {
-        formOpen = true; editingID = nil; label = ""; bank = ""; account = ""; holder = ""; note = ""
+        formOpen = true; editingID = nil; label = ""; bank = ""; account = ""; holder = ""; note = ""; pendingQR = nil
         setDefault = app.refundDestinations.isEmpty; confirmed = false
     }
     private func openEditForm(_ d: RefundDestination) {
         formOpen = true; editingID = d.id; label = d.label ?? ""; bank = d.bankName; account = d.accountNumber
-        holder = d.accountHolderName; note = d.transferNote ?? ""; setDefault = d.isDefault; confirmed = false
+        holder = d.accountHolderName; note = d.transferNote ?? ""; setDefault = d.isDefault; confirmed = false; pendingQR = nil
     }
 
     private func doSave() {
@@ -49,6 +52,8 @@ struct RefundAccountsView: View {
                 transferNote: note.trimmingCharacters(in: .whitespaces), setDefault: setDefault, confirmed: confirmed
             )
             guard let newID else { return }
+            if let pendingQR { await app.uploadRefundDestinationQR(newID, pendingQR) }
+            pendingQR = nil
             formOpen = false
             savedFlash = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { savedFlash = false }
@@ -194,6 +199,10 @@ struct RefundAccountsView: View {
                     .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
             }
             Spacer(minLength: 8)
+            if app.refundDestinationQR[d.id] != nil {
+                Image(systemName: "qrcode").font(.system(size: 13)).foregroundStyle(app.palette.ink.opacity(0.55))
+                    .accessibilityLabel(app.T("Có mã QR", "Has QR code"))
+            }
             if d.isDefault {
                 Text(app.T("Mặc định", "Default")).font(.system(size: 11, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.55))
             } else {
@@ -237,6 +246,39 @@ struct RefundAccountsView: View {
         .frame(height: 92, alignment: .top)
     }
 
+    /// Optional QR for this account (VietQR / MoMo / Zelle / Venmo …). The host
+    /// who owes the refund sees it, and can press and hold it to open their
+    /// payment app and pay without a second device.
+    private var qrSection: some View {
+        let existing = editingID.flatMap { app.refundDestinationQR[$0] }
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(app.T("Mã QR nhận tiền (không bắt buộc)", "Receiving QR code (optional)"))
+                .font(.system(size: 12, weight: .semibold))
+            Text(app.T("Thêm mã QR của tài khoản/ví này để người tổ chức hoàn tiền nhanh hơn: họ chỉ cần nhấn giữ mã để mở app thanh toán.",
+                       "Add this account's or wallet's QR so the host can refund you faster: they just press and hold the code to open their payment app."))
+                .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+            if pendingQR != nil {
+                Label(app.T("Đã chọn mã QR — sẽ lưu cùng tài khoản.", "QR chosen — it will be saved with the account."),
+                      systemImage: "checkmark.circle")
+                    .font(.system(size: 12))
+            } else if let existing, !existing.isEmpty {
+                PaymentQRImageView(bucket: "refund-qr", path: existing.path, payload: existing.payload, size: 150, showHint: false)
+                    .accessibilityIdentifier("refund.accountQR")
+            }
+            PaymentQRUploadControl(
+                hasQR: pendingQR != nil || !(existing?.isEmpty ?? true),
+                busy: app.refundDestinationQRBusy,
+                onPrepared: { prepared in
+                    if let id = editingID { await app.uploadRefundDestinationQR(id, prepared) } else { pendingQR = prepared }
+                },
+                onRemove: {
+                    if pendingQR != nil { pendingQR = nil }
+                    else if let id = editingID { Task { await app.removeRefundDestinationQR(id) } }
+                }
+            )
+        }
+    }
+
     private var formView: some View {
         VStack(alignment: .leading, spacing: 8) {
             TextField(app.T("Nhãn (VD: Tài khoản chính)", "Label (e.g. Main account)"), text: $label)
@@ -250,6 +292,7 @@ struct RefundAccountsView: View {
                 .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
             TextField(app.T("Ghi chú (không bắt buộc)", "Note (optional)"), text: $note)
                 .font(.system(size: 13)).padding(10).background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+            qrSection
             Toggle(isOn: $setDefault) {
                 Text(app.T("Đặt làm tài khoản mặc định", "Set as default account")).font(.system(size: 12))
             }

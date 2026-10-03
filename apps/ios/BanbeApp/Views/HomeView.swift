@@ -231,7 +231,6 @@ struct HomeView: View {
         // It therefore can never scroll away or get clipped by the feed's
         // own content, matching this ticket's "outside any scrolling/
         // animated containing block" requirement.
-        .overlay(alignment: .bottomTrailing) { HomeSearchFabView() }
     }
 
     /// TASK 4 (2026-09-22 nineteenth follow-up) — real root cause,
@@ -382,6 +381,10 @@ struct HomeView: View {
                         .foregroundStyle(app.palette.ink)
                 }
                 Spacer(minLength: 0)
+                // Search lives in the header's top-right corner now — part
+                // of the fixed header (a sibling above the feed's scroll
+                // view), so it is always visible, never hidden on scroll.
+                HomeSearchButton()
             }
             HStack {
                 Spacer(minLength: 0)
@@ -395,7 +398,7 @@ struct HomeView: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         app.toggleLang()
                     }
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 13, weight: .semibold))
                         .padding(.horizontal, 12).padding(.vertical, 7)
                         .background { homeGlassCapsule() }
                         .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
@@ -410,7 +413,7 @@ struct HomeView: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         app.openArea()
                     }
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 13, weight: .semibold))
                     .padding(.horizontal, 12).padding(.vertical, 7)
                     .background { homeGlassCapsule() }
                     .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
@@ -430,7 +433,7 @@ struct HomeView: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         app.pickTheme(app.theme == "dark" ? "light" : "dark")
                     }
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 13, weight: .semibold))
                     .padding(.horizontal, 12).padding(.vertical, 7)
                     .background { homeGlassCapsule() }
                     .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
@@ -651,6 +654,19 @@ struct HomeView: View {
         // draws outside it. Still clipped by the feed's own vertical
         // ScrollView as it scrolls away, exactly like the ring.
         .scrollClipDisabled()
+        // The story row owns horizontal scrolling. Register its real bounds
+        // (the scroller itself — before the top clearance padding below) in
+        // the same root coordinate space tabSwipeGesture uses, exactly like
+        // "Your events" does, so a swipe that starts on a story ring scrolls
+        // the row and never commits Home -> Map.
+        .background {
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: RootGestureExclusionZonePreferenceKey.self,
+                    value: ["homeStories": geo.frame(in: .named("rootGesture"))]
+                )
+            }
+        }
         // Extra top clearance (2026-09-29 follow-up, real-device report) —
         // the teaser bubble grows upward from the ring's centre (see the
         // comment above) and, when little/nothing renders above this row
@@ -1231,58 +1247,45 @@ private struct PulseRingGlyph: View {
     }
 }
 
-/// Home search relocation (2026-09-28 follow-up) — the floating, lower-right,
-/// above-the-dock search button, iOS equivalent of web's `HomeSearchFab`
-/// (src/screens/Home.jsx). Overlaid on the WHOLE `ScreenScaffold` from
-/// `HomeView.body`'s own modifier chain (see that call site's doc comment),
-/// never nested inside the ScrollView content closure — so it can't scroll
-/// away or get clipped, matching web's "true sibling, not a descendant of
-/// anything animated/scrolling" fix.
-///
-/// Styling reuses `DockCreateButtonView`'s own verbatim material/stroke/
-/// shadow constants (`.thinMaterial` circle, ink-stroke opacity 0.06, shadow
-/// opacity 0.16/radius 14/y 6) rather than inventing a new floating-button
-/// look — the same "reuse, don't reinvent" fix that button's own doc comment
-/// already applied once in this codebase.
-///
-/// Position reuses the dock's OWN reference constants directly
-/// (`BottomTabBar.barHeight`/`bottomOffset`/`dockMargin`) instead of a new
-/// magic number, offsetting straight up from the dock's own top edge by a
-/// fixed 14pt clearance — the same three constants (and the same `+ 14`
-/// clearance) web's `HomeSearchFab` uses via `BAR_HEIGHT + BAR_BOTTOM_OFFSET
-/// + 14` (BottomTabBar.jsx), so both platforms place it at the identical
-/// relative spot above the dock.
-///
-/// Hide-on-scroll reuses `app.bottomBarCollapsed` — the SAME shared,
-/// already-scroll-driven signal the dock itself shrinks on
-/// (BottomTabBar.swift's `.scaleEffect`) — instead of a second, bespoke
-/// scroll listener the way web's `searchFabHidden` effect had to invent for
-/// itself (web has no equivalent shared signal available to a screen
-/// component; iOS already does, via `ScreenScaffold(tracksBottomBarScroll:
-/// true)`, which `HomeView` already opts into).
-struct HomeSearchFabView: View {
+/// Home's search button — top-right of the fixed header, always visible
+/// (it no longer floats above the dock or hides when the feed scrolls), in a
+/// larger Liquid Glass circle so it reads clearly against the paper.
+struct HomeSearchButton: View {
     @EnvironmentObject private var app: AppState
+
+    private static let size: CGFloat = 52
 
     var body: some View {
         SwipeSafeButton {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             app.openEventSearch()
         } label: {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: 21, weight: .semibold))
                 .foregroundStyle(app.palette.ink)
-                .frame(width: 46, height: 46)
-                .background(.thinMaterial, in: Circle())
-                .overlay(Circle().strokeBorder(app.palette.ink.opacity(0.06)))
-                .shadow(color: .black.opacity(0.16), radius: 14, x: 0, y: 6)
+                .frame(width: Self.size, height: Self.size)
+                .background { glass }
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .scaleEffect(app.bottomBarCollapsed ? 0.9 : 1, anchor: .center)
-        .opacity(app.bottomBarCollapsed ? 0 : 1)
-        .allowsHitTesting(!app.bottomBarCollapsed)
-        .animation(.easeInOut(duration: 0.2), value: app.bottomBarCollapsed)
-        .padding(.trailing, BottomTabBar.dockMargin)
-        .padding(.bottom, BottomTabBar.barHeight + BottomTabBar.bottomOffset + 14)
         .accessibilityIdentifier("home.searchFab")
         .accessibilityLabel(app.T("Tìm sự kiện", "Search events"))
+    }
+
+    @ViewBuilder
+    private var glass: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer {
+                Circle()
+                    .fill(.clear)
+                    .glassEffect(.regular.interactive(), in: Circle())
+            }
+            .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+        } else {
+            Circle()
+                .fill(.thinMaterial)
+                .overlay(Circle().strokeBorder(app.palette.ink.opacity(0.10)))
+                .shadow(color: .black.opacity(0.14), radius: 10, x: 0, y: 4)
+        }
     }
 }

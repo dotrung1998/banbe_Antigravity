@@ -52,7 +52,7 @@ struct AreaSheetView: View {
     private var areaContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Khu vực").font(.system(size: 11.5, weight: .semibold))
+                Text(app.T("Khu vực", "Location")).font(.system(size: 11.5, weight: .semibold))
                 Spacer()
                 Button { app.areaAsking = false } label: {
                     Image(systemName: "xmark")
@@ -66,8 +66,8 @@ struct AreaSheetView: View {
             LocationPickerList { app.pickArea($0) }
 
             Button(app.located == true
-                   ? "Tắt vị trí ▪︎ đang hiển thị khoảng cách"
-                   : "Dùng vị trí của tôi để xem khoảng cách") {
+                   ? app.T("Tắt vị trí ▪︎ đang hiển thị khoảng cách", "Turn off location ▪︎ showing distance")
+                   : app.T("Dùng vị trí của tôi để xem khoảng cách", "Use my location to show distance")) {
                 if app.located == true { app.denyLocation() } else { app.allowLocation() }
             }
             .font(.system(size: 13))

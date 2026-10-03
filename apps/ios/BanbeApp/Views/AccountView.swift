@@ -111,6 +111,9 @@ struct AccountView: View {
     // only ever set by the user's own scrolling, never by any of this
     // screen's data loads.
     @State private var didAttemptScrollRestore = false
+    @State private var searchOpen = false
+    @State private var searchQuery = ""
+    @FocusState private var searchFocused: Bool
     @State private var imageCacheClearedAt: Date?
 
     var body: some View {
@@ -153,7 +156,7 @@ struct AccountView: View {
                     if app.myOrganizerID != nil { await app.loadMyOrgStats() }
                 }
             }) {
-                accountContent
+                if searchOpen { accountSearchResults } else { accountContent }
             }
         }
         }
@@ -229,11 +232,41 @@ struct AccountView: View {
             // as its own row above it) — matches Home's own header
             // wordmark (HomeView.swift); Notifications/Messages got
             // the same addition in this pass.
-            BanbeLogo(kind: .wordmark, width: BanbeLogo.headerWordmarkWidth)
-            Text(app.T("Tài khoản", "Account")).font(BanbeTheme.display(27))
-            Spacer()
-            SwipeSafeButton { app.goHome() } label: { Text(app.T("Xong", "Done")) }
-                .font(.system(size: 12)).buttonStyle(.plain)
+            if searchOpen {
+                TextField(app.T("Tìm trong tài khoản…", "Search Account…"), text: $searchQuery)
+                    .font(.system(size: 13.5))
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(app.palette.field, in: Capsule())
+                    .foregroundStyle(app.palette.ink)
+                    .focused($searchFocused)
+                    .submitLabel(.search)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .accessibilityIdentifier("account.searchInput")
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+            } else {
+                BanbeLogo(kind: .wordmark, width: BanbeLogo.headerWordmarkWidth)
+                Text(app.T("Tài khoản", "Account")).font(BanbeTheme.display(27))
+                Spacer()
+            }
+            // Search (replaces "Done") — same icon-over-label button as
+            // Messages/Notifications.
+            SwipeSafeButton {
+                if searchOpen { searchQuery = "" }
+                withAnimation(.easeInOut(duration: 0.22)) { searchOpen.toggle() }
+                searchFocused = searchOpen
+            } label: {
+                VStack(spacing: 2) {
+                    Image(systemName: searchOpen ? "xmark" : "magnifyingglass")
+                        .font(.system(size: 14))
+                        .frame(width: 34, height: 34)
+                        .background(app.palette.field, in: Circle())
+                    Text(searchOpen ? app.T("Đóng", "Close") : app.T("Tìm", "Search"))
+                        .font(.system(size: 9.5)).opacity(0.7)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("account.searchToggle")
         }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 20)
@@ -583,15 +616,9 @@ struct AccountView: View {
             // reports row, then this card).
             orgProfileCard()
             hostManagementRows
-            // Account IA reorder pass — actionable content first: Reports
-            // moved AFTER the group cards (was: identity card, Reports,
-            // then the group card). Same destination/identifier, only
-            // position changed.
-            if app.myOrganizerID != nil {
-                reportsRow(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsHost") {
-                    app.openReports(scope: "host", organizerID: app.myOrganizerID, back: .profile)
-                }
-            }
+            // Metrics & Reports now lives as the last row INSIDE
+            // `hostManagementRows`' grouped card (same pattern as Personal's
+            // "Your Activity"), under its own "Host Management" header.
             } // app.accountTab == "host"
 
             if app.accountTab == "admin" {
@@ -600,9 +627,6 @@ struct AccountView: View {
             sectionHeader(app.T("Quản Trị", "Administration"))
                 .accessibilityIdentifier("account.section.admin")
             adminSection
-            reportsRow(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsAdmin") {
-                app.openReports(scope: "admin", back: .profile)
-            }
             } // app.accountTab == "admin"
 
 
@@ -689,6 +713,172 @@ struct AccountView: View {
                 if highlightedEventCreditId == target { highlightedEventCreditId = nil }
             }
         }
+    }
+
+    // MARK: Search
+
+    private func openGroup(_ key: String) {
+        app.accountGroupKey = key
+        app.screen = .accountGroup
+    }
+
+    /// Every destination reachable from Account, tagged with its tab
+    /// (Personal / Host / Admin) and the section it lives under. Host and
+    /// Admin entries only exist for accounts that actually have those tabs.
+    /// `keywords` adds the words people might type that the title alone
+    /// wouldn't match (both languages, any diacritics — matching ignores
+    /// accents and case).
+    private var accountSearchEntries: [AccountSearchEntry] {
+        func e(_ id: String, _ tab: String, _ secVi: String, _ secEn: String, _ vi: String, _ en: String, _ icon: String, _ kw: String, _ action: @escaping () -> Void) -> AccountSearchEntry {
+            AccountSearchEntry(id: id, tab: tab, secVi: secVi, secEn: secEn, vi: vi, en: en, icon: icon, keywords: kw, action: action)
+        }
+        let actVi = "Hoạt Động Của Bạn", actEn = "Your Activity"
+        let setVi = "Tài Khoản & Cài Đặt", setEn = "Account & Settings"
+        var list: [AccountSearchEntry] = [
+            e("tickets", "personal", actVi, actEn, "Vé & Đặt Chỗ", "Tickets & Bookings", "calendar.badge.checkmark",
+              "vé ticket booking đặt chỗ giữ chỗ hold qr check-in đã hủy hết hạn cancelled expired my tickets vé của tôi") { openGroup("activity") },
+            e("going", "personal", actVi, actEn, "Đang tham gia", "Going", "checkmark.circle",
+              "attending sắp tham gia sự kiện của tôi my events upcoming") { app.goGoingList() },
+            e("saved", "personal", actVi, actEn, "Sự Kiện Đã Lưu", "Saved Events", "bookmark",
+              "lưu yêu thích favorites favourite bookmark wishlist") { app.goSavedList() },
+            e("past", "personal", actVi, actEn, "Sự Kiện Quá Khứ", "Past Events", "calendar.badge.checkmark",
+              "đã hoàn thành completed ended lịch sử history đã qua") { app.goCompletedList(back: .profile) },
+            e("payments", "personal", actVi, actEn, "Thanh Toán & Giấy Tờ", "Payments & Documents", "banknote",
+              "thanh toán payment tiền money giấy tờ documents") { openGroup("payments") },
+            e("invoices", "personal", actVi, actEn, "Hoá đơn", "Invoices", "doc.text",
+              "hóa đơn invoice bill tài liệu pdf") { app.openDocuments(kind: "invoice", role: "guest", back: .profile) },
+            e("receipts", "personal", actVi, actEn, "Biên nhận", "Receipts", "receipt",
+              "receipt biên lai chứng từ pdf") { app.openDocuments(kind: "receipt", role: "guest", back: .profile) },
+            e("refundAccounts", "personal", actVi, actEn, "Tài khoản thanh toán & nhận hoàn tiền", "Payment & refund accounts", "banknote",
+              "ngân hàng bank tài khoản account số tài khoản momo chuyển khoản hoàn tiền refund destination") { app.openRefundAccounts(back: .profile) },
+            e("refunds", "personal", actVi, actEn, "Hoàn tiền", "Refunds", "checklist",
+              "refund hoàn trả trả lại tiền hủy sự kiện tranh chấp dispute") { app.openMyRefunds(back: .profile) },
+            e("reportsPersonal", "personal", actVi, actEn, "Số Liệu & Báo Cáo", "Metrics & Reports", "chart.bar.doc.horizontal",
+              "thống kê statistics analytics báo cáo report số liệu insights") { app.openReports(scope: "personal", back: .profile) },
+            e("profile", "personal", setVi, setEn, "Hồ Sơ Cá Nhân", "Personal Profile", "person.crop.circle",
+              "profile hồ sơ tên name avatar ảnh đại diện handle chỉnh sửa edit public trang cá nhân") {
+                  if let handle = app.user?.handle, !handle.isEmpty { app.openPublicProfile(handle: handle, back: .profile) }
+              },
+            e("preferences", "personal", setVi, setEn, "Tùy Chỉnh", "App Preferences", "slider.horizontal.3",
+              "settings cài đặt tùy chỉnh preferences") { openGroup("preferences") },
+            e("language", "personal", setVi, setEn, "Ngôn ngữ & Hiển thị", "Language & Appearance", "slider.horizontal.3",
+              "ngôn ngữ language tiếng việt english vn en theme giao diện sáng tối dark light mode hiển thị appearance kính glass độ trong suốt") { app.openPreferences() },
+            e("security", "personal", setVi, setEn, "Bảo mật", "Security", "lock.shield",
+              "security mật khẩu password face id sinh trắc biometric đăng nhập login khóa lock đổi mật khẩu") { app.openSecurity() },
+            e("help", "personal", setVi, setEn, "Trợ Giúp & Pháp Lý", "Help & Legal", "lock.shield",
+              "help trợ giúp hỗ trợ support policy chính sách điều khoản terms privacy quyền riêng tư pháp lý legal liên hệ contact") { app.openPolicy() },
+            e("organizerMode", "personal", "Tổ Chức", "Hosting", "Chế độ tổ chức", "Organizer mode", "person.2.badge.gearshape",
+              "host tổ chức organizer bật tắt toggle tạo sự kiện create event quản lý manage") { app.toggleOrganizerMode() },
+            e("clearCache", "personal", setVi, setEn, "Xoá bộ nhớ đệm hình ảnh", "Clear Image Cache", "photo.stack",
+              "cache bộ nhớ đệm dung lượng storage ảnh hình image xóa clear") { PhotoLoader.clearCache(); imageCacheClearedAt = Date() },
+            e("signOut", "personal", setVi, setEn, app.isSignedIn ? "Đăng xuất" : "Đăng nhập", app.isSignedIn ? "Sign out" : "Sign in", "rectangle.portrait.and.arrow.right",
+              "logout log out thoát đăng xuất đăng nhập sign in login tài khoản account") {
+                  if app.isSignedIn { Task { await app.signOut() } } else { app.goLogin() }
+              },
+        ]
+        if app.organizerMode && app.canHost {
+            let hVi = "Tổ Chức", hEn = "Host"
+            list += [
+                e("hostOps", "host", hVi, hEn, "Vận Hành & Thanh Toán Tổ Chức", "Event Operations & Payments", "checklist",
+                  "vận hành operations thanh toán payments tổ chức host sự kiện") { openGroup("hostOps") },
+                e("verifications", "host", hVi, hEn, "Chờ xác nhận thanh toán", "Awaiting Verification", "checklist",
+                  "xác nhận verify verification thanh toán chờ pending người mua guest bằng chứng proof chuyển khoản") { app.openVerifications(back: .profile) },
+                e("hostRefunds", "host", hVi, hEn, "Hoàn tiền", "Refunds", "banknote",
+                  "refund hoàn trả hủy sự kiện cancel batch đã gửi mark sent tranh chấp dispute") { app.openVerificationsRefunds(back: .profile) },
+                e("payout", "host", hVi, hEn, "Nhận thanh toán", "Getting Paid", "creditcard",
+                  "payout nhận tiền ngân hàng bank thanh toán doanh thu revenue rút tiền") { app.openPayout() },
+                e("invoicesIssued", "host", hVi, hEn, "Hoá đơn đã phát hành", "Invoices Issued", "doc.text",
+                  "hóa đơn invoice phát hành tải lên upload tài liệu") { app.openDocuments(kind: "invoice", role: "host", back: .profile) },
+                e("receiptsIssued", "host", hVi, hEn, "Biên nhận đã phát hành", "Receipts Issued", "receipt",
+                  "biên lai receipt phát hành tải lên upload tài liệu") { app.openDocuments(kind: "receipt", role: "host", back: .profile) },
+                e("team", "host", hVi, hEn, "Hồ Sơ & Team Tổ Chức", "Organizer Profile & Team", "person.3",
+                  "team đội nhóm thành viên member mời invite hồ sơ tổ chức organizer profile đóng góp contribution credit") { openGroup("team") },
+                e("surveys", "host", hVi, hEn, "Khảo Sát & Ý Tưởng Sự Kiện", "Surveys & Event Ideas", "lightbulb",
+                  "survey khảo sát ý tưởng idea góp ý feedback câu hỏi form") { app.screen = .surveysHosting },
+                e("reportsHost", "host", hVi, hEn, "Số Liệu & Báo Cáo", "Metrics & Reports", "chart.bar.doc.horizontal",
+                  "thống kê statistics analytics báo cáo report số liệu doanh thu") { app.openReports(scope: "host", organizerID: app.myOrganizerID, back: .profile) },
+            ]
+        }
+        if app.accountType == "admin" {
+            let aVi = "Quản Trị", aEn = "Administration"
+            list += [
+                e("adminReview", "admin", aVi, aEn, "Duyệt & Kiểm Duyệt", "Review & Moderation", "exclamationmark.shield",
+                  "duyệt review kiểm duyệt moderation approve phê duyệt") { openGroup("adminReview") },
+                e("disputes", "admin", aVi, aEn, "Tranh Chấp Thanh Toán", "Payment Disputes", "exclamationmark.bubble",
+                  "tranh chấp dispute khiếu nại escalation thanh toán payment dashboard bảng điều khiển bảng quản trị admin panel") { app.openAdminDashboard() },
+                e("pendingEvents", "admin", aVi, aEn, "Sự Kiện Chờ Duyệt", "Pending Events", "exclamationmark.shield",
+                  "sự kiện chờ duyệt pending events approve từ chối reject") { app.openAdminEvents() },
+                e("adminTeam", "admin", aVi, aEn, "Đội Ngũ Quản Trị", "Admin Team", "person.3.fill",
+                  "admin quản trị viên mời invite thành viên team đội ngũ") { openGroup("adminTeam") },
+                e("reportsAdmin", "admin", aVi, aEn, "Số Liệu & Báo Cáo", "Metrics & Reports", "chart.bar.doc.horizontal",
+                  "thống kê statistics analytics báo cáo report số liệu") { app.openReports(scope: "admin", back: .profile) },
+            ]
+        }
+        return list
+    }
+
+    /// Search results, grouped under the tab they belong to (Personal /
+    /// Host / Admin) in the same section-header + grouped-card style as
+    /// "Your Activity" / "Account & Settings".
+    private var accountSearchResults: some View {
+        let entries = accountSearchEntries
+        let tabTitles: [(key: String, vi: String, en: String)] = [
+            ("personal", "Cá Nhân", "Personal"), ("host", "Tổ Chức", "Host"), ("admin", "Quản Trị", "Admin"),
+        ]
+        let groups: [(title: String, items: [AccountSearchEntry])] = tabTitles.compactMap { t in
+            let items = entries.filter { $0.tab == t.key && $0.matches(searchQuery, tabVi: t.vi, tabEn: t.en) }
+            return items.isEmpty ? nil : (app.T(t.vi, t.en), items)
+        }
+        return VStack(alignment: .leading, spacing: 0) {
+            if groups.isEmpty {
+                Text(app.T("Không tìm thấy kết quả phù hợp.", "No matching results."))
+                    .font(.system(size: 13))
+                    .opacity(0.7)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 40)
+                    .accessibilityIdentifier("account.search.empty")
+            }
+            ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+                sectionHeader(group.title, topPadding: index == 0 ? 14 : 22)
+                    .accessibilityIdentifier("account.search.section")
+                groupedContainer {
+                    ForEach(Array(group.items.enumerated()), id: \.element.id) { i, entry in
+                        SwipeSafeButton {
+                            let tab = entry.tab
+                            searchFocused = false
+                            searchQuery = ""
+                            withAnimation(.easeInOut(duration: 0.22)) { searchOpen = false }
+                            app.accountTab = tab
+                            entry.action()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: entry.icon)
+                                    .font(.system(size: 16, weight: .medium))
+                                    .frame(width: 22, height: 22)
+                                    .opacity(0.72)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(app.T(entry.vi, entry.en)).font(.system(size: 14))
+                                    Text(app.T(entry.secVi, entry.secEn))
+                                        .font(.system(size: 11)).opacity(0.55)
+                                }
+                                Spacer()
+                                Text("›").font(.system(size: 15)).opacity(0.85)
+                            }
+                            .foregroundStyle(app.palette.ink)
+                            .padding(.horizontal, 16).padding(.vertical, 12)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("account.search.\(entry.id)")
+                        if i < group.items.count - 1 { groupDivider() }
+                    }
+                }
+                .padding(.top, 10)
+            }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 100)
     }
 
     private func syncAccountTabToRole() {
@@ -1199,6 +1389,8 @@ struct AccountView: View {
             // container, same styling source as before (this group WAS
             // already the reference — now actually applied to itself too).
             if app.canHost {
+                sectionHeader(app.T("Quản Lý Tổ Chức", "Host Management"), topPadding: 22)
+                    .accessibilityIdentifier("account.section.hostManagement")
                 groupedContainer {
                     groupCardRow(
                         groupKey: "hostOps", icon: "checklist",
@@ -1252,8 +1444,14 @@ struct AccountView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("account.group.surveys")
+                    if app.myOrganizerID != nil {
+                        groupDivider()
+                        reportsGroupRow(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsHost") {
+                            app.openReports(scope: "host", organizerID: app.myOrganizerID, back: .profile)
+                        }
+                    }
                 }
-                .padding(.top, 22)
+                .padding(.top, 14)
             }
         }
     }
@@ -1288,8 +1486,12 @@ struct AccountView: View {
             // same glyph the Host tab's UNRELATED "Organizer Profile &
             // Team" row uses) — distinct glyph for a distinct destination.
             groupCardRow(groupKey: "adminTeam", icon: "person.3.fill", label: app.T("Đội Ngũ Quản Trị", "Admin Team"), badge: app.adminInvites.filter { $0.status == "pending" }.count)
+            groupDivider()
+            reportsGroupRow(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsAdmin") {
+                app.openReports(scope: "admin", back: .profile)
+            }
         }
-        .padding(.top, 22)
+        .padding(.top, 14)
     }
 
     /// Host tab's OWN rounded profile card (Stage D) — organizer avatar/
@@ -1454,5 +1656,38 @@ struct StoryCreatePreviewView: View {
                 .padding(.horizontal, 22).padding(.top, 16).padding(.bottom, 34)
             }
         }
+    }
+}
+
+
+/// One searchable destination in the Account area. `vi`/`en` are the
+/// visible titles; matching looks at BOTH languages plus `keywords`, the
+/// section and the tab's own title, ignoring case and diacritics, so e.g.
+/// "hoa don", "Hóa đơn" and "invoice" all find Invoices.
+struct AccountSearchEntry: Identifiable {
+    let id: String
+    let tab: String
+    let secVi: String
+    let secEn: String
+    let vi: String
+    let en: String
+    let icon: String
+    let keywords: String
+    let action: () -> Void
+
+    /// Lowercased, accent-stripped (including Vietnamese "đ").
+    static func fold(_ s: String) -> String {
+        s.replacingOccurrences(of: "đ", with: "d")
+            .replacingOccurrences(of: "Đ", with: "d")
+            .folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: Locale(identifier: "vi_VN"))
+    }
+
+    /// Every word typed must appear somewhere in the entry's text; an empty
+    /// query matches everything.
+    func matches(_ query: String, tabVi: String, tabEn: String) -> Bool {
+        let tokens = Self.fold(query).split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        guard !tokens.isEmpty else { return true }
+        let haystack = Self.fold([vi, en, secVi, secEn, tabVi, tabEn, keywords].joined(separator: " "))
+        return tokens.allSatisfy { haystack.contains($0) }
     }
 }

@@ -613,6 +613,7 @@ struct AttendanceView: View {
                         Text(app.T("Khách chưa chọn tài khoản nhận hoàn tiền.", "The guest hasn't chosen a refund destination yet."))
                             .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
                     }
+                    if let dest = c.destination { RefundRecipientQRView(snapshot: dest) }
                     if let ref = c.claim.transferReference {
                         Text("REF \(ref)").font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                     }

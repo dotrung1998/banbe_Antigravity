@@ -227,8 +227,10 @@ extension AppState {
 
     func openPayout() {
         payoutError = ""
+        payoutQRError = ""
         payoutSaved = false
         screen = .payout
+        Task { await loadPayoutQR() }
         Task {
             guard let orgID = myOrganizerIDs.first else { return }
             do {
@@ -1264,6 +1266,7 @@ extension AppState {
             // reorderRefundDestinations() is actively managing.
             guard !refundDestinationsReordering else { return }
             refundDestinations = rows
+            await loadRefundDestinationQRs()
         } catch {
             print("loadRefundDestinations failed:", error)
         }
@@ -2038,7 +2041,13 @@ struct RecipientSnapshot: Codable, Equatable {
     var bankName: String
     var accountNumber: String
     var accountHolderName: String
+    /// Uploaded QR frozen into the snapshot (migration 122) — nil for older
+    /// snapshots and for accounts without one.
+    var qrPath: String?
+    var qrPayload: String?
     enum CodingKeys: String, CodingKey {
+        case qrPath = "qr_path"
+        case qrPayload = "qr_payload"
         case label
         case bankName = "bank_name"
         case accountNumber = "account_number"

@@ -479,8 +479,6 @@ struct AccountGroupView: View {
         VStack(spacing: 0) {
             row(app.T("Tranh Chấp Thanh Toán", "Payment Disputes"), identifier: "admin.disputes", icon: "exclamationmark.bubble", trailing: "›") { app.openAdminDashboard() }
             Divider().overlay(app.palette.rule)
-            row(app.T("Bảng quản trị", "Admin Panel"), identifier: "admin.panel", icon: "square.grid.2x2", trailing: "›") { app.openAdminDashboard() }
-            Divider().overlay(app.palette.rule)
             row(app.T("Sự Kiện Chờ Duyệt", "Pending Events"), identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›", badge: app.pendingEventsCount) { app.openAdminEvents() }
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))

@@ -251,6 +251,10 @@ struct VerificationsView: View {
                 Text(formatVnd(claim.amountVnd)).font(BanbeTheme.display(19))
             }
 
+            if let snapshot = claim.recipientSnapshot, claim.hasValidDestination {
+                RefundRecipientQRView(snapshot: snapshot)
+            }
+
             if claim.status == "disputed" {
                 // A disputed claim is not something the host can silently
                 // overwrite as "sent" — no action button here.

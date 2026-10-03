@@ -432,7 +432,9 @@ final class BottomTabBarOverlay {
             // the fresh `dockVisible = true` default on first launch), then
             // animate into place.
             window?.isHidden = false
-            window?.isUserInteractionEnabled = false
+            // Tappable immediately — the old 0.32s dead window after every
+            // show swallowed early taps ("dock doesn't respond").
+            window?.isUserInteractionEnabled = true
             withAnimation(Self.transitionAnimation) { appState?.dockVisible = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.transitionDuration) { [weak self] in
                 guard let self, self.visibilityToken == token else { return }

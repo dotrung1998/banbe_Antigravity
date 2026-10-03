@@ -203,6 +203,8 @@ struct BottomTabBar: View {
     // layout/alignment case, not anything glass- or drag-related).
     @State private var dragStartX: CGFloat?
     @State private var stretchScaleX: CGFloat = 1
+    @State private var pressScale: CGFloat = 1
+    @GestureState private var touchActive = false
     @State private var stretchAnchor: UnitPoint = .center
 
     // Real Liquid Glass pass (2026-09-28 follow-up #2, real-iPhone report) —
@@ -253,16 +255,16 @@ struct BottomTabBar: View {
         }
     }
 
-    private func hitTest(_ x: CGFloat) -> String? {
-        for item in items {
-            if let frame = itemFrames[item.id], x >= frame.minX, x <= frame.maxX { return item.id }
-        }
-        // A drag that slides past either end still resolves to that end's
-        // tab, rather than losing the highlight — matches a real segmented
-        // control's own edge behavior.
-        if let first = items.first, let frame = itemFrames[first.id], x < frame.minX { return first.id }
-        if let last = items.last, let frame = itemFrames[last.id], x > frame.maxX { return last.id }
-        return nil
+    /// Touch x -> tab, from the bar's OWN live width (every item is an equal
+    /// 1/count slice). Replaces the old lookup through `itemFrames`, a cached
+    /// anchor-preference snapshot that could be empty/stale — which made a
+    /// tap resolve to no tab at all ("works only intermittently"). Positions
+    /// past either end still resolve to that end's tab.
+    private func hitTest(_ x: CGFloat, barWidth: CGFloat) -> String? {
+        guard !items.isEmpty, barWidth > 0 else { return nil }
+        let slice = barWidth / CGFloat(items.count)
+        let i = min(items.count - 1, max(0, Int(x / slice)))
+        return items[i].id
     }
 
     // Continuous "index space" position for a raw touch x — 0 at Home's own
@@ -278,80 +280,53 @@ struct BottomTabBar: View {
         return min(CGFloat(items.count - 1), max(0, raw))
     }
 
+    /// Photos-style scrub (iOS 26): touching down lifts/enlarges the glass
+    /// pill, which then follows the finger across the tabs (stretching a
+    /// little with swipe speed) and settles on the nearest tab on release.
+    /// `minimumDistance: 0` keeps a plain tap working: it lands on, and
+    /// navigates to, whichever tab it started on.
     private func scrubGesture(barWidth: CGFloat) -> some Gesture {
-        // minimumDistance: 0 so this also fires for a plain tap-and-release
-        // — a tap that never moves still lands on, and navigates to,
-        // whichever tab it started on.
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .updating($touchActive) { _, state, _ in state = true }
             .onChanged { value in
                 if !isDragging {
                     isDragging = true
                     dragStartX = value.location.x
+                    if !reduceMotion {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) { pressScale = 1.18 }
+                    }
                 }
-                // Requirement 3 (motion-refinement ticket) — verified, not
-                // just assumed: this only ever updates `activeID`, the
-                // purely COSMETIC "which tab looks lit right now" state (it
-                // feeds `tabItem`'s icon opacity/fill and the glass shape's
-                // TARGET position). It never calls an `item.action()` — that
-                // real navigation commit happens exactly once, below, in
-                // `onEnded`. So pausing over a different tab mid-drag can
-                // and should re-light that tab's icon (that's the whole
-                // point of scrub-to-select — live feedback before commit),
-                // but it cannot and does not commit navigation early. Left
-                // exactly as-is.
-                let id = hitTest(value.location.x)
+                let id = hitTest(value.location.x, barWidth: barWidth)
                 if id != activeID { activeID = id }
-                // Still no `withAnimation` here, deliberately — this is the
-                // RAW truth (the fix for "jumps from slot to slot" predates
-                // this pass and still holds), read by `hitTest`/`activeID`
-                // above and by the `.onChange(of: selectionIndexFloat)`
-                // below, which is what now actually owns the shape's
-                // rendered, animated travel — see `renderIndexFloat`'s own
-                // doc comment.
                 dragIndexFloat = indexFloat(for: value.location.x, barWidth: barWidth)
-
-                // Directional stretch cue — fires once per drag, the first
-                // sample that's moved meaningfully (4pt) from where this
-                // drag started, so a drag that never really moves (a tap)
-                // never triggers it.
-                if !reduceMotion, let startX = dragStartX, stretchAnchor == .center {
-                    let travel = value.location.x - startX
-                    if abs(travel) > 4 {
-                        stretchAnchor = travel > 0 ? .leading : .trailing
-                        withAnimation(.spring(response: 0.16, dampingFraction: 0.5)) {
-                            stretchScaleX = 1.14
-                        }
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75).delay(0.1)) {
-                            stretchScaleX = 1
-                        }
+                if !reduceMotion {
+                    // Water-droplet stretch: the faster the swipe, the longer
+                    // (and, in the lens below, slimmer) the pill gets.
+                    withAnimation(.interactiveSpring(response: 0.16, dampingFraction: 0.7)) {
+                        stretchScaleX = 1 + min(1.2, abs(value.velocity.width) / 1200)
                     }
                 }
             }
             .onEnded { value in
-                let id = hitTest(value.location.x)
-                // Motion refinement pass — plain assignment, no
-                // `withAnimation` wrapper here anymore: the render/glide
-                // animation is centralized in the single
-                // `.onChange(of: selectionIndexFloat)` handler in `body`,
-                // which is what actually springs the shape from wherever
-                // the drag let go to the settled tab (still covers a
-                // cancel/outside-release drag springing back — `id` here is
-                // never past the two end tabs, `hitTest` clamps it, same as
-                // before).
+                let id = hitTest(value.location.x, barWidth: barWidth)
                 activeID = id
-                dragIndexFloat = nil
-                // BUG 1 fix: leave the highlight exactly where the drag
-                // landed instead of clearing it to nil — it stays lit on
-                // the tab just navigated to. `isDragging = false` hands
-                // ownership back to syncActiveToScreen(), which is a no-op
-                // here since `activeID` already matches (or will match, the
-                // moment `app.screen` catches up via its own onChange).
-                isDragging = false
-                dragStartX = nil
-                stretchAnchor = .center
-                stretchScaleX = 1
+                finishTouch()
                 if let id, let item = items.first(where: { $0.id == id }) { item.action() }
             }
+    }
+
+    /// Ends a touch: hands the highlight back to the tab just chosen and
+    /// springs the pill back to rest size. Also run when the system cancels
+    /// the gesture (no `onEnded`), so `isDragging` can never get stuck.
+    private func finishTouch() {
+        dragIndexFloat = nil
+        isDragging = false
+        dragStartX = nil
+        stretchAnchor = .center
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.72)) {
+            stretchScaleX = 1
+            pressScale = 1
+        }
     }
 
     // BUG (2026-09-25 iOS fix pass) — root cause of "indicator misaligned
@@ -404,6 +379,14 @@ struct BottomTabBar: View {
     // visible content, at a 44pt+ tap target via the frame below.
     // `accessibilityLabel` keeps VoiceOver announcing the real
     // destination name.
+    /// 1 when the glass pill is exactly over this item, fading to 0 one tab
+    /// away.
+    private func iconProximity(_ item: Item) -> CGFloat {
+        guard let i = items.firstIndex(where: { $0.id == item.id }) else { return 0 }
+        let pill = renderIndexFloat ?? CGFloat(i)
+        return max(0, 1 - abs(CGFloat(i) - pill))
+    }
+
     @ViewBuilder
     private func tabItem(_ item: Item) -> some View {
         let isActive = activeID == item.id
@@ -412,6 +395,8 @@ struct BottomTabBar: View {
             item.icon(app.palette.ink, isActive)
                 .frame(width: iconSize, height: iconSize)
                 .opacity(isActive ? 1 : 0.72)
+                // Icon under the lifted pill swells with it (Photos-style).
+                .scaleEffect(1 + (pressScale - 1) * 1.9 * iconProximity(item))
             if item.badge > 0 {
                 Text(badgeText)
                     .font(.system(size: 9, weight: .bold))
@@ -446,6 +431,10 @@ struct BottomTabBar: View {
             // fraction of `geo.size.width` (never `itemFrames`), so this
             // stays correct through the "+" button appearing/shrinking the
             // row and DockRow's own collapse/expand `scaleEffect`.
+            // Selection lens — behind the icons. (Drawn above them the glass
+            // is near-opaque on the light theme and hides the icon.) It still
+            // grows past the bar's top/bottom while a finger is down, and the
+            // icon over it swells with it.
             if let indexFloat = renderIndexFloat {
                 let count = max(items.count, 1)
                 let tabWidth = geo.size.width / CGFloat(count)
@@ -496,7 +485,7 @@ struct BottomTabBar: View {
                             .fill(.clear)
                             .frame(width: shapeWidth, height: shapeHeight)
                             .glassEffect(.regular.interactive(), in: Capsule())
-                            .scaleEffect(x: stretchScaleX, anchor: stretchAnchor)
+                            .scaleEffect(x: stretchScaleX * (1 + (pressScale - 1) * 1.8), y: (1 + (pressScale - 1) * 3.2) / (1 + (stretchScaleX - 1) * 1.6), anchor: .center)
                             .position(x: x, y: barHeight / 2)
                     }
                     .allowsHitTesting(false)
@@ -594,10 +583,22 @@ struct BottomTabBar: View {
             guard let newValue else { renderIndexFloat = nil; return }
             if reduceMotion {
                 renderIndexFloat = newValue
+            } else if isDragging {
+                // Tight tracking while the finger is down.
+                withAnimation(.interactiveSpring(response: 0.12, dampingFraction: 0.85)) {
+                    renderIndexFloat = newValue
+                }
             } else {
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
                     renderIndexFloat = newValue
                 }
+            }
+        }
+        // System-cancelled touch (no `onEnded`): reset so nothing sticks.
+        .onChange(of: touchActive) { _, active in
+            if !active && isDragging {
+                finishTouch()
+                syncActiveToScreen()
             }
         }
         // BUG 3 follow-up (4d137235 real-device report): a `.zIndex()` set

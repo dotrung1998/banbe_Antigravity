@@ -206,14 +206,24 @@ struct PaymentDetailsView: View {
             } else if phase == .confirmed {
                 paidBlock
             } else if phase == .holding || phase == .pendingVerification {
-                if let payload = VietQR.payload(for: booking) { qrCard(payload) }
+                // Host's own uploaded QR first (US/VN hosts who get paid by
+                // Zelle/Venmo/MoMo/VietQR QR); otherwise the QR generated
+                // from their bank details. Loaded separately and tolerant of
+                // failure — see AppState+PaymentQR.swift.
+                Color.clear.frame(height: 0)
+                    .task(id: booking.eventKey) { await app.loadPayQR(forEventKey: booking.eventKey) }
+                if let qr = app.payQRByEvent[booking.eventKey], !qr.isEmpty {
+                    uploadedQRCard(qr)
+                } else if let payload = VietQR.payload(for: booking) {
+                    qrCard(payload)
+                }
                 if booking.hasAnyPayRail { transferBlock(booking) }
                 referenceBlock(booking)
                 if !booking.payNote.isEmpty {
                     Text(booking.payNote).font(.system(size: 12.5)).padding(.top, 16)
                 }
                 if phase == .holding { transferredForm(booking) }
-            } else if phase != .cancelled && !booking.hasAnyPayRail {
+            } else if phase != .cancelled && !booking.hasAnyPayRail && (app.payQRByEvent[booking.eventKey]?.isEmpty ?? true) {
                 noticeCard(app.T("Người tổ chức chưa thêm thông tin nhận tiền. Nhắn cho họ để hỏi cách chuyển khoản.",
                                  "The organizer hasn't added payment details yet. Message them to ask how to transfer."))
                     .accessibilityIdentifier("payment.noDetails")
@@ -558,6 +568,9 @@ struct PaymentDetailsView: View {
                                         .foregroundStyle(app.palette.ink)
                                     Text("\(d.label ?? app.T("Tài khoản", "Account")) ▪︎ \(d.bankName) ▪︎ \(d.accountHolderName)")
                                         .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                                    if app.refundDestinationQR[d.id] != nil {
+                                        Image(systemName: "qrcode").font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.55))
+                                    }
                                     Spacer()
                                 }
                             }
@@ -615,6 +628,28 @@ struct PaymentDetailsView: View {
         .padding(.top, 14)
     }
 
+    /// The host's uploaded payment QR (their own picture of a VietQR / Zelle /
+    /// Venmo / MoMo code). It carries no amount or reference of its own, so
+    /// the copy says to enter them. Long-press opens the matching app.
+    private func uploadedQRCard(_ qr: PayQR) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(app.T("Quét để chuyển khoản", "Scan to pay"))
+                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
+            VStack(spacing: 10) {
+                PaymentQRImageView(bucket: "pay-qr", path: qr.path, payload: qr.payload, size: 210)
+                    .accessibilityIdentifier("payment.uploadedQR")
+                Text(app.T("Quét bằng app ngân hàng hoặc ví, rồi nhập đúng số tiền và nội dung chuyển khoản bên dưới.",
+                           "Scan with your banking or wallet app, then enter the exact amount and the reference shown here."))
+                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(18)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .padding(.top, 20)
+    }
+
     private func qrCard(_ payload: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(app.T("Quét để chuyển khoản", "Scan to pay"))
@@ -622,9 +657,11 @@ struct PaymentDetailsView: View {
             VStack(spacing: 10) {
                 // Fixed black-on-white, like the ticket QR: a banking app's
                 // camera does not know about the app's palette.
-                QRCodeImage(value: payload)
-                    .frame(width: 210, height: 210)
-                    .accessibilityIdentifier("payment.vietqr")
+                PaymentQRPressable(payload: { payload }, showHint: false) {
+                    QRCodeImage(value: payload)
+                        .frame(width: 210, height: 210)
+                        .accessibilityIdentifier("payment.vietqr")
+                }
                 Text(app.T("Mở app ngân hàng, quét mã: số tiền và nội dung đã được điền sẵn.",
                            "Open your banking app and scan: the amount and reference are filled in already."))
                     .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
@@ -1024,6 +1061,28 @@ struct PayoutView: View {
                     BanbeField(label: app.T("Số điện thoại MoMo", "MoMo phone"), placeholder: "09xx xxx xxx",
                                text: $app.payoutMomo, keyboard: .phonePad)
                         .accessibilityIdentifier("payout.momo")
+                }
+
+                section(app.T("Mã QR nhận tiền", "Payment QR code")) {
+                    Text(app.T("Tải ảnh mã QR của ngân hàng hoặc ví bạn dùng (VietQR, MoMo, Zelle, Venmo, Cash App…). Khách sẽ thấy mã này khi thanh toán và có thể nhấn giữ để mở app thanh toán.",
+                               "Upload the QR from the bank or wallet you get paid on (VietQR, MoMo, Zelle, Venmo, Cash App…). Guests see it when they pay and can press and hold it to open their payment app."))
+                        .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !app.payoutQR.isEmpty {
+                        PaymentQRImageView(bucket: "pay-qr", path: app.payoutQR.path, payload: app.payoutQR.payload, size: 180)
+                            .frame(maxWidth: .infinity)
+                            .accessibilityIdentifier("payout.qrPreview")
+                    }
+                    PaymentQRUploadControl(
+                        hasQR: !app.payoutQR.isEmpty,
+                        busy: app.payoutQRBusy,
+                        onPrepared: { await app.uploadPayoutQR($0) },
+                        onRemove: { Task { await app.removePayoutQR() } }
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if !app.payoutQRError.isEmpty {
+                        Text(app.payoutQRError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+                    }
                 }
 
                 section(app.T("Trên chứng từ", "On your documents")) {

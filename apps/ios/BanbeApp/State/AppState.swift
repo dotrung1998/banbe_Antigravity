@@ -1003,6 +1003,15 @@ final class AppState: ObservableObject {
     @Published var payoutSaving = false
     @Published var payoutSaved = false
     @Published var payoutError = ""
+    /// Uploaded payment QRs (migration 122) — see AppState+PaymentQR.swift.
+    @Published var payoutQR = PayQR(path: "", payload: "")
+    @Published var payoutQRBusy = false
+    @Published var payoutQRError = ""
+    /// The host's QR for an event a payer is paying for, keyed by event key.
+    @Published var payQRByEvent: [String: PayQR] = [:]
+    /// The signed-in attendee's refund-account QRs, keyed by destination id.
+    @Published var refundDestinationQR: [UUID: PayQR] = [:]
+    @Published var refundDestinationQRBusy = false
     @Published var documents: [PaymentDocument] = []
     @Published var documentsLoading = false
     /// Which of the two Account rows opened the list, and from which side.
