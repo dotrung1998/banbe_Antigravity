@@ -941,11 +941,15 @@ struct RootView: View {
         // Account data is only loaded once the server gate has passed (RLS
         // would return nothing for a gated session anyway).
         .task(id: GateTaskKey(uid: auth.session?.user.id, ready: auth.gateReady)) {
-            if auth.session == nil || auth.gateReady { await app.applySession(auth.session) }
-        }
-        .onChange(of: auth.session?.user.id) { _, _ in
-            // Signing in from a gated screen returns to whatever asked for it.
-            if auth.session != nil && app.screen == .login { app.screen = app.authReturnScreen }
+            if auth.session == nil || auth.gateReady {
+                await app.applySession(auth.session)
+                // Signing in from a gated screen returns to whatever asked for
+                // it — but only AFTER applySession has marked the app signed in.
+                // Navigating earlier (on the raw session change) tripped the
+                // "no guest browsing" guard below, which bounced the user back
+                // to Login and left them stuck there until a relaunch.
+                if auth.session != nil && app.screen == .login { app.screen = app.authReturnScreen }
+            }
         }
         // Task 1 — no guest browsing of any screen: the single, centralized
         // enforcement point, rather than auditing every `screen = .x`

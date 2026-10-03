@@ -50,3 +50,21 @@ select set_config('request.jwt.claims', json_build_object('sub','55555555-5555-5
 select public.account_gate_status();
 select count(*) as e_notifications_blocked from public.notifications;
 do $$ begin perform public.set_date_of_birth('1999-02-29'::date); raise exception 'ACCEPTED'; exception when datetime_field_overflow then raise notice 'ok: impossible calendar date rejected'; end $$;
+\echo === 10. (migration 124) confirmation only for email-code sessions
+reset role;
+insert into auth.sessions(id,user_id) values
+ ('a0000000-0000-0000-0000-0000000000a1','11111111-1111-1111-1111-111111111111'),
+ ('a0000000-0000-0000-0000-0000000000a2','11111111-1111-1111-1111-111111111111'),
+ ('a0000000-0000-0000-0000-0000000000a3','11111111-1111-1111-1111-111111111111'),
+ ('a0000000-0000-0000-0000-0000000000a4','11111111-1111-1111-1111-111111111111');
+set role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub',:A,'session_id','a0000000-0000-0000-0000-0000000000a1','amr','[{"method":"password","timestamp":1}]'::json)::text, false);
+select (public.account_gate_status()->>'ready') as password_session_ready;
+select set_config('request.jwt.claims', json_build_object('sub',:A,'session_id','a0000000-0000-0000-0000-0000000000a2','amr','[{"method":"oauth","timestamp":1}]'::json)::text, false);
+select (public.account_gate_status()->>'ready') as oauth_session_ready;
+select set_config('request.jwt.claims', json_build_object('sub',:A,'session_id','a0000000-0000-0000-0000-0000000000a3','amr','[{"method":"otp","timestamp":1}]'::json)::text, false);
+select (public.account_gate_status()->>'ready') as email_code_session_ready, public.account_gate_status()->>'dob_confirmation_required' as email_code_needs_confirm;
+select set_config('request.jwt.claims', json_build_object('sub',:A,'session_id','a0000000-0000-0000-0000-0000000000a4')::text, false);
+select (public.account_gate_status()->>'ready') as no_amr_claim_ready;
+select count(*) as password_session_can_read_private from public.notifications;
+reset role;
