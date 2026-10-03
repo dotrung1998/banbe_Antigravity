@@ -1011,6 +1011,11 @@ final class AppState: ObservableObject {
     @Published var hostPromoConsentBusy = false
     /// Account search (kept here so it survives opening a result and coming back).
     @Published var accountSearchOpen = false
+    /// True while a screen opened from Account SEARCH is showing: those screens
+    /// normally go "back" to a group page, but one opened from search has no group
+    /// page, so back returns straight to the search results (Account).
+    @Published var accountSearchReturn = false
+    var accountSubBack: Screen { accountSearchReturn ? .profile : .accountGroup }
     @Published var accountSearchQuery = ""
     @Published var hostPromoConsentError = ""
     @Published var payoutQRError = ""
@@ -2930,7 +2935,7 @@ final class AppState: ObservableObject {
         // AccountGroupView's "preferences" group page, so `.profile`
         // skipped that group page, same class of bug as `.documents`'s own
         // fix.
-        case .preferences, .security: screen = .accountGroup
+        case .preferences, .security: screen = accountSubBack
         // TASK 4 (Reserve→edit-name pass) — `.editName` is now reachable
         // from more than one place (AccountView's own root identity card,
         // AND ReserveView's "Đổi trong Tài khoản"), so its back target is
@@ -2945,7 +2950,7 @@ final class AppState: ObservableObject {
         // Sub-section-of-a-group back-navigation fix (2026-09-29, second
         // pass) — `.payout` is only ever reached from AccountGroupView's
         // "hostOps" group page (its own only call site, openPayout()).
-        case .payout: screen = .accountGroup
+        case .payout: screen = accountSubBack
         case .documents: screen = documentsListBack
         case .documentView: screen = documentBack
         case .verifications: screen = verificationsBack
@@ -2953,7 +2958,7 @@ final class AppState: ObservableObject {
         // "adminReview" (Review & Moderation) rows now, not straight from
         // Account itself — same sub-section-of-a-group class of bug the
         // `.preferences`/`.security`/`.payout` cases above already fixed.
-        case .disputes, .adminEvents: screen = .accountGroup
+        case .disputes, .adminEvents: screen = accountSubBack
         case .mapExplore: goHome()
         // TASK A fix — these two cases were simply missing, so the shared
         // edge-swipe gesture's goBack() fell to `default: break` and did
@@ -3058,18 +3063,18 @@ final class AppState: ObservableObject {
         case .hostIntro: return .profile
         case .create: return createOriginScreen
         case .attendance: return attendanceBack
-        case .preferences, .security: return .accountGroup
+        case .preferences, .security: return accountSubBack
         case .editName: return editNameReturnScreen
         case .login: return authBackScreen
         case .confirmed: return confirmedBack
         case .refunded, .notifications: return .home
         case .paymentDetails: return paymentDetailsBackTarget
         case .billing: return .paymentDetails
-        case .payout: return .accountGroup
+        case .payout: return accountSubBack
         case .documents: return documentsListBack
         case .documentView: return documentBack
         case .verifications: return verificationsBack
-        case .disputes, .adminEvents: return .accountGroup
+        case .disputes, .adminEvents: return accountSubBack
         case .mapExplore: return .home
         // TASK A fix — same missing-case bug as goBack() above: without
         // these, an in-progress edge swipe from RefundAccounts/MyRefunds

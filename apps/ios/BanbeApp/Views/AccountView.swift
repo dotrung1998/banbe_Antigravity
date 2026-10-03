@@ -852,6 +852,7 @@ struct AccountView: View {
                             // from the result returns to these same results.
                             searchFocused = false
                             app.accountTab = tab
+                            app.accountSearchReturn = true
                             entry.action()
                         } label: {
                             HStack(spacing: 12) {

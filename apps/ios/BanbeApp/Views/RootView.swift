@@ -964,6 +964,8 @@ struct RootView: View {
             // from any source, invalidates any older in-flight
             // `commitTabSwipe` settle so it can never overwrite this one.
             navGeneration += 1
+            // Back at Account / a group page: a screen opened from search is done.
+            if newScreen == .profile || newScreen == .accountGroup { app.accountSearchReturn = false }
             // Real-device follow-up — these three are meant to be
             // transient, one-shot triggers (see RootView's own centralized
             // `.photosPicker`/`.fullScreenCover` comment above), but
