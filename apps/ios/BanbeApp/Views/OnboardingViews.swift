@@ -84,7 +84,11 @@ struct SplashView: View {
     /// have nothing to load. `fallbackFired` bounds the wait.
     private var accountDataReady: Bool {
         guard let uid = auth.session?.user.id else { return true }
-        return fallbackFired || app.appliedSessionUID == uid
+        switch auth.gate {
+        case .unknown: return fallbackFired       // gate not decided yet
+        case .blocked, .unavailable: return true  // nothing to load until it clears
+        case .ready: return fallbackFired || app.appliedSessionUID == uid
+        }
     }
 
     var body: some View {

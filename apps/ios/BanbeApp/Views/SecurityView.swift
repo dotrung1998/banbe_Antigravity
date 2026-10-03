@@ -16,6 +16,7 @@ struct SecurityView: View {
     @State private var resetBusy = false
     @State private var resetSent = false
     @State private var faceIDError = ""
+    @State private var promoConfirmOpen = false
 
     private var biometryName: String {
         BiometricAuthService.biometryType() == .touchID ? "Touch ID" : "Face ID"
@@ -50,6 +51,7 @@ struct SecurityView: View {
 
                 if auth.isSignedIn {
                     passwordSection
+                    promoConsentSection
                 } else {
                     Text(app.T("Đăng nhập để đặt mật khẩu cho tài khoản.",
                                "Sign in to set a password for your account."))
@@ -126,6 +128,61 @@ struct SecurityView: View {
             Circle().fill(app.palette.paper).frame(width: 20, height: 20).padding(3)
         }
         .animation(.easeInOut(duration: 0.15), value: on)
+    }
+
+    // MARK: - Host promotional messages
+
+    /// Consent is its own switch, separate from signing in, OFF unless the user
+    /// turns it on here. Turning it on asks for an explicit confirmation;
+    /// turning it off applies immediately.
+    private var promoConsentSection: some View {
+        let on = app.hostPromoConsent ?? false
+        return section(app.T("Tin nhắn quảng bá từ host", "Host promotional messages")) {
+            Button {
+                if on {
+                    Task { await app.setHostPromoConsent(false) }
+                } else {
+                    promoConfirmOpen = true
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(app.T("Cho phép host nhắn tin quảng bá", "Allow hosts to text me promotions"))
+                            .font(BanbeTheme.display(17))
+                        Text(app.T("Mặc định tắt. Chỉ các host mà bạn đã đặt chỗ, theo dõi hoặc lưu sự kiện mới được soạn tin quảng bá ngắn cho bạn qua SMS, và chỉ khi bạn bật mục này.",
+                                   "Off by default. Only hosts you've booked with, follow or saved an event from can compose a short promo text to you, and only while this is on."))
+                            .font(.system(size: 11.5))
+                            .multilineTextAlignment(.leading)
+                    }
+                    Spacer(minLength: 0)
+                    toggleSwitch(on: on)
+                }
+                .padding(.horizontal, 18).padding(.vertical, 15)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(app.hostPromoConsentBusy || app.hostPromoConsent == nil)
+            .accessibilityIdentifier("security.hostPromoConsent")
+            Text(app.T("Host tự soạn và tự bấm gửi từng tin trong ứng dụng Tin nhắn của bạn; banbe không gửi hàng loạt hay tự động. Tắt mục này sẽ chặn các tin quảng bá do banbe hỗ trợ trong tương lai, nhưng không ảnh hưởng tới tin nhắn mà host gửi độc lập sau khi đã có số của bạn.",
+                       "Hosts write and send each text themselves in your Messages app — banbe never sends in bulk or automatically. Turning this off blocks future banbe-assisted promos, but doesn't affect messages a host sends independently after already having your number."))
+                .font(.system(size: 11.5))
+                .foregroundStyle(app.palette.ink.opacity(0.7))
+            if !app.hostPromoConsentError.isEmpty {
+                Text(app.hostPromoConsentError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
+            }
+        }
+        .task { await app.loadHostPromoConsent() }
+        .confirmationDialog(
+            app.T("Cho phép tin nhắn quảng bá từ host?", "Allow promotional texts from hosts?"),
+            isPresented: $promoConfirmOpen, titleVisibility: .visible
+        ) {
+            Button(app.T("Đồng ý", "I agree")) { Task { await app.setHostPromoConsent(true) } }
+            Button(app.T("Huỷ", "Cancel"), role: .cancel) {}
+        } message: {
+            Text(app.T("Host mà bạn đã tương tác có thể soạn tin SMS quảng bá sự kiện gửi tới số điện thoại đã xác minh của bạn. Bạn có thể tắt bất cứ lúc nào.",
+                       "Hosts you've interacted with may compose an event promo text to your verified phone number. You can turn this off any time."))
+        }
     }
 
     // MARK: - Password

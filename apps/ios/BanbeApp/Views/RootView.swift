@@ -848,6 +848,9 @@ struct RootView: View {
             // Face ID app-lock sits above everything — see FaceIDLockView.
             // Task 2: splash must show BEFORE the Face ID prompt, not
             // simultaneously over it — held off while app.screen == .splash.
+            // Server-owned account gate (required enrollment / Confirm date of
+            // birth). Below the Face ID lock so Face ID still comes first.
+            if auth.session != nil && auth.gate != .ready && app.screen != .splash { AccountGateOverlay() }
             if auth.isLocked && app.screen != .splash { FaceIDLockView() }
         }
         .onChange(of: app.areaAsking) { _, open in if open { areaSheetMounted = true } }
@@ -935,7 +938,11 @@ struct RootView: View {
         // The session is owned by AuthViewModel (it also drives the Face ID
         // lock); AppState mirrors it into the profile/bookings/notifications
         // the screens read.
-        .task(id: auth.session?.user.id) { await app.applySession(auth.session) }
+        // Account data is only loaded once the server gate has passed (RLS
+        // would return nothing for a gated session anyway).
+        .task(id: GateTaskKey(uid: auth.session?.user.id, ready: auth.gateReady)) {
+            if auth.session == nil || auth.gateReady { await app.applySession(auth.session) }
+        }
         .onChange(of: auth.session?.user.id) { _, _ in
             // Signing in from a gated screen returns to whatever asked for it.
             if auth.session != nil && app.screen == .login { app.screen = app.authReturnScreen }
@@ -1239,4 +1246,11 @@ struct RootView: View {
             }
         }
     }
+}
+
+
+/// Re-runs `applySession` when the user changes OR the account gate clears.
+private struct GateTaskKey: Equatable {
+    let uid: UUID?
+    let ready: Bool
 }

@@ -1006,6 +1006,10 @@ final class AppState: ObservableObject {
     /// Uploaded payment QRs (migration 122) — see AppState+PaymentQR.swift.
     @Published var payoutQR = PayQR(path: "", payload: "")
     @Published var payoutQRBusy = false
+    /// Host promotional messages consent (nil = not loaded yet; default OFF).
+    @Published var hostPromoConsent: Bool? = nil
+    @Published var hostPromoConsentBusy = false
+    @Published var hostPromoConsentError = ""
     @Published var payoutQRError = ""
     /// The host's QR for an event a payer is paying for, keyed by event key.
     @Published var payQRByEvent: [String: PayQR] = [:]

@@ -11,6 +11,7 @@ struct AttendanceView: View {
     // Which guest's "Upload receipt" is currently driving the file picker —
     // .fileImporter needs one shared presentation per view, not one per row.
     @State private var uploadTarget: UUID?
+    @State private var promoSheetOpen = false
     @State private var uploadErrorFor: UUID?
     // Replacing an existing live receipt requires a reason
     // (upload_payment_document()'s own REASON_REQUIRED gate, migration
@@ -82,6 +83,11 @@ struct AttendanceView: View {
         }
         .onAppear { startPolling() }
         .onChange(of: app.attendanceEventKey) { _, _ in startPolling() }
+        .sheet(isPresented: $promoSheetOpen) {
+            if let key = app.attendanceEventKey {
+                HostPromoSheet(eventKey: key).environmentObject(app)
+            }
+        }
         .onDisappear { pollTask?.cancel() }
         .fileImporter(
             isPresented: Binding(get: { uploadTarget != nil }, set: { if !$0 { uploadTarget = nil } }),
@@ -141,6 +147,18 @@ struct AttendanceView: View {
                             .buttonStyle(.plain)
                     }
                     .padding(.top, 14)
+
+                    // Host promo by text — one consenting recipient at a time;
+                    // the server rechecks consent/permission (see HostPromoSheet).
+                    Button {
+                        promoSheetOpen = true
+                    } label: {
+                        Label(app.T("Nhắn tin quảng bá sự kiện", "Text a promo about this event"), systemImage: "message")
+                            .font(.system(size: 12.5))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 10)
+                    .accessibilityIdentifier("attendance.promo")
 
                     HStack {
                         Text(app.T("Đã đến", "Checked in"))

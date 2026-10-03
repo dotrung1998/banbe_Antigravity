@@ -11,6 +11,11 @@ final class AuthViewModel: ObservableObject {
     @Published var isSendingCode = false
     @Published var codeSent = false
     @Published var errorMessage: String?
+    /// Server-owned account gate (migration 123): required enrollment (verified
+    /// phone + date of birth for NEW registrations) and the per-session
+    /// "Confirm date of birth" step. RootView blocks the app while this isn't
+    /// `.ready`; the SAME rule is enforced by RLS on the server.
+    @Published var gate: AccountGateState = .unknown
 
     /// True whenever there's a restored session but Face ID app-lock (see
     /// BiometricAuthService) hasn't cleared it yet this launch. RootView
@@ -62,10 +67,12 @@ final class AuthViewModel: ObservableObject {
                     if event == .initialSession, session != nil, self.faceIDEnabled {
                         self.isLocked = true
                     }
+                    if session != nil { await self.refreshGate() } else { self.gate = .unknown }
                 } else if event == .signedOut {
                     self.session = nil
                     self.profile = nil
                     self.isLocked = false
+                    self.gate = .unknown
                 }
                 self.sessionChecked = true
             }
@@ -76,7 +83,7 @@ final class AuthViewModel: ObservableObject {
         authListenerTask?.cancel()
     }
 
-    private func loadProfile(userId: UUID) async {
+    func loadProfile(userId: UUID) async {
         do {
             let profile: Profile = try await SupabaseService.client
                 .from("profiles")
