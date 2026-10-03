@@ -9,6 +9,9 @@
 // Ordering (rule 4): overdue -> deadline soon -> payment/refund/dispute ->
 // normal action. `severityRank` encodes that; items are stable-sorted by it,
 // ties broken by whichever has the soonest deadline (or none).
+import { formatShortDate } from './paymentDocument.js';
+import { refundAutoConfirmAt } from './refundPresentation.js';
+
 const SEVERITY_RANK = { overdue: 0, deadlineSoon: 1, money: 2, normal: 3 };
 
 function msUntilSafe(iso, now) {
@@ -90,7 +93,10 @@ export function buildActionCenterItems({
         severity: 'money',
         deadline: null,
         label: T('Xác nhận đã nhận hoàn tiền', 'Confirm refund received'),
-        detail: c.eventName || '',
+        detail: (c.eventName || '') + (refundAutoConfirmAt(c)
+          ? T(` ▪︎ Tự động xác nhận vào ${formatShortDate(refundAutoConfirmAt(c))} nếu bạn không phản hồi`,
+              ` ▪︎ Auto-confirms on ${formatShortDate(refundAutoConfirmAt(c), 'en')} if you don't respond`)
+          : ''),
         ctaLabel: T('Xem', 'View'),
         onClick: onOpenMyRefunds,
         testId: 'action-center-refund-confirm',

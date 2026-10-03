@@ -357,3 +357,13 @@ build` → BUILD SUCCEEDED. No existing unit test touches this logic (no
 Swift unit-test target covers `isGoing`/`paymentBookings` — confirmed by
 grep). No simulator/device UI run — this pass is iOS-only per its own
 scope; web was not read, built, or compared for parity.
+
+## Auto-confirm after 7 days + overdue guidance (2026-10-03)
+- Migration `20261107000127_127_refund_auto_confirm_7d.sql`: `goc_auto_confirm_refunds()` (hourly pg_cron, :15) moves `host_marked_sent` claims older than 7 days (from `host_marked_at`) to `guest_confirmed`, sets `refund_claims.auto_confirmed = true`, notifies guest + host (`refund_confirmed`, `data.auto = true`). Guest can still dispute before then. **Must be applied via `supabase db push` — until then the UI promises a rule the server doesn't enforce.**
+- The 7 is in THREE places — change together: that migration, `REFUND_AUTO_CONFIRM_DAYS` (`src/lib/refundPresentation.js`) / `RefundClaim.autoConfirmDays` (AppState+Payments.swift), and Terms A5 (`banbe_User_Policy.md`, `Policy.jsx`, `PolicyView.swift`; `POLICY_VERSION` bumped to 2026-10-03, no re-consent flow — see 09).
+- "Things to do" confirm-refund item, refund card and Refunds list all show the auto-confirm date. Owed refund past `refund_due_at` shows "Message host" (opens the event chat) + "Raise a dispute" (`dispute_refund`, goes to admin "Payment disputes").
+
+## Host refund proof (2026-10-03)
+- Migration `20261108000128_128_refund_proof.sql`: `refund_claims.proof_path`, private `refund-proof` bucket (`<claim_id>/<file>`, host uploads, host+guest read), `mark_refund_sent(claim, note, proof_path DEFAULT NULL)` (old 2-arg signature dropped). Proof is OPTIONAL; the batch Refund Center flow doesn't attach one. Apply with `supabase db push`.
+- Host: attach-proof picker in the "Mark refund sent" confirm step (Verifications, iOS+web). Goer: image shown on the "host reported sending" confirm card (PaymentDetails).
+- **Found while doing this**: iOS `loadPaymentRefundClaim`/`loadMyRefunds` selects omitted `selected_destination_id`/`recipient_snapshot`, so the chosen account never showed after selection; fixed (+ `proof_path`).

@@ -4,6 +4,7 @@ import { useGoc } from '../state/GocContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { formatVnd, formatShortDate } from '../lib/paymentDocument.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
+import { REFUND_AUTO_CONFIRM_DAYS, refundAutoConfirmAt } from '../lib/refundPresentation.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
 
 // The buyer's side of the two-phase machine.
@@ -18,13 +19,37 @@ import DisputeChatPanel from './DisputeChatPanel.jsx';
 //                                    because a buyer who still sees a timer
 //                                    after paying will assume they are about
 //                                    to lose the seat they just paid for.
+// Host's transfer receipt for a refund (private 'refund-proof' bucket,
+// migration 128) — signed on demand, shown on the goer's confirm card.
+function RefundProofImage({ path, T }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    supabase.storage.from('refund-proof').createSignedUrl(path, 600).then(({ data }) => { if (alive) setUrl(data?.signedUrl || null); });
+    return () => { alive = false; };
+  }, [path]);
+  const isPdf = /\.pdf$/i.test(path);
+  return (
+    <div style={{ marginTop: 8 }} data-testid="refund-proof">
+      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Ảnh chuyển khoản từ host', "Host's transfer proof")}</span>
+      {!url ? (
+        <p style={{ fontSize: 11.5, color: ink, opacity: 0.6, margin: '4px 0 0' }}>{T('Đang tải…', 'Loading…')}</p>
+      ) : isPdf ? (
+        <a href={url} target="_blank" rel="noreferrer" style={{ display: 'block', fontSize: 12.5, color: ink, marginTop: 4 }}>{T('Mở tệp PDF', 'Open PDF')}</a>
+      ) : (
+        <img src={url} alt="" style={{ display: 'block', width: '100%', maxHeight: 260, objectFit: 'contain', marginTop: 6, borderRadius: 10 }} />
+      )}
+    </div>
+  );
+}
+
 export default function PaymentDetails() {
   const {
     state, T, set, loadPaymentBookings, backFromPaymentDetails,
     copyPayField, submitPaymentProof, paymentTxnType, vietQrFor, nudgeOrganizer,
     openBilling, forfeitExpiredHold, openBookingConfirmed,
     loadPaymentRefundClaim, confirmRefundReceived, disputeRefund,
-    loadRefundDestinations, selectRefundDestinationForClaim, openRefundAccounts,
+    loadRefundDestinations, selectRefundDestinationForClaim, openRefundAccounts, openChatFor,
   } = useGoc();
   const s = state;
   const fileRef = useRef(null);
@@ -382,6 +407,30 @@ export default function PaymentDetails() {
                         `You'll be refunded ${formatVnd(refundClaim.amount_vnd)} before ${formatShortDate(refundClaim.refund_due_at, 'en')}.`)
                     : T(`Bạn sẽ được hoàn ${formatVnd(refundClaim.amount_vnd)}.`, `You'll be refunded ${formatVnd(refundClaim.amount_vnd)}.`)}
                 </p>
+                {refundClaim.refund_due_at && new Date(refundClaim.refund_due_at).getTime() < Date.now() && (
+                  <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="refund-overdue-help">
+                    <p style={{ fontSize: 12.5, lineHeight: 1.5, color: alert, margin: 0 }}>
+                      {T('Đã quá hạn hoàn tiền. Nếu bạn chưa nhận được tiền, hãy nhắn cho host qua banbe trước; nếu vẫn chưa được, bạn có thể báo tranh chấp để admin banbe (mục “Tranh chấp thanh toán”) xử lý.',
+                         'The refund deadline has passed. If you haven\'t received the money, message the host through banbe first; if that doesn\'t work, raise a dispute and the banbe admin will handle it under “Payment disputes”.')}
+                    </p>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <div
+                        onClick={() => openChatFor(booking.event_id, 'paymentDetails')}
+                        style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 12, border: `1px solid ${rule}`, fontSize: 13, color: ink, cursor: 'pointer' }}
+                        data-testid="refund-message-host"
+                      >
+                        {T('Nhắn cho host', 'Message host')}
+                      </div>
+                      <div
+                        onClick={() => s.refundActionBusy !== refundClaim.id && disputeRefund(refundClaim.id, '')}
+                        style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 12, border: `1px solid ${rule}`, fontSize: 13, color: ink, cursor: 'pointer' }}
+                        data-testid="refund-overdue-dispute"
+                      >
+                        {T('Báo tranh chấp', 'Raise a dispute')}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {/* Refund MVP — goer must EXPLICITLY select (and confirm) a
                     saved destination for THIS claim before the host can see
                     where to send the money; picking one snapshots it onto
@@ -473,6 +522,13 @@ export default function PaymentDetails() {
                 <p style={{ fontSize: 13, lineHeight: 1.55, color: ink, margin: 0 }}>
                   {T(`Host đã báo đã hoàn ${formatVnd(refundClaim.amount_vnd)} cho bạn.`, `The host reported sending you ${formatVnd(refundClaim.amount_vnd)}.`)}
                 </p>
+                {refundClaim.proof_path && <RefundProofImage path={refundClaim.proof_path} T={T} />}
+                {refundAutoConfirmAt(refundClaim) && (
+                  <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.75, margin: '6px 0 0' }} data-testid="refund-auto-confirm-note">
+                    {T(`Nếu bạn không xác nhận hoặc báo chưa nhận được, khoản hoàn sẽ được tự động xác nhận sau ${REFUND_AUTO_CONFIRM_DAYS} ngày, vào ${formatShortDate(refundAutoConfirmAt(refundClaim))}.`,
+                       `If you don't confirm or report it, the refund is confirmed automatically after ${REFUND_AUTO_CONFIRM_DAYS} days, on ${formatShortDate(refundAutoConfirmAt(refundClaim), 'en')}.`)}
+                  </p>
+                )}
                 {!disputeFormOpen ? (
                   <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
                     <div

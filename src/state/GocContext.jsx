@@ -3409,12 +3409,21 @@ export function GocProvider({ children }) {
    * showing stale pre-mutation data in that window. REFUND_DESTINATION_
    * REQUIRED is this RPC's stable business code for "no valid recipient
    * snapshot yet" (renamed from NO_DESTINATION_SELECTED, migration 078). */
-  const markRefundSent = useCallback(async (claimId, note = '') => {
+  const markRefundSent = useCallback(async (claimId, note = '', proofFile = null) => {
     if (s.refundActionBusy === claimId) return false; // already in flight — no double-submit
     set({ refundActionBusy: claimId, refundBatchError: '' });
     let ok = false;
     try {
-      const { data, error } = await supabase.rpc('mark_refund_sent', { p_claim_id: claimId, p_note: note || '' });
+      // Optional transfer receipt (migration 128): upload under the claim's
+      // own folder, then pass the path to the RPC.
+      let proofPath = null;
+      if (proofFile) {
+        const { blob, ext, contentType } = await normalizeProofFile(proofFile);
+        proofPath = `${claimId}/refund-${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('refund-proof').upload(proofPath, blob, { upsert: true, contentType });
+        if (upErr) throw upErr;
+      }
+      const { data, error } = await supabase.rpc('mark_refund_sent', { p_claim_id: claimId, p_note: note || '', p_proof_path: proofPath });
       if (error) throw error;
       if (data?.success === false) {
         set({
@@ -3465,7 +3474,7 @@ export function GocProvider({ children }) {
    */
   const loadPaymentRefundClaim = useCallback(async (id, { byClaimId = false } = {}) => {
     if (!id) return set({ paymentRefundClaim: null });
-    const query = supabase.from('refund_claims').select('id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at, refund_due_at, disputed_at, host_response_due_at, transfer_reference, resend_reference, resend_bank_name, resend_transferred_at, resend_note, selected_destination_id, recipient_snapshot');
+    const query = supabase.from('refund_claims').select('id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at, refund_due_at, disputed_at, host_response_due_at, transfer_reference, resend_reference, resend_bank_name, resend_transferred_at, resend_note, selected_destination_id, recipient_snapshot, proof_path');
     const { data, error } = byClaimId
       ? await query.eq('id', id).maybeSingle()
       : await query.or(`booking_id.eq.${id},reservation_id.eq.${id}`).order('created_at', { ascending: false }).limit(1).maybeSingle();
@@ -7977,7 +7986,7 @@ export function GocProvider({ children }) {
   }, [s.chatPhotoViewer, s.user, T, closeChatForward]);
 
   const chatOnKey = useCallback((e) => { if (e.key === 'Enter') chatSend(); }, [chatSend]);
-  const chatBackFn = useCallback(() => set(prev => ({ screen: prev.chatBack === 'inbox' || prev.chatBack === 'notifications' ? prev.chatBack : 'organizer' })), [set]);
+  const chatBackFn = useCallback(() => set(prev => ({ screen: prev.chatBack === 'inbox' || prev.chatBack === 'notifications' || prev.chatBack === 'paymentDetails' ? prev.chatBack : 'organizer' })), [set]);
 
   // A real, permanent delete, own messages only — RLS (messages_delete_own,
   // migration 054) scopes this to `sender_id = auth.uid()`, which a system

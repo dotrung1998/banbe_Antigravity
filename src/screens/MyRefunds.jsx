@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { formatVnd, formatShortDate } from '../lib/paymentDocument.js';
+import { REFUND_AUTO_CONFIRM_DAYS } from '../lib/refundPresentation.js';
 import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 
 const STATUS_LABEL = {
   owed: ['Khoản hoàn tiền này đang cần được xử lý', 'This refund is still being processed'],
-  host_marked_sent: ['Đang chờ bạn xác nhận đã nhận tiền', "Awaiting your confirmation"],
+  host_marked_sent: [`Đang chờ bạn xác nhận đã nhận tiền (tự động xác nhận sau ${REFUND_AUTO_CONFIRM_DAYS} ngày)`, `Awaiting your confirmation (auto-confirms after ${REFUND_AUTO_CONFIRM_DAYS} days)`],
   disputed: ['Đang tranh chấp', 'Disputed'],
 };
 

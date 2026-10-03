@@ -8,7 +8,7 @@ import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCent
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
 import ActionCenter from './ActionCenter.jsx';
 import { pickSoonest } from '../lib/countdown.js';
-import { computeAdminModerationCount, computeHostActionCount, computeMyTicketsActionCount, formatBadgeCount } from '../lib/badges.js';
+import { computeAdminModerationCount, computeHostActionCount, computeMyTicketsActionCount, computeMyRefundActionCount, computePersonalActionCount, formatBadgeCount } from '../lib/badges.js';
 
 function organizerAvatarUrl(path) {
   if (!path) return '';
@@ -245,21 +245,24 @@ export default function Account() {
   const myPendingVerification = (s.paymentBookings || [])
     .filter(b => b.payment_state === 'pending_verification')
     .sort((a, b) => new Date(a.proof_uploaded_at || 0) - new Date(b.proof_uploaded_at || 0))[0] || null;
-  const actionItems = sortActionCenterItems([
-    ...buildActionCenterItems({
-      role: 'goer', T, now: s.now || Date.now(),
-      myHolding, myPendingVerification, myRefunds: s.myRefunds || [],
-      onOpenPayment: (bookingId) => openPaymentDetails(bookingId, 'profile'),
-      onOpenMyRefunds: () => openMyRefunds('profile'),
-    }),
-    ...(canHost ? buildActionCenterItems({
-      role: 'host', T, now: s.now || Date.now(),
-      verifications: s.verifications || [], refundQueue: s.refundQueue || [], orgHolding: s.organizerHoldingSummary,
-      onOpenVerifications: () => openVerifications('profile'),
-      onOpenRefundCenter: () => openVerifications('profile'),
-      onOpenDashboard: goDashboard,
-    }) : []),
-  ]);
+  // Goer-side items belong to Personal; host-side items (payments to verify,
+  // refunds you owe, guests holding seats) belong to the Host tab, the same
+  // split the tab badges use. While the Host tab is hidden (organizerMode
+  // off) they stay on Personal so owed money is never silently hidden.
+  const goerActionItems = sortActionCenterItems(buildActionCenterItems({
+    role: 'goer', T, now: s.now || Date.now(),
+    myHolding, myPendingVerification, myRefunds: s.myRefunds || [],
+    onOpenPayment: (bookingId) => openPaymentDetails(bookingId, 'profile'),
+    onOpenMyRefunds: () => openMyRefunds('profile'),
+  }));
+  const hostActionItems = canHost ? sortActionCenterItems(buildActionCenterItems({
+    role: 'host', T, now: s.now || Date.now(),
+    verifications: s.verifications || [], refundQueue: s.refundQueue || [], orgHolding: s.organizerHoldingSummary,
+    onOpenVerifications: () => openVerifications('profile'),
+    onOpenRefundCenter: () => openVerifications('profile'),
+    onOpenDashboard: goDashboard,
+  })) : [];
+  const actionItems = s.organizerMode ? goerActionItems : sortActionCenterItems([...goerActionItems, ...hostActionItems]);
   const myStoryGroup = s.myOrganizerIds.length ? s.homeStories.find(g => s.myOrganizerIds.includes(g.organizerId)) : null;
   const hasActiveStory = !!myStoryGroup;
   const storyUnviewed = hasActiveStory && !myStoryGroup.allViewed;
@@ -308,7 +311,8 @@ export default function Account() {
             hosting-mode side effect by itself. */}
         <div style={{ display: 'flex', gap: 6, padding: '18px 20px 14px' }} data-testid="account-tabs">
         {[
-          { key: 'personal', label: T('Cá Nhân', 'Personal') },
+          // Same source as the "Tickets & Bookings" group card badge below.
+          { key: 'personal', label: T('Cá Nhân', 'Personal'), badge: computePersonalActionCount(s) },
           // Account extension (2026-09-27, Stage 1) — "organizer mode OFF
           // means host UI is OFF": Tổ chức only shows while `organizerMode`
           // (the CURRENT toggle) is actually on, never `canHost`
@@ -528,6 +532,7 @@ export default function Account() {
       <GroupCard
         groupKey="payments" iconKind="banknote"
         label={T('Thanh Toán & Giấy Tờ', 'Payments & Documents')}
+        badge={computeMyRefundActionCount(s)}
         onClick={() => openAccountGroup('payments')}
         marginTop={14}
       />
@@ -810,6 +815,8 @@ export default function Account() {
           child actions/testids, moved into the shared AccountGroup screen.
           Badge = real outstanding host duties (verifications + refund
           queue), never invented. */}
+      <ActionCenter items={hostActionItems} onSeeAll={() => openVerifications('profile')} T={T} />
+
       {canHost && (
         <GroupCard
           groupKey="hostOps" iconKind="checklist"

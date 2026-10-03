@@ -77,14 +77,14 @@ export function computeRefundActionCount({ organizerMode, refundQueue = [] }) {
 }
 
 /** Account (dock/profile) icon badge — the top of the whole chain. Sums
- * the admin and host counts (never each other's own already-summed value,
+ * the admin, host and personal counts (never each other's own already-summed value,
  * and never a per-row count a second time) because a real admin queue item
  * and a real host queue item are always distinct underlying rows; an
  * account that is neither admin nor currently in organizer mode gets 0
  * from both terms, so the dock icon is correctly hidden rather than
  * showing a stale/leftover number. */
 export function computeAccountDockBadge(state) {
-  return computeAdminModerationCount(state) + computeHostActionCount(state);
+  return computeAdminModerationCount(state) + computeHostActionCount(state) + computePersonalActionCount(state);
 }
 
 /** Personal-tab "Tickets & Bookings" group badge (Account IA reorg,
@@ -94,14 +94,28 @@ export function computeAccountDockBadge(state) {
  * `paymentBookings` array `Account.jsx`'s own `myHolding`/
  * `myPendingVerification` ActionCenter items already load (no new query),
  * so this is a third view of one already-loaded array, not a new source.
- * Deliberately NOT summed into `computeAccountDockBadge` — that chain is
- * scoped to admin/host duties (see its own doc comment); this is a
- * personal-tab-only signal with nowhere else in the dock chain it belongs. */
+ * Part of `computePersonalActionCount`, which the dock badge sums in. */
 export function computeMyTicketsActionCount({ paymentBookings = [] } = {}) {
   return (paymentBookings || []).filter(b => (
     ['pending', 'confirmed', 'attended'].includes(b.status)
     && !(b.status === 'confirmed' && b.payment_state === 'confirmed')
   )).length;
+}
+
+/** Goer-side refunds needing action (pick a destination, confirm receipt, or
+ * an open dispute) — the SAME three conditions `actionCenter.js` turns into
+ * goer items, counted once per distinct claim. */
+export function computeMyRefundActionCount({ myRefunds = [] } = {}) {
+  return (myRefunds || []).filter(c => (
+    c.status === 'host_marked_sent'
+    || c.status === 'disputed'
+    || (c.status === 'owed' && !c.selected_destination_id)
+  )).length;
+}
+
+/** Personal tab = every personal action: bookings + own refunds. */
+export function computePersonalActionCount(state) {
+  return computeMyTicketsActionCount(state) + computeMyRefundActionCount(state);
 }
 
 /** Shared "99+" cap — the exact count is still always available to the

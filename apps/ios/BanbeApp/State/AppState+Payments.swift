@@ -900,6 +900,22 @@ extension AppState {
         }
     }
 
+    /// Signs 'refund-proof' paths (host's refund receipt) into `refundProofUrls`.
+    func signRefundProofUrls(_ paths: [String]) async {
+        let wanted = Array(Set(paths)).filter { refundProofUrls[$0] == nil }
+        guard !wanted.isEmpty else { return }
+        do {
+            let results = try await SupabaseService.client.storage
+                .from("refund-proof")
+                .createSignedURLs(paths: wanted, expiresIn: 600)
+            for result in results {
+                if case let .success(path, signedURL) = result { refundProofUrls[path] = signedURL }
+            }
+        } catch {
+            print("signRefundProofUrls failed:", error)
+        }
+    }
+
     func approvePayment(_ bookingID: UUID) async {
         verificationBusy = bookingID
         defer { verificationBusy = nil }
@@ -1099,6 +1115,15 @@ extension AppState {
         }
     }
 
+    private struct MarkRefundSentParams: Encodable {
+        let claimID: String
+        let note: String
+        let proofPath: String?
+        enum CodingKeys: String, CodingKey {
+            case claimID = "p_claim_id", note = "p_note", proofPath = "p_proof_path"
+        }
+    }
+
     private struct MarkRefundSentResult: Decodable {
         let success: Bool?
         let error: String?
@@ -1119,15 +1144,28 @@ extension AppState {
     /// (AttendanceView's "Hoàn lại lần nữa") know whether to also refresh
     /// their own Refund Center view.
     @discardableResult
-    func markRefundSent(_ claimID: UUID, note: String = "") async -> Bool {
+    func markRefundSent(_ claimID: UUID, note: String = "", proofJPEG: Data? = nil) async -> Bool {
         guard refundActionBusy != claimID else { return false } // already in flight — no double-submit
         refundActionBusy = claimID
         refundBatchError = ""
         defer { refundActionBusy = nil }
         var ok = false
         do {
+            // Optional transfer receipt: upload first, then pass its path.
+            // Lowercased claim id — the storage policy compares the folder to
+            // `refund_claims.id::text` (see submitPaymentProof's note on the
+            // same uppercase-UUID trap).
+            var proofPath: String?
+            if let proofJPEG {
+                _ = try await SupabaseService.client.auth.session
+                let path = "\(claimID.uuidString.lowercased())/refund-\(Int(Date().timeIntervalSince1970)).jpg"
+                _ = try await SupabaseService.client.storage
+                    .from("refund-proof")
+                    .upload(path, data: proofJPEG, options: FileOptions(contentType: "image/jpeg", upsert: true))
+                proofPath = path
+            }
             let result: MarkRefundSentResult = try await SupabaseService.client
-                .rpc("mark_refund_sent", params: ["p_claim_id": claimID.uuidString, "p_note": note])
+                .rpc("mark_refund_sent", params: MarkRefundSentParams(claimID: claimID.uuidString, note: note, proofPath: proofPath))
                 .execute().value
             if result.success == true {
                 ok = true
@@ -1217,7 +1255,7 @@ extension AppState {
     func loadPaymentRefundClaim(bookingID: UUID) async {
         do {
             let claims: [RefundClaim] = try await SupabaseService.client
-                .from("refund_claims").select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at, refund_due_at, disputed_at, host_response_due_at, transfer_reference, resend_reference, resend_bank_name, resend_transferred_at, resend_note")
+                .from("refund_claims").select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at, refund_due_at, disputed_at, host_response_due_at, transfer_reference, resend_reference, resend_bank_name, resend_transferred_at, resend_note, selected_destination_id, recipient_snapshot, proof_path")
                 .or("booking_id.eq.\(bookingID.uuidString),reservation_id.eq.\(bookingID.uuidString)")
                 .order("created_at", ascending: false)
                 .limit(1)
@@ -1231,7 +1269,7 @@ extension AppState {
     func loadPaymentRefundClaim(claimID: UUID) async {
         do {
             let claims: [RefundClaim] = try await SupabaseService.client
-                .from("refund_claims").select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at, refund_due_at, disputed_at, host_response_due_at, transfer_reference, resend_reference, resend_bank_name, resend_transferred_at, resend_note")
+                .from("refund_claims").select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at, refund_due_at, disputed_at, host_response_due_at, transfer_reference, resend_reference, resend_bank_name, resend_transferred_at, resend_note, selected_destination_id, recipient_snapshot, proof_path")
                 .eq("id", value: claimID.uuidString)
                 .execute().value
             guard let claim = claims.first else { return }
@@ -1255,7 +1293,7 @@ extension AppState {
 
     /// All of the signed-in goer's own saved refund_destinations rows.
     func loadRefundDestinations() async {
-        guard let uid = user?.id else { refundDestinations = []; return }
+        guard let uid = user?.id else { refundDestinations = []; refundDestinationsLoaded = false; return }
         do {
             let rows: [RefundDestination] = try await SupabaseService.client
                 .from("refund_destinations")
@@ -1268,6 +1306,7 @@ extension AppState {
             // reorderRefundDestinations() is actively managing.
             guard !refundDestinationsReordering else { return }
             refundDestinations = rows
+            refundDestinationsLoaded = true
             await loadRefundDestinationQRs()
         } catch {
             print("loadRefundDestinations failed:", error)
@@ -1411,7 +1450,11 @@ extension AppState {
             print("selectRefundDestinationForClaim failed:", error)
             refundDestinationError = T("Hiện chưa thể thực hiện. Vui lòng thử lại sau.", "This isn't available right now. Please try again later.")
         }
-        if ok { await loadPaymentRefundClaim(claimID: claimID) }
+        if ok {
+            await loadPaymentRefundClaim(claimID: claimID)
+            // Account/Home's "Things to do" read myRefunds, not the single claim above.
+            await loadMyRefunds()
+        }
         return ok
     }
 
@@ -1430,7 +1473,7 @@ extension AppState {
             let bookingByID = Dictionary(uniqueKeysWithValues: bookings.map { ($0.id, $0) })
             var claims: [RefundClaim] = try await SupabaseService.client
                 .from("refund_claims")
-                .select("id, booking_id, reservation_id, amount_vnd, status, host_marked_at, disputed_at, host_response_due_at, refund_due_at, created_at")
+                .select("id, booking_id, reservation_id, amount_vnd, status, host_marked_at, disputed_at, host_response_due_at, refund_due_at, created_at, selected_destination_id, recipient_snapshot, proof_path")
                 .or(bookings.map { "booking_id.eq.\($0.id.uuidString)" }.joined(separator: ","))
                 .in("status", values: ["owed", "host_marked_sent", "disputed"])
                 .order("created_at", ascending: false)
@@ -1924,6 +1967,9 @@ struct RefundClaim: Codable, Identifiable, Equatable {
     // refund_destinations join.
     var selectedDestinationId: UUID?
     var recipientSnapshot: RecipientSnapshot?
+    /// Host's optional photo/PDF of the refund transfer (migration 128),
+    /// a path in the private 'refund-proof' bucket.
+    var proofPath: String?
     // Refund MVP (Refunds list) — filled client-side by loadMyRefunds()
     // only (reuses `eventName` above, decoded as "" by default since that
     // query's own SELECT list has no `guestName`/`eventName` columns).
@@ -1951,6 +1997,7 @@ struct RefundClaim: Codable, Identifiable, Equatable {
         case resendNote = "resend_note"
         case selectedDestinationId = "selected_destination_id"
         case recipientSnapshot = "recipient_snapshot"
+        case proofPath = "proof_path"
         case hostGuestName = "guest_name"
         // Investigation fix (2026-10-?? pass) — get_host_refund_claims()
         // (migration 078) returns `event_name`/`event_id` directly in its
@@ -2007,6 +2054,7 @@ struct RefundClaim: Codable, Identifiable, Equatable {
         resendNote = try c.decodeIfPresent(String.self, forKey: .resendNote)
         selectedDestinationId = try c.decodeIfPresent(UUID.self, forKey: .selectedDestinationId)
         recipientSnapshot = try? c.decodeIfPresent(RecipientSnapshot.self, forKey: .recipientSnapshot)
+        proofPath = try c.decodeIfPresent(String.self, forKey: .proofPath)
         hostGuestName = try c.decodeIfPresent(String.self, forKey: .hostGuestName)
         guestName = hostGuestName ?? ""
         eventName = (try c.decodeIfPresent(String.self, forKey: .eventName)) ?? ""
@@ -2035,6 +2083,34 @@ extension RefundClaim {
     /// Single-claim "Đã hoàn tiền"/mark-sent CTA — owed + valid destination
     /// only. A disputed claim has its own resend/response flow, never this.
     var isRefundActionable: Bool { status == "owed" && hasValidDestination }
+
+    /// A host_marked_sent claim settles itself as confirmed this many days
+    /// after the host marked it, if the guest neither confirms nor disputes.
+    /// Enforced server-side by goc_auto_confirm_refunds() (migration 127) and
+    /// stated in the Terms — change all three together.
+    static let autoConfirmDays = 7
+    /// When auto-confirmation will happen; nil unless host_marked_sent.
+    var autoConfirmAt: Date? {
+        guard status == "host_marked_sent", let m = hostMarkedAt else { return nil }
+        return Calendar.current.date(byAdding: .day, value: Self.autoConfirmDays, to: m)
+    }
+
+    /// One-line description of the account chosen for this claim, e.g.
+    /// "Default account ▪︎ Vietcombank ▪︎ NGUYEN VAN A ▪︎ ...1234". nil when
+    /// no destination is selected. `destinations` nil (not loaded) skips the
+    /// default/different tag rather than guessing.
+    func refundAccountSummary(destinations: [RefundDestination]?, T: (String, String) -> String) -> String? {
+        guard selectedDestinationId != nil, let s = recipientSnapshot else { return nil }
+        var parts: [String] = []
+        if let destinations {
+            let isDefault = destinations.first(where: \.isDefault)?.id == selectedDestinationId
+            parts.append(isDefault ? T("Tài khoản mặc định", "Default account") : T("Tài khoản khác", "Different account"))
+        }
+        parts.append(s.bankName)
+        parts.append(s.accountHolderName)
+        parts.append("..." + String(s.accountNumber.suffix(4)))
+        return parts.joined(separator: " ▪︎ ")
+    }
 }
 
 /// Refund MVP (migration 074) — a claim's own `recipient_snapshot` jsonb,

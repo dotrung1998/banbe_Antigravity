@@ -3566,7 +3566,7 @@ extension AppState {
         }
     }
 
-    func chatBackAction() { screen = chatBack == .inbox || chatBack == .notifications ? chatBack : .organizer }
+    func chatBackAction() { screen = chatBack == .inbox || chatBack == .notifications || chatBack == .paymentDetails ? chatBack : .organizer }
 
     /// A real, permanent delete, own messages only — RLS
     /// (messages_delete_own, migration 054) scopes this to

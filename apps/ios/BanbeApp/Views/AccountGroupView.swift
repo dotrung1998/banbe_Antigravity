@@ -355,7 +355,7 @@ struct AccountGroupView: View {
             // page (same class of bug as `.documents`'s own fix).
             row(app.T("Tài khoản thanh toán & nhận hoàn tiền", "Payment & refund accounts"), identifier: "account.refundAccounts", icon: "banknote", trailing: "›") { app.openRefundAccounts(back: .accountGroup) }
             Divider().overlay(app.palette.rule)
-            row(app.T("Hoàn tiền", "Refunds"), identifier: "account.refunds", icon: "checklist", trailing: "›") { app.openMyRefunds(back: .accountGroup) }
+            row(app.T("Hoàn tiền", "Refunds"), identifier: "account.refunds", icon: "checklist", trailing: "›", badge: AccountBadges.myRefundActionCount(myRefunds: app.myRefunds)) { app.openMyRefunds(back: .accountGroup) }
             Divider().overlay(app.palette.rule)
             HStack(spacing: 12) {
                 Image(systemName: "envelope.badge")

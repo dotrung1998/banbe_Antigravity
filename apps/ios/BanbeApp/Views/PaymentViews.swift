@@ -426,16 +426,33 @@ struct PaymentDetailsView: View {
 
             if claim.status == "owed" {
                 VStack(alignment: .leading, spacing: 10) {
-                    if let due = claim.refundDueAt, let dueLabel = formatShortDate(due, lang: app.isEN ? "en" : "vi") {
-                        Text(app.T("Bạn sẽ được hoàn \(formatVnd(claim.amountVnd)) trước \(dueLabel).", "You'll be refunded \(formatVnd(claim.amountVnd)) before \(dueLabel)."))
-                            .font(.system(size: 13))
-                            .accessibilityIdentifier("refund.owed")
-                    } else {
+                    if claim.selectedDestinationId != nil {
+                        // Chosen account sits between the amount and the
+                        // deadline: amount -> account -> due date.
                         Text(app.T("Bạn sẽ được hoàn \(formatVnd(claim.amountVnd)).", "You'll be refunded \(formatVnd(claim.amountVnd))."))
                             .font(.system(size: 13))
                             .accessibilityIdentifier("refund.owed")
+                        refundDestinationSection(claim)
+                        if let due = claim.refundDueAt, let dueLabel = formatShortDate(due, lang: app.isEN ? "en" : "vi") {
+                            Text(app.T("Hạn hoàn tiền: trước \(dueLabel).", "Refund due before \(dueLabel)."))
+                                .font(.system(size: 13))
+                                .accessibilityIdentifier("refund.dueDate")
+                        }
+                    } else {
+                        if let due = claim.refundDueAt, let dueLabel = formatShortDate(due, lang: app.isEN ? "en" : "vi") {
+                            Text(app.T("Bạn sẽ được hoàn \(formatVnd(claim.amountVnd)) trước \(dueLabel).", "You'll be refunded \(formatVnd(claim.amountVnd)) before \(dueLabel)."))
+                                .font(.system(size: 13))
+                                .accessibilityIdentifier("refund.owed")
+                        } else {
+                            Text(app.T("Bạn sẽ được hoàn \(formatVnd(claim.amountVnd)).", "You'll be refunded \(formatVnd(claim.amountVnd))."))
+                                .font(.system(size: 13))
+                                .accessibilityIdentifier("refund.owed")
+                        }
+                        refundDestinationSection(claim)
                     }
-                    refundDestinationSection(claim)
+                    if let due = claim.refundDueAt, due < Date() {
+                        overdueRefundHelp(booking, claim)
+                    }
                 }
                 .padding(.top, 2)
             }
@@ -444,6 +461,30 @@ struct PaymentDetailsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(app.T("Host đã báo đã hoàn \(formatVnd(claim.amountVnd)) cho bạn.", "The host reported sending you \(formatVnd(claim.amountVnd))."))
                         .font(.system(size: 13))
+                    if let proofPath = claim.proofPath {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(app.T("Ảnh chuyển khoản từ host", "Host's transfer proof"))
+                                .font(.system(size: 11.5, weight: .semibold))
+                            if let url = app.refundProofUrls[proofPath] {
+                                AsyncImage(url: url) { phase in
+                                    if let image = phase.image { image.resizable().scaledToFit() } else { Color.clear }
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: 260)
+                                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .accessibilityIdentifier("refund.proofImage")
+                            } else {
+                                Text(app.T("Đang tải ảnh…", "Loading image…"))
+                                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                            }
+                        }
+                        .task { await app.signRefundProofUrls([proofPath]) }
+                    }
+                    if let at = claim.autoConfirmAt {
+                        Text(app.T("Nếu bạn không xác nhận hoặc báo chưa nhận được, khoản hoàn sẽ được tự động xác nhận sau \(RefundClaim.autoConfirmDays) ngày, vào \(formatShortDate(at, lang: "vi") ?? "").",
+                                   "If you don't confirm or report it, the refund is confirmed automatically after \(RefundClaim.autoConfirmDays) days, on \(formatShortDate(at, lang: "en") ?? "")."))
+                            .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))
+                            .accessibilityIdentifier("refund.autoConfirmNote")
+                    }
                     if !disputeFormOpen {
                         HStack(spacing: 10) {
                             InkButton(title: app.T("Đã nhận tiền", "Confirm received")) {
@@ -524,6 +565,35 @@ struct PaymentDetailsView: View {
         .accessibilityIdentifier("refund.card")
     }
 
+    /// Past the refund deadline with no money received: first message the
+    /// host through banbe; if that doesn't resolve it, raise a dispute, which
+    /// goes to the banbe admin's "Payment disputes" queue.
+    @ViewBuilder
+    private func overdueRefundHelp(_ booking: PayableBooking, _ claim: RefundClaim) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(app.T("Đã quá hạn hoàn tiền. Nếu bạn chưa nhận được tiền, hãy nhắn cho host qua banbe trước; nếu vẫn chưa được, bạn có thể báo tranh chấp để admin banbe (mục “Tranh chấp thanh toán”) xử lý.",
+                       "The refund deadline has passed. If you haven't received the money, message the host through banbe first; if that doesn't work, raise a dispute and the banbe admin will handle it under “Payment disputes”."))
+                .font(.system(size: 12.5)).foregroundStyle(BanbeTheme.alert)
+                .accessibilityIdentifier("refund.overdueHelp")
+            HStack(spacing: 10) {
+                Button(app.T("Nhắn cho host", "Message host")) {
+                    Task { await app.openChat(for: booking.eventKey, back: .paymentDetails) }
+                }
+                .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                .frame(maxWidth: .infinity).padding(12)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+                .accessibilityIdentifier("refund.messageHost")
+                Button(app.T("Báo tranh chấp", "Raise a dispute")) {
+                    Task { await app.disputeRefund(claim.id, reason: "") }
+                }
+                .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                .frame(maxWidth: .infinity).padding(12)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+                .accessibilityIdentifier("refund.overdueDispute")
+            }
+        }
+    }
+
     /// Refund MVP — goer's EXPLICIT choice of a saved destination for THIS
     /// claim, shown under an "owed" claim. Picking one snapshots it onto the
     /// claim server-side (select_refund_destination(), migration 074), so a
@@ -542,8 +612,10 @@ struct PaymentDetailsView: View {
             .accessibilityIdentifier("refund.chooseDestination")
         } else if let snapshot = claim.recipientSnapshot, !destPickerOpen {
             HStack {
-                Text("\(snapshot.bankName) ▪︎ \(snapshot.accountHolderName)")
+                Text(claim.refundAccountSummary(destinations: app.refundDestinationsLoaded ? app.refundDestinations : nil, T: app.T)
+                     ?? "\(snapshot.bankName) ▪︎ \(snapshot.accountHolderName)")
                     .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .accessibilityIdentifier("refund.accountSummary")
                 Spacer()
                 Button(app.T("Đổi", "Change")) {
                     destPickerOpen = true; destPickerID = claim.selectedDestinationId

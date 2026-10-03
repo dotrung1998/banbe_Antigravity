@@ -70,25 +70,35 @@ struct AccountView: View {
     /// `actionItems`; Account loads the same canonical sources independently
     /// (see the `.task` below) so this reflects live server state even when
     /// opened without visiting Home first this session.
-    private var actionItems: [ActionCenterItem] {
-        var goer = buildActionCenterItems(ActionCenterInputs(
+    /// Goer-side items belong to Personal; host-side items belong to the
+    /// Host tab. While the Host tab is hidden (organizerMode off) they stay
+    /// on Personal so owed money is never silently hidden.
+    private var goerActionItems: [ActionCenterItem] {
+        sortActionCenterItems(buildActionCenterItems(ActionCenterInputs(
             role: .goer, now: Date(),
             myHolding: app.myHolding, myPendingVerification: app.myPendingVerification, myRefunds: app.myRefunds,
+            refundDestinations: app.refundDestinationsLoaded ? app.refundDestinations : nil,
             onOpenPayment: { app.openPaymentDetails($0, back: .profile) },
             onOpenMyRefunds: { app.openMyRefunds(back: .profile) },
+            onOpenRefundAccounts: { app.openRefundAccounts(back: .profile) },
             T: app.T
-        ))
-        if app.canHost {
-            goer += buildActionCenterItems(ActionCenterInputs(
-                role: .host, now: Date(),
-                verifications: app.verifications, refundQueue: app.refundQueue, orgHolding: app.organizerHoldingSummary,
-                onOpenVerifications: { app.openVerifications(back: .profile) },
-                onOpenRefundCenter: { app.openVerifications(back: .profile) },
-                onOpenDashboard: { app.goDashboard() },
-                T: app.T
-            ))
-        }
-        return sortActionCenterItems(goer)
+        )))
+    }
+
+    private var hostActionItems: [ActionCenterItem] {
+        guard app.canHost else { return [] }
+        return sortActionCenterItems(buildActionCenterItems(ActionCenterInputs(
+            role: .host, now: Date(),
+            verifications: app.verifications, refundQueue: app.refundQueue, orgHolding: app.organizerHoldingSummary,
+            onOpenVerifications: { app.openVerifications(back: .profile) },
+            onOpenRefundCenter: { app.openVerifications(back: .profile) },
+            onOpenDashboard: { app.goDashboard() },
+            T: app.T
+        )))
+    }
+
+    private var actionItems: [ActionCenterItem] {
+        app.organizerMode ? goerActionItems : sortActionCenterItems(goerActionItems + hostActionItems)
     }
 
     // TASK B (2026-10-03 fix pass) — current UI mode (organizerMode), not
@@ -180,6 +190,7 @@ struct AccountView: View {
             guard app.userID != nil else { return }
             await app.loadPaymentBookings()
             await app.loadMyRefunds()
+            await app.loadRefundDestinations()
             if app.canHost {
                 await app.loadVerifications()
                 await app.loadOrganizerHoldingSummary()
@@ -466,7 +477,7 @@ struct AccountView: View {
                 }
                 .id("account-stats")
                 groupDivider()
-                groupCardRow(groupKey: "payments", icon: "banknote", label: app.T("Thanh Toán & Giấy Tờ", "Payments & Documents"))
+                groupCardRow(groupKey: "payments", icon: "banknote", label: app.T("Thanh Toán & Giấy Tờ", "Payments & Documents"), badge: AccountBadges.myRefundActionCount(myRefunds: app.myRefunds))
                 groupDivider()
                 reportsGroupRow(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsPersonal") {
                     app.openReports(scope: "personal", back: .profile)
@@ -618,6 +629,7 @@ struct AccountView: View {
             // Account IA pass (2026-09-27) — identity card FIRST (was:
             // reports row, then this card).
             orgProfileCard()
+            ActionCenterView(items: hostActionItems, onSeeAll: { app.openVerifications(back: .profile) })
             hostManagementRows
             // Metrics & Reports now lives as the last row INSIDE
             // `hostManagementRows`' grouped card (same pattern as Personal's
@@ -904,7 +916,7 @@ struct AccountView: View {
     // each tab's own group card below (host: "Vận hành & thanh toán tổ
     // chức"; admin: "Duyệt & kiểm duyệt") — see Lib/Badges.swift.
     private var accountTabs: [(String, String, Int)] {
-        var tabs: [(String, String, Int)] = [("personal", app.T("Cá Nhân", "Personal"), 0)]
+        var tabs: [(String, String, Int)] = [("personal", app.T("Cá Nhân", "Personal"), AccountBadges.personalActionCount(paymentBookings: app.paymentBookings, myRefunds: app.myRefunds))]
         if app.organizerMode {
             let hostBadge = AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueue: app.refundQueue)
             tabs.append(("host", app.T("Tổ Chức", "Host"), hostBadge))

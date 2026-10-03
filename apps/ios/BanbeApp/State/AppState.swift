@@ -1096,6 +1096,8 @@ final class AppState: ObservableObject {
     // 'pay-proof' storage path -> signed viewable URL, for whichever rows
     // loadVerifications last loaded — see signProofUrls.
     @Published var proofUrls: [String: URL] = [:]
+    /// 'refund-proof' path -> signed URL (host's refund receipt, shown to the goer).
+    @Published var refundProofUrls: [String: URL] = [:]
     // Flow 2 (host refund -> guest confirmation): organizer's own refund
     // queue (owed/disputed only), and one guest-side claim for whichever
     // booking PaymentDetailsView is currently showing.
@@ -1151,6 +1153,9 @@ final class AppState: ObservableObject {
     @Published var eventCreditHighlightId: UUID?
     // Refund MVP — goer's own saved refund destinations (many, migration 074).
     @Published var refundDestinations: [RefundDestination] = []
+    /// False until the first successful loadRefundDestinations() — lets the
+    /// Action Center tell "no saved accounts" apart from "not loaded yet".
+    @Published var refundDestinationsLoaded = false
     @Published var refundDestinationBusy = false
     @Published var refundDestinationError = ""
     @Published var refundDestinationsReordering = false

@@ -58,8 +58,10 @@ struct HomeView: View {
         var goer = buildActionCenterItems(ActionCenterInputs(
             role: .goer, now: tick,
             myHolding: app.myHolding, myPendingVerification: app.myPendingVerification, myRefunds: app.myRefunds,
+            refundDestinations: app.refundDestinationsLoaded ? app.refundDestinations : nil,
             onOpenPayment: { app.openPaymentDetails($0, back: .home) },
             onOpenMyRefunds: { app.openMyRefunds(back: .home) },
+            onOpenRefundAccounts: { app.openRefundAccounts(back: .home) },
             T: app.T
         ))
         if app.canHost {
@@ -152,6 +154,7 @@ struct HomeView: View {
             Task {
                 await app.loadPaymentBookings()
                 await app.loadMyRefunds()
+                await app.loadRefundDestinations()
                 await app.loadMyEvents()
             }
         }
@@ -159,6 +162,7 @@ struct HomeView: View {
             guard app.userID != nil else { return }
             await app.loadPaymentBookings()
             await app.loadMyRefunds()
+            await app.loadRefundDestinations()
             if app.canHost {
                 await app.loadVerifications()
                 await app.loadOrganizerHoldingSummary()

@@ -8,7 +8,7 @@ import SwiftUI
 struct PolicyView: View {
     @EnvironmentObject var app: AppState
 
-    static let version = "2026-09-18" // keep in sync with src/lib/policy.js's POLICY_VERSION
+    static let version = "2026-10-03" // keep in sync with src/lib/policy.js's POLICY_VERSION
 
     /// Set only for a brand-new OAuth (Google/Facebook) profile that
     /// reached a session with no policyAcceptedAt yet
@@ -165,6 +165,8 @@ struct PolicyView: View {
             section("A5", "A5. Huỷ và có mặt", "A5. Cancelling and showing up") {
                 bi("Bạn huỷ chỗ bất kỳ lúc nào trước giờ sự kiện, ngay trong ứng dụng. Host có thể huỷ sự kiện; chúng tôi báo cho những người đang giữ chỗ. Nếu bạn đã trả tiền cho host, việc hoàn tiền theo đúng điều kiện host đã công bố và được giải quyết trực tiếp giữa bạn và host: banbe không giữ tiền, không có ghi chép về khoản đã trả, nên không hoàn tiền thay host và không theo dõi được việc hoàn tiền. Quyền đòi host theo pháp luật của bạn không đổi, và bạn có thể báo cho chúng tôi qua [contact email] để chúng tôi xem xét hồ sơ host.",
                    "You can cancel a seat any time before the event, in the app. A host may cancel an event; we notify everyone holding a seat. If you have paid the host, any refund follows the terms the host published and is settled directly between you and the host: banbe holds no money and has no record of what was paid, so we cannot refund in a host's place and cannot track whether a refund happened. Your legal claim against the host is unchanged, and you can report a host to us at [contact email] so we can review their profile.")
+                bi("Khi host cho biết đã hoàn tiền qua banbe, bạn có 7 ngày kể từ lúc đó để bấm “Đã nhận tiền” hoặc báo chưa nhận được. Nếu bạn không làm gì, khoản hoàn sẽ được tự động xác nhận sau 7 ngày. Nếu quá hạn hoàn tiền mà bạn chưa nhận được tiền, bạn có thể nhắn cho host qua banbe; nếu vẫn chưa được, bạn có thể báo tranh chấp và admin banbe sẽ xem xét trong mục “Tranh chấp thanh toán”. banbe vẫn không giữ tiền và không chuyển tiền thay host.",
+                   "When a host reports having sent a refund through banbe, you have 7 days from that moment to press “Confirm received” or report that you have not received it. If you do nothing, the refund is confirmed automatically after 7 days. If the refund deadline passes and you have not received the money, you can message the host through banbe; if that does not resolve it, you can raise a dispute and a banbe admin will review it under “Payment disputes”. banbe still holds no money and does not transfer money in a host's place.")
                 bi("Tại cửa, host ghi nhận bạn đã đến theo mã trên vé, hoặc theo tên nếu bạn không mở được vé. Không đến mà không huỷ có thể bị ghi vắng mặt; số lần tham dự và vắng mặt hiện cho host của các sự kiện bạn đặt sau, và vắng mặt nhiều lần có thể giới hạn số chỗ bạn được giữ.",
                    "At the door the host marks you arrived by the code on your ticket, or by name if you cannot open it. Not turning up without cancelling may be marked a no-show; your attended and no-show counts are visible to hosts you book later, and repeated no-shows may limit how many seats you can hold.")
             }

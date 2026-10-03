@@ -111,6 +111,7 @@ export default function Verifications() {
   // already uses elsewhere in this app, not a novel interval.
   const [refundNoteFor, setRefundNoteFor] = useState(null);
   const [refundNote, setRefundNote] = useState('');
+  const [refundProof, setRefundProof] = useState(null);
   // Point 2 — diagnostics panel toggle (5 taps on the "Hoàn tiền" title,
   // within 1.2s of each other; resets on a pause so an ordinary stray tap
   // never accidentally opens it).
@@ -463,18 +464,26 @@ export default function Verifications() {
                       data-testid="refund-queue-note"
                       style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
                     />
+                    {/* Optional proof of the transfer — shown to the guest when
+                        they're asked to confirm they received the money. */}
+                    <label style={{ ...fieldGlass({ padding: '11px 12px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }), fontSize: 13, color: ink }}>
+                      <span>{refundProof ? T('Đã chọn ảnh chuyển khoản', 'Transfer proof selected') : T('Đính kèm ảnh chuyển khoản (không bắt buộc)', 'Attach transfer proof (optional)')}</span>
+                      <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.75 }}>{refundProof ? T('Đổi', 'Change') : T('Chọn', 'Choose')}</span>
+                      <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} data-testid="refund-queue-proof"
+                        onChange={(e) => setRefundProof(e.target.files?.[0] || null)} />
+                    </label>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <Action
                         label={s.refundActionBusy === c.id ? T('Đang lưu…', 'Saving…') : T('Xác nhận', 'Confirm')}
                         disabled={s.refundActionBusy === c.id}
                         testid="refund-queue-mark-sent-confirm"
                         onClick={async () => {
-                          const note = refundNote;
-                          setRefundNoteFor(null); setRefundNote('');
-                          await markRefundSent(c.id, note);
+                          const note = refundNote, proof = refundProof;
+                          setRefundNoteFor(null); setRefundNote(''); setRefundProof(null);
+                          await markRefundSent(c.id, note, proof);
                         }}
                       />
-                      <Action label={T('Huỷ', 'Cancel')} ghost onClick={() => { setRefundNoteFor(null); setRefundNote(''); }} />
+                      <Action label={T('Huỷ', 'Cancel')} ghost onClick={() => { setRefundNoteFor(null); setRefundNote(''); setRefundProof(null); }} />
                     </div>
                   </div>
                 ) : (

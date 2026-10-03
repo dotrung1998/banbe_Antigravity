@@ -3,7 +3,7 @@ import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
-import { computeHostActionCount, computeRefundActionCount, formatBadgeCount } from '../lib/badges.js';
+import { computeHostActionCount, computeRefundActionCount, computeMyRefundActionCount, formatBadgeCount } from '../lib/badges.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 
 // Account IA pass (2026-09-27) — the ONE shared child screen every
@@ -299,7 +299,7 @@ export default function AccountGroup() {
             <Row icon="document" label={T('Hoá đơn', 'Invoices')} trailing="›" testId="account-invoices" onClick={() => openDocuments('invoice', 'guest')} />
             <Row icon="receipt" label={T('Biên nhận', 'Receipts')} trailing="›" testId="account-receipts" onClick={() => openDocuments('receipt', 'guest')} />
             <Row icon="banknote" label={T('Tài khoản thanh toán & nhận hoàn tiền', 'Payment & refund accounts')} trailing="›" testId="account-refund-accounts" onClick={() => openRefundAccounts('profile')} />
-            <Row icon="checklist" label={T('Hoàn tiền', 'Refunds')} trailing="›" testId="account-refunds" onClick={() => openMyRefunds('profile')} border={false} />
+            <Row icon="checklist" label={T('Hoàn tiền', 'Refunds')} trailing="›" testId="account-refunds" badge={computeMyRefundActionCount(s)} onClick={() => openMyRefunds('profile')} border={false} />
           </div>
         )}
 

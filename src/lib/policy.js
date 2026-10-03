@@ -4,4 +4,4 @@
 // existing users are NOT re-prompted automatically by a version bump alone
 // (that would need its own re-consent flow); this is proof-of-consent
 // bookkeeping, per banbe_User_Policy.md's B1/B3 PDPL requirement.
-export const POLICY_VERSION = '2026-09-18';
+export const POLICY_VERSION = '2026-10-03';

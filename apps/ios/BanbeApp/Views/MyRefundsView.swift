@@ -10,7 +10,7 @@ struct MyRefundsView: View {
     private func statusLabel(_ status: String) -> String {
         switch status {
         case "owed": return app.T("Khoản hoàn tiền này đang cần được xử lý", "This refund is still being processed")
-        case "host_marked_sent": return app.T("Đang chờ bạn xác nhận đã nhận tiền", "Awaiting your confirmation")
+        case "host_marked_sent": return app.T("Đang chờ bạn xác nhận đã nhận tiền (tự động xác nhận sau \(RefundClaim.autoConfirmDays) ngày)", "Awaiting your confirmation (auto-confirms after \(RefundClaim.autoConfirmDays) days)")
         case "disputed": return app.T("Đang tranh chấp", "Disputed")
         default: return "—"
         }
@@ -60,6 +60,11 @@ struct MyRefundsView: View {
                                     Text(isOverdue(c) ? app.T("Quá hạn hoàn tiền.", "Refund overdue.") : statusLabel(c.status))
                                         .font(.system(size: 11.5, weight: .semibold))
                                         .foregroundStyle(isOverdue(c) ? BanbeTheme.alert : app.palette.ink.opacity(0.7))
+                                    Text(c.refundAccountSummary(destinations: app.refundDestinationsLoaded ? app.refundDestinations : nil, T: app.T)
+                                         ?? app.T("Chưa chọn tài khoản nhận hoàn tiền", "No refund account chosen yet"))
+                                        .font(.system(size: 11.5))
+                                        .foregroundStyle(app.palette.ink.opacity(0.7))
+                                        .accessibilityIdentifier("refund.accountSummary")
                                 }
                                 .foregroundStyle(app.palette.ink)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -76,7 +81,7 @@ struct MyRefundsView: View {
             .padding(.horizontal, 22).padding(.top, 16).padding(.bottom, 40)
         }
         .onAppear {
-            Task { await app.loadMyRefunds() }
+            Task { await app.loadMyRefunds(); await app.loadRefundDestinations() }
             pollTask?.cancel()
             pollTask = Task { @MainActor in
                 while !Task.isCancelled {

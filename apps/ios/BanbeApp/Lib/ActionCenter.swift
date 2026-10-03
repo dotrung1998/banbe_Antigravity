@@ -42,9 +42,13 @@ struct ActionCenterInputs {
     var myRefunds: [RefundClaim] = []
     var verifications: [PendingVerification] = []
     var refundQueue: [RefundClaim] = []
+    /// The goer's saved refund accounts; nil until loaded (then the item
+    /// never claims "no account" or "default" it can't verify).
+    var refundDestinations: [RefundDestination]? = nil
     var orgHolding: OrganizerHoldingSummary?
     var onOpenPayment: (UUID) -> Void = { _ in }
     var onOpenMyRefunds: () -> Void = {}
+    var onOpenRefundAccounts: () -> Void = {}
     var onOpenVerifications: () -> Void = {}
     var onOpenRefundCenter: () -> Void = {}
     var onOpenDashboard: () -> Void = {}
@@ -85,19 +89,45 @@ func buildActionCenterItems(_ p: ActionCenterInputs) -> [ActionCenterItem] {
                 onTap: { p.onOpenPayment(pending.id) }
             ))
         }
-        for c in p.myRefunds where (c.status == "owed" || c.status == "disputed") && c.selectedDestinationId == nil {
-            items.append(ActionCenterItem(
-                id: "refund-dest-\(c.id)", testId: "action-center-refund-destination", severity: .money, deadline: c.refundDueAt,
-                label: T("Cần chọn tài khoản nhận hoàn tiền", "Refund destination required"),
-                detail: c.eventName, ctaLabel: T("Chọn tài khoản", "Choose account"),
-                onTap: p.onOpenMyRefunds
-            ))
+        for c in p.myRefunds where c.status == "owed" || c.status == "disputed" {
+            if c.selectedDestinationId == nil {
+                if let dests = p.refundDestinations, dests.isEmpty {
+                    items.append(ActionCenterItem(
+                        id: "refund-dest-add-\(c.id)", testId: "action-center-refund-destination-add", severity: .money, deadline: c.refundDueAt,
+                        label: T("Thêm tài khoản nhận hoàn tiền", "Add a refund account"),
+                        detail: c.eventName, ctaLabel: T("Thêm tài khoản", "Add account"),
+                        onTap: p.onOpenRefundAccounts
+                    ))
+                } else {
+                    items.append(ActionCenterItem(
+                        id: "refund-dest-\(c.id)", testId: "action-center-refund-destination", severity: .money, deadline: c.refundDueAt,
+                        label: T("Cần chọn tài khoản nhận hoàn tiền", "Refund destination required"),
+                        detail: c.eventName, ctaLabel: T("Chọn tài khoản", "Choose account"),
+                        onTap: p.onOpenMyRefunds
+                    ))
+                }
+            } else if let snapshot = c.recipientSnapshot {
+                // A destination is set: say which kind (default vs another),
+                // with the account's last 4 digits. Informational — not a
+                // pending action, so it's not part of any badge count.
+                let isDefault = p.refundDestinations?.first(where: \.isDefault)?.id == c.selectedDestinationId
+                let last4 = "..." + String(snapshot.accountNumber.suffix(4))
+                let chosenVi = isDefault ? "Tài khoản mặc định đã được chọn" : "Đã chọn tài khoản khác"
+                let chosenEn = isDefault ? "Default account selected" : "Different account selected"
+                items.append(ActionCenterItem(
+                    id: "refund-dest-chosen-\(c.id)", testId: "action-center-refund-destination-chosen", severity: .normal, deadline: nil,
+                    label: T(chosenVi, chosenEn) + " " + last4,
+                    detail: c.eventName, ctaLabel: T("Xem", "View"),
+                    onTap: p.onOpenMyRefunds
+                ))
+            }
         }
         for c in p.myRefunds where c.status == "host_marked_sent" {
             items.append(ActionCenterItem(
                 id: "refund-confirm-\(c.id)", testId: "action-center-refund-confirm", severity: .money, deadline: nil,
                 label: T("Xác nhận đã nhận hoàn tiền", "Confirm refund received"),
-                detail: c.eventName, ctaLabel: T("Xem", "View"),
+                detail: c.eventName + autoConfirmNote(c, T),
+                ctaLabel: T("Xem", "View"),
                 onTap: p.onOpenMyRefunds
             ))
         }
@@ -160,4 +190,14 @@ func buildActionCenterItems(_ p: ActionCenterInputs) -> [ActionCenterItem] {
     }
 
     return sortActionCenterItems(items)
+}
+
+
+/// " ▪︎ Tự động xác nhận vào 10 thg 10 nếu bạn không phản hồi" — the explicit
+/// 7-day auto-confirm rule, shown wherever a host_marked_sent refund is
+/// listed. Empty when the date is unknown.
+func autoConfirmNote(_ c: RefundClaim, _ T: (String, String) -> String) -> String {
+    guard let at = c.autoConfirmAt else { return "" }
+    let vi = formatShortDate(at, lang: "vi") ?? "", en = formatShortDate(at, lang: "en") ?? ""
+    return T(" ▪︎ Tự động xác nhận vào \(vi) nếu bạn không phản hồi", " ▪︎ Auto-confirms on \(en) if you don't respond")
 }

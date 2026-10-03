@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 /// The organizer's manual-verification queue — the fallback for whatever the
 /// bank webhook didn't reconcile on its own. Oldest first: this is a queue
@@ -16,6 +17,9 @@ struct VerificationsView: View {
     @State private var refundQueuePollTask: Task<Void, Never>?
     @State private var refundNoteFor: UUID?
     @State private var refundNoteText = ""
+    @State private var refundProofItem: PhotosPickerItem?
+    @State private var refundProofJPEG: Data?
+    @State private var refundProofPreview: UIImage?
     // Point 2 — diagnostics panel toggle (5 taps on the "Hoàn tiền" title).
     @State private var diagOpen = false
     @State private var diagTapCount = 0
@@ -276,17 +280,53 @@ struct VerificationsView: View {
                         .padding(11)
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
                         .accessibilityIdentifier("refundQueue.note")
+                    // Optional proof of the transfer — shown to the guest when
+                    // they're asked to confirm they received the money.
+                    if let refundProofPreview {
+                        Image(uiImage: refundProofPreview)
+                            .resizable().scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: 180)
+                            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .accessibilityIdentifier("refundQueue.proofPreview")
+                    }
+                    PhotosPicker(selection: $refundProofItem, matching: .images) {
+                        HStack {
+                            Text(refundProofJPEG == nil
+                                 ? app.T("Đính kèm ảnh chuyển khoản (không bắt buộc)", "Attach transfer proof (optional)")
+                                 : app.T("Đã chọn ảnh chuyển khoản", "Transfer proof selected"))
+                                .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                            Spacer()
+                            Text(refundProofJPEG == nil ? app.T("Chọn", "Choose") : app.T("Đổi", "Change"))
+                                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.75))
+                        }
+                        .padding(11)
+                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                    }
+                    .accessibilityIdentifier("refundQueue.proofPick")
+                    .onChange(of: refundProofItem) { _, item in
+                        guard let item else { return }
+                        Task {
+                            if let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) {
+                                refundProofJPEG = ProofImage.jpegDataUnderLimit(from: img)
+                                refundProofPreview = img
+                            }
+                        }
+                    }
                     HStack(spacing: 8) {
                         action(
                             app.refundActionBusy == claim.id ? app.T("Đang lưu…", "Saving…") : app.T("Xác nhận", "Confirm"),
                             id: "refundQueue.markSentConfirm"
                         ) {
-                            let note = refundNoteText
+                            let note = refundNoteText, proof = refundProofJPEG
                             refundNoteFor = nil; refundNoteText = ""
-                            Task { await app.markRefundSent(claim.id, note: note) }
+                            refundProofItem = nil; refundProofJPEG = nil; refundProofPreview = nil
+                            Task { await app.markRefundSent(claim.id, note: note, proofJPEG: proof) }
                         }
                         .disabled(app.refundActionBusy == claim.id)
-                        action(app.T("Huỷ", "Cancel"), ghost: true) { refundNoteFor = nil; refundNoteText = "" }
+                        action(app.T("Huỷ", "Cancel"), ghost: true) {
+                            refundNoteFor = nil; refundNoteText = ""
+                            refundProofItem = nil; refundProofJPEG = nil; refundProofPreview = nil
+                        }
                     }
                 }
             } else {

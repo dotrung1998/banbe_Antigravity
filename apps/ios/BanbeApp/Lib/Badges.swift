@@ -64,9 +64,10 @@ enum AccountBadges {
     /// admin + host counts (never each other's own already-summed value)
     /// since a real admin queue item and a real host queue item are always
     /// distinct underlying rows.
-    static func accountDockBadge(accountType: String, organizerMode: Bool, pendingEventsCount: Int, verificationsCount: Int, refundQueue: [RefundClaim]) -> Int {
+    static func accountDockBadge(accountType: String, organizerMode: Bool, pendingEventsCount: Int, verificationsCount: Int, refundQueue: [RefundClaim], paymentBookings: [PayableBooking], myRefunds: [RefundClaim]) -> Int {
         adminModerationCount(accountType: accountType, pendingEventsCount: pendingEventsCount)
             + hostActionCount(organizerMode: organizerMode, verificationsCount: verificationsCount, refundQueue: refundQueue)
+            + personalActionCount(paymentBookings: paymentBookings, myRefunds: myRefunds)
     }
 
     /// Personal-tab "Tickets & Bookings" group badge (Account IA reorg,
@@ -75,14 +76,27 @@ enum AccountBadges {
     /// status, not yet a real ticket per `Booking.isTicket`). Reads the
     /// SAME `paymentBookings` array `AccountView`'s own Action Center
     /// already loads (no new query) — a third view of one already-loaded
-    /// array. Deliberately NOT summed into `accountDockBadge` — that chain
-    /// is scoped to admin/host duties (see its own doc comment); this is a
-    /// personal-tab-only signal mirroring `src/lib/badges.js`'s
+    /// array. Part of `personalActionCount`, which `accountDockBadge` sums
+    /// in. Mirrors `src/lib/badges.js`'s
     /// `computeMyTicketsActionCount` exactly.
     static func myTicketsActionCount(paymentBookings: [PayableBooking]) -> Int {
         paymentBookings.filter { b in
             ["pending", "confirmed", "attended"].contains(b.status) && !b.isTicket
         }.count
+    }
+
+    /// Goer-side refunds needing action — same three conditions as the
+    /// goer items in `buildActionCenterItems`, once per distinct claim.
+    /// Mirrors `computeMyRefundActionCount` in src/lib/badges.js.
+    static func myRefundActionCount(myRefunds: [RefundClaim]) -> Int {
+        myRefunds.filter { c in
+            c.status == "host_marked_sent" || c.status == "disputed"
+                || (c.status == "owed" && c.selectedDestinationId == nil)
+        }.count
+    }
+
+    static func personalActionCount(paymentBookings: [PayableBooking], myRefunds: [RefundClaim]) -> Int {
+        myTicketsActionCount(paymentBookings: paymentBookings) + myRefundActionCount(myRefunds: myRefunds)
     }
 
     /// Shared "99+" cap for a badge that should not be limited to the

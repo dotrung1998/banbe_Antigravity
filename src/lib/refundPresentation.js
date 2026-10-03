@@ -51,3 +51,16 @@ export function refundClaimPresentation(c) {
     pendingConfirmation: c.status === 'host_marked_sent',
   };
 }
+
+
+// A host_marked_sent claim settles itself as confirmed this many days after
+// the host marked it, if the guest neither confirms nor disputes. Enforced
+// server-side by goc_auto_confirm_refunds() (migration 127) and stated in the
+// Terms — change all three together.
+export const REFUND_AUTO_CONFIRM_DAYS = 7;
+
+/** Date the claim auto-confirms, or null unless host_marked_sent. */
+export function refundAutoConfirmAt(claim) {
+  if (!claim || claim.status !== 'host_marked_sent' || !claim.host_marked_at) return null;
+  return new Date(new Date(claim.host_marked_at).getTime() + REFUND_AUTO_CONFIRM_DAYS * 86400000);
+}
