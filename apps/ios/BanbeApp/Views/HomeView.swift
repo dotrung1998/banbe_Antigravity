@@ -13,17 +13,10 @@ private struct HomeControlPressStyle: ButtonStyle {
     }
 }
 
-/// Captures the Area control's own on-screen rect so the anchored area MENU
-/// can open exactly there instead of floating as a centered/bottom modal.
-/// `.global` coordinates — AreaSheetView is mounted at the root and spans the
-/// whole window, so this is the space its placement math works in.
-private struct HomeAreaFramePreferenceKey: PreferenceKey {
-    static var defaultValue: CGRect?
-
-    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
-        value = nextValue() ?? value
-    }
-}
+/// Home's area control is a native `Menu` mounted inline on this header
+/// (see `header` below), so nothing needs to know where it sits on screen any
+/// more: the former HomeAreaFramePreferenceKey existed only to feed the
+/// removed AreaSheetView's anchored placement math, and is gone with it.
 
 /// The feed — a port of src/screens/Home.jsx: header (wordmark, language
 /// toggle, area picker, notification bell, messages, account), the held-spot
@@ -39,6 +32,10 @@ struct HomeView: View {
     // (which keeps updating `app.homeScrollAnchorID` live via
     // `.scrollPosition(id:)`'s own two-way binding — see requirement 4).
     @State private var didAttemptScrollRestore = false
+    /// The area menu's own "Search locations…" row opens the searchable
+    /// location list — a native `Menu` can't host a text field, so this is
+    /// where typing a place name still works. See `LocationPickerSheet`.
+    @State private var areaSearchOpen = false
 
     private let filters: [(key: String, vi: String, en: String)] = [
         ("all", "Tất cả", "All"),
@@ -222,6 +219,12 @@ struct HomeView: View {
         // sign-in within the same session), so a new account must not
         // inherit a previous account's "already revealed 23 rows" state.
         .onChange(of: app.userID) { _, _ in visibleSurveyDiscoveryCount = 3 }
+        // The area menu's searchable fallback (see `header`): a native Menu
+        // can't hold a text field, so "Search locations…" opens this sheet
+        // instead. Same picker Map Explore uses, same `app.area` selection.
+        .sheet(isPresented: $areaSearchOpen) {
+            LocationPickerSheet(isPresented: $areaSearchOpen)
+        }
         // The Pulse RING's frame is no longer tracked anywhere at all — no
         // PreferenceKey, no probe, no `AppState` property. The teaser bubble
         // is drawn inside `storyRow`'s own content these days, so there is
@@ -418,23 +421,29 @@ struct HomeView: View {
                         .buttonStyle(HomeControlPressStyle())
                         .accessibilityIdentifier("header.lang")
                     // "banbe ▪︎" prefix dropped (2026-09-29 follow-up) — was
-                    // crowding out the actual region name; the button's own
+                    // crowding out the actual region name; the control's own
                     // accessibility identifier and action already make it
                     // unambiguous which control this is without a label
                     // prefix repeating the app's own name.
-                    Button("\(app.currentAreaLabel) ▾") {
-                        Haptics.light()
-                        app.openArea()
+                    //
+                    // Area menu parity pass — this is a native `Menu` now, the
+                    // same mechanism the chat composer's "+" attach button and
+                    // Inbox's own row menus use, replacing the hand-rolled
+                    // anchored glass panel (the former AreaSheetView) and all
+                    // of its own scale/opacity reveal. Everything about how it
+                    // presents — animation, Liquid Glass look, anchoring,
+                    // outside-tap dismissal, edge/safe-area handling,
+                    // light/dark, Reduce Motion — is therefore the system's and
+                    // cannot drift from the chat "+" menu.
+                    Menu {
+                        AreaMenuOptions { areaSearchOpen = true }
+                    } label: {
+                        Text("\(app.currentAreaLabel) ▾")
                     }
                     .font(.system(size: 13, weight: .semibold))
                     .padding(.horizontal, 12).padding(.vertical, 7)
                     .background { homeGlassCapsule() }
                     .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
-                    .background {
-                        GeometryReader { proxy in
-                            Color.clear.preference(key: HomeAreaFramePreferenceKey.self, value: proxy.frame(in: .global))
-                        }
-                    }
                     .buttonStyle(HomeControlPressStyle())
                     .accessibilityIdentifier("header.area")
                     // No `toggleTheme()` exists on iOS — Preferences.swift's
@@ -463,7 +472,6 @@ struct HomeView: View {
         // a longer area name (or English) pushes the row past the edge.
         .padding(.horizontal, 20)
         .padding(.top, 16)
-        .onPreferenceChange(HomeAreaFramePreferenceKey.self) { app.areaSourceFrame = $0 }
     }
 
     // MARK: Your events

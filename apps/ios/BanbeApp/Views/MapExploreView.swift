@@ -539,7 +539,7 @@ struct MapExploreView: View {
                 // underneath it instead of being covered.
                 .overlay {
                     if locationPickerOpen {
-                        MapLocationPickerSheet(isPresented: $locationPickerOpen)
+                        LocationPickerSheet(isPresented: $locationPickerOpen)
                             .environmentObject(app)
                             .transition(.opacity)
                     }

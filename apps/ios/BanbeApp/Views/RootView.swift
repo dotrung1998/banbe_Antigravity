@@ -17,7 +17,6 @@ struct RootView: View {
     // continuous, per-frame gesture value is what was making the drag feel
     // laggy, since it was smoothing toward a target that kept moving.
     @State private var dragTranslation: CGFloat = 0
-    @State private var areaSheetMounted = false
     @State private var isCommittingBack = false
     @State private var isDragTracking = false
     // Overlapping-headers fix (2026-09-29 follow-up, real-device report) —
@@ -691,12 +690,13 @@ struct RootView: View {
 
             // Check-in scanner pop-up (Pulse-style card over a scrim).
             if app.scanningQr { QRScannerView().transition(.identity) }
-            // Stays mounted until AreaSheetView finishes its own reverse
-            // (shrink-back-to-source) animation, so closing isn't instant.
-            if areaSheetMounted {
-                AreaSheetView(onDismissed: { areaSheetMounted = false })
-                    .transition(.identity)
-            }
+            // The former AreaSheetView overlay is gone: the area filter is a
+            // native `Menu` on Home's own header control (AreaMenuOptions,
+            // Sheets.swift), which presents above this ZStack by itself and
+            // needs neither a mounted root-level panel nor a reverse animation
+            // to wait out — and so needs no dock-hiding flag here either (a
+            // native Menu is presented above this window's dock overlay on its
+            // own, exactly like the Inbox's own row menus).
             if app.askingLocation { LocationSheetView() }
             if app.reasonPrompt != nil { ReasonSheetView() }
             if let photo = app.photoViewer { PhotoViewerView(item: photo) }
@@ -855,7 +855,6 @@ struct RootView: View {
             if auth.session != nil && auth.gate != .ready && app.screen != .splash { AccountGateOverlay() }
             if auth.isLocked && app.screen != .splash { FaceIDLockView() }
         }
-        .onChange(of: app.areaAsking) { _, open in if open { areaSheetMounted = true } }
         .animation(.easeInOut(duration: 0.2), value: app.askingLocation)
         .animation(.easeInOut(duration: 0.2), value: app.photoViewer)
         // The screen switch above is a plain ZStack, not a NavigationStack,
@@ -1116,14 +1115,6 @@ struct RootView: View {
         // can reuse it by toggling one bool, without its own RootView wiring.
         .onChange(of: app.modalActionSheetPresented) { _, presented in
             BottomTabBarOverlay.shared.setModalActionSheetPresented(presented)
-        }
-        // iPhone fix pass (2026-09-26) — see BottomTabBarOverlay.swift's
-        // own `areaSheetOpen` comment: the "Khu vực" sheet is hand-rolled
-        // SwiftUI content inside the main window, so this separate
-        // always-on-top dock window needs its own explicit signal to hide,
-        // same as StoryViewer/Pulse above.
-        .onChange(of: app.areaAsking) { _, open in
-            BottomTabBarOverlay.shared.setAreaSheetOpen(open)
         }
         // TASK 1 (dock "+" native-menu pass) — story creation's photo/
         // camera picker + Retake/Use-photo preview, centralized here

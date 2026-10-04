@@ -29,6 +29,16 @@ struct DisputeChatPanel: View {
     @State private var highlightedID: UUID?
     @State private var confirmCloseOpen = false
     @State private var transcriptBusy = false
+    /// An attachment upload is running for THIS dispute. Local on purpose: it
+    /// exists to dim the "+" while bytes are moving, while the guard that
+    /// actually prevents a second upload lives in AppState
+    /// (disputeAttachInFlight, keyed by claim id).
+    @State private var sendingAttachment = false
+    /// The attachment currently opened fullscreen, if any. Tapping an image in
+    /// the transcript opens the same kind of viewer the ordinary chat uses —
+    /// see DisputeAttachmentViewerView for the two things it deliberately
+    /// does NOT offer.
+    @State private var viewerItem: DisputeAttachmentViewerItem?
     /// Screen-space Y of the end of this dispute's message history, and of the
     /// end of the whole block. Their difference is what "am I at the end of
     /// this history?" means without a nested scroll view — see the two
@@ -148,6 +158,26 @@ struct DisputeChatPanel: View {
         if let last = messages.last { app.disputeChatScrollTarget = last.id }
     }
 
+    /// Attach a photo or document to THIS refund dispute — the exact same
+    /// "+" flow the booking conversation's composer uses (ChatAttachButton,
+    /// ChatAttachmentFlow.swift), including its menu, its pickers, the
+    /// accepted types and the size cap.
+    ///
+    /// Only offered for a refund dispute, and only while it is open: the
+    /// server refuses both the upload and the message once the dispute is
+    /// concluded (send_refund_dispute_attachment re-checks `resolved_at` at
+    /// insert time), and the "other party closed it while my photo was
+    /// uploading" case is answered by deleting the file we just wrote rather
+    /// than by leaving it orphaned — see AppState.sendRefundDisputeAttachment.
+    private func sendAttachment(_ payload: AttachmentPayload) async {
+        guard let refundClaimID else { return }
+        sendingAttachment = true
+        let ok = await app.sendRefundDisputeAttachment(payload, claimID: refundClaimID)
+        sendingAttachment = false
+        guard ok, let last = messages.last else { return }
+        app.disputeChatScrollTarget = last.id
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
@@ -189,6 +219,15 @@ struct DisputeChatPanel: View {
         // something new arrived to be consumed.
         .onChange(of: app.chatHighlight != nil) { _, _ in consumeChatHighlight() }
         .accessibilityIdentifier("disputeChat.panel")
+        // Fullscreen image viewer for a transcript attachment. Presented from
+        // here rather than from RootView because this panel has no global
+        // viewer slot: unlike the ordinary chat's photo viewer (which also
+        // offers Forward and Post to Story), a dispute attachment can only be
+        // viewed, saved or shared from here — see DisputeAttachmentViewerView.
+        .fullScreenCover(item: $viewerItem) { item in
+            DisputeAttachmentViewerView(item: item)
+                .ignoresSafeArea()
+        }
         .sheet(isPresented: $app.disputeTranscriptReadyToShare) {
             if let url = app.disputeTranscriptExportURL {
                 BanbeShareSheet(items: [url])
@@ -321,22 +360,32 @@ struct DisputeChatPanel: View {
         return VStack(alignment: mine ? .trailing : .leading, spacing: 2) {
             Text(senderLabel(m) + " ▪︎ " + m.createdAt.formatted())
                 .font(.system(size: 10)).foregroundStyle(app.palette.ink.opacity(0.55))
-            // .fixedSize(horizontal: false, vertical: true) so a long message
-            // wraps to as many lines as it needs instead of being clipped to a
-            // single line's height inside this fixed-width column — the other
-            // half of the "messages are cut off" bug.
-            Text(m.body)
-                .font(.system(size: 13))
-                .foregroundStyle(app.palette.ink)
-                .fixedSize(horizontal: false, vertical: true)
+            if let path = m.attachmentPath, !path.isEmpty {
+                // Same two shapes the ordinary chat draws, from the same
+                // shared geometry (AttachmentBubble.boxSize), so a photo looks
+                // identical in both places: an inline image at the source
+                // image's own ratio that opens fullscreen on tap, or a
+                // paperclip chip that opens the document. Attachment-ONLY
+                // messages work because `body` is a caption, not the content.
+                attachmentBody(m, path: path)
+            } else {
+                // .fixedSize(horizontal: false, vertical: true) so a long message
+                // wraps to as many lines as it needs instead of being clipped to a
+                // single line's height inside this fixed-width column — the other
+                // half of the "messages are cut off" bug.
+                Text(m.body)
+                    .font(.system(size: 13))
+                    .foregroundStyle(app.palette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(8)
+                    .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(BanbeTheme.alert, lineWidth: highlightedID == m.id ? 1.5 : 0)
+                    )
+            }
         }
-        .padding(8)
         .frame(maxWidth: .infinity, alignment: mine ? .trailing : .leading)
-        .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(BanbeTheme.alert, lineWidth: highlightedID == m.id ? 1.5 : 0)
-        )
         .accessibilityIdentifier("disputeChat.message")
         .background(alignment: .bottom) {
             if isLast {
@@ -346,6 +395,60 @@ struct DisputeChatPanel: View {
             }
         }
         .onPreferenceChange(DisputeHistoryBottomKey.self) { historyBottomY = $0 }
+    }
+
+    /// One attachment inside the transcript: an image preview box, or a file
+    /// chip. Neither renders `body` beside it — exactly like ChatView's own
+    /// bubble, which shows only the attachment and uses the localized "Sent a
+    /// photo" caption as an accessible description rather than as visible text.
+    ///
+    /// The signed URL comes from `app.disputeAttachmentUrls`, which only ever
+    /// holds paths the storage policy granted this account — and those paths
+    /// are namespaced by DISPUTE thread id, so nothing signed for one dispute
+    /// can be drawn inside another's transcript.
+    @ViewBuilder
+    private func attachmentBody(_ m: DisputeMessage, path: String) -> some View {
+        let url = app.disputeAttachmentUrls[path]
+        if m.isImageAttachment, let url {
+            let box = AttachmentBubble.boxSize(width: m.attachmentWidth, height: m.attachmentHeight)
+            AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
+                .frame(width: min(box.width, 240), height: min(box.height, 320))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+                .accessibilityIdentifier("disputeChat.attachment")
+                .onTapGesture {
+                    viewerItem = DisputeAttachmentViewerItem(
+                        path: path, url: url,
+                        width: m.attachmentWidth, height: m.attachmentHeight,
+                        senderLabel: senderLabel(m)
+                    )
+                }
+        } else if let url {
+            Link(destination: url) {
+                HStack(spacing: 8) {
+                    Image(systemName: "paperclip")
+                    Text(m.body)
+                        .lineLimit(2)
+                }
+                .font(.system(size: 12.5))
+                .foregroundStyle(app.palette.ink)
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .accessibilityIdentifier("disputeChat.attachment")
+        } else {
+            // Still signing, or the policy refused: say so rather than
+            // silently rendering a broken/empty bubble.
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(app.T("Đang tải tệp…", "Loading attachment…"))
+                    .font(.system(size: 12))
+            }
+            .foregroundStyle(app.palette.ink.opacity(0.6))
+            .padding(8)
+            .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .accessibilityIdentifier("disputeChat.attachmentPending")
+        }
     }
 
     /// Reached by tapping a 'dispute_message' toast/notification
@@ -400,6 +503,18 @@ struct DisputeChatPanel: View {
 
     private var composer: some View {
         HStack(spacing: 8) {
+            // Attachments (migration 131). REFUND disputes only — the payment
+            // dispute panel above (host's verification queue) is admin-resolved
+            // and has no bucket, no columns and no send RPC for this.
+            if let refundClaimID {
+                ChatAttachButton(
+                    isEnabled: !readOnly && !completed,
+                    isSending: sendingAttachment,
+                    onPick: { payload in await sendAttachment(payload) },
+                    onFailure: { reason in app.disputeChatError = reason },
+                    accessibilityIdentifier: "disputeChat.attach"
+                )
+            }
             TextField(app.T("Nhắn gì đó…", "Say something…"), text: $app.disputeChatDraft, axis: .vertical)
                 .font(.system(size: 13)).padding(10)
                 .lineLimit(1...4)
@@ -508,4 +623,226 @@ private struct DisputeHistoryBottomKey: PreferenceKey {
 private struct DisputeBlockBottomKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+// MARK: - Fullscreen attachment viewer (migration 131)
+
+/// One dispute attachment opened fullscreen. `Identifiable` on the object
+/// path so `.fullScreenCover(item:)` presents and dismisses it the same way
+/// the rest of this app presents a transient detail.
+struct DisputeAttachmentViewerItem: Identifiable {
+    let path: String
+    let url: URL
+    let width: Int?
+    let height: Int?
+    let senderLabel: String
+    var id: String { path }
+}
+
+/// Fullscreen viewer for a photo shared inside the temporary refund dispute.
+///
+/// Interaction model is ChatPhotoViewerView's, deliberately: tap toggles the
+/// chrome, only a downward drag past the threshold dismisses, the same
+/// threshold, drag-reveal distance and dismissal timing constants are used, so
+/// "how the photo viewer behaves" is one answer in this app rather than two.
+///
+/// The action set is deliberately SHORTER than the chat viewer's, and that is
+/// the whole point of not reusing that view:
+///   * no Forward — a forwarded attachment would be re-uploaded into an
+///     ordinary conversation's `chat-attachments`, i.e. copied out of the
+///     temporary, participant-scoped, purge-with-the-transcript lifecycle
+///     into one that never deletes anything;
+///   * no Post to Story — same objection, and public.
+/// What it does offer is the ordinary viewer's read/save/share/copy set, plus
+/// one line saying plainly that this file goes away with the transcript, so
+/// nobody believes a saved-in-app "attachment" is permanent.
+private struct DisputeAttachmentViewerView: View {
+    @EnvironmentObject private var app: AppState
+    @Environment(\.dismiss) private var dismiss
+    let item: DisputeAttachmentViewerItem
+    @State private var chromeHidden = false
+    @State private var dragOffsetY: CGFloat = 0
+    @State private var isDragging = false
+    @State private var actionMessage: String?
+
+    private static let dismissMs: Double = 0.26
+    private static let dismissThreshold: CGFloat = 90
+    private static let dragRevealDistance: CGFloat = 220
+
+    private var dragProgress: Double { min(1, max(0, dragOffsetY) / Self.dragRevealDistance) }
+
+    var body: some View {
+        ZStack {
+            // Same layering rule as ChatPhotoViewerView: the drag gesture
+            // lives on the backdrop+photo layer ONLY, never on a container
+            // that wraps the toolbar, or it steals the toolbar's taps.
+            stage
+            if let actionMessage {
+                Text(actionMessage)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(app.palette.ink)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Color.white.opacity(0.92), in: Capsule())
+                    .padding(.top, 96)
+                    .frame(maxHeight: .infinity, alignment: .top)
+            }
+        }
+        .overlay(alignment: .top) { topBar }
+        .overlay(alignment: .bottom) { bottomBar }
+        .transition(.opacity)
+        // The panel normally renders inside the booking conversation, where
+        // the dock is already hidden — but this viewer is a full-window
+        // presentation of the MAIN window's hierarchy, which the separate
+        // always-on-top dock window would otherwise paint straight through, so
+        // it says so for as long as it is up (same mechanism ChatView uses for
+        // its own camera/file pickers).
+        .onAppear { BottomTabBarOverlay.shared.setForcedHidden(true) }
+        .onDisappear { BottomTabBarOverlay.shared.setForcedHidden(false) }
+    }
+
+    private var stage: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+                .opacity(Double(1 - dragProgress * 0.7))
+            AsyncImage(url: item.url) { $0.resizable().scaledToFit() } placeholder: { ProgressView().tint(.white) }
+                .frame(maxWidth: UIScreen.main.bounds.width * 0.92, maxHeight: UIScreen.main.bounds.height * 0.7)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .offset(y: dragOffsetY)
+                .scaleEffect(1 - dragProgress * 0.08)
+                .accessibilityIdentifier("disputeChat.photoViewer.image")
+        }
+        .contentShape(Rectangle())
+        .gesture(stageGesture)
+    }
+
+    private var stageGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                let dy = value.translation.height
+                let dx = value.translation.width
+                if !isDragging {
+                    guard dy > 6, dy > abs(dx) else { return }
+                    isDragging = true
+                }
+                dragOffsetY = dy
+            }
+            .onEnded { value in
+                defer { isDragging = false }
+                let dy = value.translation.height
+                let dx = value.translation.width
+                guard isDragging else {
+                    if abs(dy) < 6 && abs(dx) < 6 { chromeHidden.toggle() }
+                    return
+                }
+                if dy > Self.dismissThreshold {
+                    withAnimation(.easeOut(duration: Self.dismissMs)) { dragOffsetY = UIScreen.main.bounds.height }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + Self.dismissMs) { dismiss() }
+                } else {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { dragOffsetY = 0 }
+                }
+            }
+    }
+
+    private var topBar: some View {
+        HStack {
+            Button { closeTapped() } label: {
+                Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("disputeChat.photoViewer.close")
+            .padding(.leading, -10)
+            Spacer()
+            Button { Task { await saveTapped() } } label: {
+                Image(systemName: "arrow.down.circle").font(.system(size: 18)).foregroundStyle(.white)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("disputeChat.photoViewer.save")
+            Button { shareTapped() } label: {
+                Image(systemName: "square.and.arrow.up").font(.system(size: 18)).foregroundStyle(.white)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("disputeChat.photoViewer.share")
+            Button { copyTapped() } label: {
+                Image(systemName: "doc.on.doc").font(.system(size: 18)).foregroundStyle(.white)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("disputeChat.photoViewer.copy")
+        }
+        .padding(.horizontal, 18).padding(.top, 56)
+        .opacity(chromeHidden ? 0 : Double(1 - dragProgress))
+        .allowsHitTesting(!chromeHidden)
+        .animation(.easeInOut(duration: 0.2), value: chromeHidden)
+    }
+
+    /// Who sent it, and the one promise that must not be left implicit: this
+    /// file is deleted with the transcript, so saving a copy is the reader's
+    /// only way to keep it.
+    private var bottomBar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(app.T("Gửi bởi \(item.senderLabel)", "Sent by \(item.senderLabel)"))
+                .font(.system(size: 13, weight: .semibold))
+            Text(app.T(
+                "Tệp đính kèm của tranh chấp tạm thời: tự xoá cùng bản ghi khi tranh chấp kết thúc. Hãy lưu ảnh nếu bạn cần giữ lại.",
+                "Temporary dispute attachment: it is deleted with this transcript when the dispute ends. Save the photo now if you need to keep it."
+            ))
+            .font(.system(size: 12))
+            .opacity(0.85)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(colors: [.black.opacity(0), .black.opacity(0.75), .black.opacity(0.85)], startPoint: .top, endPoint: .bottom)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .ignoresSafeArea(edges: .bottom)
+        )
+        .opacity(chromeHidden ? 0 : Double(1 - dragProgress))
+        .allowsHitTesting(!chromeHidden)
+        .animation(.easeInOut(duration: 0.2), value: chromeHidden)
+    }
+
+    private func closeTapped() {
+        withAnimation(.easeOut(duration: Self.dismissMs)) { dragOffsetY = UIScreen.main.bounds.height }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.dismissMs) { dismiss() }
+    }
+
+    private func flash(_ text: String) {
+        actionMessage = text
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await MainActor.run { actionMessage = nil }
+        }
+    }
+
+    private func saveTapped() async {
+        let ok = await app.saveDisputeAttachmentImage(from: item.url)
+        flash(ok ? app.T("Đã lưu ảnh", "Photo saved") : app.T("Không lưu được ảnh", "Couldn't save photo"))
+    }
+
+    private func shareTapped() {
+        Task {
+            guard let (data, _) = try? await URLSession.shared.data(from: item.url),
+                  let image = UIImage(data: data) else { return }
+            await MainActor.run {
+                let activity = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+                UIApplication.shared.connectedScenes
+                    .compactMap { $0 as? UIWindowScene }
+                    .first?.keyWindow?.rootViewController?
+                    .present(activity, animated: true)
+            }
+        }
+    }
+
+    private func copyTapped() {
+        Task {
+            guard let (data, _) = try? await URLSession.shared.data(from: item.url),
+                  let image = UIImage(data: data) else { return }
+            await MainActor.run {
+                UIPasteboard.general.image = image
+                actionMessage = app.T("Đã sao chép ảnh", "Image copied")
+            }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await MainActor.run { actionMessage = nil }
+        }
+    }
 }

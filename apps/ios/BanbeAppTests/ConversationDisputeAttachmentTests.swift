@@ -175,7 +175,7 @@ final class ConversationDisputeAttachmentTests: XCTestCase {
         ]
         let disputedAt = Date()
         let chosen = DisputeCardAttachment.refundCardMessageID(
-            cards: cards, disputedAt: disputedAt
+            in: cards, disputedAt: disputedAt
         )
         XCTAssertEqual(chosen, cards[2].id,
                        "the newest cancellation at or before the dispute owns it")
@@ -190,7 +190,7 @@ final class ConversationDisputeAttachmentTests: XCTestCase {
         let after = card("10000000-0000-4000-8000-000000000002", cancelledBody, 1)
         let disputedAt = Date(timeIntervalSinceNow: -10 * 60)
         XCTAssertEqual(
-            DisputeCardAttachment.refundCardMessageID(cards: [before, after], disputedAt: disputedAt),
+            DisputeCardAttachment.refundCardMessageID(in: [before, after], disputedAt: disputedAt),
             before.id
         )
     }
@@ -201,7 +201,7 @@ final class ConversationDisputeAttachmentTests: XCTestCase {
         let only = card("10000000-0000-4000-8000-000000000001", cancelledBody, 1)
         XCTAssertEqual(
             DisputeCardAttachment.refundCardMessageID(
-                cards: [only], disputedAt: Date(timeIntervalSinceNow: -600 * 60)
+                in: [only], disputedAt: Date(timeIntervalSinceNow: -600 * 60)
             ),
             only.id
         )
@@ -212,8 +212,8 @@ final class ConversationDisputeAttachmentTests: XCTestCase {
             card("10000000-0000-4000-8000-000000000001", cancelledBody, 300),
             card("10000000-0000-4000-8000-000000000002", cancelledBody, 60),
         ]
-        let a = DisputeCardAttachment.refundCardMessageID(cards: cards, disputedAt: nil)
-        let b = DisputeCardAttachment.refundCardMessageID(cards: cards.reversed(), disputedAt: nil)
+        let a = DisputeCardAttachment.refundCardMessageID(in: cards, disputedAt: nil)
+        let b = DisputeCardAttachment.refundCardMessageID(in: cards.reversed(), disputedAt: nil)
         XCTAssertEqual(a, cards[1].id)
         XCTAssertEqual(a, b, "input order must not change the pick")
     }
@@ -223,14 +223,14 @@ final class ConversationDisputeAttachmentTests: XCTestCase {
             card("20000000-0000-4000-8000-000000000001", confirmedBody, 400),
             card("20000000-0000-4000-8000-000000000002", confirmedBody, 200),
         ]
-        let chosen = DisputeCardAttachment.paymentCardMessageID(cards: cards)
+        let chosen = DisputeCardAttachment.paymentCardMessageID(in: cards)
         XCTAssertEqual(chosen, cards[0].id, "the earliest confirmation owns the payment dispute")
         XCTAssertEqual(cards.filter { $0.id == chosen }.count, 1)
     }
 
     func testNoCardsMeansNothingAttached() {
-        XCTAssertNil(DisputeCardAttachment.refundCardMessageID(cards: [], disputedAt: Date()))
-        XCTAssertNil(DisputeCardAttachment.paymentCardMessageID(cards: []))
+        XCTAssertNil(DisputeCardAttachment.refundCardMessageID(in: [], disputedAt: Date()))
+        XCTAssertNil(DisputeCardAttachment.paymentCardMessageID(in: []))
     }
 
     func testSelectionIsIndependentPerDisputeKind() {
@@ -240,8 +240,8 @@ final class ConversationDisputeAttachmentTests: XCTestCase {
             card("30000000-0000-4000-8000-000000000001", confirmedBody, 500),
             card("30000000-0000-4000-8000-000000000002", cancelledBody, 100),
         ]
-        let refund = DisputeCardAttachment.refundCardMessageID(cards: cards, disputedAt: Date())
-        let payment = DisputeCardAttachment.paymentCardMessageID(cards: cards)
+        let refund = DisputeCardAttachment.refundCardMessageID(in: cards, disputedAt: Date())
+        let payment = DisputeCardAttachment.paymentCardMessageID(in: cards)
         XCTAssertEqual(refund, cards[1].id)
         XCTAssertEqual(payment, cards[0].id)
         XCTAssertNotEqual(refund, payment)
@@ -258,7 +258,7 @@ final class ConversationDisputeAttachmentTests: XCTestCase {
         )
         let cards = [plain, other] + [card("40000000-0000-4000-8000-000000000003", cancelledBody, 10)]
         XCTAssertEqual(
-            DisputeCardAttachment.refundCardMessageID(cards: cards, disputedAt: Date()),
+            DisputeCardAttachment.refundCardMessageID(in: cards, disputedAt: Date()),
             UUID(uuidString: "40000000-0000-4000-8000-000000000003")
         )
     }

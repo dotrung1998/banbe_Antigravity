@@ -591,9 +591,11 @@ private struct FeedbackFlowView: View {
 struct ChatView: View {
     @EnvironmentObject var app: AppState
     @State private var pollTask: Task<Void, Never>?
-    // Task 4 (2026-09-21 follow-up) — the composer's "+" attach flow.
-    @State private var fileImporterOpen = false
-    @State private var cameraOpen = false
+    // Task 4 (2026-09-21 follow-up) — the composer's "+" attach flow. The
+    // button, its two-option menu, both pickers and the re-encode all moved
+    // into ChatAttachButton (ChatAttachmentFlow.swift) when the temporary
+    // refund dispute composer needed the identical experience; only this
+    // view's own upload + send lives here now.
     @State private var sendingAttachment = false
     // Task 5 (2026-09-22 twelfth follow-up) — driven by app.chatFocusComposer
     // (set true only for a typed reply sent from ChatPhotoViewerView, never
@@ -651,40 +653,6 @@ struct ChatView: View {
             }
         }
         .onDisappear { pollTask?.cancel() }
-        .fileImporter(isPresented: $fileImporterOpen, allowedContentTypes: [.image, .pdf]) { result in
-            guard case let .success(url) = result else { return }
-            Task { await sendPickedFile(url) }
-        }
-        // Task 4 — Camera's native "Retake"/"Use Photo" review step comes
-        // from UIImagePickerController itself (CameraPicker.swift) — no
-        // custom preview UI needed to satisfy that requirement.
-        .fullScreenCover(isPresented: $cameraOpen) {
-            CameraPicker { image in
-                cameraOpen = false
-                guard let data = ProofImage.jpegDataUnderLimit(from: image) else { return }
-                // Task 1 (07-notifications.md) — the RE-ENCODED data's own
-                // pixel size, not `image.size` (points, pre-downscale) —
-                // decoding what actually got uploaded is what the bubble
-                // needs to match exactly.
-                let dims = UIImage(data: data)?.size
-                Task {
-                    sendingAttachment = true
-                    _ = await app.sendChatAttachment(data: data, contentType: "image/jpeg", fileExtension: "jpg", width: dims.map { Int($0.width) }, height: dims.map { Int($0.height) })
-                    sendingAttachment = false
-                }
-            }
-            .ignoresSafeArea()
-        }
-        // Task 1.3 (07-notifications.md real-device follow-up) — same
-        // BottomTabBarOverlay-covers-any-main-window-presentation issue
-        // fixed for AccountView's story flow; `.chat` isn't in
-        // `BottomTabBar.visibleScreens` so the dock is normally already
-        // hidden here, but this guards the edge case of returning from the
-        // camera/file picker to a screen where it WOULD show, and keeps
-        // both attach flows behaving identically per this ticket's ask.
-        .onChange(of: cameraOpen) { _, _ in BottomTabBarOverlay.shared.setForcedHidden(cameraOpen || fileImporterOpen) }
-        .onChange(of: fileImporterOpen) { _, _ in BottomTabBarOverlay.shared.setForcedHidden(cameraOpen || fileImporterOpen) }
-        .onDisappear { BottomTabBarOverlay.shared.setForcedHidden(false) }
         .onChange(of: app.chatFocusComposer) { _, focus in
             guard focus else { return }
             composerFocused = true
@@ -693,33 +661,12 @@ struct ChatView: View {
     }
 
     // Task 1 (07-notifications.md) — mirrors web's attachmentBoxSize()
-    // (Chat.jsx) exactly: a box whose OWN ratio matches the source image's
-    // true ratio, clamped inside a sensible chat max/min, so
-    // `.scaledToFill()` never has to crop or letterbox.
+    // (Chat.jsx) exactly. The implementation now lives in AttachmentBubble
+    // (ChatAttachmentFlow.swift), shared with the temporary refund dispute
+    // composer so a photo's preview box is identical in both chats; this
+    // forwarder keeps the existing call sites (and any test) working.
     static func attachmentBoxSize(width: Int?, height: Int?) -> CGSize {
-        guard let w = width, let h = height, w > 0, h > 0 else { return CGSize(width: 220, height: 220) }
-        let maxW: CGFloat = 240, maxH: CGFloat = 320, minW: CGFloat = 120
-        let ratio = CGFloat(w) / CGFloat(h)
-        var boxW = min(maxW, CGFloat(w))
-        var boxH = boxW / ratio
-        if boxH > maxH { boxH = maxH; boxW = boxH * ratio }
-        if boxW < minW { boxW = minW; boxH = boxW / ratio }
-        return CGSize(width: boxW.rounded(), height: boxH.rounded())
-    }
-
-    private func sendPickedFile(_ url: URL) async {
-        guard url.startAccessingSecurityScopedResource() else { return }
-        defer { url.stopAccessingSecurityScopedResource() }
-        guard let data = try? Data(contentsOf: url) else { return }
-        let isPDF = url.pathExtension.lowercased() == "pdf"
-        sendingAttachment = true
-        if isPDF {
-            _ = await app.sendChatAttachment(data: data, contentType: "application/pdf", fileExtension: "pdf")
-        } else if let image = UIImage(data: data), let jpeg = ProofImage.jpegDataUnderLimit(from: image) {
-            let dims = UIImage(data: jpeg)?.size
-            _ = await app.sendChatAttachment(data: jpeg, contentType: "image/jpeg", fileExtension: "jpg", width: dims.map { Int($0.width) }, height: dims.map { Int($0.height) })
-        }
-        sendingAttachment = false
+        AttachmentBubble.boxSize(width: width, height: height)
     }
 
     // Task 3b — the OTHER participant's own name (host name for a guest,
@@ -1157,28 +1104,22 @@ struct ChatView: View {
         VStack(spacing: 0) {
             Divider().overlay(app.palette.rule)
             HStack(spacing: 8) {
-                // Task 4 — "+" attach button + its two-option menu.
-                Menu {
-                    Button {
-                        fileImporterOpen = true
-                    } label: {
-                        Label(app.T("Thêm ảnh hoặc tài liệu", "Add photo or document"), systemImage: "photo.on.rectangle")
-                    }
-                    Button {
-                        cameraOpen = true
-                    } label: {
-                        Label(app.T("Máy ảnh", "Camera"), systemImage: "camera")
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 17, weight: .medium))
-                        .frame(width: 40, height: 40)
-                        .background(app.palette.field, in: Circle())
-                        .foregroundStyle(app.palette.ink)
+                // Task 4 — "+" attach button + its two-option menu, now the
+                // shared ChatAttachButton the temporary refund dispute
+                // composer uses too. It owns the pickers and the re-encode;
+                // this view still owns the upload and the send.
+                ChatAttachButton(
+                    isEnabled: app.chatThreadID != nil,
+                    isSending: sendingAttachment
+                ) { payload in
+                    sendingAttachment = true
+                    _ = await app.sendChatAttachment(
+                        data: payload.data, contentType: payload.contentType,
+                        fileExtension: payload.fileExtension,
+                        width: payload.width, height: payload.height
+                    )
+                    sendingAttachment = false
                 }
-                .disabled(app.chatThreadID == nil || sendingAttachment)
-                .opacity(app.chatThreadID == nil ? 0.5 : 1)
-                .accessibilityIdentifier("chat.attach")
 
                 TextField(
                     app.chatThreadID != nil

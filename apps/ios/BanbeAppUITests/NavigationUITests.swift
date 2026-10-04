@@ -91,18 +91,38 @@ final class NavigationUITests: XCTestCase {
         XCTAssertTrue(app.buttons["card.jazzgac"].waitForExistence(timeout: 5))
     }
 
+    /// The area control is a native `Menu` (the same mechanism as the chat
+    /// composer's "+" attach button), so "All locations" is one of its rows and
+    /// the searchable hierarchy is reachable through its "Search locations…"
+    /// row. Both paths are driven here so a regression in either one — a menu
+    /// that no longer opens, a selection that no longer filters the feed —
+    /// fails this test.
     func testAreaSheetOpensAndFiltersTheFeed() {
         let app = launchToHome()
         XCTAssertTrue(app.buttons["card.bepnho"].waitForExistence(timeout: 15))
 
+        // 1. The menu itself.
         app.buttons["header.area"].tap()
-        XCTAssertTrue(app.staticTexts["Khu vực"].waitForExistence(timeout: 5), "Area sheet did not open")
+        let searchRow = app.buttons["area.search"]
+        XCTAssertTrue(searchRow.waitForExistence(timeout: 5), "Area menu did not open")
+        searchRow.tap()
 
-        app.buttons["area.thaodien"].tap()
-        XCTAssertTrue(waitForDisappearance(of: app.staticTexts["Khu vực"]))
+        // 2. Pick a district through the searchable list.
+        let target = app.buttons["area.thaodien"]
+        XCTAssertTrue(target.waitForExistence(timeout: 5), "Searchable location list did not open")
+        target.tap()
+        XCTAssertTrue(waitForDisappearance(of: app.buttons["area.thaodien"]))
         // Bình Thạnh events are gone; Thảo Điền ones remain.
         XCTAssertTrue(waitForDisappearance(of: app.buttons["card.bepnho"]))
         XCTAssertTrue(app.buttons["card.bandai"].waitForExistence(timeout: 5))
+
+        // 3. Back to "All locations" from the menu's own first row.
+        app.buttons["header.area"].tap()
+        let all = app.buttons["area.all"]
+        XCTAssertTrue(all.waitForExistence(timeout: 5), "Area menu did not reopen")
+        all.tap()
+        XCTAssertTrue(app.buttons["card.bepnho"].waitForExistence(timeout: 5),
+                      "Choosing All locations did not restore the full feed")
     }
 
     func testAccountAndPreferencesSwitchLanguage() {

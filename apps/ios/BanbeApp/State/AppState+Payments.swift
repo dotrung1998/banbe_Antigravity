@@ -1,6 +1,7 @@
 import Foundation
 import Supabase
 import UIKit
+import Photos
 
 // Payments and documents — the iOS half of what GocContext.jsx does for the
 // web app. banbe never holds the money on either platform; what these carry
@@ -2004,6 +2005,13 @@ extension AppState {
                                  purgeAfter: thread.purgeAfter, resolutionNote: thread.resolutionNote)
             disputeChatError = ""
             commitDisputeChat(messages, key: key, seq: seq)
+            // Sign only genuinely NEW attachment paths (never every path on
+            // every 4s tick) for exactly the reason signChatAttachmentUrls'
+            // own doc comment gives: a fresh signed URL for an unchanged file
+            // makes SwiftUI tear the AsyncImage down and re-fetch it, which
+            // showed up as thumbnails blinking once every few seconds.
+            let newPaths = messages.compactMap(\.attachmentPath).filter { disputeAttachmentUrls[$0] == nil }
+            if !newPaths.isEmpty { await signDisputeAttachmentUrls(newPaths) }
             // Keep the verified per-claim card state in step with what the
             // transcript itself reported (message count, closure), so the
             // card around it never sits on a snapshot the transcript has
@@ -2048,6 +2056,184 @@ extension AppState {
         }
         await loadRefundDisputeChat(claimID)
         await loadDisputeChats()
+    }
+
+    // MARK: Attachments in the temporary REFUND dispute chat (migration 131).
+    //
+    // Same two-step shape as the ordinary chat's sendChatAttachment —
+    // upload the object first, then write the message row referencing it —
+    // with one extra obligation that chat doesn't have: if the row write is
+    // refused (or anything else fails), the object just uploaded is deleted
+    // again. A dispute transcript is temporary and private to two people, so
+    // an orphaned file would sit in storage forever, reachable by the parties
+    // of a dispute whose own transcript has already been purged.
+
+    /// Signs `dispute-attachments` paths in one batched call — the same
+    /// pattern signChatAttachmentUrls uses for the ordinary bucket, and the
+    /// same "never overwrite an already-signed path" guard, so a 4s poll can't
+    /// churn a thumbnail.
+    func signDisputeAttachmentUrls(_ paths: [String]) async {
+        let wanted = Array(Set(paths)).filter { !$0.isEmpty && disputeAttachmentUrls[$0] == nil }
+        guard !wanted.isEmpty else { return }
+        do {
+            let results = try await SupabaseService.client.storage
+                .from(DisputeAttachments.bucket)
+                .createSignedURLs(paths: wanted, expiresIn: 600)
+            for result in results {
+                if case let .success(path, signedURL) = result, disputeAttachmentUrls[path] == nil {
+                    disputeAttachmentUrls[path] = signedURL
+                }
+            }
+        } catch {
+            print("signDisputeAttachmentUrls failed:", error)
+        }
+    }
+
+    /// Attaches a photo/document to ONE refund dispute.
+    ///
+    /// Scoped to the exact claim it was started for — the thread id is looked
+    /// up once, up front, and every later step (path, RPC, reload) is keyed by
+    /// that same thread, so a dispute switch mid-upload can't file the file
+    /// under another thread or paint another transcript. Refuses outright if
+    /// another upload for the same claim is already running, and cleans up the
+    /// object it wrote whenever the message row is refused — which is exactly
+    /// what happens when the other party closes the dispute while the file is
+    /// still uploading.
+    func sendRefundDisputeAttachment(_ payload: AttachmentPayload, claimID: UUID) async -> Bool {
+        guard userID != nil else { return false }
+        guard !disputeAttachInFlight.contains(claimID) else { return false }
+        disputeAttachInFlight.insert(claimID)
+        defer { disputeAttachInFlight.remove(claimID) }
+
+        // The dispute's thread id is the ONLY address an attachment may live
+        // under, and it's also what the storage policies authorize — so read
+        // it before writing anything, and never guess it from the claim id.
+        guard let threadID = await refundDisputeThreadId(claimID) else {
+            disputeChatError = T("Không tìm thấy cuộc tranh chấp này.", "Couldn't find this dispute.")
+            return false
+        }
+        // Refuse client-side too, not only server-side: while this dispute is
+        // concluded there is nothing to attach to, and starting a multi-
+        // megabyte upload just to have the server refuse it is the bug.
+        if let thread = disputeChatThread, thread.resolvedAt != nil,
+           disputeChatRefundClaimId == claimID {
+            disputeChatError = T("Tranh chấp này đã kết thúc nên không còn gửi được.", "This dispute has ended, so it's no longer open.")
+            return false
+        }
+
+        let path = "\(threadID.uuidString.lowercased())/\(Int(Date().timeIntervalSince1970 * 1000)).\(payload.fileExtension)"
+        let uploaded = await uploadDisputeAttachment(path: path, data: payload.data, contentType: payload.contentType)
+        guard uploaded else {
+            disputeChatError = T("Chưa gửi được tệp. Thử lại nhé.", "Couldn't upload the file. Please try again.")
+            return false
+        }
+
+        let body = payload.contentType == "application/pdf"
+            ? T("Đã gửi một tệp", "Sent a file")
+            : T("Đã gửi một ảnh", "Sent a photo")
+        var ok = false
+        var ended = false
+        do {
+            let result: ForfeitResult = try await SupabaseService.client
+                .rpc("send_refund_dispute_attachment", params: RefundDisputeAttachmentParams(
+                    claimID: claimID.uuidString, body: body, path: path,
+                    type: payload.contentType, width: payload.width, height: payload.height))
+                .execute().value
+            if result.success == true {
+                ok = true
+            } else {
+                print("sendRefundDispute_attachment failed:", result.error ?? "unknown")
+                // The closure race lands here: the file uploaded fine, but the
+                // dispute was closed before the message could be written.
+                ended = result.error == "DISPUTE_RESOLVED"
+            }
+        } catch {
+            print("sendRefundDispute_attachment failed:", error)
+        }
+
+        if ok {
+            await signDisputeAttachmentUrls([path])
+            // Reload the transcript for THIS claim only — the panel's own poll
+            // would get there in a few seconds, but the sender should see
+            // their photo immediately, exactly as chatSend() does.
+            await loadRefundDisputeChat(claimID)
+            await loadDisputeChats()
+            return true
+        }
+
+        // Nothing references the object: remove it, or it becomes an orphan no
+        // purge will ever collect (the sweep keys off dispute thread rows).
+        await deleteDisputeAttachment(path: path)
+        if ended {
+            // Not a transient failure — say so instead of implying a retry
+            // could work, then refresh so the panel goes read-only at once.
+            disputeChatError = T("Tranh chấp này đã kết thúc nên không còn gửi được.", "This dispute has ended, so it's no longer open.")
+            await loadRefundDisputeChat(claimID)
+        } else {
+            disputeChatError = T("Chưa gửi được. Thử lại nhé.", "Couldn't send. Please try again.")
+        }
+        return false
+    }
+
+    /// Uploads one object into the private dispute bucket. Split out so the
+    /// caller owns every decision about what happens if it fails.
+    private func uploadDisputeAttachment(path: String, data: Data, contentType: String) async -> Bool {
+        do {
+            _ = try await SupabaseService.client.storage
+                .from(DisputeAttachments.bucket)
+                .upload(path, data: data, options: FileOptions(contentType: contentType))
+            return true
+        } catch {
+            print("uploadDisputeAttachment failed:", error)
+            return false
+        }
+    }
+
+    /// Cleanup for a failed / refused send. Scoped by the storage policy to
+    /// the caller's own dispute threads, so this can only ever remove an
+    /// object this account uploaded into a dispute it is a party to.
+    func deleteDisputeAttachment(path: String) async {
+        do {
+            _ = try await SupabaseService.client.storage
+                .from(DisputeAttachments.bucket).remove(paths: [path])
+            disputeAttachmentUrls.removeValue(forKey: path)
+        } catch {
+            print("deleteDisputeAttachment failed:", error)
+        }
+    }
+
+    /// The dispute THREAD an attachment may be filed under. Read through the
+    /// already-verified per-claim card when it's loaded (no network), and
+    /// through the one row the transcript itself reads otherwise — never
+    /// derived from the claim id.
+    private func refundDisputeThreadId(_ claimID: UUID) async -> UUID? {
+        if let known = refundDisputeThreads[claimID]?.disputeThreadId { return known }
+        struct Row: Decodable { let id: UUID }
+        let row: Row? = try? await SupabaseService.client
+            .from("dispute_threads").select("id")
+            .eq("refund_claim_id", value: claimID.uuidString)
+            .single().execute().value
+        return row?.id
+    }
+
+    /// Saves a dispute attachment image to the device's photo library — the
+    /// dispute transcript's own copy of what the chat photo viewer's Save
+    /// button does (AppState+Data.downloadChatPhoto), pointed at whichever
+    /// signed URL is on screen.
+    func saveDisputeAttachmentImage(from url: URL) async -> Bool {
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let image = UIImage(data: data) else { return false }
+            let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard status == .authorized || status == .limited else { return false }
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }
+            return true
+        } catch {
+            print("saveDisputeAttachmentImage failed:", error)
+            return false
+        }
     }
 
 // MARK: The dispute index behind Inbox-row highlighting and cross-screen
@@ -2399,7 +2585,23 @@ extension AppState {
             let who = m.senderName ?? m.senderRole
             out.append("[\(df.string(from: m.createdAt)) · \(iso.string(from: m.createdAt))] \(who) (\(m.senderRole)):")
             out.append(m.body)
+            // Migration 131 — an attachment is part of the record, so what was
+            // attached is stated on its own line. Deliberately metadata only:
+            // the object itself is deleted with this transcript, so the export
+            // never prints a URL that would imply the file is still reachable
+            // (see the notice below, written by the server).
+            if m.hasAttachment {
+                out.append("  [attachment: \(m.attachmentType ?? "unknown type") · \(m.attachmentPath ?? "—")"
+                    + (m.attachmentWidth != nil && m.attachmentHeight != nil
+                       ? " · \(m.attachmentWidth ?? 0)x\(m.attachmentHeight ?? 0)" : "")
+                    + "]")
+            }
             out.append("")
+        }
+        if let notice = transcript.attachmentNotice, !notice.isEmpty {
+            out.append("")
+            out.append("Attachments (\(transcript.attachmentCount ?? 0)):")
+            out.append(notice)
         }
         if let exportedAt = transcript.exportedAt {
             out.append(String(repeating: "-", count: 40))
@@ -2910,6 +3112,28 @@ private struct SubmitProofParams: Encodable {
         case ip = "p_ip"
         case userAgent = "p_user_agent"
         case slaMinutes = "p_sla_minutes"
+    }
+}
+
+/// Typed params for send_refund_dispute_attachment() (migration 131) —
+/// the same Encodable-with-CodingKeys convention every other multi-parameter
+/// RPC call in this file uses, rather than a `[String: Any]` dictionary: the
+/// two optional pixel dimensions must encode as real JSON nulls, not as a
+/// Swift Optional smuggled through `Any`.
+private struct RefundDisputeAttachmentParams: Encodable {
+    let claimID: String
+    let body: String
+    let path: String
+    let type: String
+    let width: Int?
+    let height: Int?
+    enum CodingKeys: String, CodingKey {
+        case claimID = "p_refund_claim_id"
+        case body = "p_body"
+        case path = "p_attachment_path"
+        case type = "p_attachment_type"
+        case width = "p_attachment_width"
+        case height = "p_attachment_height"
     }
 }
 

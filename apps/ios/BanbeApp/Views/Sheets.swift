@@ -30,212 +30,158 @@ struct BottomSheet<Content: View>: View {
 /// genuine on/off toggle for location sharing. Choosing ANY location here
 /// (including an empty US root) only ever sets `app.area` — it never
 /// requests location permission; only the explicit toggle below does.
-struct AreaSheetView: View {
-    @EnvironmentObject var app: AppState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var revealProgress: CGFloat = 0
-    /// Called once the reverse animation has finished, so RootView can
-    /// actually unmount this view.
-    var onDismissed: () -> Void = {}
-
-    private func animateOut() {
-        guard !reduceMotion else { onDismissed(); return }
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) { revealProgress = 0 }
-        // The view stays mounted for the spring's visible duration.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
-            // Reopened mid-close — keep it.
-            if !app.areaAsking { onDismissed() }
-        }
-    }
-
-    /// Area menu pass (2026-10-04) — the close button is REMOVED. The
-    /// reference menus this matches (Messages' gear "Settings" menu, the "…"
-    /// row menus) are dismissed by tapping outside or choosing an item, never
-    /// by an in-panel ✕, and this menu sits anchored under a header control
-    /// where a close button read as a modal's. Tapping outside still dismisses
-    /// (see `body`), and Reduce Motion still dismisses instantly.
-    @ViewBuilder
-    private var areaContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            LocationPickerList { app.pickArea($0) }
-
-            Button(app.located == true
-                   ? app.T("Tắt vị trí ▪︎ đang hiển thị khoảng cách", "Turn off location ▪︎ showing distance")
-                   : app.T("Dùng vị trí của tôi để xem khoảng cách", "Use my location to show distance")) {
-                if app.located == true { app.denyLocation() } else { app.allowLocation() }
-            }
-            .font(.system(size: 13))
-            .frame(maxWidth: .infinity)
-            .padding(8)
-            .padding(.top, 14)
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 6)
-        .padding(.bottom, 8)
-    }
+///
+/// This used to be `AreaSheetView`, a hand-rolled glass panel anchored to the
+/// header control with its own scale/opacity reveal, its own outside-tap
+/// scrim and its own placement math (`AreaMenuPlacement`). It is now an
+/// ordinary native `Menu`, mounted inline on Home's header control — the same
+/// mechanism the chat composer's "+" attachment button uses — so its
+/// open/close animation, Liquid Glass appearance, anchoring and outside-tap
+/// dismissal are the system's, identical on every OS version and correct
+/// around screen edges, the safe areas, light/dark and Reduce Motion without
+/// a single line of geometry code. See `AreaMenuOptions` below for the
+/// content, and `LocationPickerSheet` for the searchable list.
+struct AreaMenuOptions: View {
+    @EnvironmentObject private var app: AppState
+    /// Opens the searchable, scrollable location list. A native Menu has no
+    /// room for a text field, so the one thing submenus genuinely can't do —
+    /// jump straight to a leaf by typing — is offered as its own row instead
+    /// of being dropped.
+    var onSearch: () -> Void
 
     var body: some View {
-        GeometryReader { geo in
-            let inset = geo.safeAreaInsets
-            let screen = geo.size
-            let progress = reduceMotion ? 1 : revealProgress
-            let source = app.areaSourceFrame
-            let hasSource = source.map { $0.width > 1 && $0.height > 1 } ?? false
+        let rows: [AnyView] = [AnyView(allLocationsRow)]
+            + menuRows(app.locationTree)
+            + [AnyView(Divider()), AnyView(locationToggleRow), AnyView(searchRow)]
+        ForEach(Array(rows.enumerated()), id: \.offset) { $0.element }
+    }
 
-            // ---- Anchored placement -------------------------------------
-            // This is a MENU, not a modal: it opens at the Area control it was
-            // tapped from. The reference menus this is matching (Messages'
-            // own gear "Settings" menu and the "…" row menus — all native
-            // `Menu`s, see MessagingViews.swift) present anchored at their
-            // control, so the same is done here rather than centering the panel
-            // and calling it a menu. `geo` spans the whole window (the view
-            // ignoresSafeArea below), so a source frame captured in
-            // `.global` coordinates lands directly on this space.
-            let margin: CGFloat = 12
-            let gap: CGFloat = 8
-            // Placement math lives in AreaMenuPlacement so it can be unit
-            // tested; this view only consumes the result.
-            let menuWidth = AreaMenuPlacement.width(screen: screen.width, safeArea: inset, margin: margin)
-            let originX = AreaMenuPlacement.originX(
-                source: hasSource ? source : nil,
-                menuWidth: menuWidth, screen: screen.width, safeArea: inset, margin: margin
-            )
-            let opensBelow = AreaMenuPlacement.opensBelow(
-                source: hasSource ? source : nil, screen: screen.height, safeArea: inset, gap: gap, margin: margin
-            )
-            let menuHeight = AreaMenuPlacement.height(
-                opensBelow: opensBelow, source: hasSource ? source : nil, screen: screen.height,
-                safeArea: inset, gap: gap, margin: margin,
-                maxHeight: MenuMetrics.maxHeight, minUsableHeight: MenuMetrics.minUsableHeight
-            )
-            let originY = AreaMenuPlacement.originY(
-                opensBelow: opensBelow, source: hasSource ? source : nil,
-                menuHeight: menuHeight, screen: screen.height, safeArea: inset, gap: gap, margin: margin
-            )
+    // MARK: Hierarchy -> nested submenus
 
-            ZStack(alignment: .topLeading) {
-                // Outside-tap dismissal. Deliberately CLEAR, not a dimming
-                // scrim: the reference menus don't dim the screen behind them
-                // either (a native `Menu` just dismisses), and dimming is what
-                // made this read as a modal instead of a menu.
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { app.areaAsking = false }
+    /// A country is always expandable (so an empty root can show its honest
+    /// empty state); anything else only when it has children. Identical rule
+    /// to `LocationPickerList`'s own `isExpandable`, so the menu and the
+    /// searchable sheet can never disagree about which rows nest.
+    private func isExpandable(_ n: LocationNode) -> Bool { n.kind == .country || !n.children.isEmpty }
 
-                areaContent
-                    .frame(width: menuWidth, height: menuHeight)
-                    .glassPanel()
-                    // Expansion starts at the control and collapses back into
-                    // it, so the scale anchor is whichever panel corner is
-                    // NEAREST the control: top-leading when it opens downward
-                    // (normal case), bottom-leading when it had to flip above.
-                    // Both keep the growing/shrinking edge pinned to the
-                    // control instead of drifting toward the screen centre.
-                    .scaleEffect(progress, anchor: AreaMenuPlacement.scaleAnchor(opensBelow: opensBelow))
-                    .opacity(progress)
-                    .offset(x: originX, y: originY)
-                    .onAppear {
-                        Haptics.light()
-                        guard !reduceMotion else { return }
-                        withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
-                            revealProgress = 1
+    private func containsSelection(_ n: LocationNode) -> Bool {
+        app.area != LocationHierarchy.allID && LocationHierarchy.matches(leafID: app.area, selection: n.id)
+    }
+
+    private func countLabel(_ n: Int) -> String { app.T("\(n) sự kiện", n == 1 ? "1 event" : "\(n) events") }
+
+    /// Same identifier scheme the searchable list has always used, so an
+    /// automation lookup written against it keeps resolving whether the row is
+    /// reached through a submenu or through the search sheet.
+    private func accessibilityID(_ nodeID: String) -> String {
+        "area." + (LocationHierarchy.legacyKey(forNodeID: nodeID) ?? nodeID)
+    }
+
+    private func label(_ title: String, systemImage: String) -> Label<Text, Image> {
+        Label(title, systemImage: systemImage)
+    }
+
+    private func optionLabel(_ title: String, count: Int, selected: Bool) -> Label<Text, Text> {
+        // A native Menu item has no checkmark slot, so the selection is marked
+        // in the row's own text. The selected node's own ancestors mark
+        // themselves too (`containsSelection`), which is what makes the
+        // selection visible at every level of the submenu path rather than
+        // only once the user has drilled all the way down to it.
+        Label {
+            Text(selected ? "✓ " + title : title)
+        } icon: {
+            Text(countLabel(count))
+        }
+    }
+
+    private func optionRow(id: String, title: String, count: Int) -> some View {
+        let selected = app.area == id
+        return Button { Haptics.selection(); app.pickArea(id) } label: {
+            optionLabel(title, count: count, selected: selected)
+        }
+        .accessibilityIdentifier(accessibilityID(id))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private var allLocationsRow: some View {
+        Button { Haptics.selection(); app.pickArea(LocationHierarchy.allID) } label: {
+            optionLabel(app.T("Tất cả khu vực", "All locations"),
+                        count: app.locationTree.reduce(0) { $0 + $1.openCount },
+                        selected: app.area == LocationHierarchy.allID)
+        }
+        .accessibilityIdentifier(accessibilityID(LocationHierarchy.allID))
+        .accessibilityAddTraits(app.area == LocationHierarchy.allID ? .isSelected : [])
+    }
+
+    /// Built as data rather than as nested `@ViewBuilder` calls: a SwiftUI
+    /// view builder cannot call itself (the opaque result type would recurse),
+    /// so each level's rows are assembled into a plain `[AnyView]` and
+    /// rendered by one flat `ForEach`. Every level is therefore the same
+    /// concrete type, and an arbitrarily deep hierarchy compiles.
+    private func menuRows(_ nodes: [LocationNode]) -> [AnyView] {
+        var out: [AnyView] = []
+        for n in nodes {
+            let selectedHere = containsSelection(n)
+            if isExpandable(n) {
+                // A parent node is selected through its own "All in [X]" row,
+                // exactly as in the searchable list — expanding never changes
+                // what is selected.
+                var children: [AnyView] = [AnyView(
+                    optionRow(id: n.id,
+                              title: app.T("Tất cả tại \(LocationHierarchy.label(n, T: app.T))",
+                                           "All in \(LocationHierarchy.label(n, T: app.T))"),
+                              count: n.openCount)
+                )]
+                if n.children.isEmpty {
+                    children.append(AnyView(
+                        Button { } label: {
+                            Text(app.T("Chưa có sự kiện nào ở đây.", "No events here yet."))
                         }
+                        .disabled(true)
+                    ))
+                } else {
+                    children.append(contentsOf: menuRows(n.children))
+                }
+                out.append(AnyView(
+                    Menu {
+                        ForEach(Array(children.enumerated()), id: \.offset) { $0.element }
+                    } label: {
+                        // Submenus get the system's own disclosure indicator, so
+                        // this label is title + count only.
+                        Text(selectedHere ? "✓ " + LocationHierarchy.label(n, T: app.T) : LocationHierarchy.label(n, T: app.T))
                     }
-                    .onChange(of: app.areaAsking) { _, open in
-                        if open {
-                            withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) { revealProgress = 1 }
-                        } else {
-                            animateOut()
-                        }
-                    }
+                    .accessibilityIdentifier(accessibilityID(n.id))
+                ))
+            } else {
+                out.append(AnyView(optionRow(id: n.id,
+                                             title: LocationHierarchy.label(n, T: app.T),
+                                             count: n.openCount)))
             }
-            .frame(width: screen.width, height: screen.height, alignment: .topLeading)
-            .allowsHitTesting(app.areaAsking)
         }
-        .ignoresSafeArea()
-    }
-}
-
-/// Pure geometry for the anchored area MENU, split out of `AreaSheetView` so
-/// placement can be unit-tested without a window, a device or SwiftUI — see
-/// BanbeAppTests/AreaMenuPlacementTests.swift. `AreaSheetView` consumes this
-/// verbatim, so what the tests assert IS what ships.
-enum AreaMenuPlacement {
-    /// Width of the menu: a readable list column, never wider than the space
-    /// actually available between the safe-area edges.
-    static func width(screen: CGFloat, safeArea: EdgeInsets, margin: CGFloat = 12) -> CGFloat {
-        min(320, screen - safeArea.leading - safeArea.trailing - margin * 2)
+        return out
     }
 
-    /// Horizontal origin: the control's own leading edge (so the menu hangs off
-    /// it), clamped so the whole menu stays inside the safe area on a narrow
-    /// screen. When no control frame is known yet, fall back to the margin.
-    static func originX(source: CGRect?, menuWidth: CGFloat, screen: CGFloat, safeArea: EdgeInsets, margin: CGFloat = 12) -> CGFloat {
-        let minX = safeArea.leading + margin
-        let maxX = max(minX, screen - safeArea.trailing - margin - menuWidth)
-        let desired = source.map { $0.minX } ?? minX
-        return min(max(desired, minX), maxX)
-    }
+    // MARK: The two actions that are not a location
 
-    /// Whether the menu opens below its control. Below is preferred; above only
-    /// when below can't fit `minUsableHeight` AND above is the better of the
-    /// two. With no anchor, the roomier side wins.
-    static func opensBelow(source: CGRect?, screen: CGFloat, safeArea: EdgeInsets, gap: CGFloat = 8, margin: CGFloat = 12, minUsableHeight: CGFloat = 200) -> Bool {
-        let below = roomBelow(source: source, screen: screen, safeArea: safeArea, gap: gap, margin: margin)
-        let above = roomAbove(source: source, screen: screen, safeArea: safeArea, gap: gap, margin: margin)
-        guard let source, source.width > 1, source.height > 1 else { return below >= above }
-        return below >= min(minUsableHeight, above)
-    }
-
-    static func roomBelow(source: CGRect?, screen: CGFloat, safeArea: EdgeInsets, gap: CGFloat = 8, margin: CGFloat = 12) -> CGFloat {
-        let anchorBottom = (source?.maxY ?? 0) + gap
-        return screen - safeArea.bottom - margin - anchorBottom
-    }
-
-    static func roomAbove(source: CGRect?, screen: CGFloat, safeArea: EdgeInsets, gap: CGFloat = 8, margin: CGFloat = 12) -> CGFloat {
-        let anchorTop = source?.minY ?? screen
-        return anchorTop - gap - safeArea.top - margin
-    }
-
-    /// Menu height: as tall as the chosen side allows, capped at `maxHeight`.
-    /// Never below `minUsableHeight` when there is room for it, so a cramped
-    /// anchor still yields a usable menu (its inner ScrollView scrolls).
-    static func height(opensBelow: Bool, source: CGRect?, screen: CGFloat, safeArea: EdgeInsets, gap: CGFloat = 8, margin: CGFloat = 12, maxHeight: CGFloat = 460, minUsableHeight: CGFloat = 200) -> CGFloat {
-        let room = opensBelow
-            ? roomBelow(source: source, screen: screen, safeArea: safeArea, gap: gap, margin: margin)
-            : roomAbove(source: source, screen: screen, safeArea: safeArea, gap: gap, margin: margin)
-        return min(maxHeight, max(minUsableHeight, room))
-    }
-
-    /// Vertical origin, clamped into the safe area so the menu can never land
-    /// under the notch/home indicator or off the bottom edge.
-    static func originY(opensBelow: Bool, source: CGRect?, menuHeight: CGFloat, screen: CGFloat, safeArea: EdgeInsets, gap: CGFloat = 8, margin: CGFloat = 12) -> CGFloat {
-        if opensBelow {
-            return (source?.maxY ?? 0) + gap
+    private var locationToggleRow: some View {
+        Button {
+            Haptics.selection()
+            if app.located == true { app.denyLocation() } else { app.allowLocation() }
+        } label: {
+            label(app.located == true
+                  ? app.T("Tắt vị trí ▪︎ đang hiển thị khoảng cách", "Turn off location ▪︎ showing distance")
+                  : app.T("Dùng vị trí của tôi để xem khoảng cách", "Use my location to show distance"),
+                  systemImage: app.located == true ? "location.slash" : "location")
         }
-        let desired = (source?.minY ?? screen - margin) - gap - menuHeight
-        return max(safeArea.top + margin, desired)
+        .accessibilityIdentifier("area.locationToggle")
     }
 
-    /// Which panel corner the scale animation pivots on — the corner nearest
-    /// the control, so the menu grows out of / collapses back into it.
-    static func scaleAnchor(opensBelow: Bool) -> UnitPoint {
-        opensBelow ? .topLeading : .bottomLeading
+    private var searchRow: some View {
+        Button { Haptics.selection(); onSearch() } label: {
+            label(app.T("Tìm khu vực…", "Search locations…"), systemImage: "magnifyingglass")
+        }
+        .accessibilityIdentifier("area.search")
     }
-}
-
-/// Sizing rules for the anchored area MENU (AreaSheetView above). Named and
-/// gathered here so the placement math reads as intent rather than a pile of
-/// literals, and so the flip/clamp thresholds are one obvious place to tune.
-enum MenuMetrics {
-    /// Below this the menu would be too short to be usable, so placement stops
-    /// preferring that side and flips above instead.
-    static let minUsableHeight: CGFloat = 200
-    /// Tall enough for the country/state/area hierarchy without pushing past a
-    /// comfortable reading height; `LocationPickerList`'s own ScrollView
-    /// handles anything taller.
-    static let maxHeight: CGFloat = 460
 }
 
 extension View {
@@ -458,12 +404,15 @@ struct LocationPickerList: View {
     }
 }
 
-/// Map Explore's own copy of the picker, drawn as an overlay inside the
-/// map's list sheet (RootView's `AreaSheetView` overlay would sit BEHIND
-/// that system sheet). Same shared `app.area` selection
-/// as Home; no location-permission control here at all.
-struct MapLocationPickerSheet: View {
-    @EnvironmentObject var app: AppState
+/// The searchable, scrollable location list, as a sheet. Used by Map
+/// Explore's own picker (drawn inside the map's list sheet, which the root
+/// area overlay would sit behind) and by Home's area menu's "Search
+/// locations…" row — a native `Menu` can't host a text field, so this is where
+/// typing a place name still works. Both entry points share the same
+/// `app.area` selection, and neither requests location permission on its own
+/// (only the explicit toggle below does).
+struct LocationPickerSheet: View {
+    @EnvironmentObject private var app: AppState
     @Binding var isPresented: Bool
 
     var body: some View {
@@ -498,8 +447,8 @@ struct MapLocationPickerSheet: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("map.area.locationToggle")
         }
-        // Same floating glass card as Home's area picker, inset from the
-        // sheet edges over a clear sheet background.
+        // Same floating glass card as the map's picker, inset from the sheet
+        // edges over a clear sheet background.
         .padding(.horizontal, 24)
         .padding(.top, 22)
         .padding(.bottom, 16)

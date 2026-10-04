@@ -1,15 +1,42 @@
 import Foundation
 
+/// Storage constants for the temporary dispute chat's attachments
+/// (migration 131).
+///
+/// The ordinary chat's `chat-attachments` bucket is keyed by CONVERSATION
+/// thread id; these are keyed by DISPUTE thread id, which is what lets the
+/// bucket's policies grant access to exactly the two parties of one dispute
+/// and lets the purge sweep delete a transcript's files without ever touching
+/// an ordinary chat's. Kept as named constants rather than string literals so
+/// the bucket can't drift between the upload, the signing and the cleanup.
+enum DisputeAttachments {
+    static let bucket = "dispute-attachments"
+}
+
 /// One line in the temporary dispute chat (`dispute_messages`) — the Swift
 /// counterpart of GocContext.jsx's disputeChatMessages. Purged along with
 /// its thread once resolve_dispute() closes it out and the grace window in
 /// purge_resolved_dispute_threads() elapses.
+///
+/// The attachment fields (migration 131) mirror the ordinary chat's
+/// `messages` columns exactly — same names, same meaning, same optionality —
+/// so one renderer draws both. `attachmentPath` is an object path in the
+/// PRIVATE `dispute-attachments` bucket, addressed by DISPUTE THREAD id (not
+/// conversation thread id): it is readable only by that dispute's two parties
+/// while the dispute is readable, and it is deleted with the transcript.
 struct DisputeMessage: Codable, Identifiable, Hashable {
     let id: UUID
     var senderId: UUID?
     var senderRole: String  // "guest" | "organizer" | "system"
     var body: String
     var createdAt: Date
+    var attachmentPath: String?
+    var attachmentType: String?
+    var attachmentWidth: Int?
+    var attachmentHeight: Int?
+
+    var hasAttachment: Bool { !(attachmentPath ?? "").isEmpty }
+    var isImageAttachment: Bool { attachmentType?.hasPrefix("image/") == true }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -17,6 +44,10 @@ struct DisputeMessage: Codable, Identifiable, Hashable {
         case senderRole = "sender_role"
         case body
         case createdAt = "created_at"
+        case attachmentPath = "attachment_path"
+        case attachmentType = "attachment_type"
+        case attachmentWidth = "attachment_width"
+        case attachmentHeight = "attachment_height"
     }
 }
 
@@ -310,12 +341,23 @@ enum DisputeCardAttachment {
 /// message shape, deliberately separate from `DisputeMessage`: this one
 /// carries the participant NAME resolved server-side, so an exported record
 /// stays readable after an account is deleted.
+///
+/// Migration 131 adds the same four attachment fields the transcript table
+/// gained. They are metadata only — the object itself is deleted with the
+/// temporary chat, which is exactly why the export also carries
+/// `RefundDisputeTranscript.attachmentNotice` and never a URL.
 struct DisputeTranscriptMessage: Codable, Hashable, Identifiable {
     let id: UUID
     let senderRole: String
     let senderName: String?
     let body: String
     let createdAt: Date
+    var attachmentPath: String?
+    var attachmentType: String?
+    var attachmentWidth: Int?
+    var attachmentHeight: Int?
+
+    var hasAttachment: Bool { !(attachmentPath ?? "").isEmpty }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -323,6 +365,10 @@ struct DisputeTranscriptMessage: Codable, Hashable, Identifiable {
         case senderName = "sender_name"
         case body
         case createdAt = "created_at"
+        case attachmentPath = "attachment_path"
+        case attachmentType = "attachment_type"
+        case attachmentWidth = "attachment_width"
+        case attachmentHeight = "attachment_height"
     }
 }
 
@@ -358,6 +404,12 @@ struct RefundDisputeTranscript: Codable, Hashable {
     let exportedAt: Date?
     let messages: [DisputeTranscriptMessage]
     let error: String?
+    /// Migration 131 — how many lines carried a file, and the server's own
+    /// plain statement of what an exported attachment reference does and
+    /// doesn't promise (the files are deleted with this transcript). Absent
+    /// before that migration; `attachmentNotice` is nil then.
+    var attachmentCount: Int?
+    var attachmentNotice: String?
 
     enum CodingKeys: String, CodingKey {
         case found
@@ -382,6 +434,8 @@ struct RefundDisputeTranscript: Codable, Hashable {
         case transcriptMessageCount = "transcript_message_count"
         case viewerRole = "viewer_role"
         case exportedAt = "exported_at"
+        case attachmentCount = "attachment_count"
+        case attachmentNotice = "attachment_notice"
         case messages
         case error
     }

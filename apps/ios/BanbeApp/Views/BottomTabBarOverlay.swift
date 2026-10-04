@@ -195,17 +195,6 @@ final class BottomTabBarOverlay {
     // one flag between two independent callers would let either one's
     // "false" silently clobber the other's still-active "true".
     private var modalActionSheetPresented = false
-    // iPhone fix pass (2026-09-26) — the "Khu vực" region-filter sheet
-    // (AreaSheetView) is hand-rolled SwiftUI content inside the main
-    // window's own view hierarchy (BottomSheet, same file as
-    // AreaSheetView) — like every other case above, this separate
-    // always-on-top window paints straight through it without an explicit
-    // flag. A dedicated flag, not a reuse of `forcedHidden`/
-    // `modalActionSheetPresented` — same "independent callers, independent
-    // flags" reasoning as `storyViewerOpen`/`pulseViewerOpen` above; this
-    // is driven by `app.areaAsking` alone, never by InboxView's or
-    // NotificationsView's own sheets.
-    private var areaSheetOpen = false
     // Survey discovery/dock pass — the survey response `.fullScreenCover`
     // (`storySurveyModalPublicID`, RootView.swift) presents over Home/the
     // story viewer WITHOUT changing `app.screen` (same reasoning as every
@@ -352,14 +341,6 @@ final class BottomTabBarOverlay {
         applyVisibility()
     }
 
-    /// iPhone fix pass (2026-09-26) — called from RootView's
-    /// `.onChange(of: app.areaAsking)`, independent of any screen change
-    /// (Home stays `.home` the whole time the sheet is open).
-    func setAreaSheetOpen(_ open: Bool) {
-        areaSheetOpen = open
-        applyVisibility()
-    }
-
     /// Survey discovery/dock pass — called from RootView's
     /// `.onChange(of: app.storySurveyModalPublicID)`. See `surveyModalOpen`'s
     /// own doc comment for why this is a dedicated flag.
@@ -419,7 +400,7 @@ final class BottomTabBarOverlay {
     }
 
     private func applyVisibility() {
-        let shouldShow = !(forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || areaSheetOpen || surveyModalOpen)
+        let shouldShow = !(forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || surveyModalOpen)
             && BottomTabBar.visibleScreens.contains(currentScreen)
         guard shouldShow != lastShown else { return }
         lastShown = shouldShow

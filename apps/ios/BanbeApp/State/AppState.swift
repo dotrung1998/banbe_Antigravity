@@ -564,8 +564,6 @@ final class AppState: ObservableObject {
     @Published var located: Bool?
     @Published var userCoords: Coordinates?
     @Published var askingLocation = false
-    @Published var areaAsking = false
-    @Published var areaSourceFrame: CGRect?
 
     // MARK: Booking
     @Published var qty: Int = 1
@@ -1452,6 +1450,22 @@ final class AppState: ObservableObject {
     /// off it, and republishing it would re-render the whole panel on every
     /// tick for no visible reason.
     var disputeChatInFlight: Set<String> = []
+    // Attachment half of the refund dispute chat (migration 131). Same shape
+    // as `chatAttachmentUrls` above, same "never re-sign an already-signed
+    // path" rule (see signChatAttachmentUrls' doc comment for why re-signing
+    // every 4s made thumbnails flicker), and the SAME privacy story: keys are
+    // object paths in the private `dispute-attachments` bucket, addressed by
+    // dispute THREAD id, and readable only by that dispute's two parties while
+    /// the dispute itself is readable. A path from one dispute can therefore
+    /// never render a URL inside another's transcript — the paths are keyed by
+    /// thread, and the panel only draws its own thread's messages.
+    @Published var disputeAttachmentUrls: [String: URL] = [:]
+    /// Claims with an attachment upload in flight. Plain state, not
+    /// @Published: the panel keeps its own `sending` flag for the button's
+    /// appearance, and this set is the guard that actually prevents a second
+    /// upload for the SAME dispute from starting (double tap, retry while the
+    /// first is still writing).
+    var disputeAttachInFlight: Set<UUID> = []
     // resolved_at/purge_after off the dispute_threads row — read-only,
     // drives the retention countdown label (DisputeChatPanel.swift)
     // instead of a delete button, since dispute_messages must survive
@@ -3297,14 +3311,16 @@ final class AppState: ObservableObject {
         default: break
         }
     }
-    func openArea() { areaAsking = true }
-    func pickArea(_ key: String) { area = LocationHierarchy.migrateSelection(key); areaAsking = false }
+    /// The one write path for the discovery feed's location filter, shared by
+    /// Home's area MENU (`AreaMenuOptions`) and the searchable list
+    /// (`LocationPickerSheet`). The menu dismisses itself, so there is no
+    /// "close the picker" step here any more.
+    func pickArea(_ key: String) { area = LocationHierarchy.migrateSelection(key) }
 
     func askLocation() { if located == nil { askingLocation = true } }
 
     func allowLocation() {
         askingLocation = false
-        areaAsking = false
         located = true
         UserDefaults.standard.set(true, forKey: "banbe.located")
         locationService.request()
