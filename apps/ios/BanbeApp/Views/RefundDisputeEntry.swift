@@ -48,7 +48,7 @@ struct RefundDisputeEntry: View {
     /// Same 6s cadence as the rest of this screen's own polls — nothing in
     /// this app subscribes to Supabase Realtime, and this card only needs to
     /// stay fresh while someone is looking at it.
-    private static let pollInterval: UInt64 = 6_000_000_000
+    private static let pollInterval: UInt64 = 1_500_000_000
 
     /// The VERIFIED per-claim dispute state, fetched by exact claim id. This
     /// is what the card renders from — not the cached dispute list — so a
@@ -151,10 +151,19 @@ struct RefundDisputeEntry: View {
                         .accessibilityIdentifier("refundDisputeEntry.retention")
                 }
 
-                if loading && dispute == nil {
-                    Text(app.T("Đang tải…", "Loading…"))
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(app.palette.ink.opacity(0.6))
+                // The dispute chat is still being opened (the claim flips to
+                // "disputed" before the server has finished creating the chat),
+                // so show the shared loading visual instead of a card with
+                // nothing in it.
+                if dispute == nil {
+                    HStack(spacing: 10) {
+                        BanbeLoadingVisual(size: 40)
+                        Text(app.T("Đang mở cuộc trò chuyện tranh chấp…", "Opening the dispute chat…"))
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(app.palette.ink.opacity(0.6))
+                    }
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("refundDisputeEntry.loading")
                 }
             }
             .padding(.horizontal, 15)
@@ -163,6 +172,10 @@ struct RefundDisputeEntry: View {
             // The actions. Present exactly when this account IS a verified
             // party — the jump is hidden rather than shown-disabled when it
             // isn't, so the card never presents a dead control.
+            if let dispute, !completed {
+                DisputeSettlementBlock(claimID: refundClaimId, claim: dispute, request: $flowRequest)
+                    .padding(.horizontal, 15).padding(.bottom, 12)
+            }
             if dispute != nil {
                 Divider().overlay(app.palette.honey)
                 VStack(spacing: 0) {
@@ -204,12 +217,6 @@ struct RefundDisputeEntry: View {
                             )
                         }
                         .disabled(dispute?.refundSettled != true)
-                        if dispute?.refundSettled != true {
-                            Text(app.T("Chỉ đóng được sau khi người tổ chức đánh dấu đã hoàn tiền và khách xác nhận đã nhận.",
-                                       "You can close this after the host marks the refund sent and the guest confirms it was received."))
-                                .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.55))
-                                .padding(.horizontal, 15).padding(.bottom, 10)
-                        }
                     } else if dispute?.viewerRole == "guest" {
                         Divider().overlay(app.palette.honey)
                         SwipeSafeButton {

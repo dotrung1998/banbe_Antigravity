@@ -96,6 +96,7 @@ struct AccountView: View {
             onOpenVerifications: { app.openVerifications(back: .profile) },
             onOpenRefundCenter: { app.openVerifications(back: .profile) },
             onOpenDashboard: { app.goDashboard() },
+            onOpenAttendance: { key in app.openAttendance(key, back: .profile) },
             // Same single-dispute shortcut as the goer half, so the host's own
             // link reaches the same dispute the goer's does.
             onOpenRefundDispute: { claimID, back in app.openRefundDisputeFromActionCenter(claimID: claimID, back: back) },
@@ -207,6 +208,15 @@ struct AccountView: View {
             // verifications/refundQueue above, gated on the actual admin
             // role (RLS-backed), not a UI toggle.
             if app.isAdmin { await app.loadPendingEventsCount() }
+        }
+        // Host duties (held seats, verifications, refunds) are re-read every time
+        // the Host tab is shown, so a seat the goer lost or the host cancelled
+        // stops showing without a manual pull to refresh.
+        .task(id: app.accountTab) {
+            guard app.userID != nil, app.canHost, app.accountTab == "host" else { return }
+            await app.loadOrganizerHoldingSummary()
+            await app.loadVerifications()
+            await app.loadRefundQueue()
         }
         // Stage 1 — re-run whenever this account's organizer id becomes
         // known (session restore, or right after creating a first event)
@@ -924,7 +934,7 @@ struct AccountView: View {
     private var accountTabs: [(String, String, Int)] {
         var tabs: [(String, String, Int)] = [("personal", app.T("Cá Nhân", "Personal"), AccountBadges.personalActionCount(paymentBookings: app.paymentBookings, myRefunds: app.myRefunds))]
         if app.organizerMode {
-            let hostBadge = AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueue: app.refundQueue)
+            let hostBadge = AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueue: app.refundQueue, holdingCount: app.organizerHoldingSummary?.count ?? 0)
             tabs.append(("host", app.T("Tổ Chức", "Host"), hostBadge))
         }
         if app.accountType == "admin" {

@@ -52,6 +52,8 @@ struct ActionCenterInputs {
     var onOpenVerifications: () -> Void = {}
     var onOpenRefundCenter: () -> Void = {}
     var onOpenDashboard: () -> Void = {}
+    /// Opens one event's check-in/attendance (the event key).
+    var onOpenAttendance: (String) -> Void = { _ in }
     /// Opens the EXACT booking conversation this refund claim's dispute
     /// belongs to, with its dispute card expanded. Takes the claim id (the
     /// stable identity) and the screen to return to. Declared last (before
@@ -136,7 +138,7 @@ func buildActionCenterItems(_ p: ActionCenterInputs) -> [ActionCenterItem] {
                 onTap: p.onOpenMyRefunds
             ))
         }
-for c in p.myRefunds where c.status == "disputed" {
+for c in p.myRefunds where c.status == "disputed" && c.disputeClosedAt == nil {
             items.append(ActionCenterItem(
                 id: "refund-dispute-\(c.id)", testId: "action-center-refund-dispute", severity: .overdue, deadline: c.hostResponseDueAt,
                 label: T("Tranh chấp hoàn tiền đang chờ", "Refund dispute open"),
@@ -175,7 +177,7 @@ for c in p.myRefunds where c.status == "disputed" {
                 onTap: p.onOpenRefundCenter
             ))
         }
-        let disputed = p.refundQueue.filter { $0.status == "disputed" }
+        let disputed = p.refundQueue.filter { $0.status == "disputed" && $0.disputeClosedAt == nil }
         if !disputed.isEmpty {
             // One open dispute goes STRAIGHT to that dispute's conversation,
             // so the host's own link reaches the same dispute the goer's does.
@@ -203,7 +205,10 @@ for c in p.myRefunds where c.status == "disputed" {
                 label: T("Khách đang giữ chỗ", "Guests holding seats"),
                 detail: "\(orgHolding.count)" + T(" chỗ", orgHolding.count == 1 ? " seat" : " seats"),
                 ctaLabel: T("Xem", "View"),
-                onTap: p.onOpenDashboard
+                onTap: {
+                    // The held seat's own event check-in, not the host profile.
+                    if let key = orgHolding.singleEventKey { p.onOpenAttendance(key) } else { p.onOpenDashboard() }
+                }
             ))
         }
     }

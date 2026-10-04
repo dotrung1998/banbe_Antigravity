@@ -36,6 +36,11 @@ extension AppState {
             // paymentBookingsSeq's own doc comment (AppState.swift).
             guard seq == paymentBookingsSeq else { return }
             paymentBookings = rows.map(\.asPayable)
+            // The reserve flow's own countdown (Home's held-event banner) must
+            // stop as soon as the booking it belongs to is cancelled.
+            if let current = booking?.id, paymentBookings.contains(where: { $0.id == current && $0.status == "cancelled" }) {
+                holdDeadline = nil
+            }
             paymentsLoading = false
         } catch {
             print("loadPaymentBookings failed:", error)
@@ -568,7 +573,9 @@ private struct BookingIDRow: Decodable { let id: UUID }
 
 private struct HoldingRow: Decodable {
     let holdExpiresAt: Date?
-    enum CodingKeys: String, CodingKey { case holdExpiresAt = "hold_expires_at" }
+    let events: HoldingEvent?
+    struct HoldingEvent: Decodable { let key: String? }
+    enum CodingKeys: String, CodingKey { case holdExpiresAt = "hold_expires_at", events }
 }
 
 private struct BillingRow: Decodable {
@@ -1278,6 +1285,8 @@ extension AppState {
             print("disputeRefund failed:", error)
         }
         await loadPaymentRefundClaim(claimID: claimID)
+        // Prime the dispute card now so its actions are there as soon as it shows.
+        await loadRefundDisputeThread(claimID, force: true)
         // dispute_refund() opened the temporary chat server-side (migration
         // 129), so this account's own pinned Messages entry has to appear
         // immediately — this is the moment the goer lands on the chat they're
@@ -1296,7 +1305,7 @@ extension AppState {
     func loadPaymentRefundClaim(bookingID: UUID) async {
         do {
             let claims: [RefundClaim] = try await SupabaseService.client
-                .from("refund_claims").select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at, refund_due_at, disputed_at, host_response_due_at, transfer_reference, resend_reference, resend_bank_name, resend_transferred_at, resend_note, selected_destination_id, recipient_snapshot, proof_path")
+                .from("refund_claims").select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at, refund_due_at, disputed_at, host_response_due_at, transfer_reference, resend_reference, resend_bank_name, resend_transferred_at, resend_note, selected_destination_id, recipient_snapshot, proof_path, dispute_closed_at")
                 .or("booking_id.eq.\(bookingID.uuidString),reservation_id.eq.\(bookingID.uuidString)")
                 .order("created_at", ascending: false)
                 .limit(1)
@@ -1310,7 +1319,7 @@ extension AppState {
     func loadPaymentRefundClaim(claimID: UUID) async {
         do {
             let claims: [RefundClaim] = try await SupabaseService.client
-                .from("refund_claims").select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at, refund_due_at, disputed_at, host_response_due_at, transfer_reference, resend_reference, resend_bank_name, resend_transferred_at, resend_note, selected_destination_id, recipient_snapshot, proof_path")
+                .from("refund_claims").select("id, booking_id, reservation_id, amount_vnd, reason, status, host_marked_at, guest_confirmed_at, note, created_at, refund_due_at, disputed_at, host_response_due_at, transfer_reference, resend_reference, resend_bank_name, resend_transferred_at, resend_note, selected_destination_id, recipient_snapshot, proof_path, dispute_closed_at")
                 .eq("id", value: claimID.uuidString)
                 .execute().value
             guard let claim = claims.first else { return }
@@ -1514,7 +1523,7 @@ extension AppState {
             let bookingByID = Dictionary(uniqueKeysWithValues: bookings.map { ($0.id, $0) })
             var claims: [RefundClaim] = try await SupabaseService.client
                 .from("refund_claims")
-                .select("id, booking_id, reservation_id, amount_vnd, status, host_marked_at, disputed_at, host_response_due_at, refund_due_at, created_at, selected_destination_id, recipient_snapshot, proof_path")
+                .select("id, booking_id, reservation_id, amount_vnd, status, host_marked_at, disputed_at, host_response_due_at, refund_due_at, created_at, selected_destination_id, recipient_snapshot, proof_path, dispute_closed_at")
                 .or(bookings.map { "booking_id.eq.\($0.id.uuidString)" }.joined(separator: ","))
                 .in("status", values: ["owed", "host_marked_sent", "disputed"])
                 .order("created_at", ascending: false)
@@ -2019,10 +2028,14 @@ extension AppState {
         disputeChatLoading = !disputeChatInitialLoadDone
         defer { disputeChatInFlight.remove(key) }
         do {
-            let thread: DisputeThreadRow = try await SupabaseService.client
+            // A claim can have several dispute ROUNDS (migration 138); the chat is
+            // always the newest one, earlier rounds stay as read only records.
+            let threads: [DisputeThreadRow] = try await SupabaseService.client
                 .from("dispute_threads").select(Self.disputeThreadSelect)
                 .eq("refund_claim_id", value: claimID.uuidString)
-                .single().execute().value
+                .order("created_at", ascending: false).limit(1)
+                .execute().value
+            guard let thread = threads.first else { throw URLError(.resourceUnavailable) }
             let messages: [DisputeMessage] = try await SupabaseService.client
                 .from("dispute_messages").select()
                 .eq("dispute_thread_id", value: thread.id.uuidString)
@@ -2237,11 +2250,12 @@ extension AppState {
     private func refundDisputeThreadId(_ claimID: UUID) async -> UUID? {
         if let known = refundDisputeThreads[claimID]?.disputeThreadId { return known }
         struct Row: Decodable { let id: UUID }
-        let row: Row? = try? await SupabaseService.client
+        let rows: [Row]? = try? await SupabaseService.client
             .from("dispute_threads").select("id")
             .eq("refund_claim_id", value: claimID.uuidString)
-            .single().execute().value
-        return row?.id
+            .order("created_at", ascending: false).limit(1)
+            .execute().value
+        return rows?.first?.id
     }
 
     /// Saves a dispute attachment image to the device's photo library — the
@@ -2683,18 +2697,22 @@ extension AppState {
         do {
             let response: PostgrestResponse<[HoldingRow]> = try await SupabaseService.client
                 .from("bookings")
-                .select("hold_expires_at, events!inner(organizer_id)", count: .exact)
+                .select("hold_expires_at, events!inner(organizer_id, key)", count: .exact)
                 .eq("payment_state", value: "holding")
+                .neq("status", value: "cancelled")
+                // A hold whose deadline has passed (or was cleared) is not a held seat.
+                .gt("hold_expires_at", value: ISO8601DateFormatter().string(from: Date()))
                 .in("events.organizer_id", values: myOrganizerIDs)
                 .order("hold_expires_at", ascending: true)
-                .limit(1)
                 .execute()
             guard let count = response.count, count > 0 else {
                 organizerHoldingSummary = nil
                 return
             }
+            let keys = Set(response.value.compactMap { $0.events?.key })
             organizerHoldingSummary = OrganizerHoldingSummary(
-                count: count, soonestHoldExpiresAt: response.value.first?.holdExpiresAt)
+                count: count, soonestHoldExpiresAt: response.value.first?.holdExpiresAt,
+                singleEventKey: keys.count == 1 && response.value.allSatisfy({ $0.events?.key != nil }) ? keys.first : nil)
         } catch {
             print("loadOrganizerHoldingSummary failed:", error)
             organizerHoldingSummary = nil
@@ -2761,6 +2779,8 @@ struct RefundClaim: Codable, Identifiable, Equatable {
     var refundDueAt: Date?
     var disputedAt: Date?
     var hostResponseDueAt: Date?
+    /// Set once the dispute chat was closed (by a party or automatically).
+    var disputeClosedAt: Date?
     var transferReference: String?
     var resendReference: String?
     var resendBankName: String?
@@ -2795,6 +2815,7 @@ struct RefundClaim: Codable, Identifiable, Equatable {
         case refundDueAt = "refund_due_at"
         case disputedAt = "disputed_at"
         case hostResponseDueAt = "host_response_due_at"
+        case disputeClosedAt = "dispute_closed_at"
         case transferReference = "transfer_reference"
         case resendReference = "resend_reference"
         case resendBankName = "resend_bank_name"
@@ -3008,6 +3029,10 @@ struct RefundBatchResult: Decodable, Equatable {
 struct OrganizerHoldingSummary: Equatable {
     let count: Int
     let soonestHoldExpiresAt: Date?
+    /// Set only when EVERY held seat belongs to one event: the Things-to-do
+    /// item then opens that event's check-in/attendance. nil with several
+    /// events (it falls back to the dashboard).
+    var singleEventKey: String? = nil
 }
 
 private struct SubmitProofResult: Decodable {

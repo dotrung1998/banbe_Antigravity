@@ -47,9 +47,12 @@ enum AccountBadges {
     /// (`app.openVerifications`/`onOpenRefundCenter` equivalents), so
     /// summing them here is exactly what that shared destination actually
     /// contains, not an invented aggregate.
-    static func hostActionCount(organizerMode: Bool, verificationsCount: Int, refundQueue: [RefundClaim]) -> Int {
+    /// `holdingCount` is the "Guests holding seats" Things-to-do item, so the
+    /// Host tab and the dock badge count it too (it used to be listed without
+    /// ever being counted).
+    static func hostActionCount(organizerMode: Bool, verificationsCount: Int, refundQueue: [RefundClaim], holdingCount: Int = 0) -> Int {
         guard organizerMode else { return 0 }
-        return verificationsCount + actionableRefundCount(refundQueue)
+        return verificationsCount + actionableRefundCount(refundQueue) + holdingCount
     }
 
     /// Refund-discoverability fix — a dedicated "Refunds" row's own badge,
@@ -64,9 +67,9 @@ enum AccountBadges {
     /// admin + host counts (never each other's own already-summed value)
     /// since a real admin queue item and a real host queue item are always
     /// distinct underlying rows.
-    static func accountDockBadge(accountType: String, organizerMode: Bool, pendingEventsCount: Int, verificationsCount: Int, refundQueue: [RefundClaim], paymentBookings: [PayableBooking], myRefunds: [RefundClaim]) -> Int {
+    static func accountDockBadge(accountType: String, organizerMode: Bool, pendingEventsCount: Int, verificationsCount: Int, refundQueue: [RefundClaim], paymentBookings: [PayableBooking], myRefunds: [RefundClaim], holdingCount: Int = 0) -> Int {
         adminModerationCount(accountType: accountType, pendingEventsCount: pendingEventsCount)
-            + hostActionCount(organizerMode: organizerMode, verificationsCount: verificationsCount, refundQueue: refundQueue)
+            + hostActionCount(organizerMode: organizerMode, verificationsCount: verificationsCount, refundQueue: refundQueue, holdingCount: holdingCount)
             + personalActionCount(paymentBookings: paymentBookings, myRefunds: myRefunds)
     }
 

@@ -239,6 +239,12 @@ struct RefundDisputeThread: Codable, Hashable {
     /// The refund has gone through the normal flow (host marked it sent, goer
     /// confirmed it was received, or it was waived). Only then may the dispute
     /// be closed (migration 135).
+    /// 7 days after the dispute was opened it closes by itself if nobody acted.
+    var autoCloseAt: Date? { disputedAt?.addingTimeInterval(7 * 86400) }
+    /// Goer only: the refund is not confirmed yet, so "Mark refund received" applies.
+    var canConfirmReceived: Bool {
+        viewerRole == "guest" && !isCompleted && (claimStatus == "disputed" || claimStatus == "host_marked_sent")
+    }
     var refundSettled: Bool { claimStatus == "guest_confirmed" || claimStatus == "waived" }
 
     enum CodingKeys: String, CodingKey {
@@ -266,6 +272,22 @@ struct RefundDisputeThread: Codable, Hashable {
         case otherName = "other_name"
         case error
         case reason
+    }
+}
+
+/// An EARLIER dispute on the same refund claim (migration 138): closed, read only,
+/// kept until its own 7 day purge. The current dispute is `RefundDisputeThread`.
+struct DisputeRound: Codable, Identifiable, Hashable {
+    let disputeThreadId: UUID
+    let openedAt: Date?
+    let closedAt: Date?
+    let closedByRole: String?
+    let purgeAfter: Date?
+    let messageCount: Int?
+    var id: UUID { disputeThreadId }
+    enum CodingKeys: String, CodingKey {
+        case disputeThreadId = "dispute_thread_id", openedAt = "opened_at", closedAt = "closed_at"
+        case closedByRole = "closed_by_role", purgeAfter = "purge_after", messageCount = "message_count"
     }
 }
 

@@ -9,6 +9,9 @@ enum RefundDisputeFlowRequest: Equatable {
     case download
     /// The goer wants their copy gone from a dispute that is already closed.
     case deleteCopy
+    /// The goer's "Mark refund received": confirms receipt AND closes the dispute,
+    /// after offering to download the transcript first.
+    case confirmReceived
 }
 
 /// The close, download and delete dialogs for ONE refund dispute, shared by
@@ -30,7 +33,7 @@ struct RefundDisputeFlows: ViewModifier {
     let claimID: UUID
     @Binding var request: RefundDisputeFlowRequest?
 
-    private enum Intent { case downloadOnly, deleteAfter }
+    private enum Intent { case downloadOnly, deleteAfter, downloadThenConfirm }
 
     @State private var intent: Intent = .downloadOnly
     @State private var showHostClose = false
@@ -39,6 +42,7 @@ struct RefundDisputeFlows: ViewModifier {
     @State private var showDeleteConfirm = false
     @State private var showNotSaved = false
     @State private var showFailure = false
+    @State private var showConfirmReceived = false
     @State private var sheetOpen = false
     @State private var sharing = false
     @State private var shareCompleted = false
@@ -137,6 +141,23 @@ struct RefundDisputeFlows: ViewModifier {
                 Text(app.T("Chỉ tiếp tục nếu tệp đã được lưu ở nơi bạn muốn. Bản của bạn sẽ bị xoá khỏi tài khoản. Người tổ chức vẫn giữ bản ghi của họ đến khi hết hạn. Trạng thái hoàn tiền không thay đổi.",
                            "Only continue if your files are saved where you want them. Your copy is removed from your account. The organizer keeps their record until it expires. The refund status does not change."))
             }
+            // Goer: confirming receipt also closes the dispute.
+            .confirmationDialog(app.T("Xác nhận đã nhận tiền hoàn?", "Mark refund received?"),
+                                isPresented: $showConfirmReceived, titleVisibility: .visible) {
+                Button(app.T("Tải bản ghi trước", "Download transcript first")) {
+                    intent = .downloadThenConfirm
+                    startExport()
+                }
+                .accessibilityIdentifier("disputeFlow.confirmDownloadFirst")
+                Button(app.T("Xác nhận và đóng tranh chấp", "Confirm and close dispute")) {
+                    Task { _ = await app.confirmReceivedAndCloseDispute(claimID) }
+                }
+                .accessibilityIdentifier("disputeFlow.confirmAndClose")
+                Button(app.T("Huỷ", "Cancel"), role: .cancel) {}
+            } message: {
+                Text(app.T("Việc này cũng sẽ đóng tranh chấp. Cuộc trò chuyện vẫn xem được trong 7 ngày. Chỉ xác nhận nếu tiền đã vào tài khoản của bạn. Bạn có muốn tải bản ghi trước không?",
+                           "This also closes the dispute. The conversation stays readable for 7 days. Only confirm if the money is in your account. Do you want to download the transcript first?"))
+            }
             .alert(app.T("Tải về không thành công", "Download failed"), isPresented: $showFailure) {
                 Button(app.T("Thử lại", "Retry")) { startExport() }
                 Button(app.T("Huỷ", "Cancel"), role: .cancel) { app.discardRefundDisputeExport() }
@@ -155,6 +176,9 @@ struct RefundDisputeFlows: ViewModifier {
         case .deleteCopy:
             guard isGoer else { return }
             showDownloadFirst = true
+        case .confirmReceived:
+            guard isGoer else { return }
+            showConfirmReceived = true
         }
     }
 
@@ -173,6 +197,11 @@ struct RefundDisputeFlows: ViewModifier {
         case .downloadOnly:
             // Nothing is promised or deleted. Just remove the temporary files.
             app.discardRefundDisputeExport()
+        case .downloadThenConfirm:
+            // Whether or not it was saved, go back to the confirmation so the
+            // goer decides; nothing was confirmed or closed by downloading.
+            app.discardRefundDisputeExport()
+            afterSheetClosed { showConfirmReceived = true }
         case .deleteAfter:
             let saved = shareCompleted
             afterSheetClosed {
@@ -264,5 +293,139 @@ struct RefundDisputeFlows: ViewModifier {
 extension View {
     func refundDisputeFlows(claimID: UUID, request: Binding<RefundDisputeFlowRequest?>) -> some View {
         modifier(RefundDisputeFlows(claimID: claimID, request: request))
+    }
+}
+
+
+/// The settlement area of an open refund dispute, shared by the chat panel and
+/// the refund card:
+///   * the GOER sees "Mark refund received". The host already marked the refund
+///     sent before the dispute, so nobody marks it again: confirming receipt is
+///     what unlocks "Close dispute";
+///   * why Close is locked, per role;
+///   * the automatic close reminder (the dispute closes by itself 7 days after
+///     it was opened; a notification also goes out on day 6).
+struct DisputeSettlementBlock: View {
+    @EnvironmentObject private var app: AppState
+    let claimID: UUID
+    let claim: RefundDisputeThread
+    @Binding var request: RefundDisputeFlowRequest?
+
+    private var autoCloseNote: String? {
+        guard !claim.isCompleted, claim.claimStatus == "disputed", let at = claim.autoCloseAt else { return nil }
+        if at.timeIntervalSinceNow <= 86400 {
+            return app.T("Tranh chấp này sẽ tự đóng trong chưa đầy 24 giờ.", "This dispute closes automatically in less than 24 hours.")
+        }
+        let vi = formatShortDate(at, lang: "vi") ?? "", en = formatShortDate(at, lang: "en") ?? ""
+        return app.T("Nếu không ai phản hồi, tranh chấp sẽ tự đóng vào \(vi).", "If nobody acts, this dispute closes automatically on \(en).")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if claim.canConfirmReceived {
+                Button {
+                    request = .confirmReceived
+                } label: {
+                    Text(app.T("Tôi đã nhận được tiền hoàn", "Mark refund received"))
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(app.palette.ink, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .foregroundStyle(app.palette.paper)
+                }
+                .buttonStyle(.plain)
+                .disabled(app.refundActionBusy != nil)
+                .opacity(app.refundActionBusy != nil ? 0.5 : 1)
+                .accessibilityIdentifier("disputeSettlement.confirmReceived")
+            }
+            if !claim.isCompleted, !claim.refundSettled {
+                Text(claim.viewerRole == "guest"
+                     ? app.T("Xác nhận bạn đã nhận được tiền hoàn. Việc này cũng sẽ đóng tranh chấp.",
+                             "Confirm that you received the refund. This also closes the dispute.")
+                     : app.T("Bạn có thể đóng tranh chấp này sau khi khách xác nhận đã nhận được tiền hoàn.",
+                             "You can close this dispute after the guest confirms the refund was received."))
+                    .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.6))
+                    .accessibilityIdentifier("disputeSettlement.lockedHint")
+            }
+            if let autoCloseNote {
+                Text(autoCloseNote)
+                    .font(.system(size: 10.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
+                    .accessibilityIdentifier("disputeSettlement.autoClose")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Earlier dispute rounds on the same refund claim, shown read only under the
+/// current dispute. A new dispute never overwrites them: each keeps its own
+/// messages until its own 7 day purge.
+struct PreviousDisputeRounds: View {
+    @EnvironmentObject private var app: AppState
+    let claimID: UUID
+    @State private var expanded: Set<UUID> = []
+
+    var body: some View {
+        let rounds = app.refundDisputeRounds[claimID] ?? []
+        if !rounds.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(rounds.enumerated()), id: \.element.id) { index, round in
+                    let isOpen = expanded.contains(round.id)
+                    Button {
+                        if isOpen { expanded.remove(round.id) } else {
+                            expanded.insert(round.id)
+                            Task { await app.loadRefundDisputeRoundMessages(round) }
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(label(round, number: rounds.count - index))
+                                .font(.system(size: 11.5, weight: .semibold))
+                            Spacer(minLength: 0)
+                            Image(systemName: isOpen ? "chevron.up" : "chevron.down").font(.system(size: 10))
+                        }
+                        .foregroundStyle(app.palette.ink.opacity(0.75))
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("disputeRounds.row")
+                    if isOpen {
+                        let messages = app.refundDisputeRoundMessages[round.id]
+                        VStack(alignment: .leading, spacing: 4) {
+                            if messages == nil {
+                                BanbeLoadingVisual(size: 28)
+                            } else {
+                                ForEach(messages ?? []) { m in
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(who(m) + " ▪︎ " + m.createdAt.formatted())
+                                            .font(.system(size: 9.5)).foregroundStyle(app.palette.ink.opacity(0.5))
+                                        Text(m.hasAttachment
+                                             ? (m.isImageAttachment ? app.T("Đã gửi một ảnh", "Sent a photo") : app.T("Đã gửi một tệp", "Sent a file"))
+                                             : m.body)
+                                            .font(.system(size: 12)).foregroundStyle(app.palette.ink)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.leading, 8)
+                    }
+                    Divider().overlay(app.palette.rule)
+                }
+            }
+        }
+    }
+
+    private func label(_ r: DisputeRound, number: Int) -> String {
+        let when = r.closedAt.map { formatShortDate($0, lang: app.isEN ? "en" : "vi") ?? "" } ?? ""
+        return app.T("Tranh chấp trước, lần \(number), đã đóng \(when)", "Earlier dispute \(number), closed \(when)")
+    }
+
+    private func who(_ m: DisputeMessage) -> String {
+        switch m.senderRole {
+        case "organizer": return m.senderId == app.userID ? app.T("Bạn", "You") : app.T("Người tổ chức", "Organizer")
+        case "guest": return m.senderId == app.userID ? app.T("Bạn", "You") : app.T("Khách", "Guest")
+        default: return app.T("Hệ thống", "System")
+        }
     }
 }

@@ -75,6 +75,7 @@ struct HomeView: View {
                 onOpenVerifications: { app.openVerifications() },
                 onOpenRefundCenter: { app.openVerifications() },
                 onOpenDashboard: { app.goDashboard() },
+                onOpenAttendance: { key in app.openAttendance(key, back: .home) },
                 // Same single-dispute shortcut as the goer half.
                 onOpenRefundDispute: { claimID, back in app.openRefundDisputeFromActionCenter(claimID: claimID, back: back) },
                 T: app.T

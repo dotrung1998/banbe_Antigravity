@@ -123,7 +123,8 @@ struct BottomTabBar: View {
             verificationsCount: app.verifications.count,
             refundQueue: app.refundQueue,
             paymentBookings: app.paymentBookings,
-            myRefunds: app.myRefunds
+            myRefunds: app.myRefunds,
+            holdingCount: app.organizerHoldingSummary?.count ?? 0
         )
     }
 

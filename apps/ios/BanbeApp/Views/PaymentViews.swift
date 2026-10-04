@@ -81,7 +81,9 @@ struct PaymentDetailsView: View {
         // at risk" countdown, but a separate, informational read-only one
         // for the ORGANIZER's own confirm-window deadline (`verifyDueAt`).
         .onReceive(ticker) { now in
-            guard let booking, booking.paymentState.isCountingDown || booking.isFrozen else { return }
+            // A cancelled booking has no live hold: the clock stops the moment the
+            // host cancels, and nothing may be forfeited or counted down.
+            guard let booking, booking.status != "cancelled", booking.paymentState.isCountingDown || booking.isFrozen else { return }
             tick = now
             // The moment this screen's own clock notices the hold has
             // lapsed, forfeit it immediately — self-guards against firing
@@ -162,14 +164,14 @@ struct PaymentDetailsView: View {
                 .font(.system(size: 12.5)).foregroundStyle(app.palette.ink.opacity(0.75))
                 .padding(.top, 6)
 
-            if phase == .holding, let deadline = booking.holdExpiresAt {
+            if phase == .holding, !isCancelledBooking, let deadline = booking.holdExpiresAt {
                 countdownCard(deadline)
             }
-            if phase == .pendingVerification { frozenCard(booking) }
+            if phase == .pendingVerification, !isCancelledBooking { frozenCard(booking) }
             // reject_payment ("Can't find it") flags this without disputing
             // it — paymentState stays .pendingVerification, so this is a
             // sibling of frozenCard above, not the .disputed branch below.
-            if phase == .pendingVerification, let reason = booking.disputeReason, !reason.isEmpty {
+            if phase == .pendingVerification, !isCancelledBooking, let reason = booking.disputeReason, !reason.isEmpty {
                 needsInfoCard(booking, reason: reason)
             }
             if phase == .disputed { disputedCard(booking) }
@@ -192,11 +194,13 @@ struct PaymentDetailsView: View {
 
             amountCard(booking)
 
-            if phase == .confirmed && isCancelledBooking {
+            if isCancelledBooking {
                 // Clearly labeled, never silently hidden — no QR reissue,
                 // no financial-state change; the paid amount above and the
                 // cancellation/refund card above are untouched.
-                Text(app.T("Đã huỷ. Vé này không còn hiệu lực.", "Cancelled. This ticket is no longer valid."))
+                Text(phase == .confirmed
+                     ? app.T("Đã huỷ. Vé này không còn hiệu lực.", "Cancelled. This ticket is no longer valid.")
+                     : app.T("Đã huỷ. Việc giữ chỗ đã dừng và không cần thanh toán nữa.", "Cancelled. The seat hold has stopped and no payment is needed."))
                     .font(.system(size: 13)).foregroundStyle(app.palette.ink)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)

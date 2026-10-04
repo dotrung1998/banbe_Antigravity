@@ -194,6 +194,7 @@ struct DisputeChatPanel: View {
             Text(temporaryChatNotice)
                 .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
             statusBlock
+            if let refundClaimID { PreviousDisputeRounds(claimID: refundClaimID) }
             messageList
             if !readOnly && !completed { composer }
             actions
@@ -205,7 +206,10 @@ struct DisputeChatPanel: View {
         }
         .padding(14)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .task(id: refundClaimID ?? bookingID) { await reload() }
+        .task(id: refundClaimID ?? bookingID) {
+            if let refundClaimID { await app.loadRefundDisputeRounds(refundClaimID) }
+            await reload()
+        }
         .onAppear {
             startPolling()
             jumpToPendingTargetIfAny()
@@ -291,7 +295,9 @@ struct DisputeChatPanel: View {
                         .accessibilityIdentifier("disputeChat.deletionDeadline")
                 }
                 if let closedBy = liveClaim?.disputeClosedByRole, closedBy != "admin" {
-                    Text(closedBy == "guest"
+                    Text(closedBy == "auto"
+                         ? app.T("Đã tự đóng sau 7 ngày.", "Closed automatically after 7 days.")
+                         : closedBy == "guest"
                          ? app.T("Đã đóng bởi khách.", "Closed by the guest.")
                          : app.T("Đã đóng bởi người tổ chức.", "Closed by the organizer."))
                         .font(.system(size: 10.5))
@@ -545,6 +551,9 @@ struct DisputeChatPanel: View {
         // claim's own server-resolved viewer role is the gate, never
         // "this screen happens to show a dispute card".
         if isRefund, let claim = liveClaim, claim.viewerRole != nil {
+            if let refundClaimID, !completed {
+                DisputeSettlementBlock(claimID: refundClaimID, claim: claim, request: $flowRequest)
+            }
             HStack(spacing: 10) {
                 // Offered BEFORE closing too, so nobody has to close a dispute
                 // in order to keep a copy of what was said in it.

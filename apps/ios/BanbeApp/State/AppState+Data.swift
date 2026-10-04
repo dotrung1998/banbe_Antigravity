@@ -2213,7 +2213,7 @@ extension AppState {
                     openPaymentDetails(bookingID, back: .notifications)
                 }
             }
-        case "refund_dispute_closed":
+        case "refund_dispute_closed", "refund_dispute_autoclose_soon":
             // One of the two parties pressed "Close dispute" (migration 130).
             // The claim is untouched financially, but the active-dispute
             // indicator on the other side has to clear now, not on the next

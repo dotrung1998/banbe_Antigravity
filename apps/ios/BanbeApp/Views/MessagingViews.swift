@@ -1195,7 +1195,7 @@ private let notificationKindCategory: [String: String] = [
     // Migration 130 — the closure notification belongs to the same family as
     // the dispute it ends; without this it falls back to the generic bell
     // while its tap handler already routes into the dispute card.
-    "refund_dispute_closed": "refund",
+    "refund_dispute_closed": "refund", "refund_dispute_autoclose_soon": "refund",
     "dispute_message": "dispute", "dispute_resolved": "dispute", "payment_disputed": "dispute",
     "payment_awaiting_verification": "payment", "payment_confirmed": "payment", "payment_document_uploaded": "payment",
     "payment_document_replaced": "payment", "payment_verification_nudge": "payment", "payment_needs_info": "payment",

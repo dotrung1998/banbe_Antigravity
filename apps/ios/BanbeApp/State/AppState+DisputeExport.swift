@@ -137,3 +137,68 @@ extension AppState {
         return true
     }
 }
+
+extension AppState {
+    /// The goer says the money arrived, straight from the dispute. The host does
+    /// not have to mark anything sent again. Result is checked (never optimistic):
+    /// on success the claim is guest_confirmed, which unlocks "Close dispute".
+    func confirmRefundReceivedFromDispute(_ claimID: UUID) async -> Bool {
+        guard refundActionBusy == nil else { return false }
+        refundActionBusy = claimID
+        disputeCloseError = ""
+        defer { refundActionBusy = nil }
+        do {
+            let result: ForfeitResult = try await SupabaseService.client
+                .rpc("confirm_refund_received", params: ["p_claim_id": claimID.uuidString])
+                .execute().value
+            guard result.success == true else {
+                disputeCloseError = T("Chưa xác nhận được. Thử lại nhé.", "Couldn't confirm. Please try again.")
+                return false
+            }
+            Haptics.success()
+        } catch {
+            print("confirmRefundReceivedFromDispute failed:", error)
+            disputeCloseError = T("Chưa xác nhận được. Thử lại nhé.", "Couldn't confirm. Please try again.")
+            return false
+        }
+        await loadRefundDisputeThread(claimID, force: true)
+        if let claim = refundDisputeThreads[claimID], conversationRefundDispute?.refundClaimId == claimID {
+            conversationRefundDispute = claim
+        }
+        reloadRefundClaimEverywhere(claimID)
+        return true
+    }
+}
+
+extension AppState {
+    /// "Mark refund received" for a goer: confirms receipt, then closes the
+    /// dispute (closing is allowed once the claim is guest_confirmed). If the
+    /// confirmation succeeds but the close fails, the dispute stays open with
+    /// Close unlocked and the error is shown.
+    func confirmReceivedAndCloseDispute(_ claimID: UUID) async -> Bool {
+        guard await confirmRefundReceivedFromDispute(claimID) else { return false }
+        return await closeRefundDispute(claimID)
+    }
+}
+
+extension AppState {
+    private struct RoundsResponse: Decodable { let rounds: [DisputeRound] }
+
+    /// Earlier closed rounds of this claim's disputes, newest first.
+    func loadRefundDisputeRounds(_ claimID: UUID) async {
+        guard let response: RoundsResponse = try? await SupabaseService.client
+            .rpc("get_refund_dispute_rounds", params: ["p_claim_id": claimID.uuidString])
+            .execute().value else { return }
+        refundDisputeRounds[claimID] = response.rounds
+    }
+
+    /// Reads one earlier round's messages (participant RLS allows it while retained).
+    func loadRefundDisputeRoundMessages(_ round: DisputeRound) async {
+        guard let rows: [DisputeMessage] = try? await SupabaseService.client
+            .from("dispute_messages").select()
+            .eq("dispute_thread_id", value: round.disputeThreadId.uuidString)
+            .order("created_at", ascending: true)
+            .execute().value else { return }
+        refundDisputeRoundMessages[round.disputeThreadId] = rows
+    }
+}

@@ -1574,6 +1574,9 @@ final class AppState: ObservableObject {
     /// Claim ids whose goer copy this account deleted (migration 134). The
     /// shared record still exists for the host; this account just can't read it.
     @Published var refundDisputeDeletedCopies: Set<UUID> = []
+    /// Earlier, still retained dispute rounds per claim (migration 138).
+    @Published var refundDisputeRounds: [UUID: [DisputeRound]] = [:]
+    @Published var refundDisputeRoundMessages: [UUID: [DisputeMessage]] = [:]
     @Published var refundDisputeDeletingClaimId: UUID?
     var disputeExportTask: Task<Void, Never>?
     /// claim id -> thread id, kept only so a caller that arrives holding a
@@ -2272,7 +2275,7 @@ final class AppState: ObservableObject {
     /// across every booking it has (not just the one most recently reserved
     /// in this session — heldEvent above only ever knows about that one).
     var myHolding: PayableBooking? {
-        Countdown.pickSoonest(paymentBookings, phase: .holding) { $0.holdExpiresAt }
+        Countdown.pickSoonest(paymentBookings.filter { $0.status != "cancelled" }, phase: .holding) { $0.holdExpiresAt }
     }
 
     /// PHASE 2, as a buyer: whichever booking has waited longest for the
@@ -2281,7 +2284,7 @@ final class AppState: ObservableObject {
     /// in, not by time remaining.
     var myPendingVerification: PayableBooking? {
         paymentBookings
-            .filter { $0.paymentState == .pendingVerification }
+            .filter { $0.paymentState == .pendingVerification && $0.status != "cancelled" }
             .sorted { ($0.proofUploadedAt ?? .distantPast) < ($1.proofUploadedAt ?? .distantPast) }
             .first
     }
