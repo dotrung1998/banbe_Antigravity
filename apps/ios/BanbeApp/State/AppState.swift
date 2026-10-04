@@ -188,8 +188,28 @@ struct AttendanceReceipt: Identifiable, Equatable {
 
 struct InboxThread: Identifiable, Equatable {
     let id: UUID
+    /// `threads.event_id` — the `events.id` PRIMARY KEY, which for a real,
+    /// host-created event is a slug-like id (`test-s-ki-n-8444c8`) and NEVER
+    /// matches the bundled demo catalogue's own `key`. Kept as its own field
+    /// (rather than only as `eventKey`) so a caller that needs to reason about
+    /// event identity says which one it means — see
+    /// `AppState+Data.swift`'s loadInboxThreads() for why conflating the two is
+    /// what made this conversation render under the wrong name.
+    let eventId: String
+    /// What the rest of the app calls an event's identity (Event Detail's
+    /// `app.eventKey`). For a threads row this is the same value as `eventId`;
+    /// `currentEvent` resolves it through realEventsByID, which is why Details
+    /// showed the right event even while the Inbox row was mislabelled.
     let eventKey: String
+    /// The OTHER participant's name, resolved from LIVE data for this exact
+    /// thread: the `organizers.name` this thread's own `organizer_id` points at
+    /// (when I'm the guest) or the guest's `profiles.display_name` (when I'm
+    /// the host). Never a catalogue event's bundled organizer name.
     let name: String
+    /// Cover image for the row, resolved the same way: the bundled catalogue's
+    /// own photo ONLY when this event id genuinely is a catalogue key, else the
+    /// real event's own resolved photo, else "" (CatalogPhoto's honest
+    /// placeholder). Never the first demo event's photo.
     let img: String
     // Task 3a (07-notifications.md, 2026-09-21) — the OTHER participant's
     // own profiles.avatar_url (host's when I'm the guest, guest's when I'm
@@ -1484,7 +1504,15 @@ final class AppState: ObservableObject {
     @Published var conversationRefundDispute: RefundDisputeThread?
     /// The escalated PAYMENT dispute on that same conversation, if any — the
     /// "other dispute type" that attaches to its own matching system card.
+    /// Set ONLY when a real, still-unresolved payment dispute exists AND its
+    /// booking is currently in the `disputed` payment state; a resolved
+    /// thread, or a thread whose booking has since settled, leaves this nil.
     @Published var conversationPaymentDisputeBookingID: UUID?
+    /// Monotonic guard for loadConversationDispute(): only the newest load may
+    /// write the two conversation-dispute fields above. Without it, a slow
+    /// response for a conversation the reader has already left lands after the
+    /// new one's and repaints the wrong conversation's system card.
+    var conversationDisputeGeneration = 0
     @Published var conversationDisputeLoading = false
     /// claim id currently being closed / reported, so the button can be
     /// disabled without also disabling every other card on the screen.

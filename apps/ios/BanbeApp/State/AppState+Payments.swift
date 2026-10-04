@@ -2105,9 +2105,37 @@ extension AppState {
     /// The escalated PAYMENT dispute on the same conversation, if any — the
     /// "other dispute type" that attaches to its own matching system card.
 
+    /// Pure selection of which BOOKING carries a live payment dispute, given the
+    /// thread rows and booking states already fetched. Split out of
+    /// loadConversationDispute() so the rule is unit-testable without a network
+    /// (see BanbeAppTests/ConversationDisputeAttachmentTests.swift).
+    ///
+    /// A payment dispute is live only when its thread is unresolved AND its
+    /// booking is still `payment_state == "disputed"` with no
+    /// `dispute_resolved_at`. resolve_dispute() moves the booking out of
+    /// `disputed` and stamps `dispute_resolved_at`, so a settled dispute can
+    /// never look live again. Ties break by booking id so the choice is stable
+    /// across polls.
+    static func livePaymentDisputeBookingID(
+        threadRows: [(bookingId: UUID?, resolved: Bool)],
+        bookingStates: [UUID: (paymentState: String, disputeResolvedAt: Date?)]
+    ) -> UUID? {
+        threadRows
+            .filter { !$0.resolved }
+            .compactMap(\.bookingId)
+            .filter { bookingStates[$0]?.paymentState == "disputed" && bookingStates[$0]?.disputeResolvedAt == nil }
+            .sorted { $0.uuidString < $1.uuidString }
+            .first
+    }
+
     func loadConversationDispute(conversationThreadID: UUID) async {
+        // Rapid conversation switching: every load claims a generation and only
+        // the newest may write. Without this, tapping two conversations quickly
+        // let the FIRST (slower) response land last and repaint the second
+        // conversation's card with the first one's dispute.
+        conversationDisputeGeneration += 1
+        let myGeneration = conversationDisputeGeneration
         conversationDisputeLoading = true
-        defer { conversationDisputeLoading = false }
         conversationPaymentDisputeBookingID = nil
 
         // 1. Refund half — one RPC, exact conversation-thread match, RLS
@@ -2115,6 +2143,7 @@ extension AppState {
         if let value: RefundDisputeThread = try? await SupabaseService.client
             .rpc("get_refund_dispute_for_conversation", params: ["p_thread": conversationThreadID.uuidString])
             .execute().value {
+            guard myGeneration == conversationDisputeGeneration else { return }
             if value.found {
                 conversationRefundDispute = value
                 if let claimID = value.refundClaimId { refundDisputeThreads[claimID] = value }
@@ -2122,6 +2151,7 @@ extension AppState {
                 conversationRefundDispute = nil
             }
         }
+        guard myGeneration == conversationDisputeGeneration else { return }
 
         // 2. Payment half — a payment thread is keyed by booking_id and
         //    carries the conversation's own event_id, while refund threads are
@@ -2135,23 +2165,76 @@ extension AppState {
                 case guestId = "guest_id"
             }
         }
+        // Bounded exactly like the chat's own loadChatMessages guard: a thread
+        // row the viewer cannot read (deleted mid-switch, or RLS-scoped away)
+        // must stop here rather than fall through and write the payment half of
+        // a DIFFERENT conversation's state.
         guard let ref: ThreadRef = try? await SupabaseService.client
             .from("threads").select("event_id, guest_id")
             .eq("id", value: conversationThreadID.uuidString).single().execute().value,
-              let guestID = ref.guestId else { return }
-        // `kind` is what separates the two dispute families (migration 129
-        // defaults every pre-existing payment thread to 'payment' and writes
-        // 'refund' for the new ones), and the (event_id, guest_id) pair is the
-        // conversation itself — so this can only ever match a payment dispute
+              let guestID = ref.guestId else {
+            if myGeneration == conversationDisputeGeneration { conversationDisputeLoading = false }
+            return
+        }
+        // `kind` separates the two dispute families (migration 129 defaults
+        // every pre-existing payment thread to 'payment' and writes 'refund'
+        // for the new ones), and the (event_id, guest_id) pair IS the
+        // conversation — so this can only ever match a payment dispute
         // belonging to THIS conversation, never a second guest's on the same
         // event.
-        let paymentRows: [DisputeThreadRow]? = try? await SupabaseService.client
-            .from("dispute_threads").select("id, booking_id, resolved_at, purge_after, resolution_note")
+        //
+        // BUG (2026-10-04, physical-iPhone repro): this ended at
+        // `paymentRows?.first?.bookingId`, which mounted an (empty, spurious)
+        // PAYMENT dispute panel under "Payment confirmed" on a conversation
+        // that only ever had a REFUND dispute. Two things were unchecked:
+        // whether the thread is still unresolved at all, and whether its
+        // booking is still in the payment-dispute state. A payment dispute
+        // thread is retained as history after banbe rules on it, so "a thread
+        // row exists" is not "there is a live payment dispute".
+        //
+        // A payment dispute is shown ONLY when all three hold:
+        //   1. an unresolved (resolved_at IS NULL) payment thread for THIS
+        //      conversation's (event_id, guest_id),
+        //   2. its booking is currently payment_state = 'disputed'
+        //      (resolve_dispute() moves the booking out of 'disputed', so this
+        //      is the authoritative "still live" signal), and
+        //   3. the booking has no dispute_resolved_at.
+        // This narrows only the wrong positives: a genuine open payment dispute
+        // still satisfies all three and is never hidden.
+        struct PaymentDisputeBooking: Decodable {
+            let id: UUID
+            let paymentState: String
+            let disputeResolvedAt: Date?
+            enum CodingKeys: String, CodingKey {
+                case id
+                case paymentState = "payment_state"
+                case disputeResolvedAt = "dispute_resolved_at"
+            }
+        }
+        let openPaymentRows: [DisputeThreadRow]? = try? await SupabaseService.client
+            .from("dispute_threads").select(Self.disputeThreadSelect)
             .eq("event_id", value: ref.eventId)
             .eq("guest_id", value: guestID.uuidString)
             .eq("kind", value: "payment")
+            .is("resolved_at", value: nil)
             .execute().value
-        conversationPaymentDisputeBookingID = paymentRows?.first?.bookingId
+        guard myGeneration == conversationDisputeGeneration else { return }
+
+        let candidates = (openPaymentRows ?? []).map { ($0.bookingId, $0.resolvedAt != nil) }
+        var states: [UUID: (paymentState: String, disputeResolvedAt: Date?)] = [:]
+        let candidateBookingIDs = Array(Set(candidates.compactMap { $0.0 }))
+        if !candidateBookingIDs.isEmpty {
+            let bookings: [PaymentDisputeBooking]? = try? await SupabaseService.client
+                .from("bookings").select("id, payment_state, dispute_resolved_at")
+                .in("id", values: candidateBookingIDs.map(\.uuidString))
+                .execute().value
+            guard myGeneration == conversationDisputeGeneration else { return }
+            for b in bookings ?? [] { states[b.id] = (b.paymentState, b.disputeResolvedAt) }
+        }
+        conversationPaymentDisputeBookingID = Self.livePaymentDisputeBookingID(
+            threadRows: candidates, bookingStates: states
+        )
+        if myGeneration == conversationDisputeGeneration { conversationDisputeLoading = false }
     }
 
     // MARK: Closing a refund dispute, and downloading its transcript

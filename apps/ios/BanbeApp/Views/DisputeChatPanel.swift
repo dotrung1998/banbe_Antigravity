@@ -105,10 +105,20 @@ struct DisputeChatPanel: View {
         pollTask?.cancel()
         let claimID = refundClaimID
         let booking = bookingID
+        // BUG (2026-10-04, physical-iPhone repro): every mounted panel used to
+        // poll unconditionally. Two panels on one screen (which the "mount a
+        // panel on every declined/confirmed card" bug produced) meant two
+        // concurrent loops writing the ONE shared transcript state
+        // (disputeChatKey / disputeChatMessages / disputeChatDraft), so they
+        // blanked and overwrote each other. A panel now only drives that shared
+        // state while it is the dispute that owns it (`isActiveChat`), checked
+        // again on every tick so a panel that loses ownership simply goes quiet
+        // instead of fighting for it.
         pollTask = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
                 if Task.isCancelled { return }
+                guard isActiveChat else { continue }
                 if let claimID { await app.loadRefundDisputeChat(claimID) }
                 else if let booking { await app.loadDisputeChat(booking) }
             }
@@ -116,6 +126,10 @@ struct DisputeChatPanel: View {
     }
 
     private func reload() async {
+        // Same ownership rule as the poll above: claiming the shared key is what
+        // makes this panel the owner, so a second panel cannot steal it on
+        // appear.
+        guard isActiveChat else { return }
         if let refundClaimID { await app.loadRefundDisputeChat(refundClaimID) }
         else if let bookingID { await app.loadDisputeChat(bookingID) }
     }

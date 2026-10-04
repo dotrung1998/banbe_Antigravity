@@ -833,7 +833,7 @@ struct ChatView: View {
 
     @ViewBuilder
     private func systemCard(_ card: (status: String, label: String), message: ChatMessage) -> some View {
-        let attached = attachedDispute(for: card.status)
+        let attached = attachedDispute(for: card.status, message: message)
         // While the dispute is live the card IS the dispute block; once it
         // closes, the card collapses back to exactly the card it was, with
         // only a quiet "Dispute completed" line and a way back into the
@@ -885,12 +885,20 @@ struct ChatView: View {
             }
 
             // The OTHER dispute type — the host escalating a PAYMENT dispute
-            // to banbe — hangs off the card that describes the same thing
-            // ("Payment confirmed"), resolved by this conversation's own
-            // booking id. It keeps banbe's admin-only resolution: nothing here
-            // closes it, exports nothing on its behalf, and it collapses to
-            // the plain card as soon as banbe has ruled.
-            if card.status == "confirmed", let paymentBookingID = app.conversationPaymentDisputeBookingID {
+            // to banbe — hangs off the ONE "Payment confirmed" card selected
+            // by disputeCardMessageIDs, and only while
+            // conversationPaymentDisputeBookingID names a real, unresolved
+            // payment dispute whose booking is still `payment_state =
+            // 'disputed'`. BUG (2026-10-04, physical-iPhone repro): this used
+            // to mount on EVERY confirmed card with no liveness check at all,
+            // which is what put an empty spurious panel next to the real
+            // refund dispute on a refund-only conversation. It keeps banbe's
+            // admin-only resolution: nothing here closes it, exports nothing
+            // on its behalf, and it collapses to the plain card once banbe has
+            // ruled.
+            if card.status == "confirmed",
+               let paymentBookingID = app.conversationPaymentDisputeBookingID,
+               disputeCardMessageIDs.payment == message.id {
                 Divider().overlay(app.palette.rule).padding(.vertical, 2)
                 DisputeChatPanel(bookingID: paymentBookingID)
                     .accessibilityIdentifier("chat.dispute.paymentPanel")
@@ -908,21 +916,74 @@ struct ChatView: View {
         .accessibilityIdentifier("chat.systemCard")
     }
 
-    /// Which dispute, if any, hangs off THIS system card.
+    /// Which dispute, if any, hangs off THIS system message — and, critically,
+    /// whether it hangs off THIS ONE. Matched by exact ids and message
+    /// metadata, never by event name or by "the only dispute on this screen".
     ///
-    /// Matched by exact ids, never by event name or by "the only dispute on
-    /// this screen": a cancellation-driven refund dispute attaches to the
-    /// "Booking cancelled" card, and every other dispute type (the escalated
-    /// payment dispute the host raises through banbe) attaches to the card
-    /// that describes the same thing. Both come from a lookup keyed on this
-    /// conversation's own thread id (loadConversationDispute), which is why
-    /// two conversations on one event can each carry a different dispute.
-    private func attachedDispute(for status: String) -> RefundDisputeThread? {
-        guard let claim = app.conversationRefundDispute, claim.found else { return nil }
-        // A refund dispute over a cancellation is what the "Booking cancelled"
-        // card is about; anything else on this conversation belongs on the
-        // payment card instead, and the payment half is rendered separately.
-        return status == "declined" ? claim : nil
+    /// BUG (2026-10-04, physical-iPhone repro): this was `status == "declined"
+    /// ? claim : nil`, so EVERY cancellation card in a conversation rendered
+    /// its own copy of the same refund dispute, and each mounted copy ran its
+    /// own poll against the shared global transcript state (disputeChatKey /
+    /// disputeChatMessages / disputeChatDraft in AppState) — they fought over
+    /// it and blanked each other. Two guards now make the attachment
+    /// exclusive:
+    ///
+    /// 1. `disputeCardMessageIDs` names the ONE message each dispute belongs
+    ///      to (DisputeCardAttachment.refundCardMessageID — the newest
+    ///      cancellation at or before the claim's own `disputed_at`, else the
+    ///      newest cancellation), and this returns the dispute only on that
+    ///      exact message id.
+    /// 2. The PAYMENT panel additionally requires `conversationPaymentDisputeBookingID`,
+    ///      which AppState+Payments.loadConversationDispute() only sets for a
+    ///      real, still-unresolved payment dispute whose booking is currently
+    ///      `payment_state = 'disputed'` — so a refund-only conversation can
+    ///      never mount one.
+    private func attachedDispute(for status: String, message: ChatMessage) -> RefundDisputeThread? {
+        // The refund half: a cancellation-driven refund dispute belongs to the
+        // one "Booking cancelled" card loadConversationDispute() selected.
+        if status == "declined",
+           let claim = app.conversationRefundDispute, claim.found,
+           disputeCardMessageIDs.refund == message.id {
+            return claim
+        }
+        return nil
+    }
+
+    /// The ONE system message each dispute on this conversation belongs to.
+    ///
+    /// Historical `Booking cancelled.` / `Host marked payment received via …`
+    /// system rows carry NO booking or claim id — messages has only
+    /// (thread_id, sender_id, body, kind, …) and each cancellation RPC writes
+    /// the same prose prefix — so there is no per-message booking identity to
+    /// match on and matching "every declined card" is what mounted N copies of
+    /// one dispute. The selection is therefore deterministic and documented:
+    ///
+    ///   refund  → the LAST cancellation card at or before the claim's own
+    ///             `disputed_at`. A refund dispute is always raised AFTER the
+    ///             cancellation that caused it, so the newest cancellation
+    ///             preceding the dispute is the one it belongs to. Falls back
+    ///             to the last cancellation card overall when the claim has no
+    ///             usable timestamp.
+    ///   payment → the FIRST "Payment confirmed" card. A payment dispute can
+    ///             only exist after a payment was confirmed on that booking,
+    ///             so the earliest confirmation is the one it hangs off.
+    ///
+    /// Both are pure functions of the loaded messages + the dispute's own
+    /// timestamps, so the same conversation always renders the same single
+    /// panel (no flicker between two cards across a poll), and a deep link's
+    /// exact claim is still honoured — the claim id itself is never re-derived
+    /// here, only which message hosts it.
+    private var disputeCardMessageIDs: (refund: UUID?, payment: UUID?) {
+        // ChatMessage carries strictly more than the rule needs, and the rule
+        // itself (plus its rationale) lives in DisputeCardAttachment so it can
+        // be unit-tested without a view — see Models/DisputeMessage.swift.
+        let cards = app.chatMessages
+            .filter { $0.kind == "system" }
+            .map { DisputeCardAttachment.SystemMessage(id: $0.id, body: $0.body, createdAt: $0.createdAt) }
+        return (
+            DisputeCardAttachment.refundCardMessageID(in: cards, disputedAt: app.conversationRefundDispute?.disputedAt),
+            DisputeCardAttachment.paymentCardMessageID(in: cards)
+        )
     }
 
     /// The expanded dispute: status, amount, the temporary-chat notice, the

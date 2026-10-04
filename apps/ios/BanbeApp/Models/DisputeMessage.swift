@@ -230,6 +230,81 @@ struct RefundDisputeThread: Codable, Hashable {
     }
 }
 
+/// Pure, testable selection of WHICH system message a dispute attaches to.
+///
+/// Extracted from ChatView's own `disputeCardMessageIDs` (MessagingViews.swift)
+/// so the rule can be unit-tested without a view or a network — see
+/// BanbeAppTests/ConversationDisputeAttachmentTests.swift.
+///
+/// Why this exists at all: `messages` rows carry no booking or claim id (the
+/// table is (thread_id, sender_id, body, kind, …), and every cancellation RPC
+/// writes the same prose prefix), so there is no per-message booking identity
+/// to match on. Matching "every card whose body starts with Booking cancelled."
+/// is precisely what mounted N copies of ONE dispute, each polling the shared
+/// global transcript state and blanking the others. The selection is therefore
+/// deterministic and documented rather than absent:
+///
+///   refund  → the LAST cancellation card at or before the claim's own
+///             `disputed_at` (a refund dispute is always raised after the
+///             cancellation that caused it), else the last card overall.
+///   payment → the FIRST "Payment confirmed" card (a payment dispute can only
+///             exist after a payment was confirmed on that booking).
+enum DisputeCardAttachment {
+    /// The minimum a system message needs for this decision — deliberately not
+    /// the whole `ChatMessage`, so the rule stays independent of every other
+    /// column that struct carries.
+    struct SystemMessage: Equatable {
+        let id: UUID
+        let body: String
+        let createdAt: Date
+    }
+
+    /// Body prefixes each lifecycle RPC writes today (060 confirm_payment,
+    /// 059 reject_pending_guest, 022/069 cancel_booking). Mirrors
+    /// ChatView.classifySystemMessage's classification, extracted here so this
+    /// type doesn't depend on a SwiftUI view.
+    enum CardKind: Equatable {
+        case confirmed   // "Payment confirmed"
+        case declined    // "Booking cancelled"
+    }
+
+    static func classify(_ body: String) -> CardKind? {
+        if body.hasPrefix("Host marked payment received via") { return .confirmed }
+        if body.hasPrefix("Người tổ chức không nhận yêu cầu đặt chỗ này")
+            || body.hasPrefix("Booking cancelled.") { return .declined }
+        return nil
+    }
+
+    /// Oldest first, with the message id as a tiebreaker so the same set of
+    /// cards always sorts the same way regardless of loader order.
+    private static func oldestFirst(_ cards: [SystemMessage]) -> [SystemMessage] {
+        cards.sorted { a, b in
+            if a.createdAt != b.createdAt { return a.createdAt < b.createdAt }
+            return a.id.uuidString < b.id.uuidString
+        }
+    }
+
+    private static func cards(of kind: CardKind, in messages: [SystemMessage]) -> [SystemMessage] {
+        oldestFirst(messages.filter { classify($0.body) == kind })
+    }
+
+    /// The ONE cancellation card a refund dispute belongs to, or nil when the
+    /// conversation has no cancellation card at all.
+    static func refundCardMessageID(in messages: [SystemMessage], disputedAt: Date?) -> UUID? {
+        let declined = cards(of: .declined, in: messages)
+        guard !declined.isEmpty else { return nil }
+        if let disputedAt {
+            return declined.last(where: { $0.createdAt <= disputedAt })?.id ?? declined.last?.id
+        }
+        return declined.last?.id
+    }
+
+    /// The ONE "Payment confirmed" card a payment dispute belongs to, or nil.
+    static func paymentCardMessageID(in messages: [SystemMessage]) -> UUID? {
+        cards(of: .confirmed, in: messages).first?.id
+    }
+}
+
 /// One line of a downloaded refund-dispute transcript
 /// (get_refund_dispute_transcript(), migration 130) — the export's own
 /// message shape, deliberately separate from `DisputeMessage`: this one

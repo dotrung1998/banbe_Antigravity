@@ -3736,24 +3736,76 @@ extension AppState {
             }
 
             guard myGeneration == inboxThreadsGeneration, requestStartedAt >= lastReadWriteAt else { return }
+
+            // The row's cover photo resolves against the real-events cache, so
+            // make sure every real (non-catalogue) event on these threads is in
+            // it BEFORE building rows — otherwise a first-ever Inbox load would
+            // draw a placeholder for every real event and only fill in on a
+            // later poll. Fire-and-forget: the generation guard above already
+            // drops this whole result if a newer load started meanwhile.
+            let realEventIDs = threads.map(\.eventId).filter { id in
+                EventCatalog.all.first(where: { $0.key == id }) == nil
+            }
+            if !realEventIDs.isEmpty {
+                await loadRealEventsByID(realEventIDs)
+                guard myGeneration == inboxThreadsGeneration else { return }
+            }
+
+            // BUG (2026-10-04, physical-iPhone repro): the row's NAME came from
+            // `EventCatalog.find(thread.eventId).orgName`. `find()` matches on
+            // the bundled catalogue's own `key` and, on a miss, returns
+            // `?? EventCatalog.all[0]` — the FIRST DEMO EVENT. A real,
+            // host-created event's id can never equal a catalogue key, so every
+            // real conversation was labelled with a demo event's organizer
+            // ("Bếp Nhỏ"), and that wrong string was passed straight into
+            // openThread(..., otherName:) as the chat header. Details looked
+            // right because `currentEvent` resolves through realEventsByID —
+            // which is exactly why the two disagreed.
+            //
+            // A messaging identity is now resolved from LIVE rows for this
+            // exact thread and never from the catalogue:
+            //   guest side → the `organizers.name` that thread's OWN
+            //                 organizer_id points at
+            //   host side  → that guest's own profiles.display_name
+            // Self-booking/self-refunding (one account is both the guest and
+            // the organizer on the same thread) resolves through the same two
+            // live lookups, so it is labelled by whoever the viewer is talking
+            // TO, which is the only thing a chat header means.
+            let orgNames = await organizerNames(for: orgIDs)
+
             inboxThreads = threads.compactMap { thread -> InboxThread? in
-                guard let event = EventCatalog.find(thread.eventId) else { return nil }
                 let last = lastByThread[thread.id]
                 let iAmGuest = thread.guestId == uid
                 let name: String
                 if iAmGuest {
-                    name = event.orgName
+                    let orgName = (orgNames[thread.organizerId] ?? "")
+                        .trimmingCharacters(in: .whitespaces)
+                    // An organizer row that is genuinely gone/renamed to blank
+                    // says so honestly instead of borrowing a demo event's name.
+                    name = orgName.isEmpty ? T("Người tổ chức", "Organizer") : orgName
                 } else {
                     let guestName = (guestNames[thread.guestId ?? UUID()] ?? "").trimmingCharacters(in: .whitespaces)
                     name = guestName.isEmpty ? "Khách" : guestName
+                }
+                // Cover photo: the bundled catalogue's own `img` only when this
+                // id genuinely IS one of its keys (`find(...).key == id`), else
+                // the real event's resolved photo from realEventsByID, else ""
+                // so CatalogPhoto draws its placeholder. Same guard
+                // `currentEvent` uses — no `?? all[0]` anywhere in this path.
+                let img: String
+                if let catalogEvent = EventCatalog.find(thread.eventId), catalogEvent.key == thread.eventId {
+                    img = catalogEvent.img
+                } else {
+                    img = realEventsByID[thread.eventId]??.img ?? ""
                 }
                 let prefix = last?.senderId == uid ? "Bạn: " : ""
                 let otherAvatarURL = iAmGuest ? orgOwnerByOrgID[thread.organizerId].flatMap { avatarByUserID[$0] } : avatarByUserID[thread.guestId ?? UUID()]
                 return InboxThread(
                     id: thread.id,
+                    eventId: thread.eventId,
                     eventKey: thread.eventId,
                     name: name,
-                    img: event.img,
+                    img: img,
                     otherAvatarURL: otherAvatarURL,
                     snippet: last.map { prefix + $0.body } ?? "",
                     lastAt: last?.createdAt,
