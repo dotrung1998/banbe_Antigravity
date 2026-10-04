@@ -224,7 +224,21 @@ struct ConfirmedView: View {
                             }
                             Spacer(minLength: 0)
                             if isPaid, let booking = app.booking {
-                                QRCodeImage(value: booking.id.uuidString)
+                                if booking.isGifted {
+                                    // No QR: this seat belongs to the recipient
+                                    // now, and the purchaser already downloaded
+                                    // their copy of the PDF.
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(app.T("Đã tặng", "Gifted")).font(.system(size: 11, weight: .semibold)).opacity(0.65)
+                                        Text(booking.recipientName ?? "").font(.system(size: 15, weight: .semibold))
+                                    }
+                                } else {
+                                    // The scannable value is the booking's ADMISSION
+                                    // credential, not its id: gifting a seat rotates
+                                    // that token, which is exactly what makes a
+                                    // screenshot taken before the gift stop working.
+                                    QRCodeImage(value: booking.admissionQRCodeValue)
+                                }
                             }
                         }
                         .padding(.top, 14)
@@ -251,9 +265,17 @@ struct ConfirmedView: View {
                 }
 
                 VStack(spacing: 0) {
-                    if isPaid {
-                        footerButton(app.T("Tặng vé cho bạn bè", "Give a ticket to a friend")) { giveTicket() }
-                    }
+                    if isPaid, let booking = app.booking, booking.isGifted {
+                            footerButton(app.T("Tải lại vé PDF", "Re-download the PDF")) {
+                                downloadGiftPDF(booking)
+                            }
+                            .accessibilityIdentifier("confirmed.giftedPDF")
+                        } else if isPaid {
+                            footerButton(app.T("Tặng vé cho bạn bè", "Give a ticket to a friend")) {
+                                giveTicket()
+                            }
+                            .accessibilityIdentifier("confirmed.giveTicket")
+                        }
                     footerButton(app.calAdded ? app.T("Đã thêm vào lịch", "Added to calendar")
                                               : app.T("Thêm vào lịch", "Add to calendar")) {
                         app.openCalendarPicker(for: event)
@@ -438,10 +460,22 @@ struct ConfirmedView: View {
         }
     }
 
+    /// Migration 132 replaced the old share-a-banbe.app-link behaviour: this
+    /// now moves one seat to a named recipient on the server and hands back a
+    /// PDF, instead of sharing a link to a destination this deployment does not
+    /// serve.
     private func giveTicket() {
-        guard let url = URL(string: "https://banbe.app/ve/\(event.key)-x7f2") else { return }
-        let text = app.T("Mình có vé cho bạn", "I have a ticket for you")
-        let activity = UIActivityViewController(activityItems: [text, url], applicationActivities: nil)
-        UIApplication.shared.topViewController?.present(activity, animated: true)
+        guard let booking = app.booking else { return }
+        app.openGiftForm(GiftTicketContext(booking: booking, eventName: event.name))
+    }
+
+    /// A gifted seat stays re-downloadable for the purchaser forever — it is
+    /// their record of what they sent, and it costs them nothing to keep.
+    private func downloadGiftPDF(_ booking: Booking) {
+        guard let url = app.exportGiftPDF(for: booking) else { return }
+        let share = UIActivityViewController(
+            activityItems: [booking.recipientName.map { "\($0)" } ?? booking.code ?? url.lastPathComponent, url],
+            applicationActivities: nil)
+        UIApplication.shared.topViewController?.present(share, animated: true)
     }
 }

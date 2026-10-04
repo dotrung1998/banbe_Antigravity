@@ -209,25 +209,27 @@ struct AccountGroupView: View {
     // Account IA reorg (2026-09-30) — Task 2b: "My Tickets" is now REAL
     // DB-backed data, reusing `app.paymentBookings` (`loadPaymentBookings()`,
     // AppState+Payments.swift) — the exact same `bookings` query
-    // AccountView's own Action Center already loads (`user_id`-scoped,
-    // joined to `events`/`organizers` for the real event name), not the
-    // static demo catalogue and not a second divergent query. Active
-    // bookings (pending/confirmed/attended) tap into `openBookingConfirmed`
-    // — the same booking-id-scoped helper Confirmed's own notification-
-    // reopen path already uses — which self-gates the real QR
-    // (`Booking.isTicket`) vs. the "awaiting payment" state, matching Event
-    // Detail's reserve bar's `openHeld` routing for whichever booking
-    // happens to be current, just generalized to any booking id.
-    // Cancelled/expired/no_show bookings (real `bookings.status` values,
-    // confirmed in the migrations — 069/070/072/011) get their own
-    // clearly labeled, non-interactive section — no fabricated "refunded"
-    // bucket, since `bookings.status` has no such value.
-    // Known gap vs. web: `paymentBookings`'s own query does not currently
-    // select `event_date`/`event_time` (only `events(name, ...)`), so this
-    // row shows event name + status only, not a date — extending that
-    // shared struct's decode/CodingKeys was judged out of scope for this
-    // pass (it's used by several other payment screens); flagged, not
-    // silently fixed.
+    // AccountView's own Action Center already loads, joined to
+    // `events`/`organizers` for the real event name. Active bookings tap into
+    // `openBookingConfirmed` — the same booking-id-scoped helper Confirmed's
+    // own notification-reopen path already uses — which self-gates the real QR
+    // (`Booking.isTicket`) vs. the "awaiting payment" state.
+    // Cancelled/expired/no_show bookings (real `bookings.status` values)
+    // get their own clearly labeled section — no fabricated "refunded" bucket,
+    // since `bookings.status` has no such value.
+    //
+    // Gift pass (migration 132): a seat that was gifted is not an admission
+    // ticket for the purchaser any more, so its row shows "Gifted to <name>"
+    // and offers the PDF only — no QR screen, no re-gift, no import. Once the
+    // event is over the row moves into the finished section with an accurate
+    // "Event ended · Gifted" subtitle; no status is written, because a
+    // completed event is not a cancelled one and the purchase keeps its
+    // refund record either way.
+    //
+    // Spacing pass: this screen now uses Account's own section rhythm —
+    // a heading sits 8pt above its grouped card, and sections are 18pt apart —
+    // instead of the previous mix of 8/18/22/28pt gaps that left headings
+    // stranded far from their content and "Past Events" floating on its own.
     @ViewBuilder
     private var activityContent: some View {
         if app.paymentsLoading && app.paymentBookings.isEmpty {
@@ -237,36 +239,18 @@ struct AccountGroupView: View {
             Text(app.T("Bạn chưa có vé nào.", "You don't have any tickets yet."))
                 .font(.system(size: 13)).opacity(0.65)
         } else {
-            let active = app.paymentBookings.filter { ["pending", "confirmed", "attended"].contains($0.status) }
-            let inactive = app.paymentBookings.filter { ["cancelled", "expired", "no_show"].contains($0.status) }
-            // 2026-10-02 fix — "connected account row groups": these used
-            // to be N separate rounded cards with gaps between them (one
-            // `.background(_, in: RoundedRectangle)` per row); grouped into
-            // ONE rounded tinted container per section with subtle
-            // internal `Divider`s, matching `hostOpsContent`'s/
-            // `paymentsContent`'s own established styling exactly — same
-            // row padding/corner radius/tap targets, just contiguous.
+            let endedGiftIDs = Set(app.paymentBookings.filter { app.isFinishedGift($0) }.map(\.id))
+            let active = app.paymentBookings.filter {
+                ["pending", "confirmed", "attended"].contains($0.status) && !endedGiftIDs.contains($0.id)
+            }
+            let inactive = app.paymentBookings.filter {
+                ["cancelled", "expired", "no_show"].contains($0.status) || endedGiftIDs.contains($0.id)
+            }
             if !active.isEmpty {
                 Text(app.T("Vé của tôi", "My Tickets")).font(.system(size: 11.5, weight: .semibold))
                 VStack(spacing: 0) {
                     ForEach(Array(active.enumerated()), id: \.element.id) { i, b in
-                        Button {
-                            Task { _ = await app.openBookingConfirmed(bookingID: b.id, eventKey: b.eventKey, back: .accountGroup) }
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
-                                    Text(ticketStatusLabel(b)).font(.system(size: 11)).opacity(0.85)
-                                }
-                                Spacer(minLength: 0)
-                                Text("›").font(.system(size: 18)).opacity(0.5)
-                            }
-                            .foregroundStyle(app.palette.ink)
-                            .padding(14)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("myTicket.\(b.id)")
+                        activeTicketRow(b)
                         if i < active.count - 1 { Divider().overlay(app.palette.rule) }
                     }
                 }
@@ -277,17 +261,7 @@ struct AccountGroupView: View {
                 Text(app.T("Đã hủy / hết hạn", "Cancelled / expired")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
                 VStack(spacing: 0) {
                     ForEach(Array(inactive.enumerated()), id: \.element.id) { i, b in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
-                                Text(terminalStatusLabel(b)).font(.system(size: 11))
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .foregroundStyle(app.palette.ink)
-                        .padding(14)
-                        .opacity(0.65)
-                        .accessibilityIdentifier("myTicketInactive.\(b.id)")
+                        finishedTicketRow(b)
                         if i < inactive.count - 1 { Divider().overlay(app.palette.rule).opacity(0.65) }
                     }
                 }
@@ -297,12 +271,102 @@ struct AccountGroupView: View {
         }
 
         // "Sự kiện đã hoàn thành" relabeled "Sự Kiện Quá Khứ"/"Past Events"
-        // for clarity — same destination (`goCompletedList`), unchanged.
+        // for clarity — same destination (`goCompletedList`), unchanged. Now an
+        // ordinary grouped row on the same 18pt section rhythm as the two above
+        // (it used to sit below them with no rhythm of its own), carrying its
+        // real count in the same trailing position every other group row uses.
         VStack(spacing: 0) {
             row(app.T("Sự Kiện Quá Khứ", "Past Events"), identifier: "account.completedList", icon: "calendar.badge.checkmark", trailing: "\(completedCount) ›") { app.goCompletedList() }
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.top, 18)
+
+        // The recipient's own entry point for a claim code — deliberately its
+        // own row, never reachable from the check-in QR, which is a different
+        // credential entirely (see migration 132).
+        Text(app.T("Nhập vé được tặng", "Import a gift ticket")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+        VStack(spacing: 0) {
+            row(app.T("Nhập vé bằng mã nhận vé", "Import a ticket with your claim code"),
+                identifier: "account.giftImport", icon: "gift", trailing: "›") {
+                app.openGiftImport()
+            }
+        }
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.top, 8)
+        .accessibilityIdentifier("account.giftImportSection")
+    }
+
+    /// A live ticket. A gifted one is deliberately inert apart from its PDF:
+    /// the purchaser owns the transaction, not the seat.
+    @ViewBuilder
+    private func activeTicketRow(_ b: PayableBooking) -> some View {
+        if b.isGifted {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName)
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(app.T("Đã tặng cho \(b.recipientName ?? "")", "Gifted to \(b.recipientName ?? "")"))
+                        .font(.system(size: 11)).opacity(0.85)
+                }
+                Spacer(minLength: 0)
+                giftPDFButton(b)
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(14)
+            .accessibilityIdentifier("myTicketGifted.\(b.id)")
+        } else {
+            Button {
+                Task { _ = await app.openBookingConfirmed(bookingID: b.id, eventKey: b.eventKey, back: .accountGroup) }
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
+                        Text(ticketStatusLabel(b)).font(.system(size: 11)).opacity(0.85)
+                    }
+                    Spacer(minLength: 0)
+                    Text("›").font(.system(size: 18)).opacity(0.5)
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(14)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("myTicket.\(b.id)")
+        }
+    }
+
+    /// PDF re-download, for a gift whose event is already over as much as for
+    /// one still to come. The purchaser's copy of what they sent never goes
+    /// away.
+    private func giftPDFButton(_ b: PayableBooking) -> some View {
+        Button { app.exportGiftPDF(for: b) } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.down.document").font(.system(size: 12, weight: .medium))
+                Text(app.T("PDF", "PDF")).font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .overlay(Capsule().stroke(app.palette.rule))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("myTicketGiftedPDF.\(b.id)")
+    }
+
+    /// A cancelled/expired/no-show row, plus the gifted rows whose event has
+    /// finished. Read-only in both cases.
+    private func finishedTicketRow(_ b: PayableBooking) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
+                Text(terminalStatusLabel(b)).font(.system(size: 11))
+            }
+            Spacer(minLength: 0)
+            if b.isGifted { giftPDFButton(b) }
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(14)
+        .opacity(0.65)
+        .accessibilityIdentifier("myTicketInactive.\(b.id)")
     }
 
     private func ticketStatusLabel(_ b: PayableBooking) -> String {
@@ -325,6 +389,13 @@ struct AccountGroupView: View {
     // never needed a refund (free/no payment) or one already completed;
     // not fabricated as "Refunded" without a real signal to confirm which.
     private func terminalStatusLabel(_ b: PayableBooking) -> String {
+        // A gift whose event has finished is NOT a cancelled booking: nothing
+        // about the money changed, so this says what actually happened instead
+        // of borrowing the cancellation wording (and never touches status, which
+        // would destroy the refund record's meaning).
+        if app.isFinishedGift(b) {
+            return app.T("Sự kiện đã kết thúc · Đã tặng", "Event ended · Gifted")
+        }
         let base: String
         switch b.status {
         case "cancelled": base = app.T("Đã hủy", "Cancelled")

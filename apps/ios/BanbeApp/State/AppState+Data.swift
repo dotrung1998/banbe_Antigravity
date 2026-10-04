@@ -218,6 +218,8 @@ private struct AttendanceBooking: Decodable {
     let expiresAt: Date?
     let paidMarkedAt: Date?
     let proofPath: String?
+    let recipientName: String?
+    let admissionToken: UUID?
     enum CodingKeys: String, CodingKey {
         case id
         case userId = "user_id"
@@ -226,6 +228,8 @@ private struct AttendanceBooking: Decodable {
         case expiresAt = "expires_at"
         case paidMarkedAt = "paid_marked_at"
         case proofPath = "proof_path"
+        case recipientName = "recipient_name"
+        case admissionToken = "admission_token"
     }
 }
 /// loadHomeLiveEvents()'s own row shape — `LiveEventStatus` plus the
@@ -3980,7 +3984,7 @@ extension AppState {
         do {
             let bookings: [AttendanceBooking] = try await SupabaseService.client
                 .from("bookings")
-                .select("id, user_id, qty, status, total_vnd, code, expires_at, paid_marked_at, proof_path")
+                .select("id, user_id, qty, status, total_vnd, code, expires_at, paid_marked_at, proof_path, recipient_name, admission_token")
                 .eq("event_id", value: key)
                 .in("status", values: ["pending", "confirmed", "attended"])
                 .execute().value
@@ -4028,7 +4032,9 @@ extension AppState {
                 // would just fill the check-in screen with ghosts.
                 .filter { $0.status != "pending" || ($0.expiresAt ?? .distantFuture) > rightNow }
                 .map { booking in
-                    let raw = (names[booking.userId ?? UUID()] ?? "").trimmingCharacters(in: .whitespaces)
+                    let recipient = booking.recipientName?.trimmingCharacters(in: .whitespaces) ?? ""
+                    let profileName = (names[booking.userId ?? UUID()] ?? "").trimmingCharacters(in: .whitespaces)
+                    let raw = !recipient.isEmpty ? recipient : profileName
                     let receipts = receiptsByBooking[booking.id] ?? []
                     let live = receipts.filter(\.isLive).count
                     let pendingDelete = receipts.count - live
@@ -4037,6 +4043,7 @@ extension AppState {
                         name: raw.isEmpty ? "Khách" : raw,
                         qty: booking.qty,
                         checkedIn: booking.status == "attended",
+                        admissionToken: booking.admissionToken,
                         paid: booking.paidMarkedAt != nil,
                         totalVnd: booking.totalVnd ?? 0,
                         code: booking.code ?? "",
@@ -4094,11 +4101,15 @@ extension AppState {
 
     /// Both the manual list and the QR scanner go through this same
     /// already-authorized RPC, so they share one notification path.
+    /// `source` matters since migration 132: only a SCANNED credential is
+    /// checked against the booking's current admission_token, because that is
+    /// the only path where a superseded QR could arrive. A manual tap on the
+    /// host's own guest list addresses the row by id and is not a credential.
     @discardableResult
-    func checkIn(bookingID: UUID) async -> Bool {
+    func checkIn(bookingID: UUID, source: String = "manual") async -> Bool {
         do {
             let result: RPCResult = try await SupabaseService.client
-                .rpc("check_in_guest", params: ["p_reservation_id": bookingID.uuidString])
+                .rpc("check_in_guest", params: ["p_reservation_id": bookingID.uuidString, "p_source": source])
                 .execute().value
             guard result.success == true else { return false }
             Haptics.success()
@@ -4112,7 +4123,7 @@ extension AppState {
 
     func checkInByScan(_ bookingID: String) async -> Bool {
         guard let uuid = UUID(uuidString: bookingID) else { return false }
-        let ok = await checkIn(bookingID: uuid)
+        let ok = await checkIn(bookingID: uuid, source: "scan")
         if ok, let key = attendanceEventKey { await loadAttendanceGuests(key) }
         return ok
     }

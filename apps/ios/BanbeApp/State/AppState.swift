@@ -158,6 +158,12 @@ struct AttendanceGuest: Identifiable, Equatable {
     let name: String
     let qty: Int
     var checkedIn: Bool
+    /// The booking's current admission credential (migration 132). A ticket QR
+    /// encodes this, NOT `id` — gifting a seat rotates it, which is exactly
+    /// what makes a screenshot taken before the gift stop being scannable. The
+    /// list has to carry it so the scanner's "is this ticket even for my
+    /// event?" pre-check can resolve a scanned credential back to its row.
+    var admissionToken: UUID?
     /// Paid means the organizer confirmed the money arrived — which is also
     /// what issued the receipt. Status alone isn't the answer: hold_seats
     /// marks instant-approval bookings 'confirmed' before anyone has paid.
@@ -1370,6 +1376,35 @@ final class AppState: ObservableObject {
     // comment). Never a second model: same `event_credits` table, same
     // RLS, just the other status value.
     @Published var myConfirmedEventCredits: [EventCreditInvite] = []
+    // Ticket gifting (migration 132) — the recipient form, its review step,
+    // the resulting PDF/.ics exports and the recipient's import entry point.
+    // See AppState+Gifting.swift for the actions and GiftTicketViews.swift for
+    // the two sheets.
+    @Published var giftTicketContext: GiftTicketContext?
+    @Published var giftFormName = ""
+    @Published var giftFormEmail = ""
+    @Published var giftFormDOB = Calendar.current.date(byAdding: .year, value: -20, to: Date()) ?? Date()
+    @Published var giftFormStep: GiftFormStep = .form
+    @Published var giftBusy = false
+    @Published var giftError = ""
+    @Published var giftResult: GiftTicketResult?
+    /// Rendered exports. Set by the gift flow so the native share sheet has
+    /// real files to hand over, and set again later whenever the purchaser
+    /// re-downloads the same PDF from Tickets & Bookings.
+    @Published var giftPDFURL: URL?
+    @Published var giftICSURL: URL?
+    /// The recipient's import entry point — a claim code, never the check-in
+    /// QR value, so the door credential and the account credential can never
+    /// be confused for one another.
+    @Published var giftImportOpen = false
+    @Published var giftImportCode = ""
+    @Published var giftImportBusy = false
+    @Published var giftImportError = ""
+    @Published var giftImportNotice = ""
+    /// A claim code that arrived before the recipient had an account. Kept
+    /// across sign-in/registration (see checkPendingGiftClaimOnSignIn) rather
+    /// than lost, so the deep link that got them here still finishes the job.
+    @Published var pendingGiftClaimCode: String?
     // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
     @Published var pulseDaily: [PulseItem] = []
     @Published var pulseWeekly: [PulseItem] = []
@@ -2846,13 +2881,18 @@ final class AppState: ObservableObject {
     // `togglePhotoLike(_ photoId:)` lives in AppState+PhotoEngagement.swift,
     // next to `loadPhotoEngagement`/`logPhotoShare`.
 
-    /// Opens a shared organizer link — banbe://organizer/<eventKey>. The
-    /// scheme is registered in project.yml; a plain https:// link can't
-    /// reach the app without Universal Links, which need an entitlement and
-    /// an Apple Team ID this project doesn't have yet, so the web page
-    /// shared alongside offers this as an explicit "Open" button.
+    /// Opens a shared organizer link — banbe://organizer/<eventKey>, or a gift
+    /// claim — banbe://gift/claim?code=CLAIM-XXXX. The scheme is registered in
+    /// project.yml; a plain https:// link can't reach the app without Universal
+    /// Links, which need an entitlement and an Apple Team ID this project
+    /// doesn't have yet, so the web page shared alongside offers this as an
+    /// explicit "Open" button.
     func handleDeepLink(_ url: URL) {
         guard url.scheme == "banbe" else { return }
+        if url.host == "gift" {
+            handleGiftClaimLink(url)
+            return
+        }
         let parts = ([url.host] + url.pathComponents.filter { $0 != "/" }).compactMap { $0 }
         guard parts.first == "organizer", let key = parts.dropFirst().first,
               EventCatalog.find(key) != nil
@@ -2860,6 +2900,21 @@ final class AppState: ObservableObject {
         photoViewer = nil
         eventKey = key
         screen = .organizer
+    }
+
+    /// banbe://gift/claim?code=… is the link annotation printed on the gift
+    /// PDF. It only ever carries a claim code — the account-claim credential,
+    /// never the admission QR value — so a forwarded PDF cannot be turned into
+    /// a door credential by anyone. Landing here while signed out parks the
+    /// code and asks for the recipient email, because that address is the only
+    /// thing claim_gift_ticket() will accept as proof of ownership.
+    private func handleGiftClaimLink(_ url: URL) {
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        guard let code = components?.queryItems?.first(where: { $0.name == "code" })?.value?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !code.isEmpty
+        else { return }
+        openGiftImport(prefilledCode: code)
     }
 
     func openPreferences() { screen = .preferences }

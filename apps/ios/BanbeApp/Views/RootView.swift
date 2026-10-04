@@ -920,6 +920,21 @@ struct RootView: View {
         // Account deletion (Task 2, Account/Settings pass) — opened from
         // AccountGroupView's `preferences` case (`app.deleteAccountOpen`).
         .fullScreenCover(isPresented: $app.deleteAccountOpen) { DeleteAccountView() }
+        // Ticket gifting (migration 132) — the recipient form/review/hand-over
+        // sheet, driven by `app.giftTicketContext` (non-nil == presented), and
+        // the recipient's separate claim-code import. Both are `.fullScreenCover`
+        // rather than a new `Screen` case because neither is a place the user
+        // navigates TO: they are one-shot flows opened from an existing screen,
+        // and dismissing them must return to exactly where they started.
+        .fullScreenCover(item: $app.giftTicketContext) { _ in
+            GiftTicketView()
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { app.giftImportOpen },
+            set: { if !$0 { app.closeGiftImport() } }
+        )) {
+            GiftImportView()
+        }
         // Section 2 — a story's "Answer Survey" CTA. Presented over the
         // still-mounted, now-suspended StoryViewerView (see
         // storySurveyModalPublicID above) rather than navigating `screen`
@@ -949,6 +964,11 @@ struct RootView: View {
                 // "no guest browsing" guard below, which bounced the user back
                 // to Login and left them stuck there until a relaunch.
                 if auth.session != nil && app.screen == .login { app.screen = app.authReturnScreen }
+                // A gift claim link that arrived before there was a session
+                // parks its code (see AppState.openGiftImport); once there IS
+                // a verified session, finish the job the link started instead
+                // of leaving the recipient on a screen with no way forward.
+                app.checkPendingGiftClaimOnSignIn()
             }
         }
         // Task 1 — no guest browsing of any screen: the single, centralized

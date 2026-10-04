@@ -26,6 +26,16 @@ struct Booking: Codable, Identifiable, Hashable {
     var holdExpiresAt: Date?
     var verifyDueAt: Date?
     var transactionId: String?
+    var purchaserId: UUID?
+    var recipientName: String?
+    var recipientEmail: String?
+    var recipientDob: String?
+    var giftedAt: Date?
+    var claimCode: String?
+    var claimedAt: Date?
+    var claimedByUserId: UUID?
+    var admissionToken: UUID?
+    var originalBookingId: UUID?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -45,6 +55,16 @@ struct Booking: Codable, Identifiable, Hashable {
         case holdExpiresAt = "hold_expires_at"
         case verifyDueAt = "verify_due_at"
         case transactionId = "transaction_id"
+        case purchaserId = "purchaser_id"
+        case recipientName = "recipient_name"
+        case recipientEmail = "recipient_email"
+        case recipientDob = "recipient_dob"
+        case giftedAt = "gifted_at"
+        case claimCode = "claim_code"
+        case claimedAt = "claimed_at"
+        case claimedByUserId = "claimed_by_user_id"
+        case admissionToken = "admission_token"
+        case originalBookingId = "original_booking_id"
     }
 
     init(from decoder: Decoder) throws {
@@ -69,13 +89,26 @@ struct Booking: Codable, Identifiable, Hashable {
         holdExpiresAt = try c.decodeIfPresent(Date.self, forKey: .holdExpiresAt)
         verifyDueAt = try c.decodeIfPresent(Date.self, forKey: .verifyDueAt)
         transactionId = try c.decodeIfPresent(String.self, forKey: .transactionId)
+        purchaserId = try c.decodeIfPresent(UUID.self, forKey: .purchaserId)
+        recipientName = try c.decodeIfPresent(String.self, forKey: .recipientName)
+        recipientEmail = try c.decodeIfPresent(String.self, forKey: .recipientEmail)
+        recipientDob = try c.decodeIfPresent(String.self, forKey: .recipientDob)
+        giftedAt = try c.decodeIfPresent(Date.self, forKey: .giftedAt)
+        claimCode = try c.decodeIfPresent(String.self, forKey: .claimCode)
+        claimedAt = try c.decodeIfPresent(Date.self, forKey: .claimedAt)
+        claimedByUserId = try c.decodeIfPresent(UUID.self, forKey: .claimedByUserId)
+        admissionToken = try c.decodeIfPresent(UUID.self, forKey: .admissionToken)
+        originalBookingId = try c.decodeIfPresent(UUID.self, forKey: .originalBookingId)
     }
 
     init(id: UUID, eventId: String, userId: UUID?, qty: Int, totalVnd: Int, code: String?,
         status: String, expiresAt: Date?, paidMarkedAt: Date?, cancelledAt: Date?,
         cancelReason: String?, createdAt: Date, paymentState: PaymentPhase = .holding,
         paymentRef: String? = nil, holdExpiresAt: Date? = nil, verifyDueAt: Date? = nil,
-        transactionId: String? = nil) {
+        transactionId: String? = nil, purchaserId: UUID? = nil, recipientName: String? = nil,
+        recipientEmail: String? = nil, recipientDob: String? = nil, giftedAt: Date? = nil,
+        claimCode: String? = nil, claimedAt: Date? = nil, claimedByUserId: UUID? = nil,
+        admissionToken: UUID? = nil, originalBookingId: UUID? = nil) {
         self.id = id; self.eventId = eventId; self.userId = userId; self.qty = qty
         self.totalVnd = totalVnd; self.code = code; self.status = status
         self.expiresAt = expiresAt; self.paidMarkedAt = paidMarkedAt
@@ -83,6 +116,16 @@ struct Booking: Codable, Identifiable, Hashable {
         self.paymentState = paymentState; self.paymentRef = paymentRef
         self.holdExpiresAt = holdExpiresAt; self.verifyDueAt = verifyDueAt
         self.transactionId = transactionId
+        self.purchaserId = purchaserId
+        self.recipientName = recipientName
+        self.recipientEmail = recipientEmail
+        self.recipientDob = recipientDob
+        self.giftedAt = giftedAt
+        self.claimCode = claimCode
+        self.claimedAt = claimedAt
+        self.claimedByUserId = claimedByUserId
+        self.admissionToken = admissionToken
+        self.originalBookingId = originalBookingId
     }
 
     /// TASK B (2026-10-01 UX foundation pass) — the ONE shared rule for
@@ -91,4 +134,11 @@ struct Booking: Codable, Identifiable, Hashable {
     /// wants to show ticket QR / check-in code / "Xem vé" must check this,
     /// not re-derive its own condition.
     var isTicket: Bool { status == "confirmed" && paymentState == .confirmed }
+
+    /// A gifted ticket has a recipient set.
+    var isGifted: Bool { recipientName?.trimmingCharacters(in: .whitespaces).isEmpty == false }
+    var isClaimed: Bool { claimedAt != nil }
+
+    /// Scannable admission credential — uses the rotated admission_token if present, falling back to id.
+    var admissionQRCodeValue: String { (admissionToken ?? id).uuidString }
 }

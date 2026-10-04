@@ -181,6 +181,15 @@ struct PayableBooking: Identifiable, Hashable {
     /// nudged the organizer via nudge_organizer() (migration 059) — capped
     /// server-side at 2 per hold.
     var nudgeCount: Int = 0
+    var purchaserId: UUID?
+    var recipientName: String?
+    var recipientEmail: String?
+    var recipientDob: String?
+    var giftedAt: Date?
+    var claimCode: String?
+    var claimedAt: Date?
+    var claimedByUserId: UUID?
+    var admissionToken: UUID?
 
     var isPaid: Bool { paymentState == .confirmed || paidMarkedAt != nil }
     /// Account IA reorg (2026-09-30) — the same canonical "is this a real,
@@ -195,6 +204,9 @@ struct PayableBooking: Identifiable, Hashable {
     var hasBank: Bool { payMethods.contains("bank") && !bankAccountNo.isEmpty }
     var hasMomo: Bool { payMethods.contains("momo") && !momoPhone.isEmpty }
     var hasAnyPayRail: Bool { hasBank || hasMomo }
+
+    var isGifted: Bool { recipientName?.trimmingCharacters(in: .whitespaces).isEmpty == false }
+    var isClaimed: Bool { claimedAt != nil }
 }
 
 /// Formats an amount the way the rest of the app does: Vietnamese grouping,

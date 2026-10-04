@@ -25,10 +25,11 @@ extension AppState {
                 .select("""
                     id, qty, total_vnd, code, status, paid_marked_at, proof_uploaded_at, created_at, event_id,
                     payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at, dispute_reason, cancel_reason, nudge_count,
+                    purchaser_id, recipient_name, recipient_email, recipient_dob, gifted_at, claim_code, claimed_at, claimed_by_user_id, admission_token,
                     events(name, organizers(name, pay_methods, bank_name, bank_account_name,
                                             bank_account_no, momo_phone, pay_note))
                     """)
-                .eq("user_id", value: uid.uuidString)
+                .or("user_id.eq.\(uid.uuidString),purchaser_id.eq.\(uid.uuidString)")
                 .order("created_at", ascending: false)
                 .execute().value
             // Only the newest in-flight call may write state — see
@@ -625,6 +626,15 @@ private struct PayableBookingRow: Decodable {
     let disputeReason: String?
     let cancelReason: String?
     let nudgeCount: Int?
+    let purchaserId: UUID?
+    let recipientName: String?
+    let recipientEmail: String?
+    let recipientDob: String?
+    let giftedAt: Date?
+    let claimCode: String?
+    let claimedAt: Date?
+    let claimedByUserId: UUID?
+    let admissionToken: UUID?
     let events: EventRow?
 
     struct EventRow: Decodable {
@@ -665,6 +675,15 @@ private struct PayableBookingRow: Decodable {
         case disputeReason = "dispute_reason"
         case cancelReason = "cancel_reason"
         case nudgeCount = "nudge_count"
+        case purchaserId = "purchaser_id"
+        case recipientName = "recipient_name"
+        case recipientEmail = "recipient_email"
+        case recipientDob = "recipient_dob"
+        case giftedAt = "gifted_at"
+        case claimCode = "claim_code"
+        case claimedAt = "claimed_at"
+        case claimedByUserId = "claimed_by_user_id"
+        case admissionToken = "admission_token"
     }
 
     var asPayable: PayableBooking {
@@ -687,7 +706,16 @@ private struct PayableBookingRow: Decodable {
             payNote: org?.payNote ?? "",
             disputeReason: disputeReason,
             cancelReason: cancelReason,
-            nudgeCount: nudgeCount ?? 0
+            nudgeCount: nudgeCount ?? 0,
+            purchaserId: purchaserId,
+            recipientName: recipientName,
+            recipientEmail: recipientEmail,
+            recipientDob: recipientDob,
+            giftedAt: giftedAt,
+            claimCode: claimCode,
+            claimedAt: claimedAt,
+            claimedByUserId: claimedByUserId,
+            admissionToken: admissionToken
         )
     }
 }

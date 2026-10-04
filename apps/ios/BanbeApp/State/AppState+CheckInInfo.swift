@@ -40,8 +40,12 @@ extension AppState {
         }
         // A ticket for a different event of this host must not be checked in
         // here. (Only enforced once this event's guest list has loaded.)
+        // Matched on EITHER identifier: since migration 132 the ticket QR
+        // carries the admission_token rather than the row id, and that token is
+        // what rotates when a seat is gifted.
         let guests = attendanceGuests
-        if !guests.isEmpty, !guests.contains(where: { $0.id == id }) { return (nil, .wrongEvent) }
+        let guest = guests.first { $0.id == id || $0.admissionToken == id }
+        if !guests.isEmpty, guest == nil { return (nil, .wrongEvent) }
 
         do {
             let r: GuestInfoResult = try await SupabaseService.client
@@ -57,7 +61,7 @@ extension AppState {
             if let pg = error as? PostgrestError,
                pg.code == "PGRST202" || pg.code == "42883"
                 || pg.message.localizedCaseInsensitiveContains("could not find the function"),
-               let guest = guests.first(where: { $0.id == id }) {
+               let guest {
                 return (CheckInGuestInfo(bookingID: id, name: guest.name, dobISO: nil, alreadyCheckedIn: guest.checkedIn), nil)
             }
             return (nil, .network)
