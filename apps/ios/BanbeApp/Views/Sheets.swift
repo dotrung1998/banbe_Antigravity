@@ -48,21 +48,15 @@ struct AreaSheetView: View {
         }
     }
 
+    /// Area menu pass (2026-10-04) — the close button is REMOVED. The
+    /// reference menus this matches (Messages' gear "Settings" menu, the "…"
+    /// row menus) are dismissed by tapping outside or choosing an item, never
+    /// by an in-panel ✕, and this menu sits anchored under a header control
+    /// where a close button read as a modal's. Tapping outside still dismisses
+    /// (see `body`), and Reduce Motion still dismisses instantly.
     @ViewBuilder
     private var areaContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(app.T("Khu vực", "Location")).font(.system(size: 11.5, weight: .semibold))
-                Spacer()
-                Button { app.areaAsking = false } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(app.palette.ink.opacity(0.6))
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("area.close")
-            }
             LocationPickerList { app.pickArea($0) }
 
             Button(app.located == true
@@ -83,26 +77,64 @@ struct AreaSheetView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let panelWidth = min(geo.size.width - 32, 560)
-            let panelHeight = min(geo.size.height - 96, 560)
+            let inset = geo.safeAreaInsets
+            let screen = geo.size
+            let progress = reduceMotion ? 1 : revealProgress
             let source = app.areaSourceFrame
             let hasSource = source.map { $0.width > 1 && $0.height > 1 } ?? false
-            let sourceScale = hasSource ? min(source!.width / panelWidth, source!.height / panelHeight) : 0.82
-            let sourceOffsetX = hasSource ? source!.midX - geo.size.width / 2 : 0
-            let sourceOffsetY = hasSource ? source!.midY - geo.size.height / 2 : 0
-            let progress = reduceMotion ? 1 : revealProgress
 
-            ZStack {
-                Color.black.opacity(0.42 * Double(progress))
-                    .ignoresSafeArea()
+            // ---- Anchored placement -------------------------------------
+            // This is a MENU, not a modal: it opens at the Area control it was
+            // tapped from. The reference menus this is matching (Messages'
+            // own gear "Settings" menu and the "…" row menus — all native
+            // `Menu`s, see MessagingViews.swift) present anchored at their
+            // control, so the same is done here rather than centering the panel
+            // and calling it a menu. `geo` spans the whole window (the view
+            // ignoresSafeArea below), so a source frame captured in
+            // `.global` coordinates lands directly on this space.
+            let margin: CGFloat = 12
+            let gap: CGFloat = 8
+            // Placement math lives in AreaMenuPlacement so it can be unit
+            // tested; this view only consumes the result.
+            let menuWidth = AreaMenuPlacement.width(screen: screen.width, safeArea: inset, margin: margin)
+            let originX = AreaMenuPlacement.originX(
+                source: hasSource ? source : nil,
+                menuWidth: menuWidth, screen: screen.width, safeArea: inset, margin: margin
+            )
+            let opensBelow = AreaMenuPlacement.opensBelow(
+                source: hasSource ? source : nil, screen: screen.height, safeArea: inset, gap: gap, margin: margin
+            )
+            let menuHeight = AreaMenuPlacement.height(
+                opensBelow: opensBelow, source: hasSource ? source : nil, screen: screen.height,
+                safeArea: inset, gap: gap, margin: margin,
+                maxHeight: MenuMetrics.maxHeight, minUsableHeight: MenuMetrics.minUsableHeight
+            )
+            let originY = AreaMenuPlacement.originY(
+                opensBelow: opensBelow, source: hasSource ? source : nil,
+                menuHeight: menuHeight, screen: screen.height, safeArea: inset, gap: gap, margin: margin
+            )
+
+            ZStack(alignment: .topLeading) {
+                // Outside-tap dismissal. Deliberately CLEAR, not a dimming
+                // scrim: the reference menus don't dim the screen behind them
+                // either (a native `Menu` just dismisses), and dimming is what
+                // made this read as a modal instead of a menu.
+                Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture { app.areaAsking = false }
 
                 areaContent
-                    .frame(width: panelWidth, height: panelHeight)
+                    .frame(width: menuWidth, height: menuHeight)
                     .glassPanel()
-                    .scaleEffect(sourceScale + (1 - sourceScale) * progress)
-                    .offset(x: sourceOffsetX * (1 - progress), y: sourceOffsetY * (1 - progress))
+                    // Expansion starts at the control and collapses back into
+                    // it, so the scale anchor is whichever panel corner is
+                    // NEAREST the control: top-leading when it opens downward
+                    // (normal case), bottom-leading when it had to flip above.
+                    // Both keep the growing/shrinking edge pinned to the
+                    // control instead of drifting toward the screen centre.
+                    .scaleEffect(progress, anchor: AreaMenuPlacement.scaleAnchor(opensBelow: opensBelow))
+                    .opacity(progress)
+                    .offset(x: originX, y: originY)
                     .onAppear {
                         Haptics.light()
                         guard !reduceMotion else { return }
@@ -118,11 +150,92 @@ struct AreaSheetView: View {
                         }
                     }
             }
-            .frame(width: geo.size.width, height: geo.size.height)
+            .frame(width: screen.width, height: screen.height, alignment: .topLeading)
             .allowsHitTesting(app.areaAsking)
         }
         .ignoresSafeArea()
     }
+}
+
+/// Pure geometry for the anchored area MENU, split out of `AreaSheetView` so
+/// placement can be unit-tested without a window, a device or SwiftUI — see
+/// BanbeAppTests/AreaMenuPlacementTests.swift. `AreaSheetView` consumes this
+/// verbatim, so what the tests assert IS what ships.
+enum AreaMenuPlacement {
+    /// Width of the menu: a readable list column, never wider than the space
+    /// actually available between the safe-area edges.
+    static func width(screen: CGFloat, safeArea: EdgeInsets, margin: CGFloat = 12) -> CGFloat {
+        min(320, screen - safeArea.leading - safeArea.trailing - margin * 2)
+    }
+
+    /// Horizontal origin: the control's own leading edge (so the menu hangs off
+    /// it), clamped so the whole menu stays inside the safe area on a narrow
+    /// screen. When no control frame is known yet, fall back to the margin.
+    static func originX(source: CGRect?, menuWidth: CGFloat, screen: CGFloat, safeArea: EdgeInsets, margin: CGFloat = 12) -> CGFloat {
+        let minX = safeArea.leading + margin
+        let maxX = max(minX, screen - safeArea.trailing - margin - menuWidth)
+        let desired = source.map { $0.minX } ?? minX
+        return min(max(desired, minX), maxX)
+    }
+
+    /// Whether the menu opens below its control. Below is preferred; above only
+    /// when below can't fit `minUsableHeight` AND above is the better of the
+    /// two. With no anchor, the roomier side wins.
+    static func opensBelow(source: CGRect?, screen: CGFloat, safeArea: EdgeInsets, gap: CGFloat = 8, margin: CGFloat = 12, minUsableHeight: CGFloat = 200) -> Bool {
+        let below = roomBelow(source: source, screen: screen, safeArea: safeArea, gap: gap, margin: margin)
+        let above = roomAbove(source: source, screen: screen, safeArea: safeArea, gap: gap, margin: margin)
+        guard let source, source.width > 1, source.height > 1 else { return below >= above }
+        return below >= min(minUsableHeight, above)
+    }
+
+    static func roomBelow(source: CGRect?, screen: CGFloat, safeArea: EdgeInsets, gap: CGFloat = 8, margin: CGFloat = 12) -> CGFloat {
+        let anchorBottom = (source?.maxY ?? 0) + gap
+        return screen - safeArea.bottom - margin - anchorBottom
+    }
+
+    static func roomAbove(source: CGRect?, screen: CGFloat, safeArea: EdgeInsets, gap: CGFloat = 8, margin: CGFloat = 12) -> CGFloat {
+        let anchorTop = source?.minY ?? screen
+        return anchorTop - gap - safeArea.top - margin
+    }
+
+    /// Menu height: as tall as the chosen side allows, capped at `maxHeight`.
+    /// Never below `minUsableHeight` when there is room for it, so a cramped
+    /// anchor still yields a usable menu (its inner ScrollView scrolls).
+    static func height(opensBelow: Bool, source: CGRect?, screen: CGFloat, safeArea: EdgeInsets, gap: CGFloat = 8, margin: CGFloat = 12, maxHeight: CGFloat = 460, minUsableHeight: CGFloat = 200) -> CGFloat {
+        let room = opensBelow
+            ? roomBelow(source: source, screen: screen, safeArea: safeArea, gap: gap, margin: margin)
+            : roomAbove(source: source, screen: screen, safeArea: safeArea, gap: gap, margin: margin)
+        return min(maxHeight, max(minUsableHeight, room))
+    }
+
+    /// Vertical origin, clamped into the safe area so the menu can never land
+    /// under the notch/home indicator or off the bottom edge.
+    static func originY(opensBelow: Bool, source: CGRect?, menuHeight: CGFloat, screen: CGFloat, safeArea: EdgeInsets, gap: CGFloat = 8, margin: CGFloat = 12) -> CGFloat {
+        if opensBelow {
+            return (source?.maxY ?? 0) + gap
+        }
+        let desired = (source?.minY ?? screen - margin) - gap - menuHeight
+        return max(safeArea.top + margin, desired)
+    }
+
+    /// Which panel corner the scale animation pivots on — the corner nearest
+    /// the control, so the menu grows out of / collapses back into it.
+    static func scaleAnchor(opensBelow: Bool) -> UnitPoint {
+        opensBelow ? .topLeading : .bottomLeading
+    }
+}
+
+/// Sizing rules for the anchored area MENU (AreaSheetView above). Named and
+/// gathered here so the placement math reads as intent rather than a pile of
+/// literals, and so the flip/clamp thresholds are one obvious place to tune.
+enum MenuMetrics {
+    /// Below this the menu would be too short to be usable, so placement stops
+    /// preferring that side and flips above instead.
+    static let minUsableHeight: CGFloat = 200
+    /// Tall enough for the country/state/area hierarchy without pushing past a
+    /// comfortable reading height; `LocationPickerList`'s own ScrollView
+    /// handles anything taller.
+    static let maxHeight: CGFloat = 460
 }
 
 extension View {

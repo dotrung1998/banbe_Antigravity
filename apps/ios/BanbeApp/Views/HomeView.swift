@@ -13,6 +13,10 @@ private struct HomeControlPressStyle: ButtonStyle {
     }
 }
 
+/// Captures the Area control's own on-screen rect so the anchored area MENU
+/// can open exactly there instead of floating as a centered/bottom modal.
+/// `.global` coordinates — AreaSheetView is mounted at the root and spans the
+/// whole window, so this is the space its placement math works in.
 private struct HomeAreaFramePreferenceKey: PreferenceKey {
     static var defaultValue: CGRect?
 

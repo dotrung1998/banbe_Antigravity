@@ -331,6 +331,18 @@ private struct InboxRow: View {
         // are different gesture classes; there's nothing left to
         // arbitrate), so this entire class of bug cannot recur here by
         // construction, not by another detection heuristic.
+        //
+        // Active-dispute tint (2026-10-04 fix) — the pale-red field used
+        // to sit on the CENTRAL `HStack` only (`.background(alignment:
+        // .leading)` below), so the avatar's left edge and the trailing
+        // "…" menu stayed on the plain row colour while the middle read
+        // highlighted. It now lives on this OUTER container instead — the
+        // full row, with the List's own side insets respected — so avatar,
+        // text and menu all sit inside one tinted, rounded surface with
+        // consistent internal padding. The tint is a plain overlay, so it
+        // never intercepts taps: the row-open `SwipeSafeButton` and the
+        // sibling "…" `Menu` keep their exact hit targets, and closing the
+        // dispute restores the row byte-for-byte.
         HStack(spacing: 4) {
             // Accidental-tap-during-navigation fix (2026-09-29) — a
             // SEPARATE issue from the row-swipe-actions-vs-tab-swipe
@@ -408,28 +420,6 @@ private struct InboxRow: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(app.palette.ink)
-            // The row's own background tints while its dispute is live. A
-            // List row's listRowBackground is set by the parent, so this
-            // overlay sits inside the row and is clipped by it — after
-            // closure the row is byte-for-byte the row it was before.
-            .background(alignment: .leading) {
-                if hasActiveDispute {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(BanbeTheme.alert.opacity(0.10))
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .allowsHitTesting(false)
-                }
-            }
-            // Screenshot Catalog (docs/demo-screenshots) — not unique per row
-            // (every row shares it, matched via `.matching(identifier:)`), the
-            // same convention `chat.attachment` already uses (MessagingViews.swift)
-            // for "any one of these, whichever exists" lookups. "Unread thread
-            // appearance" is captured off the list itself (whatever mix of
-            // read/unread the account currently has), not a second identifier
-            // per read-state — nested SwiftUI accessibility ids on a row this
-            // deep have already proven unreliable to resolve precisely
-            // elsewhere in this suite (see EventDetailOpenInMapUITests' own
-            // comment on `map.selectedCard`).
             .accessibilityIdentifier("inbox.threadRow")
 
             // A SIBLING control, not nested inside the row-open `Button`
@@ -458,6 +448,34 @@ private struct InboxRow: View {
                     .contentShape(Rectangle())
             }
             .accessibilityIdentifier("inbox.thread.moreButton")
+            // Active-dispute tint (2026-10-04 fix) — on this OUTER row
+            // container, so it spans avatar, text and the trailing menu in
+            // one surface. The List's own 24pt side insets clip it to the
+            // normal row width (never screen-edge-to-edge), and the row's
+            // corner radius matches the other tinted cards in the app.
+            // `.allowsHitTesting(false)` keeps it a pure paint layer: the
+            // row-open button and the "…" Menu keep their own hit targets
+            // exactly as before, and closing the dispute restores the row
+            // byte-for-byte.
+            .background(alignment: .center) {
+                if hasActiveDispute {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(BanbeTheme.alert.opacity(0.10))
+                        .padding(.horizontal, 4).padding(.vertical, 4)
+                        .allowsHitTesting(false)
+                }
+            }
+            // Screenshot Catalog (docs/demo-screenshots) — not unique per row
+            // (every row shares it, matched via `.matching(identifier:)`), the
+            // same convention `chat.attachment` already uses (MessagingViews.swift)
+            // for "any one of these, whichever exists" lookups. "Unread thread
+            // appearance" is captured off the list itself (whatever mix of
+            // read/unread the account currently has), not a second identifier
+            // per read-state — nested SwiftUI accessibility ids on a row this
+            // deep have already proven unreliable to resolve precisely
+            // elsewhere in this suite (see EventDetailOpenInMapUITests' own
+            // comment on `map.selectedCard`).
+            .accessibilityIdentifier("inbox.threadRow")
         }
     }
 }

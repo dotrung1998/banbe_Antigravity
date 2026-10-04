@@ -2116,7 +2116,11 @@ extension AppState {
     /// `disputed` and stamps `dispute_resolved_at`, so a settled dispute can
     /// never look live again. Ties break by booking id so the choice is stable
     /// across polls.
-    static func livePaymentDisputeBookingID(
+    /// Which booking, if any, is carrying a LIVE payment dispute on this
+    /// conversation. Nonisolated on purpose: pure filtering/sorting over
+    /// caller-supplied dicts, no state of its own, so the unit suite can
+    /// exercise it without a main-actor hop.
+    nonisolated static func livePaymentDisputeBookingID(
         threadRows: [(bookingId: UUID?, resolved: Bool)],
         bookingStates: [UUID: (paymentState: String, disputeResolvedAt: Date?)]
     ) -> UUID? {

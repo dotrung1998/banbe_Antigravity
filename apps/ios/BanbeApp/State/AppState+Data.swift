@@ -3623,7 +3623,44 @@ extension AppState {
         }
     }
 
-    func chatBackAction() { screen = chatBack == .inbox || chatBack == .notifications || chatBack == .paymentDetails ? chatBack : .organizer }
+    /// Where the Chat header's ‹ and the edge-swipe both take you. Honors
+    /// every real origin screen, not just the three the old expression
+    /// whitelisted — a refund dispute opened from Account (`.profile`) or
+    /// the host Dashboard (`.dashboard`) used to collapse to `.organizer`,
+    /// i.e. the unrelated organizer profile, then the event, then Home.
+    ///
+    /// `accountTab` is left untouched on a `.profile` return: AccountView
+    /// keys its own Personal/Host/Admin body off it, and nothing here ever
+    /// writes it, so the tab the reader was on comes back exactly.
+    ///
+    /// The target is consumed and reset here rather than left in `chatBack`
+    /// for the next conversation — a chat opened from one origin must never
+    /// send a later, unrelated chat back to that origin. Normal chat and
+    /// notification entry points set `chatBack` fresh in openThread()/
+    /// openChat(for:) before they land, so they are unaffected.
+    ///
+    /// The routing half is a static, side-effect-free function (see
+    /// `resolveChatBackTarget`) so it can be unit-tested without a live
+    /// AppState — the two halves must never drift, since the edge-swipe's
+    /// `backTargetScreen` mirrors this exact expression.
+    func chatBackAction() {
+        let target = AppState.resolveChatBackTarget(chatBack)
+        screen = target
+        chatBack = .organizer
+    }
+
+    /// Side-effect-free half of `chatBackAction` — also mirrored by
+    /// `backTargetScreen`'s own `.chat` case, so the edge-swipe peek and
+    /// the header's ‹ always agree. Nonisolated on purpose: it is pure
+    /// switch logic with no state, so it can be unit-tested without a live
+    /// AppState or a main-actor hop.
+    nonisolated static func resolveChatBackTarget(_ chatBack: Screen) -> Screen {
+        switch chatBack {
+        case .inbox, .notifications, .paymentDetails, .profile, .dashboard:
+            return chatBack
+        default: return .organizer
+        }
+    }
 
     /// A real, permanent delete, own messages only — RLS
     /// (messages_delete_own, migration 054) scopes this to

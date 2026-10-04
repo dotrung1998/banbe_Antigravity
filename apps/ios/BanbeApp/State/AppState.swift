@@ -3192,7 +3192,7 @@ final class AppState: ObservableObject {
         case .eventList: return eventListBack
         case .event: return eventBackScreen
         case .organizer, .reserve: return .event
-        case .chat: return chatBack == .inbox || chatBack == .notifications ? chatBack : .organizer
+        case .chat: return AppState.resolveChatBackTarget(chatBack)
         case .dashboard: return dashboardBack
         case .hostIntro: return .profile
         case .create: return createOriginScreen
