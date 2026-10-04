@@ -438,13 +438,18 @@ struct HomeView: View {
                     Menu {
                         AreaMenuOptions { areaSearchOpen = true }
                     } label: {
+                        // The glass surface, stroke and padding live INSIDE the
+                        // label, exactly like the chat "+" (ChatAttachButton puts
+                        // its circle background inside its Menu label). Applied
+                        // outside the Menu, the surface stayed behind as a
+                        // separate layer while only the text morphed.
                         Text("\(app.currentAreaLabel) ▾")
+                            .font(.system(size: 13, weight: .semibold))
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .background { homeGlassCapsule() }
+                            .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
+                            .foregroundStyle(app.palette.ink)
                     }
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background { homeGlassCapsule() }
-                    .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
-                    .buttonStyle(HomeControlPressStyle())
                     .accessibilityIdentifier("header.area")
                     // No `toggleTheme()` exists on iOS — Preferences.swift's
                     // own theme picker already uses `pickTheme(_:)` directly

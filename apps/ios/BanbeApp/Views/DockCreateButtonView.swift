@@ -74,8 +74,42 @@ struct DockCreateButtonView: View {
         // matching this codebase's existing "hide while organizerMode is
         // off" convention rather than showing a disabled/explained row.
         if app.organizerMode {
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) { app.dockCreateMenuOpen.toggle() }
+            // Native `Menu`, exactly like Home's Area control: the glass surface,
+            // stroke and shadow live INSIDE the label so the whole control
+            // morphs into the system menu, and the actions are the menu's own
+            // rows. (The old tray existed because this window used to be a
+            // small band that clipped a Menu; DockOverlayWindow is now
+            // permanently full-screen, so that no longer applies.)
+            Menu {
+                Button {
+                    app.goCreate()
+                } label: {
+                    Label(app.T("Tạo Sự Kiện", "Create Event"), systemImage: "calendar.badge.plus")
+                }
+                .accessibilityIdentifier("dock.createMenu.event")
+
+                // Same pipeline AccountView's "Đăng story" uses
+                // (storyLibraryPickerOpen / storyCameraOpen -> publishStory()).
+                // A nested submenu with the expand/collapse chevron, exactly
+                // like Home's Area menu. It works here because
+                // DockOverlayWindow.hitTest now lets a hosted menu receive taps.
+                Menu {
+                    Button {
+                        app.storyLibraryPickerOpen = true
+                    } label: {
+                        Label(app.T("Thư Viện Ảnh", "Photo Library"), systemImage: "photo.on.rectangle")
+                    }
+                    .accessibilityIdentifier("dock.createMenu.story.library")
+                    Button {
+                        app.storyCameraOpen = true
+                    } label: {
+                        Label(app.T("Camera", "Camera"), systemImage: "camera")
+                    }
+                    .accessibilityIdentifier("dock.createMenu.story.camera")
+                } label: {
+                    Label(app.T("Đăng Story", "Post A Story"), systemImage: "photo.badge.plus")
+                }
+                .accessibilityIdentifier("dock.createMenu.story")
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 18, weight: .semibold))
@@ -84,11 +118,9 @@ struct DockCreateButtonView: View {
                     .background(.thinMaterial, in: Circle())
                     .overlay(Circle().strokeBorder(app.palette.ink.opacity(0.06)))
                     .shadow(color: .black.opacity(0.16), radius: 14, x: 0, y: 6)
-                    .rotationEffect(.degrees(app.dockCreateMenuOpen ? 45 : 0))
             }
-            .buttonStyle(.plain)
             .accessibilityIdentifier("dock.createButton")
-            .accessibilityLabel(app.dockCreateMenuOpen ? app.T("Đóng", "Close") : app.T("Tạo mới", "Create"))
+            .accessibilityLabel(app.T("Tạo mới", "Create"))
         }
     }
 }

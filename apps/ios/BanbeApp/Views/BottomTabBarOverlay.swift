@@ -154,8 +154,18 @@ private final class DockOverlayWindow: UIWindow {
     // pure no-op whenever there's nothing to tap.
     var toastRect: CGRect = .zero
 
+    private var hostsMenu: Bool {
+        if rootViewController?.presentedViewController != nil { return true }
+        return subviews.contains { String(describing: type(of: $0)).contains("ContextMenu") }
+    }
+
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        guard trayOpen || passthroughRect.contains(point) || toastRect.contains(point) else { return nil }
+        // A native Menu opened from the dock "+" is hosted INSIDE this window
+        // (a context menu container added as a window subview, or a presented
+        // controller). It extends far outside the dock band, so without this
+        // its expanded submenu header, rows and dismiss area were rejected here
+        // and the tap fell through to the screen underneath.
+        guard trayOpen || passthroughRect.contains(point) || toastRect.contains(point) || hostsMenu else { return nil }
         return super.hitTest(point, with: event)
     }
 }
@@ -523,7 +533,6 @@ private struct BottomTabBarOverlayRoot: View {
             // window is always full-screen (`DockOverlayWindow`), so the
             // tray's own full-bleed scrim/drag-to-dismiss and the dock/
             // button beside it just work, with no resize involved anymore.
-            if app.dockCreateMenuOpen { DockCreateTrayView() }
 
             // Notification banner fix pass (2026-09-30 third) — moved here
             // from RootView's main-window ZStack (same root cause as the

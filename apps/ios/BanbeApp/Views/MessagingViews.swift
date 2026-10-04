@@ -738,6 +738,9 @@ struct ChatView: View {
                             .id(message.id)
                         }
                     }
+                    // Stable bottom anchor, so a scroll-to-end works even when the
+                    // last row is a system card (which carries no id of its own).
+                    Color.clear.frame(height: 1).id("chat.bottom")
                 }
                 .padding(.horizontal, 22)
                 .padding(.vertical, 18)
@@ -757,6 +760,16 @@ struct ChatView: View {
             // DisputeChatPanel): this conversation's proxy is what carries its
             // scroll-to requests — the end of the history on open/own send, a
             // specific message on a dispute_message deep link.
+            // The dispute block is tall. When it leaves this scroll view (the
+            // goer deleted their copy, or the dispute concluded) the content
+            // shrinks beneath an offset that was valid a moment ago, which left
+            // an empty viewport until the chat was reopened. Re-anchor to the end.
+            .onChange(of: app.conversationRefundDispute?.refundClaimId) { _, _ in
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 60_000_000)
+                    proxy.scrollTo("chat.bottom", anchor: .bottom)
+                }
+            }
             .onChange(of: app.disputeChatScrollTarget) { _, target in
                 guard let target else { return }
                 withAnimation { proxy.scrollTo(target, anchor: .bottom) }
@@ -1103,6 +1116,17 @@ struct ChatView: View {
     private var composer: some View {
         VStack(spacing: 0) {
             Divider().overlay(app.palette.rule)
+            Group {
+            if app.normalMessagingPaused {
+                Text(app.T("Tin nhắn thông thường sẽ tiếp tục khi tranh chấp này được đóng.",
+                           "Normal messaging will resume once this dispute is closed."))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(app.palette.ink.opacity(0.65))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .accessibilityIdentifier("chat.messagingPaused")
+            } else {
             HStack(spacing: 8) {
                 // Task 4 — "+" attach button + its two-option menu, now the
                 // shared ChatAttachButton the temporary refund dispute
@@ -1143,6 +1167,8 @@ struct ChatView: View {
                     .buttonStyle(.plain)
                     .disabled(app.chatThreadID == nil)
                     .opacity(app.chatThreadID == nil ? 0.5 : 1)
+            }
+            }
             }
             .padding(.horizontal, 18)
             .padding(.top, 12)

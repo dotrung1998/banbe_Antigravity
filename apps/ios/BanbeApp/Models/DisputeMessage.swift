@@ -227,12 +227,19 @@ struct RefundDisputeThread: Codable, Hashable {
     let otherName: String?
     /// Server-supplied reason code when this account isn't a party.
     let error: String?
+    /// Why `found` is false: "not_disputed", or "deleted_by_you" once the goer
+    /// removed their own copy (migration 134).
+    var reason: String?
     /// A refund dispute only while its claim is still 'disputed' and neither
     /// party has pressed close.
     var isActive: Bool { found && resolvedAt == nil && disputeClosedAt == nil }
     /// Closed for reading, still inside the 7-day retention window.
     var isCompleted: Bool { found && (resolvedAt != nil || disputeClosedAt != nil) }
     var canDownload: Bool { found }
+    /// The refund has gone through the normal flow (host marked it sent, goer
+    /// confirmed it was received, or it was waived). Only then may the dispute
+    /// be closed (migration 135).
+    var refundSettled: Bool { claimStatus == "guest_confirmed" || claimStatus == "waived" }
 
     enum CodingKeys: String, CodingKey {
         case found
@@ -258,6 +265,7 @@ struct RefundDisputeThread: Codable, Hashable {
         case viewerRole = "viewer_role"
         case otherName = "other_name"
         case error
+        case reason
     }
 }
 

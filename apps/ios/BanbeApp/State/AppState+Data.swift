@@ -2854,6 +2854,7 @@ extension AppState {
     /// data as-is (the 'chat-attachments' bucket itself still enforces a
     /// 20MB cap / allowed MIME types server-side either way).
     func sendChatAttachment(data: Data, contentType: String, fileExtension: String, width: Int? = nil, height: Int? = nil, replyToMessageId: UUID? = nil) async -> Bool {
+        guard !normalMessagingPaused else { return false }
         guard let threadID = chatThreadID, let uid = userID else { return false }
         do {
             // Lowercased: Postgres's own uuid-to-text cast is always
@@ -3609,6 +3610,9 @@ extension AppState {
 
     func chatSend() async {
         let text = chatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Normal messaging is paused while this conversation has an active
+        // dispute; the draft is left untouched so it is still there afterwards.
+        guard !normalMessagingPaused else { return }
         guard !text.isEmpty, let threadID = chatThreadID, let uid = userID else { return }
         chatDraft = ""
         do {

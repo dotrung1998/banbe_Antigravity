@@ -2346,6 +2346,15 @@ extension AppState {
             .first
     }
 
+    /// True while the CURRENT conversation has an active temporary dispute
+    /// (open refund dispute, or an unresolved payment dispute). Both fields are
+    /// resolved server-side per conversation and cleared on thread switch, so
+    /// this never leaks to other conversations, and a closed dispute (which
+    /// `closeRefundDispute` refreshes into `conversationRefundDispute`) lifts it.
+    var normalMessagingPaused: Bool {
+        conversationRefundDispute?.isActive == true || conversationPaymentDisputeBookingID != nil
+    }
+
     func loadConversationDispute(conversationThreadID: UUID) async {
         // Rapid conversation switching: every load claims a generation and only
         // the newest may write. Without this, tapping two conversations quickly
@@ -2477,6 +2486,10 @@ extension AppState {
         }
         guard value.found else {
             refundDisputeThreads.removeValue(forKey: claimID)
+            // The goer deleted their own copy (migration 134): remember it, so
+            // every screen says so instead of waiting for a dispute that this
+            // account can no longer read.
+            if value.reason == "deleted_by_you" { refundDisputeDeletedCopies.insert(claimID) }
             return nil
         }
         refundDisputeThreads[claimID] = value
@@ -2503,6 +2516,10 @@ extension AppState {
             if result.success == true {
                 ok = true
                 Haptics.success()
+            } else if result.error == "REFUND_NOT_CONFIRMED" {
+                disputeCloseError = T(
+                    "Chưa đóng được. Người tổ chức cần đánh dấu đã hoàn tiền và khách cần xác nhận đã nhận trước.",
+                    "Can't close yet. The host must mark the refund sent and the guest must confirm it was received first.")
             } else if result.error == "ADMIN_RESOLUTION_REQUIRED" {
                 disputeCloseError = T(
                     "Tranh chấp này đã được chuyển cho banbe xử lý nên không thể tự đóng ở đây.",
@@ -2548,103 +2565,6 @@ extension AppState {
         if let c = refundQueue.first(where: { $0.id == claimID }) { return c.bookingId ?? c.reservationId }
         if paymentRefundClaim?.id == claimID { return paymentBookingID }
         return nil
-    }
-
-    /// Builds the COMPLETE transcript file and stages it for the native share
-    /// sheet. Available while the dispute is open (offered BEFORE closing, so
-    /// nobody has to close a dispute first to keep a copy) and for the whole
-    /// 7-day window afterwards.
-    func prepareRefundDisputeTranscript(_ claimID: UUID) async {
-        disputeTranscriptError = ""
-        disputeTranscriptReadyToShare = false
-        guard let transcript: RefundDisputeTranscript = try? await SupabaseService.client
-            .rpc("get_refund_dispute_transcript", params: ["p_claim_id": claimID.uuidString])
-            .execute().value else {
-            print("prepareRefundDisputeTranscript failed:", claimID)
-            disputeTranscriptError = T("Không tải được bản ghi tranh chấp.", "Couldn't load the dispute transcript.")
-            return
-        }
-        guard transcript.found else {
-            disputeTranscriptError = transcript.error == "NOT_AUTHORIZED"
-                ? T("Bạn không có quyền xem bản ghi này.", "You don't have access to this transcript.")
-                : T("Bản ghi tranh chấp này không còn nữa.", "This dispute transcript is no longer available.")
-            return
-        }
-        guard let url = writeTranscriptFile(transcript) else {
-            disputeTranscriptError = T("Không tạo được tệp bản ghi.", "Couldn't create the transcript file.")
-            return
-        }
-        disputeTranscriptExportURL = url
-        disputeTranscriptReadyToShare = true
-    }
-
-    private func writeTranscriptFile(_ transcript: RefundDisputeTranscript) -> URL? {
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime]
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd HH:mm"
-        df.locale = Locale(identifier: "en_US_POSIX")
-
-        var out: [String] = []
-        out.append("banbe — refund dispute transcript")
-        out.append("")
-        out.append("Event:        \(transcript.eventName ?? "—") (\(transcript.eventId ?? "—"))")
-        out.append("Organizer:    \(transcript.organizerLabel ?? "—")")
-        out.append("Guest:        \(transcript.guestLabel ?? "—")")
-        out.append("Booking:      \(transcript.bookingId?.uuidString ?? "—")")
-        if let code = transcript.bookingCode, !code.isEmpty { out.append("Booking code: \(code)") }
-        out.append("Refund claim: \(transcript.refundClaimId?.uuidString ?? "—")")
-        out.append("Amount:       \(transcript.amountVnd.map { formatVnd($0) } ?? "—")")
-        out.append("Claim status: \(transcript.claimStatus ?? "—")")
-        if let reason = transcript.claimReason, !reason.isEmpty { out.append("Reason:       \(reason)") }
-        if let disputed = transcript.disputedAt { out.append("Disputed at:  \(df.string(from: disputed)) (\(iso.string(from: disputed)))") }
-        if let closed = transcript.disputeClosedAt { out.append("Closed at:    \(df.string(from: closed)) (\(iso.string(from: closed)))") }
-        if let resolved = transcript.resolvedAt { out.append("Concluded at: \(df.string(from: resolved)) (\(iso.string(from: resolved)))") }
-        if let purge = transcript.purgeAfter { out.append("Deleted at:   \(df.string(from: purge)) (\(iso.string(from: purge)))") }
-        if let note = transcript.claimNote, !note.isEmpty {
-            out.append("")
-            out.append("Claim note:")
-            out.append(note)
-        }
-        out.append("")
-        out.append("Messages (\(transcript.messages.count)):")
-        out.append(String(repeating: "-", count: 40))
-        for m in transcript.messages {
-            let who = m.senderName ?? m.senderRole
-            out.append("[\(df.string(from: m.createdAt)) · \(iso.string(from: m.createdAt))] \(who) (\(m.senderRole)):")
-            out.append(m.body)
-            // Migration 131 — an attachment is part of the record, so what was
-            // attached is stated on its own line. Deliberately metadata only:
-            // the object itself is deleted with this transcript, so the export
-            // never prints a URL that would imply the file is still reachable
-            // (see the notice below, written by the server).
-            if m.hasAttachment {
-                out.append("  [attachment: \(m.attachmentType ?? "unknown type") · \(m.attachmentPath ?? "—")"
-                    + (m.attachmentWidth != nil && m.attachmentHeight != nil
-                       ? " · \(m.attachmentWidth ?? 0)x\(m.attachmentHeight ?? 0)" : "")
-                    + "]")
-            }
-            out.append("")
-        }
-        if let notice = transcript.attachmentNotice, !notice.isEmpty {
-            out.append("")
-            out.append("Attachments (\(transcript.attachmentCount ?? 0)):")
-            out.append(notice)
-        }
-        if let exportedAt = transcript.exportedAt {
-            out.append(String(repeating: "-", count: 40))
-            out.append("Exported \(df.string(from: exportedAt)) (\(iso.string(from: exportedAt)))")
-        }
-        guard let data = out.joined(separator: "\n").data(using: .utf8) else { return nil }
-        let name = "banbe-refund-dispute-\((transcript.refundClaimId?.uuidString ?? "transcript").lowercased()).txt"
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
-        do {
-            try data.write(to: url, options: .atomic)
-            return url
-        } catch {
-            print("writeTranscriptFile failed:", error)
-            return nil
-        }
     }
 
     /// Open a refund dispute's chat where it actually lives: inside the

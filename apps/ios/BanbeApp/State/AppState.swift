@@ -1567,14 +1567,15 @@ final class AppState: ObservableObject {
     /// disabled without also disabling every other card on the screen.
     @Published var refundDisputeClosingClaimId: UUID?
     @Published var disputeCloseError = ""
-    @Published var disputeTranscriptError = ""
-    /// True once prepareRefundDisputeTranscript() has staged a real file —
-    /// the trigger for presenting the native share sheet.
-    @Published var disputeTranscriptReadyToShare = false
-    /// The temporary transcript's export, as a real file in the temp
-    /// directory, handed to the native share sheet by DisputeChatPanel /
-    /// RefundDisputeEntry. nil until "Download transcript" has run once.
-    @Published var disputeTranscriptExportURL: URL?
+    /// The one in-flight / finished dispute export (PDF + ZIP). Keyed by claim
+    /// id so a screen only reacts to its own dispute's export. See
+    /// AppState+DisputeExport.swift.
+    @Published var disputeExport = DisputeExportState()
+    /// Claim ids whose goer copy this account deleted (migration 134). The
+    /// shared record still exists for the host; this account just can't read it.
+    @Published var refundDisputeDeletedCopies: Set<UUID> = []
+    @Published var refundDisputeDeletingClaimId: UUID?
+    var disputeExportTask: Task<Void, Never>?
     /// claim id -> thread id, kept only so a caller that arrives holding a
     /// dispute THREAD id (an old notification payload, the removed Inbox
     /// accordion) can still find its claim and be routed to the booking

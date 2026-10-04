@@ -27,8 +27,9 @@ struct DisputeChatPanel: View {
     var claim: RefundDisputeThread?
     @State private var pollTask: Task<Void, Never>?
     @State private var highlightedID: UUID?
-    @State private var confirmCloseOpen = false
-    @State private var transcriptBusy = false
+    /// Close / download / delete-my-copy requests, handled by the shared
+    /// dialog flow (RefundDisputeFlows.swift).
+    @State private var flowRequest: RefundDisputeFlowRequest?
     /// An attachment upload is running for THIS dispute. Local on purpose: it
     /// exists to dim the "+" while bytes are moving, while the guard that
     /// actually prevents a second upload lives in AppState
@@ -52,6 +53,15 @@ struct DisputeChatPanel: View {
     private static let endOfHistoryTolerance: CGFloat = 120
 
     private var isRefund: Bool { refundClaimID != nil }
+
+    /// The freshest verified claim state. The `claim` parameter is a snapshot
+    /// taken when the conversation loaded; the transcript poll keeps
+    /// `refundDisputeThreads` current, so "Close" unlocks the moment the goer
+    /// confirms the refund instead of on the next reopen.
+    private var liveClaim: RefundDisputeThread? {
+        if let id = refundClaimID, let fresh = app.refundDisputeThreads[id], fresh.found { return fresh }
+        return claim
+    }
 
     /// Same staleness guard the payment-only version had, expressed once and
     /// now key-based: state records WHICH dispute it currently holds and the
@@ -79,7 +89,7 @@ struct DisputeChatPanel: View {
     /// concludes some other way; either way it is "Dispute completed" and the
     /// transcript survives read-only for the rest of its 7-day window.
     private var completed: Bool {
-        if isRefund, let claim { return claim.isCompleted }
+        if isRefund, let claim = liveClaim { return claim.isCompleted }
         return readOnly
     }
 
@@ -93,7 +103,7 @@ struct DisputeChatPanel: View {
     /// value, never a delete button: dispute_messages must survive until
     /// purge_resolved_dispute_threads() actually removes them.
     private var deletionDeadlineLabel: String? {
-        guard completed, let purgeAfter = app.disputeChatThread?.purgeAfter ?? claim?.purgeAfter else { return nil }
+        guard completed, let purgeAfter = app.disputeChatThread?.purgeAfter ?? liveClaim?.purgeAfter else { return nil }
         let vi = formatShortDate(purgeAfter, lang: "vi") ?? ""
         let en = formatShortDate(purgeAfter, lang: "en") ?? ""
         guard !vi.isEmpty, !en.isEmpty else { return nil }
@@ -135,11 +145,11 @@ struct DisputeChatPanel: View {
         }
     }
 
+    /// Initial (and retry) fetch. This is what CLAIMS the shared transcript
+    /// state on mount: it used to bail unless `isActiveChat`, but that only
+    /// becomes true once a load has bound the key, so on a cold open nothing
+    /// ever loaded until a send bound it. Polling still requires ownership.
     private func reload() async {
-        // Same ownership rule as the poll above: claiming the shared key is what
-        // makes this panel the owner, so a second panel cannot steal it on
-        // appear.
-        guard isActiveChat else { return }
         if let refundClaimID { await app.loadRefundDisputeChat(refundClaimID) }
         else if let bookingID { await app.loadDisputeChat(bookingID) }
     }
@@ -187,7 +197,7 @@ struct DisputeChatPanel: View {
             messageList
             if !readOnly && !completed { composer }
             actions
-            if !app.disputeChatError.isEmpty {
+            if !app.disputeChatError.isEmpty && !(messages.isEmpty && isActiveChat && app.disputeChatInitialLoadDone) {
                 Text(app.disputeChatError)
                     .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
                     .accessibilityIdentifier("disputeChat.error")
@@ -195,7 +205,7 @@ struct DisputeChatPanel: View {
         }
         .padding(14)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .task { await reload() }
+        .task(id: refundClaimID ?? bookingID) { await reload() }
         .onAppear {
             startPolling()
             jumpToPendingTargetIfAny()
@@ -228,28 +238,7 @@ struct DisputeChatPanel: View {
             DisputeAttachmentViewerView(item: item)
                 .ignoresSafeArea()
         }
-        .sheet(isPresented: $app.disputeTranscriptReadyToShare) {
-            if let url = app.disputeTranscriptExportURL {
-                BanbeShareSheet(items: [url])
-                    .onDisappear { app.disputeTranscriptReadyToShare = false }
-            }
-        }
-        .alert(app.T("Đóng tranh chấp này?", "Close this dispute?"), isPresented: $confirmCloseOpen) {
-            Button(app.T("Huỷ", "Cancel"), role: .cancel) {}
-            Button(app.T("Đóng tranh chấp", "Close dispute"), role: .destructive) {
-                guard let refundClaimID else { return }
-                Task { await app.closeRefundDispute(refundClaimID) }
-            }
-        } message: {
-            // Says plainly that this is only about the argument: it must never
-            // read as "the refund is settled", because closing a dispute moves
-            // no money at all — the refund is still owed and still has to be
-            // sent and confirmed on its own.
-            Text(app.T(
-                "Sau khi đóng, hai bên không gửi được tin nhắn trong tranh chấp này nữa. Bản ghi vẫn đọc được trong 7 ngày rồi tự xoá. Khoản hoàn không thay đổi — vẫn cần chuyển và xác nhận như bình thường.",
-                "After closing, neither of you can post in this dispute again. The transcript stays readable for 7 days, then deletes itself. This does not settle the refund — the money still has to be sent and confirmed as usual."
-            ))
-        }
+        .refundDisputeFlows(claimID: refundClaimID ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!, request: $flowRequest)
     }
 
     // MARK: Header
@@ -301,7 +290,7 @@ struct DisputeChatPanel: View {
                         .foregroundStyle(app.palette.ink.opacity(0.55))
                         .accessibilityIdentifier("disputeChat.deletionDeadline")
                 }
-                if let closedBy = claim?.disputeClosedByRole, closedBy != "admin" {
+                if let closedBy = liveClaim?.disputeClosedByRole, closedBy != "admin" {
                     Text(closedBy == "guest"
                          ? app.T("Đã đóng bởi khách.", "Closed by the guest.")
                          : app.T("Đã đóng bởi người tổ chức.", "Closed by the organizer."))
@@ -327,7 +316,17 @@ struct DisputeChatPanel: View {
             // "Loading…" belongs to the FIRST load of a thread only. A
             // background refresh leaves the messages — and the reader's
             // scroll position — completely alone.
-            if !app.disputeChatInitialLoadDone && app.disputeChatLoading {
+            let loaded = isActiveChat && app.disputeChatInitialLoadDone
+            if loaded && messages.isEmpty && !app.disputeChatError.isEmpty {
+                // A failed first fetch is not "no messages".
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(app.disputeChatError)
+                        .font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                    Button(app.T("Thử lại", "Retry")) { Task { await reload() } }
+                        .font(.system(size: 12, weight: .semibold))
+                        .accessibilityIdentifier("disputeChat.retry")
+                }
+            } else if !loaded {
                 Text(app.T("Đang tải…", "Loading…"))
                     .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.6))
                     .accessibilityIdentifier("disputeChat.loading")
@@ -545,19 +544,14 @@ struct DisputeChatPanel: View {
         // Only a verified participant of this REFUND dispute gets these — the
         // claim's own server-resolved viewer role is the gate, never
         // "this screen happens to show a dispute card".
-        if isRefund, let claim, claim.viewerRole != nil {
+        if isRefund, let claim = liveClaim, claim.viewerRole != nil {
             HStack(spacing: 10) {
                 // Offered BEFORE closing too, so nobody has to close a dispute
                 // in order to keep a copy of what was said in it.
                 Button {
-                    guard let refundClaimID else { return }
-                    transcriptBusy = true
-                    Task {
-                        await app.prepareRefundDisputeTranscript(refundClaimID)
-                        transcriptBusy = false
-                    }
+                    flowRequest = .download
                 } label: {
-                    Text(transcriptBusy
+                    Text(exportRunning
                          ? app.T("Đang chuẩn bị…", "Preparing…")
                          : app.T("Tải bản ghi", "Download transcript"))
                         .font(.system(size: 12, weight: .semibold))
@@ -565,31 +559,39 @@ struct DisputeChatPanel: View {
                         .underline()
                 }
                 .buttonStyle(.plain)
-                .disabled(transcriptBusy)
+                .disabled(exportRunning)
                 .accessibilityIdentifier("disputeChat.download")
 
                 Spacer(minLength: 0)
 
                 if !completed {
+                    // Greyed out and unclickable until the refund is settled:
+                    // host marks it sent, goer confirms it was received.
                     Button {
-                        confirmCloseOpen = true
+                        flowRequest = .close
                     } label: {
-                        Text(app.T("Đóng tranh chấp / Đánh dấu hoàn tất", "Close dispute / Mark as completed"))
+                        Text(app.T("Đóng tranh chấp", "Close dispute"))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(claim.refundSettled ? BanbeTheme.alert : app.palette.ink.opacity(0.35))
+                            .underline()
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(flowBusy || !claim.refundSettled)
+                    .accessibilityIdentifier("disputeChat.close")
+                } else if claim.viewerRole == "guest" {
+                    Button {
+                        flowRequest = .deleteCopy
+                    } label: {
+                        Text(app.T("Xoá bản của tôi", "Delete my copy"))
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(BanbeTheme.alert)
                             .underline()
                     }
                     .buttonStyle(.plain)
-                    .disabled(app.refundDisputeClosingClaimId != nil)
-                    .opacity(app.refundDisputeClosingClaimId != nil ? 0.5 : 1)
-                    .accessibilityIdentifier("disputeChat.close")
+                    .disabled(flowBusy)
+                    .opacity(flowBusy ? 0.5 : 1)
+                    .accessibilityIdentifier("disputeChat.deleteCopy")
                 }
-            }
-            if !app.disputeTranscriptError.isEmpty {
-                Text(app.disputeTranscriptError)
-                    .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
-                    .padding(.top, 2)
-                    .accessibilityIdentifier("disputeChat.transcriptError")
             }
             if !app.disputeCloseError.isEmpty {
                 Text(app.disputeCloseError)
@@ -600,11 +602,19 @@ struct DisputeChatPanel: View {
         }
     }
 
+    private var exportRunning: Bool {
+        app.disputeExport.claimID == refundClaimID && app.disputeExport.status == .running
+    }
+
+    private var flowBusy: Bool {
+        app.refundDisputeClosingClaimId != nil || app.refundDisputeDeletingClaimId != nil
+    }
+
     private func senderLabel(_ m: DisputeMessage) -> String {
         switch m.senderRole {
         case "organizer":
             if m.senderId == app.userID { return app.T("Bạn", "You") }
-            return claim?.organizerName ?? app.T("Người tổ chức", "Organizer")
+            return liveClaim?.organizerName ?? app.T("Người tổ chức", "Organizer")
         case "guest":
             return m.senderId == app.userID ? app.T("Bạn", "You") : app.T("Khách", "Guest")
         case "admin": return "banbe"

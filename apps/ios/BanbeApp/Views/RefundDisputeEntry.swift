@@ -43,8 +43,7 @@ struct RefundDisputeEntry: View {
     var back: Screen = .paymentDetails
 
     @State private var didFetch = false
-    @State private var confirmCloseOpen = false
-    @State private var transcriptBusy = false
+    @State private var flowRequest: RefundDisputeFlowRequest?
 
     /// Same 6s cadence as the rest of this screen's own polls — nothing in
     /// this app subscribes to Supabase Realtime, and this card only needs to
@@ -75,7 +74,38 @@ struct RefundDisputeEntry: View {
             + (days > 0 ? app.T(" (còn ~\(days) ngày)", " (~\(days) days left)") : "")
     }
 
+    private var copyDeleted: Bool { app.refundDisputeDeletedCopies.contains(refundClaimId) }
+
     var body: some View {
+        if copyDeleted {
+            deletedCopyCard
+        } else {
+            card
+        }
+    }
+
+    /// The goer removed their own copy. The refund itself is unaffected and
+    /// the organizer's record is not shown here.
+    private var deletedCopyCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(app.T("Bạn đã xoá bản của mình", "You deleted your copy"))
+                .font(.system(size: 13.5, weight: .bold))
+                .foregroundStyle(app.palette.honey)
+            Text(app.T("Cuộc trò chuyện không còn trong tài khoản của bạn. Khoản hoàn không thay đổi. Người tổ chức vẫn giữ bản ghi của họ đến khi hết hạn.",
+                       "The conversation is no longer in your account. The refund is unchanged. The organizer keeps their record until it expires."))
+                .font(.system(size: 12))
+                .foregroundStyle(app.palette.ink.opacity(0.75))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 15).padding(.vertical, 13)
+        .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.honey, lineWidth: 1))
+        .padding(.top, 12)
+        .accessibilityIdentifier("refundDisputeEntry.deletedCopy")
+        .task { if !copyDeleted { await app.loadRefundDisputeThread(refundClaimId, force: true) } }
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .center, spacing: 8) {
@@ -146,35 +176,51 @@ struct RefundDisputeEntry: View {
                             identifier: "refundDisputeEntry.openChat"
                         )
                     }
+                    Divider().overlay(app.palette.honey)
+                    SwipeSafeButton {
+                        flowRequest = .download
+                    } label: {
+                        actionRow(
+                            icon: "square.and.arrow.down",
+                            label: exportRunning
+                                ? app.T("Đang chuẩn bị bản tải về…", "Preparing your download…")
+                                : app.T("Tải bản ghi tranh chấp", "Download dispute transcript"),
+                            tint: app.palette.ink.opacity(0.8),
+                            identifier: "refundDisputeEntry.download",
+                            disabled: exportRunning
+                        )
+                    }
                     if !completed {
                         Divider().overlay(app.palette.honey)
                         SwipeSafeButton {
-                            Task {
-                                transcriptBusy = true
-                                await app.prepareRefundDisputeTranscript(refundClaimId)
-                                transcriptBusy = false
-                            }
-                        } label: {
-                            actionRow(
-                                icon: "square.and.arrow.down",
-                                label: transcriptBusy
-                                    ? app.T("Đang chuẩn bị bản ghi…", "Preparing transcript…")
-                                    : app.T("Tải bản ghi tranh chấp", "Download dispute transcript"),
-                                tint: app.palette.ink.opacity(0.8),
-                                identifier: "refundDisputeEntry.download",
-                                disabled: transcriptBusy
-                            )
-                        }
-                        Divider().overlay(app.palette.honey)
-                        SwipeSafeButton {
-                            confirmCloseOpen = true
+                            flowRequest = .close
                         } label: {
                             actionRow(
                                 icon: "checkmark.circle",
-                                label: app.T("Đóng tranh chấp / Đánh dấu hoàn tất", "Close dispute / Mark as completed"),
-                                tint: BanbeTheme.alert,
+                                label: app.T("Đóng tranh chấp", "Close dispute"),
+                                tint: (dispute?.refundSettled == true) ? BanbeTheme.alert : app.palette.ink.opacity(0.35),
                                 identifier: "refundDisputeEntry.close",
-                                disabled: app.refundDisputeClosingClaimId != nil
+                                disabled: flowBusy || dispute?.refundSettled != true
+                            )
+                        }
+                        .disabled(dispute?.refundSettled != true)
+                        if dispute?.refundSettled != true {
+                            Text(app.T("Chỉ đóng được sau khi người tổ chức đánh dấu đã hoàn tiền và khách xác nhận đã nhận.",
+                                       "You can close this after the host marks the refund sent and the guest confirms it was received."))
+                                .font(.system(size: 10.5)).foregroundStyle(app.palette.ink.opacity(0.55))
+                                .padding(.horizontal, 15).padding(.bottom, 10)
+                        }
+                    } else if dispute?.viewerRole == "guest" {
+                        Divider().overlay(app.palette.honey)
+                        SwipeSafeButton {
+                            flowRequest = .deleteCopy
+                        } label: {
+                            actionRow(
+                                icon: "trash",
+                                label: app.T("Xoá bản của tôi", "Delete my copy"),
+                                tint: BanbeTheme.alert,
+                                identifier: "refundDisputeEntry.deleteCopy",
+                                disabled: flowBusy
                             )
                         }
                     }
@@ -186,12 +232,6 @@ struct RefundDisputeEntry: View {
                     .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
                     .padding(.horizontal, 15).padding(.bottom, 12)
                     .accessibilityIdentifier("refundDisputeEntry.closeError")
-            }
-            if !app.disputeTranscriptError.isEmpty {
-                Text(app.disputeTranscriptError)
-                    .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
-                    .padding(.horizontal, 15).padding(.bottom, 12)
-                    .accessibilityIdentifier("refundDisputeEntry.transcriptError")
             }
         }
         .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -215,34 +255,23 @@ struct RefundDisputeEntry: View {
             // Keep retrying on the usual cadence only while the thread is
             // genuinely missing, so a claim that was never disputed can't spin
             // a request forever.
-            guard dispute == nil else { return }
+            guard dispute == nil, !copyDeleted else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: Self.pollInterval)
                 if Task.isCancelled { return }
-                if dispute != nil { return }
+                if dispute != nil || copyDeleted { return }
                 await app.loadRefundDisputeThread(refundClaimId, force: true)
             }
         }
-        .sheet(isPresented: $app.disputeTranscriptReadyToShare) {
-            if let url = app.disputeTranscriptExportURL {
-                BanbeShareSheet(items: [url])
-                    .onDisappear { app.disputeTranscriptReadyToShare = false }
-            }
-        }
-        .alert(app.T("Đóng tranh chấp này?", "Close this dispute?"), isPresented: $confirmCloseOpen) {
-            Button(app.T("Huỷ", "Cancel"), role: .cancel) {}
-            Button(app.T("Đóng tranh chấp", "Close dispute"), role: .destructive) {
-                Task { await app.closeRefundDispute(refundClaimId) }
-            }
-        } message: {
-            // Closing is only about the argument. It must never read as "the
-            // refund is settled" — no money moves here, the refund is still
-            // owed and still has to be sent and confirmed on its own.
-            Text(app.T(
-                "Sau khi đóng, hai bên không gửi được tin nhắn trong tranh chấp này nữa. Bản ghi vẫn đọc được trong 7 ngày rồi tự xoá. Khoản hoàn không thay đổi — vẫn cần chuyển và xác nhận như bình thường.",
-                "After closing, neither of you can post in this dispute again. The transcript stays readable for 7 days, then deletes itself. This does not settle the refund — the money still has to be sent and confirmed as usual."
-            ))
-        }
+        .refundDisputeFlows(claimID: refundClaimId, request: $flowRequest)
+    }
+
+    private var exportRunning: Bool {
+        app.disputeExport.claimID == refundClaimId && app.disputeExport.status == .running
+    }
+
+    private var flowBusy: Bool {
+        app.refundDisputeClosingClaimId != nil || app.refundDisputeDeletingClaimId != nil
     }
 
     /// "Open chat with the goer" on the host's queue, "…with the organizer" on

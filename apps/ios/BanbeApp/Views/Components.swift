@@ -918,9 +918,19 @@ struct SwipeSafeButton<Label: View>: View {
 /// code path.
 struct BanbeShareSheet: UIViewControllerRepresentable {
     let items: [Any]
+    /// Called when the sheet finishes. `true` only when the person completed an
+    /// activity (saved to Files, sent, copied). Dismissing the sheet reports
+    /// `false`, so callers can never mistake "it opened" or "it closed" for
+    /// "it was saved".
+    var onFinish: ((Bool) -> Void)? = nil
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
         let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        if let onFinish {
+            controller.completionWithItemsHandler = { _, completed, _, error in
+                onFinish(completed && error == nil)
+            }
+        }
         // iPad requires an anchor or this traps.
         if let popover = controller.popoverPresentationController {
             popover.sourceView = controller.view
