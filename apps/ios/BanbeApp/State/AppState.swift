@@ -815,7 +815,12 @@ final class AppState: ObservableObject {
     // `messageID`, or just scroll to the bottom if it's nil (an older
     // notification row from before migration 050 added message_id).
     // Cleared once DisputeChatPanel has actually applied it.
-    @Published var chatHighlight: (bookingID: UUID, messageID: UUID?)?
+    //
+    // bookingID and refundClaimID are alternatives, never both set: a refund
+    // dispute's thread has a NULL booking_id (migration 129), so its
+    // notification can only name the claim, and the panel matches whichever
+    // one it was mounted with.
+    @Published var chatHighlight: (bookingID: UUID?, refundClaimID: UUID?, messageID: UUID?)?
     func clearChatHighlight() { chatHighlight = nil }
 
     /// Set by openNotification()'s "receipt_requested" case — the same
@@ -1403,6 +1408,26 @@ final class AppState: ObservableObject {
     // instead of a delete button, since dispute_messages must survive
     // until the 72h purge (05-notify-retention.md). nil for an open thread.
     @Published var disputeChatThread: (resolvedAt: Date?, purgeAfter: Date?)?
+    /// "payment" | "refund" — which kind of dispute disputeChat* currently
+    /// shows. Two different endings behind two different RPCs (banbe rules on
+    /// a payment dispute; a refund dispute just settles between the two
+    /// parties), so the panel's own copy and read-only state both branch on it.
+    @Published var disputeChatKind: String?
+    /// The REFUND half of the same panel: set alongside disputeChatBookingId
+    /// = nil so exactly one of the two is ever the active chat, and one
+    /// thread's 4s poll can't stomp another's visible conversation.
+    @Published var disputeChatRefundClaimId: UUID?
+    /// The yellow "dispute" section pinned at the top of Messages
+    /// (MessagingViews.swift's InboxView) — one entry per live dispute chat
+    /// this account is a party to, from get_my_dispute_chats (migration 129).
+    @Published var disputeChats: [DisputeChatSummary] = []
+    @Published var disputeChatsLoading = false
+    @Published var disputeChatsError = ""
+    /// Which entry is expanded into its chat inline. nil = all collapsed.
+    /// Hoisted out of the view (rather than a @State in InboxView) so a
+    /// "jump to this chat" button elsewhere — RefundDisputeEntry, or a
+    /// dispute_message notification — can expand the right one on arrival.
+    @Published var openDisputeChatThreadId: UUID?
     @Published var openDisputes: [DisputeRow] = []
     // The admin dashboard (AdminDashboardView) — every dispute this account
     // can see; RLS makes that "every dispute, period" only when

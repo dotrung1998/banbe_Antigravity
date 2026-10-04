@@ -26,6 +26,18 @@
      light/dark Palette). Not redeclared in the [data-bb-theme="dark"]
      block below — it inherits this same value from :root either way. */
   --bb-alert: #9A3E2D;
+  /* Honey — the "needs attention but is not an error" accent, used for the
+     dispute section pinned at the top of Messages and its matching entries on
+     the payment/refund screens. Deliberately a sibling of --bb-alert (same
+     one-non-palette-color-per-role rule) and NOT a reuse of it: a disputed
+     refund is a live conversation two people are still having, so it must not
+     read with the same urgency as "Cancel booking" or an overdue flag.
+     Light values are defined once here and mirrored value-for-value in
+     apps/ios/BanbeApp/Views/BanbeTheme.swift's `Palette.light`. The accent
+     itself is the same honey the on-photo "on hold" chip already uses
+     (CHIP_COLORS.hold / BanbeTheme.Chip.hold). */
+  --bb-honey: #8C6014;
+  --bb-honey-bg: #F0E2BE;
 }
 
 [data-bb-theme="dark"] {
@@ -41,6 +53,12 @@
   --bb-button-text: #14120E;
   --bb-white: rgba(242,237,225,0.19);
   --bb-shadow: rgba(0,0,0,0.28);
+  /* Honey's dark pair — same hue as the light values, lifted for contrast on
+     the dark paper (mirrors Palette.dark.honey / .honeyBg in BanbeTheme.swift).
+     Unlike --bb-alert this one DOES need a per-theme value, since a fixed
+     dark honey would disappear into --bb-bg. */
+  --bb-honey: #E0B45F;
+  --bb-honey-bg: #3D3016;
 }
 
 html, body {

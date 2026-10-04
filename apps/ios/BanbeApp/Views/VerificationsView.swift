@@ -261,10 +261,20 @@ struct VerificationsView: View {
 
             if claim.status == "disputed" {
                 // A disputed claim is not something the host can silently
-                // overwrite as "sent" — no action button here.
-                Text(app.T("Khách báo chưa nhận được tiền", "Guest reports not receiving this refund"))
-                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
-                    .accessibilityIdentifier("refundQueue.disputed")
+                // overwrite as "sent" — no action button here, just the
+                // visible state and the yellow "Awaiting Verification" entry
+                // whose button jumps into the temporary chat both sides now
+                // share (migration 129).
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(app.T("Khách báo chưa nhận được tiền", "Guest reports not receiving this refund"))
+                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(BanbeTheme.alert)
+                        .accessibilityIdentifier("refundQueue.disputed")
+                    RefundDisputeEntry(
+                        refundClaimId: claim.id,
+                        amountVnd: claim.amountVnd,
+                        eventName: claim.eventName
+                    )
+                }
             } else if !claim.hasValidDestination {
                 // TASK B — the actual fix for the reported bug: an owed
                 // claim with no valid recipient snapshot is NEVER

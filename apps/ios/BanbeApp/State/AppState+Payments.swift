@@ -1204,6 +1204,12 @@ extension AppState {
         // Backstop canonical refetch — both loaders' own seq guards mean a
         // stale response from either can never clobber a fresher one.
         await loadRefundQueue()
+        // A refund dispute CONCLUDES the moment the host re-sends the money
+        // (the claim leaves 'disputed', migration 129), which is what starts
+        // the temporary chat's 7-day countdown. Refresh the pinned Messages
+        // entry so it flips to its concluded/read-only state now rather than
+        // on the next unrelated poll.
+        await loadDisputeChats()
         return ok
     }
 
@@ -1243,6 +1249,12 @@ extension AppState {
             print("disputeRefund failed:", error)
         }
         await loadPaymentRefundClaim(claimID: claimID)
+        // dispute_refund() opened the temporary chat server-side (migration
+        // 129), so this account's own pinned Messages entry has to appear
+        // immediately — this is the moment the goer lands on the chat they're
+        // about to be asked about, and a stale empty list would read as
+        // "nothing happened".
+        await loadDisputeChats()
     }
 
     /// The guest's own single refund claim for whatever booking
@@ -1797,6 +1809,8 @@ extension AppState {
 
     func loadDisputeChat(_ bookingID: UUID, retried: Bool = false) async {
         disputeChatBookingId = bookingID
+        disputeChatRefundClaimId = nil
+        disputeChatKind = "payment"
         disputeChatMessages = []
         disputeChatThread = nil
         disputeChatLoading = true
@@ -1865,6 +1879,112 @@ extension AppState {
             return
         }
         await loadDisputeChat(bookingID)
+    }
+
+    // MARK: The yellow "dispute" section pinned at the top of Messages
+
+    /// Every dispute chat this account is a party to, open ones first, plus
+    /// the ones still inside their 7-day post-conclusion window. One RPC
+    /// rather than a client-side join: get_my_dispute_chats (migration 129)
+    /// does its own guest/organizer/admin scoping, and the same row shape
+    /// feeds both an open chat and a "dispute over, disappears in N days" one.
+    func loadDisputeChats() async {
+        guard userID != nil else { disputeChats = []; return }
+        disputeChatsLoading = true
+        disputeChatsError = ""
+        do {
+            disputeChats = try await SupabaseService.client
+                .rpc("get_my_dispute_chats").execute().value
+        } catch {
+            print("loadDisputeChats failed:", error)
+            disputeChats = []
+            disputeChatsError = T("Không tải được danh sách tranh chấp.", "Couldn't load disputes.")
+        }
+        disputeChatsLoading = false
+    }
+
+    /// Expand/collapse one entry of the pinned Messages section.
+    func toggleDisputeChat(_ threadID: UUID) {
+        openDisputeChatThreadId = (openDisputeChatThreadId == threadID) ? nil : threadID
+    }
+
+    /// "Open this chat" from the yellow entry on a payment/refund screen, or
+    /// from a dispute_message notification: go to Messages and expand exactly
+    /// that thread. The archived view is force-reset first — the dispute
+    /// section only exists in the active list, so landing there would show
+    /// nothing.
+    func openDisputeChatInInbox(_ threadID: UUID) {
+        screen = .inbox
+        inboxView = .active
+        openDisputeChatThreadId = threadID
+        Task { await loadDisputeChats() }
+    }
+
+    /// The REFUND half of the same chat panel: same two tables, keyed by
+    /// refund_claims.id instead of bookings.id (migration 129) —
+    /// dispute_refund() opens the thread server-side, this just reads it back.
+    /// No resync fallback like the payment path's: there's no equivalent of
+    /// the stale organizer_id repair resync_dispute_thread() exists for, and
+    /// dispute_refund() is the only writer, so a missing row here means
+    /// "not disputed".
+    func loadRefundDisputeChat(_ claimID: UUID) async {
+        disputeChatBookingId = nil
+        disputeChatRefundClaimId = claimID
+        disputeChatKind = "refund"
+        disputeChatMessages = []
+        disputeChatThread = nil
+        disputeChatLoading = true
+        disputeChatError = ""
+        defer { disputeChatLoading = false }
+        struct ThreadRow: Decodable { let id: UUID; let resolvedAt: Date?; let purgeAfter: Date?
+            enum CodingKeys: String, CodingKey { case id; case resolvedAt = "resolved_at"; case purgeAfter = "purge_after" } }
+        do {
+            let thread: ThreadRow = try await SupabaseService.client
+                .from("dispute_threads").select("id, resolved_at, purge_after")
+                .eq("refund_claim_id", value: claimID.uuidString)
+                .single().execute().value
+            disputeChatMessages = try await SupabaseService.client
+                .from("dispute_messages").select()
+                .eq("dispute_thread_id", value: thread.id.uuidString)
+                .order("created_at", ascending: true)
+                .execute().value
+            disputeChatThread = (resolvedAt: thread.resolvedAt, purgeAfter: thread.purgeAfter)
+        } catch {
+            print("loadRefundDisputeChat failed:", error)
+            disputeChatError = T("Không tải được đoạn chat. Thử lại nhé.", "Couldn't load this chat. Please try again.")
+        }
+    }
+
+    func sendRefundDisputeMessage(_ claimID: UUID) async {
+        let body = disputeChatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+        disputeChatDraft = ""
+        disputeChatError = ""
+        do {
+            let result: ForfeitResult = try await SupabaseService.client
+                .rpc("send_refund_dispute_message", params: ["p_refund_claim_id": claimID.uuidString, "p_body": body])
+                .execute().value
+            if result.success == false {
+                print("sendRefundDisputeMessage failed:", result.error ?? "unknown")
+                disputeChatDraft = body
+                // DISPUTE_RESOLVED isn't a transient failure like the rest —
+                // the chat is a read-only record until the purge sweep removes
+                // it, so say so rather than implying a retry could work.
+                disputeChatError = result.error == "DISPUTE_RESOLVED"
+                    ? T("Tranh chấp này đã kết thúc nên không còn gửi được.", "This dispute has ended, so it's no longer open.")
+                    : T("Chưa gửi được. Thử lại nhé.", "Couldn't send. Please try again.")
+                return
+            }
+        } catch {
+            print("sendRefundDisputeMessage failed:", error)
+            disputeChatDraft = body
+            disputeChatError = T("Chưa gửi được. Thử lại nhé.", "Couldn't send. Please try again.")
+            return
+        }
+        await loadRefundDisputeChat(claimID)
+        // The pinned Messages entry shows the last message, so it has to
+        // refresh too or the collapsed row keeps showing an old snippet.
+        await loadDisputeChats()
     }
 
     /// The PHASE 1 counterpart of loadVerifications — how many buyers are

@@ -4,6 +4,7 @@ import { formatVnd } from '../lib/paymentDocument.js';
 import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, alert } from '../theme.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
+import RefundDisputeEntry from './RefundDisputeEntry.jsx';
 import { supabase, supabaseUrl } from '../lib/supabase.js';
 
 /** Point 2 of the refund-discoverability investigation — an explicit
@@ -444,10 +445,19 @@ export default function Verifications() {
                 {c.status === 'disputed' ? (
                   // A disputed claim is not something the host can silently
                   // overwrite as "sent" — no action button here, just the
-                  // visible state and whatever note trail exists.
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: alert }} data-testid="refund-queue-disputed">
-                    {T('Khách báo chưa nhận được tiền', 'Guest reports not receiving this refund')}
-                  </span>
+                  // visible state, whatever note trail exists, and the yellow
+                  // "Awaiting Verification" entry whose button jumps into the
+                  // temporary chat both sides now share (migration 129).
+                  <>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: alert }} data-testid="refund-queue-disputed">
+                      {T('Khách báo chưa nhận được tiền', 'Guest reports not receiving this refund')}
+                    </span>
+                    <RefundDisputeEntry
+                      refundClaimId={c.id}
+                      amountVnd={c.amount_vnd}
+                      eventName={c.eventName}
+                    />
+                  </>
                 ) : !c.hasDestination ? (
                   // TASK B — the actual fix for the reported bug: an owed
                   // claim with no valid recipient snapshot is NEVER

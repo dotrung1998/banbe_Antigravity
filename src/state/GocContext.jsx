@@ -678,6 +678,29 @@ const initialState = {
   // a delete button, since dispute_messages must survive until the 72h
   // purge (05-notify-retention.md). null for an open/unresolved thread.
   disputeChatThread: null,
+  // 'payment' | 'refund' — which kind of dispute disputeChat* is currently
+  // showing. Two different lifecycles behind two different RPCs (banbe rules
+  // on a payment dispute; a refund dispute just settles between the two
+  // parties), so the panel's own copy and read-only state both branch on it.
+  disputeChatKind: null,
+  // The REFUND half of the same panel: set alongside disputeChatBookingId =
+  // null so exactly one of the two is ever the active chat, and a poll for
+  // the other one can't stomp the visible thread (the panel gates its
+  // rendered messages on which key is set).
+  disputeChatRefundClaimId: null,
+  // The yellow "dispute" section pinned at the top of Messages (Inbox.jsx) —
+  // one entry per live dispute chat this account is a party to, from
+  // get_my_dispute_chats (migration 129). Includes refund disputes, which
+  // until now had no chat of their own at all.
+  disputeChats: [],
+  disputeChatsLoading: false,
+  disputeChatsError: '',
+  // Which of those entries is expanded into its chat inline. null = all
+  // collapsed. Screen-local UI state (Inbox.jsx owns the same kind of thing
+  // in useState), just hoisted so a "jump to this chat" button elsewhere —
+  // the payment/refund screens' yellow entry, a dispute_message
+  // notification — can expand the right one on arrival.
+  openDisputeChatThreadId: null,
   auditTrail: [],
   auditBookingId: null,
   // pay-proof storage path -> signed viewable URL, for whichever rows
@@ -3398,6 +3421,43 @@ export function GocProvider({ children }) {
     set({ refundQueue: enriched, refundQueueLoading: false, refundQueueError: '', refundQueueErrorDetail: null, refundQueueGateReason: 'ok' });
   }, [set, T, s.accountType, s.myOrganizerIds.length, s.myOrganizerIdsStatus, s.user?.id]);
 
+  // ---- the yellow "dispute" section pinned at the top of Messages ----
+  //
+  // Declared up here rather than beside loadDisputeChat further down because
+  // markRefundSent() and disputeRefund() (both just below) list
+  // loadDisputeChats in their dependency arrays, and those arrays are
+  // evaluated during render — a `const` declared after either one would still
+  // be in its temporal dead zone there.
+
+  /** Every dispute chat this account is a party to, open ones first, plus the
+   *  ones still inside their 7-day post-conclusion window. One RPC rather than
+   *  a client-side join: get_my_dispute_chats (migration 129) does its own
+   *  guest/organizer/admin scoping, and the same row shape feeds both an open
+   *  chat and a "dispute over, disappears in N days" one. */
+  const loadDisputeChats = useCallback(async () => {
+    set({ disputeChatsLoading: true, disputeChatsError: '' });
+    const { data, error } = await supabase.rpc('get_my_dispute_chats');
+    if (error) {
+      console.warn('loadDisputeChats failed:', error);
+      return set({ disputeChats: [], disputeChatsLoading: false, disputeChatsError: T('Không tải được danh sách tranh chấp.', "Couldn't load disputes.") });
+    }
+    set({ disputeChats: data || [], disputeChatsLoading: false });
+  }, [set, T]);
+
+  /** Expand/collapse one entry of the pinned Messages section. */
+  const toggleDisputeChat = useCallback((threadId) => {
+    set(prev => ({ openDisputeChatThreadId: prev.openDisputeChatThreadId === threadId ? null : threadId }));
+  }, [set]);
+
+  /** "Open this chat" from the yellow entry on a payment/refund screen, or
+   *  from a dispute_message notification: go to Messages and expand exactly
+   *  that thread. Archived view is force-reset first — the dispute section
+   *  only exists in the active list, so landing there would show nothing. */
+  const openDisputeChatInInbox = useCallback((threadId) => {
+    set({ screen: 'inbox', inboxView: 'active', openDisputeChatThreadId: threadId });
+    loadDisputeChats();
+  }, [set, loadDisputeChats]);
+
   /** Host's "Đã hoàn tiền" — owed -> host_marked_sent. Shared by
    * Verifications.jsx's own refund queue AND Attendance.jsx's "Hoàn lại lần
    * nữa". TASK C — mark_refund_sent() (migration 078) now returns the
@@ -3461,8 +3521,14 @@ export function GocProvider({ children }) {
     // refundCenterSelected). Both loaders' own seq guards mean a stale
     // response from either can never clobber a fresher one.
     await loadRefundQueue();
+    // A refund dispute CONCLUDES the moment the host re-sends the money
+    // (claim leaves 'disputed', migration 129), which is what starts the
+    // temporary chat's 7-day countdown. Refresh the pinned Messages entry so
+    // it flips to its concluded/read-only state now rather than on the next
+    // unrelated poll.
+    await loadDisputeChats();
     return ok;
-  }, [set, T, loadRefundQueue, s.refundActionBusy, s.user?.id]);
+  }, [set, T, loadRefundQueue, loadDisputeChats, s.refundActionBusy, s.user?.id]);
 
   /**
    * The guest's own single refund claim for whatever booking
@@ -3529,8 +3595,13 @@ export function GocProvider({ children }) {
     }
     set({ refundActionBusy: '' });
     await loadPaymentRefundClaim(claimId, { byClaimId: true });
+    // dispute_refund() opened the temporary chat server-side (migration 129),
+    // so the goer's own pinned Messages entry has to appear immediately —
+    // this is the moment they land on the chat they're about to be asked
+    // about, and a stale empty list would read as "nothing happened".
+    await loadDisputeChats();
     return result;
-  }, [set, loadPaymentRefundClaim]);
+  }, [set, loadPaymentRefundClaim, loadDisputeChats]);
 
   // ---- Refund MVP: goer's own refund destinations (many, migration 074) ----
 
@@ -4138,7 +4209,7 @@ export function GocProvider({ children }) {
    * parties who could ever see a dispute at all.
    */
   const loadDisputeChat = useCallback(async (bookingId, _retried = false) => {
-    set({ disputeChatBookingId: bookingId, disputeChatMessages: [], disputeChatLoading: true, disputeChatError: '', disputeChatThread: null });
+    set({ disputeChatBookingId: bookingId, disputeChatRefundClaimId: null, disputeChatKind: 'payment', disputeChatMessages: [], disputeChatLoading: true, disputeChatError: '', disputeChatThread: null });
     const { data: thread, error: threadError } = await supabase
       .from('dispute_threads').select('id, resolved_at, purge_after').eq('booking_id', bookingId).maybeSingle();
     if (threadError || !thread) {
@@ -4198,6 +4269,66 @@ export function GocProvider({ children }) {
     }
     await loadDisputeChat(bookingId);
   }, [set, s.disputeChatDraft, loadDisputeChat, T]);
+
+  // ---- the refund-dispute chat (goer <-> organizer, while a refund dispute
+  // is open) ----
+  //
+  // Same two tables as loadDisputeChat above, keyed by refund_claims.id
+  // instead of bookings.id (migration 129) — dispute_refund() opens the
+  // thread server-side, this just reads it back. No resync fallback like the
+  // payment path's: there is no equivalent of the stale organizer_id repair
+  // resync_dispute_thread() exists for, and dispute_refund() is the only
+  // writer, so a missing row here means "not disputed".
+  const loadRefundDisputeChat = useCallback(async (claimId) => {
+    set({
+      disputeChatBookingId: null, disputeChatRefundClaimId: claimId, disputeChatKind: 'refund',
+      disputeChatMessages: [], disputeChatLoading: true, disputeChatError: '', disputeChatThread: null,
+    });
+    const { data: thread, error: threadError } = await supabase
+      .from('dispute_threads').select('id, resolved_at, purge_after').eq('refund_claim_id', claimId).maybeSingle();
+    if (threadError || !thread) {
+      console.warn('loadRefundDisputeChat failed:', threadError);
+      return set({
+        disputeChatLoading: false,
+        disputeChatError: threadError ? T('Không tải được đoạn chat. Thử lại nhé.', "Couldn't load this chat. Please try again.") : '',
+      });
+    }
+    const { data: messages, error } = await supabase
+      .from('dispute_messages').select('*')
+      .eq('dispute_thread_id', thread.id).order('created_at', { ascending: true });
+    if (error) {
+      console.warn('loadRefundDisputeChat messages failed:', error);
+      return set({
+        disputeChatLoading: false,
+        disputeChatError: T('Không tải được tin nhắn. Thử lại nhé.', "Couldn't load messages. Please try again."),
+      });
+    }
+    set({
+      disputeChatMessages: messages || [], disputeChatLoading: false,
+      disputeChatThread: { resolvedAt: thread.resolved_at, purgeAfter: thread.purge_after },
+    });
+  }, [set, T]);
+
+  const sendRefundDisputeMessage = useCallback(async (claimId) => {
+    const body = s.disputeChatDraft.trim();
+    if (!body) return;
+    set({ disputeChatDraft: '', disputeChatError: '' });
+    const { data, error } = await supabase.rpc('send_refund_dispute_message', { p_refund_claim_id: claimId, p_body: body });
+    if (error || data?.success === false) {
+      console.warn('sendRefundDisputeMessage failed:', error || data?.error);
+      set({
+        disputeChatDraft: body,
+        disputeChatError: data?.error === 'DISPUTE_RESOLVED'
+          ? T('Tranh chấp này đã kết thúc nên không còn gửi được.', "This dispute has ended, so it's no longer open.")
+          : T('Chưa gửi được. Thử lại nhé.', "Couldn't send. Please try again."),
+      });
+      return;
+    }
+    await loadRefundDisputeChat(claimId);
+    // The pinned Messages entry shows the last message, so it has to
+    // refresh too or the collapsed row keeps claiming an old snippet.
+    await loadDisputeChats();
+  }, [set, s.disputeChatDraft, loadRefundDisputeChat, loadDisputeChats, T]);
 
   // ---- billing identity (the buyer block on every document) ----
   const openBilling = useCallback(async () => {
@@ -9105,7 +9236,21 @@ export function GocProvider({ children }) {
         // decides which screen has this booking's chat panel.
         // message_id may be absent on a row from before migration 050 —
         // DisputeChatPanel.jsx falls back to scrolling to the bottom.
-        if (n.data?.booking_id) {
+        //
+        // A REFUND dispute's message (migration 129) is the one kind that
+        // isn't reachable from the payment screens at all — until this
+        // ticket the goer and host had no chat to open from anywhere — so
+        // it routes straight to the pinned dispute section in Messages with
+        // that one entry expanded, which is also the only place the chat
+        // lives for a refund dispute.
+        if (n.data?.refund_claim_id) {
+          const { data: refundThread } = await supabase
+            .from('dispute_threads').select('id').eq('refund_claim_id', n.data.refund_claim_id).maybeSingle();
+          if (refundThread?.id) {
+            set({ chatHighlight: { refundClaimId: n.data.refund_claim_id, messageId: n.data.message_id || null } });
+            openDisputeChatInInbox(refundThread.id);
+          }
+        } else if (n.data?.booking_id) {
           set({ chatHighlight: { bookingId: n.data.booking_id, messageId: n.data.message_id || null } });
           if (s.accountType === 'organizer') openVerifications('notifications');
           else openPaymentDetails(n.data.booking_id, 'notifications');
@@ -9438,6 +9583,7 @@ export function GocProvider({ children }) {
     loadMyRefunds, openRefundAccounts, backFromRefundAccounts, openMyRefunds, backFromMyRefunds,
     loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
+    loadDisputeChats, toggleDisputeChat, openDisputeChatInInbox, loadRefundDisputeChat, sendRefundDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
@@ -9475,6 +9621,7 @@ export function GocProvider({ children }) {
     loadMyRefunds, openRefundAccounts, backFromRefundAccounts, openMyRefunds, backFromMyRefunds,
     loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo,
     openDisputes, loadDisputes, resolveDispute, loadAuditTrail, loadDisputeChat, disputeChatDraftType, sendDisputeMessage,
+    loadDisputeChats, toggleDisputeChat, openDisputeChatInInbox, loadRefundDisputeChat, sendRefundDisputeMessage,
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,

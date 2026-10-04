@@ -7,12 +7,32 @@ import SwiftUI
 /// ordinary booking thread — purged once resolve_dispute() closes it out.
 struct DisputeChatPanel: View {
     @EnvironmentObject private var app: AppState
-    let bookingID: UUID
+    var bookingID: UUID?
+    var refundClaimID: UUID?
     @State private var pollTask: Task<Void, Never>?
     @State private var highlightedID: UUID?
 
+    private var isRefund: Bool { refundClaimID != nil }
+
+    /// Same staleness guard the payment-only version had, expressed once:
+    /// state records WHICH dispute it currently holds, and the panel only
+    /// renders that one, so one thread's 4s poll landing late can't paint
+    /// the wrong conversation here.
+    private var isActiveChat: Bool {
+        isRefund
+            ? app.disputeChatRefundClaimId == refundClaimID
+            : app.disputeChatBookingId == bookingID
+    }
+
     private var messages: [DisputeMessage] {
-        app.disputeChatBookingId == bookingID ? app.disputeChatMessages : []
+        isActiveChat ? app.disputeChatMessages : []
+    }
+
+    /// Once a dispute is concluded the chat is a read-only record until the
+    /// purge sweep removes it (both send RPCs refuse once resolved) — so the
+    /// composer is hidden rather than left there to fail on submit.
+    private var readOnly: Bool {
+        isActiveChat && app.disputeChatThread?.resolvedAt != nil
     }
 
     /// A static (non-ticking, computed at render time), read-only
@@ -22,7 +42,7 @@ struct DisputeChatPanel: View {
     /// 05-notify-retention.md's 72h retention requirement. nil for an open
     /// thread or one whose purge_after has already passed.
     private var retentionLabel: String? {
-        guard app.disputeChatBookingId == bookingID,
+        guard isActiveChat,
               let thread = app.disputeChatThread,
               thread.resolvedAt != nil, let purgeAfter = thread.purgeAfter else { return nil }
         let secondsLeft = purgeAfter.timeIntervalSinceNow
@@ -47,18 +67,45 @@ struct DisputeChatPanel: View {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
                 if Task.isCancelled { return }
-                await app.loadDisputeChat(bookingID)
+                if let refundClaimID { await app.loadRefundDisputeChat(refundClaimID) }
+                else if let bookingID { await app.loadDisputeChat(bookingID) }
             }
         }
+    }
+
+    private func reload() async {
+        if let refundClaimID { await app.loadRefundDisputeChat(refundClaimID) }
+        else if let bookingID { await app.loadDisputeChat(bookingID) }
+    }
+
+    private func send() async {
+        if let refundClaimID { await app.sendRefundDisputeMessage(refundClaimID) }
+        else if let bookingID { await app.sendDisputeMessage(bookingID) }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(app.T("Trao đổi trực tiếp về tranh chấp này", "Direct chat about this dispute"))
                 .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink)
-            Text(app.T("Cuộc trò chuyện này là tạm thời: sẽ bị xoá sau khi banbe đưa ra quyết định, và bản ghi được gửi qua email cho cả hai bên.",
-                       "This conversation is temporary — it is deleted once banbe rules on the dispute, and a copy is emailed to both of you."))
-                .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+            // The two kinds have genuinely different endings — a payment
+            // dispute is closed by banbe and emailed a transcript, a refund
+            // dispute is just settled between the two parties — so the promise
+            // made to the reader has to differ too.
+            if isRefund {
+                Text(app.T("Cuộc trò chuyện này là tạm thời: khi tranh chấp kết thúc, nó sẽ tự xoá sau 7 ngày.",
+                           "This conversation is temporary: once the dispute is settled it deletes itself after 7 days."))
+                    .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+            } else {
+                Text(app.T("Cuộc trò chuyện này là tạm thời: sẽ bị xoá sau khi banbe đưa ra quyết định, và bản ghi được gửi qua email cho cả hai bên.",
+                           "This conversation is temporary — it is deleted once banbe rules on the dispute, and a copy is emailed to both of you."))
+                    .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
+            }
+            if readOnly {
+                Text(app.T("Tranh chấp đã kết thúc — chỉ còn để đọc.", "This dispute has ended — read only."))
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(app.palette.ink.opacity(0.55))
+                    .accessibilityIdentifier("disputeChat.closed")
+            }
             if let retentionLabel {
                 Text(retentionLabel)
                     .font(.system(size: 10.5, weight: .semibold))
@@ -108,26 +155,28 @@ struct DisputeChatPanel: View {
                 .onAppear { applyChatHighlight(messages, proxy: proxy) }
             }
 
-            HStack(spacing: 8) {
-                TextField(app.T("Nhắn gì đó…", "Say something…"), text: $app.disputeChatDraft)
-                    .font(.system(size: 13)).padding(10)
-                    .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .accessibilityIdentifier("disputeChat.input")
-                    .onSubmit { Task { await app.sendDisputeMessage(bookingID) } }
-                Button {
-                    Task { await app.sendDisputeMessage(bookingID) }
-                } label: {
-                    Text(app.T("Gửi", "Send"))
-                        .font(.system(size: 13, weight: .semibold))
-                        .padding(.horizontal, 16).padding(.vertical, 10)
-                        .background(app.disputeChatDraft.trimmingCharacters(in: .whitespaces).isEmpty
-                                    ? app.palette.ink.opacity(0.35) : app.palette.ink,
-                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .foregroundStyle(app.palette.paper)
+            if !readOnly {
+                HStack(spacing: 8) {
+                    TextField(app.T("Nhắn gì đó…", "Say something…"), text: $app.disputeChatDraft)
+                        .font(.system(size: 13)).padding(10)
+                        .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .accessibilityIdentifier("disputeChat.input")
+                        .onSubmit { Task { await send() } }
+                    Button {
+                        Task { await send() }
+                    } label: {
+                        Text(app.T("Gửi", "Send"))
+                            .font(.system(size: 13, weight: .semibold))
+                            .padding(.horizontal, 16).padding(.vertical, 10)
+                            .background(app.disputeChatDraft.trimmingCharacters(in: .whitespaces).isEmpty
+                                        ? app.palette.ink.opacity(0.35) : app.palette.ink,
+                                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .foregroundStyle(app.palette.paper)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(app.disputeChatDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .accessibilityIdentifier("disputeChat.send")
                 }
-                .buttonStyle(.plain)
-                .disabled(app.disputeChatDraft.trimmingCharacters(in: .whitespaces).isEmpty)
-                .accessibilityIdentifier("disputeChat.send")
             }
 
             if !app.disputeChatError.isEmpty {
@@ -138,14 +187,19 @@ struct DisputeChatPanel: View {
         }
         .padding(14)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .task { await app.loadDisputeChat(bookingID) }
+        .task { await reload() }
         .onAppear { startPolling() }
         .onDisappear { pollTask?.cancel() }
         .accessibilityIdentifier("disputeChat.panel")
     }
 
     private func applyChatHighlight(_ messages: [DisputeMessage], proxy: ScrollViewProxy) {
-        guard let highlight = app.chatHighlight, highlight.bookingID == bookingID else { return }
+        guard let highlight = app.chatHighlight else { return }
+        if isRefund {
+            guard highlight.refundClaimID == refundClaimID else { return }
+        } else {
+            guard highlight.bookingID == bookingID else { return }
+        }
         if let messageID = highlight.messageID {
             guard messages.contains(where: { $0.id == messageID }) else { return } // not loaded yet — wait for the next change
             withAnimation { proxy.scrollTo(messageID, anchor: .center) }

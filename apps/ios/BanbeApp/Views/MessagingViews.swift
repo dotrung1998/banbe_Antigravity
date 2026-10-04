@@ -82,6 +82,10 @@ struct InboxView: View {
                         .foregroundStyle(app.palette.ink.opacity(0.7))
                         .padding(.horizontal, 24).padding(.bottom, 6)
                 }
+                // Pinned ABOVE the conversation list, and only in the active
+                // view — a dispute is never archived, so the archived list has
+                // nothing to show here.
+                InboxDisputeSection()
                 if visibleThreads.isEmpty {
                     Text(effectiveInboxView == .archived
                          ? app.T("Chưa có cuộc trò chuyện nào được lưu trữ.", "No archived conversations yet.")
@@ -260,6 +264,170 @@ struct InboxView: View {
         .foregroundStyle(app.palette.ink)
     }
 
+}
+
+/// The yellow "dispute" section pinned above the conversation list
+/// (migration 129). One entry per live dispute chat this account is a party
+/// to — a goer who reported a missing refund, or an organizer of either side
+/// of one. Each expands INLINE into its own temporary chat, for both parties,
+/// rather than pushing a separate screen: it is a short, bounded exchange
+/// about one specific sum of money, so keeping it in place next to the message
+/// list is the whole point — it stays visible while the ordinary
+/// conversations scroll underneath it.
+///
+/// Shares nothing with InboxRow's swipe-to-star/archive on purpose: these are
+/// ephemeral records that purge themselves on a timer, so there is nothing
+/// here to star or archive.
+private struct InboxDisputeSection: View {
+    @EnvironmentObject private var app: AppState
+
+    /// Same 6s cadence as the ordinary conversation poll, for the same reason
+    /// — nothing in this app subscribes to Supabase Realtime (03-dispute-
+    /// chat.md), so a chat that's concluded or got a new message while you sit
+    /// on the Inbox can otherwise stay visibly stale until you leave and come
+    /// back.
+    private static let pollInterval: UInt64 = 6_000_000_000
+
+    /// "Ends in ~N days" — a static, render-time countdown, same idea as
+    /// DisputeChatPanel's own retention label, in days because this window is
+    /// 7 days wide and hour granularity here would just read as noise.
+    private func daysLeftLabel(_ purgeAfter: Date?) -> String? {
+        guard let purgeAfter else { return nil }
+        let days = Int(ceil(purgeAfter.timeIntervalSinceNow / 86400))
+        guard days > 0 else { return nil }
+        return days <= 1
+            ? app.T("tự xoá sau ~1 ngày", "deletes in ~1 day")
+            : app.T("tự xoá sau ~\(days) ngày", "deletes in ~\(days) days")
+    }
+
+    var body: some View {
+        // Hidden entirely in the archived view, and whenever there's genuinely
+        // nothing to say — including while the very first load is still in
+        // flight, since an empty yellow band flashing on every Inbox open
+        // would be worse than a brief absence. A genuine load failure DOES
+        // render, so the section can't fail silently.
+        if app.inboxView == .active, !app.disputeChats.isEmpty || !app.disputeChatsError.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .center, spacing: 10) {
+                    Text(app.disputeChats.count > 1
+                         ? app.T("Tranh chấp", "Disputes")
+                         : app.T("Tranh chấp", "Dispute"))
+                        .font(BanbeTheme.display(15))
+                        .foregroundStyle(app.palette.honey)
+                        .accessibilityIdentifier("inboxDisputeSection.title")
+                    Spacer()
+                    if !app.disputeChats.isEmpty {
+                        Text(app.T("Tạm thời", "Temporary"))
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(app.palette.honey.opacity(0.8))
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 10)
+
+                if !app.disputeChatsError.isEmpty {
+                    Text(app.disputeChatsError)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(app.palette.honey)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 12)
+                        .accessibilityIdentifier("inboxDisputeSection.error")
+                }
+
+                ForEach(app.disputeChats) { chat in
+                    InboxDisputeRow(chat: chat)
+                }
+            }
+            .padding(.bottom, 16)
+            .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(app.palette.honey, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 24)
+            .padding(.bottom, 16)
+            .accessibilityIdentifier("inboxDisputeSection")
+            .task {
+                await app.loadDisputeChats()
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: Self.pollInterval)
+                    if Task.isCancelled { return }
+                    await app.loadDisputeChats()
+                }
+            }
+        }
+    }
+}
+
+/// One collapsible dispute chat inside InboxDisputeSection.
+private struct InboxDisputeRow: View {
+    @EnvironmentObject private var app: AppState
+    let chat: DisputeChatSummary
+
+    private var expanded: Bool { app.openDisputeChatThreadId == chat.threadId }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider().overlay(app.palette.honey)
+            SwipeSafeButton {
+                app.toggleDisputeChat(chat.threadId)
+            } label: {
+                HStack(alignment: .top, spacing: 10) {
+                    Text("›")
+                        .font(.system(size: 13))
+                        .foregroundStyle(app.palette.honey)
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(chat.eventName ?? app.T("Tranh chấp", "Dispute"))
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(app.palette.ink)
+                            .lineLimit(1)
+                        Text(chat.isRefund
+                             ? app.T("Chưa nhận được khoản hoàn", "Refund not received")
+                             : app.T("Chờ banbe quyết định", "Awaiting banbe's decision")
+                             + (chat.amountVnd.map { " ▪︎ " + formatVnd($0) } ?? ""))
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(app.palette.ink.opacity(0.7))
+                        if let body = chat.lastMessageBody {
+                            Text(body)
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(app.palette.ink.opacity(0.6))
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+
+                    VStack(alignment: .trailing, spacing: 3) {
+                        if chat.messageCount > 0 {
+                            Text(app.T("\(chat.messageCount) tin nhắn", "\(chat.messageCount) messages"))
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .foregroundStyle(app.palette.honey)
+                        }
+                        if chat.isConcluded {
+                            Text(app.T("đã kết thúc", "ended"))
+                                .font(.system(size: 10))
+                                .foregroundStyle(app.palette.ink.opacity(0.6))
+                        }
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .opacity(chat.isConcluded ? 0.72 : 1)
+            }
+            .accessibilityIdentifier("inboxDisputeEntry")
+
+            if expanded {
+                DisputeChatPanel(bookingID: chat.bookingId, refundClaimID: chat.refundClaimId)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 14)
+                    .accessibilityIdentifier("inboxDisputeEntry.chat")
+            }
+        }
+    }
 }
 
 private struct InboxRow: View {

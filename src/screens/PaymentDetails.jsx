@@ -6,6 +6,7 @@ import { formatVnd, formatShortDate } from '../lib/paymentDocument.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
 import { REFUND_AUTO_CONFIRM_DAYS, refundAutoConfirmAt } from '../lib/refundPresentation.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
+import RefundDisputeEntry from './RefundDisputeEntry.jsx';
 
 // The buyer's side of the two-phase machine.
 //
@@ -606,6 +607,18 @@ export default function PaymentDetails() {
                     {refundClaim.resend_transferred_at && <p style={{ fontSize: 12, color: ink, opacity: 0.7, margin: '2px 0 0' }}>{formatShortDate(refundClaim.resend_transferred_at)}</p>}
                   </div>
                 )}
+
+                {/* The yellow "Awaiting Verification" entry, with its
+                    one-tap jump into the temporary chat. The chat itself
+                    lives in the Messages dispute section (migration 129)
+                    so both parties expand it in one place — see
+                    RefundDisputeEntry's own note for why it isn't embedded
+                    here as well. */}
+                <RefundDisputeEntry
+                  refundClaimId={refundClaim.id}
+                  amountVnd={refundClaim.amount_vnd}
+                  eventName={booking?.event_name || booking?.eventName}
+                />
               </div>
             )}
           </div>

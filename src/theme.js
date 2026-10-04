@@ -14,6 +14,14 @@ export const fieldSolid = 'var(--bb-field)';
 // sites across src/screens instead of a shared token — see
 // .claude/notes/06-design-tokens.md.
 export const alert = 'var(--bb-alert)';
+// Honey — the "disputed, needs attention, but not an error" accent, for the
+// dispute section pinned at the top of Messages and its matching entries on
+// the payment/refund screens (see index.css's own note). A sibling of `alert`,
+// never a reuse of it: `alert` means something went wrong, honey means two
+// people are still talking it out. Mirrors apps/ios/BanbeApp/Views/
+// BanbeTheme.swift's `Palette.honey` / `Palette.honeyBg` value-for-value.
+export const honey = 'var(--bb-honey)';
+export const honeyBg = 'var(--bb-honey-bg)';
 
 // Named per-context spacing around BanbeLoadingVisual, mirroring
 // apps/ios/BanbeApp/Views/BanbeTheme.swift's `BanbeTheme.LoadingVisual`.

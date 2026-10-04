@@ -2108,13 +2108,31 @@ extension AppState {
             // TASK 1 (2026-09-22 nineteenth follow-up) — dispute_resolved/
             // payment_disputed extended onto the same destination; same
             // existence check as "hold_created" above.
-            if let bookingIDString = notification.data["booking_id"]?.stringValue,
-               let bookingID = UUID(uuidString: bookingIDString) {
-                let messageID = notification.data["message_id"]?.stringValue.flatMap(UUID.init(uuidString:))
+            let messageID = notification.data["message_id"]?.stringValue.flatMap(UUID.init(uuidString:))
+            // A REFUND dispute's message (migration 129) is the one kind not
+            // reachable from the payment screens at all — until that
+            // migration the goer and host had no chat to open from anywhere —
+            // so it routes straight to the pinned dispute section in
+            // Messages with that one entry expanded, which is also the only
+            // place a refund dispute's chat lives.
+            if let claimIDString = notification.data["refund_claim_id"]?.stringValue,
+               let claimID = UUID(uuidString: claimIDString) {
+                Task {
+                    struct ThreadRow: Decodable { let id: UUID }
+                    let thread: ThreadRow? = try? await SupabaseService.client
+                        .from("dispute_threads").select("id")
+                        .eq("refund_claim_id", value: claimID.uuidString)
+                        .single().execute().value
+                    guard let threadID = thread?.id else { reportStaleNotification(notification); return }
+                    chatHighlight = (bookingID: nil, refundClaimID: claimID, messageID: messageID)
+                    openDisputeChatInInbox(threadID)
+                }
+            } else if let bookingIDString = notification.data["booking_id"]?.stringValue,
+                      let bookingID = UUID(uuidString: bookingIDString) {
                 Task {
                     let exists = await bookingExists(bookingID)
                     if !exists { reportStaleNotification(notification); return }
-                    chatHighlight = (bookingID: bookingID, messageID: messageID)
+                    chatHighlight = (bookingID: bookingID, refundClaimID: nil, messageID: messageID)
                     if accountType == "organizer" { openVerifications(back: .notifications) } else { openPaymentDetails(bookingID, back: .notifications) }
                 }
             }

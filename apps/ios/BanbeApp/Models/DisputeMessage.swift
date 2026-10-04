@@ -72,3 +72,64 @@ struct PaymentAuditEntry: Codable, Identifiable, Hashable {
         case ip
     }
 }
+
+/// One row of get_my_dispute_chats() (migration 129) — the yellow "dispute"
+/// section pinned at the top of Messages. One per live dispute chat this
+/// account is a party to, whether it's a payment dispute (the host escalated
+/// to banbe) or a refund dispute (the goer reported not receiving the money,
+/// which had no chat at all before this).
+///
+/// `bookingId` is nil and `refundClaimId` set for a refund dispute, exactly as
+/// the row is keyed server-side; `kind` says which, so a view never has to
+/// infer it. `resolvedAt`/`purgeAfter` drive the "ends in N days" countdown —
+/// both parties keep the row for a 7-day window after a REFUND dispute
+/// settles, then the purge sweep removes it for good.
+struct DisputeChatSummary: Codable, Identifiable, Hashable {
+    let threadId: UUID
+    /// "payment" | "refund"
+    let kind: String
+    let bookingId: UUID?
+    let refundClaimId: UUID?
+    let eventId: String?
+    let eventKey: String?
+    let eventName: String?
+    /// Whoever this account is NOT — the organizer for a goer, the guest for
+    /// a host.
+    let otherName: String?
+    let otherAvatarUrl: String?
+    let amountVnd: Int?
+    /// refund_claims.status while this is a refund dispute (nil otherwise).
+    let claimStatus: String?
+    let disputedAt: Date?
+    let resolvedAt: Date?
+    let purgeAfter: Date?
+    let lastMessageAt: Date?
+    let lastMessageBody: String?
+    let messageCount: Int
+    /// "guest" | "organizer" — which side of this dispute this account is on.
+    let viewerRole: String
+    var id: UUID { threadId }
+    var isRefund: Bool { kind == "refund" }
+    var isConcluded: Bool { resolvedAt != nil }
+
+    enum CodingKeys: String, CodingKey {
+        case threadId = "thread_id"
+        case kind
+        case bookingId = "booking_id"
+        case refundClaimId = "refund_claim_id"
+        case eventId = "event_id"
+        case eventKey = "event_key"
+        case eventName = "event_name"
+        case otherName = "other_name"
+        case otherAvatarUrl = "other_avatar_url"
+        case amountVnd = "amount_vnd"
+        case claimStatus = "claim_status"
+        case disputedAt = "disputed_at"
+        case resolvedAt = "resolved_at"
+        case purgeAfter = "purge_after"
+        case lastMessageAt = "last_message_at"
+        case lastMessageBody = "last_message_body"
+        case messageCount = "message_count"
+        case viewerRole = "viewer_role"
+    }
+}

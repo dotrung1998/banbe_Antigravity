@@ -8,18 +8,31 @@ struct Palette {
     let ink: Color
     let rule: Color
     let field: Color
+    /// The "disputed, needs attention, but not an error" pair, for the dispute
+    /// section pinned at the top of Messages and its matching entries on the
+    /// payment/refund screens. A sibling of `BanbeTheme.alert` (one extra
+    /// accent per distinct role), never a reuse of it: alert means something
+    /// went wrong, honey means two people are still talking it out. Mirrors
+    /// web's `honey`/`honeyBg` (theme.js) and index.css's own note,
+    /// value-for-value in both themes.
+    let honey: Color
+    let honeyBg: Color
 
     static let light = Palette(
         paper: Color(hex: 0xF7F4EC),
         ink: Color(hex: 0x1B1916),
         rule: Color(hex: 0x1B1916).opacity(0.16),
-        field: Color(hex: 0xEEE8DA)
+        field: Color(hex: 0xEEE8DA),
+        honey: Color(hex: 0x8C6014),
+        honeyBg: Color(hex: 0xF0E2BE)
     )
     static let dark = Palette(
         paper: Color(hex: 0x14120E),
         ink: Color(hex: 0xF2EDE1),
         rule: Color(hex: 0xF2EDE1).opacity(0.20),
-        field: Color(hex: 0x4A4439)
+        field: Color(hex: 0x4A4439),
+        honey: Color(hex: 0xE0B45F),
+        honeyBg: Color(hex: 0x3D3016)
     )
 }
 
