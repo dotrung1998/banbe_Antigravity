@@ -905,3 +905,30 @@ struct SwipeSafeButton<Label: View>: View {
             }
     }
 }
+
+/// The system share sheet, for handing a generated FILE to the user —
+/// DisputeChatPanel's "Download transcript" being the first user here
+/// (ReportsView's CSV/JSON exports use `ShareLink` instead, because theirs
+/// are already sitting on disk when the screen renders).
+///
+/// Deliberately the same `UIActivityViewController` presentation
+/// PhotoViewerView.swift already uses for its own share, including
+/// `completionWithItemsHandler`, so the export sheet behaves identically to
+/// every other share in this app instead of being a second, subtly different
+/// code path.
+struct BanbeShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        // iPad requires an anchor or this traps.
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = controller.view
+            popover.sourceRect = CGRect(x: controller.view.bounds.midX, y: controller.view.bounds.maxY - 1, width: 1, height: 1)
+            popover.permittedArrowDirections = []
+        }
+        return controller
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}

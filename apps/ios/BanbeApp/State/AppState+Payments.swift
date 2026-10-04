@@ -1805,34 +1805,122 @@ extension AppState {
         }
     }
 
-    // MARK: Temporary dispute chat
+// MARK: Temporary dispute chat
+    //
+    // One refresh loop per active thread, and the transcript is only ever
+    // cleared on a real thread SWITCH. Both were loader-level bugs:
+    //
+    //   * loadDisputeChat()/loadRefundDisputeChat() used to reset
+    //     disputeChatMessages/disputeChatThread/disputeChatLoading on EVERY
+    //     call, including the 4s poll the panel itself drives — so the
+    //     transcript visibly blinked out and back once per tick and the
+    //     scroll position was thrown away with it.
+    //   * nothing stopped a second poll starting while one was still in
+    //     flight, and a late response for a thread the user had already
+    //     navigated away from could paint over the new one's messages.
+    //
+    // The fix is the pair below: `bindDisputeChat` decides whether a call is
+    // a switch (clear once) or a refresh (leave everything alone), and a
+    // monotonic sequence number plus an exact key comparison decide whether a
+    // given response is still the one on screen.
 
-    func loadDisputeChat(_ bookingID: UUID, retried: Bool = false) async {
-        disputeChatBookingId = bookingID
-        disputeChatRefundClaimId = nil
-        disputeChatKind = "payment"
+    private struct DisputeThreadRow: Decodable {
+        let id: UUID
+        let bookingId: UUID?
+        let resolvedAt: Date?
+        let purgeAfter: Date?
+        let resolutionNote: String?
+        enum CodingKeys: String, CodingKey {
+            case id
+            case bookingId = "booking_id"
+            case resolvedAt = "resolved_at"
+            case purgeAfter = "purge_after"
+            case resolutionNote = "resolution_note"
+        }
+    }
+
+    private static let disputeThreadSelect = "id, booking_id, resolved_at, purge_after, resolution_note"
+
+    /// Point the panel at ONE temporary chat. Returns true when this actually
+    /// switched threads — the only case where the transcript, the read-only
+    /// state and the scroll position may be thrown away.
+    ///
+    /// The per-key draft map is what makes "preserve drafts across refreshes
+    /// AND across thread switches" honest: the outgoing thread's half-typed
+    /// message is parked under its own key instead of being clobbered by
+    /// whatever the incoming thread had saved the last time it was open.
+    @discardableResult
+    private func bindDisputeChat(kind: String, id: UUID) -> Bool {
+        let key = "\(kind):\(id.uuidString)"
+        if disputeChatKey == key { return false }
+        if let old = disputeChatKey { disputeChatDrafts[old] = disputeChatDraft }
+        disputeChatDraft = disputeChatDrafts[key] ?? ""
+        disputeChatKey = key
+        disputeChatBookingId = (kind == "payment") ? id : nil
+        disputeChatRefundClaimId = (kind == "refund") ? id : nil
+        disputeChatKind = kind
         disputeChatMessages = []
         disputeChatThread = nil
-        disputeChatLoading = true
         disputeChatError = ""
-        defer { disputeChatLoading = false }
-        struct ThreadRow: Decodable { let id: UUID; let resolvedAt: Date?; let purgeAfter: Date?
-            enum CodingKeys: String, CodingKey { case id; case resolvedAt = "resolved_at"; case purgeAfter = "purge_after" } }
+        disputeChatInitialLoadDone = false
+        disputeChatSeq += 1
+        return true
+    }
+
+    /// Commit a fetched transcript, but only if it is still the thread on
+    /// screen and no newer load has started. Bumps `disputeChatIncomingTick`
+    /// only when genuinely NEW messages arrived, which is what lets the panel
+    /// scroll to the bottom for an incoming message while the reader is
+    /// already there and leave them alone when they are reading history.
+    private func commitDisputeChat(_ fresh: [DisputeMessage], key: String, seq: Int) {
+        guard seq == disputeChatSeq, disputeChatKey == key else { return }
+        let previousLast = disputeChatMessages.last?.id
+        let previousCount = disputeChatMessages.count
+        disputeChatMessages = fresh
+        if let previousLast, let newLast = fresh.last, newLast.id != previousLast, fresh.count > previousCount {
+            disputeChatIncomingTick += 1
+        }
+        disputeChatInitialLoadDone = true
+        disputeChatLoading = false
+    }
+
+    private func restoreDisputeDraft(_ body: String, key: String?) {
+        disputeChatDraft = body
+        if let key { disputeChatDrafts[key] = body }
+    }
+
+    func loadDisputeChat(_ bookingID: UUID, retried: Bool = false) async {
+        bindDisputeChat(kind: "payment", id: bookingID)
+        let key = disputeChatKey ?? "payment:\(bookingID.uuidString)"
+        // Overlapping-poll guard: an in-flight load for THIS thread already
+        // has everything a second one would fetch.
+        guard !disputeChatInFlight.contains(key) else { return }
+        disputeChatInFlight.insert(key)
+        disputeChatSeq += 1
+        let seq = disputeChatSeq
+        // Loading only ever means "first load, nothing to show yet" — a
+        // background refresh never blanks what is already on screen.
+        disputeChatLoading = !disputeChatInitialLoadDone
+        defer { disputeChatInFlight.remove(key) }
         do {
-            let thread: ThreadRow = try await SupabaseService.client
-                .from("dispute_threads").select("id, resolved_at, purge_after")
+            let thread: DisputeThreadRow = try await SupabaseService.client
+                .from("dispute_threads").select(Self.disputeThreadSelect)
                 .eq("booking_id", value: bookingID.uuidString)
                 .single().execute().value
-            disputeChatMessages = try await SupabaseService.client
+            let messages: [DisputeMessage] = try await SupabaseService.client
                 .from("dispute_messages").select()
                 .eq("dispute_thread_id", value: thread.id.uuidString)
                 .order("created_at", ascending: true)
                 .execute().value
+            guard seq == disputeChatSeq, disputeChatKey == key else { return }
             // Read-only — drives the retention countdown label
             // (DisputeChatPanel.swift) instead of a delete button, since
-            // dispute_messages must survive until the 72h purge
+            // dispute_messages must survive until the purge
             // (05-notify-retention.md).
-            disputeChatThread = (resolvedAt: thread.resolvedAt, purgeAfter: thread.purgeAfter)
+            disputeChatThread = (threadId: thread.id, resolvedAt: thread.resolvedAt,
+                                 purgeAfter: thread.purgeAfter, resolutionNote: thread.resolutionNote)
+            disputeChatError = ""
+            commitDisputeChat(messages, key: key, seq: seq)
         } catch {
             // A dispute_threads row RLS is quietly hiding from this account
             // (a stale/mislinked organizer_id — the ART10025 symptom)
@@ -1853,14 +1941,22 @@ extension AppState {
                     return
                 }
             }
+            guard seq == disputeChatSeq, disputeChatKey == key else { return }
+            // A failed BACKGROUND refresh must not empty a transcript that is
+            // already on screen: the error rides alongside the existing
+            // messages, which stay exactly where they are.
             disputeChatError = T("Không tải được đoạn chat. Thử lại nhé.", "Couldn't load this chat. Please try again.")
+            disputeChatInitialLoadDone = true
+            disputeChatLoading = false
         }
     }
 
     func sendDisputeMessage(_ bookingID: UUID) async {
         let body = disputeChatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
+        let key = disputeChatKey
         disputeChatDraft = ""
+        disputeChatDrafts[key ?? ""] = ""
         disputeChatError = ""
         do {
             let result: ForfeitResult = try await SupabaseService.client
@@ -1868,97 +1964,66 @@ extension AppState {
                 .execute().value
             if result.success == false {
                 print("sendDisputeMessage failed:", result.error ?? "unknown")
-                disputeChatDraft = body
+                restoreDisputeDraft(body, key: key)
                 disputeChatError = T("Chưa gửi được. Thử lại nhé.", "Couldn't send. Please try again.")
                 return
             }
         } catch {
             print("sendDisputeMessage failed:", error)
-            disputeChatDraft = body
+            restoreDisputeDraft(body, key: key)
             disputeChatError = T("Chưa gửi được. Thử lại nhé.", "Couldn't send. Please try again.")
             return
         }
         await loadDisputeChat(bookingID)
     }
 
-    // MARK: The yellow "dispute" section pinned at the top of Messages
+    // MARK: The refund half of the same chat panel: same two tables, keyed by
+    // refund_claims.id instead of bookings.id (migration 129).
 
-    /// Every dispute chat this account is a party to, open ones first, plus
-    /// the ones still inside their 7-day post-conclusion window. One RPC
-    /// rather than a client-side join: get_my_dispute_chats (migration 129)
-    /// does its own guest/organizer/admin scoping, and the same row shape
-    /// feeds both an open chat and a "dispute over, disappears in N days" one.
-    func loadDisputeChats() async {
-        guard userID != nil else { disputeChats = []; return }
-        disputeChatsLoading = true
-        disputeChatsError = ""
-        do {
-            disputeChats = try await SupabaseService.client
-                .rpc("get_my_dispute_chats").execute().value
-        } catch {
-            print("loadDisputeChats failed:", error)
-            disputeChats = []
-            disputeChatsError = T("Không tải được danh sách tranh chấp.", "Couldn't load disputes.")
-        }
-        disputeChatsLoading = false
-    }
-
-    /// Expand/collapse one entry of the pinned Messages section.
-    func toggleDisputeChat(_ threadID: UUID) {
-        openDisputeChatThreadId = (openDisputeChatThreadId == threadID) ? nil : threadID
-    }
-
-    /// "Open this chat" from the yellow entry on a payment/refund screen, or
-    /// from a dispute_message notification: go to Messages and expand exactly
-    /// that thread. The archived view is force-reset first — the dispute
-    /// section only exists in the active list, so landing there would show
-    /// nothing.
-    func openDisputeChatInInbox(_ threadID: UUID) {
-        screen = .inbox
-        inboxView = .active
-        openDisputeChatThreadId = threadID
-        Task { await loadDisputeChats() }
-    }
-
-    /// The REFUND half of the same chat panel: same two tables, keyed by
-    /// refund_claims.id instead of bookings.id (migration 129) —
-    /// dispute_refund() opens the thread server-side, this just reads it back.
-    /// No resync fallback like the payment path's: there's no equivalent of
-    /// the stale organizer_id repair resync_dispute_thread() exists for, and
-    /// dispute_refund() is the only writer, so a missing row here means
-    /// "not disputed".
     func loadRefundDisputeChat(_ claimID: UUID) async {
-        disputeChatBookingId = nil
-        disputeChatRefundClaimId = claimID
-        disputeChatKind = "refund"
-        disputeChatMessages = []
-        disputeChatThread = nil
-        disputeChatLoading = true
-        disputeChatError = ""
-        defer { disputeChatLoading = false }
-        struct ThreadRow: Decodable { let id: UUID; let resolvedAt: Date?; let purgeAfter: Date?
-            enum CodingKeys: String, CodingKey { case id; case resolvedAt = "resolved_at"; case purgeAfter = "purge_after" } }
+        bindDisputeChat(kind: "refund", id: claimID)
+        let key = disputeChatKey ?? "refund:\(claimID.uuidString)"
+        guard !disputeChatInFlight.contains(key) else { return }
+        disputeChatInFlight.insert(key)
+        disputeChatSeq += 1
+        let seq = disputeChatSeq
+        disputeChatLoading = !disputeChatInitialLoadDone
+        defer { disputeChatInFlight.remove(key) }
         do {
-            let thread: ThreadRow = try await SupabaseService.client
-                .from("dispute_threads").select("id, resolved_at, purge_after")
+            let thread: DisputeThreadRow = try await SupabaseService.client
+                .from("dispute_threads").select(Self.disputeThreadSelect)
                 .eq("refund_claim_id", value: claimID.uuidString)
                 .single().execute().value
-            disputeChatMessages = try await SupabaseService.client
+            let messages: [DisputeMessage] = try await SupabaseService.client
                 .from("dispute_messages").select()
                 .eq("dispute_thread_id", value: thread.id.uuidString)
                 .order("created_at", ascending: true)
                 .execute().value
-            disputeChatThread = (resolvedAt: thread.resolvedAt, purgeAfter: thread.purgeAfter)
+            guard seq == disputeChatSeq, disputeChatKey == key else { return }
+            disputeChatThread = (threadId: thread.id, resolvedAt: thread.resolvedAt,
+                                 purgeAfter: thread.purgeAfter, resolutionNote: thread.resolutionNote)
+            disputeChatError = ""
+            commitDisputeChat(messages, key: key, seq: seq)
+            // Keep the verified per-claim card state in step with what the
+            // transcript itself reported (message count, closure), so the
+            // card around it never sits on a snapshot the transcript has
+            // already contradicted.
+            await loadRefundDisputeThread(claimID, force: true)
         } catch {
             print("loadRefundDisputeChat failed:", error)
+            guard seq == disputeChatSeq, disputeChatKey == key else { return }
             disputeChatError = T("Không tải được đoạn chat. Thử lại nhé.", "Couldn't load this chat. Please try again.")
+            disputeChatInitialLoadDone = true
+            disputeChatLoading = false
         }
     }
 
     func sendRefundDisputeMessage(_ claimID: UUID) async {
         let body = disputeChatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
+        let key = disputeChatKey
         disputeChatDraft = ""
+        disputeChatDrafts[key ?? ""] = ""
         disputeChatError = ""
         do {
             let result: ForfeitResult = try await SupabaseService.client
@@ -1966,7 +2031,7 @@ extension AppState {
                 .execute().value
             if result.success == false {
                 print("sendRefundDisputeMessage failed:", result.error ?? "unknown")
-                disputeChatDraft = body
+                restoreDisputeDraft(body, key: key)
                 // DISPUTE_RESOLVED isn't a transient failure like the rest —
                 // the chat is a read-only record until the purge sweep removes
                 // it, so say so rather than implying a retry could work.
@@ -1977,14 +2042,397 @@ extension AppState {
             }
         } catch {
             print("sendRefundDisputeMessage failed:", error)
-            disputeChatDraft = body
+            restoreDisputeDraft(body, key: key)
             disputeChatError = T("Chưa gửi được. Thử lại nhé.", "Couldn't send. Please try again.")
             return
         }
         await loadRefundDisputeChat(claimID)
-        // The pinned Messages entry shows the last message, so it has to
-        // refresh too or the collapsed row keeps showing an old snippet.
         await loadDisputeChats()
+    }
+
+// MARK: The dispute index behind Inbox-row highlighting and cross-screen
+    // badges. Deliberately NOT an entry point any screen navigates from —
+    // see loadRefundDisputeThread(_:force:) below for the verified, per-claim
+    // lookup that is.
+
+    /// Every dispute chat this account is a party to, open ones first, plus
+    /// the ones still inside their 7-day post-conclusion window. One RPC
+    /// rather than a client-side join: get_my_dispute_chats (migrations
+    /// 129/130) does its own guest/organizer/admin scoping, and the same row
+    /// shape feeds an open dispute, a concluded one, and the Inbox row
+    /// highlight for the conversation it renders inside.
+    func loadDisputeChats() async {
+        guard userID != nil else { disputeChats = []; return }
+        disputeChatsLoading = true
+        disputeChatsError = ""
+        do {
+            let rows: [DisputeChatSummary] = try await SupabaseService.client
+                .rpc("get_my_dispute_chats").execute().value
+            disputeChats = rows
+            disputeThreadClaimIndex = rows.reduce(into: [UUID: UUID]()) { index, row in
+                if let claim = row.refundClaimId { index[row.threadId] = claim }
+            }
+        } catch {
+            print("loadDisputeChats failed:", error)
+            // A failed refresh must NOT wipe the rows the Inbox is currently
+            // highlighting — it keeps what it has and says it couldn't update.
+            if disputeChats.isEmpty {
+                disputeChatsError = T("Không tải được danh sách tranh chấp.", "Couldn't load disputes.")
+            }
+        }
+        disputeChatsLoading = false
+    }
+
+    /// Expand/collapse a dispute. Kept for callers that hold a dispute THREAD
+    /// id; the refund half resolves the CLAIM (the id that is actually
+    /// stable) via openDisputeForRefundClaim below.
+    func toggleDisputeChat(_ threadID: UUID) {
+        if openDisputeChatThreadId == threadID {
+            openDisputeChatThreadId = nil
+            expandedDisputeClaimId = nil
+            return
+        }
+        openDisputeChatThreadId = threadID
+        expandedDisputeClaimId = disputeThreadClaimIndex[threadID]
+    }
+
+    /// The refund dispute attached to the booking conversation currently
+    /// open, resolved by EXACT conversation thread id
+    /// (get_refund_dispute_for_conversation, migration 130) rather than by
+    /// event name — so a second booking of the same event can never light up
+    /// the wrong card, and two conversations on one event can each carry
+    /// their own dispute.
+    /// The escalated PAYMENT dispute on the same conversation, if any — the
+    /// "other dispute type" that attaches to its own matching system card.
+
+    func loadConversationDispute(conversationThreadID: UUID) async {
+        conversationDisputeLoading = true
+        defer { conversationDisputeLoading = false }
+        conversationPaymentDisputeBookingID = nil
+
+        // 1. Refund half — one RPC, exact conversation-thread match, RLS
+        //    checked server-side.
+        if let value: RefundDisputeThread = try? await SupabaseService.client
+            .rpc("get_refund_dispute_for_conversation", params: ["p_thread": conversationThreadID.uuidString])
+            .execute().value {
+            if value.found {
+                conversationRefundDispute = value
+                if let claimID = value.refundClaimId { refundDisputeThreads[claimID] = value }
+            } else {
+                conversationRefundDispute = nil
+            }
+        }
+
+        // 2. Payment half — a payment thread is keyed by booking_id and
+        //    carries the conversation's own event_id, while refund threads are
+        //    exactly the ones with a NULL booking_id. Filtering on that
+        //    separates the two kinds without guessing from a name.
+        struct ThreadRef: Decodable {
+            let eventId: String
+            let guestId: UUID?
+            enum CodingKeys: String, CodingKey {
+                case eventId = "event_id"
+                case guestId = "guest_id"
+            }
+        }
+        guard let ref: ThreadRef = try? await SupabaseService.client
+            .from("threads").select("event_id, guest_id")
+            .eq("id", value: conversationThreadID.uuidString).single().execute().value,
+              let guestID = ref.guestId else { return }
+        // `kind` is what separates the two dispute families (migration 129
+        // defaults every pre-existing payment thread to 'payment' and writes
+        // 'refund' for the new ones), and the (event_id, guest_id) pair is the
+        // conversation itself — so this can only ever match a payment dispute
+        // belonging to THIS conversation, never a second guest's on the same
+        // event.
+        let paymentRows: [DisputeThreadRow]? = try? await SupabaseService.client
+            .from("dispute_threads").select("id, booking_id, resolved_at, purge_after, resolution_note")
+            .eq("event_id", value: ref.eventId)
+            .eq("guest_id", value: guestID.uuidString)
+            .eq("kind", value: "payment")
+            .execute().value
+        conversationPaymentDisputeBookingID = paymentRows?.first?.bookingId
+    }
+
+    // MARK: Closing a refund dispute, and downloading its transcript
+    // (migration 130). Both are participant-authorized server-side; the
+    // client never decides who is allowed to close.
+
+    /// Reads (and caches) the VERIFIED dispute state for one refund claim.
+    /// This — not the polled `disputeChats` list — is what every refund entry
+    /// point renders from, so a screen reached before any Inbox load (deep
+    /// link, cold open, notification) still gets the right actions, the right
+    /// "chat with…" label and the right read-only state.
+    @discardableResult
+    func loadRefundDisputeThread(_ claimID: UUID, force: Bool = false) async -> RefundDisputeThread? {
+        if !force, let cached = refundDisputeThreads[claimID] { return cached }
+        refundDisputeThreadsLoading.insert(claimID)
+        defer { refundDisputeThreadsLoading.remove(claimID) }
+        guard let value: RefundDisputeThread = try? await SupabaseService.client
+            .rpc("get_refund_dispute_thread", params: ["p_claim_id": claimID.uuidString])
+            .execute().value else {
+            print("loadRefundDisputeThread failed:", claimID)
+            return nil
+        }
+        guard value.found else {
+            refundDisputeThreads.removeValue(forKey: claimID)
+            return nil
+        }
+        refundDisputeThreads[claimID] = value
+        return value
+    }
+
+    /// Close this refund dispute / mark it completed. Either authorized party
+    /// may do this; close_refund_dispute() is idempotent server-side, so a
+    /// double tap cannot extend the 7-day retention window.
+    ///
+    /// Explicitly does NOT move any money: refund_claims.status is left
+    /// exactly as it was, so the refund stays owed, the host can still mark
+    /// it sent afterwards, and the goer can still confirm.
+    func closeRefundDispute(_ claimID: UUID) async -> Bool {
+        guard refundDisputeClosingClaimId == nil else { return false }
+        refundDisputeClosingClaimId = claimID
+        disputeCloseError = ""
+        defer { refundDisputeClosingClaimId = nil }
+        var ok = false
+        do {
+            let result: ForfeitResult = try await SupabaseService.client
+                .rpc("close_refund_dispute", params: ["p_claim_id": claimID.uuidString, "p_note": ""])
+                .execute().value
+            if result.success == true {
+                ok = true
+                Haptics.success()
+            } else if result.error == "ADMIN_RESOLUTION_REQUIRED" {
+                disputeCloseError = T(
+                    "Tranh chấp này đã được chuyển cho banbe xử lý nên không thể tự đóng ở đây.",
+                    "This dispute has been escalated to banbe, so it can't be closed here.")
+            } else {
+                disputeCloseError = T("Chưa đóng được tranh chấp. Thử lại nhé.", "Couldn't close this dispute. Please try again.")
+            }
+        } catch {
+            print("closeRefundDispute failed:", error)
+            disputeCloseError = T("Chưa đóng được tranh chấp. Thử lại nhé.", "Couldn't close this dispute. Please try again.")
+        }
+        if ok {
+            // Every surface has to agree immediately, not on the next poll:
+            // the transcript goes read-only, the card flips to
+            // "Dispute completed", and the active-dispute indicator clears.
+            await loadRefundDisputeChat(claimID)
+            await loadRefundDisputeThread(claimID, force: true)
+            await loadDisputeChats()
+            if let claim = refundDisputeThreads[claimID], conversationRefundDispute?.refundClaimId == claimID {
+                conversationRefundDispute = claim
+            }
+            reloadRefundClaimEverywhere(claimID)
+        }
+        return ok
+    }
+
+    /// Re-reads whichever refund lists this account happens to have loaded,
+    /// matching by CLAIM id rather than by the older booking id — a stale
+    /// concurrent response keyed by the booking id is exactly how a state
+    /// change that already landed used to get overwritten. Lists that were
+    /// never loaded are left alone.
+    func reloadRefundClaimEverywhere(_ claimID: UUID) {
+        if let bookingID = refundBookingIdForClaim(claimID) {
+            Task { await loadPaymentRefundClaim(bookingID: bookingID) }
+        }
+        if myRefunds.contains(where: { $0.id == claimID }) { Task { await loadMyRefunds() } }
+        if refundQueue.contains(where: { $0.id == claimID }) { Task { await loadRefundQueue() } }
+    }
+
+    private func refundBookingIdForClaim(_ claimID: UUID) -> UUID? {
+        if let known = refundDisputeThreads[claimID]?.bookingId { return known }
+        if let c = myRefunds.first(where: { $0.id == claimID }) { return c.bookingId ?? c.reservationId }
+        if let c = refundQueue.first(where: { $0.id == claimID }) { return c.bookingId ?? c.reservationId }
+        if paymentRefundClaim?.id == claimID { return paymentBookingID }
+        return nil
+    }
+
+    /// Builds the COMPLETE transcript file and stages it for the native share
+    /// sheet. Available while the dispute is open (offered BEFORE closing, so
+    /// nobody has to close a dispute first to keep a copy) and for the whole
+    /// 7-day window afterwards.
+    func prepareRefundDisputeTranscript(_ claimID: UUID) async {
+        disputeTranscriptError = ""
+        disputeTranscriptReadyToShare = false
+        guard let transcript: RefundDisputeTranscript = try? await SupabaseService.client
+            .rpc("get_refund_dispute_transcript", params: ["p_claim_id": claimID.uuidString])
+            .execute().value else {
+            print("prepareRefundDisputeTranscript failed:", claimID)
+            disputeTranscriptError = T("Không tải được bản ghi tranh chấp.", "Couldn't load the dispute transcript.")
+            return
+        }
+        guard transcript.found else {
+            disputeTranscriptError = transcript.error == "NOT_AUTHORIZED"
+                ? T("Bạn không có quyền xem bản ghi này.", "You don't have access to this transcript.")
+                : T("Bản ghi tranh chấp này không còn nữa.", "This dispute transcript is no longer available.")
+            return
+        }
+        guard let url = writeTranscriptFile(transcript) else {
+            disputeTranscriptError = T("Không tạo được tệp bản ghi.", "Couldn't create the transcript file.")
+            return
+        }
+        disputeTranscriptExportURL = url
+        disputeTranscriptReadyToShare = true
+    }
+
+    private func writeTranscriptFile(_ transcript: RefundDisputeTranscript) -> URL? {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd HH:mm"
+        df.locale = Locale(identifier: "en_US_POSIX")
+
+        var out: [String] = []
+        out.append("banbe — refund dispute transcript")
+        out.append("")
+        out.append("Event:        \(transcript.eventName ?? "—") (\(transcript.eventId ?? "—"))")
+        out.append("Organizer:    \(transcript.organizerLabel ?? "—")")
+        out.append("Guest:        \(transcript.guestLabel ?? "—")")
+        out.append("Booking:      \(transcript.bookingId?.uuidString ?? "—")")
+        if let code = transcript.bookingCode, !code.isEmpty { out.append("Booking code: \(code)") }
+        out.append("Refund claim: \(transcript.refundClaimId?.uuidString ?? "—")")
+        out.append("Amount:       \(transcript.amountVnd.map { formatVnd($0) } ?? "—")")
+        out.append("Claim status: \(transcript.claimStatus ?? "—")")
+        if let reason = transcript.claimReason, !reason.isEmpty { out.append("Reason:       \(reason)") }
+        if let disputed = transcript.disputedAt { out.append("Disputed at:  \(df.string(from: disputed)) (\(iso.string(from: disputed)))") }
+        if let closed = transcript.disputeClosedAt { out.append("Closed at:    \(df.string(from: closed)) (\(iso.string(from: closed)))") }
+        if let resolved = transcript.resolvedAt { out.append("Concluded at: \(df.string(from: resolved)) (\(iso.string(from: resolved)))") }
+        if let purge = transcript.purgeAfter { out.append("Deleted at:   \(df.string(from: purge)) (\(iso.string(from: purge)))") }
+        if let note = transcript.claimNote, !note.isEmpty {
+            out.append("")
+            out.append("Claim note:")
+            out.append(note)
+        }
+        out.append("")
+        out.append("Messages (\(transcript.messages.count)):")
+        out.append(String(repeating: "-", count: 40))
+        for m in transcript.messages {
+            let who = m.senderName ?? m.senderRole
+            out.append("[\(df.string(from: m.createdAt)) · \(iso.string(from: m.createdAt))] \(who) (\(m.senderRole)):")
+            out.append(m.body)
+            out.append("")
+        }
+        if let exportedAt = transcript.exportedAt {
+            out.append(String(repeating: "-", count: 40))
+            out.append("Exported \(df.string(from: exportedAt)) (\(iso.string(from: exportedAt)))")
+        }
+        guard let data = out.joined(separator: "\n").data(using: .utf8) else { return nil }
+        let name = "banbe-refund-dispute-\((transcript.refundClaimId?.uuidString ?? "transcript").lowercased()).txt"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        do {
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            print("writeTranscriptFile failed:", error)
+            return nil
+        }
+    }
+
+    /// Open a refund dispute's chat where it actually lives: inside the
+    /// EXISTING booking conversation for this claim, with its dispute block
+    /// expanded. Replaces the old hop through the removed yellow Messages
+    /// accordion — there is no second conversation to open, and nothing is
+    /// matched on event name.
+    func openDisputeForRefundClaim(_ claimID: UUID, back: Screen) async {
+        guard let claim = await loadRefundDisputeThread(claimID, force: true) else { return }
+        openDisputeChatThreadId = claim.disputeThreadId
+        expandedDisputeClaimId = claimID
+        guard let conversationID = claim.conversationThreadId, let eventID = claim.eventId else {
+            // The dispute was raised before anyone ever messaged about this
+            // booking, so there is no conversation to render into yet: fall
+            // back to the get-or-create open, which creates exactly the one
+            // conversation that would have existed anyway (threads is
+            // UNIQUE(event_id, guest_id), so it can never duplicate).
+            await openChat(for: claim.eventId ?? "", back: back)
+            return
+        }
+        // Both parties open the SAME threads row, so neither needs to know
+        // how the other one's Inbox is built.
+        let otherName = claim.viewerRole == "organizer" ? "" : (claim.organizerName ?? "")
+        openThread(id: conversationID, eventKey: eventID, back: back, otherName: otherName)
+    }
+
+    /// The PAYMENT half of the same idea, for the host's escalated-dispute
+    /// list: resolve the booking's (event, guest) pair and open the ONE
+    /// conversation that already exists for it — never create a second.
+    /// Returns false when there is genuinely no conversation to open, so the
+    /// caller can say so instead of appearing to do nothing.
+    @discardableResult
+    func openDisputeForBooking(_ bookingID: UUID, back: Screen) async -> Bool {
+        struct BookingRow: Decodable {
+            let eventId: String
+            let userId: UUID?
+            enum CodingKeys: String, CodingKey {
+                case eventId = "event_id"
+                case userId = "user_id"
+            }
+        }
+        guard let b: BookingRow = try? await SupabaseService.client
+            .from("bookings").select("event_id, user_id")
+            .eq("id", value: bookingID.uuidString).single().execute().value,
+              let guestID = b.userId else { return false }
+        struct ThreadRow: Decodable { let id: UUID }
+        let threads: [ThreadRow]? = try? await SupabaseService.client
+            .from("threads").select("id")
+            .eq("event_id", value: b.eventId)
+            .eq("guest_id", value: guestID.uuidString)
+            .limit(1).execute().value
+        guard let threadID = threads?.first?.id else { return false }
+        openDisputeChatThreadId = nil
+        expandedDisputeClaimId = nil
+        openThread(id: threadID, eventKey: b.eventId, back: back, otherName: "")
+        return true
+    }
+
+    /// Which conversation row, if any, is currently carrying an ACTIVE refund
+    /// dispute — drives the red "Dispute in progress" highlight on the Inbox
+    /// list. Exact thread-id match (threads is UNIQUE(event_id, guest_id), so
+    /// this is a 1:1 conversation identity), never an event-name comparison.
+    var activeDisputeConversationThreadIds: Set<UUID> {
+        Set(disputeChats.filter(\.isActiveDispute).compactMap(\.conversationThreadId))
+    }
+
+    /// Shown while a dispute is active, on both the Inbox row and the dispute
+    /// card. Never shown for a concluded one — that collapses back to the
+    /// ordinary card with a quiet "Dispute completed" instead.
+    var hasActiveDispute: Bool { !activeDisputeConversationThreadIds.isEmpty }
+
+
+    /// "Refund dispute open › View" in the action center. Opens the EXACT
+    /// booking conversation that claim's dispute belongs to, with its dispute
+    /// card expanded — not the refund list, which is one more tap away from
+    /// the thing the item is about.
+    ///
+    /// Falls back to the account's refund list when the dispute genuinely has
+    /// no conversation yet, so a tap can never land on nothing.
+    func openRefundDisputeFromActionCenter(claimID: UUID, back: Screen) {
+        Task {
+            await openDisputeForRefundClaim(claimID, back: back)
+            guard screen != .chat else { return }
+            switch back {
+            case .dashboard: refundQueueFocusClaimID = claimID; openVerifications(back: .dashboard)
+            default: openMyRefunds(back: back)
+            }
+        }
+    }
+
+    /// Backwards-compatible shim for callers that still hold a dispute THREAD
+    /// id (an older notification payload, the removed Inbox accordion). It
+    /// resolves the CLAIM that thread belongs to and opens the booking
+    /// conversation; a thread whose claim isn't in the index is refreshed
+    /// once and then dropped rather than silently doing nothing.
+    func openDisputeChatInInbox(_ threadID: UUID) {
+        if let claimID = disputeThreadClaimIndex[threadID] {
+            Task { await openDisputeForRefundClaim(claimID, back: .inbox) }
+            return
+        }
+        Task {
+            await loadDisputeChats()
+            guard let claimID = disputeThreadClaimIndex[threadID] else { return }
+            await openDisputeForRefundClaim(claimID, back: .inbox)
+        }
     }
 
     /// The PHASE 1 counterpart of loadVerifications — how many buyers are

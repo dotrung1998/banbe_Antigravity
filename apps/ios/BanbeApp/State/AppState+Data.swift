@@ -2109,23 +2109,28 @@ extension AppState {
             // payment_disputed extended onto the same destination; same
             // existence check as "hold_created" above.
             let messageID = notification.data["message_id"]?.stringValue.flatMap(UUID.init(uuidString:))
-            // A REFUND dispute's message (migration 129) is the one kind not
-            // reachable from the payment screens at all — until that
-            // migration the goer and host had no chat to open from anywhere —
-            // so it routes straight to the pinned dispute section in
-            // Messages with that one entry expanded, which is also the only
-            // place a refund dispute's chat lives.
+            // A REFUND dispute's message (migration 129) has no home on any
+            // refund screen any more — the transcript now renders inside the
+            // booking conversation it belongs to, so this routes straight to
+            // THAT conversation with the dispute card expanded. The claim id
+            // is the stable key (the dispute thread's own booking_id is NULL
+            // for refund disputes), and the booking id that ships alongside it
+            // is the claim's underlying booking — the same row both parties
+            // already share.
             if let claimIDString = notification.data["refund_claim_id"]?.stringValue,
                let claimID = UUID(uuidString: claimIDString) {
+                chatHighlight = (bookingID: nil, refundClaimID: claimID, messageID: messageID)
                 Task {
-                    struct ThreadRow: Decodable { let id: UUID }
-                    let thread: ThreadRow? = try? await SupabaseService.client
-                        .from("dispute_threads").select("id")
-                        .eq("refund_claim_id", value: claimID.uuidString)
-                        .single().execute().value
-                    guard let threadID = thread?.id else { reportStaleNotification(notification); return }
-                    chatHighlight = (bookingID: nil, refundClaimID: claimID, messageID: messageID)
-                    openDisputeChatInInbox(threadID)
+                    if let threadID = notification.data["dispute_thread_id"]?.stringValue.flatMap(UUID.init(uuidString:)) {
+                        openDisputeChatThreadId = threadID
+                    }
+                    await openDisputeForRefundClaim(claimID, back: .notifications)
+                    // openDisputeForRefundClaim clears nothing, but a claim
+                    // whose thread is already gone (purged) must not leave the
+                    // reader on a conversation with no dispute on it.
+                    if conversationRefundDispute?.refundClaimId != claimID {
+                        reportStaleNotification(notification)
+                    }
                 }
             } else if let bookingIDString = notification.data["booking_id"]?.stringValue,
                       let bookingID = UUID(uuidString: bookingIDString) {
@@ -2133,7 +2138,18 @@ extension AppState {
                     let exists = await bookingExists(bookingID)
                     if !exists { reportStaleNotification(notification); return }
                     chatHighlight = (bookingID: bookingID, refundClaimID: nil, messageID: messageID)
-                    if accountType == "organizer" { openVerifications(back: .notifications) } else { openPaymentDetails(bookingID, back: .notifications) }
+                    // Both halves land in the SAME booking conversation now
+                    // that the transcript renders there: the goer opens it
+                    // directly, the organizer goes through their own refund
+                    // queue entry point so the per-event ownership check that
+                    // screen already applies can't be bypassed by a tap.
+                    if accountType == "organizer" {
+                        if await openDisputeForBooking(bookingID, back: .notifications) { return }
+                        openVerifications(back: .notifications)
+                    } else {
+                        await openDisputeForBooking(bookingID, back: .notifications)
+                        if screen != .chat { openPaymentDetails(bookingID, back: .notifications) }
+                    }
                 }
             }
         case "payment_document_uploaded", "payment_document_replaced", "payment_document_expiring_1d":
@@ -2191,6 +2207,29 @@ extension AppState {
                     let exists = await refundClaimExists(claimID)
                     if !exists { reportStaleNotification(notification); return }
                     openPaymentDetails(bookingID, back: .notifications)
+                }
+            }
+        case "refund_dispute_closed":
+            // One of the two parties pressed "Close dispute" (migration 130).
+            // The claim is untouched financially, but the active-dispute
+            // indicator on the other side has to clear now, not on the next
+            // poll — so this lands on the SAME screen the other party would
+            // use, which reads the verified state and shows "Dispute
+            // completed" with its transcript still open for the retention
+            // window.
+            if let claimIDString = notification.data["claim_id"]?.stringValue,
+               let claimID = UUID(uuidString: claimIDString) {
+                Task {
+                    await loadRefundDisputeThread(claimID, force: true)
+                    await loadDisputeChats()
+                    reloadRefundClaimEverywhere(claimID)
+                    if claimID == paymentRefundClaim?.id, let bookingID = paymentBookingID {
+                        openPaymentDetails(bookingID, back: .notifications)
+                    } else if accountType == "organizer", myOrgEventKeys.contains(notification.data["event_id"]?.stringValue ?? "") {
+                        await loadRefundQueue()
+                        refundQueueFocusClaimID = claimID
+                        openVerifications(back: .notifications)
+                    }
                 }
             }
         case "refund_confirmed", "refund_disputed", "refund_overdue":

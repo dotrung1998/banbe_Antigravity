@@ -553,16 +553,18 @@ struct PaymentDetailsView: View {
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
                         .padding(.top, 4)
                     }
-                    // The yellow "Awaiting Verification" entry, with its
-                    // one-tap jump into the temporary chat. The chat itself
-                    // lives in the Messages dispute section (migration 129)
-                    // so both parties expand it in one place — see
-                    // RefundDisputeEntry's own note for why it isn't embedded
-                    // here as well.
+                    // The refund-dispute card, with its one-tap jump into the
+                    // temporary chat and its own close/download actions. The
+                    // transcript itself lives in the EXISTING booking
+                    // conversation for this claim (ChatView) so both parties
+                    // have exactly one conversation per booking — see
+                    // RefundDisputeEntry's own note.
                     RefundDisputeEntry(
                         refundClaimId: claim.id,
+                        viewer: .goer,
                         amountVnd: claim.amountVnd,
-                        eventName: booking.eventName
+                        eventName: booking.eventName,
+                        back: .paymentDetails
                     )
                 }
                 .padding(.top, 2)

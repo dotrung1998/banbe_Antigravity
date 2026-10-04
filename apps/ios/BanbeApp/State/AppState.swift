@@ -1397,29 +1397,79 @@ final class AppState: ObservableObject {
     @Published var refundBatchResult: RefundBatchResult?
     @Published var refundResendBusy: UUID?
     @Published var refundResendInFlight: Set<UUID> = []
-    // The temporary dispute chat — one per escalated booking.
+    // The temporary dispute chat — one per escalated booking (payment) or
+    // per disputed refund claim.
+    //
+    // `disputeChatKey` is the ONE authority on which conversation
+    // `disputeChatMessages` currently belongs to ("payment:<uuid>" /
+    // "refund:<uuid>"). Every read in the UI is gated on it and every write
+    // is gated on a generation counter, which is what stops the two failure
+    // modes this block used to have: a 4s poll wiping the list on every tick
+    // (the visible "messages disappear and reappear" flicker) and one
+    // thread's slow response landing after another thread had already taken
+    // over and painting the wrong conversation.
     @Published var disputeChatBookingId: UUID?
+    @Published var disputeChatKey: String?
     @Published var disputeChatMessages: [DisputeMessage] = []
+    /// True once the FIRST load for `disputeChatKey` has settled. The loading
+    /// placeholder keys off this, never off `disputeChatLoading` — a
+    /// background refresh must never blank an already-populated transcript.
+    @Published var disputeChatInitialLoadDone = false
+    /// True only while a load for `disputeChatKey` is in flight — used to
+    /// refuse overlapping polls, not to decide what the user sees.
     @Published var disputeChatLoading = false
+    /// Per-thread drafts, so switching between two open disputes (or a
+    /// thread switch caused by a poll) can't destroy what was half-typed in
+    /// the other one. `disputeChatDraft` below is just the current key's entry.
+    @Published var disputeChatDrafts: [String: String] = [:]
     @Published var disputeChatDraft = ""
     @Published var disputeChatError = ""
+    /// Monotonic guard: only the newest load may write disputeChat*.
+    var disputeChatSeq = 0
+    /// Keys of threads currently being fetched, so a poll that lands while the
+    /// previous one for the SAME thread is still in flight is dropped instead
+    /// of racing it. Deliberately plain state, not @Published: nothing renders
+    /// off it, and republishing it would re-render the whole panel on every
+    /// tick for no visible reason.
+    var disputeChatInFlight: Set<String> = []
     // resolved_at/purge_after off the dispute_threads row — read-only,
     // drives the retention countdown label (DisputeChatPanel.swift)
     // instead of a delete button, since dispute_messages must survive
-    // until the 72h purge (05-notify-retention.md). nil for an open thread.
-    @Published var disputeChatThread: (resolvedAt: Date?, purgeAfter: Date?)?
+    // until the purge (05-notify-retention.md). nil for an open thread.
+    @Published var disputeChatThread: (threadId: UUID?, resolvedAt: Date?, purgeAfter: Date?, resolutionNote: String?)?
     /// "payment" | "refund" — which kind of dispute disputeChat* currently
     /// shows. Two different endings behind two different RPCs (banbe rules on
-    /// a payment dispute; a refund dispute just settles between the two
-    /// parties), so the panel's own copy and read-only state both branch on it.
+    /// a payment dispute; a refund dispute settles between the two parties),
+    /// so the panel's own copy and read-only state both branch on it.
     @Published var disputeChatKind: String?
     /// The REFUND half of the same panel: set alongside disputeChatBookingId
     /// = nil so exactly one of the two is ever the active chat, and one
     /// thread's 4s poll can't stomp another's visible conversation.
     @Published var disputeChatRefundClaimId: UUID?
-    /// The yellow "dispute" section pinned at the top of Messages
-    /// (MessagingViews.swift's InboxView) — one entry per live dispute chat
-    /// this account is a party to, from get_my_dispute_chats (migration 129).
+    /// claim id -> verified dispute state (migration 130). Populated by
+    /// loadRefundDisputeThread(_:), read by RefundDisputeEntry and by
+    /// ChatView's dispute block, so neither depends on the polled
+    /// disputeChats list being fresh.
+    @Published var refundDisputeThreads: [UUID: RefundDisputeThread] = [:]
+    @Published var refundDisputeThreadsLoading: Set<UUID> = []
+    /// The claim whose dispute card is expanded inside the booking
+    /// conversation right now. Distinct from `openDisputeChatThreadId`
+    /// below, which is kept only so an old caller can still request
+    /// "open that dispute" and have it routed to the conversation.
+    @Published var expandedDisputeClaimId: UUID?
+    /// Bumped whenever a new incoming message lands in the open dispute, so
+    /// the panel can decide between "scroll to bottom" (own send / initial
+    /// open) and "only if the reader was already near the bottom".
+    @Published var disputeChatIncomingTick = 0
+    /// The message id the ENCLOSING scroll view (the booking conversation,
+    /// ChatView) should jump to — initial open, own send, an incoming message
+    /// that arrived while the reader was at the end, or a dispute_message
+    /// deep-link. Kept in state rather than acted on locally because the panel
+    /// deliberately has no scroll view of its own to scroll.
+    @Published var disputeChatScrollTarget: UUID?
+    /// "payment" | "refund" (migration 129) — polled for Inbox-row
+    /// highlighting and cross-screen badges. NOT the source of truth for any
+    /// screen's entry point; see refundDisputeThreads above.
     @Published var disputeChats: [DisputeChatSummary] = []
     @Published var disputeChatsLoading = false
     @Published var disputeChatsError = ""
@@ -1428,6 +1478,32 @@ final class AppState: ObservableObject {
     /// "jump to this chat" button elsewhere — RefundDisputeEntry, or a
     /// dispute_message notification — can expand the right one on arrival.
     @Published var openDisputeChatThreadId: UUID?
+    /// The refund dispute attached to the booking conversation currently
+    /// open (get_refund_dispute_for_conversation, migration 130) — resolved
+    /// by exact conversation-thread id, never by event name.
+    @Published var conversationRefundDispute: RefundDisputeThread?
+    /// The escalated PAYMENT dispute on that same conversation, if any — the
+    /// "other dispute type" that attaches to its own matching system card.
+    @Published var conversationPaymentDisputeBookingID: UUID?
+    @Published var conversationDisputeLoading = false
+    /// claim id currently being closed / reported, so the button can be
+    /// disabled without also disabling every other card on the screen.
+    @Published var refundDisputeClosingClaimId: UUID?
+    @Published var disputeCloseError = ""
+    @Published var disputeTranscriptError = ""
+    /// True once prepareRefundDisputeTranscript() has staged a real file —
+    /// the trigger for presenting the native share sheet.
+    @Published var disputeTranscriptReadyToShare = false
+    /// The temporary transcript's export, as a real file in the temp
+    /// directory, handed to the native share sheet by DisputeChatPanel /
+    /// RefundDisputeEntry. nil until "Download transcript" has run once.
+    @Published var disputeTranscriptExportURL: URL?
+    /// claim id -> thread id, kept only so a caller that arrives holding a
+    /// dispute THREAD id (an old notification payload, the removed Inbox
+    /// accordion) can still find its claim and be routed to the booking
+    /// conversation. Empty is not an error: the authoritative lookups all go
+    /// through refundDisputeThreads instead.
+    @Published var disputeThreadClaimIndex: [UUID: UUID] = [:]
     @Published var openDisputes: [DisputeRow] = []
     // The admin dashboard (AdminDashboardView) — every dispute this account
     // can see; RLS makes that "every dispute, period" only when

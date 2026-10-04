@@ -82,10 +82,16 @@ struct InboxView: View {
                         .foregroundStyle(app.palette.ink.opacity(0.7))
                         .padding(.horizontal, 24).padding(.bottom, 6)
                 }
-                // Pinned ABOVE the conversation list, and only in the active
-                // view — a dispute is never archived, so the archived list has
-                // nothing to show here.
-                InboxDisputeSection()
+                // No standalone dispute band above the conversation list any
+                // more. A refund dispute now lives INSIDE the booking
+                // conversation it belongs to, as a block hung off that
+                // conversation's own "Booking cancelled" system card (and an
+                // escalated payment dispute off its own matching card), so
+                // there is exactly one conversation per booking instead of a
+                // second, parallel list of the same arguments sitting above
+                // the real ones. What's left of that idea is the highlight
+                // below: the conversation carrying a live dispute is marked
+                // on its own row, so it's still findable from here.
                 if visibleThreads.isEmpty {
                     Text(effectiveInboxView == .archived
                          ? app.T("Chưa có cuộc trò chuyện nào được lưu trữ.", "No archived conversations yet.")
@@ -151,6 +157,19 @@ struct InboxView: View {
             }
         }
         .task { await app.loadInboxThreads() }
+        // The dispute index is what marks which of these rows is carrying a
+        // live dispute (see InboxRow). Nothing else on this screen needs it,
+        // but it still has to be kept fresh here — the removed yellow
+        // accordion used to own this poll, and it has to survive its removal.
+        .task(id: effectiveInboxView) {
+            guard effectiveInboxView == .active else { return }
+            await app.loadDisputeChats()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                if Task.isCancelled { return }
+                await app.loadDisputeChats()
+            }
+        }
         .fullScreenCover(isPresented: $feedbackOpen) { FeedbackFlowView() }
         // Bug 2a (2026-09-21 follow-up) — `FeedbackFlowView` is a hand-
         // rolled `.fullScreenCover` INSIDE the main window, but
@@ -266,169 +285,13 @@ struct InboxView: View {
 
 }
 
-/// The yellow "dispute" section pinned above the conversation list
-/// (migration 129). One entry per live dispute chat this account is a party
-/// to — a goer who reported a missing refund, or an organizer of either side
-/// of one. Each expands INLINE into its own temporary chat, for both parties,
-/// rather than pushing a separate screen: it is a short, bounded exchange
-/// about one specific sum of money, so keeping it in place next to the message
-/// list is the whole point — it stays visible while the ordinary
-/// conversations scroll underneath it.
-///
-/// Shares nothing with InboxRow's swipe-to-star/archive on purpose: these are
-/// ephemeral records that purge themselves on a timer, so there is nothing
-/// here to star or archive.
-private struct InboxDisputeSection: View {
-    @EnvironmentObject private var app: AppState
-
-    /// Same 6s cadence as the ordinary conversation poll, for the same reason
-    /// — nothing in this app subscribes to Supabase Realtime (03-dispute-
-    /// chat.md), so a chat that's concluded or got a new message while you sit
-    /// on the Inbox can otherwise stay visibly stale until you leave and come
-    /// back.
-    private static let pollInterval: UInt64 = 6_000_000_000
-
-    /// "Ends in ~N days" — a static, render-time countdown, same idea as
-    /// DisputeChatPanel's own retention label, in days because this window is
-    /// 7 days wide and hour granularity here would just read as noise.
-    private func daysLeftLabel(_ purgeAfter: Date?) -> String? {
-        guard let purgeAfter else { return nil }
-        let days = Int(ceil(purgeAfter.timeIntervalSinceNow / 86400))
-        guard days > 0 else { return nil }
-        return days <= 1
-            ? app.T("tự xoá sau ~1 ngày", "deletes in ~1 day")
-            : app.T("tự xoá sau ~\(days) ngày", "deletes in ~\(days) days")
-    }
-
-    var body: some View {
-        // Hidden entirely in the archived view, and whenever there's genuinely
-        // nothing to say — including while the very first load is still in
-        // flight, since an empty yellow band flashing on every Inbox open
-        // would be worse than a brief absence. A genuine load failure DOES
-        // render, so the section can't fail silently.
-        if app.inboxView == .active, !app.disputeChats.isEmpty || !app.disputeChatsError.isEmpty {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .center, spacing: 10) {
-                    Text(app.disputeChats.count > 1
-                         ? app.T("Tranh chấp", "Disputes")
-                         : app.T("Tranh chấp", "Dispute"))
-                        .font(BanbeTheme.display(15))
-                        .foregroundStyle(app.palette.honey)
-                        .accessibilityIdentifier("inboxDisputeSection.title")
-                    Spacer()
-                    if !app.disputeChats.isEmpty {
-                        Text(app.T("Tạm thời", "Temporary"))
-                            .font(.system(size: 10.5, weight: .semibold))
-                            .foregroundStyle(app.palette.honey.opacity(0.8))
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 12)
-                .padding(.bottom, 10)
-
-                if !app.disputeChatsError.isEmpty {
-                    Text(app.disputeChatsError)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(app.palette.honey)
-                        .padding(.horizontal, 14)
-                        .padding(.bottom, 12)
-                        .accessibilityIdentifier("inboxDisputeSection.error")
-                }
-
-                ForEach(app.disputeChats) { chat in
-                    InboxDisputeRow(chat: chat)
-                }
-            }
-            .padding(.bottom, 16)
-            .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(app.palette.honey, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(.horizontal, 24)
-            .padding(.bottom, 16)
-            .accessibilityIdentifier("inboxDisputeSection")
-            .task {
-                await app.loadDisputeChats()
-                while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: Self.pollInterval)
-                    if Task.isCancelled { return }
-                    await app.loadDisputeChats()
-                }
-            }
-        }
-    }
-}
-
-/// One collapsible dispute chat inside InboxDisputeSection.
-private struct InboxDisputeRow: View {
-    @EnvironmentObject private var app: AppState
-    let chat: DisputeChatSummary
-
-    private var expanded: Bool { app.openDisputeChatThreadId == chat.threadId }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Divider().overlay(app.palette.honey)
-            SwipeSafeButton {
-                app.toggleDisputeChat(chat.threadId)
-            } label: {
-                HStack(alignment: .top, spacing: 10) {
-                    Text("›")
-                        .font(.system(size: 13))
-                        .foregroundStyle(app.palette.honey)
-                        .rotationEffect(.degrees(expanded ? 90 : 0))
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(chat.eventName ?? app.T("Tranh chấp", "Dispute"))
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(app.palette.ink)
-                            .lineLimit(1)
-                        Text(chat.isRefund
-                             ? app.T("Chưa nhận được khoản hoàn", "Refund not received")
-                             : app.T("Chờ banbe quyết định", "Awaiting banbe's decision")
-                             + (chat.amountVnd.map { " ▪︎ " + formatVnd($0) } ?? ""))
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(app.palette.ink.opacity(0.7))
-                        if let body = chat.lastMessageBody {
-                            Text(body)
-                                .font(.system(size: 11.5))
-                                .foregroundStyle(app.palette.ink.opacity(0.6))
-                                .lineLimit(1)
-                        }
-                    }
-
-                    Spacer(minLength: 0)
-
-                    VStack(alignment: .trailing, spacing: 3) {
-                        if chat.messageCount > 0 {
-                            Text(app.T("\(chat.messageCount) tin nhắn", "\(chat.messageCount) messages"))
-                                .font(.system(size: 10.5, weight: .semibold))
-                                .foregroundStyle(app.palette.honey)
-                        }
-                        if chat.isConcluded {
-                            Text(app.T("đã kết thúc", "ended"))
-                                .font(.system(size: 10))
-                                .foregroundStyle(app.palette.ink.opacity(0.6))
-                        }
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .opacity(chat.isConcluded ? 0.72 : 1)
-            }
-            .accessibilityIdentifier("inboxDisputeEntry")
-
-            if expanded {
-                DisputeChatPanel(bookingID: chat.bookingId, refundClaimID: chat.refundClaimId)
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 14)
-                    .accessibilityIdentifier("inboxDisputeEntry.chat")
-            }
-        }
-    }
-}
+// The former standalone yellow "Disputes / Temporary" accordion that used to
+// be pinned above these rows is gone on purpose: a dispute is not a separate
+// conversation, it is an argument ABOUT one, so it now renders inside the
+// booking conversation it belongs to (ChatView) as a block on that
+// conversation's own system card. Everything a reader still needs from this
+// list is carried by the "Dispute in progress" highlight on InboxRow below,
+// which is driven by the same verified per-conversation data.
 
 private struct InboxRow: View {
     @EnvironmentObject var app: AppState
@@ -439,6 +302,16 @@ private struct InboxRow: View {
     // badge, not a second computation.
     private var unread: Bool { thread.unread }
     private var starred: Bool { app.inboxThreadPrefs[thread.id]?.starred ?? false }
+
+    /// This exact conversation is carrying a live dispute right now. Exact
+    /// thread-id match against the dispute index (threads is
+    /// UNIQUE(event_id, guest_id), so a conversation is a 1:1 identity) —
+    /// never an event-name comparison, which would light up a second guest's
+    /// conversation on the same event. Once the dispute is closed the row
+    /// goes straight back to its normal styling.
+    private var hasActiveDispute: Bool {
+        app.activeDisputeConversationThreadIds.contains(thread.id)
+    }
 
     var body: some View {
         // Row-swipe-vs-tab-swipe fix pass (2026-09-28, third follow-up) —
@@ -508,6 +381,17 @@ private struct InboxRow: View {
                             .font(.system(size: 13, weight: unread ? .semibold : .regular))
                             .foregroundStyle(app.palette.ink.opacity(unread ? 1 : 0.72))
                             .lineLimit(1)
+                        // A live dispute on THIS conversation, in the same red
+                        // alert accent the dispute card itself uses, so the
+                        // row and the card read as one thing. Disappears on
+                        // closure along with every other trace of the dispute
+                        // in the list.
+                        if hasActiveDispute {
+                            Text(app.T("Tranh chấp đang diễn ra", "Dispute in progress"))
+                                .font(.system(size: 10.5, weight: .bold))
+                                .foregroundStyle(BanbeTheme.alert)
+                                .accessibilityIdentifier("inbox.thread.disputeInProgress")
+                        }
                     }
                     Spacer(minLength: 0)
                     // Bug 1 (2026-09-21 follow-up) — moved off the avatar
@@ -524,6 +408,18 @@ private struct InboxRow: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(app.palette.ink)
+            // The row's own background tints while its dispute is live. A
+            // List row's listRowBackground is set by the parent, so this
+            // overlay sits inside the row and is clipped by it — after
+            // closure the row is byte-for-byte the row it was before.
+            .background(alignment: .leading) {
+                if hasActiveDispute {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(BanbeTheme.alert.opacity(0.10))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .allowsHitTesting(false)
+                }
+            }
             // Screenshot Catalog (docs/demo-screenshots) — not unique per row
             // (every row shares it, matched via `.matching(identifier:)`), the
             // same convention `chat.attachment` already uses (MessagingViews.swift)
@@ -685,6 +581,9 @@ struct ChatView: View {
     // (set true only for a typed reply sent from ChatPhotoViewerView, never
     // a one-tap quick reaction — see AppState+Data.swift's own comment).
     @FocusState private var composerFocused: Bool
+    // A concluded dispute's transcript is collapsed back into its system card
+    // and only reopened on request, until the purge sweep removes it.
+    @State private var transcriptExpanded = false
 
     private var event: CatalogEvent { app.currentEvent }
 
@@ -697,6 +596,33 @@ struct ChatView: View {
                 messages
                 composer
             }
+        }
+        // Which dispute, if any, belongs to THIS conversation — resolved by
+        // exact thread id on open, and re-resolved for a few seconds after so
+        // a dispute raised on the other device appears without a manual
+        // reload. A thread switch resets both it and the collapsed
+        // transcript state, so nothing carries over between conversations.
+        .task(id: app.chatThreadID) {
+            guard let threadID = app.chatThreadID else {
+                app.conversationRefundDispute = nil
+                app.conversationPaymentDisputeBookingID = nil
+                return
+            }
+            transcriptExpanded = false
+            app.conversationRefundDispute = nil
+            await app.loadConversationDispute(conversationThreadID: threadID)
+            for _ in 0..<2 {
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                if Task.isCancelled { return }
+                guard app.chatThreadID == threadID else { return }
+                await app.loadConversationDispute(conversationThreadID: threadID)
+            }
+        }
+        .onDisappear {
+            app.conversationRefundDispute = nil
+            app.conversationPaymentDisputeBookingID = nil
+            app.expandedDisputeClaimId = nil
+            app.disputeChatScrollTarget = nil
         }
         .onAppear {
             pollTask = Task {
@@ -833,7 +759,7 @@ struct ChatView: View {
                             unreadDivider
                         }
                         if message.kind == "system", let card = classifySystemMessage(message.body) {
-                            systemCard(card, messageID: message.id)
+                            systemCard(card, message: message)
                         } else {
                             bubble(
                                 text: message.body, mine: message.senderId == app.userID,
@@ -850,11 +776,26 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 22)
                 .padding(.vertical, 18)
+                // Clearance for the composer, the home indicator and the
+                // bottom tab bar's collapsed strip. Without it the last
+                // message — and, inside a dispute block, the newest message of
+                // the dispute — can end up underneath them and look clipped.
+                .padding(.bottom, 28)
             }
+            .scrollDismissesKeyboard(.interactively)
             .onChange(of: app.chatMessages.count) {
                 if let last = app.chatMessages.last {
                     withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
+            }
+            // The dispute panel has no scroll view of its own (see
+            // DisputeChatPanel): this conversation's proxy is what carries its
+            // scroll-to requests — the end of the history on open/own send, a
+            // specific message on a dispute_message deep link.
+            .onChange(of: app.disputeChatScrollTarget) { _, target in
+                guard let target else { return }
+                withAnimation { proxy.scrollTo(target, anchor: .bottom) }
+                app.disputeChatScrollTarget = nil
             }
         }
     }
@@ -890,27 +831,131 @@ struct ChatView: View {
         return nil
     }
 
-    private func systemCard(_ card: (status: String, label: String), messageID: UUID) -> some View {
+    @ViewBuilder
+    private func systemCard(_ card: (status: String, label: String), message: ChatMessage) -> some View {
+        let attached = attachedDispute(for: card.status)
+        // While the dispute is live the card IS the dispute block; once it
+        // closes, the card collapses back to exactly the card it was, with
+        // only a quiet "Dispute completed" line and a way back into the
+        // transcript until the purge removes it.
+        let expanded = attached != nil && (attached!.isActive || transcriptExpanded)
         VStack(alignment: .leading, spacing: 8) {
-            Text(card.label)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(card.status == "confirmed" ? app.palette.ink : BanbeTheme.alert)
-            if let message = app.chatMessages.first(where: { $0.id == messageID }) {
-                Text(message.body)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(app.palette.ink.opacity(0.75))
+            HStack(alignment: .center, spacing: 8) {
+                Text(card.label)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(card.status == "confirmed" ? app.palette.ink : BanbeTheme.alert)
+                Spacer(minLength: 0)
+                if attached?.isActive == true {
+                    Text(app.T("Tranh chấp đang diễn ra", "Dispute in progress"))
+                        .font(.system(size: 10.5, weight: .bold))
+                        .foregroundStyle(BanbeTheme.alert)
+                        .accessibilityIdentifier("chat.dispute.inProgress")
+                } else if attached?.isCompleted == true {
+                    Text(app.T("Tranh chấp đã hoàn tất", "Dispute completed"))
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(app.palette.ink.opacity(0.55))
+                        .accessibilityIdentifier("chat.dispute.completed")
+                }
             }
+            Text(message.body)
+                .font(.system(size: 12.5))
+                .foregroundStyle(app.palette.ink.opacity(0.75))
             Button(app.T("Xem chi tiết", "Show details")) { app.goEvent(event.key) }
                 .font(.system(size: 11.5, weight: .semibold))
                 .underline()
                 .buttonStyle(.plain)
+
+            if let attached {
+                if expanded {
+                    disputeBlock(attached)
+                } else {
+                    // Collapsed-but-concluded: the transcript is still here
+                    // for the rest of the retention window, so the way in
+                    // stays on the card rather than disappearing with it.
+                    Button {
+                        transcriptExpanded = true
+                    } label: {
+                        Text(app.T("Xem lại bản ghi tranh chấp ›", "Read the dispute transcript ›"))
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .underline()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("chat.dispute.openTranscript")
+                }
+            }
+
+            // The OTHER dispute type — the host escalating a PAYMENT dispute
+            // to banbe — hangs off the card that describes the same thing
+            // ("Payment confirmed"), resolved by this conversation's own
+            // booking id. It keeps banbe's admin-only resolution: nothing here
+            // closes it, exports nothing on its behalf, and it collapses to
+            // the plain card as soon as banbe has ruled.
+            if card.status == "confirmed", let paymentBookingID = app.conversationPaymentDisputeBookingID {
+                Divider().overlay(app.palette.rule).padding(.vertical, 2)
+                DisputeChatPanel(bookingID: paymentBookingID)
+                    .accessibilityIdentifier("chat.dispute.paymentPanel")
+            }
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(attached?.isActive == true ? BanbeTheme.alert.opacity(0.55) : app.palette.rule, lineWidth: 1)
+        )
         .foregroundStyle(app.palette.ink)
+        .id(message.id)
         .accessibilityIdentifier("chat.systemCard")
+    }
+
+    /// Which dispute, if any, hangs off THIS system card.
+    ///
+    /// Matched by exact ids, never by event name or by "the only dispute on
+    /// this screen": a cancellation-driven refund dispute attaches to the
+    /// "Booking cancelled" card, and every other dispute type (the escalated
+    /// payment dispute the host raises through banbe) attaches to the card
+    /// that describes the same thing. Both come from a lookup keyed on this
+    /// conversation's own thread id (loadConversationDispute), which is why
+    /// two conversations on one event can each carry a different dispute.
+    private func attachedDispute(for status: String) -> RefundDisputeThread? {
+        guard let claim = app.conversationRefundDispute, claim.found else { return nil }
+        // A refund dispute over a cancellation is what the "Booking cancelled"
+        // card is about; anything else on this conversation belongs on the
+        // payment card instead, and the payment half is rendered separately.
+        return status == "declined" ? claim : nil
+    }
+
+    /// The expanded dispute: status, amount, the temporary-chat notice, the
+    /// full history, the composer, and the export/close actions. The panel
+    /// itself owns the refresh loop and the transcript; this only decides it
+    /// belongs on this card and that it renders INSIDE this conversation's
+    /// scroll view (which is what makes every message reachable — see
+    /// DisputeChatPanel's own note on the nested-scroll bug).
+    @ViewBuilder
+    private func disputeBlock(_ claim: RefundDisputeThread) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                if let amount = claim.amountVnd {
+                    Text(formatVnd(amount))
+                        .font(BanbeTheme.display(15))
+                        .foregroundStyle(app.palette.ink)
+                }
+                Spacer(minLength: 0)
+                if let status = claim.claimStatus {
+                    Text(app.T("Trạng thái: \(status)", "Status: \(status)"))
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(app.palette.ink.opacity(0.6))
+                        .accessibilityIdentifier("chat.dispute.claimStatus")
+                }
+            }
+            Divider().overlay(app.palette.rule)
+            DisputeChatPanel(
+                refundClaimID: claim.refundClaimId,
+                claim: claim
+            )
+            .accessibilityIdentifier("chat.dispute.panel")
+        }
+        .padding(.top, 6)
     }
 
     private func formattedTime(_ date: Date?) -> String {
@@ -1101,6 +1146,10 @@ private let notificationCollapseAt = 20
 // already uses SF Symbols, not RowIcon's web-only inline SVG set).
 private let notificationKindCategory: [String: String] = [
     "refund_marked_sent": "refund", "refund_confirmed": "refund", "refund_disputed": "refund", "refund_overdue": "refund",
+    // Migration 130 — the closure notification belongs to the same family as
+    // the dispute it ends; without this it falls back to the generic bell
+    // while its tap handler already routes into the dispute card.
+    "refund_dispute_closed": "refund",
     "dispute_message": "dispute", "dispute_resolved": "dispute", "payment_disputed": "dispute",
     "payment_awaiting_verification": "payment", "payment_confirmed": "payment", "payment_document_uploaded": "payment",
     "payment_document_replaced": "payment", "payment_verification_nudge": "payment", "payment_needs_info": "payment",

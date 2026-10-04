@@ -62,6 +62,9 @@ struct HomeView: View {
             onOpenPayment: { app.openPaymentDetails($0, back: .home) },
             onOpenMyRefunds: { app.openMyRefunds(back: .home) },
             onOpenRefundAccounts: { app.openRefundAccounts(back: .home) },
+            // "Refund dispute open › View" goes to the booking conversation
+            // that dispute actually belongs to, with its card expanded.
+            onOpenRefundDispute: { claimID, back in app.openRefundDisputeFromActionCenter(claimID: claimID, back: back) },
             T: app.T
         ))
         if app.canHost {
@@ -71,6 +74,8 @@ struct HomeView: View {
                 onOpenVerifications: { app.openVerifications() },
                 onOpenRefundCenter: { app.openVerifications() },
                 onOpenDashboard: { app.goDashboard() },
+                // Same single-dispute shortcut as the goer half.
+                onOpenRefundDispute: { claimID, back in app.openRefundDisputeFromActionCenter(claimID: claimID, back: back) },
                 T: app.T
             ))
         }

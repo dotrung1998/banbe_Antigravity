@@ -73,6 +73,9 @@ struct DashboardView: View {
             onOpenVerifications: { app.openVerifications(back: .dashboard) },
             onOpenRefundCenter: { app.openVerifications(back: .dashboard) },
             onOpenDashboard: {},
+            // A single open dispute goes straight to that dispute's own
+            // conversation rather than to the queue in front of it.
+            onOpenRefundDispute: { claimID, back in app.openRefundDisputeFromActionCenter(claimID: claimID, back: back) },
             T: app.T
         ))
     }

@@ -12,7 +12,6 @@ struct VerificationsView: View {
     @State private var reason = ""
     @State private var tickTask: Task<Void, Never>?
     @State private var tick = Date()
-    @State private var openChatBookingID: UUID?
     // Flow 2 (host refund -> guest confirmation).
     @State private var refundQueuePollTask: Task<Void, Never>?
     @State private var refundNoteFor: UUID?
@@ -108,6 +107,13 @@ struct VerificationsView: View {
                 // banbe decides. Hidden while focused on one booking
                 // (14-organizer-checkin.md) — that view is meant to be
                 // exactly one booking's own detail.
+                //
+                // "Open dispute chat" opens the EXISTING booking conversation
+                // with this booking's own dispute card already hung off it,
+                // rather than mounting a second, parallel copy of the
+                // transcript here — one conversation per booking, and the
+                // temporary messages stay in dispute_messages, separate from
+                // the permanent ones.
                 if app.verificationsFocusBookingID == nil, !app.openDisputes.isEmpty {
                     Text(app.T("Đang chờ banbe quyết định", "Awaiting banbe's decision"))
                         .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.7))
@@ -121,16 +127,17 @@ struct VerificationsView: View {
                                     Spacer(minLength: 8)
                                     Text(formatVnd(d.totalVnd)).font(BanbeTheme.display(16))
                                 }
-                                if openChatBookingID == d.bookingId {
-                                    DisputeChatPanel(bookingID: d.bookingId)
-                                } else {
-                                    Button { openChatBookingID = d.bookingId } label: {
-                                        Text(app.T("Mở đoạn chat tranh chấp ›", "Open dispute chat ›"))
+                                SwipeSafeButton {
+                                    Task { await openDisputeConversation(d.bookingId) }
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Text(app.T("Mở chat với khách ›", "Open chat with the goer ›"))
                                             .font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
+                                        Spacer(minLength: 0)
                                     }
-                                    .buttonStyle(.plain)
-                                    .accessibilityIdentifier("verification.openDisputeChat")
+                                    .contentShape(Rectangle())
                                 }
+                                .accessibilityIdentifier("verification.openDisputeChat")
                             }
                             .padding(14)
                             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -214,12 +221,14 @@ struct VerificationsView: View {
         .onAppear {
             startTicking()
             startRefundQueuePolling()
-            // Tapping a 'dispute_message' toast/notification lands an
-            // organizer here with app.chatHighlight set — unlike
-            // PaymentDetailsView, this screen only mounts DisputeChatPanel
-            // once its own local toggle is opened, so that has to happen
-            // here before DisputeChatPanel can scroll to/highlight anything.
-            if let bookingID = app.chatHighlight?.bookingID { openChatBookingID = bookingID }
+            // Tapping a 'dispute_message' toast/notification used to land an
+            // organizer here with app.chatHighlight set, which this screen
+            // turned into an inline chat panel. The transcript now lives in
+            // the booking conversation (ChatView), so this opens that
+            // conversation with its dispute card attached instead.
+            if let bookingID = app.chatHighlight?.bookingID {
+                Task { await openDisputeConversation(bookingID) }
+            }
             // One-shot scroll-to-refunds (openVerificationsRefunds) —
             // `.scrollPosition(id:)` applies the scroll once this id is
             // set and a matching `.id(...)` exists; clearing it shortly
@@ -235,12 +244,25 @@ struct VerificationsView: View {
         }
         .onDisappear { tickTask?.cancel(); refundQueuePollTask?.cancel() }
         .onChange(of: app.chatHighlight?.bookingID) { _, newValue in
-            if let newValue { openChatBookingID = newValue }
+            if let newValue { Task { await openDisputeConversation(newValue) } }
         }
     }
 
     private var activeRefundRows: [RefundClaim] { app.refundQueue.filter(\.isActiveRefundStatus) }
     private var pendingRefundRows: [RefundClaim] { app.refundQueue.filter { $0.status == "host_marked_sent" } }
+
+    /// Open this booking's EXISTING conversation with its dispute card
+    /// attached. When no conversation exists for this (event, guest) pair
+    /// yet, there is genuinely nowhere to go — say so rather than silently
+    /// doing nothing or fabricating a duplicate thread.
+    private func openDisputeConversation(_ bookingID: UUID) async {
+        if await app.openDisputeForBooking(bookingID, back: app.verificationsBack) { return }
+        app.pushToast(AppNotification(
+            id: UUID(), recipientId: app.userID ?? UUID(), kind: "stale_notice",
+            title: app.T("Chưa có cuộc trò chuyện nào với khách này.", "There's no conversation with this guest yet."),
+            body: "", data: [:], readAt: Date(), createdAt: Date()
+        ))
+    }
 
     @ViewBuilder
     private func refundRow(_ claim: RefundClaim) -> some View {
@@ -271,8 +293,10 @@ struct VerificationsView: View {
                         .accessibilityIdentifier("refundQueue.disputed")
                     RefundDisputeEntry(
                         refundClaimId: claim.id,
+                        viewer: .host,
                         amountVnd: claim.amountVnd,
-                        eventName: claim.eventName
+                        eventName: claim.eventName,
+                        back: app.verificationsBack
                     )
                 }
             } else if !claim.hasValidDestination {
@@ -453,19 +477,21 @@ struct VerificationsView: View {
             // row.disputeReason means "Can't find it" already fired here —
             // reject_payment (migration 041) now opens a dispute_threads
             // row the moment that happens, not only once
-            // escalate_payment_dispute runs, so there's already a chat to
-            // reach even though this row is still in the ordinary queue.
+            // escalate_payment_dispute runs. That transcript lives in the
+            // booking conversation, so this opens it rather than mounting a
+            // second inline copy of it here.
             if let reason = row.disputeReason, !reason.isEmpty {
-                if openChatBookingID == row.bookingId {
-                    DisputeChatPanel(bookingID: row.bookingId)
-                } else {
-                    Button { openChatBookingID = row.bookingId } label: {
-                        Text(app.T("Mở đoạn chat với khách ›", "Open chat with guest ›"))
+                SwipeSafeButton {
+                    Task { await openDisputeConversation(row.bookingId) }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(app.T("Mở chat với khách ›", "Open chat with the goer ›"))
                             .font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
+                        Spacer(minLength: 0)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("verification.openNotFoundChat")
+                    .contentShape(Rectangle())
                 }
+                .accessibilityIdentifier("verification.openNotFoundChat")
             }
 
             if let current = reasonFor, current.bookingId == row.bookingId {

@@ -52,6 +52,11 @@ struct ActionCenterInputs {
     var onOpenVerifications: () -> Void = {}
     var onOpenRefundCenter: () -> Void = {}
     var onOpenDashboard: () -> Void = {}
+    /// Opens the EXACT booking conversation this refund claim's dispute
+    /// belongs to, with its dispute card expanded. Takes the claim id (the
+    /// stable identity) and the screen to return to. Declared last (before
+    /// `T`) purely so existing call sites keep their argument order.
+    var onOpenRefundDispute: (UUID, Screen) -> Void = { _, _ in }
     var T: (String, String) -> String
 }
 
@@ -131,12 +136,15 @@ func buildActionCenterItems(_ p: ActionCenterInputs) -> [ActionCenterItem] {
                 onTap: p.onOpenMyRefunds
             ))
         }
-        for c in p.myRefunds where c.status == "disputed" {
+for c in p.myRefunds where c.status == "disputed" {
             items.append(ActionCenterItem(
                 id: "refund-dispute-\(c.id)", testId: "action-center-refund-dispute", severity: .overdue, deadline: c.hostResponseDueAt,
                 label: T("Tranh chấp hoàn tiền đang chờ", "Refund dispute open"),
                 detail: c.eventName, ctaLabel: T("Xem", "View"),
-                onTap: p.onOpenMyRefunds
+                // Straight into the conversation this dispute lives in, with
+                // its dispute card expanded — not into the refund list, which
+                // is one more tap away from the thing the item is about.
+                onTap: { p.onOpenRefundDispute(c.id, .profile) }
             ))
         }
 
@@ -169,13 +177,24 @@ func buildActionCenterItems(_ p: ActionCenterInputs) -> [ActionCenterItem] {
         }
         let disputed = p.refundQueue.filter { $0.status == "disputed" }
         if !disputed.isEmpty {
+            // One open dispute goes STRAIGHT to that dispute's conversation,
+            // so the host's own link reaches the same dispute the goer's does.
+            // Several at once stay a queue — an item that silently picked one
+            // of four disputes would be worse than one honest hop.
+            let single = disputed.count == 1 ? disputed.first : nil
             items.append(ActionCenterItem(
                 id: "refund-dispute-queue", testId: "action-center-refund-dispute-queue", severity: .overdue,
                 deadline: disputed.compactMap(\.hostResponseDueAt).min(),
                 label: T("Tranh chấp hoàn tiền cần phản hồi", "Refund disputes need a response"),
                 detail: "\(disputed.count)" + T(" khoản", disputed.count == 1 ? " claim" : " claims"),
                 ctaLabel: T("Xem", "View"),
-                onTap: p.onOpenRefundCenter
+                onTap: {
+                    if let single {
+                        p.onOpenRefundDispute(single.id, .dashboard)
+                    } else {
+                        p.onOpenRefundCenter()
+                    }
+                }
             ))
         }
         if let orgHolding = p.orgHolding, orgHolding.count > 0 {

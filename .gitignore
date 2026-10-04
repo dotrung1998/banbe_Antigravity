@@ -55,3 +55,10 @@ dist-ssr
 # PNGs themselves.
 /output/ios-screenshot-catalog/
 /docs/demo-screenshots/**/*.png
+
+# LOCAL TEST HARNESS — never deployed; `supabase db push` only reads
+# supabase/migrations/*.sql, so nothing here can ever be applied. Kept local
+# on purpose: it recreates the storage/auth scaffolding a bare Postgres lacks,
+# which is worthless (and misleading) anywhere but a throwaway container.
+# Run it with ./supabase/_localtest/run.sh
+/supabase/_localtest/
