@@ -50,7 +50,6 @@ struct ReasonOption: Identifiable {
     ]
     static let cancelBooking: [ReasonOption] = [
         .init(key: "event_changed", vi: "Sự kiện đổi lịch hoặc huỷ", en: "Event rescheduled or cancelled"),
-        .init(key: "guest_requested", vi: "Khách yêu cầu huỷ", en: "Guest asked to cancel"),
         .init(key: "payment_incomplete", vi: "Không thanh toán đúng hạn", en: "Payment not completed in time"),
         .init(key: "policy_violation", vi: "Vi phạm quy định", en: "Policy violation"),
         .init(key: "other", vi: "Khác", en: "Other"),

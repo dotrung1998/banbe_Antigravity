@@ -12,6 +12,7 @@ struct AttendanceView: View {
     // .fileImporter needs one shared presentation per view, not one per row.
     @State private var uploadTarget: UUID?
     @State private var promoSheetOpen = false
+    @State private var cancelEventOpen = false
     @State private var uploadErrorFor: UUID?
     // Replacing an existing live receipt requires a reason
     // (upload_payment_document()'s own REASON_REQUIRED gate, migration
@@ -88,6 +89,19 @@ struct AttendanceView: View {
                 HostPromoSheet(eventKey: key).environmentObject(app)
             }
         }
+        .sheet(isPresented: $cancelEventOpen) {
+            if let key = app.attendanceEventKey, let event = liveEvent {
+                CancelEventSheet(
+                    eventKey: key, eventName: event.name,
+                    eventDate: app.trStatus(event.when),
+                    eventPlace: app.trStatus(app.stripKm(event.where, event: event)),
+                    organizerName: event.orgName.isEmpty ? event.host : event.orgName,
+                    alreadyCancelled: liveEvent?.cancelled ?? false,
+                    onFinished: { app.screen = app.attendanceBack }
+                )
+                .environmentObject(app)
+            }
+        }
         .onDisappear { pollTask?.cancel() }
         .fileImporter(
             isPresented: Binding(get: { uploadTarget != nil }, set: { if !$0 { uploadTarget = nil } }),
@@ -121,9 +135,24 @@ struct AttendanceView: View {
                         .font(.system(size: 13))
                         .padding(.top, 40)
                 } else if event != nil, eventEnded {
-                    Text(app.T("Sự kiện đã kết thúc.", "This event has ended."))
+                    Text(liveEvent?.cancelled == true
+                         ? app.T("Sự kiện đã bị huỷ.", "This event was cancelled.")
+                         : app.T("Sự kiện đã kết thúc.", "This event has ended."))
                         .font(.system(size: 13))
                         .padding(.top, 40)
+                    // A cancelled event keeps its guest emails reachable, so the
+                    // host can come back and finish drafting messages.
+                    if liveEvent?.cancelled == true {
+                        Button {
+                            cancelEventOpen = true
+                        } label: {
+                            Label(app.T("Gửi thư cho người giữ vé", "Email ticket holders"), systemImage: "envelope")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 14)
+                        .accessibilityIdentifier("attendance.emailHolders")
+                    }
                 } else if let event {
                     HStack(alignment: .top, spacing: 12) {
                         VStack(alignment: .leading, spacing: 4) {
@@ -159,6 +188,17 @@ struct AttendanceView: View {
                     .buttonStyle(.plain)
                     .padding(.top, 10)
                     .accessibilityIdentifier("attendance.promo")
+
+                    Button {
+                        cancelEventOpen = true
+                    } label: {
+                        Label(app.T("Huỷ sự kiện", "Cancel event"), systemImage: "xmark.circle")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(BanbeTheme.alert)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 10)
+                    .accessibilityIdentifier("attendance.cancelEvent")
 
                     HStack {
                         Text(app.T("Đã đến", "Checked in"))

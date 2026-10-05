@@ -5,6 +5,7 @@ import { formatVnd } from '../lib/paymentDocument.js';
 import { liveEventOverrides } from '../lib/countdown.js';
 import { formatShortDate } from '../lib/paymentDocument.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
+import CancelEventModal from '../components/CancelEventModal.jsx';
 
 const REFUND_STATUS_LABEL = {
   needsDestination: ['Cần tài khoản nhận tiền', 'Needs destination'],
@@ -24,7 +25,7 @@ export default function Attendance() {
   const {
     state, set, T, trStatus, backFromAttendance, toggleCheckin, openQrScan, openCancelBooking, markGuestPaid, uploadPaymentDocument,
     openVerificationDetail, openRejectGuest, loadAttendanceGuests, openDocumentFromNotification, loadHomeLiveEvents,
-    loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo, markRefundSent,
+    cancelEvent, loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo, markRefundSent,
   } = useGoc();
   const s = state;
   // Same documentBack-style pattern (07-notifications.md's 2026-09-18
@@ -33,6 +34,7 @@ export default function Attendance() {
   // actually where the tap goes.
   const backLabel = s.attendanceBack === 'notifications' ? T('Thông báo', 'Notifications') : T('Trang của bạn', 'Your dashboard');
   const fileInputRef = useRef(null);
+  const [cancelEventOpen, setCancelEventOpen] = useState(false);
   const [uploadingFor, setUploadingFor] = useState(null);
   const [uploadErrorFor, setUploadErrorFor] = useState(null);
   // Replacing an existing live receipt requires a reason
@@ -196,7 +198,22 @@ export default function Attendance() {
     return (
       <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
         <div onClick={backFromAttendance} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
-        <p style={{ padding: '40px 22px', fontSize: 13, color: ink }}>{T('Sự kiện đã kết thúc.', 'This event has ended.')}</p>
+        <p style={{ padding: '40px 22px 0', fontSize: 13, color: ink }}>{attEvLive.cancelled ? T('Sự kiện đã bị huỷ.', 'This event was cancelled.') : T('Sự kiện đã kết thúc.', 'This event has ended.')}</p>
+        {/* A cancelled event keeps its guest emails reachable, so the host can
+            come back and finish drafting messages after leaving the sheet. */}
+        {attEvLive.cancelled && (
+          <p onClick={() => setCancelEventOpen(true)} data-testid="attendance-email-holders"
+             style={{ fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer', padding: '14px 22px 0', margin: 0 }}>✉ {T('Gửi thư cho người giữ vé', 'Email ticket holders')}</p>
+        )}
+        {cancelEventOpen && (
+          <CancelEventModal
+            eventKey={attKey} eventName={attEv.name} eventDate={trStatus(attEvLive.when)}
+            eventPlace={trStatus(String(attEv.where || '').split(' ▪︎ ')[0])}
+            organizerName={attEv.orgName || attEv.host || ''}
+            lang={s.lang} T={T} cancelEvent={cancelEvent} alreadyCancelled
+            onClose={() => setCancelEventOpen(false)}
+            onFinished={() => { setCancelEventOpen(false); backFromAttendance(); }} />
+        )}
       </div>
     );
   }
@@ -233,6 +250,17 @@ export default function Attendance() {
           10px into this screen's own 12-16px spacing ladder. */}
       <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, margin: '14px 22px 0' }}>{T('Chạm vào tên khách hoặc quét mã QR vé khi họ tới nơi.', "Tap a guest's name, or scan their ticket QR, when they arrive.")}</p>
       <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '6px 22px 0' }}>{T('Đánh dấu "Đã thanh toán" khi bạn thấy tiền vào tài khoản, rồi tải lên hoá đơn/biên nhận thật của bạn cho khách.', 'Mark a guest paid once you see the money arrive, then upload your own real invoice/receipt for them.')}</p>
+      <p onClick={() => setCancelEventOpen(true)} data-testid="attendance-cancel-event"
+         style={{ fontSize: 12.5, color: alert, cursor: 'pointer', margin: '10px 22px 0' }}>✕ {T('Huỷ sự kiện', 'Cancel event')}</p>
+      {cancelEventOpen && (
+        <CancelEventModal
+          eventKey={attKey} eventName={attEv.name} eventDate={trStatus(attEvLive.when)}
+          eventPlace={trStatus(String(attEv.where || '').split(' ▪︎ ')[0])}
+          organizerName={attEv.orgName || attEv.host || ''}
+          lang={s.lang} T={T} cancelEvent={cancelEvent}
+          onClose={() => setCancelEventOpen(false)}
+          onFinished={() => { setCancelEventOpen(false); backFromAttendance(); }} />
+      )}
       <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: 'none' }} onChange={onReceiptFileChosen} data-testid="attendance-receipt-input" />
       <div style={{ ...fieldGlass({ margin: '14px 22px 0', display: 'flex', flexDirection: 'column' }) }}>
         {guests.map(g => {

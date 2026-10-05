@@ -5136,3 +5136,58 @@ struct CreateEventParams: Encodable {
         case neighborhood = "p_neighborhood"
     }
 }
+
+// MARK: - Host: cancel an event + email its ticket holders
+
+extension AppState {
+    struct TicketHolder: Decodable, Equatable {
+        let name: String
+        let email: String
+    }
+
+    private struct TicketHoldersResult: Decodable {
+        let success: Bool
+        let holders: [TicketHolder]?
+        let error: String?
+    }
+
+    private struct CancelEventResult: Decodable {
+        let success: Bool
+        let error: String?
+    }
+
+    /// Everyone cancelling would affect (organizer/admin only, server-enforced).
+    /// nil on failure, so the caller can tell "none" from "couldn't load".
+    func loadTicketHolders(eventKey: String) async -> [TicketHolder]? {
+        do {
+            let res: TicketHoldersResult = try await SupabaseService.client
+                .rpc("get_event_ticket_holders", params: ["p_event": eventKey])
+                .execute().value
+            return res.success ? (res.holders ?? []) : nil
+        } catch {
+            print("loadTicketHolders failed:", error)
+            return nil
+        }
+    }
+
+    /// Cancels the event through the existing cancel_event RPC (cancels every
+    /// live booking, opens the refund claims, posts the system message).
+    /// Returns nil on success, otherwise a message fit to show the host.
+    func hostCancelEvent(eventKey: String, reason: String) async -> String? {
+        do {
+            let res: CancelEventResult = try await SupabaseService.client
+                .rpc("cancel_event", params: ["p_event": eventKey, "p_reason": reason])
+                .execute().value
+            guard res.success else {
+                return res.error == "NOT_AUTHORIZED"
+                    ? T("Bạn không có quyền huỷ sự kiện này.", "You're not allowed to cancel this event.")
+                    : T("Không huỷ được sự kiện. Vui lòng thử lại.", "Couldn't cancel the event. Please try again.")
+            }
+            await loadAttendanceGuests(eventKey)
+            return nil
+        } catch {
+            print("hostCancelEvent failed:", error)
+            return T("Không huỷ được sự kiện. Vui lòng thử lại.", "Couldn't cancel the event. Please try again.")
+        }
+    }
+}

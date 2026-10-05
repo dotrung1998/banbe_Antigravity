@@ -1239,7 +1239,6 @@ export const UNDO_CHECKIN_REASONS = [
 ];
 export const CANCEL_BOOKING_REASONS = [
   { key: 'event_changed', vi: 'Sự kiện đổi lịch hoặc huỷ', en: 'Event rescheduled or cancelled' },
-  { key: 'guest_requested', vi: 'Khách yêu cầu huỷ', en: 'Guest asked to cancel' },
   { key: 'payment_incomplete', vi: 'Không thanh toán đúng hạn', en: 'Payment not completed in time' },
   { key: 'policy_violation', vi: 'Vi phạm quy định', en: 'Policy violation' },
   { key: 'other', vi: 'Khác', en: 'Other' },
