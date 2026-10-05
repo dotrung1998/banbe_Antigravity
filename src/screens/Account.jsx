@@ -7,6 +7,7 @@ import { AttachMenuIcon } from './Chat.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
 import ActionCenter from './ActionCenter.jsx';
+import ProfileShareSheet, { ShareCardRow, profileShareLinks } from './sheets/ProfileShareSheet.jsx';
 import { pickSoonest } from '../lib/countdown.js';
 import { computeAdminModerationCount, computeHostActionCount, computeMyTicketsActionCount, computeMyRefundActionCount, computePersonalActionCount, formatBadgeCount } from '../lib/badges.js';
 
@@ -160,6 +161,7 @@ export default function Account() {
     loadMyAdminInvite, respondToAdminInvite, loadAdminTeam,
   } = useGoc();
   const s = state;
+  const [shareCardFor, setShareCardFor] = useState(null); // 'member' | 'host' | null
   // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Both panes stay
   // mounted (display:none on the inactive one, not unmounted), each in its
   // OWN independently-scrolling container — switching tabs never resets
@@ -480,6 +482,10 @@ export default function Account() {
           </span>
         )}
       </div>
+
+      {s.user?.handle && (
+        <ShareCardRow onClick={() => setShareCardFor('member')} testId="account-share-card-personal" />
+      )}
 
       {/* Account IA reorder pass (2026-09-30 second) — target order per
           17-ux-foundation-release.md's dated section: this cluster answers
@@ -815,6 +821,10 @@ export default function Account() {
           child actions/testids, moved into the shared AccountGroup screen.
           Badge = real outstanding host duties (verifications + refund
           queue), never invented. */}
+      {canHost && s.myOrganizerId && (
+        <ShareCardRow host onClick={() => setShareCardFor('host')} testId="account-share-card-host" />
+      )}
+
       <ActionCenter items={hostActionItems} onSeeAll={() => openVerifications('profile')} T={T} />
 
       {canHost && (
@@ -928,6 +938,20 @@ export default function Account() {
           <div style={{ height: 24 }} />
         </div>
       )}
+      <ProfileShareSheet
+        open={shareCardFor !== null}
+        onClose={() => setShareCardFor(null)}
+        kindLabel={shareCardFor === 'host' ? T('Tổ chức', 'Host') : T('Thành viên', 'Member')}
+        name={shareCardFor === 'host' ? (s.orgRegName || T('Chưa đặt tên', 'Unnamed host')) : profileName}
+        subtitle={shareCardFor === 'host'
+          ? (s.myOrgPublishedEventCount !== null && s.myOrgPublishedEventCount !== undefined ? T(`${s.myOrgPublishedEventCount} sự kiện`, `${s.myOrgPublishedEventCount} events`) : '')
+          : (s.user?.handle ? `@${s.user.handle}` : '')}
+        detail={shareCardFor === 'host' ? (s.orgRegDesc || '') : ''}
+        avatarUrl={shareCardFor === 'host' ? organizerAvatarUrl(s.myOrganizerAvatarPath) : (s.user?.avatarUrl || '')}
+        roundAvatar={shareCardFor !== 'host'}
+        link={shareCardFor === 'host' ? profileShareLinks().host(s.myOrganizerId) : profileShareLinks().member(s.user?.handle)}
+        idPrefix={shareCardFor === 'host' ? 'account-host-share' : 'account-personal-share'}
+      />
     </div>
   );
 }

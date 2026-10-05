@@ -4,6 +4,7 @@ import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
 import { APP_STORE_URL } from '../lib/appStore.js';
+import ProfileShareSheet, { profileShareLinks } from './sheets/ProfileShareSheet.jsx';
 import { LongIntroPreview, SocialLinksRow } from './LongIntro.jsx';
 
 // TASK D — "app not installed" fallback (rule D3): a shared /u/<handle>
@@ -27,6 +28,7 @@ export default function PublicProfile() {
   const { state, T, backFromPublicProfile, sharePublicProfile, openEditProfile, openOrganizerTeam, goEvent } = useGoc();
   const s = state;
   const [qrOpen, setQrOpen] = useState(false);
+  const [shareCardOpen, setShareCardOpen] = useState(false);
   const [qrSrc, setQrSrc] = useState(null);
   const p = s.publicProfile;
 
@@ -69,7 +71,7 @@ export default function PublicProfile() {
       )}
       <div style={{ padding: '66px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span onClick={backFromPublicProfile} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('‹ Quay lại', '‹ Back')}</span>
-        <span onClick={() => sharePublicProfile(p.handle, p.display_name)} data-testid="public-profile-share" style={{ fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>
+        <span onClick={() => setShareCardOpen(true)} data-testid="public-profile-share" style={{ fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>
           {T('Chia sẻ', 'Share')}
         </span>
       </div>
@@ -211,6 +213,18 @@ export default function PublicProfile() {
       {s.profileLinkCopiedFlash && (
         <p style={{ textAlign: 'center', fontSize: 11.5, color: ink, opacity: 0.7, margin: '10px 0 0' }}>{T('Đã sao chép link hồ sơ', 'Profile link copied')}</p>
       )}
+      <ProfileShareSheet
+        open={shareCardOpen}
+        onClose={() => setShareCardOpen(false)}
+        kindLabel={T('Thành viên', 'Member')}
+        name={p.display_name || ''}
+        subtitle={p.handle ? `@${p.handle}` : ''}
+        detail={p.bio || ''}
+        avatarUrl={p.avatar_url || ''}
+        roundAvatar
+        link={profileShareLinks().member(p.handle)}
+        idPrefix="public-profile-share-card"
+      />
     </div>
   );
 }

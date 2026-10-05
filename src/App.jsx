@@ -1,4 +1,5 @@
 import PhoneStatusBar from './components/PhoneFrame.jsx';
+import { ImportSheet, ImportedTicketSheet } from './screens/sheets/TicketImportSheet.jsx';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GocProvider, useGoc } from './state/GocContext.jsx';
 import BottomTabBar, { showsBottomBar, DOCK_ORDER, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET } from './screens/BottomTabBar.jsx';
@@ -673,6 +674,8 @@ function Shell() {
         {state.pulseOpen && <PulseViewer />}
         {state.storySurveyModalPublicId && <SurveyResponseModal />}
         {state.reasonPrompt && <ReasonSheet />}
+        {state.importOpen && <ImportSheet />}
+        {state.importedTicketOpen && <ImportedTicketSheet />}
         {state.loading && <Loading label={T('Đang giữ chỗ cho bạn…', 'Holding your seat…')} />}
       </div>
       {showBar && <DockRow collapsed={barCollapsed} showCreate={state.organizerMode} />}

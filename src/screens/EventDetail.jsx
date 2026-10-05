@@ -145,7 +145,7 @@ export default function EventDetail() {
           not the shared Shell-level one) into a fixed overlay, so both
           stay visible/tappable the whole time the user scrolls. */}
       <div onClick={backFromEvent} data-testid="event-detail-back" style={photoPill({ position: 'fixed', top: 66, left: 16, padding: '8px 13px', zIndex: 5 })}>‹ {backLabel}</div>
-      <div onClick={() => shareEvent(ev)} style={photoPill({ position: 'fixed', top: 66, right: 16, padding: '8px 13px', zIndex: 5 })}>
+      <div onClick={() => shareEvent(ev)} style={photoPill({ position: 'fixed', top: 66, right: 16, padding: '8px 13px', zIndex: 5, minWidth: 84, textAlign: 'center', boxSizing: 'border-box' })}>
         {s.shared ? T('Đã sao chép link', 'Link copied') : T('Chia sẻ', 'Share')}
       </div>
       {/* Blocker fix (retention roadmap follow-up) — EventDetail had no save
@@ -159,7 +159,7 @@ export default function EventDetail() {
       <div
         onClick={() => toggleFav(ev.key)}
         data-testid="event-detail-save"
-        style={photoPill({ position: 'fixed', top: 112, right: 16, padding: '8px 13px', zIndex: 5 })}
+        style={photoPill({ position: 'fixed', top: 112, right: 16, padding: '8px 13px', zIndex: 5, minWidth: 84, textAlign: 'center', boxSizing: 'border-box' })}
       >
         {isSaved(ev.key) ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')}
       </div>

@@ -6,11 +6,12 @@ import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, cardGlass, alert } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 import BanbeLoadingVisual from './BanbeLoadingVisual.jsx';
+import { downloadTicketPdfs, googleCalendarUrl } from '../lib/ticketPdf.js';
 
 export default function Confirmed() {
   const {
     state, T, set, curEvent: ev, backFromConfirmed, openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket, openPaymentDetails, forfeitExpiredHold, goReserve,
-    loadReceiptStatus, requestReceipt, openDocumentFromNotification,
+    loadReceiptStatus, requestReceipt, openDocumentFromNotification, loadBookingAttendees,
   } = useGoc();
   const s = state;
 
@@ -109,6 +110,48 @@ export default function Confirmed() {
     return () => { active = false; clearInterval(id); };
   }, [s.booking?.id, phase, set, forfeitExpiredHold]);
 
+  // Named tickets (migration 151): one card per attendee, each with its own QR
+  // and PDF. Empty for a booking made before per-attendee tickets, which keeps
+  // its single booking-level QR.
+  useEffect(() => { if (s.booking?.id) loadBookingAttendees(s.booking.id); }, [s.booking?.id, loadBookingAttendees]);
+  const attendees = (s.bookingAttendees || []).filter(a => a.booking_id === s.booking?.id);
+  const hasNamed = attendees.length > 0;
+  const [selected, setSelected] = useState(() => new Set());
+  const [pdfBusy, setPdfBusy] = useState(false);
+  useEffect(() => { setSelected(new Set()); }, [s.booking?.id]);
+  const toggleSel = (id) => setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  const eventStart = ev.startDate || new Date();
+  const calUrl = googleCalendarUrl({
+    title: ev.name, start: eventStart, end: new Date(eventStart.getTime() + 2 * 3600 * 1000),
+    location: ev.locationLabel || ev.where || '', description: ev.desc || '',
+  });
+  const pdfBase = {
+    eventName: ev.name, organizer: ev.orgName || ev.host || '', whenText: ev.when, venue: ev.locationLabel || ev.where || '',
+    isEN: s.lang === 'en', calendarUrl: calUrl,
+  };
+  const runDownload = async (list) => {
+    if (!list.length || pdfBusy) return;
+    setPdfBusy(true);
+    try { await downloadTicketPdfs(list, `banbe-tickets-${s.booking?.code || 'booking'}.zip`); }
+    catch (e) { console.warn('ticket PDF failed:', e); }
+    setPdfBusy(false);
+  };
+  const attendeePdf = (a) => ({
+    ...pdfBase, holderName: a.name, ticketCode: a.ticket_code, qrValue: a.admission_token, reference: a.id,
+    importUrl: a.claim_code ? `${window.location.origin}/?claim=${encodeURIComponent(a.claim_code)}` : undefined,
+  });
+  const ownPdf = () => ({
+    ...pdfBase, holderName: (s.user?.name || '').trim(), ticketCode: s.booking?.code || '', qrValue: s.booking?.id, reference: s.booking?.id,
+  });
+  const ageOf = (iso) => {
+    if (!iso) return null;
+    const d = new Date(iso); const n = new Date();
+    let age = n.getFullYear() - d.getFullYear();
+    if (n.getMonth() < d.getMonth() || (n.getMonth() === d.getMonth() && n.getDate() < d.getDate())) age -= 1;
+    return age;
+  };
+
   // formName used to be a free-typed, never-persisted Reserve.jsx field —
   // s.user.name (real profiles.display_name, 01-hold-payment.md's
   // 2026-09-17 follow-up #6) is the actual identity now.
@@ -139,7 +182,14 @@ export default function Confirmed() {
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Confirmed">
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '60px 30px 0' }}>
+      {/* Back, top-left — where the thumb and the OS convention expect it. */}
+      <div onClick={backFromConfirmed} data-testid="confirmed-back" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '14px 30px 0', fontSize: 14, color: ink, cursor: 'pointer', alignSelf: 'flex-start' }}>
+        <svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 1.5 2 8l6 6.5" /></svg>
+        {s.confirmedBack === 'notifications' ? T('Thông báo', 'Notifications')
+          : s.confirmedBack === 'accountGroup' ? T('Tài khoản', 'Account')
+          : T('Quay lại', 'Back')}
+      </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '24px 30px 0' }}>
         <span style={{ fontSize: 11.5, color: ink }}>{confirmEyebrow}</span>
         <h2 style={{ ...display(27, { lineHeight: 1.35, margin: '12px 0 0' }) }}>{confirmHeading}</h2>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '18px 0 0' }}>{confirmNote}</p>
@@ -217,6 +267,48 @@ export default function Confirmed() {
             <span style={{ fontSize: 17, color: ink, flex: 'none', lineHeight: 1 }}>›</span>
           </div>
         )}
+        {isPaid && hasNamed ? (
+          <div style={{ marginTop: 28, borderTop: `1px solid ${rule}`, paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }} data-testid="confirmed-attendee-tickets">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+              <span style={{ ...display(17) }}>{ev.name}</span>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.65, flex: 'none' }}>{attendees.length} {T('vé', attendees.length === 1 ? 'ticket' : 'tickets')}</span>
+            </div>
+            <span style={{ fontSize: 12, color: ink }}>{ev.where}</span>
+            <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{T('Mỗi người có mã QR riêng — đưa mã của chính họ ở cửa.', 'Each person has their own QR — show their own code at the door.')}</span>
+            {attendees.map(a => {
+              const on = selected.has(a.id);
+              const age = ageOf(a.date_of_birth);
+              return (
+                <div key={a.id} style={{ ...cardGlass({ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12 }) }} data-testid={`confirmed-attendee-${a.seat_no}`}>
+                  <span onClick={() => toggleSel(a.id)} role="checkbox" aria-checked={on} data-testid={`confirmed-attendee-select-${a.seat_no}`}
+                    style={{ flex: 'none', width: 22, height: 22, borderRadius: 11, border: `1.5px solid ${ink}`, background: on ? ink : 'transparent', color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, cursor: 'pointer' }}>{on ? '✓' : ''}</span>
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                    {age != null && <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{T(`${age} tuổi`, `Age ${age}`)}</span>}
+                    <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: '0.08em', color: ink }}>{a.ticket_code}</span>
+                    {a.checked_in_at && <span style={{ fontSize: 10.5, fontWeight: 700, color: alert }}>{T('Đã vào cửa', 'Checked in')}</span>}
+                  </div>
+                  <QrCode value={a.admission_token} size={72} />
+                  <span onClick={() => runDownload([attendeePdf(a)])} title={T('Tải vé PDF', 'Download PDF')} data-testid={`confirmed-attendee-download-${a.seat_no}`}
+                    style={{ flex: 'none', width: 34, height: 34, borderRadius: 17, background: 'rgba(27,25,22,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: pdfBusy ? 0.5 : 1 }}>
+                    <Icon kind="download" size={16} />
+                  </span>
+                </div>
+              );
+            })}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <span onClick={() => runDownload(attendees.filter(a => selected.has(a.id)).map(attendeePdf))} data-testid="confirmed-download-selected"
+                style={{ ...cardGlass({ flex: 1, padding: '12px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, cursor: selected.size ? 'pointer' : 'default', opacity: selected.size ? 1 : 0.45 }) }}>
+                {T(`Tải đã chọn (${selected.size})`, `Download selected (${selected.size})`)}
+              </span>
+              <span onClick={() => runDownload(attendees.map(attendeePdf))} data-testid="confirmed-download-all"
+                style={{ ...cardGlass({ flex: 1, padding: '12px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, cursor: 'pointer' }) }}>
+                {T('Tải tất cả', 'Download all')}
+              </span>
+            </div>
+            {pdfBusy && <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{T('Đang tạo PDF…', 'Preparing PDF…')}</span>}
+          </div>
+        ) : (
         <div style={{ marginTop: 28, borderTop: `1px solid ${rule}`, paddingTop: 14, display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'center' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
             <span style={{ ...display(17) }}>{ev.name}</span>
@@ -233,6 +325,7 @@ export default function Confirmed() {
           </div>
           {showQr && <QrCode value={s.booking.id} />}
         </div>
+        )}
         {/* Real-device follow-up (2026-09-27) — fills the empty space below
             the ticket row (this container's own `flex:1` absorbs whatever
             room is left over after the fixed-size content above it) with
@@ -243,91 +336,118 @@ export default function Confirmed() {
           <BanbeLoadingVisual size={190} />
         </div>
       </div>
-      {showQr && (
-        <div onClick={() => giveTicket(ev)} style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0', cursor: 'pointer' }}>{giveLabel}</div>
+      {showQr && !hasNamed && (
+        <FooterRow icon="gift" label={giveLabel} onClick={() => giveTicket(ev)} testId="confirmed-give-ticket" />
       )}
-      <div onClick={openCalendarPicker} data-testid="confirmed-add-to-calendar" style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0', cursor: 'pointer' }}>{calendarLabel}</div>
-
-      {s.calendarPickerFor === ev.key && (
-        <div onClick={closeCalendarPicker} style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.4)', display: 'flex', alignItems: 'flex-end', zIndex: 50 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: paper, width: '100%', borderRadius: '18px 18px 0 0', padding: '10px 22px 28px' }}>
-            <div style={{ width: 36, height: 4, background: rule, borderRadius: 2, margin: '6px auto 18px' }} />
-            <p style={{ fontSize: 13, fontWeight: 600, color: ink, margin: '0 0 14px' }}>
-              {T('Thêm vào lịch nào?', 'Add to which calendar?')}
-            </p>
-            <div onClick={() => addToCalendarGoogle(ev)} data-testid="calendar-pick-google"
-                 style={{ ...cardGlass({ padding: '14px 16px', marginBottom: 10, cursor: 'pointer' }) }}>
-              <span style={{ fontSize: 14, color: ink }}>Google Calendar</span>
-            </div>
-            <div onClick={() => addToCalendarICS(ev)} data-testid="calendar-pick-apple"
-                 style={{ ...cardGlass({ padding: '14px 16px', marginBottom: 10, cursor: 'pointer' }) }}>
-              <span style={{ fontSize: 14, color: ink }}>{T('Lịch Apple ▪︎ Ứng dụng khác', 'Apple Calendar ▪︎ Other apps')}</span>
-              <div style={{ fontSize: 11, color: ink, opacity: 0.65, marginTop: 3 }}>
-                {T('Tải file .ics (mở bằng Lịch hoặc bất kỳ ứng dụng lịch nào khác).', 'Downloads an .ics file (open it with Calendar or any other calendar app).')}
+      {showQr && !hasNamed && (
+        <FooterRow icon="download" label={pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải vé PDF', 'Download PDF')} onClick={() => runDownload([ownPdf()])} testId="confirmed-download-pdf" />
+      )}
+      {/* Add to calendar: a glass popover that opens out of the row (like the
+          iOS Menu) and closes on a tap anywhere outside it. */}
+      <div style={{ position: 'relative' }}>
+        <FooterRow
+          icon={s.calAdded ? 'calendarCheck' : 'calendarPlus'} chip
+          label={calendarLabel} onClick={openCalendarPicker} testId="confirmed-add-to-calendar"
+        />
+        {s.calendarPickerFor === ev.key && (
+          <>
+            <div onClick={closeCalendarPicker} style={{ position: 'fixed', inset: 0, zIndex: 49 }} data-testid="calendar-pick-scrim" />
+            <div
+              role="menu"
+              style={{
+                position: 'absolute', left: 22, right: 22, bottom: 'calc(100% - 6px)', zIndex: 50, transformOrigin: 'bottom center',
+                animation: 'bbPopIn 0.2s cubic-bezier(.22,.61,.36,1) both',
+                borderRadius: 22, padding: 8, overflow: 'hidden',
+                background: 'rgba(250,248,244,0.72)', backdropFilter: 'blur(24px) saturate(170%)', WebkitBackdropFilter: 'blur(24px) saturate(170%)',
+                border: '1px solid rgba(255,255,255,0.55)', boxShadow: '0 18px 40px rgba(27,25,22,0.22), inset 0 1px 0 rgba(255,255,255,0.7)',
+              }}
+            >
+              <div role="menuitem" onClick={() => addToCalendarGoogle(ev)} data-testid="calendar-pick-google"
+                   style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', borderRadius: 16, cursor: 'pointer', fontSize: 14, color: ink }}>
+                <Icon kind="globe" size={18} /> Google Calendar
+              </div>
+              <div role="menuitem" onClick={() => addToCalendarICS(ev)} data-testid="calendar-pick-apple"
+                   style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', borderRadius: 16, cursor: 'pointer', fontSize: 14, color: ink }}>
+                <Icon kind="calendar" size={18} />
+                <span>{T('Lịch Apple ▪︎ Ứng dụng khác', 'Apple Calendar ▪︎ Other apps')}
+                  <span style={{ display: 'block', fontSize: 11, opacity: 0.6, marginTop: 2 }}>{T('Tải file .ics', 'Downloads an .ics file')}</span>
+                </span>
               </div>
             </div>
-            <div onClick={closeCalendarPicker} style={{ textAlign: 'center', fontSize: 13, color: ink, opacity: 0.7, padding: '10px 0', cursor: 'pointer' }}>
-              {T('Huỷ', 'Cancel')}
-            </div>
-          </div>
-        </div>
-      )}
-      {/* 15-organizer-checkin.md follow-up: receipts are organizer-uploaded
-          now (08-payment-documents.md), not auto-issued the moment a
-          booking is confirmed — so this screen can't assume one exists yet.
-          `receiptDoc` is `undefined` while the check is in flight, a real
-          row once found, or `false` once confirmed absent. */}
+          </>
+        )}
+      </div>
+      {/* Receipts are organizer-uploaded (08-payment-documents.md), so this
+          screen can't assume one exists. `receiptDoc` is `undefined` while
+          the check is in flight, a real row once found, `false` once absent. */}
       {showQr && s.receiptDoc !== undefined && (
-        <div
-          onClick={() => {
-            if (s.receiptDoc) openDocumentFromNotification(s.receiptDoc.id, 'confirmed');
-            else if (!s.receiptRequestSent) requestReceipt(s.booking.id);
-          }}
-          style={{
-            borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0',
-            cursor: (s.receiptDoc || !s.receiptRequestSent) ? 'pointer' : 'default',
-            opacity: s.receiptRequestSending ? 0.6 : 1,
-          }}
-          data-testid="confirmed-view-receipt"
-        >
-          {s.receiptDoc
+        <FooterRow
+          icon="doc" testId="confirmed-view-receipt"
+          label={s.receiptDoc
             ? T('Xem Receipt', 'View Receipt')
             : s.receiptRequestSending
             ? T('Đang gửi yêu cầu…', 'Sending request…')
             : s.receiptRequestSent
             ? T('Đã gửi yêu cầu ▪︎ Đang chờ người tổ chức', 'Request sent ▪︎ waiting on the organizer')
             : T('Yêu cầu Receipt', 'Request Receipt')}
-        </div>
+          dim={s.receiptRequestSending}
+          onClick={(s.receiptDoc || !s.receiptRequestSent) ? () => {
+            if (s.receiptDoc) openDocumentFromNotification(s.receiptDoc.id, 'confirmed');
+            else requestReceipt(s.booking.id);
+          } : undefined}
+        />
       )}
       {s.receiptRequestError && (
         <p style={{ fontSize: 11, color: alert, textAlign: 'center', margin: '8px 22px 0' }}>{s.receiptRequestError}</p>
       )}
-      {/* Same documentBack-style pattern (07-notifications.md's 2026-09-18
-          follow-up) — this footer button now honors confirmedBack (default
-          'home', unchanged for every non-notification entry point) instead
-          of always going home. Account IA reorg (2026-09-30) — "My
-          Tickets" (AccountGroup.jsx's `activity` content) opens this
-          screen with confirmedBack: 'accountGroup', so the label now names
-          that destination too instead of misleadingly reading "Back to
-          home" while actually returning to Account. */}
-      <div onClick={backFromConfirmed} style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0 34px', cursor: 'pointer' }}>
-        {s.confirmedBack === 'notifications' ? T('‹ Thông báo', '‹ Notifications')
-          : s.confirmedBack === 'accountGroup' ? T('‹ Tài khoản', '‹ Account')
-          : T('Về trang chính', 'Back to home')}
-      </div>
+      <div style={{ height: 34 }} />
     </div>
   );
 }
 
-// A real, scannable QR — encodes the booking's own id, which
-// check_in_guest() (the same RPC the manual check-in list already uses)
-// accepts directly. Fixed black-on-white regardless of theme: it has to
-// stay scannable by a phone camera, which doesn't know about --bb-fg/--bb-bg.
-function QrCode({ value }) {
+// One footer row: a fixed-width icon column (so every icon and label lines up
+// down the page), the label, and a quiet chevron. `chip` puts the icon on the
+// soft round disc the iOS Settings button uses.
+function FooterRow({ icon, label, onClick, testId, chip = false, dim = false }) {
+  return (
+    <div
+      onClick={onClick} data-testid={testId}
+      style={{
+        borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 14,
+        padding: '10px 30px', minHeight: 54, boxSizing: 'border-box', cursor: onClick ? 'pointer' : 'default', opacity: dim ? 0.6 : 1,
+      }}
+    >
+      <span style={{ flex: 'none', width: 34, height: 34, borderRadius: 17, display: 'flex', alignItems: 'center', justifyContent: 'center', background: chip ? 'rgba(27,25,22,0.06)' : 'transparent' }}>
+        <Icon kind={icon} size={16} />
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>{label}</span>
+      <svg width="8" height="13" viewBox="0 0 8 13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35, flex: 'none' }}><path d="m1.5 1.5 5 5-5 5" /></svg>
+    </div>
+  );
+}
+
+const ICON_PATHS = {
+  gift: <><rect x="3" y="9" width="18" height="12" rx="2" /><path d="M12 9v12M3 13h18M12 9c-2.5 0-4.5-1-4.5-3S9.5 3 12 6c2.5-3 4.5-1 4.5 0S14.5 9 12 9Z" /></>,
+  download: <><path d="M6 3h9l4 4v14H6z" /><path d="M12 10v6m0 0-2.5-2.5M12 16l2.5-2.5" /></>,
+  calendar: <><rect x="3.5" y="5" width="17" height="15" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" /></>,
+  calendarPlus: <><rect x="3.5" y="5" width="17" height="15" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4M12 13v5M9.5 15.5h5" /></>,
+  calendarCheck: <><rect x="3.5" y="5" width="17" height="15" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4M9.5 15l2 2 3.5-3.5" /></>,
+  globe: <><circle cx="12" cy="12" r="8.5" /><path d="M3.5 12h17M12 3.5c2.5 2.5 3.5 5.5 3.5 8.5s-1 6-3.5 8.5c-2.5-2.5-3.5-5.5-3.5-8.5s1-6 3.5-8.5Z" /></>,
+  doc: <><path d="M6 3h9l4 4v14H6z" /><path d="M9 12h7M9 16h7" /></>,
+};
+function Icon({ kind, size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {ICON_PATHS[kind]}
+    </svg>
+  );
+}
+
+function QrCode({ value, size = 76 }) {
   const [src, setSrc] = useState(null);
   useEffect(() => {
     let active = true;
-    QRCode.toDataURL(value, { margin: 1, width: 152, color: { dark: '#000000', light: '#FFFFFF' } })
+    QRCode.toDataURL(value, { margin: 1, width: Math.max(152, size * 2), color: { dark: '#000000', light: '#FFFFFF' } })
       .then(url => { if (active) setSrc(url); })
       .catch(() => {});
     return () => { active = false; };
@@ -345,7 +465,7 @@ function QrCode({ value }) {
   // iOS change was needed for this specific item (confirmed by reading
   // that component, not assumed).
   return (
-    <div style={{ flex: 'none', width: 76, height: 76, background: '#FFFFFF', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ flex: 'none', width: size, height: size, background: '#FFFFFF', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {src ? <img src={src} alt="QR" style={{ width: '100%', height: '100%', display: 'block' }} /> : <BanbeLoadingVisual size={40} />}
     </div>
   );

@@ -196,10 +196,10 @@ export default function PulseViewer() {
     openPulsePhotoSheet, closePulsePhotoSheet, togglePhotoLike, sharePhoto, goEvent, openOrganizerProfile,
   } = useGoc();
   const s = state;
-  const [dragX, setDragX] = useState(0);
+  const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
-  const dragRef = useRef({ active: false, startX: 0, pointerId: null });
+  const dragRef = useRef({ active: false, startY: 0, pointerId: null });
 
   const commitDismiss = useCallback(() => {
     setIsCommitting(true);
@@ -207,24 +207,24 @@ export default function PulseViewer() {
   }, [closePulseViewer]);
 
   const onEdgePointerDown = (e) => {
-    dragRef.current = { active: true, startX: e.clientX, pointerId: e.pointerId };
+    dragRef.current = { active: true, startY: e.clientY, pointerId: e.pointerId };
     setIsDragging(true);
     e.currentTarget.setPointerCapture(e.pointerId);
   };
   const onEdgePointerMove = (e) => {
     const g = dragRef.current;
     if (!g.active || e.pointerId !== g.pointerId) return;
-    setDragX(Math.max(0, e.clientX - g.startX));
+    setDragY(Math.max(0, e.clientY - g.startY));
   };
   const onEdgePointerUp = () => {
     const g = dragRef.current;
     if (!g.active) return;
     g.active = false;
     setIsDragging(false);
-    if (dragX > window.innerWidth * 0.3) {
+    if (dragY > window.innerHeight * 0.18) {
       commitDismiss();
     } else {
-      setDragX(0);
+      setDragY(0);
     }
   };
 
@@ -264,30 +264,38 @@ export default function PulseViewer() {
   // hook call above so hook order never depends on it.
   if (!s.pulseOpen) return null;
 
-  const slideX = isCommitting ? window.innerWidth : dragX;
+  const slideY = isCommitting ? window.innerHeight : dragY;
 
+  // Presented like the profile share card: a bottom sheet that slides up over
+  // a dimmed backdrop and closes by sliding back down (X, backdrop tap, or a
+  // downward drag on the grab handle).
   return (
+    <>
+      <div
+        onClick={commitDismiss}
+        style={{ position: 'fixed', inset: 0, zIndex: 59, background: 'rgba(27,25,22,0.4)', opacity: isCommitting ? 0 : Math.max(0, 1 - dragY / 600), transition: isDragging ? 'none' : `opacity ${DISMISS_DURATION_MS}ms ease` }}
+      />
     <div
       style={{
-        position: 'fixed', inset: 0, background: paper, zIndex: 60, display: 'flex', flexDirection: 'column',
-        transform: `translateX(${slideX}px)`,
+        position: 'fixed', top: 12, left: 0, right: 0, bottom: 0, background: paper, zIndex: 60, display: 'flex', flexDirection: 'column',
+        borderRadius: '24px 24px 0 0', overflow: 'hidden', boxShadow: '0 -10px 40px rgba(27,25,22,0.18)',
+        transform: `translateY(${slideY}px)`,
         transition: isDragging ? 'none' : `transform ${DISMISS_DURATION_MS}ms cubic-bezier(.22,.61,.36,1)`,
+        animation: 'gocSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both',
       }}
       data-testid="pulse-viewer"
     >
-      {/* A2 — the edge-swipe hit zone: a thin leading strip, exactly like
-          MapExplore's own pointer-scoped drag handle. Only a touch
-          starting here is ever offered this gesture, so the card list's
-          ordinary vertical scroll and every tab/card tap are untouched. */}
       <div
         data-testid="pulse-edge-swipe-zone"
         onPointerDown={onEdgePointerDown}
         onPointerMove={onEdgePointerMove}
         onPointerUp={onEdgePointerUp}
         onPointerCancel={onEdgePointerUp}
-        style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: EDGE_ZONE_PX, zIndex: 1, touchAction: 'none' }}
-      />
-      <div style={{ padding: '20px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        style={{ flex: 'none', height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none', cursor: 'grab' }}
+      >
+        <span style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(27,25,22,0.18)' }} />
+      </div>
+      <div style={{ padding: '6px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         {/* A1 (real-device follow-up) — logo FOLLOWED BY visible text
             "Pulse", one title: the logo alone read as just "banbe" with
             nothing naming this specific screen. `role="heading"` +
@@ -298,7 +306,17 @@ export default function PulseViewer() {
           <img src="/banbe-wordmark.png" alt="" crossOrigin="anonymous" style={{ width: 100, height: 'auto', display: 'block' }} />
           <span style={{ ...display(20) }}>{T('Pulse', 'Pulse')}</span>
         </div>
-        <span onClick={commitDismiss} data-testid="pulse-close" style={{ fontSize: 22, color: ink, cursor: 'pointer' }}>×</span>
+        {/* Liquid-glass close button (translucent, blurred, hairline highlight). */}
+        <span
+          onClick={commitDismiss} data-testid="pulse-close" role="button" aria-label={T('Đóng', 'Close')}
+          style={{
+            width: 38, height: 38, borderRadius: 19, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: ink,
+            background: 'rgba(255,255,255,0.45)', backdropFilter: 'blur(14px) saturate(170%)', WebkitBackdropFilter: 'blur(14px) saturate(170%)',
+            border: '1px solid rgba(255,255,255,0.65)', boxShadow: '0 4px 14px rgba(27,25,22,0.14), inset 0 1px 0 rgba(255,255,255,0.8)',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m2 2 10 10M12 2 2 12" /></svg>
+        </span>
       </div>
 
       <div style={{ display: 'flex', gap: 8, padding: '16px 20px 0' }}>
@@ -598,5 +616,6 @@ export default function PulseViewer() {
         </ExpandedPanel>
       )}
     </div>
+    </>
   );
 }

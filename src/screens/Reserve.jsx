@@ -5,7 +5,7 @@ import { paper, ink, FACE, display, fieldGlass, alert } from '../theme.js';
 export default function Reserve() {
   const {
     state, T, trStatus, curEvent: ev, backToEvent,
-    qtyMinus, qtyPlus, formNameType, setNameAtHold, submitReserve, goEditName,
+    qtyMinus, qtyPlus, formNameType, setNameAtHold, submitReserve, goEditName, setAttendeeField,
   } = useGoc();
   const s = state;
 
@@ -20,7 +20,12 @@ export default function Reserve() {
   // "Đổi tên" uses — rather than a value that goes nowhere. Hold stays
   // disabled until a real name exists either way.
   const hasName = !!(s.user?.name || '').trim();
-  const formOk = hasName;
+  // Each ticket needs its attendee's name and date of birth (migration 151):
+  // every attendee gets their own QR and PDF, and the door sees their age.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const attendeesOk = s.attendeeDrafts.length === s.qty
+    && s.attendeeDrafts.every(a => a.name.trim().length >= 2 && a.dob && a.dob <= todayIso);
+  const formOk = hasName && attendeesOk;
   const submitNameAtHold = async () => {
     await setNameAtHold(s.formName);
   };
@@ -112,6 +117,32 @@ export default function Reserve() {
             <span style={{ ...display(18, { minWidth: 20, textAlign: 'center' }) }}>{s.qty}</span>
             <span onClick={qtyPlus} style={{ width: 32, height: 32, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, cursor: s.qty < 6 ? 'pointer' : 'default', color: s.qty < 6 ? ink : 'rgba(27,25,22,0.16)', border: '1px solid rgba(27,25,22,0.16)', userSelect: 'none' }}>+</span>
           </div>
+        </div>
+      </div>
+      <div style={{ margin: '22px 22px 0' }} data-testid="reserve-attendees">
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Người tham dự', 'Attendees')}</span>
+        <p style={{ fontSize: 11.5, color: ink, opacity: 0.65, margin: '4px 0 0' }}>
+          {T('Mỗi vé cần tên và ngày sinh của người sẽ tham dự.', 'Each ticket needs the name and date of birth of the person attending.')}
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+          {s.attendeeDrafts.slice(0, s.qty).map((a, i) => (
+            <div key={i} style={{ ...fieldGlass({ padding: 13, display: 'flex', flexDirection: 'column', gap: 8 }) }} data-testid={`reserve-attendee-${i}`}>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }}>{T('Vé', 'Ticket')} {i + 1}</span>
+              <input
+                value={a.name} onChange={(e) => setAttendeeField(i, 'name', e.target.value)}
+                placeholder={T('Họ và tên', 'Full name')} autoComplete="off"
+                style={{ ...inputStyle, background: 'rgba(255,255,255,0.55)' }} data-testid={`reserve-attendee-${i}-name`}
+              />
+              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, fontSize: 13, color: ink }}>
+                {T('Ngày sinh', 'Date of birth')}
+                <input
+                  type="date" value={a.dob} max={todayIso} onChange={(e) => setAttendeeField(i, 'dob', e.target.value)}
+                  style={{ fontFamily: FACE, fontSize: 13, color: ink, background: 'rgba(255,255,255,0.55)', border: '1px solid rgba(27,25,22,0.12)', borderRadius: 10, padding: '7px 10px' }}
+                  data-testid={`reserve-attendee-${i}-dob`}
+                />
+              </label>
+            </div>
+          ))}
         </div>
       </div>
       <div style={{ margin: '22px 22px 0', fontSize: 12, lineHeight: 1.55, color: ink }}>

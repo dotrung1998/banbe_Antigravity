@@ -3,10 +3,10 @@ import { test, expect } from '@playwright/test';
 import { setupToHome } from './helpers.js';
 
 // Pulse/loading UX pass (2026-09-27) — A1/A2/A3: header logo parity, the
-// shared loading GIF asset, and the interactive left-to-right dismiss
-// (X and an edge-swipe both drive the SAME one continuous slide that
-// reveals Home underneath, never a downward exit / a second slide after
-// releasing). No test file for Pulse existed before this pass.
+// shared loading GIF asset, and the dismiss. (2026-10-06) Pulse is now a
+// bottom sheet like the profile share card: it slides up, and the X, a
+// backdrop tap or a downward drag on its grab handle all drive the SAME one
+// slide back down — replacing the earlier left-to-right edge-swipe.
 
 async function openPulse(page) {
   await setupToHome(page);
@@ -29,7 +29,7 @@ test.describe('Banbe Pulse — header, loading asset, interactive dismiss', () =
     expect(resp.headers()['content-type']).toMatch(/gif/);
   });
 
-  test('the X close button slides Pulse away in one continuous motion, revealing Home (never a blank/white flash)', async ({ page }) => {
+  test('the X close button slides the Pulse sheet down in one continuous motion, revealing Home (never a blank/white flash)', async ({ page }) => {
     await openPulse(page);
     // Home stays mounted underneath the whole time (App.jsx renders Pulse
     // as a sibling overlay, never a route change) — its own dock is a
@@ -37,19 +37,19 @@ test.describe('Banbe Pulse — header, loading asset, interactive dismiss', () =
     await expect(page.locator('[data-testid="tab-home"], [data-screen-label="Home"]').first()).toBeAttached();
 
     await page.click('[data-testid="pulse-close"]');
-    // Mid-animation: translateX should be progressing (non-zero, and not
+    // Mid-animation: translateY should be progressing (non-zero, and not
     // yet fully off-screen) at some point during the 260ms commit window —
     // confirms ONE animated slide is actually playing, not an instant cut.
     await page.waitForTimeout(80);
     const midTransform = await page.locator('[data-testid="pulse-viewer"]').evaluate(el => getComputedStyle(el).transform).catch(() => null);
     if (midTransform && midTransform !== 'none') {
-      expect(midTransform).not.toBe('matrix(1, 0, 0, 1, 0, 0)'); // not still at translateX(0)
+      expect(midTransform).not.toBe('matrix(1, 0, 0, 1, 0, 0)'); // not still at translateY(0)
     }
     await expect(page.locator('[data-testid="pulse-viewer"]')).toHaveCount(0, { timeout: 1000 });
     await expect(page.locator('[data-screen-label="Home"]')).toBeVisible();
   });
 
-  test('a left-to-right edge-swipe past the threshold dismisses Pulse the same way as the X', async ({ page }) => {
+  test('dragging the grab handle down past the threshold dismisses Pulse the same way as the X', async ({ page }) => {
     await openPulse(page);
     const zone = page.locator('[data-testid="pulse-edge-swipe-zone"]');
     const box = await zone.boundingBox();
@@ -58,8 +58,8 @@ test.describe('Banbe Pulse — header, loading asset, interactive dismiss', () =
     const startY = box.y + box.height / 2;
     await page.mouse.move(startX, startY);
     await page.mouse.down();
-    // Past the 30%-of-viewport-width commit threshold.
-    await page.mouse.move(startX + viewport.width * 0.5, startY, { steps: 6 });
+    // Past the 18%-of-viewport-height commit threshold.
+    await page.mouse.move(startX, startY + viewport.height * 0.4, { steps: 6 });
     await page.waitForTimeout(50);
     const liveTransform = await page.locator('[data-testid="pulse-viewer"]').evaluate(el => getComputedStyle(el).transform);
     expect(liveTransform).not.toBe('matrix(1, 0, 0, 1, 0, 0)'); // live-following the drag already
@@ -68,7 +68,7 @@ test.describe('Banbe Pulse — header, loading asset, interactive dismiss', () =
     await expect(page.locator('[data-screen-label="Home"]')).toBeVisible();
   });
 
-  test('a cancelled (short) edge-swipe springs back instead of dismissing', async ({ page }) => {
+  test('a short drag on the grab handle springs back instead of dismissing', async ({ page }) => {
     await openPulse(page);
     const zone = page.locator('[data-testid="pulse-edge-swipe-zone"]');
     const box = await zone.boundingBox();
@@ -76,7 +76,7 @@ test.describe('Banbe Pulse — header, loading asset, interactive dismiss', () =
     const startY = box.y + box.height / 2;
     await page.mouse.move(startX, startY);
     await page.mouse.down();
-    await page.mouse.move(startX + 20, startY, { steps: 3 }); // well under threshold
+    await page.mouse.move(startX, startY + 20, { steps: 3 }); // well under threshold
     await page.mouse.up();
     await page.waitForTimeout(400);
     await expect(page.locator('[data-testid="pulse-viewer"]')).toBeVisible();

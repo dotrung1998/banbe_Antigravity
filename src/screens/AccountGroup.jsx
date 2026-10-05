@@ -56,7 +56,7 @@ function Row({ icon, label, trailing, onClick, testId, border = true, badge }) {
 export default function AccountGroup() {
   const {
     state: s, T, set,
-    goCompletedList, respondToEventCredit, goEvent,
+    goCompletedList, respondToEventCredit, goEvent, openTicketImport, openImportedTicket, loadImportedTickets,
     respondToOrganizerInvite, setOrganizerMemberVisibility,
     openPreferences, openSecurity, openDocuments, openRefundAccounts, openMyRefunds,
     openVerifications, openVerificationsRefunds, openPayout, openDisputes, openAdminEvents,
@@ -86,8 +86,8 @@ export default function AccountGroup() {
   // `loadPaymentBookings` is idempotent (a plain re-fetch), never a second
   // divergent source.
   useEffect(() => {
-    if (key === 'activity' && s.user?.id) loadPaymentBookings();
-  }, [key, s.user?.id, loadPaymentBookings]);
+    if (key === 'activity' && s.user?.id) { loadPaymentBookings(); loadImportedTickets(); }
+  }, [key, s.user?.id, loadPaymentBookings, loadImportedTickets]);
   // Admin Team pass (2026-10-02) — a direct deep link straight into
   // `accountGroupKey: 'adminTeam'` bypasses Account.jsx's own mount
   // effect, same reasoning as `activity` above; idempotent re-fetch.
@@ -290,6 +290,33 @@ export default function AccountGroup() {
                 `EventListView`/`EventList.jsx` mode 'completed'), unchanged. */}
             <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
               <Row icon="calendarCheck" label={T('Sự Kiện Quá Khứ', 'Past Events')} trailing={`${completedCount} ›`} testId="account-completed-events" onClick={goCompletedList} border={false} />
+            </div>
+
+            {/* Tickets other people imported into THIS account (migration 152):
+                a named ticket from a group booking, or a gift. */}
+            {(s.importedTickets || []).length > 0 && (
+              <>
+                <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: ink, marginTop: 24 }}>{T('Vé đã nhập', 'Imported tickets')}</span>
+                <div style={{ ...fieldGlass({ marginTop: 8, display: 'flex', flexDirection: 'column' }) }} data-testid="account-imported-tickets">
+                  {s.importedTickets.map((t, i) => {
+                    const voided = t.booking_status === 'cancelled' || t.booking_status === 'expired' || t.event_status === 'cancelled';
+                    return (
+                      <div key={t.attendee_id} onClick={() => openImportedTicket(t)} data-testid={`account-imported-ticket-${t.seat_no}`}
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '13px 16px', borderBottom: i < s.importedTickets.length - 1 ? `1px solid ${rule}` : 'none', cursor: 'pointer', textDecoration: voided ? 'line-through' : 'none' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.event_name}</span>
+                          <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{t.name}{voided ? ` ▪︎ ${T('Đã huỷ', 'Cancelled')}` : ''}</span>
+                        </div>
+                        <span style={{ fontSize: 13, color: ink }}>›</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+            <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: ink, marginTop: 24 }}>{T('Nhập vé được tặng hoặc vé nhóm', 'Import a gifted or group ticket')}</span>
+            <div style={{ ...fieldGlass({ marginTop: 8, display: 'flex', flexDirection: 'column' }) }}>
+              <Row icon="document" label={T('Nhập vé bằng mã nhận vé', 'Import a ticket with your claim code')} trailing="›" testId="account-ticket-import" onClick={() => openTicketImport('')} border={false} />
             </div>
           </>
         )}

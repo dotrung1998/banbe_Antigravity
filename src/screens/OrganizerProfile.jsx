@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase.js';
 import { paper, ink, rule, alert, display, cardGlass } from '../theme.js';
 import { bg } from '../data/events.js';
 import { SocialLinksEditor } from './SocialLinksEditor.jsx';
+import ProfileShareSheet, { profileShareLinks } from './sheets/ProfileShareSheet.jsx';
 import { LongIntroPreview, SocialLinksRow } from './LongIntro.jsx';
 
 function organizerAvatarUrl(path) {
@@ -34,6 +35,7 @@ export default function OrganizerProfile() {
   } = useGoc();
   const s = state;
   const [qrOpen, setQrOpen] = useState(false);
+  const [shareCardOpen, setShareCardOpen] = useState(false);
   const [qrSrc, setQrSrc] = useState(null);
   const [editing, setEditing] = useState(false);
   const [avatarFile, setAvatarFile] = useState(null);
@@ -90,7 +92,7 @@ export default function OrganizerProfile() {
     <div style={{ minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Organizer profile">
       <div style={{ padding: '66px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span onClick={backFromOrganizerProfile} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('‹ Quay lại', '‹ Back')}</span>
-        <span onClick={() => shareOrganizerProfile(org.id, org.name)} data-testid="organizer-profile-share" style={{ fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>
+        <span onClick={() => setShareCardOpen(true)} data-testid="organizer-profile-share" style={{ fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>
           {T('Chia sẻ', 'Share')}
         </span>
       </div>
@@ -271,6 +273,19 @@ export default function OrganizerProfile() {
           </div>
         </div>
       )}
+
+      <ProfileShareSheet
+        open={shareCardOpen}
+        onClose={() => setShareCardOpen(false)}
+        kindLabel={T('Tổ chức', 'Host')}
+        name={org.name || ''}
+        subtitle={T(`${org.event_count ?? 0} sự kiện · ${org.follower_count ?? 0} người theo dõi`, `${org.event_count ?? 0} events · ${org.follower_count ?? 0} followers`)}
+        detail={org.about || ''}
+        avatarUrl={organizerAvatarUrl(org.avatar_path)}
+        roundAvatar={false}
+        link={profileShareLinks().host(org.id)}
+        idPrefix="organizer-profile-share-card"
+      />
 
       {s.profileLinkCopiedFlash && (
         <p style={{ textAlign: 'center', fontSize: 11.5, color: ink, opacity: 0.7, margin: '10px 0 0' }}>{T('Đã sao chép link tổ chức', "Organizer link copied")}</p>

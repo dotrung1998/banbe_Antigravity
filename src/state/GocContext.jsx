@@ -259,6 +259,26 @@ export function shapeRealEventAsCurEvent(real) {
 // isn't redeemed until claimPendingReferralAndWelcome() runs, well after
 // this. The query param is stripped from the visible URL immediately so it
 // doesn't linger if the page gets shared or bookmarked from here.
+// One purchase-form row per ticket; ticket 1 defaults to the buyer's name.
+const makeAttendeeDrafts = (qty, firstName = '') =>
+  Array.from({ length: Math.max(1, Math.min(6, qty || 1)) }, (_, i) => ({ name: i === 0 ? (firstName || '') : '', dob: '' }));
+
+// A ticket PDF's "Open in banbe" link: https://<origin>/?claim=ATT-… (or a
+// CLAIM- gift code). Read once at module load like "?ref=" below, parked in
+// sessionStorage so it survives the sign-in detour, and consumed by the
+// effect that opens the import sheet once there is a signed-in user.
+const PENDING_CLAIM_KEY = 'banbe.pendingClaim';
+if (typeof window !== 'undefined') {
+  const params = new URLSearchParams(window.location.search);
+  const claim = params.get('claim');
+  if (claim && /^[A-Za-z0-9-]{6,40}$/.test(claim)) {
+    try { sessionStorage.setItem(PENDING_CLAIM_KEY, claim.toUpperCase()); } catch { /* private browsing */ }
+    params.delete('claim');
+    const rest = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''));
+  }
+}
+
 const REFERRAL_STORAGE_KEY = 'banbe.pendingReferral';
 if (typeof window !== 'undefined') {
   const params = new URLSearchParams(window.location.search);
@@ -937,6 +957,14 @@ const initialState = {
   loginSentVia: null,
   payMode: 'now',
   qty: 1,
+  // Per-attendee tickets (migration 151): one { name, dob } per ticket on the
+  // purchase form, the named tickets of the booking on screen, and tickets
+  // other accounts imported into this one (migration 152).
+  attendeeDrafts: [{ name: '', dob: '' }],
+  bookingAttendees: [],
+  importedTickets: [],
+  importedTicketOpen: null,
+  importOpen: false, importCode: '', importBusy: false, importError: '', importNotice: '',
   lang: 'vi',
   theme: 'light',
   area: 'all',
@@ -5664,7 +5692,7 @@ export function GocProvider({ children }) {
     };
   }), [set]);
   const goOrganizer = useCallback(() => set({ screen: 'organizer' }), [set]);
-  const goReserve = useCallback(() => set(s.user ? { screen: 'reserve' } : { screen: 'login', authMode: 'login', authReturnScreen: 'reserve', authBackScreen: 'event' }), [set, s.user]);
+  const goReserve = useCallback(() => set(s.user ? { screen: 'reserve', attendeeDrafts: makeAttendeeDrafts(s.qty, s.user.name) } : { screen: 'login', authMode: 'login', authReturnScreen: 'reserve', authBackScreen: 'event' }), [set, s.user, s.qty]);
   const backToEvent = useCallback(() => set({ screen: 'event' }), [set]);
   const backToOrganizer = useCallback(() => set({ screen: 'organizer' }), [set]);
   const goLogin = useCallback(() => set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'home' }), [set]);
@@ -7321,8 +7349,23 @@ export function GocProvider({ children }) {
   }, [set, referralLink, T]);
 
   // ---- reserve ----
-  const qtyMinus = useCallback(() => set(prev => ({ qty: Math.max(1, prev.qty - 1) })), [set]);
-  const qtyPlus = useCallback(() => set(prev => ({ qty: Math.min(6, prev.qty + 1) })), [set]);
+  const resizeDrafts = (prev, qty) => {
+    const drafts = prev.attendeeDrafts.slice(0, qty);
+    while (drafts.length < qty) drafts.push({ name: '', dob: '' });
+    return drafts;
+  };
+  const qtyMinus = useCallback(() => set(prev => {
+    const qty = Math.max(1, prev.qty - 1);
+    return { qty, attendeeDrafts: resizeDrafts(prev, qty) };
+  }), [set]);
+  const qtyPlus = useCallback(() => set(prev => {
+    const qty = Math.min(6, prev.qty + 1);
+    return { qty, attendeeDrafts: resizeDrafts(prev, qty) };
+  }), [set]);
+  const setAttendeeField = useCallback((index, field, value) => set(prev => ({
+    attendeeDrafts: prev.attendeeDrafts.map((a, i) => (i === index ? { ...a, [field]: value } : a)),
+    reserveError: '',
+  })), [set]);
   const pickPayNow = useCallback(() => set({ payMode: 'now' }), [set]);
   const pickHold = useCallback(() => set({ payMode: 'hold' }), [set]);
   const formNameType = useCallback((e) => set({ formName: e.target.value, reserveNameError: '' }), [set]);
@@ -7360,9 +7403,13 @@ export function GocProvider({ children }) {
       // the event was free, instantly approved, or later marked paid. That
       // is exactly what left the ticket screen showing "Holding your
       // spot"/00:00 permanently instead of ever reaching Confirmed/Ended.
-      const { data: booking, error } = await supabase.rpc('hold_seats', {
+      // hold_seats_with_attendees() (migration 151) validates the whole party,
+      // holds the seats and records every attendee in ONE transaction — a
+      // booking can't exist half-named.
+      const attendees = s.attendeeDrafts.slice(0, s.qty).map(a => ({ name: a.name.trim(), dob: a.dob }));
+      const { data: booking, error } = await supabase.rpc('hold_seats_with_attendees', {
         p_event: s.eventKey,
-        p_qty: s.qty,
+        p_attendees: attendees,
         p_note: null,
       });
       if (error) throw error;
@@ -7388,6 +7435,9 @@ export function GocProvider({ children }) {
       const message = {
         NOT_AUTHENTICATED: T('Bạn cần đăng nhập để giữ chỗ.', 'You need to sign in to hold a spot.'),
         INVALID_QTY: T('Số lượng chỗ không hợp lệ.', 'That number of spots isn’t valid.'),
+        INVALID_ATTENDEES: T('Thông tin người tham dự không hợp lệ.', 'The attendee details aren’t valid.'),
+        INVALID_ATTENDEE_NAME: T('Mỗi người tham dự cần có tên (ít nhất 2 ký tự).', 'Every attendee needs a name (at least 2 characters).'),
+        INVALID_ATTENDEE_DOB: T('Ngày sinh của một người tham dự không hợp lệ.', 'One attendee’s date of birth isn’t valid.'),
         PROFILE_NOT_FOUND: T('Không tìm thấy hồ sơ của bạn. Vui lòng thử lại.', 'We couldn’t find your profile. Please try again.'),
         EVENT_NOT_FOUND: T('Không tìm thấy sự kiện này.', 'This event could not be found.'),
         EVENT_NOT_LIVE: T('Sự kiện này đã bị huỷ hoặc chưa mở.', 'This event has been cancelled or isn’t open.'),
@@ -7400,7 +7450,72 @@ export function GocProvider({ children }) {
       }[err.message] || T('Không thể giữ chỗ lúc này. Vui lòng thử lại.', 'Could not hold this spot right now. Please try again.');
       set({ loading: false, reserveError: message });
     }
-  }, [set, s.eventKey, s.qty]);
+  }, [set, s.eventKey, s.qty, s.attendeeDrafts]);
+
+  // ---- named tickets & import (migrations 151/152) ----
+  const loadBookingAttendees = useCallback(async (bookingId) => {
+    if (!bookingId) return;
+    const { data, error } = await supabase.from('booking_attendees').select('*').eq('booking_id', bookingId).order('seat_no', { ascending: true });
+    if (error) { console.warn('loadBookingAttendees failed:', error); return; }
+    set(prev => (prev.booking?.id === bookingId ? { bookingAttendees: data || [] } : {}));
+  }, [set]);
+
+  const loadImportedTickets = useCallback(async () => {
+    const { data, error } = await supabase.rpc('get_my_imported_tickets');
+    if (error) { console.warn('loadImportedTickets failed:', error); return; }
+    set({ importedTickets: data || [] });
+  }, [set]);
+
+  const openTicketImport = useCallback((code = '') => set({ importOpen: true, importCode: code, importError: '', importNotice: '' }), [set]);
+  const closeTicketImport = useCallback(() => set({ importOpen: false, importBusy: false, importError: '' }), [set]);
+  const setImportCode = useCallback((v) => set({ importCode: v, importError: '' }), [set]);
+  const openImportedTicket = useCallback((t) => set({ importedTicketOpen: t }), [set]);
+  const closeImportedTicket = useCallback(() => set({ importedTicketOpen: null }), [set]);
+
+  const claimTicket = useCallback(async () => {
+    const code = (s.importCode || '').trim().toUpperCase();
+    if (!code) return set({ importError: T('Vui lòng nhập mã nhận vé.', 'Please enter the claim code.') });
+    if (!s.user) {
+      try { sessionStorage.setItem(PENDING_CLAIM_KEY, code); } catch { /* private browsing */ }
+      return set({ importOpen: false, screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'home' });
+    }
+    set({ importBusy: true, importError: '', importNotice: '' });
+    const { data, error } = await supabase.rpc('claim_ticket', { p_claim_code: code });
+    if (error || !data) {
+      return set({ importBusy: false, importError: T('Không thể nhận vé lúc này. Vui lòng thử lại.', "Couldn't import the ticket right now. Please try again.") });
+    }
+    if (!data.success) {
+      const msg = {
+        EMAIL_MISMATCH: T('Email tài khoản không khớp với email người nhận vé này.', 'Your account email does not match the recipient email for this gift.'),
+        EMAIL_NOT_VERIFIED: T('Hãy xác minh email của tài khoản trước khi nhận vé.', 'Verify your account email before importing the ticket.'),
+        INVALID_CLAIM_CODE: T('Mã nhận vé không hợp lệ hoặc không tồn tại.', 'Invalid or nonexistent claim code.'),
+        ALREADY_CLAIMED: T('Vé này đã được nhận bởi một tài khoản khác.', 'This ticket has already been imported by another account.'),
+        TICKET_CANCELLED: T('Vé không hợp lệ hoặc đã bị huỷ.', 'This ticket is not eligible or has been cancelled.'),
+        EVENT_ENDED: T('Sự kiện đã kết thúc, không thể thực hiện thao tác này.', 'The event has ended, so this is unavailable.'),
+        NOT_PAID_YET: T('Vé này chưa được xác nhận thanh toán nên chưa thể nhập.', "This ticket's payment isn't confirmed yet, so it can't be imported."),
+        GATE_REQUIRED: T('Tài khoản của bạn chưa hoàn tất xác minh nên chưa thể nhập vé.', 'Finish verifying your account before importing a ticket.'),
+      }[data.error] || T('Đã có lỗi xảy ra. Vui lòng thử lại.', 'Something went wrong. Please try again.');
+      return set({ importBusy: false, importError: msg });
+    }
+    try { sessionStorage.removeItem(PENDING_CLAIM_KEY); } catch { /* ignore */ }
+    set({
+      importBusy: false, importCode: '',
+      importNotice: data.already_claimed
+        ? T('Vé này đã nằm trong tài khoản của bạn — không có vé nào khác được tạo thêm.', 'This ticket is already in your account — no extra ticket was created.')
+        : T('Vé đã được thêm vào tài khoản của bạn. Không có vé nào khác được tạo thêm.', 'The ticket was added to your account. No extra ticket was created.'),
+    });
+    loadImportedTickets();
+    loadPaymentBookings();
+  }, [s.importCode, s.user, set, T, loadImportedTickets, loadPaymentBookings]);
+
+  // A ticket PDF's link (?claim=…) or a claim parked across sign-in: once
+  // there is a signed-in user, open the import sheet with the code filled in.
+  useEffect(() => {
+    if (!s.user?.id) return;
+    let code = null;
+    try { code = sessionStorage.getItem(PENDING_CLAIM_KEY); } catch { /* ignore */ }
+    if (code) set({ importOpen: true, importCode: code, importError: '', importNotice: '' });
+  }, [s.user?.id, set]);
 
   const payHoldNow = useCallback(() => set({ holdDeadline: null, payMode: 'now' }), [set]);
   const confirmPayment = useCallback(async (bookingId, payMethod = 'momo') => {
@@ -9748,6 +9863,7 @@ export function GocProvider({ children }) {
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
+    setAttendeeField, loadBookingAttendees, loadImportedTickets, openTicketImport, closeTicketImport, setImportCode, openImportedTicket, closeImportedTicket, claimTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, openStoryLibraryPicker, openStoryCameraPicker, closeStoryPickerRequests, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
@@ -9786,6 +9902,7 @@ export function GocProvider({ children }) {
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
+    setAttendeeField, loadBookingAttendees, loadImportedTickets, openTicketImport, closeTicketImport, setImportCode, openImportedTicket, closeImportedTicket, claimTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
     chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, openStoryLibraryPicker, openStoryCameraPicker, closeStoryPickerRequests, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
