@@ -785,12 +785,6 @@ struct RootView: View {
             // ONE dismiss animation entirely itself (see that file's
             // `commitDismiss()`) — this conditional must never layer a
             // second SwiftUI transition on top of it.
-            if app.pulseOpen {
-                PulseViewerView()
-                    .transition(.identity)
-                    .zIndex(26)
-            }
-
             if app.loading { loadingOverlay }
 
             // Pulse teaser pass (2026-09-27) — always in the tree (now just
@@ -946,7 +940,9 @@ struct RootView: View {
         .fullScreenCover(item: $app.giftTicketContext) { _ in
             GiftTicketView()
         }
-        .fullScreenCover(isPresented: Binding(
+        // A `.sheet`, like the profile share card, so it slides up and closes
+        // (drag down or Cancel) the same way.
+        .sheet(isPresented: Binding(
             get: { app.giftImportOpen },
             set: { if !$0 { app.closeGiftImport() } }
         )) {
@@ -963,10 +959,16 @@ struct RootView: View {
         )) {
             SurveyPublicView(asModal: true)
         }
-        // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse. No longer a
-        // `.fullScreenCover` — see the `if app.pulseOpen { PulseViewerView() }`
-        // ZStack sibling above, and that view's own `commitDismiss()` doc
-        // comment for the real, confirmed bug this fixes.
+        // Banbe Pulse — a native `.sheet`, the same presentation (and so the
+        // same open/close animation and drag-to-dismiss) as the profile share
+        // card. Closing by any route runs closePulseViewer() so the organizer/
+        // photo panels are cleared with it.
+        .sheet(isPresented: Binding(
+            get: { app.pulseOpen },
+            set: { if !$0 { app.closePulseViewer() } }
+        )) {
+            PulseViewerView().environmentObject(app)
+        }
         // The session is owned by AuthViewModel (it also drives the Face ID
         // lock); AppState mirrors it into the profile/bookings/notifications
         // the screens read.

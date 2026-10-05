@@ -253,7 +253,7 @@ struct GiftImportView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    Text(app.T("Nhập vé được tặng", "Import a gift ticket"))
+                    Text(app.T("Nhập vé được tặng hoặc vé nhóm", "Import a gift or group ticket"))
                         .font(BanbeTheme.display(24))
 
                     Text(app.T("Nhập mã nhận vé mà người tặng (hoặc người đặt vé nhóm) gửi cho bạn. Mã này khác với mã QR dùng điểm danh. Nếu bạn nhận được vé PDF, chạm nút \"Mở trong banbe\" trong PDF để mã tự điền.",

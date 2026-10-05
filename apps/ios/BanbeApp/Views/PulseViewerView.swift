@@ -72,11 +72,6 @@ struct PulseViewerView: View {
     // continuously reveals the real Home view underneath, then removes
     // this view entirely once that single animation finishes. No second,
     // unrelated system transition ever plays.
-    @State private var dragTranslation: CGFloat = 0
-    @State private var isDragTracking = false
-    @State private var isCommitting = false
-    private let edgeZoneWidth: CGFloat = 20
-
     // Loading-GIF pass (same-day real-device follow-up) — root cause of
     // "GIF never shown during image load/tab switch" on iOS: every
     // thumbnail here used a bare `AsyncImage(url:){...} placeholder:
@@ -141,42 +136,11 @@ struct PulseViewerView: View {
         !activeTabPhotoURLs.isEmpty && !anyPhotoReady && !allPhotosSettled
     }
 
-    private var slideOffset: CGFloat {
-        isCommitting ? UIScreen.main.bounds.width : dragTranslation
-    }
-
-    /// Shared by the X button (a plain tap) and a crossed edge-swipe — the
-    /// ONE dismiss animation this ticket asks for, never a second/different
-    /// one depending on which control triggered it.
-    private func commitDismiss() {
-        guard !isCommitting else { return }
-        withAnimation(.easeOut(duration: 0.22)) { isCommitting = true }
-    }
-
-    private var edgeSwipe: some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .local)
-            .onChanged { value in
-                guard !isCommitting else { return }
-                isDragTracking = true
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) {
-                    dragTranslation = max(0, value.translation.width)
-                }
-            }
-            .onEnded { value in
-                defer { isDragTracking = false }
-                guard !isCommitting else { return }
-                let width = UIScreen.main.bounds.width
-                let crossedDistance = value.translation.width > width * 0.3
-                let flicked = value.predictedEndTranslation.width > width * 0.6
-                if crossedDistance || flicked {
-                    commitDismiss()
-                } else {
-                    withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) { dragTranslation = 0 }
-                }
-            }
-    }
+    /// Pulse is presented as a native `.sheet` (RootView), exactly like the
+    /// profile share card, so opening and closing use the system's own slide-up
+    /// and drag/tap-to-dismiss — nothing here animates the dismissal itself.
+    /// (Replaces the 2026-09-27 custom edge-swipe overlay.)
+    private func commitDismiss() { app.closePulseViewer() }
 
     private var items: [PulseItem] { app.pulseTab == .weekly ? app.pulseWeekly : app.pulseDaily }
     private var loading: Bool {
@@ -206,9 +170,23 @@ struct PulseViewerView: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Banbe Pulse")
                     Spacer()
+                    // Liquid Glass close button (iOS 26); a thin material disc
+                    // on older systems. `.interactive()` gives the native
+                    // press/shimmer response.
                     Button { commitDismiss() } label: {
-                        Image(systemName: "xmark").font(.system(size: 16, weight: .semibold)).foregroundStyle(app.palette.ink)
+                        let icon = Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(app.palette.ink)
+                            .frame(width: 38, height: 38)
+                        if #available(iOS 26.0, *), !reduceTransparency {
+                            icon.glassEffect(.regular.interactive(), in: Circle())
+                        } else {
+                            icon.background(.ultraThinMaterial, in: Circle())
+                                .overlay(Circle().stroke(app.palette.rule, lineWidth: 0.5))
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(app.T("Đóng", "Close"))
                     .accessibilityIdentifier("pulse.close")
                 }
                 .padding(.horizontal, 20).padding(.top, 20)
@@ -295,24 +273,6 @@ struct PulseViewerView: View {
             }
         }
         .background(app.palette.paper.ignoresSafeArea())
-        .offset(x: slideOffset)
-        // A sliver of dimming that fades out as the dismiss progresses —
-        // the same depth cue RootView's own edge-swipe gives every other
-        // screen (see that gesture's `peekOffset`/dimming comment).
-        .overlay(Color.black.opacity(max(0, 0.12 - Double(slideOffset) / 1400)).ignoresSafeArea().allowsHitTesting(false))
-
-        // The edge-swipe hit zone — a thin leading strip, exactly like
-        // RootView's own `edgeSwipe`. `.highPriorityGesture` so a touch
-        // starting in this strip always wins over the ScrollView beneath
-        // it instead of the two arbitrating; a touch outside it is never
-        // even offered to this recognizer (see `edgeZoneWidth`'s own
-        // comment), so ordinary vertical scroll, tab switching, a photo
-        // tap, and the organizer sheet's own gestures are all untouched.
-        Color.clear
-            .contentShape(Rectangle())
-            .frame(width: edgeZoneWidth)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .highPriorityGesture(edgeSwipe)
 
             // Expanded-panel redesign (2026-10-02) — both popups used to be
             // native `.sheet`s (system bottom-anchored presentations); a
@@ -334,19 +294,6 @@ struct PulseViewerView: View {
         .onPreferenceChange(PulseSourceFramePreferenceKey.self) { pulseSourceFrames = $0 }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: app.pulseOrganizerSheet)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: app.pulsePhotoSheet)
-        // Mirrors RootView's own `.onChange(of: isCommittingBack)` exactly —
-        // let the single slide-to-edge animation actually finish playing
-        // (0.22s) before removing this view from RootView's ZStack at all.
-        // `app.pulseOpen = false` here is what makes it disappear (see
-        // RootView.swift's `if app.pulseOpen { PulseViewerView() }`) — no
-        // separate transition plays on removal since that conditional uses
-        // `.transition(.identity)`.
-        .onChange(of: isCommitting) { _, committing in
-            guard committing else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
-                app.closePulseViewer()
-            }
-        }
     }
 
     @ViewBuilder

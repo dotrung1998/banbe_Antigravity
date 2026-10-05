@@ -222,6 +222,10 @@ final class BottomTabBarOverlay {
     // states inside it) since they all funnel through the same published
     // field.
     private var surveyModalOpen = false
+    /// A profile share card sheet (personal or host) is up. Presented as a
+    /// `.sheet` from several screens, so the card itself reports in, and the
+    /// dock hides exactly as it does for Pulse.
+    private var shareCardOpen = false
     // FIX PASS (2026-09-30, Map-sheet layering) — the dock "+" tray
     // (`DockCreateTrayView`) now renders inside THIS window (moved out of
     // RootView's main-window ZStack, where it rendered under MapExplore's
@@ -362,6 +366,11 @@ final class BottomTabBarOverlay {
     /// Survey discovery/dock pass — called from RootView's
     /// `.onChange(of: app.storySurveyModalPublicID)`. See `surveyModalOpen`'s
     /// own doc comment for why this is a dedicated flag.
+    func setShareCardOpen(_ open: Bool) {
+        shareCardOpen = open
+        applyVisibility()
+    }
+
     func setSurveyModalOpen(_ open: Bool) {
         surveyModalOpen = open
         applyVisibility()
@@ -418,7 +427,7 @@ final class BottomTabBarOverlay {
     }
 
     private func applyVisibility() {
-        let shouldShow = !(appLocked || forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || surveyModalOpen)
+        let shouldShow = !(appLocked || forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || surveyModalOpen || shareCardOpen)
             && BottomTabBar.visibleScreens.contains(currentScreen)
         guard shouldShow != lastShown else { return }
         lastShown = shouldShow

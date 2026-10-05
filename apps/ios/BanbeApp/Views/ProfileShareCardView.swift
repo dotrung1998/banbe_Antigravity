@@ -146,6 +146,13 @@ struct ProfileShareSheet: View {
     }
 
     var body: some View {
+        sheetBody
+            // Hides the dock while the card is up, like Pulse does.
+            .onAppear { BottomTabBarOverlay.shared.setShareCardOpen(true) }
+            .onDisappear { BottomTabBarOverlay.shared.setShareCardOpen(false) }
+    }
+
+    private var sheetBody: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
