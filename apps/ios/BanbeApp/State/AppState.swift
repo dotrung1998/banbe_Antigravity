@@ -572,6 +572,15 @@ final class AppState: ObservableObject {
 
     // MARK: Booking
     @Published var qty: Int = 1
+    /// One row per ticket on the purchase form (migration 151) — always
+    /// `qty` long, kept in step by qtyPlus/qtyMinus.
+    @Published var attendeeDrafts: [AttendeeDraft] = [AttendeeDraft()]
+    /// The named tickets of the booking on screen (empty for a booking made
+    /// before migration 151, which keeps its single booking-level QR).
+    @Published var bookingAttendees: [BookingAttendee] = []
+    /// Named tickets other accounts imported into this one (migration 152).
+    @Published var importedTickets: [ImportedTicket] = []
+    @Published var importedTicketOpen: ImportedTicket?
     // ReserveView's Name field, ONLY used for the empty-display_name case
     // (01-hold-payment.md's 2026-09-17 follow-up #6): once a real
     // profiles.display_name exists it's shown read-only from user.displayName
@@ -3016,6 +3025,10 @@ final class AppState: ObservableObject {
         guard isSignedIn else { return requireAuth(returnTo: .reserve, backTo: .event) }
         formName = user?.displayName ?? ""
         reserveNameError = ""
+        // A fresh party for each purchase; ticket 1 is usually the buyer.
+        qty = max(1, min(6, qty))
+        attendeeDrafts = (0..<qty).map { _ in AttendeeDraft() }
+        attendeeDrafts[0].name = user?.displayName ?? ""
         screen = .reserve
     }
 

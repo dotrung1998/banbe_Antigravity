@@ -235,7 +235,7 @@ extension AppState {
 
         do {
             let res: GiftClaimResult = try await SupabaseService.client
-                .rpc("claim_gift_ticket", params: ClaimParams(p_claim_code: code))
+                .rpc("claim_ticket", params: ClaimParams(p_claim_code: code))
                 .execute().value
 
             guard res.success else {
@@ -251,6 +251,7 @@ extension AppState {
                      "The ticket was added to your account. No extra ticket was created.")
             await loadPaymentBookings()
             await loadMyEvents()
+            await loadImportedTickets()
             Haptics.success()
         } catch {
             print("claimGiftTicket failed:", error)
@@ -279,6 +280,9 @@ extension AppState {
         case "ALREADY_CLAIMED":
             return T("Vé này đã được nhận bởi một tài khoản khác.",
                      "This ticket has already been imported by another account.")
+        case "NOT_PAID_YET":
+            return T("Vé này chưa được xác nhận thanh toán nên chưa thể nhập. Hãy thử lại sau khi người mua thanh toán xong.",
+                     "This ticket's payment isn't confirmed yet, so it can't be imported. Try again once the buyer's payment is confirmed.")
         case "ALREADY_GIFTED":
             return T("Vé này đã được tặng trước đó.",
                      "This ticket has already been gifted.")
@@ -315,6 +319,32 @@ extension AppState {
         }
     }
 
+    /// Tickets other accounts imported into THIS account (migration 152).
+    func loadImportedTickets() async {
+        guard isSignedIn else { importedTickets = []; return }
+        do {
+            let rows: [ImportedTicket] = try await SupabaseService.client
+                .rpc("get_my_imported_tickets").execute().value
+            importedTickets = rows
+        } catch {
+            print("loadImportedTickets failed:", error)
+        }
+    }
+
+    /// The PDF for an imported ticket, from the live event.
+    func exportImportedTicketPDF(_ t: ImportedTicket) -> URL? {
+        guard let event = giftEvent(for: t.eventKey ?? t.eventId) else { return nil }
+        let document = GiftTicketDocument(
+            eventName: event.name,
+            organizer: event.orgName.isEmpty ? event.host : event.orgName,
+            startDate: event.startDate, whenText: event.when,
+            venue: event.locationLabel ?? event.where, details: event.desc,
+            recipientName: t.name, ticketCode: t.ticketCode, admissionToken: t.admissionToken,
+            claimCode: nil, reference: t.attendeeId.uuidString)
+        return writeExportFile(name: "banbe-ticket-\(t.ticketCode).pdf",
+                               data: GiftTicketPDFGenerator.renderPDF(document: document, isEN: isEN, isOwnTicket: true))
+    }
+
     // MARK: - PDF / calendar exports
 
     /// Re-derives the PDF for a ticket the purchaser is no longer attending
@@ -327,6 +357,35 @@ extension AppState {
         let document = GiftTicketDocument.make(booking: booking, event: event)
         return writeExportFile(name: "banbe-gift-ticket-\(document.ticketCode).pdf",
                                data: GiftTicketPDFGenerator.renderPDF(document: document, isEN: isEN))
+    }
+
+    /// The holder's OWN ticket as a PDF — the confirmed screen's "Download PDF".
+    /// The QR is the booking id the organizer's scanner already reads, i.e.
+    /// exactly what the in-app ticket shows.
+    func exportOwnTicketPDF(for booking: Booking, holderName: String) -> URL? {
+        guard let event = giftEvent(for: booking.eventId) else { return nil }
+        var document = GiftTicketDocument.make(booking: booking, event: event)
+        document.recipientName = holderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        document.admissionToken = booking.id
+        let name = document.ticketCode.isEmpty ? booking.id.uuidString : document.ticketCode
+        return writeExportFile(name: "banbe-ticket-\(name).pdf",
+                               data: GiftTicketPDFGenerator.renderPDF(document: document, isEN: isEN, isOwnTicket: true))
+    }
+
+    /// One PDF per attendee (migration 151). Each carries that attendee's own
+    /// name, entry code and QR — the token only that person's scan accepts.
+    func exportAttendeeTicketPDFs(for booking: Booking, attendees: [BookingAttendee]) -> [URL] {
+        guard let event = giftEvent(for: booking.eventId) else { return [] }
+        return attendees.compactMap { att in
+            var document = GiftTicketDocument.make(booking: booking, event: event)
+            document.recipientName = att.name
+            document.ticketCode = att.ticketCode
+            document.admissionToken = att.admissionToken
+            document.reference = att.id.uuidString
+            document.claimCode = att.claimCode
+            return writeExportFile(name: "banbe-ticket-\(att.ticketCode).pdf",
+                                   data: GiftTicketPDFGenerator.renderPDF(document: document, isEN: isEN, isOwnTicket: true))
+        }
     }
 
     @discardableResult

@@ -256,18 +256,18 @@ struct GiftImportView: View {
                     Text(app.T("Nhập vé được tặng", "Import a gift ticket"))
                         .font(BanbeTheme.display(24))
 
-                    Text(app.T("Nhập mã nhận vé mà người tặng gửi cho bạn. Mã này khác với mã QR dùng điểm danh.",
-                               "Enter the claim code the giver sent you. It is different from the check-in QR code."))
+                    Text(app.T("Nhập mã nhận vé mà người tặng (hoặc người đặt vé nhóm) gửi cho bạn. Mã này khác với mã QR dùng điểm danh. Nếu bạn nhận được vé PDF, chạm nút \"Mở trong banbe\" trong PDF để mã tự điền.",
+                               "Enter the claim code the giver — or whoever booked the group — sent you. It is different from the check-in QR code. If you have the PDF, tap its \"Open in banbe\" button and the code fills itself in."))
                         .font(.system(size: 13)).lineSpacing(3).opacity(0.85)
 
                     BanbeField(label: app.T("Mã nhận vé", "Claim code"),
-                               placeholder: "CLAIM-XXXXXXXX",
+                               placeholder: "CLAIM-… / ATT-…",
                                text: $app.giftImportCode)
                         .accessibilityIdentifier("giftImport.code")
 
                     if app.isSignedIn, let email = app.userEmail, !email.isEmpty {
-                        Text(app.T("Đang đăng nhập với \(email). Vé chỉ được nhập vào tài khoản có đúng email đã nhận vé.",
-                                   "Signed in as \(email). The ticket can only be imported by the account with the recipient email."))
+                        Text(app.T("Đang đăng nhập với \(email). Vé được tặng chỉ nhập được bằng đúng email người nhận; vé nhóm (mã ATT-) chỉ cần mã và email đã xác minh.",
+                                   "Signed in as \(email). A gifted ticket needs the recipient's email; a group ticket (ATT- code) needs only the code and a verified email."))
                             .font(.system(size: 11.5)).lineSpacing(2.5).opacity(0.7)
                     } else {
                         Text(app.T("Bạn sẽ được yêu cầu đăng nhập bằng email nhận vé trước khi nhập.",
@@ -308,5 +308,66 @@ struct GiftImportView: View {
                 }
             }
         }
+    }
+}
+
+/// A ticket another account imported into this one (migration 152): the name,
+/// entry code and QR the door scans, and a PDF — nothing about the booking's
+/// payment, which stays with the buyer.
+struct ImportedTicketView: View {
+    @EnvironmentObject var app: AppState
+    @Environment(\.dismiss) private var dismiss
+    let ticket: ImportedTicket
+    @State private var share: PDFShareItem?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Spacer()
+                Button(app.T("Đóng", "Close")) { dismiss() }.font(.system(size: 14))
+            }
+            Text(ticket.eventName).font(BanbeTheme.display(24))
+            Text(ticket.name).font(.system(size: 15, weight: .semibold))
+            if let when = ticket.startsAt {
+                Text(when.formatted(date: .complete, time: .shortened)).font(.system(size: 12.5)).opacity(0.7)
+            }
+            if ticket.isVoid {
+                Text(app.T("Vé này đã bị huỷ và không còn hiệu lực.", "This ticket was cancelled and is no longer valid."))
+                    .font(.system(size: 13)).foregroundStyle(BanbeTheme.alert)
+            } else {
+                HStack {
+                    Spacer()
+                    QRCodeImage(value: ticket.admissionToken.uuidString, size: 200)
+                    Spacer()
+                }
+                .padding(.top, 6)
+                Text(app.T("Mã vào cửa: ", "Entry code: ") + ticket.ticketCode)
+                    .font(.system(size: 13, weight: .semibold)).kerning(1.5)
+                    .frame(maxWidth: .infinity)
+                if ticket.checkedInAt != nil {
+                    Text(app.T("Đã vào cửa", "Checked in"))
+                        .font(.system(size: 12, weight: .bold)).foregroundStyle(BanbeTheme.alert)
+                        .frame(maxWidth: .infinity)
+                }
+                Button {
+                    if let url = app.exportImportedTicketPDF(ticket) { share = PDFShareItem(url: url) }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.down.doc")
+                        Text(app.T("Tải vé PDF", "Download PDF")).font(.system(size: 13.5, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("importedTicket.download")
+            }
+            Spacer()
+        }
+        .foregroundStyle(app.palette.ink)
+        .padding(22)
+        .background(app.palette.paper.ignoresSafeArea())
+        .sheet(item: $share) { item in ActivityShareSheet(url: item.url) }
+        .accessibilityIdentifier("importedTicket.sheet")
     }
 }

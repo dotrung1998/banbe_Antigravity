@@ -45,7 +45,15 @@ enum GiftTicketPDFGenerator {
     }
 
     /// Renders the gift ticket as a polished A4 PDF document.
-    static func renderPDF(document doc: GiftTicketDocument, isEN: Bool = false) -> Data {
+    ///
+    /// An own-ticket PDF that carries a `claimCode` (an attendee's ticket in a
+    /// multi-ticket booking, migration 152) keeps the "Open in banbe" import link.
+    ///
+    /// `isOwnTicket` renders the holder's OWN ticket (the "Download PDF" on the
+    /// confirmed screen): same page, but labelled as a ticket rather than a
+    /// gift, no "gifted to / import" wording, and no Wallet link — that link
+    /// carries a gift admission token and would not open the holder's own pass.
+    static func renderPDF(document doc: GiftTicketDocument, isEN: Bool = false, isOwnTicket: Bool = false) -> Data {
         let pageWidth: CGFloat = 595
         let pageHeight: CGFloat = 842 // A4 standard
         let margin: CGFloat = 46
@@ -79,7 +87,7 @@ enum GiftTicketPDFGenerator {
             }
 
             // Plain right-aligned label: no pill, no border.
-            let badgeText = isEN ? "GIFT TICKET" : "VÉ TẶNG"
+            let badgeText = isOwnTicket ? (isEN ? "TICKET" : "VÉ") : (isEN ? "GIFT TICKET" : "VÉ TẶNG")
             let badgeAttrs: [NSAttributedString.Key: Any] = [
                 .font: UIFont.systemFont(ofSize: 9, weight: .bold),
                 .foregroundColor: accent,
@@ -93,14 +101,14 @@ enum GiftTicketPDFGenerator {
             y += 30
 
             // Recipient
-            let toLabel = isEN ? "GIFTED TO" : "TẶNG CHO"
+            let toLabel = isOwnTicket ? (isEN ? "TICKET HOLDER" : "NGƯỜI SỞ HỮU VÉ") : (isEN ? "GIFTED TO" : "TẶNG CHO")
             toLabel.draw(at: CGPoint(x: margin, y: y), withAttributes: [
                 .font: UIFont.systemFont(ofSize: 9, weight: .semibold),
                 .foregroundColor: muted,
                 .kern: 1.4,
             ])
             y += 16
-            let recipient = doc.recipientName.isEmpty ? (isEN ? "Friend" : "Bạn bè") : doc.recipientName
+            let recipient = doc.recipientName.isEmpty ? (isOwnTicket ? (isEN ? "Guest" : "Khách") : (isEN ? "Friend" : "Bạn bè")) : doc.recipientName
             recipient.draw(at: CGPoint(x: margin, y: y), withAttributes: [
                 .font: UIFont.systemFont(ofSize: 25, weight: .bold),
                 .foregroundColor: ink,
@@ -186,8 +194,8 @@ enum GiftTicketPDFGenerator {
             // Entry instructions. No email, no date of birth, no claim code:
             // none of those are needed to walk through the door.
             let instructions = isEN
-                ? "Show this QR code at the door to check in. No banbe account needed."
-                : "Xuất trình mã QR này ở cửa để vào. Không cần tài khoản banbe."
+                ? (isOwnTicket ? "Show this QR code at the door to check in." : "Show this QR code at the door to check in. No banbe account needed.")
+                : (isOwnTicket ? "Xuất trình mã QR này ở cửa để vào." : "Xuất trình mã QR này ở cửa để vào. Không cần tài khoản banbe.")
             let centered = NSMutableParagraphStyle()
             centered.alignment = .center
             (instructions as NSString).draw(
@@ -208,7 +216,7 @@ enum GiftTicketPDFGenerator {
             let gap: CGFloat = 12
             let halfWidth = (contentWidth - gap) / 2
             let walletRect = CGRect(x: margin, y: y, width: contentWidth, height: 44)
-            let appleCalRect = CGRect(x: margin, y: walletRect.maxY + 6 + 11 + 12, width: halfWidth, height: 36)
+            let appleCalRect = CGRect(x: margin, y: isOwnTicket ? y : walletRect.maxY + 6 + 11 + 12, width: halfWidth, height: 36)
             let googleCalRect = CGRect(x: margin + halfWidth + gap, y: appleCalRect.minY, width: halfWidth, height: 36)
             let importRect = CGRect(x: margin, y: appleCalRect.maxY + 12, width: contentWidth, height: 36)
 
@@ -217,13 +225,16 @@ enum GiftTicketPDFGenerator {
             let googleCalURL = googleCalendarURL(document: doc)
             let importURL = claimURL(for: doc.claimCode ?? "")
 
-            drawActionButton(rect: walletRect, title: isEN ? "Add to Apple Wallet" : "Thêm vào Apple Wallet",
-                             symbol: "wallet.pass.fill", style: .filled, ink: ink, ruleColor: rule, fontSize: 11.5)
-            if let walletURL { ctx.setURL(walletURL, for: pdfLinkRect(walletRect, pageHeight: pageHeight)) }
-            drawCentered(isEN ? "Open this PDF on your iPhone and tap to add the ticket to Wallet."
-                              : "Mở PDF này trên iPhone và chạm để thêm vé vào Wallet.",
-                         in: CGRect(x: margin, y: walletRect.maxY + 6, width: contentWidth, height: 11),
-                         font: UIFont.systemFont(ofSize: 8), color: muted)
+            if !isOwnTicket {
+                drawActionButton(rect: walletRect, title: isEN ? "Add to Apple Wallet" : "Thêm vào Apple Wallet",
+                                 symbol: "wallet.bifold.fill", style: .filled, ink: ink, ruleColor: rule, fontSize: 11.5)
+                if let walletURL { ctx.setURL(walletURL, for: pdfLinkRect(walletRect, pageHeight: pageHeight)) }
+                drawCentered(isEN ? "Open this PDF on your iPhone and tap to add the ticket to Wallet."
+                                  : "Mở PDF này trên iPhone và chạm để thêm vé vào Wallet.",
+                             in: CGRect(x: margin, y: walletRect.maxY + 6, width: contentWidth, height: 11),
+                             font: UIFont.systemFont(ofSize: 8), color: muted)
+
+            }
 
             drawActionButton(rect: appleCalRect, title: isEN ? "Apple Calendar" : "Lịch Apple",
                              symbol: "calendar.badge.plus", style: .outlined, ink: ink, ruleColor: rule, fontSize: 10)
@@ -232,21 +243,23 @@ enum GiftTicketPDFGenerator {
                              symbol: "calendar", style: .outlined, ink: ink, ruleColor: rule, fontSize: 10)
             if let googleCalURL { ctx.setURL(googleCalURL, for: pdfLinkRect(googleCalRect, pageHeight: pageHeight)) }
 
-            drawActionButton(rect: importRect,
-                             title: isEN ? "Open in banbe · Register & import" : "Mở trong banbe · Đăng ký & nhập vé",
-                             symbol: "arrow.up.forward.app", style: .outlined, ink: ink, ruleColor: rule, fontSize: 10)
-            if let importURL { ctx.setURL(importURL, for: pdfLinkRect(importRect, pageHeight: pageHeight)) }
+            if !isOwnTicket || doc.claimCode != nil {
+                drawActionButton(rect: importRect,
+                                 title: isEN ? "Open in banbe · Register & import" : "Mở trong banbe · Đăng ký & nhập vé",
+                                 symbol: "arrow.up.forward.app", style: .outlined, ink: ink, ruleColor: rule, fontSize: 10)
+                if let importURL { ctx.setURL(importURL, for: pdfLinkRect(importRect, pageHeight: pageHeight)) }
 
-            let importNote = importURL == nil
-                ? (isEN
-                    ? "No import link on this ticket. Enter the claim code from your message in banbe, or send it to us and we will reissue the PDF."
-                    : "Vé này không có liên kết nhận vé. Hãy nhập mã nhận vé trong tin nhắn vào banbe, hoặc gửi lại cho banbe để cấp lại PDF.")
-                : (isEN
-                    ? "Opens the installed banbe app. You can attend with just this QR — no account needed."
-                    : "Mở ứng dụng banbe đã cài. Bạn vẫn có thể vào cửa chỉ với mã QR này, không cần tài khoản.")
-            drawCentered(importNote,
-                         in: CGRect(x: margin, y: importRect.maxY + 6, width: contentWidth, height: 24),
-                         font: UIFont.systemFont(ofSize: 8), color: muted)
+                let importNote = importURL == nil
+                    ? (isEN
+                        ? "No import link on this ticket. Enter the claim code from your message in banbe, or send it to us and we will reissue the PDF."
+                        : "Vé này không có liên kết nhận vé. Hãy nhập mã nhận vé trong tin nhắn vào banbe, hoặc gửi lại cho banbe để cấp lại PDF.")
+                    : (isEN
+                        ? "Opens the installed banbe app. You can attend with just this QR — no account needed."
+                        : "Mở ứng dụng banbe đã cài. Bạn vẫn có thể vào cửa chỉ với mã QR này, không cần tài khoản.")
+                drawCentered(importNote,
+                             in: CGRect(x: margin, y: importRect.maxY + 6, width: contentWidth, height: 24),
+                             font: UIFont.systemFont(ofSize: 8), color: muted)
+            }
 
             // Footer
             let footerY = pageHeight - margin - 18

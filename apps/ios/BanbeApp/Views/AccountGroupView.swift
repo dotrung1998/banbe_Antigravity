@@ -96,6 +96,10 @@ struct AccountGroupView: View {
             Button(app.T("Hủy", "Cancel"), role: .cancel) {}
         }
         .sheet(item: $pdfShare) { item in ActivityShareSheet(url: item.url) }
+        .sheet(item: $app.importedTicketOpen) { t in
+            ImportedTicketView(ticket: t).environmentObject(app)
+        }
+        .task { await app.loadImportedTickets() }
         .task(id: app.paymentBookings.map(\.id)) { reconcileRetention() }
         // Safety net (mirrors AccountView's own accountTab role-sync) — a
         // role change while this happens to be open sends it back to
@@ -337,10 +341,41 @@ struct AccountGroupView: View {
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.top, 8)
 
+        // Tickets other people imported-in from a group booking (migration 152).
+        if !app.importedTickets.isEmpty {
+            Text(app.T("Vé đã nhập", "Imported tickets")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+            VStack(spacing: 0) {
+                ForEach(Array(app.importedTickets.enumerated()), id: \.element.id) { i, t in
+                    Button { app.importedTicketOpen = t } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "ticket").font(.system(size: 16)).frame(width: 30)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(t.eventName).font(.system(size: 13.5, weight: .semibold))
+                                Text(t.name + (t.isVoid ? " ▪︎ " + app.T("Đã huỷ", "Cancelled") : ""))
+                                    .font(.system(size: 11.5)).opacity(0.65)
+                            }
+                            Spacer(minLength: 6)
+                            Text("›")
+                        }
+                        .foregroundStyle(app.palette.ink)
+                        .strikethrough(t.isVoid)
+                        .padding(.horizontal, 14).padding(.vertical, 12)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("account.importedTicket.\(t.seatNo)")
+                    if i < app.importedTickets.count - 1 { Divider().overlay(app.palette.rule).opacity(0.65) }
+                }
+            }
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.top, 8)
+            .accessibilityIdentifier("account.importedTickets")
+        }
+
         // The recipient's own entry point for a claim code — deliberately its
         // own row, never reachable from the check-in QR, which is a different
         // credential entirely (see migration 132).
-        Text(app.T("Nhập vé được tặng", "Import a gift ticket")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+        Text(app.T("Nhập vé được tặng hoặc vé nhóm", "Import a gifted or group ticket")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
         VStack(spacing: 0) {
             row(app.T("Nhập vé bằng mã nhận vé", "Import a ticket with your claim code"),
                 identifier: "account.giftImport", icon: "gift", trailing: "›") {
@@ -800,12 +835,12 @@ struct AccountGroupView: View {
 }
 
 
-private struct PDFShareItem: Identifiable {
+struct PDFShareItem: Identifiable {
     let id = UUID()
     let url: URL
 }
 
-private struct ActivityShareSheet: UIViewControllerRepresentable {
+struct ActivityShareSheet: UIViewControllerRepresentable {
     let url: URL
     func makeUIViewController(context: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: [url], applicationActivities: nil)

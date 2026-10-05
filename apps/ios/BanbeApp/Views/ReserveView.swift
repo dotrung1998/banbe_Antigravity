@@ -16,9 +16,46 @@ struct ReserveView: View {
     // input that writes via setNameAtHold() (rename_display_name(), same
     // RPC Account's "Đổi tên" uses) instead of a value that goes nowhere.
     private var hasName: Bool { !(app.user?.displayName ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
-    private var formOK: Bool { hasName }
+    private var formOK: Bool { hasName && app.attendeesComplete }
     private var totalLabel: String {
         event.isFree ? "Miễn phí" : EventLabels.vnd(event.priceVnd * app.qty)
+    }
+
+    @ViewBuilder
+    private func attendeeCard(_ index: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(app.T("Vé \(index + 1)", "Ticket \(index + 1)"))
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(app.palette.ink.opacity(0.7))
+            BanbeField(label: nil,
+                       placeholder: app.T("Họ và tên", "Full name"),
+                       text: Binding(get: { app.attendeeDrafts[safe: index]?.name ?? "" },
+                                     set: { if app.attendeeDrafts.indices.contains(index) { app.attendeeDrafts[index].name = $0 } }))
+                .accessibilityIdentifier("reserve.attendee\(index).name")
+            HStack {
+                Text(app.T("Ngày sinh", "Date of birth")).font(.system(size: 13))
+                Spacer()
+                if app.attendeeDrafts[safe: index]?.dob == nil {
+                    Button(app.T("Chọn ngày", "Choose date")) {
+                        if app.attendeeDrafts.indices.contains(index) {
+                            app.attendeeDrafts[index].dob = Calendar.current.date(byAdding: .year, value: -25, to: Date())
+                        }
+                    }
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("reserve.attendee\(index).dobPick")
+                } else {
+                    DatePicker("", selection: Binding(
+                        get: { app.attendeeDrafts[safe: index]?.dob ?? Date() },
+                        set: { if app.attendeeDrafts.indices.contains(index) { app.attendeeDrafts[index].dob = $0 } }),
+                               in: ...Date(), displayedComponents: .date)
+                        .labelsHidden()
+                        .accessibilityIdentifier("reserve.attendee\(index).dob")
+                }
+            }
+        }
+        .padding(13)
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     var body: some View {
@@ -118,6 +155,22 @@ struct ReserveView: View {
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.top, 12)
 
+                // One name + date of birth per ticket (migration 151): each
+                // attendee gets their own QR and PDF, and the door sees their age.
+                Text(app.T("Người tham dự", "Attendees"))
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .padding(.top, 22)
+                Text(app.T("Mỗi vé cần tên và ngày sinh của người sẽ tham dự.",
+                           "Each ticket needs the name and date of birth of the person attending."))
+                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.65))
+                    .padding(.top, 4)
+                VStack(spacing: 10) {
+                    ForEach(Array(app.attendeeDrafts.enumerated()), id: \.element.id) { index, _ in
+                        attendeeCard(index)
+                    }
+                }
+                .padding(.top, 10)
+
                 Text(app.T(
                     "banbe không thu tiền. Bạn giữ chỗ 30 phút để chuyển khoản trực tiếp cho người tổ chức. Bấm \"Tôi đã chuyển khoản\" là đồng hồ dừng và chỗ được khoá cho tới khi người tổ chức xác nhận.",
                     "banbe does not collect money. Your seat is held for 30 minutes while you transfer to the organizer directly. Tapping \"I have transferred\" stops the clock and locks your seat until they confirm."
@@ -159,4 +212,8 @@ struct ReserveView: View {
         }
         .buttonStyle(.plain)
     }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
 }

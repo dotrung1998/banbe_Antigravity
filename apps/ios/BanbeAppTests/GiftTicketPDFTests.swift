@@ -194,4 +194,33 @@ final class GiftTicketPDFTests: XCTestCase {
         XCTAssertNotEqual(booking.admissionQRCodeValue, booking.id.uuidString,
                           "a gifted seat must scan as its rotated token, not its row id")
     }
+
+    // MARK: - The holder's own ticket ("Download PDF" on the confirmed screen)
+
+    func testOwnTicketPDFIsATicketNotAGift() throws {
+        let text = try pdfText(GiftTicketPDFGenerator.renderPDF(document: document(claimCode: nil), isEN: true, isOwnTicket: true))
+        let flat = text.uppercased().filter { !$0.isWhitespace }   // tracked caps may extract letter-spaced
+        XCTAssertTrue(flat.contains("TICKETHOLDER"))
+        XCTAssertTrue(text.contains("Midnight Rooftop"))
+        XCTAssertFalse(flat.contains("GIFTTICKET") || flat.contains("GIFTEDTO"), "an own ticket must not be labelled as a gift")
+        XCTAssertFalse(text.contains("Apple Wallet"), "the gift wallet link must not appear on an own ticket")
+        XCTAssertFalse(text.contains("Register & import"))
+    }
+
+    func testWalletSymbolsExistOnThisOS() {
+        // A misspelt SF Symbol renders nothing, silently — in the app and in the PDF.
+        XCTAssertNotNil(UIImage(systemName: "wallet.bifold"))
+        XCTAssertNotNil(UIImage(systemName: "wallet.bifold.fill"))
+    }
+
+    func testAttendeePDFCarriesItsOwnImportLinkButNoWalletLink() throws {
+        var doc = document(claimCode: "ATT-1234567890")
+        doc.recipientName = "Bao Tran"
+        let pdf = try XCTUnwrap(PDFDocument(data: GiftTicketPDFGenerator.renderPDF(document: doc, isEN: true, isOwnTicket: true)))
+        let links = try XCTUnwrap(pdf.page(at: 0)).annotations.compactMap { $0.url?.absoluteString }
+        XCTAssertTrue(links.contains { $0.contains("gift/claim") && $0.contains("code=ATT-1234567890") },
+                      "the attendee's PDF must carry the link that imports THAT ticket")
+        XCTAssertFalse(links.contains { $0.contains("/api/wallet-pass") },
+                       "the gift wallet link must not appear on an attendee ticket")
+    }
 }

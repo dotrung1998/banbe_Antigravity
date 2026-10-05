@@ -2597,8 +2597,34 @@ extension AppState {
 
     // MARK: - Reserve / booking
 
-    func qtyMinus() { qty = max(1, qty - 1) }
-    func qtyPlus() { qty = min(6, qty + 1) }
+    func qtyMinus() { qty = max(1, qty - 1); syncAttendeeDrafts() }
+    func qtyPlus() { qty = min(6, qty + 1); syncAttendeeDrafts() }
+
+    /// Keep the form exactly `qty` rows long without losing what's typed.
+    func syncAttendeeDrafts() {
+        while attendeeDrafts.count < qty { attendeeDrafts.append(AttendeeDraft()) }
+        if attendeeDrafts.count > qty { attendeeDrafts.removeLast(attendeeDrafts.count - qty) }
+    }
+
+    /// The party must be fully named before a seat is held.
+    var attendeesComplete: Bool {
+        attendeeDrafts.count == qty && attendeeDrafts.allSatisfy(\.isComplete)
+    }
+
+    /// Reads this account's named tickets for one booking (RLS: buyer only).
+    func loadBookingAttendees(_ bookingID: UUID) async {
+        do {
+            let rows: [BookingAttendee] = try await SupabaseService.client
+                .from("booking_attendees").select()
+                .eq("booking_id", value: bookingID.uuidString)
+                .order("seat_no", ascending: true)
+                .execute().value
+            guard booking?.id == bookingID else { return }
+            bookingAttendees = rows
+        } catch {
+            print("loadBookingAttendees failed:", error)
+        }
+    }
 
     func submitReserve() async {
         loading = true
@@ -2610,10 +2636,24 @@ extension AppState {
             // (payment_state = 'holding', hold_expires_at = NULL) forever,
             // which is what left the ticket screen showing "Holding your
             // spot"/00:00 permanently regardless of the event's real state.
+            // hold_seats_with_attendees() (migration 151) validates the whole
+            // party, holds the seats and records every attendee in ONE
+            // transaction — a booking can't exist half-named.
+            let dobFormat = DateFormatter()
+            dobFormat.calendar = Calendar(identifier: .gregorian)
+            dobFormat.locale = Locale(identifier: "en_US_POSIX")
+            dobFormat.dateFormat = "yyyy-MM-dd"
+            let party = attendeeDrafts.prefix(qty).map {
+                HoldSeatsWithAttendeesParams.Attendee(
+                    name: $0.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                    dob: dobFormat.string(from: $0.dob ?? Date()))
+            }
             let created: Booking = try await SupabaseService.client
-                .rpc("hold_seats", params: HoldSeatsParams(event: eventKey, qty: qty))
+                .rpc("hold_seats_with_attendees", params: HoldSeatsWithAttendeesParams(event: eventKey, attendees: Array(party)))
                 .execute().value
+            bookingAttendees = []
             booking = created
+            Task { await loadBookingAttendees(created.id) }
             holdDeadline = created.holdExpiresAt
             now = Date()
             tickets[eventKey] = qty
@@ -2636,6 +2676,9 @@ extension AppState {
             reserveError = [
                 "NOT_AUTHENTICATED": T("Bạn cần đăng nhập để giữ chỗ.", "You need to sign in to hold a spot."),
                 "INVALID_QTY": T("Số lượng chỗ không hợp lệ.", "That number of spots isn’t valid."),
+                "INVALID_ATTENDEES": T("Thông tin người tham dự không hợp lệ.", "The attendee details aren’t valid."),
+                "INVALID_ATTENDEE_NAME": T("Mỗi người tham dự cần có tên (ít nhất 2 ký tự).", "Every attendee needs a name (at least 2 characters)."),
+                "INVALID_ATTENDEE_DOB": T("Ngày sinh của một người tham dự không hợp lệ.", "One attendee’s date of birth isn’t valid."),
                 "PROFILE_NOT_FOUND": T("Không tìm thấy hồ sơ của bạn. Vui lòng thử lại.", "We couldn’t find your profile. Please try again."),
                 "EVENT_NOT_FOUND": T("Không tìm thấy sự kiện này.", "This event could not be found."),
                 "EVENT_NOT_LIVE": T("Sự kiện này đã bị huỷ hoặc chưa mở.", "This event has been cancelled or isn’t open."),
