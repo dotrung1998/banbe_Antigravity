@@ -703,6 +703,7 @@ extension AppState {
                 // gate above (myOrgEventKeys) stays the full union on purpose.
                 myOrgEventOrganizerID = Dictionary(uniqueKeysWithValues: events.map { ($0.id, $0.organizerId) })
                 if !events.isEmpty { hasHosted = true }
+                await loadMyOrgEventSummaries()   // feeds the Host tab / Dock badge for submitted events
             }
         } catch {
             print("Failed to load account events:", error)
@@ -1797,6 +1798,7 @@ extension AppState {
         notificationPollTask?.cancel()
         let sessionStart = Date()
         var toastedIDs = Set<UUID>()
+        var pollTick = 0
         notificationPollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self, let uid = self.userID else { return }
@@ -1883,6 +1885,10 @@ extension AppState {
                     print("Notification poll failed:", error)
                 }
                 await self.refreshUnreadMessageCount()
+                // About every 30s: re-read the host's own event statuses so the badge for
+                // "submitted events" drops/rises when Banbe approves or sends one back.
+                pollTick += 1
+                if pollTick % 6 == 0, self.organizerMode, !self.myOrgEventKeys.isEmpty { await self.loadMyOrgEventSummaries() }
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
             }
         }
@@ -5031,6 +5037,24 @@ extension AppState {
         // own refresh here too, same as the full queue does.
         if ok { await loadPendingEvents(); await loadPendingEventsCount() }
         return ok
+    }
+
+    enum RemindAdminResult { case sent(Int), limit, failed }
+
+    /// Host nudges the admins about an event still waiting for review (max 2 per event,
+    /// enforced by `remind_admin_event_review`, migration 148).
+    func remindAdminAboutEvent(_ eventId: String) async -> RemindAdminResult {
+        struct Reply: Decodable { let success: Bool?; let error: String?; let remindCount: Int?
+            enum CodingKeys: String, CodingKey { case success, error; case remindCount = "remind_count" } }
+        do {
+            let r: Reply = try await SupabaseService.client
+                .rpc("remind_admin_event_review", params: ["p_event_id": eventId]).execute().value
+            if r.success == true { return .sent(r.remindCount ?? 1) }
+            return r.error == "REMIND_LIMIT_REACHED" ? .limit : .failed
+        } catch {
+            print("remindAdminAboutEvent failed:", error)
+            return .failed
+        }
     }
 
     /// This account's own real (non-catalogue) events, raw — see

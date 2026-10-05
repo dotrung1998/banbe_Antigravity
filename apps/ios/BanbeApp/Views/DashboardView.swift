@@ -522,11 +522,12 @@ struct DashboardView: View {
 /// the event row, only moves it back to editable ('draft') so
 /// `goEditEvent`'s existing edit-and-resubmit path can reuse the SAME
 /// event id afterwards.
-private struct PendingEventRow: View {
+struct PendingEventRow: View {
     @EnvironmentObject var app: AppState
     let row: RealEventSummary
     @State private var withdrawing = false
     @State private var reasonDraft = ""
+    @State private var viewing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -571,15 +572,187 @@ private struct PendingEventRow: View {
                     }
                 }
             } else {
-                Button(app.T("Rút lại sự kiện", "Withdraw submission")) { withdrawing = true }
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(app.palette.ink.opacity(0.6))
+                HStack(spacing: 14) {
+                    Button { viewing = true } label: {
+                        Text(app.T("Xem", "View"))
+                            .font(.system(size: 12, weight: .semibold))
+                            .padding(.horizontal, 16).frame(minHeight: 34)
+                            .overlay(Capsule().stroke(app.palette.ink.opacity(0.5), lineWidth: 1))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("dashboard.viewPending.\(row.id)")
+                    // Underlined: it's a tappable action, not a label.
+                    Button { withdrawing = true } label: {
+                        Text(app.T("Rút lại sự kiện", "Withdraw event"))
+                            .font(.system(size: 12, weight: .semibold))
+                            .underline()
+                            .foregroundStyle(BanbeTheme.alert)
+                            .frame(minHeight: 34)
+                            .contentShape(Rectangle())
+                    }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("dashboard.withdraw.\(row.id)")
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 2)
             }
         }
         .padding(.vertical, 13).padding(.horizontal, 16)
         .accessibilityIdentifier("dashboard.pending.\(row.id)")
+        .sheet(isPresented: $viewing) { PendingEventDetailSheet(row: row) }
+    }
+}
+
+/// What the host submitted, read-only, while it waits for Banbe's review.
+struct PendingEventDetailSheet: View {
+    @EnvironmentObject var app: AppState
+    @Environment(\.dismiss) private var dismiss
+    let row: RealEventSummary
+
+    private var whenText: String {
+        if let d = row.startsAt { return Countdown.whenLabel(for: d) }
+        return [row.eventDate, row.eventTime].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
+    }
+    private var priceText: String {
+        guard let p = row.priceVnd, p > 0 else { return app.T("Miễn phí", "Free") }
+        return formatVnd(p)
+    }
+
+    @State private var photoURLs: [URL] = []
+    /// nil until read — also nil if the reminder column doesn't exist yet (migration 148 not applied).
+    @State private var remindCount: Int?
+    @State private var remindBusy = false
+    @State private var remindMessage = ""
+
+    private var remindBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(app.T("Banbe sẽ có quyết định trong vòng 7 ngày. Bạn có thể nhắc quản trị viên tối đa 2 lần cho mỗi sự kiện.",
+                       "A decision will be made within 7 days. You can remind the admin up to twice per event."))
+                .font(.system(size: 12.5)).opacity(0.85)
+            if let used = remindCount {
+                let left = max(0, 2 - used)
+                Button {
+                    guard !remindBusy else { return }
+                    Task {
+                        remindBusy = true
+                        remindMessage = ""
+                        let res = await app.remindAdminAboutEvent(row.id)
+                        remindBusy = false
+                        switch res {
+                        case .sent(let n): remindCount = n; remindMessage = app.T("Đã nhắc quản trị viên.", "Reminder sent to the admin.")
+                        case .limit: remindCount = 2
+                        case .failed: remindMessage = app.T("Không gửi được. Thử lại nhé.", "Couldn't send. Please try again.")
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        if remindBusy { ProgressView() }
+                        Text(left > 0 ? app.T("Nhắc quản trị viên (còn \(left) lần)", "Remind admin (\(left) left)")
+                                      : app.T("Đã nhắc tối đa 2 lần", "Reminded the maximum 2 times"))
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+                    .background(left > 0 ? app.palette.ink : app.palette.ink.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
+                    .foregroundStyle(left > 0 ? app.palette.paper : app.palette.ink.opacity(0.6))
+                }
+                .buttonStyle(.plain)
+                .disabled(left == 0 || remindBusy)
+                .accessibilityIdentifier("dashboard.remindAdmin.\(row.id)")
+            }
+            if !remindMessage.isEmpty {
+                Text(remindMessage).font(.system(size: 11.5)).opacity(0.75)
+            }
+        }
+        .padding(14)
+        .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    /// Every photo of the event (swipe sideways), not just the cover.
+    @ViewBuilder private var photoStrip: some View {
+        let urls = photoURLs.isEmpty ? (row.photoURL.map { [$0] } ?? []) : photoURLs
+        if !urls.isEmpty {
+            VStack(spacing: 6) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 10) {
+                        ForEach(urls, id: \.absoluteString) { url in
+                            CatalogPhoto(path: url.absoluteString, height: 220, width: urls.count == 1 ? UIScreen.main.bounds.width - 40 : UIScreen.main.bounds.width - 70, cornerRadius: 14)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollTargetBehavior(.viewAligned)
+                .frame(height: 220)
+                if urls.count > 1 {
+                    Text(app.T("\(urls.count) ảnh — vuốt để xem", "\(urls.count) photos — swipe to see"))
+                        .font(.system(size: 11)).opacity(0.6)
+                }
+            }
+        }
+    }
+
+    private func loadPhotos() async {
+        struct P: Decodable { let storage_path: String }
+        let rows: [P] = (try? await SupabaseService.client.from("event_photos")
+            .select("storage_path").eq("event_id", value: row.id)
+            .order("sort_order", ascending: true).execute().value) ?? []
+        photoURLs = rows.compactMap { r in
+            let rel = r.storage_path.hasPrefix("event-photos/") ? String(r.storage_path.dropFirst("event-photos/".count)) : r.storage_path
+            return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: rel)
+        }
+    }
+
+    private func line(_ label: String, _ value: String?) -> some View {
+        Group {
+            if let value, !value.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label).font(.system(size: 11)).opacity(0.6)
+                    Text(value).font(.system(size: 14))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    photoStrip
+                    Text(row.name).font(BanbeTheme.display(24))
+                    Label(app.T("Đang chờ Banbe duyệt", "Waiting for Banbe to review"), systemImage: "hourglass")
+                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.honey)
+                    remindBlock
+                    line(app.T("Thời gian", "When"), whenText)
+                    line(app.T("Khu vực", "Area"), row.area)
+                    line(app.T("Địa chỉ", "Address"), [row.addressLine, row.city].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", "))
+                    line(app.T("Danh mục", "Category"), row.catLabel)
+                    line(app.T("Giá", "Price"), priceText)
+                    line(app.T("Sức chứa", "Capacity"), row.capacity.map(String.init))
+                    line(app.T("Mô tả", "Description"), row.description)
+                    line(app.T("Giới thiệu", "About"), row.intro)
+                    if let included = row.includedItems, !included.isEmpty {
+                        line(app.T("Bao gồm", "Included"), included.map(\.label).joined(separator: " ▪︎ "))
+                    }
+                    line(app.T("Gửi lúc", "Submitted"), row.submittedAt?.formatted(date: .abbreviated, time: .shortened))
+                }
+                .padding(20)
+            }
+            .foregroundStyle(app.palette.ink)
+            .background(app.palette.paper.ignoresSafeArea())
+            .navigationTitle(app.T("Sự kiện đã gửi", "Submitted event"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(app.T("Đóng", "Close")) { dismiss() } } }
+        }
+        .task { await loadPhotos() }
+        .task {
+            struct R: Decodable { let admin_remind_count: Int }
+            if let r: R = try? await SupabaseService.client.from("events").select("admin_remind_count")
+                .eq("id", value: row.id).single().execute().value { remindCount = r.admin_remind_count }
+        }
+        // The dock lives in its own window above the sheet — hide it while this is open.
+        .onAppear { BottomTabBarOverlay.shared.setForcedHidden(true) }
+        .onDisappear { BottomTabBarOverlay.shared.setForcedHidden(false) }
     }
 }
 

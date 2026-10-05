@@ -67,9 +67,10 @@ enum AccountBadges {
     /// admin + host counts (never each other's own already-summed value)
     /// since a real admin queue item and a real host queue item are always
     /// distinct underlying rows.
-    static func accountDockBadge(accountType: String, organizerMode: Bool, pendingEventsCount: Int, verificationsCount: Int, refundQueue: [RefundClaim], paymentBookings: [PayableBooking], myRefunds: [RefundClaim], holdingCount: Int = 0) -> Int {
+    static func accountDockBadge(accountType: String, organizerMode: Bool, pendingEventsCount: Int, verificationsCount: Int, refundQueue: [RefundClaim], paymentBookings: [PayableBooking], myRefunds: [RefundClaim], holdingCount: Int = 0, submittedEventsCount: Int = 0) -> Int {
         adminModerationCount(accountType: accountType, pendingEventsCount: pendingEventsCount)
             + hostActionCount(organizerMode: organizerMode, verificationsCount: verificationsCount, refundQueue: refundQueue, holdingCount: holdingCount)
+            + (organizerMode ? submittedEventsCount : 0)   // events awaiting Banbe's review / needing fixes
             + personalActionCount(paymentBookings: paymentBookings, myRefunds: myRefunds)
     }
 

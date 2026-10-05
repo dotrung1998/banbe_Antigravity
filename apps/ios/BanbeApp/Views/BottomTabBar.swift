@@ -124,7 +124,8 @@ struct BottomTabBar: View {
             refundQueue: app.refundQueue,
             paymentBookings: app.paymentBookings,
             myRefunds: app.myRefunds,
-            holdingCount: app.organizerHoldingSummary?.count ?? 0
+            holdingCount: app.organizerHoldingSummary?.count ?? 0,
+            submittedEventsCount: app.myPendingEvents.count + app.myNeedsFixEvents.count
         )
     }
 

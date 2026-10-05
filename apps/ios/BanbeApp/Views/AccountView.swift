@@ -171,6 +171,7 @@ struct AccountView: View {
                 await app.loadMyRefunds()
                 if app.canHost {
                     await app.loadVerifications()
+                    await app.loadMyOrgEventSummaries()   // for the "Submitted events" card
                     await app.loadOrganizerHoldingSummary()
                     await app.loadRefundQueue()
                     if app.myOrganizerID != nil { await app.loadMyOrgStats() }
@@ -214,6 +215,7 @@ struct AccountView: View {
         // stops showing without a manual pull to refresh.
         .task(id: app.accountTab) {
             guard app.userID != nil, app.canHost, app.accountTab == "host" else { return }
+            await app.loadMyOrgEventSummaries()   // for the "Submitted events" card
             await app.loadOrganizerHoldingSummary()
             await app.loadVerifications()
             await app.loadRefundQueue()
@@ -223,7 +225,7 @@ struct AccountView: View {
         // so the host card's real published-event stats reflect the
         // latest admin approval/cancellation, not a stale snapshot.
         .task(id: app.myOrganizerID) {
-            if app.canHost, app.myOrganizerID != nil { await app.loadMyOrgStats() }
+            if app.canHost, app.myOrganizerID != nil { await app.loadMyOrgStats(); await app.loadMyOrgEventSummaries() }   // summaries feed the Host tab's badge
         }
         .onAppear { retryScrollRestoreIfNeeded(); syncAccountTabToRole(); consumeTeamHighlightsIfNeeded() }
         .onChange(of: app.teamInviteHighlightOrganizerId) { _, _ in consumeTeamHighlightsIfNeeded() }
@@ -897,7 +899,8 @@ struct AccountView: View {
         var tabs: [(String, String, Int)] = [("personal", app.T("Cá Nhân", "Personal"), AccountBadges.personalActionCount(paymentBookings: app.paymentBookings, myRefunds: app.myRefunds))]
         if app.organizerMode {
             let hostBadge = AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueue: app.refundQueue, holdingCount: app.organizerHoldingSummary?.count ?? 0)
-            tabs.append(("host", app.T("Tổ Chức", "Host"), hostBadge))
+            // Events waiting for Banbe's review (or sent back for fixing) count too.
+            tabs.append(("host", app.T("Tổ Chức", "Host"), hostBadge + submittedTotal))
         }
         if app.accountType == "admin" {
             let adminBadge = AccountBadges.adminModerationCount(accountType: app.accountType, pendingEventsCount: app.pendingEventsCount)
@@ -1405,6 +1408,8 @@ struct AccountView: View {
                         badge: AccountBadges.hostActionCount(organizerMode: app.organizerMode, verificationsCount: app.verifications.count, refundQueue: app.refundQueue)
                     )
                     groupDivider()
+                    submittedEventsRow
+                    groupDivider()
                     // Account IA reorder pass (2026-09-30 second) — the Host
                     // tab's own entry point into the SAME "team" screen the
                     // Personal tab's conditional invite row also opens (see
@@ -1529,6 +1534,73 @@ struct AccountView: View {
         .buttonStyle(.plain)
         .padding(.top, 14)
         .accessibilityIdentifier(host ? "account.shareHostCard" : "account.shareProfileCard")
+    }
+
+    @State private var submittedExpandedOverride: Bool?
+
+    private var submittedTotal: Int { app.myPendingEvents.count + app.myNeedsFixEvents.count }
+
+    private var submittedExpanded: Bool { submittedExpandedOverride ?? false }
+
+    /// "Submitted Events" row in Host Management: the red number says how many are waiting;
+    /// tapping it expands the events right here (View / Withdraw event on each).
+    private var submittedEventsRow: some View {
+        VStack(spacing: 0) {
+            SwipeSafeButton {
+                withAnimation(.easeInOut(duration: 0.2)) { submittedExpandedOverride = !submittedExpanded }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "hourglass")
+                        .font(.system(size: 16, weight: .medium))
+                        .frame(width: 22, height: 22)
+                        .opacity(0.72)
+                    Text(app.T("Sự Kiện Đã Gửi Chờ Duyệt", "Submitted Events")).font(.system(size: 14))
+                    Spacer()
+                    if submittedTotal > 0 {
+                        Text(submittedTotal > 99 ? "99+" : "\(submittedTotal)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(app.palette.paper)
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(BanbeTheme.alert, in: Capsule())
+                            .accessibilityIdentifier("account.group.submittedEvents.badge")
+                            .accessibilityLabel(app.T("\(submittedTotal) mục mới", "\(submittedTotal) new item(s)"))
+                    }
+                    Text("›").font(.system(size: 15))
+                        .rotationEffect(.degrees(submittedExpanded ? 90 : 0))
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(16)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("account.group.submittedEvents")
+
+            if submittedExpanded {
+                if submittedTotal == 0 {
+                    Text(app.T("Không có sự kiện nào đang chờ duyệt.", "No events are waiting for review."))
+                        .font(.system(size: 12)).opacity(0.65)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16).padding(.bottom, 14)
+                }
+                ForEach(app.myPendingEvents, id: \.id) { row in
+                    Divider().overlay(app.palette.rule)
+                    PendingEventRow(row: row)
+                }
+                if !app.myNeedsFixEvents.isEmpty {
+                    Divider().overlay(app.palette.rule)
+                    Button { app.goDashboard(back: .profile) } label: {
+                        HStack {
+                            Text(app.T("\(app.myNeedsFixEvents.count) sự kiện cần chỉnh sửa — sửa & gửi lại", "\(app.myNeedsFixEvents.count) event(s) need fixing — fix & resubmit"))
+                                .font(.system(size: 12.5, weight: .semibold)).underline().foregroundStyle(BanbeTheme.alert)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.system(size: 11)).opacity(0.5)
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 13).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 
     /// Story posting is a host action — lives on the Host tab.
