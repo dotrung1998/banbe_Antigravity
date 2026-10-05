@@ -166,7 +166,7 @@ struct SecurityView: View {
             .disabled(app.hostPromoConsentBusy || app.hostPromoConsent == nil)
             .accessibilityIdentifier("security.hostPromoConsent")
             Text(app.T("Host tự soạn và tự bấm gửi từng tin trong ứng dụng Tin nhắn của chính host (trên máy của host); banbe không gửi hàng loạt hay tự động, và không đảm bảo tin được nhận. Tắt mục này sẽ chặn các tin quảng bá do banbe hỗ trợ trong tương lai, nhưng không ảnh hưởng tới tin nhắn mà host gửi độc lập sau khi đã có số của bạn.",
-                       "Hosts write and send each text themselves from the host's own Messages app (on the host's phone) — banbe never sends in bulk or automatically and can't guarantee delivery. Turning this off blocks future banbe-assisted promos, but doesn't affect messages a host sends independently after already having your number."))
+                       "Hosts write and send each text themselves from the host's own Messages app (on the host's phone). Banbe never sends in bulk or automatically and can't guarantee delivery. Turning this off blocks future banbe-assisted promos, but doesn't affect messages a host sends independently after already having your number."))
                 .font(.system(size: 11.5))
                 .foregroundStyle(app.palette.ink.opacity(0.7))
             if !app.hostPromoConsentError.isEmpty {

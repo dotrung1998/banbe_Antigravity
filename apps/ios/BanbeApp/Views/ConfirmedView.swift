@@ -18,6 +18,7 @@ struct ConfirmedView: View {
     // app's established polling convention elsewhere (AttendanceView's own
     // 6s poll, 41340ee; PaymentViews' 6s poll).
     @State private var receiptPollTask: Task<Void, Never>?
+    @State private var walletDesignOpen = false
 
     private var event: CatalogEvent { app.currentEvent }
     // payment_state is the source of truth for every phase distinction
@@ -276,6 +277,12 @@ struct ConfirmedView: View {
                             }
                             .accessibilityIdentifier("confirmed.giveTicket")
                         }
+                    if isPaid, let booking = app.booking, !booking.isGifted {
+                        footerButton(app.T("Thêm vào Apple Wallet", "Add to Apple Wallet")) {
+                            walletDesignOpen = true
+                        }
+                        .accessibilityIdentifier("confirmed.addToWallet")
+                    }
                     footerButton(app.calAdded ? app.T("Đã thêm vào lịch", "Added to calendar")
                                               : app.T("Thêm vào lịch", "Add to calendar")) {
                         app.openCalendarPicker(for: event)
@@ -321,6 +328,13 @@ struct ConfirmedView: View {
                         app.screen = app.confirmedBack
                     }
                 }
+            }
+        }
+        .sheet(isPresented: $walletDesignOpen) {
+            if let booking = app.booking {
+                WalletPassDesignView(bookingID: booking.id, eventName: event.name,
+                                     venue: app.trStatus(app.stripKm(event.where, event: event)))
+                    .environmentObject(app)
             }
         }
         .onAppear { startPollingIfNeeded(); refreshReceiptStatusIfNeeded() }

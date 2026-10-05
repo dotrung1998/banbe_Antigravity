@@ -70,7 +70,14 @@ final class GiftTicketPDFTests: XCTestCase {
         let pdf = try XCTUnwrap(PDFDocument(data: GiftTicketPDFGenerator.renderPDF(document: document())))
         let page = try XCTUnwrap(pdf.page(at: 0))
         let links = page.annotations.compactMap { $0.url?.absoluteString }
-        XCTAssertEqual(links.count, 2, "expected exactly the import and calendar actions")
+        XCTAssertEqual(links.count, 4, "expected exactly Wallet, Apple Calendar, Google Calendar and import")
+
+        // Wallet: keyed by the admission token (what the QR already carries),
+        // never by the claim code.
+        let walletLink = try XCTUnwrap(links.first { $0.contains("/api/wallet-pass") })
+        XCTAssertTrue(walletLink.contains("gift=\(document().admissionToken.uuidString.lowercased())"))
+        XCTAssertFalse(walletLink.contains("CLAIM-DEADBEEF"), "claim code leaked into the Wallet link")
+        XCTAssertNotNil(links.first { $0.hasPrefix("webcal://") }, "Apple Calendar link missing")
 
         let importLink = try XCTUnwrap(links.first { $0.hasPrefix("banbe://") })
         XCTAssertTrue(importLink.contains("code=CLAIM-DEADBEEF"))

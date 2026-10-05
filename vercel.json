@@ -22,6 +22,10 @@
     {
       "path": "/api/cron/purge-payment-documents",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/wallet-pass-sweep",
+      "schedule": "30 10 * * *"
     }
   ]
 }

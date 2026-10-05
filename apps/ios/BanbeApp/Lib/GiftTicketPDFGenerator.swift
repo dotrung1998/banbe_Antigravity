@@ -108,7 +108,7 @@ enum GiftTicketPDFGenerator {
             y += 38
 
             // Event card
-            let cardHeight: CGFloat = 156
+            let cardHeight: CGFloat = 128
             let card = UIBezierPath(roundedRect: CGRect(x: margin, y: y, width: contentWidth, height: cardHeight), cornerRadius: 14)
             surface.setFill()
             card.fill()
@@ -149,10 +149,10 @@ enum GiftTicketPDFGenerator {
                 attributes: [.font: UIFont.systemFont(ofSize: 11), .foregroundColor: ink],
                 context: nil)
 
-            y += cardHeight + 34
+            y += cardHeight + 28
 
             // Admission QR — the prominent element.
-            let qrSize: CGFloat = 152
+            let qrSize: CGFloat = 128
             let qrX = (pageWidth - qrSize) / 2
             if let qrImage = generateQRCodeImage(doc.admissionToken.uuidString, size: qrSize) {
                 let box = UIBezierPath(roundedRect: CGRect(x: qrX - 9, y: y - 9, width: qrSize + 18, height: qrSize + 18), cornerRadius: 10)
@@ -186,80 +186,67 @@ enum GiftTicketPDFGenerator {
             // Entry instructions. No email, no date of birth, no claim code:
             // none of those are needed to walk through the door.
             let instructions = isEN
-                ? "Show this QR code at the door to be checked in. No banbe account is needed to attend."
-                : "Xuất trình mã QR này ở cửa để điểm danh. Bạn không cần tài khoản banbe để tham dự."
+                ? "Show this QR code at the door to check in. No banbe account needed."
+                : "Xuất trình mã QR này ở cửa để vào. Không cần tài khoản banbe."
             let centered = NSMutableParagraphStyle()
             centered.alignment = .center
             (instructions as NSString).draw(
-                with: CGRect(x: margin + 24, y: y, width: contentWidth - 48, height: 34),
+                with: CGRect(x: margin + 24, y: y, width: contentWidth - 48, height: 28),
                 options: [.usesLineFragmentOrigin],
                 attributes: [.font: UIFont.systemFont(ofSize: 11), .foregroundColor: muted, .paragraphStyle: centered],
                 context: nil)
-            y += 44
+            y += 38
 
             drawRule(from: margin, to: pageWidth - margin, at: y, color: rule, width: 0.5)
             y += 18
 
-            // Two REAL actions, side by side. Each is either a working link or
-            // honest plain text — never a button that pretends to work.
-            let buttonHeight: CGFloat = 40
-            let gap: CGFloat = 14
-            let buttonWidth = (contentWidth - gap) / 2
-            let importRect = CGRect(x: margin, y: y, width: buttonWidth, height: buttonHeight)
-            let calendarRect = CGRect(x: margin + buttonWidth + gap, y: y, width: buttonWidth, height: buttonHeight)
+            // Four REAL actions in three tidy groups. Each is either a working
+            // link or honest plain text — never a button that pretends to work.
+            //   1. Wallet  — the hero: the one most people want on a phone.
+            //   2. Calendar — Apple and Google as an equal pair.
+            //   3. banbe app — for recipients who want the ticket in an account.
+            let gap: CGFloat = 12
+            let halfWidth = (contentWidth - gap) / 2
+            let walletRect = CGRect(x: margin, y: y, width: contentWidth, height: 44)
+            let appleCalRect = CGRect(x: margin, y: walletRect.maxY + 6 + 11 + 12, width: halfWidth, height: 36)
+            let googleCalRect = CGRect(x: margin + halfWidth + gap, y: appleCalRect.minY, width: halfWidth, height: 36)
+            let importRect = CGRect(x: margin, y: appleCalRect.maxY + 12, width: contentWidth, height: 36)
 
+            let walletURL = appleWalletURL(document: doc)
+            let appleCalURL = appleCalendarURL(document: doc)
+            let googleCalURL = googleCalendarURL(document: doc)
             let importURL = claimURL(for: doc.claimCode ?? "")
-            let calendarURL = googleCalendarURL(document: doc)
 
-            drawActionButton(
-                rect: importRect,
-                title: isEN ? "Open banbe · Register & import" : "Mở banbe · Đăng ký & Nhập vé",
-                filled: true, ink: ink, ruleColor: rule)
-            if let importURL {
-                ctx.setURL(importURL, for: pdfLinkRect(importRect, pageHeight: pageHeight))
-            }
+            drawActionButton(rect: walletRect, title: isEN ? "Add to Apple Wallet" : "Thêm vào Apple Wallet",
+                             symbol: "wallet.pass.fill", style: .filled, ink: ink, ruleColor: rule, fontSize: 11.5)
+            if let walletURL { ctx.setURL(walletURL, for: pdfLinkRect(walletRect, pageHeight: pageHeight)) }
+            drawCentered(isEN ? "Open this PDF on your iPhone and tap to add the ticket to Wallet."
+                              : "Mở PDF này trên iPhone và chạm để thêm vé vào Wallet.",
+                         in: CGRect(x: margin, y: walletRect.maxY + 6, width: contentWidth, height: 11),
+                         font: UIFont.systemFont(ofSize: 8), color: muted)
 
-            drawActionButton(
-                rect: calendarRect,
-                title: isEN ? "Add to Google Calendar" : "Thêm vào Google Calendar",
-                filled: false, ink: ink, ruleColor: rule)
-            if let calendarURL {
-                ctx.setURL(calendarURL, for: pdfLinkRect(calendarRect, pageHeight: pageHeight))
-            }
+            drawActionButton(rect: appleCalRect, title: isEN ? "Apple Calendar" : "Lịch Apple",
+                             symbol: "calendar.badge.plus", style: .outlined, ink: ink, ruleColor: rule, fontSize: 10)
+            if let appleCalURL { ctx.setURL(appleCalURL, for: pdfLinkRect(appleCalRect, pageHeight: pageHeight)) }
+            drawActionButton(rect: googleCalRect, title: isEN ? "Google Calendar" : "Google Calendar",
+                             symbol: "calendar", style: .outlined, ink: ink, ruleColor: rule, fontSize: 10)
+            if let googleCalURL { ctx.setURL(googleCalURL, for: pdfLinkRect(googleCalRect, pageHeight: pageHeight)) }
 
-            let appleRect = CGRect(x: calendarRect.origin.x, y: y + buttonHeight + 10,
-                                   width: buttonWidth, height: buttonHeight)
-            drawActionButton(
-                rect: appleRect,
-                title: isEN ? "Add to Apple Calendar" : "Thêm vào Lịch Apple",
-                filled: false, ink: ink, ruleColor: rule)
-            if let appleURL = appleCalendarURL(document: doc) {
-                ctx.setURL(appleURL, for: pdfLinkRect(appleRect, pageHeight: pageHeight))
-            }
-
-            y += buttonHeight + 8
+            drawActionButton(rect: importRect,
+                             title: isEN ? "Open in banbe · Register & import" : "Mở trong banbe · Đăng ký & nhập vé",
+                             symbol: "arrow.up.forward.app", style: .outlined, ink: ink, ruleColor: rule, fontSize: 10)
+            if let importURL { ctx.setURL(importURL, for: pdfLinkRect(importRect, pageHeight: pageHeight)) }
 
             let importNote = importURL == nil
                 ? (isEN
                     ? "No import link on this ticket. Enter the claim code from your message in banbe, or send it to us and we will reissue the PDF."
                     : "Vé này không có liên kết nhận vé. Hãy nhập mã nhận vé trong tin nhắn vào banbe, hoặc gửi lại cho banbe để cấp lại PDF.")
                 : (isEN
-                    ? "Opens the installed banbe app. Register or sign in with the email this ticket was sent to; you can still attend without an account."
-                    : "Mở ứng dụng banbe đã cài. Đăng ký hoặc đăng nhập bằng email nhận vé; bạn vẫn có thể tham dự mà không cần tài khoản.")
-            (importNote as NSString).draw(
-                with: CGRect(x: importRect.origin.x, y: y, width: importRect.width, height: 80),
-                options: [.usesLineFragmentOrigin],
-                attributes: [.font: UIFont.systemFont(ofSize: 8), .foregroundColor: muted],
-                context: nil)
-
-            let calendarNote = isEN
-                ? "Google opens its calendar page in your browser. Apple adds the event straight to the Calendar app."
-                : "Google mở trang lịch trong trình duyệt. Apple thêm sự kiện thẳng vào ứng dụng Lịch."
-            (calendarNote as NSString).draw(
-                with: CGRect(x: calendarRect.origin.x, y: appleRect.maxY + 8, width: calendarRect.width, height: 46),
-                options: [.usesLineFragmentOrigin],
-                attributes: [.font: UIFont.systemFont(ofSize: 8), .foregroundColor: muted],
-                context: nil)
+                    ? "Opens the installed banbe app. You can attend with just this QR — no account needed."
+                    : "Mở ứng dụng banbe đã cài. Bạn vẫn có thể vào cửa chỉ với mã QR này, không cần tài khoản.")
+            drawCentered(importNote,
+                         in: CGRect(x: margin, y: importRect.maxY + 6, width: contentWidth, height: 24),
+                         font: UIFont.systemFont(ofSize: 8), color: muted)
 
             // Footer
             let footerY = pageHeight - margin - 18
@@ -287,6 +274,16 @@ enum GiftTicketPDFGenerator {
             URLQueryItem(name: "details", value: doc.details),
             URLQueryItem(name: "location", value: doc.venue),
         ]
+        return components?.url
+    }
+
+    /// Apple Wallet: opens api/wallet-pass in Safari, which answers with a signed
+    /// .pkpass and so shows iOS's own "Add to Wallet" sheet. The recipient may
+    /// have no banbe account, so the credential is the ticket's admission token —
+    /// the same secret this PDF's QR already carries.
+    static func appleWalletURL(document doc: GiftTicketDocument) -> URL? {
+        var components = URLComponents(string: AppConfig.apiBaseURL + "/api/wallet-pass")
+        components?.queryItems = [URLQueryItem(name: "gift", value: doc.admissionToken.uuidString.lowercased())]
         return components?.url
     }
 
@@ -391,24 +388,61 @@ enum GiftTicketPDFGenerator {
         path.stroke()
     }
 
-    private static func drawActionButton(rect: CGRect, title: String, filled: Bool,
-                                         ink: UIColor, ruleColor: UIColor) {
-        let path = UIBezierPath(roundedRect: rect, cornerRadius: 9)
-        if filled {
+    private enum ButtonStyle { case filled, outlined }
+
+    /// Rounded button with an optional leading symbol, title and symbol centred
+    /// together as one group.
+    private static func drawActionButton(rect: CGRect, title: String, symbol: String? = nil, style: ButtonStyle,
+                                         ink: UIColor, ruleColor: UIColor, fontSize: CGFloat) {
+        let path = UIBezierPath(roundedRect: rect, cornerRadius: rect.height > 40 ? 12 : 10)
+        let textColor: UIColor
+        switch style {
+        case .filled:
             ink.setFill()
             path.fill()
-        } else {
+            textColor = .white
+        case .outlined:
             UIColor.white.setFill()
             path.fill()
             ruleColor.setStroke()
             path.lineWidth = 1
             path.stroke()
+            textColor = ink
         }
-        let font = UIFont.systemFont(ofSize: 10, weight: .semibold)
-        let size = (title as NSString).size(withAttributes: [.font: font])
-        title.draw(at: CGPoint(x: rect.origin.x + (rect.width - size.width) / 2,
-                               y: rect.origin.y + (rect.height - size.height) / 2),
-                   withAttributes: [.font: font, .foregroundColor: filled ? .white : ink])
+        let font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+        let titleSize = (title as NSString).size(withAttributes: [.font: font])
+
+        var icon: UIImage?
+        if let symbol {
+            let config = UIImage.SymbolConfiguration(pointSize: fontSize + 1.5, weight: .semibold)
+            // Rasterise the symbol first: drawn straight into the PDF context it
+            // comes out as a solid block instead of the glyph.
+            if let glyph = UIImage(systemName: symbol, withConfiguration: config)?
+                .withTintColor(textColor, renderingMode: .alwaysOriginal) {
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 4
+                icon = UIGraphicsImageRenderer(size: glyph.size, format: format).image { _ in
+                    glyph.draw(at: .zero)
+                }
+            }
+        }
+        let spacing: CGFloat = 7
+        let iconWidth = icon.map { $0.size.width + spacing } ?? 0
+        var x = rect.midX - (iconWidth + titleSize.width) / 2
+        if let icon {
+            icon.draw(in: CGRect(x: x, y: rect.midY - icon.size.height / 2, width: icon.size.width, height: icon.size.height))
+            x += iconWidth
+        }
+        title.draw(at: CGPoint(x: x, y: rect.midY - titleSize.height / 2),
+                   withAttributes: [.font: font, .foregroundColor: textColor])
+    }
+
+    private static func drawCentered(_ text: String, in rect: CGRect, font: UIFont, color: UIColor) {
+        let style = NSMutableParagraphStyle()
+        style.alignment = .center
+        (text as NSString).draw(with: rect, options: [.usesLineFragmentOrigin],
+                                attributes: [.font: font, .foregroundColor: color, .paragraphStyle: style],
+                                context: nil)
     }
 
     private static func drawLabelValue(label: String, value: String, at point: CGPoint, width: CGFloat,

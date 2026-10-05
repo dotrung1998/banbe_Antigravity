@@ -105,6 +105,9 @@ extension AppState {
                                              data: GiftTicketPDFGenerator.renderICS(document: document))
             }
 
+            // If this ticket was added to Apple Wallet, void that pass now.
+            Task { await WalletPassService.refreshPass(bookingID: context.id) }
+
             // Refresh every list that shows this ticket, and patch the open
             // ticket screen if the gift was made from it.
             await loadPaymentBookings()
