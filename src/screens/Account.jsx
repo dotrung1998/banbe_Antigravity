@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { supabase } from '../lib/supabase.js';
@@ -7,6 +7,9 @@ import { AttachMenuIcon } from './Chat.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
 import ActionCenter from './ActionCenter.jsx';
+import AccountSearchResults from './AccountSearch.jsx';
+import { takeSearchState, resetSearchState } from '../lib/accountSearch.js';
+import { useSubmittedEvents, SubmittedEventsRow } from '../lib/submittedEvents.jsx';
 import ProfileShareSheet, { ShareCardRow, profileShareLinks } from './sheets/ProfileShareSheet.jsx';
 import { pickSoonest } from '../lib/countdown.js';
 import { computeAdminModerationCount, computeHostActionCount, computeMyTicketsActionCount, computeMyRefundActionCount, computePersonalActionCount, formatBadgeCount } from '../lib/badges.js';
@@ -162,6 +165,19 @@ export default function Account() {
   } = useGoc();
   const s = state;
   const [shareCardFor, setShareCardFor] = useState(null); // 'member' | 'host' | null
+  // Account search — restored only when we're coming back from a search result
+  // (see lib/accountSearch.js); a normal visit starts with it closed.
+  const [searchInit] = useState(() => takeSearchState());
+  const [searchOpen, setSearchOpen] = useState(searchInit.open);
+  const [searchQuery, setSearchQuery] = useState(searchInit.query);
+  const searchInputRef = useRef(null);
+  useEffect(() => { if (searchOpen && !searchInit.open) searchInputRef.current?.focus(); }, [searchOpen, searchInit.open]);
+  const toggleSearch = () => {
+    if (searchOpen) { setSearchQuery(''); resetSearchState(); }
+    setSearchOpen(v => !v);
+  };
+  // Host-side review tracking (iOS parity): submitted ('review') + needs-fix events.
+  const submitted = useSubmittedEvents(!!s.user?.id && s.organizerMode);
   // Stage D (2026-09-26) — Cá nhân/Tổ chức top-level tabs. Both panes stay
   // mounted (display:none on the inactive one, not unmounted), each in its
   // OWN independently-scrolling container — switching tabs never resets
@@ -303,15 +319,32 @@ export default function Account() {
           `setAccountTab` routing as before. */}
       <div style={{ position: 'sticky', top: 0, zIndex: 5, background: paper }} data-testid="account-fixed-header">
         <div style={{ padding: '66px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ ...display(27) }}>{T('Tài khoản', 'Account')}</span>
-          <span onClick={goHome} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>Xong</span>
+          {searchOpen ? (
+            <input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={ev => setSearchQuery(ev.target.value)}
+              placeholder={T('Tìm trong tài khoản…', 'Search Account…')}
+              autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="search"
+              data-testid="account-search-input"
+              style={{ ...fieldGlass({ flex: 1, minWidth: 0, padding: '10px 14px', borderRadius: 999, fontSize: 13.5, color: ink, border: 'none', outline: 'none' }) }}
+            />
+          ) : (
+            <span style={{ ...display(27) }}>{T('Tài khoản', 'Account')}</span>
+          )}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 'none', marginLeft: searchOpen ? 12 : 0 }}>
+            <span onClick={toggleSearch} data-testid="account-search-toggle" style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>
+              {searchOpen ? T('Đóng', 'Close') : T('Tìm', 'Search')}
+            </span>
+            {!searchOpen && <span onClick={goHome} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>Xong</span>}
+          </span>
         </div>
 
         {/* Stage D — Cá nhân/Tổ chức top-level tabs. Purely a display switch
             below (both panes' own scroll containers keep their scrollTop
             whichever is hidden) — never calls toggleOrganizerMode or any
             hosting-mode side effect by itself. */}
-        <div style={{ display: 'flex', gap: 6, padding: '18px 20px 14px' }} data-testid="account-tabs">
+        <div style={{ display: searchOpen ? 'none' : 'flex', gap: 6, padding: '18px 20px 14px' }} data-testid="account-tabs">
         {[
           // Same source as the "Tickets & Bookings" group card badge below.
           { key: 'personal', label: T('Cá Nhân', 'Personal'), badge: computePersonalActionCount(s) },
@@ -323,7 +356,7 @@ export default function Account() {
           // FIX PASS (2026-09-30) — badge propagated from the SAME source
           // as this tab's own group card ("Vận hành & thanh toán tổ chức"
           // below): verifications + refundQueue, never a second count.
-          ...(isOrganizer ? [{ key: 'host', label: T('Tổ Chức', 'Host'), badge: computeHostActionCount(s) }] : []),
+          ...(isOrganizer ? [{ key: 'host', label: T('Tổ Chức', 'Host'), badge: computeHostActionCount(s) + submitted.total }] : []),
           // Stage 2 — Admin depends only on a server-confirmed role
           // (`accountType`, set exclusively by syncUser()'s own read of
           // `profiles.role`/`set_organizer_mode`'s return value — never
@@ -375,7 +408,10 @@ export default function Account() {
           tab's content (opened here, closed at its usual spot further
           down) — the Tổ chức tab gets its own separate, organizer-only
           card instead. */}
-      <div data-testid="account-tab-panel-personal" style={{ display: accountTab === 'personal' ? 'block' : 'none' }}>
+      {searchOpen && <div style={{ height: 8 }} />}
+      {searchOpen && <AccountSearchResults query={searchQuery} />}
+
+      <div data-testid="account-tab-panel-personal" style={{ display: !searchOpen && accountTab === 'personal' ? 'block' : 'none' }}>
       {/* Account IA pass (2026-09-27) — the identity card is now the FIRST
           thing under the tab pills (was: reports row, then Team invites/
           memberships/event-credit sections, THEN this card) — Going/Saved
@@ -737,7 +773,7 @@ export default function Account() {
       )}
       </div>
 
-      <div data-testid="account-tab-panel-host" style={{ display: accountTab === 'host' ? 'block' : 'none' }}>
+      <div data-testid="account-tab-panel-host" style={{ display: !searchOpen && accountTab === 'host' ? 'block' : 'none' }}>
       {/* Account IA pass (2026-09-27) — identity card FIRST under the tab
           pills (was: reports row, then this card) — matches Cá nhân's own
           reordering. */}
@@ -850,6 +886,8 @@ export default function Account() {
           `canHost`, matching `hostOps` above (the rest of this tab's own
           convention) — a genuine co-organizer invite/team membership is
           eligibility-scoped content, not preference-scoped. */}
+      {canHost && <SubmittedEventsRow submitted={submitted} />}
+
       {canHost && (
         <GroupCard
           groupKey="team" iconKind="users"
@@ -900,7 +938,7 @@ export default function Account() {
           reason on top of RLS/RPC enforcement, and what an existing test
           (payment-state-machine.spec.js) already asserts by element count. */}
       {s.accountType === 'admin' && (
-        <div data-testid="account-tab-panel-admin" style={{ display: accountTab === 'admin' ? 'block' : 'none' }}>
+        <div data-testid="account-tab-panel-admin" style={{ display: !searchOpen && accountTab === 'admin' ? 'block' : 'none' }}>
           {/* Account IA reorder pass (2026-09-30 second) — this tab had no
               header at all ("nothing to group"); now there is: the header
               plus a real order swap justify it. Actionable review/disputes

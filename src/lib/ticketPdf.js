@@ -61,6 +61,7 @@ function drawButton(ctx, rect, label, filled) {
  * @param {object} t
  * @param {string} t.eventName @param {string} [t.organizer] @param {string} t.whenText @param {string} t.venue
  * @param {string} t.holderName @param {string} t.ticketCode @param {string} t.qrValue  what the door scans
+ * @param {boolean} [t.gift]  gift variant: 'GIFT TICKET / VÉ TẶNG', 'GIFTED TO / TẶNG CHO'
  * @param {string} [t.importUrl]  attendee import link (omit for a ticket with nothing to import)
  * @param {string} [t.calendarUrl] @param {boolean} t.isEN @param {string} t.reference
  * @returns {Promise<Blob>}
@@ -84,7 +85,7 @@ export async function renderTicketPdf(t) {
   } else {
     ctx.fillStyle = INK; ctx.font = `700 44px ${FONT}`; ctx.fillText('banbe', M, y + 40); y += 52;
   }
-  const badge = L('VÉ', 'TICKET');
+  const badge = t.gift ? L('VÉ TẶNG', 'GIFT TICKET') : L('VÉ', 'TICKET');
   ctx.font = `700 18px ${FONT}`; ctx.fillStyle = ACCENT;
   if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
   const bw = ctx.measureText(badge).width;
@@ -94,7 +95,7 @@ export async function renderTicketPdf(t) {
   y += 60;
 
   ctx.fillStyle = MUTED; ctx.font = `600 18px ${FONT}`;
-  ctx.fillText(L('NGƯỜI SỞ HỮU VÉ', 'TICKET HOLDER'), M, y);
+  ctx.fillText(t.gift ? L('TẶNG CHO', 'GIFTED TO') : L('NGƯỜI SỞ HỮU VÉ', 'TICKET HOLDER'), M, y);
   if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
   y += 56;
   ctx.fillStyle = INK; ctx.font = `700 50px ${FONT}`;
@@ -194,7 +195,7 @@ function saveBlob(blob, filename) {
  *  block or prompt on a burst of separate downloads). */
 export async function downloadTicketPdfs(tickets, zipName = 'banbe-tickets.zip') {
   const files = [];
-  for (const t of tickets) files.push({ name: `banbe-ticket-${t.ticketCode || t.reference}.pdf`, blob: await renderTicketPdf(t) });
+  for (const t of tickets) files.push({ name: `banbe-${t.gift ? 'gift-' : ''}ticket-${t.ticketCode || t.reference}.pdf`, blob: await renderTicketPdf(t) });
   if (files.length === 1) return saveBlob(files[0].blob, files[0].name);
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();

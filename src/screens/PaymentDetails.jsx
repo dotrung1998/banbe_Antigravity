@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase.js';
 import { formatVnd, formatShortDate } from '../lib/paymentDocument.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
 import { REFUND_AUTO_CONFIRM_DAYS, refundAutoConfirmAt } from '../lib/refundPresentation.js';
+import { GuestPaymentQr } from './sheets/PaymentQrManager.jsx';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
 import RefundDisputeEntry from './RefundDisputeEntry.jsx';
 
@@ -661,7 +662,8 @@ export default function PaymentDetails() {
         </div>
       ) : (isHolding || isPending) && (
         <>
-          {qrPayload && (
+          {org?.pay_qr_path ? <GuestPaymentQr orgId={org.id} path={org.pay_qr_path} /> : null}
+          {!org?.pay_qr_path && qrPayload && (
             <div style={{ margin: '20px 22px 0' }}>
               <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Quét để chuyển khoản', 'Scan to pay')}</span>
               <div style={{ ...cardGlass({ marginTop: 10, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }) }}>

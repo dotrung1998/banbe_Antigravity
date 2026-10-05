@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { localizeSystemMessage } from '../lib/systemMessageLocale.js';
 import { useGoc } from '../state/GocContext.jsx';
+import { useConversationDispute, DisputeBlock } from './ConversationDispute.jsx';
 import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass } from '../theme.js';
 
 // Task 1 (2026-09-21 real-device follow-up) — small stroke-only glyphs for
@@ -134,6 +135,18 @@ export default function Chat() {
   // sets `reply_to_message_id` (migration 067); resolved client-side
   // against the same already-loaded `chatMessages` rather than a second
   // query, since a reply's target is always a message in this same thread.
+  // Disputes belonging to THIS conversation (exact thread id). The payment
+  // chat hangs off the last "Transfer not found" card, the refund chat off the
+  // last "Booking cancelled" card; with no such card they render after the
+  // last message so a live dispute is never hidden.
+  const convDispute = useConversationDispute(s.chatThreadId);
+  const lastCardIdx = { notfound: -1, declined: -1 };
+  thread.forEach((m, i) => {
+    const c = m.kind === 'system' ? classifySystemMessage(m.text) : null;
+    if (c && c.status in lastCardIdx) lastCardIdx[c.status] = i;
+  });
+  const orphanPayment = convDispute.payment && lastCardIdx.notfound < 0;
+  const orphanRefund = convDispute.refund && lastCardIdx.declined < 0;
   const messageById = Object.fromEntries(s.chatMessages.map(m => [m.id, m]));
   const chatBackLabel = s.chatBack === 'inbox' ? T('Tin nhắn', 'Messages')
     : s.chatBack === 'notifications' ? T('Thông báo', 'Notifications')
@@ -183,8 +196,11 @@ export default function Chat() {
           const sysCard = m.kind === 'system' ? classifySystemMessage(m.text) : null;
           if (sysCard) {
             // Task 3d — inline status card instead of a plain bubble.
+            const hostsPayment = sysCard.status === 'notfound' && i === lastCardIdx.notfound ? convDispute.payment : null;
+            const hostsRefund = sysCard.status === 'declined' && i === lastCardIdx.declined ? convDispute.refund : null;
+            const refundActive = hostsRefund && !hostsRefund.dispute_closed_at && !hostsRefund.resolved_at;
             rows.push(
-              <div key={m.id ?? i} data-testid="chat-system-card" style={{ ...cardGlass({ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }), border: `1px solid ${rule}` }}>
+              <div key={m.id ?? i} data-testid="chat-system-card" data-status={sysCard.status} style={{ ...cardGlass({ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }), border: `1px solid ${sysCard.status === 'notfound' || hostsPayment || refundActive ? alert : rule}` }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: sysCard.status === 'confirmed' ? ink : alert }}>
                   {T(sysCard.label.vi, sysCard.label.en)}
                 </span>
@@ -196,8 +212,14 @@ export default function Chat() {
                 >
                   {T('Xem chi tiết', 'Show details')}
                 </div>
+                {hostsPayment && <DisputeBlock kind="payment" dispute={hostsPayment} />}
+                {hostsRefund && <DisputeBlock kind="refund" dispute={hostsRefund} />}
               </div>
             );
+            if (i === thread.length - 1) {
+              if (orphanPayment) rows.push(<div key="orphan-payment" data-testid="chat-system-card" style={{ ...cardGlass({ padding: '12px 14px' }), border: `1px solid ${alert}` }}><DisputeBlock kind="payment" dispute={convDispute.payment} /></div>);
+              if (orphanRefund) rows.push(<div key="orphan-refund" data-testid="chat-system-card" style={{ ...cardGlass({ padding: '12px 14px' }), border: `1px solid ${convDispute.refund.dispute_closed_at || convDispute.refund.resolved_at ? rule : alert}` }}><DisputeBlock kind="refund" dispute={convDispute.refund} /></div>);
+            }
             return rows;
           }
 
@@ -278,6 +300,10 @@ export default function Chat() {
               </div>
             </div>
           );
+          if (i === thread.length - 1) {
+            if (orphanPayment) rows.push(<div key="orphan-payment" data-testid="chat-system-card" style={{ ...cardGlass({ padding: '12px 14px' }), border: `1px solid ${alert}` }}><DisputeBlock kind="payment" dispute={convDispute.payment} /></div>);
+            if (orphanRefund) rows.push(<div key="orphan-refund" data-testid="chat-system-card" style={{ ...cardGlass({ padding: '12px 14px' }), border: `1px solid ${convDispute.refund.dispute_closed_by_role || convDispute.refund.resolved_at ? rule : alert}` }}><DisputeBlock kind="refund" dispute={convDispute.refund} /></div>);
+          }
           return rows;
         })}
       </div>

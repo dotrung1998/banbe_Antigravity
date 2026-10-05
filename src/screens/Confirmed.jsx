@@ -7,10 +7,12 @@ import { paper, ink, rule, display, cardGlass, alert } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 import BanbeLoadingVisual from './BanbeLoadingVisual.jsx';
 import { downloadTicketPdfs, googleCalendarUrl } from '../lib/ticketPdf.js';
+import GiftTicketSheet from './sheets/GiftTicketSheet.jsx';
+import { giftPdfData, isAppleWalletBrowser, addToAppleWallet, walletErrorMessage } from '../lib/giftTicket.js';
 
 export default function Confirmed() {
   const {
-    state, T, set, curEvent: ev, backFromConfirmed, openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket, openPaymentDetails, forfeitExpiredHold, goReserve,
+    state, T, set, curEvent: ev, backFromConfirmed, openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, openPaymentDetails, forfeitExpiredHold, goReserve,
     loadReceiptStatus, requestReceipt, openDocumentFromNotification, loadBookingAttendees,
   } = useGoc();
   const s = state;
@@ -119,6 +121,24 @@ export default function Confirmed() {
   const [selected, setSelected] = useState(() => new Set());
   const [pdfBusy, setPdfBusy] = useState(false);
   useEffect(() => { setSelected(new Set()); }, [s.booking?.id]);
+  const [giftOpen, setGiftOpen] = useState(false);
+  const [walletBusy, setWalletBusy] = useState(false);
+  const [walletMsg, setWalletMsg] = useState('');
+  const [giftedSeats, setGiftedSeats] = useState([]); // seats split off this booking and gifted away
+  useEffect(() => { setGiftOpen(false); setWalletMsg(''); }, [s.booking?.id]);
+  const reloadGiftedSeats = async (bookingId) => {
+    const { data } = await supabase.from('bookings').select('*').eq('original_booking_id', bookingId).not('recipient_name', 'is', null).order('gifted_at', { ascending: true });
+    setGiftedSeats(data || []);
+  };
+  useEffect(() => {
+    let live = true;
+    setGiftedSeats([]);
+    if (isPaid && s.booking?.id) {
+      supabase.from('bookings').select('*').eq('original_booking_id', s.booking.id).not('recipient_name', 'is', null).order('gifted_at', { ascending: true })
+        .then(({ data }) => { if (live) setGiftedSeats(data || []); });
+    }
+    return () => { live = false; };
+  }, [isPaid, s.booking?.id]);
   const toggleSel = (id) => setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   const eventStart = ev.startDate || new Date();
@@ -142,8 +162,30 @@ export default function Confirmed() {
     importUrl: a.claim_code ? `${window.location.origin}/?claim=${encodeURIComponent(a.claim_code)}` : undefined,
   });
   const ownPdf = () => ({
-    ...pdfBase, holderName: (s.user?.name || '').trim(), ticketCode: s.booking?.code || '', qrValue: s.booking?.id, reference: s.booking?.id,
+    ...pdfBase, holderName: (s.user?.name || '').trim(), ticketCode: s.booking?.code || '', qrValue: s.booking?.admission_token || s.booking?.id, reference: s.booking?.id,
   });
+  // This booking row IS a gifted seat (single-seat gift, or the split-off row).
+  const isGifted = !!s.booking?.recipient_name;
+  const giftPdfOf = (b) => giftPdfData(pdfBase, {
+    recipientName: b.recipient_name, ticketCode: b.code, admissionToken: b.admission_token || b.id, claimCode: b.claim_code, reference: b.id,
+  });
+  // After a gift: refresh the open booking (qty drops for a multi-seat split; a
+  // single seat becomes the gifted row) and the list of gifted seats.
+  const onGifted = async () => {
+    const id = s.booking?.id;
+    if (!id) return;
+    const { data } = await supabase.from('bookings').select('*').eq('id', id).maybeSingle();
+    if (data) set(prev => (prev.booking?.id === id ? { booking: data } : {}));
+    reloadGiftedSeats(id);
+  };
+  const walletEligible = isAppleWalletBrowser();
+  const runWallet = async () => {
+    if (walletBusy || !s.booking?.id) return;
+    setWalletBusy(true); setWalletMsg('');
+    const code = await addToAppleWallet(s.booking.id);
+    setWalletBusy(false);
+    if (code) setWalletMsg(walletErrorMessage(code, T));
+  };
   const ageOf = (iso) => {
     if (!iso) return null;
     const d = new Date(iso); const n = new Date();
@@ -177,7 +219,6 @@ export default function Confirmed() {
     : T('banbe không thu tiền. Hãy chuyển khoản trực tiếp cho người tổ chức theo hướng dẫn trong tin nhắn; nếu họ hủy, họ có trách nhiệm hoàn tiền cho bạn.', 'banbe does not collect money. Pay the organizer directly using the instructions in chat; if they cancel, they are responsible for your refund.');
 
   const showQr = isPaid;
-  const giveLabel = s.gaveTicket ? T('Đã gửi vé ▪︎ link qua Zalo', 'Ticket sent ▪︎ link via Zalo') : T('Tặng vé cho bạn bè', 'Give a ticket to a friend');
   const calendarLabel = s.calAdded ? T('Đã thêm vào lịch', 'Added to calendar') : T('Thêm vào lịch', 'Add to calendar');
 
   return (
@@ -313,7 +354,7 @@ export default function Confirmed() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
             <span style={{ ...display(17) }}>{ev.name}</span>
             <span style={{ fontSize: 12, color: ink }}>{ev.where}</span>
-            {showQr && s.booking?.code && <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.12em', color: ink }}>{T('Mã vào cửa: ', 'Entry code: ')}{s.booking.code}</span>}
+            {showQr && !isGifted && s.booking?.code && <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.12em', color: ink }}>{T('Mã vào cửa: ', 'Entry code: ')}{s.booking.code}</span>}
             {!showQr && (
               <span style={{ fontSize: 11.5, color: ink }}>
                 {isExpired
@@ -321,10 +362,32 @@ export default function Confirmed() {
                   : T('Vé sẽ hiện ở đây sau khi thanh toán được xác nhận.', 'Your ticket appears here once payment is confirmed.')}
               </span>
             )}
-            {showQr && <span style={{ fontSize: 10.5, color: ink }}>{T('Đưa mã này ở cửa', 'Show this code at the door')}</span>}
+            {showQr && !isGifted && <span style={{ fontSize: 10.5, color: ink }}>{T('Đưa mã này ở cửa', 'Show this code at the door')}</span>}
           </div>
-          {showQr && <QrCode value={s.booking.id} />}
+          {showQr && isGifted && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, textAlign: 'right', minWidth: 0 }} data-testid="confirmed-gifted">
+              <span style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Đã tặng', 'Gifted')}</span>
+              <span style={{ fontSize: 15, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.booking.recipient_name}</span>
+            </div>
+          )}
+          {showQr && !isGifted && <QrCode value={s.booking.admission_token || s.booking.id} />}
         </div>
+        )}
+        {isPaid && giftedSeats.length > 0 && !isGifted && (
+          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="confirmed-gifted-seats">
+            {giftedSeats.map(g => (
+              <div key={g.id} style={{ ...cardGlass({ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12 }) }} data-testid={`confirmed-gifted-seat-${g.id}`}>
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Đã tặng', 'Gifted')}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.recipient_name}</span>
+                </div>
+                <span onClick={() => runDownload([giftPdfOf(g)])} title={T('Tải lại vé PDF', 'Re-download the PDF')} data-testid={`confirmed-gifted-seat-download-${g.id}`}
+                  style={{ flex: 'none', width: 34, height: 34, borderRadius: 17, background: 'rgba(27,25,22,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: pdfBusy ? 0.5 : 1 }}>
+                  <Icon kind="download" size={16} />
+                </span>
+              </div>
+            ))}
+          </div>
         )}
         {/* Real-device follow-up (2026-09-27) — fills the empty space below
             the ticket row (this container's own `flex:1` absorbs whatever
@@ -336,10 +399,19 @@ export default function Confirmed() {
           <BanbeLoadingVisual size={190} />
         </div>
       </div>
-      {showQr && !hasNamed && (
-        <FooterRow icon="gift" label={giveLabel} onClick={() => giveTicket(ev)} testId="confirmed-give-ticket" />
+      {showQr && isGifted && (
+        <FooterRow icon="download" label={pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải lại vé PDF', 'Re-download the PDF')} onClick={() => runDownload([giftPdfOf(s.booking)])} testId="confirmed-gifted-pdf" />
       )}
-      {showQr && !hasNamed && (
+      {showQr && !hasNamed && !isGifted && (
+        <FooterRow icon="gift" label={T('Tặng vé cho bạn bè', 'Give a ticket to a friend')} onClick={() => setGiftOpen(true)} testId="confirmed-give-ticket" />
+      )}
+      {showQr && !hasNamed && !isGifted && walletEligible && (
+        <FooterRow icon="wallet" label={walletBusy ? T('Đang tạo vé Wallet…', 'Preparing Wallet pass…') : T('Thêm vào Apple Wallet', 'Add to Apple Wallet')} onClick={runWallet} dim={walletBusy} testId="confirmed-add-to-wallet" />
+      )}
+      {showQr && !hasNamed && !isGifted && walletEligible && walletMsg && (
+        <p style={{ fontSize: 11, color: alert, textAlign: 'center', margin: '8px 22px 0' }} data-testid="confirmed-wallet-error">{walletMsg}</p>
+      )}
+      {showQr && !hasNamed && !isGifted && (
         <FooterRow icon="download" label={pdfBusy ? T('Đang tạo PDF…', 'Preparing PDF…') : T('Tải vé PDF', 'Download PDF')} onClick={() => runDownload([ownPdf()])} testId="confirmed-download-pdf" />
       )}
       {/* Add to calendar: a glass popover that opens out of the row (like the
@@ -401,6 +473,12 @@ export default function Confirmed() {
         <p style={{ fontSize: 11, color: alert, textAlign: 'center', margin: '8px 22px 0' }}>{s.receiptRequestError}</p>
       )}
       <div style={{ height: 34 }} />
+      {giftOpen && s.booking?.id && (
+        <GiftTicketSheet
+          bookingId={s.booking.id} seats={s.booking.qty || 1} eventName={ev.name} pdfBase={pdfBase}
+          onGifted={onGifted} onClose={() => setGiftOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -433,6 +511,7 @@ const ICON_PATHS = {
   calendarPlus: <><rect x="3.5" y="5" width="17" height="15" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4M12 13v5M9.5 15.5h5" /></>,
   calendarCheck: <><rect x="3.5" y="5" width="17" height="15" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4M9.5 15l2 2 3.5-3.5" /></>,
   globe: <><circle cx="12" cy="12" r="8.5" /><path d="M3.5 12h17M12 3.5c2.5 2.5 3.5 5.5 3.5 8.5s-1 6-3.5 8.5c-2.5-2.5-3.5-5.5-3.5-8.5s1-6 3.5-8.5Z" /></>,
+  wallet: <><rect x="3" y="6" width="18" height="13" rx="2.5" /><path d="M3 10h18M16.5 14.5h.01" /></>,
   doc: <><path d="M6 3h9l4 4v14H6z" /><path d="M9 12h7M9 16h7" /></>,
 };
 function Icon({ kind, size = 16 }) {

@@ -1,4 +1,5 @@
 import { useGoc } from '../state/GocContext.jsx';
+import { HostPaymentQr } from './sheets/PaymentQrManager.jsx';
 import { paper, ink, FACE, display, fieldGlass, inkButton, alert } from '../theme.js';
 
 // Where the organizer says how they want to be paid. Without this filled in,
@@ -41,6 +42,8 @@ export default function Payout() {
           <Field label={T('Số điện thoại MoMo', 'MoMo phone')} value={s.payoutMomo} onChange={payoutField('payoutMomo')} placeholder="09xx xxx xxx" testid="payout-momo" />
         </div>
       </div>
+
+      <HostPaymentQr />
 
       <div style={{ margin: '20px 22px 0' }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Trên chứng từ', 'On your documents')}</span>

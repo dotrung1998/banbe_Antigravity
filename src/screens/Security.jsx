@@ -1,5 +1,6 @@
 import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
+import { PromoConsentSection } from '../components/HostPromo.jsx'; // account gate (web parity)
 
 // Account > Security — this account's password. The iOS app's version of
 // this screen (apps/ios/BanbeApp/Views/SecurityView.swift) also carries the
@@ -93,6 +94,7 @@ export default function Security() {
                 </p>
               </>
             )}
+            <PromoConsentSection />{/* account gate (web parity) */}
           </>
         ) : (
           <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.7, margin: '28px 0 0' }}>

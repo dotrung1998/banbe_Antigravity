@@ -63,6 +63,7 @@ import TeamPage from './screens/TeamPage.jsx';
 import SurveyPublic from './screens/SurveyPublic.jsx';
 import SurveysHosting from './screens/SurveysHosting.jsx';
 import RootRefreshIndicator from './screens/RootRefreshIndicator.jsx';
+import AccountGate from './screens/AccountGate.jsx'; // account gate (web parity)
 
 const SCREENS = {
   splash: Splash,
@@ -685,6 +686,8 @@ function Shell() {
       <StoryCreateOverlay />
       {state.deleteAccountOpen && <DeleteAccountSheet />}
       <ToastStack />
+      {/* account gate (web parity) — blocking overlay above every screen until the server gate clears */}
+      <AccountGate />
      </div></div>
     </div>
   );

@@ -20,6 +20,9 @@ function organizerAvatarUrl(path) {
   return supabase.storage.from('organizer-photos').getPublicUrl(path).data.publicUrl;
 }
 
+import { useSubmittedEvents, useFormatWhen } from '../lib/submittedEvents.jsx';
+import PendingEventSheet from './sheets/PendingEventSheet.jsx';
+
 export default function Dashboard() {
   const {
     state, T, trStatus, stripKm, curEvent, backFromDashboard, goCreate, openAttendance, goEvent, requestVerify, loadHomeLiveEvents,
@@ -53,8 +56,13 @@ export default function Dashboard() {
   useEffect(() => { if (s.myOrganizerId) loadOrgTeamRoster(s.myOrganizerId); }, [s.myOrganizerId, loadOrgTeamRoster]);
   const ROLE_STATUS_LABEL = { invited: T('Đang chờ', 'Pending'), accepted: T('Đã tham gia', 'Joined'), declined: T('Đã từ chối', 'Declined'), removed: T('Đã xoá', 'Removed') };
   const myRealEvents = myRealOrgKeys.map(k => s.realEventsById[k]).filter(Boolean);
-  const pendingReal = myRealEvents.filter(e => e.status === 'review');
-  const needsFixReal = myRealEvents.filter(e => e.status === 'draft' && e.rejectionReason);
+  // Review tracking reads live rows (polled), not the one-shot realEventsById
+  // cache, so an admin approving / sending an event back shows up on its own.
+  const submitted = useSubmittedEvents(true);
+  const fmtWhen = useFormatWhen();
+  const [viewingPending, setViewingPending] = useState(null);
+  const pendingReal = submitted.pending.map(r => ({ key: r.id, name: r.name, submittedAt: r.submitted_at, remindCount: r.admin_remind_count }));
+  const needsFixReal = submitted.needsFix.map(r => ({ key: r.id, name: r.name, rejectionReason: r.rejection_reason, reviewedAt: r.reviewed_at, submittedAt: r.submitted_at }));
   // Remaining-resubmission-attempts surfacing (migration 107) — fetched
   // once per event that actually has something to resubmit, so the "N
   // attempts left" hint is visible BEFORE a host hits the limit, not just
@@ -320,6 +328,11 @@ export default function Dashboard() {
                   <span style={{ fontSize: 10.5, fontWeight: 600, color: alert }}>{T('Cần chỉnh sửa', 'Needs fixing')}</span>
                 </div>
                 <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.8, margin: 0 }}>{e.rejectionReason}</p>
+                {(e.submittedAt || e.reviewedAt) && (
+                  <span data-testid={`dashboard-needs-fix-times-${e.key}`} style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>
+                    {[e.submittedAt && T(`Gửi lúc ${fmtWhen(e.submittedAt)}`, `Submitted ${fmtWhen(e.submittedAt)}`), e.reviewedAt && T(`Admin phản hồi lúc ${fmtWhen(e.reviewedAt)}`, `Sent back ${fmtWhen(e.reviewedAt)}`)].filter(Boolean).join(' ▪︎ ')}
+                  </span>
+                )}
                 {/* Remaining-resubmission-attempts surfacing (migration 107,
                     task 1's own "surface remaining attempts + next eligible
                     timestamp" requirement) — a banbe PRODUCT POLICY limit
@@ -347,6 +360,9 @@ export default function Dashboard() {
                   <span style={{ ...display(15) }}>{e.name}</span>
                   <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.65 }}>{T('Đang chờ Banbe duyệt', 'Waiting for Banbe to review')}</span>
                 </div>
+                {e.submittedAt && (
+                  <span data-testid={`dashboard-pending-submitted-${e.key}`} style={{ fontSize: 10.5, color: ink, opacity: 0.6 }}>{T(`Gửi lúc ${fmtWhen(e.submittedAt)}`, `Submitted ${fmtWhen(e.submittedAt)}`)}</span>
+                )}
                 {/* Owner-only withdrawal (migration 107,
                     withdraw_event_submission) — requires a non-empty reason
                     + this explicit confirm step; never deletes the event
@@ -367,7 +383,7 @@ export default function Dashboard() {
                       <span
                         onClick={async () => {
                           const ok = await withdrawEventSubmission(e.key, withdrawReasonDraft);
-                          if (ok) { setWithdrawTargetKey(null); setWithdrawReasonDraft(''); }
+                          if (ok) { setWithdrawTargetKey(null); setWithdrawReasonDraft(''); submitted.refresh(); }
                         }}
                         data-testid={`dashboard-withdraw-confirm-${e.key}`}
                         style={{ fontSize: 11, fontWeight: 600, color: paper, background: alert, borderRadius: 12, padding: '6px 10px', cursor: 'pointer', opacity: s.withdrawEventBusy ? 0.6 : 1 }}
@@ -384,19 +400,30 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ) : (
-                  <span
-                    onClick={() => { setWithdrawTargetKey(e.key); setWithdrawReasonDraft(''); }}
-                    data-testid={`dashboard-withdraw-${e.key}`}
-                    style={{ fontSize: 11, fontWeight: 600, color: ink, opacity: 0.6, alignSelf: 'flex-start', cursor: 'pointer' }}
-                  >
-                    {T('Rút lại sự kiện', 'Withdraw submission')}
-                  </span>
+                  <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                    <span
+                      onClick={() => setViewingPending(e)}
+                      data-testid={`dashboard-view-pending-${e.key}`}
+                      style={{ fontSize: 12, fontWeight: 600, color: ink, border: `1px solid ${rule}`, borderRadius: 999, padding: '7px 16px', cursor: 'pointer' }}
+                    >
+                      {T('Xem', 'View')}
+                    </span>
+                    <span
+                      onClick={() => { setWithdrawTargetKey(e.key); setWithdrawReasonDraft(''); }}
+                      data-testid={`dashboard-withdraw-${e.key}`}
+                      style={{ fontSize: 12, fontWeight: 600, color: alert, textDecoration: 'underline', cursor: 'pointer' }}
+                    >
+                      {T('Rút lại sự kiện', 'Withdraw event')}
+                    </span>
+                  </div>
                 )}
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {viewingPending && <PendingEventSheet eventId={viewingPending.key} name={viewingPending.name} onClose={() => setViewingPending(null)} onChanged={submitted.refresh} />}
 
       <div style={{ margin: '24px 22px 0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>

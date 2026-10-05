@@ -4,6 +4,7 @@ import { bg } from '../data/events.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass, honey, honeyBg } from '../theme.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
+import { isActiveDisputeChat } from './ConversationDispute.jsx';
 
 // Same 6s poll interval the ordinary conversation list uses, for the same
 // reason — nothing in this app subscribes to Supabase Realtime (03-dispute-
@@ -173,7 +174,7 @@ const SHEET_ANIM_MS = 600;
 // shared offset on the list) so opening one row's actions doesn't affect
 // any other row, and scrolling the list vertically isn't fought by a
 // horizontal drag started elsewhere.
-function InboxRow({ c, onOpen, onStar, onArchive, T }) {
+function InboxRow({ c, onOpen, onStar, onArchive, T, disputeActive }) {
   const [offset, setOffset] = useState(0);
   const dragRef = useRef({ active: false, startX: 0, startOffset: 0, moved: false });
 
@@ -237,9 +238,12 @@ function InboxRow({ c, onOpen, onStar, onArchive, T }) {
         data-testid="inbox-row"
         data-thread-id={c.threadId}
         data-unread={unread ? 'true' : 'false'}
+        data-dispute={disputeActive ? 'true' : undefined}
         style={{
           display: 'flex', gap: 16, alignItems: 'center', padding: '16px 0', cursor: 'pointer',
-          background: paper, transform: `translateX(${offset}px)`, transition: dragRef.current.active ? 'none' : 'transform 0.2s ease',
+          background: disputeActive ? 'color-mix(in srgb, var(--bb-alert) 9%, var(--bb-bg))' : paper,
+          boxShadow: disputeActive ? 'inset 3px 0 0 var(--bb-alert)' : undefined,
+          paddingLeft: disputeActive ? 10 : 0, transform: `translateX(${offset}px)`, transition: dragRef.current.active ? 'none' : 'transform 0.2s ease',
           touchAction: 'pan-y',
         }}
       >
@@ -271,6 +275,9 @@ function InboxRow({ c, onOpen, onStar, onArchive, T }) {
                 losing its title-vs-preview hierarchy. */}
             <span style={{ ...display(18, { lineHeight: 1.15, fontWeight: 700, opacity: unread ? 1 : 0.62 }) }}>{c.name}</span>
           </div>
+          {disputeActive && (
+            <span data-testid="inbox-row-dispute" style={{ fontSize: 11.5, fontWeight: 700, color: alert }}>{T('Đang tranh chấp', 'Dispute in progress')}</span>
+          )}
           <span style={{ fontSize: 13, color: ink, opacity: unread ? 1 : 0.72, fontWeight: unread ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.snippet}</span>
         </div>
         {/* Bug 1 (2026-09-21 follow-up) — moved off the avatar (where it
@@ -399,6 +406,10 @@ export default function Inbox() {
     archived: !!s.inboxThreadPrefs[c.threadId]?.archived,
   })), [s.inboxThreads, s.inboxThreadPrefs]);
 
+  const activeDisputeThreads = useMemo(
+    () => new Set(s.disputeChats.filter(isActiveDisputeChat).map(c => c.conversation_thread_id).filter(Boolean)),
+    [s.disputeChats]
+  );
   const visible = useMemo(() => {
     const byView = merged.filter(c => (s.inboxView === 'archived' ? c.archived : !c.archived));
     const q = query.trim().toLowerCase();
@@ -475,6 +486,7 @@ export default function Inbox() {
               key={c.threadId}
               c={c}
               T={T}
+              disputeActive={activeDisputeThreads.has(c.threadId)}
               onOpen={() => openThread(c.threadId, c.eventKey, 'inbox', c.name)}
               onStar={() => toggleThreadStar(c.threadId)}
               onArchive={() => (c.archived ? unarchiveThread(c.threadId) : archiveThread(c.threadId))}

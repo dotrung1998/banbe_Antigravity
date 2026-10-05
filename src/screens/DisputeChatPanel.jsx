@@ -1,6 +1,32 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { ink, rule, fieldGlass, cardGlass, alert } from '../theme.js';
+import { supabase } from '../lib/supabase.js';
+import { buildRefundDisputeExport, saveBlob } from '../lib/disputeExport.js';
+
+const ATTACH_MIME = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+const ATTACH_MAX = 20 * 1024 * 1024; // bucket file_size_limit (migration 131)
+const AUTO_BODY = /^Sent a (photo|file)$/;
+
+function imageSize(file) {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/')) return resolve({});
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = () => { URL.revokeObjectURL(url); resolve({ w: im.naturalWidth, h: im.naturalHeight }); };
+    im.onerror = () => { URL.revokeObjectURL(url); resolve({}); };
+    im.src = url;
+  });
+}
+
+// "closes in ~Nh" for the payment not-found window (dispute_threads.expires_at).
+export function windowLabel(expiresAt, T) {
+  if (!expiresAt) return null;
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  if (!(ms > 0)) return T('Sắp đóng', 'Closing soon');
+  const h = Math.ceil(ms / 3600000);
+  return h >= 24 ? T(`Đóng sau ~${Math.ceil(h / 24)} ngày`, `Closes in ~${Math.ceil(h / 24)}d`) : T(`Đóng sau ~${h} giờ`, `Closes in ~${h}h`);
+}
 
 // A static (non-ticking, computed at render time), read-only countdown —
 // never a delete button, unlike the ordinary chat (Chat.jsx) or the
@@ -38,12 +64,42 @@ function retentionLabel(thread, T) {
 // only the selector, the RPCs and the explanatory copy differ. Exactly one of
 // bookingId / refundClaimId is passed.
 export default function DisputeChatPanel({ bookingId, refundClaimId }) {
-  const { state, T, loadDisputeChat, loadRefundDisputeChat, disputeChatDraftType, sendDisputeMessage, sendRefundDisputeMessage, clearChatHighlight } = useGoc();
+  const { state, T, loadDisputeChat, loadRefundDisputeChat, disputeChatDraftType, sendDisputeMessage, sendRefundDisputeMessage, clearChatHighlight, loadDisputeChats } = useGoc();
   const s = state;
   const listRef = useRef(null);
   const messageRefs = useRef({}); // message id -> DOM node, for scrollIntoView
   const [highlightedId, setHighlightedId] = useState(null);
   const isRefund = !!refundClaimId;
+  const lang = s.lang;
+
+  // Dispute header facts the shared chat state doesn't carry: for a REFUND the
+  // verified get_refund_dispute_thread (viewer role, closed state, thread id);
+  // for a PAYMENT the thread id + expires_at (migration 149 2-day window).
+  const [meta, setMeta] = useState(null);
+  const [urls, setUrls] = useState({}); // attachment path -> { url, at }
+  const [busy, setBusy] = useState('');  // '' | 'attach' | 'export' | 'close' | 'delete'
+  const [flash, setFlash] = useState(null); // { kind: 'ok' | 'err', text }
+  const [confirm, setConfirm] = useState(null); // null | 'close' | 'delete'
+  const [deleted, setDeleted] = useState(false);
+  const fileRef = useRef(null);
+
+  const loadMeta = async () => {
+    if (isRefund) {
+      const { data } = await supabase.rpc('get_refund_dispute_thread', { p_claim_id: refundClaimId });
+      if (data?.reason === 'deleted_by_you') setDeleted(true);
+      setMeta(data || null);
+    } else {
+      const { data } = await supabase.from('dispute_threads').select('id, expires_at, resolved_at').eq('booking_id', bookingId).maybeSingle();
+      setMeta(data ? { found: true, dispute_thread_id: data.id, expires_at: data.expires_at, resolved_at: data.resolved_at } : null);
+    }
+  };
+  useEffect(() => {
+    setMeta(null); setDeleted(false); setConfirm(null); setFlash(null);
+    loadMeta();
+    const id = setInterval(loadMeta, 5000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refundClaimId, bookingId]);
 
   // No realtime subscription exists anywhere in this app (no
   // supabase.channel()/postgres_changes usage, and dispute_messages was
@@ -74,6 +130,86 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
   const readOnly = !!thread?.resolvedAt;
   const send = isRefund ? sendRefundDisputeMessage : sendDisputeMessage;
 
+  // Sign attachment paths (private bucket). An already-signed path is kept
+  // until ~8 min old so the 4s poll doesn't churn <img src>.
+  useEffect(() => {
+    const now = Date.now();
+    const wanted = [...new Set(messages.map(m => m.attachment_path).filter(Boolean))]
+      .filter(p => !urls[p] || now - urls[p].at > 480000);
+    if (!wanted.length) return;
+    supabase.storage.from('dispute-attachments').createSignedUrls(wanted, 600).then(({ data }) => {
+      if (!data) return;
+      setUrls(prev => {
+        const next = { ...prev };
+        for (const r of data) if (r.path && r.signedUrl && !r.error) next[r.path] = { url: r.signedUrl, at: Date.now() };
+        return next;
+      });
+    });
+  }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const claimClosed = !!(meta?.dispute_closed_at || meta?.resolved_at);
+  const threadId = meta?.dispute_thread_id;
+  const isGuest = meta?.viewer_role === 'guest';
+
+  const onPickFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !threadId) return;
+    if (!ATTACH_MIME.includes(file.type)) return setFlash({ kind: 'err', text: T('Chỉ gửi được ảnh JPG/PNG/WebP hoặc PDF.', 'Only JPG/PNG/WebP photos or PDFs can be sent.') });
+    if (file.size > ATTACH_MAX) return setFlash({ kind: 'err', text: T('Tệp quá lớn (tối đa 20 MB).', 'File too large (20 MB max).') });
+    setBusy('attach'); setFlash(null);
+    const ext = file.type === 'application/pdf' ? 'pdf' : file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+    const path = `${threadId}/${crypto.randomUUID()}.${ext}`;
+    const up = await supabase.storage.from('dispute-attachments').upload(path, file, { contentType: file.type, upsert: false });
+    if (up.error) { setBusy(''); return setFlash({ kind: 'err', text: T('Không tải tệp lên được.', "Couldn't upload the file.") }); }
+    const { w, h } = await imageSize(file);
+    const { data, error } = await supabase.rpc('send_refund_dispute_attachment', {
+      p_refund_claim_id: refundClaimId, p_body: '', p_attachment_path: path, p_attachment_type: file.type,
+      p_attachment_width: w ?? null, p_attachment_height: h ?? null,
+    });
+    if (error || data?.success === false) {
+      await supabase.storage.from('dispute-attachments').remove([path]); // don't orphan the file
+      setFlash({ kind: 'err', text: data?.error === 'DISPUTE_RESOLVED' ? T('Tranh chấp đã kết thúc.', 'This dispute has ended.') : T('Chưa gửi được tệp.', "Couldn't send the file.") });
+    } else {
+      await reload(chatKey);
+    }
+    setBusy('');
+  };
+
+  const doExport = async () => {
+    setBusy('export'); setFlash(null);
+    try {
+      const { blob, fileName, attachmentCount } = await buildRefundDisputeExport(refundClaimId, lang);
+      saveBlob(blob, fileName);
+      setFlash({ kind: 'ok', text: T(`Đã tải bản ghi (${attachmentCount} tệp đính kèm).`, `Transcript downloaded (${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}).`) });
+      setBusy('');
+      return true;
+    } catch (err) {
+      console.warn('dispute export failed:', err);
+      setFlash({ kind: 'err', text: T('Không xuất được bản ghi đầy đủ — chưa có gì bị xoá. Thử lại nhé.', "Couldn't build the full transcript — nothing was deleted. Please try again.") });
+      setBusy('');
+      return false;
+    }
+  };
+
+  const doClose = async () => {
+    setBusy('close'); setFlash(null);
+    const { data, error } = await supabase.rpc('close_refund_dispute', { p_claim_id: refundClaimId, p_note: '' });
+    setBusy('');
+    if (error || data?.success === false) return setFlash({ kind: 'err', text: T('Chưa đóng được tranh chấp.', "Couldn't close the dispute.") });
+    setConfirm(null);
+    await Promise.all([loadMeta(), reload(chatKey), loadDisputeChats?.()]);
+  };
+
+  const doDelete = async () => {
+    setBusy('delete'); setFlash(null);
+    const { data, error } = await supabase.rpc('delete_my_refund_dispute_copy', { p_claim_id: refundClaimId });
+    setBusy('');
+    if (error || data?.success === false) return setFlash({ kind: 'err', text: T('Chưa xoá được bản của bạn.', "Couldn't delete your copy.") });
+    setConfirm(null); setDeleted(true);
+    await loadDisputeChats?.();
+  };
+
   // Reached by tapping a 'dispute_message' toast/notification
   // (openNotification, GocContext.jsx) — scrolls to and briefly highlights
   // the specific message named by `chatHighlight.messageId`, or just the
@@ -100,11 +236,37 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
     clearChatHighlight();
   }, [s.chatHighlight, bookingId, refundClaimId, isRefund, messages, clearChatHighlight]);
 
+  if (deleted) {
+    return (
+      <div style={{ ...fieldGlass({ marginTop: 10, padding: '12px 14px' }) }} data-testid="dispute-chat-deleted">
+        <span style={{ fontSize: 12, color: ink, opacity: 0.7 }}>
+          {T('Bạn đã xoá bản sao tranh chấp này. Phía bên kia vẫn giữ bản ghi chung cho đến khi hết hạn.', 'You deleted your copy of this dispute. The other side keeps the shared record until it expires.')}
+        </span>
+      </div>
+    );
+  }
+  const windowText = !isRefund && !claimClosed ? windowLabel(meta?.expires_at, T) : null;
+
   return (
     <div style={{ ...fieldGlass({ marginTop: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }) }} data-testid="dispute-chat-panel">
       <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>
         {T('Trao đổi trực tiếp về tranh chấp này', 'Direct chat about this dispute')}
       </span>
+      {isRefund && meta?.found && (
+        claimClosed ? (
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: ink, opacity: 0.7 }} data-testid="dispute-chat-completed">
+            {T('Tranh chấp đã hoàn tất', 'Dispute completed')}
+            {meta.dispute_closed_by_role ? ` ▪︎ ${meta.dispute_closed_by_role === meta.viewer_role ? T('bạn đã đóng', 'closed by you') : T('bên kia đã đóng', 'closed by the other side')}` : ''}
+          </span>
+        ) : (
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: alert }} data-testid="dispute-chat-in-progress">
+            {T('Đang tranh chấp', 'Dispute in progress')}
+          </span>
+        )
+      )}
+      {windowText && (
+        <span style={{ fontSize: 11, fontWeight: 700, color: alert }} data-testid="dispute-chat-window">{windowText}</span>
+      )}
       <p style={{ fontSize: 11, lineHeight: 1.45, color: ink, opacity: 0.7, margin: 0 }}>
         {/* The two kinds have genuinely different endings — a payment
             dispute is closed by banbe and emailed a transcript, a refund
@@ -154,13 +316,51 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
                 : m.sender_role === 'admin' ? T('banbe', 'banbe') : T('Hệ thống', 'System')}
               {' ▪︎ '}{new Date(m.created_at).toLocaleString()}
             </div>
-            <div style={{ fontSize: 13, color: ink, marginTop: 2 }}>{m.body}</div>
+            {m.attachment_path && (
+              (() => {
+                const u = urls[m.attachment_path]?.url;
+                const isImg = m.attachment_type?.startsWith('image/');
+                const r = m.attachment_width && m.attachment_height ? m.attachment_width / m.attachment_height : 1;
+                const bw = Math.round(Math.min(200, 200 * Math.min(r, 1.2)));
+                return isImg ? (
+                  u ? (
+                    <img
+                      src={u} alt="" data-testid="dispute-chat-attachment"
+                      onClick={() => window.open(u, '_blank', 'noopener')}
+                      style={{ display: 'block', marginTop: 4, width: bw, aspectRatio: String(r), maxHeight: 240, objectFit: 'cover', borderRadius: 10, border: `1px solid ${rule}`, cursor: 'pointer' }}
+                    />
+                  ) : (
+                    <div data-testid="dispute-chat-attachment-pending" style={{ marginTop: 4, fontSize: 11.5, color: ink, opacity: 0.6 }}>{T('Đang tải tệp…', 'Loading attachment…')}</div>
+                  )
+                ) : (
+                  <a href={u || undefined} target="_blank" rel="noreferrer" data-testid="dispute-chat-attachment" style={{ display: 'inline-block', marginTop: 4, fontSize: 12.5, color: ink }}>
+                    📎 {T('Tệp PDF', 'PDF file')}
+                  </a>
+                );
+              })()
+            )}
+            {!(m.attachment_path && AUTO_BODY.test(m.body || '')) && (
+              <div style={{ fontSize: 13, color: ink, marginTop: 2 }}>{m.body}</div>
+            )}
           </div>
         ))}
       </div>
 
       {!readOnly && (
         <div style={{ display: 'flex', gap: 8 }}>
+          {isRefund && (
+            <>
+              <input ref={fileRef} type="file" accept={ATTACH_MIME.join(',')} style={{ display: 'none' }} onChange={onPickFile} data-testid="dispute-chat-file-input" />
+              <div
+                onClick={() => busy === '' && threadId && fileRef.current?.click()}
+                data-testid="dispute-chat-attach"
+                title={T('Đính kèm ảnh hoặc PDF', 'Attach a photo or PDF')}
+                style={{ flex: 'none', width: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 12, ...fieldGlass({}), fontSize: 17, color: ink, cursor: threadId ? 'pointer' : 'default', opacity: busy === 'attach' || !threadId ? 0.5 : 1 }}
+              >
+                {busy === 'attach' ? '…' : '📎'}
+              </div>
+            </>
+          )}
           <input
             value={s.disputeChatDraft} onChange={disputeChatDraftType}
             placeholder={T('Nhắn gì đó…', 'Say something…')}
@@ -180,6 +380,52 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
           >
             {T('Gửi', 'Send')}
           </div>
+        </div>
+      )}
+      {flash && (
+        <p style={{ fontSize: 11.5, color: flash.kind === 'err' ? alert : ink, margin: 0 }} data-testid={flash.kind === 'err' ? 'dispute-chat-flash-error' : 'dispute-chat-flash'}>{flash.text}</p>
+      )}
+      {isRefund && meta?.found && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="dispute-chat-actions">
+          {confirm === null && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div onClick={() => busy === '' && doExport()} data-testid="dispute-chat-export" style={{ ...fieldGlass({ padding: '8px 12px', borderRadius: 999 }), fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer', opacity: busy === 'export' ? 0.5 : 1 }}>
+                {busy === 'export' ? T('Đang tạo bản ghi…', 'Building transcript…') : T('Tải bản ghi (ZIP)', 'Download transcript (ZIP)')}
+              </div>
+              {!claimClosed && (
+                <div onClick={() => setConfirm('close')} data-testid="dispute-chat-close" style={{ ...fieldGlass({ padding: '8px 12px', borderRadius: 999 }), fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>
+                  {T('Đóng tranh chấp', 'Close dispute')}
+                </div>
+              )}
+              {isGuest && (
+                <div onClick={() => setConfirm('delete')} data-testid="dispute-chat-delete-copy" style={{ ...fieldGlass({ padding: '8px 12px', borderRadius: 999 }), fontSize: 12, fontWeight: 600, color: alert, cursor: 'pointer' }}>
+                  {T('Đóng và xoá bản của tôi', 'Close and delete my copy')}
+                </div>
+              )}
+            </div>
+          )}
+          {confirm && (
+            <div style={{ ...cardGlass({ padding: '10px 12px' }), display: 'flex', flexDirection: 'column', gap: 8 }} data-testid="dispute-chat-confirm">
+              <span style={{ fontSize: 12, color: ink, lineHeight: 1.45 }}>
+                {confirm === 'close'
+                  ? T('Đóng tranh chấp không chuyển tiền và không đổi trạng thái khoản hoàn. Đoạn chat chỉ còn để đọc và tự xoá sau 7 ngày. Bạn nên tải bản ghi trước.',
+                       'Closing does not move any money or change the refund status. The chat becomes read-only and deletes itself after 7 days. Download the transcript first.')
+                  : T('Bản của bạn (tin nhắn và tệp) sẽ bị ẩn khỏi bạn vĩnh viễn; tranh chấp được đóng nếu còn mở. Người tổ chức vẫn giữ bản ghi chung. Hãy tải bản ghi trước khi xoá.',
+                       'Your copy (messages and files) will be hidden from you permanently; the dispute is closed if still open. The organizer keeps the shared record. Download the transcript before deleting.')}
+              </span>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <div onClick={() => busy === '' && doExport()} data-testid="dispute-chat-confirm-export" style={{ ...fieldGlass({ padding: '8px 12px', borderRadius: 999 }), fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>
+                  {busy === 'export' ? T('Đang tạo…', 'Building…') : T('Tải bản ghi', 'Download transcript')}
+                </div>
+                <div onClick={() => busy === '' && (confirm === 'close' ? doClose() : doDelete())} data-testid="dispute-chat-confirm-go" style={{ padding: '8px 12px', borderRadius: 999, background: alert, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: busy === 'close' || busy === 'delete' ? 0.5 : 1 }}>
+                  {confirm === 'close' ? T('Đóng tranh chấp', 'Close dispute') : T('Xoá bản của tôi', 'Delete my copy')}
+                </div>
+                <div onClick={() => setConfirm(null)} data-testid="dispute-chat-confirm-cancel" style={{ padding: '8px 12px', fontSize: 12, color: ink, cursor: 'pointer' }}>
+                  {T('Huỷ', 'Cancel')}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
       {s.disputeChatError && (

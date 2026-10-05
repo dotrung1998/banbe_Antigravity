@@ -6,6 +6,7 @@ import { liveEventOverrides } from '../lib/countdown.js';
 import { formatShortDate } from '../lib/paymentDocument.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
 import CancelEventModal from '../components/CancelEventModal.jsx';
+import { HostPromoSheet } from '../components/HostPromo.jsx'; // account gate (web parity)
 
 const REFUND_STATUS_LABEL = {
   needsDestination: ['Cần tài khoản nhận tiền', 'Needs destination'],
@@ -35,6 +36,7 @@ export default function Attendance() {
   const backLabel = s.attendanceBack === 'notifications' ? T('Thông báo', 'Notifications') : T('Trang của bạn', 'Your dashboard');
   const fileInputRef = useRef(null);
   const [cancelEventOpen, setCancelEventOpen] = useState(false);
+  const [promoOpen, setPromoOpen] = useState(false); // account gate (web parity)
   const [uploadingFor, setUploadingFor] = useState(null);
   const [uploadErrorFor, setUploadErrorFor] = useState(null);
   // Replacing an existing live receipt requires a reason
@@ -250,6 +252,9 @@ export default function Attendance() {
           10px into this screen's own 12-16px spacing ladder. */}
       <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, margin: '14px 22px 0' }}>{T('Chạm vào tên khách hoặc quét mã QR vé khi họ tới nơi.', "Tap a guest's name, or scan their ticket QR, when they arrive.")}</p>
       <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '6px 22px 0' }}>{T('Đánh dấu "Đã thanh toán" khi bạn thấy tiền vào tài khoản, rồi tải lên hoá đơn/biên nhận thật của bạn cho khách.', 'Mark a guest paid once you see the money arrive, then upload your own real invoice/receipt for them.')}</p>
+      <p onClick={() => setPromoOpen(true)} data-testid="attendance-promo"
+         style={{ fontSize: 12.5, color: ink, cursor: 'pointer', margin: '10px 22px 0' }}>✉ {T('Nhắn tin quảng bá sự kiện', 'Text a promo about this event')}</p>
+      {promoOpen && <HostPromoSheet eventKey={attKey} onClose={() => setPromoOpen(false)} />}
       <p onClick={() => setCancelEventOpen(true)} data-testid="attendance-cancel-event"
          style={{ fontSize: 12.5, color: alert, cursor: 'pointer', margin: '10px 22px 0' }}>✕ {T('Huỷ sự kiện', 'Cancel event')}</p>
       {cancelEventOpen && (

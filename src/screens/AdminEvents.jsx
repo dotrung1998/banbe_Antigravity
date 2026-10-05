@@ -30,6 +30,21 @@ export default function AdminEvents() {
 
   useEffect(() => { loadPendingEvents(); }, [loadPendingEvents]);
 
+  // Host reminders (remind_admin_event_review, migration 148): how many times
+  // each pending event's host has nudged the admins, and when last. Read-only;
+  // silently absent if migration 148 isn't applied (column missing).
+  const [remindById, setRemindById] = useState({});
+  const pendingKeys = s.adminEvents.map(e => e.key).join(',');
+  useEffect(() => {
+    if (!pendingKeys) return;
+    let live = true;
+    supabase.from('events').select('id, admin_remind_count, last_admin_reminded_at').in('id', pendingKeys.split(',')).then(({ data, error }) => {
+      if (!live || error) return;
+      setRemindById(Object.fromEntries((data || []).map(r => [r.id, r])));
+    });
+    return () => { live = false; };
+  }, [pendingKeys]);
+
   const setReason = (key, value) => setReasonByEvent(prev => ({ ...prev, [key]: value }));
 
   const loadGallery = async (eventId) => {
@@ -99,6 +114,12 @@ export default function AdminEvents() {
                   <span style={{ fontSize: 10.5, color: ink, opacity: 0.55 }}>
                     {T('Mã', 'ID')} {e.key} ▪︎ {T('Gửi lúc', 'Submitted')} {submittedLabel}
                   </span>
+                  {remindById[e.key]?.admin_remind_count > 0 && (
+                    <span data-testid={`admin-event-reminded-${e.key}`} style={{ fontSize: 11, fontWeight: 600, color: alert }}>
+                      {T(`Host đã nhắc duyệt ${remindById[e.key].admin_remind_count}/2 lần`, `Host reminded ${remindById[e.key].admin_remind_count}/2 times`)}
+                      {remindById[e.key].last_admin_reminded_at ? ` ▪︎ ${T('gần nhất', 'last')} ${new Date(remindById[e.key].last_admin_reminded_at).toLocaleString()}` : ''}
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flex: 'none' }}>
                   <span style={{ ...display(19, { whiteSpace: 'nowrap' }) }}>{e.priceVnd ? formatVnd(e.priceVnd) : T('Miễn phí', 'Free')}</span>
