@@ -11,7 +11,7 @@ struct FaceIDLockView: View {
     var body: some View {
         ZStack {
             Color(.systemBackground).ignoresSafeArea()
-            VStack(spacing: 16) {
+            VStack(spacing: BanbeTheme.LoadingVisual.reservationGap) {
                 // A3 (Pulse/loading UX pass, 2026-09-27) — the shared
                 // Banbe loading GIF as a branded "waiting" visual, shown
                 // WHILE `isAuthenticating` (i.e. the real system Face ID
@@ -21,7 +21,8 @@ struct FaceIDLockView: View {
                 // never covers or replaces it; at rest (not authenticating
                 // yet) this still shows the plain Face ID glyph, unchanged.
                 if isAuthenticating {
-                    BanbeLoadingVisual(size: 44)
+                    // Lifted a little: the GIF's rotating bounds used to overlap the logo below.
+                    BanbeLoadingVisual(size: 44).offset(y: -14)
                 } else {
                     Image(systemName: "faceid")
                         .font(.system(size: 44))

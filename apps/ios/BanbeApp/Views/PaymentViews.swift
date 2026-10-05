@@ -30,6 +30,9 @@ struct PaymentDetailsView: View {
     @State private var destPickerID: UUID?
     @State private var destPickerBusy = false
 
+    /// False until this visit's own fetch of the bookings has finished.
+    @State private var freshLoaded = false
+
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private var booking: PayableBooking? {
@@ -61,12 +64,15 @@ struct PaymentDetailsView: View {
                     .padding(.top, 8).padding(.horizontal, 22)
                     .accessibilityIdentifier("payment.back")
 
-                if let booking {
+                if let booking, freshLoaded {
                     content(booking)
+                } else if !freshLoaded || app.paymentsLoading {
+                    // Until this visit's own fresh fetch lands, whatever is in memory may be
+                    // an older phase (e.g. the 30-minute hold clock) — show the loader
+                    // instead of flashing it.
+                    HStack { Spacer(); BanbeLoadingVisual(size: 64); Spacer() }.padding(.top, 120)
                 } else {
-                    Text(app.paymentsLoading
-                         ? app.T("Đang tải…", "Loading…")
-                         : app.T("Không tìm thấy khoản thanh toán này.", "Couldn't find that payment."))
+                    Text(app.T("Không tìm thấy khoản thanh toán này.", "Couldn't find that payment."))
                         .font(.system(size: 13))
                         .foregroundStyle(app.palette.ink)
                         .padding(.horizontal, 22).padding(.top, 18)
@@ -75,7 +81,7 @@ struct PaymentDetailsView: View {
             .padding(.bottom, 40)
         }
         .accessibilityIdentifier("screen.paymentDetails")
-        .task { await app.loadPaymentBookings() }
+        .task { freshLoaded = false; await app.loadPaymentBookings(); freshLoaded = true }
         // PHASE 1 drives the "seat held for" clock. PHASE 2 (14-organizer-
         // checkin.md follow-up) now ALSO ticks — not a second "your seat is
         // at risk" countdown, but a separate, informational read-only one
@@ -302,7 +308,9 @@ struct PaymentDetailsView: View {
                     Text(app.T("Người tổ chức xác nhận trong", "Organizer confirms within"))
                         .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                     Spacer()
-                    Text(Countdown.format(Countdown.secondsUntil(deadline, now: tick)))
+                    // Capped at the 60-minute window: a few seconds of device-clock skew or
+                    // network lag must never read as "1:00:04".
+                    Text(Countdown.format(min(3600, Countdown.secondsUntil(deadline, now: tick))))
                         .font(.system(size: 16, weight: .semibold, design: .monospaced))
                 }
                 .padding(.top, 4)

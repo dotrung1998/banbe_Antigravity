@@ -2626,7 +2626,14 @@ final class AppState: ObservableObject {
     func goMapExplore() { screen = .mapExplore }
     /// Dock tap on Account starts fresh (search closed); coming BACK from a
     /// search result does not go through here, so its search is kept.
-    func goProfile() { accountSearchOpen = false; accountSearchQuery = ""; screen = .profile }
+    func goProfile() {
+        accountSearchOpen = false; accountSearchQuery = ""
+        // Switching to Account from another section opens it at the top, profile
+        // card in view. (Coming BACK to Account from one of its own sub-screens
+        // still restores the previous position — that never goes through here.)
+        if BottomTabBar.visibleScreens.contains(screen) && screen != .profile { accountScrollAnchorIDByTab = [:] }
+        screen = .profile
+    }
     // "organizer" is a pass-through, exactly like "event" itself already
     // is: entering an event from an organizer page keeps whatever back
     // target brought us into this event/organizer cluster in the first

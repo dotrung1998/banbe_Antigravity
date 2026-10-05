@@ -132,6 +132,13 @@ struct BanbeLoadingVisual: View {
         .accessibilityLabel(Text("Loading"))
     }
 
+    /// Decodes the GIF off the main thread at launch, so the first place that
+    /// shows it (the Face ID lock screen after a force quit) doesn't stall on
+    /// decoding it while the person waits.
+    static func prewarm() {
+        DispatchQueue.global(qos: .userInitiated).async { _ = frames.count }
+    }
+
     // Decoded once, process-wide — every call site (Pulse alone creates
     // one of these per tab load) shares the same decoded frames instead of
     // re-parsing the bundled GIF from disk each time this view appears.

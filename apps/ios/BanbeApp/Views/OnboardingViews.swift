@@ -97,7 +97,7 @@ struct SplashView: View {
             VStack(spacing: 0) {
                 LogomotionView(onComplete: { animationComplete = true })
                     .frame(width: 280, height: 280 * Self.logomotionAspect)
-                Text("bạn mới mỗi tuần")
+                Text(app.T("bạn mới mỗi tuần", "new friends every week"))
                     .font(.system(size: 14))
                     .foregroundStyle(app.palette.ink)
                     .padding(.top, 16)

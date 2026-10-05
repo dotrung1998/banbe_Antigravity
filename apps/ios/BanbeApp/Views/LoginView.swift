@@ -65,8 +65,17 @@ struct LoginView: View {
                 // or a stray screen change while signed out) rather than a
                 // deliberate "sign in to do X" prompt: there's nowhere
                 // legitimate for Back to go.
-                if !app.authMandatory {
-                    BackLink(label: app.T("Quay lại", "Back")) { app.screen = app.authBackScreen }
+                HStack(spacing: 8) {
+                    if !app.authMandatory {
+                        BackLink(label: app.T("Quay lại", "Back")) { app.screen = app.authBackScreen }
+                    }
+                    Spacer(minLength: 0)
+                    // Language and theme are reachable before signing in, so the very first
+                    // screens (and the loading message after login) can be read comfortably.
+                    prefPill(app.T("EN", "VN"), id: "login.lang") { app.toggleLang() }
+                    prefPill(app.theme == "dark" ? app.T("Sáng", "Light") : app.T("Tối", "Dark"), id: "login.theme") {
+                        app.pickTheme(app.theme == "dark" ? "light" : "dark")
+                    }
                 }
 
                 HStack(spacing: 16) {
@@ -282,7 +291,26 @@ struct LoginView: View {
         .accessibilityIdentifier(option == .code ? "login.method.code" : "login.method.password")
     }
 
+    private func prefPill(_ title: String, id: String, action: @escaping () -> Void) -> some View {
+        Button {
+            Haptics.light()
+            action()
+        } label: {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, 12).frame(minHeight: 34)
+                .background(app.palette.field, in: Capsule())
+                .overlay(Capsule().stroke(app.palette.rule))
+                .foregroundStyle(app.palette.ink)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
+    }
+
     private func submit() async {
+        // Hide the keyboard the moment the person submits — the loading screen
+        // that follows shouldn't sit under it.
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         localError = ""
         resetRequested = false
 

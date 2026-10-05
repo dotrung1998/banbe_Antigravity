@@ -37,7 +37,17 @@ struct AccountGateOverlay: View {
                     InkButton(title: app.T("Thử lại", "Try again")) { Task { await auth.refreshGate() } }
                 }
             default:
-                BanbeLoadingVisual(size: 44)
+                VStack(spacing: BanbeTheme.LoadingVisual.reservationGap) {
+                    // Lifted so the GIF's rotating bounds never cover the line below.
+                    BanbeLoadingVisual(size: 44).offset(y: -22)
+                    Text(app.T("Đang tải, vui lòng đợi một chút…", "Loading, just a moment…"))
+                        .font(.system(size: 13))
+                        .padding(.top, 6)
+                }
+                .onAppear {
+                    // Covers sign-in paths that don't go through the form's submit (Google/Facebook).
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
             }
         }
         .foregroundStyle(app.palette.ink)

@@ -10,6 +10,7 @@ struct BanbeApp: App {
         // AppDelegate is instantiated by UIKit before any SwiftUI @StateObject
         // exists, so it can't reach `appState` any other way — set once here.
         AppDelegate.appState = appState
+        BanbeLoadingVisual.prewarm()
         // .claude/notes/18-ios-personal-team-signing.md — developer-only
         // signal (console, never a user-facing banner) that this build was
         // compiled under Config/PersonalTeamDebug.xcconfig, which omits

@@ -186,6 +186,9 @@ final class BottomTabBarOverlay {
     // second mechanism, this reuses the exact same `isHidden`-sync idea
     // a5fd823 established, with one more input ORed in.
     private var forcedHidden = false
+    /// True while the Face ID lock (or the account-gate loader) covers the app — the dock
+    /// lives in its own window above everything, so it must be told explicitly.
+    private var appLocked = false
     // Task 1 (2026-09-22 follow-up, 07-notifications.md) — a fullscreen
     // StoryViewer session must hide this overlay window too, on every
     // screen it can be reached from (Home, Profile, and any future
@@ -318,6 +321,11 @@ final class BottomTabBarOverlay {
     /// (InboxView) calls this directly around its own settings-sheet/
     /// feedback-flow presentation, since neither one is a `Screen` change
     /// `updateVisibility(for:)` would otherwise see.
+    func setAppLocked(_ locked: Bool) {
+        appLocked = locked
+        applyVisibility()
+    }
+
     func setForcedHidden(_ hidden: Bool) {
         forcedHidden = hidden
         applyVisibility()
@@ -410,7 +418,7 @@ final class BottomTabBarOverlay {
     }
 
     private func applyVisibility() {
-        let shouldShow = !(forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || surveyModalOpen)
+        let shouldShow = !(appLocked || forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || surveyModalOpen)
             && BottomTabBar.visibleScreens.contains(currentScreen)
         guard shouldShow != lastShown else { return }
         lastShown = shouldShow

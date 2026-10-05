@@ -860,8 +860,17 @@ struct RootView: View {
             // simultaneously over it — held off while app.screen == .splash.
             // Server-owned account gate (required enrollment / Confirm date of
             // birth). Below the Face ID lock so Face ID still comes first.
-            if auth.session != nil && auth.gate != .ready && app.screen != .splash { AccountGateOverlay() }
-            if auth.isLocked && app.screen != .splash { FaceIDLockView() }
+            // Stays up (showing the loading GIF) until this session's account data
+            // has also finished loading — otherwise the login form reappears for
+            // about a second between the gate clearing and Home appearing.
+            if auth.session != nil && (auth.gate != .ready || app.appliedSessionUID != auth.session?.user.id) && app.screen != .splash { AccountGateOverlay() }
+            // Mounted during the splash too (invisible), so the Face ID prompt starts
+            // right away at launch instead of waiting for the splash animation to end.
+            if auth.isLocked {
+                FaceIDLockView()
+                    .opacity(app.screen == .splash ? 0 : 1)
+                    .allowsHitTesting(app.screen != .splash)
+            }
         }
         .animation(.easeInOut(duration: 0.2), value: app.askingLocation)
         .animation(.easeInOut(duration: 0.2), value: app.photoViewer)
@@ -991,6 +1000,10 @@ struct RootView: View {
             // from any source, invalidates any older in-flight
             // `commitTabSwipe` settle so it can never overwrite this one.
             navGeneration += 1
+            // A swipe between dock tabs lands on Account without going through goProfile().
+            if newScreen == .profile && oldScreen != .profile && BottomTabBar.visibleScreens.contains(oldScreen) {
+                app.accountScrollAnchorIDByTab = [:]
+            }
             // Back at Account / a group page: a screen opened from search is done.
             if newScreen == .profile || newScreen == .accountGroup { app.accountSearchReturn = false }
             // Real-device follow-up — these three are meant to be
@@ -1099,6 +1112,12 @@ struct RootView: View {
         .onChange(of: app.storyViewer) { _, viewer in
             BottomTabBarOverlay.shared.setStoryViewerOpen(viewer != nil)
         }
+        // The Face ID lock covers the whole app; the dock's separate window would
+        // otherwise paint on top of it while the prompt is up.
+        .onChange(of: auth.isLocked) { _, locked in
+            BottomTabBarOverlay.shared.setAppLocked(locked)
+        }
+        .onAppear { BottomTabBarOverlay.shared.setAppLocked(auth.isLocked) }
         // Survey discovery/dock pass — the survey response `.fullScreenCover`
         // below (`storySurveyModalPublicID`) is presented over Home/the
         // story viewer without ever changing `app.screen`, so the

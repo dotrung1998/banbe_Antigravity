@@ -932,7 +932,7 @@ struct AccountView: View {
     @ViewBuilder
     private func accountTabButton(key: String, label: String, badge: Int = 0) -> some View {
         SwipeSafeButton {
-            if app.accountTab != key { Haptics.selection() }
+            if app.accountTab != key { Haptics.selection(); app.accountScrollAnchorIDByTab[key] = nil }   // a tab you switch TO opens at its top
             app.accountTab = key
         } label: {
             HStack(spacing: 6) {
@@ -974,7 +974,7 @@ struct AccountView: View {
         // double-toggle — so both handlers safely agree.
         .highPriorityGesture(TapGesture().onEnded {
             if !app.isRootSwipeActive {
-                if app.accountTab != key { Haptics.selection() }
+                if app.accountTab != key { Haptics.selection(); app.accountScrollAnchorIDByTab[key] = nil }
                 app.accountTab = key
             }
         })
