@@ -1,5 +1,6 @@
 import Foundation
 import Supabase
+import MapKit
 
 /// Interest surveys (Slice B, migration 114) — mirrors web's GocContext.jsx
 /// survey section function-for-function and RPC-for-RPC. One screen
@@ -12,6 +13,50 @@ import Supabase
 struct SurveyOption: Codable, Equatable, Identifiable {
     let id: String
     let label: String
+    // Structured date/time slot ('yyyy-MM-dd' / 'HH:mm', Vietnam time) for a
+    // date option picked with the Create Event date/time controls. Nil for
+    // older free-text options and for every non-date option set.
+    var date: String? = nil
+    var time: String? = nil
+    // Structured address for a location option picked with the same address
+    // search Create Event uses (all nil for older free-text options).
+    var addressLine: String? = nil
+    var district: String? = nil
+    var city: String? = nil
+    var postalCode: String? = nil
+    var countryCode: String? = nil
+    var stateProvince: String? = nil
+    var neighborhood: String? = nil
+    var lat: Double? = nil
+    var lng: Double? = nil
+    enum CodingKeys: String, CodingKey {
+        case id, label, date, time, district, city, neighborhood, lat, lng
+        case addressLine = "address_line"
+        case postalCode = "postal_code"
+        case countryCode = "country_code"
+        case stateProvince = "state_province"
+    }
+}
+
+/// `survey_event_candidates.location_data` — the location option's
+/// structured address, snapshotted at generation time ('{}' for free text).
+struct SurveyLocationData: Decodable, Equatable {
+    var addressLine: String?
+    var district: String?
+    var city: String?
+    var postalCode: String?
+    var countryCode: String?
+    var stateProvince: String?
+    var neighborhood: String?
+    var lat: Double?
+    var lng: Double?
+    enum CodingKeys: String, CodingKey {
+        case district, city, neighborhood, lat, lng
+        case addressLine = "address_line"
+        case postalCode = "postal_code"
+        case countryCode = "country_code"
+        case stateProvince = "state_province"
+    }
 }
 
 struct SurveyConfig: Codable, Equatable {
@@ -88,6 +133,42 @@ struct SurveySummary: Decodable, Identifiable, Equatable {
         case publicId = "public_id"
         case title, description, status
         case closesAt = "closes_at"
+    }
+}
+
+/// A `survey_event_candidates` row (migration 143) — a server-scored
+/// "date x location" idea derived from a closed survey's responses.
+struct SurveyCandidate: Decodable, Identifiable, Equatable {
+    let id: UUID
+    let surveyId: UUID
+    let dateLabel: String
+    let locationLabel: String
+    let budgetLabel: String
+    let activityLabels: [String]
+    let dateValue: String
+    let timeValue: String
+    let locationData: SurveyLocationData?
+    let supporterCount: Int
+    let responseTotal: Int
+    let consentCount: Int
+    let suggestedGroupSize: Int?
+    let score: Double
+    var status: String
+    enum CodingKeys: String, CodingKey {
+        case id
+        case surveyId = "survey_id"
+        case dateLabel = "date_label"
+        case locationLabel = "location_label"
+        case budgetLabel = "budget_label"
+        case activityLabels = "activity_labels"
+        case dateValue = "date_value"
+        case timeValue = "time_value"
+        case locationData = "location_data"
+        case supporterCount = "supporter_count"
+        case responseTotal = "response_total"
+        case consentCount = "consent_count"
+        case suggestedGroupSize = "suggested_group_size"
+        case score, status
     }
 }
 
@@ -469,6 +550,203 @@ extension AppState {
                 .rpc("delete_survey", params: ["p_survey_id": surveyID.uuidString]).execute().value
             await loadMySurveys()
         } catch { print("deleteSurvey failed:", error) }
+    }
+
+    // ==================== Slice C: suggested event drafts ====================
+
+    /// Candidates for the host's closed/archived surveys (host/admin RLS).
+    /// The scoring runs server-side when a survey closes (migration 143).
+    func loadSurveyCandidates() async {
+        let ids = mySurveys.filter { $0.status == "closed" || $0.status == "archived" }.map { $0.id.uuidString }
+        guard !ids.isEmpty else { mySurveyCandidates = []; mySurveyCandidatesError = ""; return }
+        mySurveyCandidatesLoading = true
+        mySurveyCandidatesError = ""
+        do {
+            let rows: [SurveyCandidate] = try await SupabaseService.client
+                .from("survey_event_candidates").select()
+                .in("survey_id", values: ids)
+                .order("score", ascending: false)
+                .execute().value
+            mySurveyCandidates = rows
+        } catch {
+            print("loadSurveyCandidates failed:", error)
+            mySurveyCandidates = []
+            mySurveyCandidatesError = T("Không thể tải gợi ý sự kiện.", "Could not load suggested event drafts.")
+        }
+        mySurveyCandidatesLoading = false
+    }
+
+    func refreshSurveyCandidates(_ surveyID: UUID) async {
+        mySurveyCandidatesBusySurveyID = surveyID
+        defer { mySurveyCandidatesBusySurveyID = nil }
+        do {
+            let _: Int = try await SupabaseService.client
+                .rpc("generate_survey_candidates", params: ["p_survey_id": surveyID.uuidString]).execute().value
+            await loadSurveyCandidates()
+        } catch {
+            print("refreshSurveyCandidates failed:", error)
+            mySurveyCandidatesError = T("Không thể làm mới gợi ý.", "Could not refresh suggestions.")
+        }
+    }
+
+    func dismissSurveyCandidate(_ candidate: SurveyCandidate) async {
+        do {
+            try await SupabaseService.client
+                .rpc("set_survey_candidate_status", params: ["p_candidate_id": candidate.id.uuidString, "p_status": "dismissed"])
+                .execute()
+            setCandidateStatusLocally([candidate.id], "dismissed")
+        } catch { print("dismissSurveyCandidate failed:", error) }
+    }
+
+    /// Dismissed drafts stay listed (behind "Show dismissed") so a mis-tap
+    /// is never permanent.
+    func restoreSurveyCandidate(_ candidate: SurveyCandidate) async {
+        do {
+            try await SupabaseService.client
+                .rpc("set_survey_candidate_status", params: ["p_candidate_id": candidate.id.uuidString, "p_status": "suggested"])
+                .execute()
+            setCandidateStatusLocally([candidate.id], "suggested")
+        } catch { print("restoreSurveyCandidate failed:", error) }
+    }
+
+    private func setCandidateStatusLocally(_ ids: Set<UUID>, _ status: String) {
+        mySurveyCandidates = mySurveyCandidates.map { c in
+            guard ids.contains(c.id) else { return c }
+            var copy = c
+            copy.status = status
+            return copy
+        }
+    }
+
+    /// Dismiss / restore many drafts at once (dismiss selected, dismiss all).
+    func setSurveyCandidatesStatus(_ ids: [UUID], _ status: String) async {
+        guard !ids.isEmpty else { return }
+        struct Params: Encodable {
+            let ids: [String]
+            let status: String
+            enum CodingKeys: String, CodingKey { case ids = "p_candidate_ids", status = "p_status" }
+        }
+        do {
+            let _: Int = try await SupabaseService.client
+                .rpc("set_survey_candidates_status", params: Params(ids: ids.map(\.uuidString), status: status))
+                .execute().value
+            setCandidateStatusLocally(Set(ids), status)
+        } catch { print("setSurveyCandidatesStatus failed:", error) }
+    }
+
+    /// Closed surveys -> Archived (one, several or all) and back, so
+    /// archiving is never a one-way door.
+    func archiveSurveys(_ ids: [UUID]) async {
+        guard !ids.isEmpty else { return }
+        do {
+            let _: Int = try await SupabaseService.client
+                .rpc("archive_surveys", params: ["p_survey_ids": ids.map(\.uuidString)])
+                .execute().value
+            await loadMySurveys()
+        } catch { print("archiveSurveys failed:", error) }
+    }
+    /// Permanent. Archived surveys only (the server enforces it); cascades to
+    /// the survey's responses, ideas and story shares. Callers confirm first.
+    func deleteArchivedSurveys(_ ids: [UUID]) async {
+        guard !ids.isEmpty else { return }
+        do {
+            let _: Int = try await SupabaseService.client
+                .rpc("delete_archived_surveys", params: ["p_survey_ids": ids.map(\.uuidString)])
+                .execute().value
+            let gone = Set(ids)
+            mySurveyCandidates.removeAll { gone.contains($0.surveyId) }
+            await loadMySurveys()
+        } catch { print("deleteArchivedSurveys failed:", error) }
+    }
+    /// Permanent. Only ideas already in Archived ("used").
+    func deleteSurveyCandidates(_ ids: [UUID]) async {
+        guard !ids.isEmpty else { return }
+        do {
+            let _: Int = try await SupabaseService.client
+                .rpc("delete_survey_candidates", params: ["p_candidate_ids": ids.map(\.uuidString)])
+                .execute().value
+            let gone = Set(ids)
+            mySurveyCandidates.removeAll { gone.contains($0.id) }
+        } catch { print("deleteSurveyCandidates failed:", error) }
+    }
+    func unarchiveSurvey(_ id: UUID) async {
+        do {
+            try await SupabaseService.client
+                .rpc("unarchive_survey", params: ["p_survey_id": id.uuidString]).execute()
+            await loadMySurveys()
+        } catch { print("unarchiveSurvey failed:", error) }
+    }
+
+    /// Same MapKit search + result type Create Event's address picker uses,
+    /// but stateless (no `create*` state touched), so the survey form can
+    /// pick structured locations without disturbing an event draft.
+    func searchSurveyAddresses(_ rawQuery: String) async -> (suggestions: [AddressSuggestion], error: String) {
+        let query = rawQuery.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return ([], "") }
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = query
+        request.region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 10.7769, longitude: 106.7009),
+            span: MKCoordinateSpan(latitudeDelta: 0.5, longitudeDelta: 0.5)
+        )
+        do {
+            let response = try await MKLocalSearch(request: request).start()
+            let found = response.mapItems.compactMap(AddressSuggestion.init(mapItem:))
+            return (found, found.isEmpty ? T("Không tìm thấy địa chỉ nào. Thử ghi rõ số nhà và đường.", "No addresses found. Try including a house number and street.") : "")
+        } catch {
+            if Task.isCancelled { return ([], "") }
+            return ([], T("Không thể tìm địa chỉ lúc này. Kiểm tra kết nối rồi thử lại.", "Couldn't search addresses right now. Check your connection and retry."))
+        }
+    }
+
+    /// "Use This Idea" -> Create Event, pre-filled. Date options are the
+    /// host's own free-text labels (not parseable dates) and the location is
+    /// a label, not a confirmed address — so those become description hints
+    /// and the host still picks the real date and confirms the real
+    /// address. Nothing is created or submitted by this.
+    func applySurveyCandidate(_ candidate: SurveyCandidate, survey: SurveySummary) {
+        let hints = [
+            (candidate.dateLabel.isEmpty || !candidate.dateValue.isEmpty) ? nil : "\(T("Thời gian được quan tâm nhất", "Most-wanted time")): \(candidate.dateLabel)",
+            candidate.locationLabel.isEmpty ? nil : "\(T("Khu vực", "Area")): \(candidate.locationLabel)",
+            candidate.budgetLabel.isEmpty ? nil : "\(T("Ngân sách phổ biến", "Common budget")): \(candidate.budgetLabel)",
+            candidate.activityLabels.isEmpty ? nil : "\(T("Hoạt động", "Activities")): \(candidate.activityLabels.joined(separator: ", "))",
+        ].compactMap { $0 }.joined(separator: "\n")
+        goCreate()
+        createName = survey.title
+        createDesc = [survey.description ?? "", hints].filter { !$0.isEmpty }.joined(separator: "\n\n")
+        createLoc = candidate.locationLabel
+        // Structured slot from the survey -> the exact Date values Create
+        // Event's own date/time sheet works with (Vietnam time).
+        if !candidate.dateValue.isEmpty, !candidate.timeValue.isEmpty,
+           let d = AppState.vnDateFormatter.date(from: candidate.dateValue),
+           let t = AppState.vnTimeFormatter.date(from: candidate.timeValue + ":00") {
+            createEventDate = d
+            createEventTime = t
+        }
+        // A location picked with the address search carries the full
+        // structured address — Create Event opens with it already confirmed
+        // (same fields selectCreateAddressSuggestion sets).
+        if let loc = candidate.locationData, let lat = loc.lat, let lng = loc.lng {
+            createAddressLine = loc.addressLine ?? ""
+            createDistrict = loc.district ?? ""
+            createCity = loc.city ?? ""
+            createPostalCode = loc.postalCode ?? ""
+            createCountryCode = loc.countryCode ?? ""
+            createStateProvince = loc.stateProvince ?? ""
+            createNeighborhood = loc.neighborhood ?? ""
+            createLat = lat
+            createLng = lng
+            createLocLabel = candidate.locationLabel
+            createLocConfirmed = true
+        }
+        createSeats = candidate.suggestedGroupSize.map(String.init) ?? ""
+        createKeywords = candidate.activityLabels.joined(separator: ", ")
+        Task {
+            _ = try? await SupabaseService.client
+                .rpc("set_survey_candidate_status", params: ["p_candidate_id": candidate.id.uuidString, "p_status": "used"])
+                .execute()
+        }
+        setCandidateStatusLocally([candidate.id], "used")
     }
 
     /// Task 4 — "Share Link": native share sheet, through the canonical

@@ -1245,6 +1245,18 @@ final class AppState: ObservableObject {
     @Published var surveyResponseError = ""
     @Published var surveyResponseSuccess = false
     @Published var mySurveys: [SurveySummary] = []
+    // The selected Surveys & Event Ideas tab lives here, not in the view's
+    // @State: the view is re-created (possibly more than once) when you come
+    // back from a survey Preview, and its own state would reset to Active.
+    // Reset to "active" by SurveysHostingView.onDisappear once the user
+    // leaves for anywhere other than a Preview.
+    @Published var surveysHostingTab = "active"
+    // Slice C (migration 143) — suggested event drafts generated server-side
+    // from closed surveys' responses; never computed on the client.
+    @Published var mySurveyCandidates: [SurveyCandidate] = []
+    @Published var mySurveyCandidatesLoading = false
+    @Published var mySurveyCandidatesError = ""
+    @Published var mySurveyCandidatesBusySurveyID: UUID?
     @Published var mySurveysLoading = false
     // Discovery-completeness pass — real, confirmed-by-query fact: a survey
     // can be `status == 'active'` (published) with NO `stories` row at all

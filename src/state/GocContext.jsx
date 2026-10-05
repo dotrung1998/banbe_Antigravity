@@ -801,6 +801,9 @@ const initialState = {
   surveyRespondConsent: false,
   // Host management (Hosting -> Surveys & Event Ideas).
   mySurveys: [], mySurveysLoading: false, mySurveyCreateBusy: false, mySurveyCreateError: '',
+  // Slice C — suggested event drafts generated server-side from closed
+  // surveys' responses (migration 143, survey_event_candidates).
+  mySurveyCandidates: [], mySurveyCandidatesLoading: false, mySurveyCandidatesError: '', mySurveyCandidatesBusySurveyId: null,
   // Task 4 — "Share To Story": an explicit preview-then-Publish step, never
   // an automatic post (task's own "show a preview and require explicit
   // Publish; no automatic posting" rule).
@@ -6037,8 +6040,9 @@ export function GocProvider({ children }) {
    * (/surveys/<publicId>) uses — one screen, one backend, per the task's
    * own "reuse... using the SAME response backend" instruction (used by
    * the host's own preview and, later, a story's "Answer Survey" CTA). */
-  const goSurveyPublic = useCallback(async (publicId, back = 'home') => {
+  const goSurveyPublic = useCallback(async (publicId, back = 'home', returnTab) => {
     set({
+      ...(returnTab ? { surveysHostingReturnTab: returnTab } : {}),
       screen: 'surveyPublic', surveyPublic: null, surveyPublicLoading: true, surveyPublicError: '',
       surveyPublicBack: back, surveyPublicId: publicId,
       surveyDraft: loadSurveyDraftFromStorage(publicId) || DEFAULT_SURVEY_DRAFT,
@@ -6058,7 +6062,9 @@ export function GocProvider({ children }) {
    * etc.), returning to THIS screen (surveyPublicId/surveyDraft are
    * untouched by the trip through Login, so nothing is lost). */
   const promptLoginForSurvey = useCallback(() => set({ screen: 'login', authMode: 'login', authReturnScreen: 'surveyPublic', authBackScreen: 'surveyPublic' }), [set]);
-  const goSurveysHosting = useCallback(() => set({ screen: 'surveysHosting' }), [set]);
+  // A fresh entry always starts on Active; only the back-from-Preview path
+  // (which never goes through here) restores the remembered tab.
+  const goSurveysHosting = useCallback(() => set({ screen: 'surveysHosting', surveysHostingReturnTab: null }), [set]);
 
   /** The signed-in respondent's own existing answer, if any — loaded
    * separately from get_survey_public (anon-reachable, must never carry
@@ -6270,6 +6276,123 @@ export function GocProvider({ children }) {
     if (!error) await loadMySurveys();
     return !error;
   }, [loadMySurveys]);
+
+  /** Slice C — candidate drafts for the host's closed/archived surveys.
+   * Read straight from survey_event_candidates (host/admin RLS); the
+   * scoring itself runs server-side when a survey closes (migration 143). */
+  const loadSurveyCandidates = useCallback(async () => {
+    const ids = (s.mySurveys || []).filter(sv => sv.status === 'closed' || sv.status === 'archived').map(sv => sv.id);
+    if (!ids.length) { set({ mySurveyCandidates: [], mySurveyCandidatesLoading: false, mySurveyCandidatesError: '' }); return; }
+    set({ mySurveyCandidatesLoading: true, mySurveyCandidatesError: '' });
+    const { data, error } = await supabase
+      .from('survey_event_candidates').select('*').in('survey_id', ids)
+      .order('score', { ascending: false });
+    set({
+      mySurveyCandidates: error ? [] : (data || []), mySurveyCandidatesLoading: false,
+      mySurveyCandidatesError: error ? T('Không thể tải gợi ý sự kiện.', 'Could not load suggested event drafts.') : '',
+    });
+  }, [set, s.mySurveys, T]);
+
+  const refreshSurveyCandidatesAction = useCallback(async (surveyId) => {
+    set({ mySurveyCandidatesBusySurveyId: surveyId });
+    const { error } = await supabase.rpc('generate_survey_candidates', { p_survey_id: surveyId });
+    set({ mySurveyCandidatesBusySurveyId: null });
+    if (error) { set({ mySurveyCandidatesError: T('Không thể làm mới gợi ý.', 'Could not refresh suggestions.') }); return false; }
+    await loadSurveyCandidates();
+    return true;
+  }, [set, T, loadSurveyCandidates]);
+
+  const dismissSurveyCandidateAction = useCallback(async (candidateId) => {
+    const { error } = await supabase.rpc('set_survey_candidate_status', { p_candidate_id: candidateId, p_status: 'dismissed' });
+    if (!error) set(prev => ({ mySurveyCandidates: prev.mySurveyCandidates.map(c => c.id === candidateId ? { ...c, status: 'dismissed' } : c) }));
+    return !error;
+  }, [set]);
+
+  /** Dismissed drafts stay in the list (hidden behind "Show dismissed") so
+   * a mis-tap is never permanent. */
+  const restoreSurveyCandidateAction = useCallback(async (candidateId) => {
+    const { error } = await supabase.rpc('set_survey_candidate_status', { p_candidate_id: candidateId, p_status: 'suggested' });
+    if (!error) set(prev => ({ mySurveyCandidates: prev.mySurveyCandidates.map(c => c.id === candidateId ? { ...c, status: 'suggested' } : c) }));
+    return !error;
+  }, [set]);
+
+  /** Dismiss / restore many drafts at once (dismiss selected, dismiss all). */
+  const setSurveyCandidatesStatusAction = useCallback(async (ids, status) => {
+    if (!ids.length) return true;
+    const { error } = await supabase.rpc('set_survey_candidates_status', { p_candidate_ids: ids, p_status: status });
+    if (!error) set(prev => ({ mySurveyCandidates: prev.mySurveyCandidates.map(c => ids.includes(c.id) ? { ...c, status } : c) }));
+    return !error;
+  }, [set]);
+
+  /** Closed surveys -> Archived (one, several or all) and back. */
+  const archiveSurveysAction = useCallback(async (ids) => {
+    if (!ids.length) return true;
+    const { error } = await supabase.rpc('archive_surveys', { p_survey_ids: ids });
+    if (!error) await loadMySurveys();
+    return !error;
+  }, [loadMySurveys]);
+  /** Permanent: archived surveys only (server enforces), cascades to the
+   * survey's responses, ideas and story shares. Callers confirm first. */
+  const deleteArchivedSurveysAction = useCallback(async (ids) => {
+    if (!ids.length) return true;
+    const { error } = await supabase.rpc('delete_archived_surveys', { p_survey_ids: ids });
+    if (!error) {
+      set(prev => ({ mySurveyCandidates: prev.mySurveyCandidates.filter(c => !ids.includes(c.survey_id)) }));
+      await loadMySurveys();
+    }
+    return !error;
+  }, [set, loadMySurveys]);
+  /** Permanent: only ideas already in Archived ('used'). */
+  const deleteSurveyCandidatesAction = useCallback(async (ids) => {
+    if (!ids.length) return true;
+    const { error } = await supabase.rpc('delete_survey_candidates', { p_candidate_ids: ids });
+    if (!error) set(prev => ({ mySurveyCandidates: prev.mySurveyCandidates.filter(c => !ids.includes(c.id)) }));
+    return !error;
+  }, [set]);
+  const unarchiveSurveyAction = useCallback(async (surveyId) => {
+    const { error } = await supabase.rpc('unarchive_survey', { p_survey_id: surveyId });
+    if (!error) await loadMySurveys();
+    return !error;
+  }, [loadMySurveys]);
+
+  /** "Use This Idea" -> Create Event, pre-filled. Date options are the
+   * host's own free-text labels ("Saturday evening"), not parseable
+   * dates, and the location is a label, not a confirmed address — so
+   * those go into the description as hints and the host still picks the
+   * real date and confirms the real address; nothing is auto-submitted. */
+  const applySurveyCandidateAction = useCallback(async (candidate, survey) => {
+    const hints = [
+      candidate.date_label && !candidate.date_value && `${T('Thời gian được quan tâm nhất', 'Most-wanted time')}: ${candidate.date_label}`,
+      candidate.location_label && `${T('Khu vực', 'Area')}: ${candidate.location_label}`,
+      candidate.budget_label && `${T('Ngân sách phổ biến', 'Common budget')}: ${candidate.budget_label}`,
+      (candidate.activity_labels || []).length > 0 && `${T('Hoạt động', 'Activities')}: ${candidate.activity_labels.join(', ')}`,
+    ].filter(Boolean).join('\n');
+    goCreate();
+    set({
+      createName: survey?.title || '',
+      createDesc: [survey?.description, hints].filter(Boolean).join('\n\n'),
+      createLoc: candidate.location_label || '',
+      // A location picked with the address search carries the full
+      // structured address, so Create Event opens with it already
+      // confirmed (same fields selectCreateAddressSuggestion sets).
+      ...(candidate.location_data?.lat != null && candidate.location_data?.lng != null ? {
+        createAddressLine: candidate.location_data.address_line || '', createDistrict: candidate.location_data.district || '',
+        createCity: candidate.location_data.city || '', createPostalCode: candidate.location_data.postal_code || '',
+        createCountryCode: candidate.location_data.country_code || '', createStateProvince: candidate.location_data.state_province || '',
+        createNeighborhood: candidate.location_data.neighborhood || '',
+        createLat: candidate.location_data.lat, createLng: candidate.location_data.lng,
+        createLocLabel: candidate.location_label || '', createLocConfirmed: true,
+      } : {}),
+      // Structured slot picked by the host when building the survey — same
+      // 'yyyy-MM-dd' / 'HH:mm' shapes the Create Event inputs use.
+      ...(candidate.date_value ? { createEventDate: candidate.date_value } : {}),
+      ...(candidate.time_value ? { createEventTime: candidate.time_value } : {}),
+      createSeats: candidate.suggested_group_size ? String(candidate.suggested_group_size) : '',
+      createKeywords: (candidate.activity_labels || []).join(', '),
+    });
+    await supabase.rpc('set_survey_candidate_status', { p_candidate_id: candidate.id, p_status: 'used' });
+    set(prev => ({ mySurveyCandidates: prev.mySurveyCandidates.map(c => c.id === candidate.id ? { ...c, status: 'used' } : c) }));
+  }, [set, T, goCreate]);
 
   /** Task 4 — "Share Link": native share sheet with a clipboard fallback,
    * same shape as shareOrganizerProfile below, but through the canonical
@@ -8332,6 +8455,24 @@ export function GocProvider({ children }) {
     };
   }
 
+  /** Same geocoder + result shape Create Event's address search uses, but
+   * stateless (returns the suggestions instead of writing create* state) so
+   * the survey form can pick structured locations without touching the
+   * event draft. */
+  const searchAddressSuggestions = useCallback(async (query) => {
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&q=${encodeURIComponent(query + ', Việt Nam')}`;
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!res.ok) throw new Error('GEOCODE_HTTP_' + res.status);
+      const rows = await res.json();
+      const suggestions = (rows || []).map(shapeAddressSuggestion).filter(Boolean);
+      return { suggestions, error: suggestions.length ? '' : T('Không tìm thấy địa chỉ nào. Thử ghi rõ số nhà và đường.', 'No addresses found. Try including a house number and street.') };
+    } catch (err) {
+      console.warn('searchAddressSuggestions failed:', err);
+      return { suggestions: [], error: T('Không thể tìm địa chỉ lúc này. Kiểm tra kết nối rồi thử lại.', "Couldn't search addresses right now. Check your connection and retry.") };
+    }
+  }, [T]);
+
   const searchCreateAddress = useCallback(async (query) => {
     const seq = ++createAddressSeq.current;
     set({ createAddressSearching: true, createAddressSearchError: '' });
@@ -9599,7 +9740,7 @@ export function GocProvider({ children }) {
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
-    goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, toggleSurveyEditMode, openSurveyStoryModal, closeSurveyStoryModal, sendSurveyRespondCode, verifySurveyRespondCode, loadMySurveys, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction, shareSurveyLinkAction, openShareToStoryConfirm, closeShareToStoryConfirm, confirmShareSurveyToStory,
+    goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, toggleSurveyEditMode, openSurveyStoryModal, closeSurveyStoryModal, sendSurveyRespondCode, verifySurveyRespondCode, loadMySurveys, loadSurveyCandidates, refreshSurveyCandidatesAction, dismissSurveyCandidateAction, restoreSurveyCandidateAction, setSurveyCandidatesStatusAction, archiveSurveysAction, unarchiveSurveyAction, deleteArchivedSurveysAction, deleteSurveyCandidatesAction, searchAddressSuggestions, applySurveyCandidateAction, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction, shareSurveyLinkAction, openShareToStoryConfirm, closeShareToStoryConfirm, confirmShareSurveyToStory,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
@@ -9637,7 +9778,7 @@ export function GocProvider({ children }) {
     createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
-    goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, toggleSurveyEditMode, openSurveyStoryModal, closeSurveyStoryModal, sendSurveyRespondCode, verifySurveyRespondCode, loadMySurveys, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction, shareSurveyLinkAction, openShareToStoryConfirm, closeShareToStoryConfirm, confirmShareSurveyToStory,
+    goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, toggleSurveyEditMode, openSurveyStoryModal, closeSurveyStoryModal, sendSurveyRespondCode, verifySurveyRespondCode, loadMySurveys, loadSurveyCandidates, refreshSurveyCandidatesAction, dismissSurveyCandidateAction, restoreSurveyCandidateAction, setSurveyCandidatesStatusAction, archiveSurveysAction, unarchiveSurveyAction, deleteArchivedSurveysAction, deleteSurveyCandidatesAction, searchAddressSuggestions, applySurveyCandidateAction, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction, shareSurveyLinkAction, openShareToStoryConfirm, closeShareToStoryConfirm, confirmShareSurveyToStory,
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   ]);
 

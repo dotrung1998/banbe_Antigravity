@@ -9,10 +9,94 @@ has the same private-bucket-aware photo resolution as web. Slice B
 (interest surveys) backend + a functional web AND iOS host/respondent UI
 are real and tested/build-clean; the dedicated browser route is web-only
 by nature. **Slice D (surveys in stories) is now real, web AND iOS — see
-the 2026-10-29 pass below.** Slice C (candidate generation) is still **not
-started**, either platform. Host invite-management UI, invite email
+the 2026-10-29 pass below.** Slice C (candidate generation) is now built (migration 143, see the 2026-11-23 pass; unapplied). Host invite-management UI, invite email
 delivery, and EventDetail accept/decline for event invites are also **not
 started**, on either platform.
+
+## Slice C — suggested event drafts (2026-11-23 pass)
+
+Reported: closed surveys existed but "Suggested Event Drafts" was always
+empty. Root cause: it was a hardcoded empty-state string on both platforms —
+Slice C was never built, nothing ever generated candidates.
+
+- `supabase/migrations/20261123000143_143_survey_event_candidates.sql`
+  (**NOT yet applied — `supabase db push` required**): `survey_event_candidates`
+  table (host/admin SELECT RLS), deterministic scorer
+  `_generate_survey_candidates()` (every date x location pair; supporters =
+  respondents who picked both; score = supporters*10 + sum(interest, default
+  3); modal budget, top-3 activities, median group size; top 5; ties by
+  config option order), host RPCs `generate_survey_candidates` /
+  `set_survey_candidate_status`. Generation runs inside `close_survey()` and
+  `close_expired_surveys()` (cron), and the migration BACKFILLS every
+  already-closed/archived survey (so the existing "T2" gets drafts on push).
+  Re-generation replaces only `suggested` rows; dismissed/used pairs are
+  never re-suggested.
+- Clients: web `GocContext.jsx` (`loadSurveyCandidates`,
+  `refreshSurveyCandidatesAction`, `dismissSurveyCandidateAction`,
+  `applySurveyCandidateAction`) + `SurveysHosting.jsx`; iOS
+  `AppState+Surveys.swift` (`SurveyCandidate`, same four functions) +
+  `SurveysHostingView.swift` (`candidatesSection`). Cards show fit
+  ("2 of 3 respondents fit"), group size, budget/activities, consent count;
+  "Use This Idea" opens Create Event pre-filled (name, description with
+  hints, seats, keywords, location text) and marks the candidate `used`.
+- Date options are the host's free-text labels, not dates, and the location
+  is a label, not a confirmed address — so they go in as description hints;
+  the host still picks the date and confirms the address. Nothing is created
+  automatically.
+- Verified: scorer + dismissed-not-resuggested behaviour against a throwaway
+  Postgres container with stub schema (real result rows checked); `npx vite
+  build` clean; `xcodebuild -scheme PersonalTeamDebug ... build` BUILD
+  SUCCEEDED. NOT verified: against the real project (migration unapplied),
+  host RPC auth paths (`generate_survey_candidates` on a non-owner), or any
+  device/simulator UI run.
+- **Follow-up (migration 144, unapplied)**: (1) survey date options are now
+  structured slots `{id,label,date:'yyyy-MM-dd',time:'HH:mm'}` picked with the
+  Create Event date/time controls (web native inputs, iOS `EventDateTimeSheet`),
+  multiple per survey; candidates snapshot `date_value`/`time_value` and
+  "Use This Idea" fills Create Event's date/time directly (old free-text
+  options still work, as description hints). (2) Dismissed drafts are no
+  longer lost: they stay listed behind "Show dismissed" with Restore.
+  (3) Root cause of "dismiss, then regenerate shows nothing": the generator
+  skips already-dismissed pairs, so Refresh returned 0 rows while the dismissed
+  ones were hidden. `generate_survey_candidates` now deletes dismissed rows
+  first (keeps `used`); verified in a throwaway Postgres (4 dismissed -> 4
+  suggested). (4) iOS keyboard: "Xong/Done" keyboard toolbar + interactive
+  scroll-dismiss on the Surveys screen (number pad had no way to close).
+- **Follow-up 2 (migration 145, unapplied)**: slot labels and draft titles use
+  the app's own `▪︎` separator (date ▪︎ time, date ▪︎ place). Survey location
+  options are real addresses picked with the same search as Create Event
+  (web `searchAddressSuggestions`, Nominatim; iOS `searchSurveyAddresses`,
+  MapKit — both stateless so an event draft is never touched); stored
+  flat on the option (address_line/district/city/.../lat/lng), snapshotted
+  into `survey_event_candidates.location_data`, and "Use This Idea" opens
+  Create Event with the address already confirmed. Dismiss one / selected /
+  all via `set_survey_candidates_status`. Tabs are now Active | Closed |
+  Suggested | Archived: Closed = status `closed` only, with Select /
+  "Archive all" / "Archive selected" (`archive_surveys`, closed only);
+  Archived = archived surveys (Restore via `unarchive_survey`) + used ideas
+  (a used idea leaves Suggested automatically; "Move back to suggestions").
+  Suggested only shows ideas of CLOSED surveys, so archiving a survey hides
+  its undecided drafts until it is restored. Verified: migration 145 against
+  a throwaway Postgres (location_data snapshot, bulk dismiss, archive/
+  unarchive); `vite build` + iOS simulator build clean; no device UI run.
+- **Follow-up 3 (UI only)**: tabs are a swipeable liquid-glass control (iOS
+  `GlassSegmentedTabs`, web `GlassTabs`): press and slide, the droplet
+  squashes/stretches and the tab switches live. Opening Preview from any tab
+  and closing it (X or swipe back) returns to THAT tab (e.g. Archived), not
+  Active — iOS `surveysHostingReturnTab`, web `surveysHostingReturnTab`; a
+  fresh entry (web `goSurveysHosting`, iOS onAppear with no stored tab)
+  starts on Active. Not run on a device.
+- **Follow-up 4 (migration 146, unapplied)**: the Archived tab can permanently
+  delete archived surveys and used ideas — per item, Select + "Delete
+  selected", or "Delete all" per section — always behind a confirm. Server:
+  `delete_archived_surveys` (status 'archived' only; cascades to responses,
+  ideas, survey-share stories) and `delete_survey_candidates` (status 'used'
+  only). Deleting a used idea means a later Refresh may suggest that
+  date x location pair again. Verified in a throwaway Postgres (non-archived
+  survey rejected, cascade, only-used ideas deleted); web + iOS build clean.
+- Still not done: the Account -> Hosting badge is still a hardcoded `0`
+  (could now be driven by unseen candidates); no "your event ideas are
+  ready" notification; scoring is intentionally simple (no date parsing).
 
 ## Slice D — survey sharing, in-app popup, lightweight respondent verification, public discovery (2026-10-29 pass)
 
