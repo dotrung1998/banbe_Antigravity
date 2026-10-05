@@ -151,7 +151,7 @@ export default function SurveyPublic() {
 
   if (s.surveyPublicLoading) {
     return (
-      <div style={{ minHeight: '100vh', background: paper, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ minHeight: '100%', background: paper, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span style={{ fontSize: 13, color: ink, opacity: 0.6 }}>{T('Đang tải…', 'Loading…')}</span>
       </div>
     );
@@ -159,8 +159,11 @@ export default function SurveyPublic() {
 
   if (s.surveyPublicError || !survey) {
     return (
-      <div style={{ minHeight: '100vh', background: paper, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 }}>
-        <span style={{ fontSize: 15, color: ink }}>{s.surveyPublicError || T('Không tìm thấy khảo sát này.', "This survey couldn't be found.")}</span>
+      <div style={{ minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '66px 24px 24px', gap: 12 }}>
+        <div style={{ alignSelf: 'stretch', display: 'flex', justifyContent: 'flex-end', padding: '0 0 8px' }}>
+          <span onClick={requestClose} data-testid="survey-close" style={{ cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</span>
+        </div>
+        <span style={{ fontSize: 15, color: ink, marginTop: 52, textAlign: 'center' }}>{s.surveyPublicError || T('Không tìm thấy khảo sát này.', "This survey couldn't be found.")}</span>
         <span onClick={requestClose} style={{ fontSize: 13, color: ink, textDecoration: 'underline', cursor: 'pointer' }}>{T('Quay lại', 'Go back')}</span>
       </div>
     );
@@ -173,8 +176,8 @@ export default function SurveyPublic() {
   const alreadyResponded = Boolean(s.mySurveyResponse) && !s.surveyEditMode && !s.surveyResponseSuccess;
 
   return (
-    <div style={{ minHeight: '100vh', background: paper, color: ink }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: `1px solid ${rule}` }}>
+    <div style={{ minHeight: '100%', background: paper, color: ink }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '66px 20px 8px' }}>
         <span style={{ fontSize: 12, opacity: 0.6 }}>{survey.host_name}</span>
         <span onClick={requestClose} data-testid="survey-close" style={{ cursor: 'pointer', fontSize: 18 }}>×</span>
       </div>

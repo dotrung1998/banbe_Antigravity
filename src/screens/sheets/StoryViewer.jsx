@@ -680,9 +680,9 @@ export default function StoryViewer() {
         <div
           onClick={(e) => { e.stopPropagation(); dismiss(); }}
           data-testid="story-viewer-close"
-          style={{ position: 'absolute', top: 62, right: 16, color: '#fff', fontSize: 22, cursor: 'pointer', filter: 'drop-shadow(0 1px 3px rgba(12,12,12,0.55))', pointerEvents: chromeHidden ? 'none' : 'auto', opacity: chromeHidden ? 0 : 1, transition: 'opacity 0.15s ease' }}
+          style={{ position: 'absolute', top: 60, right: 14, color: '#fff', cursor: 'pointer', filter: 'drop-shadow(0 1px 3px rgba(12,12,12,0.55))', pointerEvents: chromeHidden ? 'none' : 'auto', opacity: chromeHidden ? 0 : 1, transition: 'opacity 0.15s ease', lineHeight: 0, padding: 2 }}
         >
-          ×
+          <svg width={16} height={16} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="m2 2 10 10M12 2 2 12" /></svg>
         </div>
 
         <span style={{ position: 'absolute', bottom: 40, left: 18, color: 'rgba(255,255,255,0.75)', fontSize: 10.5, letterSpacing: '0.04em', textShadow: '0 1px 3px rgba(12,12,12,0.55)', opacity: chromeHidden ? 0 : 1, transition: 'opacity 0.15s ease' }}>

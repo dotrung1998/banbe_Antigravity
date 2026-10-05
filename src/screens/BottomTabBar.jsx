@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
-import { ink, alert, barGlass, dockHighlight } from '../theme.js';
+import { ink, alert, dockGlass, dockHighlight } from '../theme.js';
 import { computeAccountDockBadge } from '../lib/badges.js';
 
 // FEATURE follow-up (623ec1e real-device report): Map/Notifications/Inbox
@@ -534,7 +534,7 @@ export default function BottomTabBar({ collapsed }) {
       onPointerUp={endDrag}
       onPointerCancel={cancelDrag}
       style={{
-        ...barGlass({}),
+        ...dockGlass({}),
         position: 'relative',
         // TASK 1 (2026-10-05 fix pass) — flex child of DockRow (App.jsx)
         // now, not a self-positioned/self-sized element — `flex: 1 1 auto`
@@ -543,7 +543,8 @@ export default function BottomTabBar({ collapsed }) {
         // fit the viewport, instead of clipping/overflowing.
         flex: '1 1 auto', minWidth: 0, maxWidth: DOCK_MAX_WIDTH,
         borderRadius: 999,
-        height: BAR_HEIGHT, boxShadow: '0 8px 24px rgba(27,25,22,0.18)',
+        height: BAR_HEIGHT,
+        padding: '0 6px', boxSizing: 'border-box',
         display: 'flex', justifyContent: 'space-around', alignItems: 'center',
         touchAction: 'none',
         // BUG (2026-10-06 fix pass) — the shrink-on-scroll `transform:
@@ -606,7 +607,7 @@ export default function BottomTabBar({ collapsed }) {
           ref={highlightRef}
           data-testid="dock-highlight"
           style={{
-            position: 'absolute', top: 8, bottom: 8, left: 0, borderRadius: 999,
+            position: 'absolute', top: 4, bottom: 4, left: 0, borderRadius: 999,
             // Web "black blob" bug (2026-09-28 dock pass) — this used to be
             // solid `background: ink` at full element opacity: since the
             // ACTIVE tab's own icon is also drawn in `ink`, an opaque ink
@@ -617,8 +618,8 @@ export default function BottomTabBar({ collapsed }) {
             // this bug). `zIndex: 0` (explicit, not relied-on `auto`) plus
             // each tab item's own `zIndex: 1` below is what keeps this
             // element BEHIND the icons regardless of DOM order.
-            background: dockHighlight, opacity: 0, pointerEvents: 'none', zIndex: 0,
-            boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.1)', filter: 'blur(0.3px)',
+            background: 'linear-gradient(180deg, #FFFFFF, rgba(255,255,255,0.9))', opacity: 0, pointerEvents: 'none', zIndex: 0,
+            boxShadow: '0 2px 8px rgba(27,25,22,0.18), 0 0 0 1px rgba(var(--bb-fg-rgb), 0.06)',
             willChange: 'transform',
           }}
         />
@@ -635,8 +636,8 @@ export default function BottomTabBar({ collapsed }) {
               flex: '1 1 0', minWidth: 44, minHeight: 44, height: '100%', zIndex: 1,
             }}
           >
-            <div style={{ position: 'relative', width: ICON_SIZE, height: ICON_SIZE, opacity: activeIndex === i ? 1 : 0.72 }}>
-              {ICONS[item.icon](ink, activeIndex === i)}
+            <div style={{ position: 'relative', width: ICON_SIZE, height: ICON_SIZE, opacity: activeIndex === i ? 1 : 0.72, ...(activeIndex === i ? { color: '#1B1916' } : null) }}>
+              {ICONS[item.icon](activeIndex === i ? '#1B1916' : ink, activeIndex === i)}
               {item.badge > 0 && (() => {
                 const cap = item.badgeCap ?? 9;
                 const displayText = item.badgeCapped && item.badge > cap ? `${cap}+` : String(item.badge);

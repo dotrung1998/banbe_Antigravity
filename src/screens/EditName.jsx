@@ -24,7 +24,7 @@ export default function EditName() {
           onChange={editNameType}
           placeholder={T('Tên của bạn', 'Your name')}
           maxLength={60}
-          style={{ ...fieldGlass({ marginTop: 22, padding: 14, border: 'none' }), fontSize: 15, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }}
+          style={{ ...fieldGlass({ marginTop: 22, padding: 14, border: 'none', width: '100%', boxSizing: 'border-box', borderRadius: 14 }), fontSize: 15, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }}
         />
         {s.editNameError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '10px 0 0' }}>{s.editNameError}</p>}
         <div

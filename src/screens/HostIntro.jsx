@@ -1,5 +1,6 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { paper, ink, rule, display, fieldGlass, inkButton, barGlass } from '../theme.js';
+import { paper, ink, rule, display, barGlass } from '../theme.js';
+import { fieldGlass, inkButton } from './hostStyle.js';
 
 export default function HostIntro() {
   const { state, T, goProfile, goCreate } = useGoc();
@@ -17,9 +18,10 @@ export default function HostIntro() {
   ];
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', background: paper, position: 'relative' }} data-screen-label="Host intro">
+    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Host intro">
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div onClick={goProfile} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
-      <div style={{ padding: '16px 22px 130px' }}>
+      <div style={{ padding: '16px 22px 30px' }}>
         <span style={{ fontSize: 11.5, color: ink }}>{T('Dành cho người tổ chức', 'For organizers')}</span>
         <h1 style={{ ...display(27, { lineHeight: 1.2, margin: '8px 0 0' }) }}>{T('Trang tổ chức của bạn, trước khi bạn đăng gì', 'Your organizer page, before you post anything')}</h1>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '10px 0 0' }}>{T('Đây là trang khách sẽ thấy khi họ bấm vào tên bạn. Sự kiện, ảnh và số liệu sẽ tự điền vào sau mỗi lần bạn tổ chức.', 'This is what guests see when they tap your name. Events, photos and numbers fill in as you host.')}</p>
@@ -54,8 +56,9 @@ export default function HostIntro() {
         </div>
         <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, margin: '16px 0 0' }}>{T('banbe duyệt sự kiện đầu tiên trong 48 giờ. Sau đó bạn đăng trực tiếp.', 'banbe reviews your first event within 48 hours. After that you post directly.')}</p>
       </div>
-      <div onClick={goCreate} style={{ ...barGlass({ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '14px 20px 26px' }) }}>
-        <div style={{ ...inkButton({ borderRadius: 999, padding: 16 }) }}>{T('Tạo sự kiện đầu tiên', 'Create your first event')}</div>
+      </div>
+      <div onClick={goCreate} style={{ flex: 'none', padding: '0 20px calc(env(safe-area-inset-bottom, 0px) + 14px)' }}>
+        <div style={{ ...inkButton({ borderRadius: 999 }) }}>{T('Tạo sự kiện đầu tiên', 'Create your first event')}</div>
       </div>
     </div>
   );

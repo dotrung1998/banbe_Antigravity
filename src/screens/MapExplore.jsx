@@ -923,8 +923,14 @@ export default function MapExplore() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Inside the desktop phone frame the frame's own 50pt status bar covers the
+  // top of this fixed layer, so iOS's "safe area + 8" top controls start below it.
+  const topInset = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(min-width: 700px) and (min-height: 560px) and (hover: hover) and (pointer: fine)').matches) ? 50 : 0;
+  const capsuleGlass = { borderRadius: 999 };
   return (
     <div style={{ position: 'fixed', inset: 0, background: paper }} data-screen-label="MapExplore">
+      {/* iOS has no map zoom controls (mapControls {}); the web +/- sits below the compass pill. */}
+      <style>{`[data-screen-label="MapExplore"] .maplibregl-ctrl-top-right { top: ${topInset + 56}px; right: 6px; } [data-screen-label="MapExplore"] .bb-noscroll::-webkit-scrollbar { display: none; }`}</style>
       <div ref={mapDivRef} style={{ position: 'absolute', inset: 0 }} />
 
       {/* Follow-up discovery (11-realtime-map.md): maplibre-gl.css gives its
@@ -948,7 +954,7 @@ export default function MapExplore() {
           glance. Matched to "Tìm ở đây"'s own padding/fontWeight exactly
           (fontSize was already 12 by default from `photoPill()`, so no
           change needed there) — same height, same look, no new token. */}
-      <div ref={backRef} onClick={closeMap} data-testid="map-back" style={{ ...photoPill({}), top: 16, left: 16, padding: '8px 16px', fontWeight: 600, zIndex: 3 }}>
+      <div ref={backRef} onClick={closeMap} data-testid="map-back" style={{ ...photoPill(capsuleGlass), top: topInset + 8, left: 16, padding: '8px 14px', fontWeight: 600, zIndex: 3 }}>
         ← {T('Đóng', 'Close')}
       </div>
 
@@ -956,7 +962,7 @@ export default function MapExplore() {
         ref={compassRef}
         onClick={recenterOnUser}
         data-testid="map-compass"
-        style={{ ...photoPill({}), top: 16, right: 16, width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: compassOpacity, zIndex: 3 }}
+        style={{ ...photoPill({ borderRadius: '50%' }), top: topInset + 8, right: 16, width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, opacity: compassOpacity, zIndex: 3 }}
       >
         🧭
       </div>
@@ -966,7 +972,7 @@ export default function MapExplore() {
           ref={searchHereRef}
           onClick={searchHere}
           data-testid="map-search-here"
-          style={{ ...photoPill({}), top: 16, left: '50%', transform: 'translateX(-50%)', padding: '8px 16px', fontSize: 12, fontWeight: 600, zIndex: 3 }}
+          style={{ ...photoPill(capsuleGlass), top: topInset + 8, left: '50%', transform: 'translateX(-50%)', padding: '8px 14px', fontSize: 12, fontWeight: 600, zIndex: 3 }}
         >
           {T('Tìm ở đây', 'Search here')}
         </div>
@@ -983,7 +989,7 @@ export default function MapExplore() {
           ref={cardRef}
           data-testid="map-selected-card"
           style={{
-            ...cardGlass({}), position: 'absolute', left: 16, right: 16,
+            ...cardGlass({ borderRadius: 14 }), position: 'absolute', left: 16, right: 16, zIndex: 4,
             bottom: cardBottomPx,
             transition: 'bottom 0.28s cubic-bezier(.22,.61,.36,1)',
             padding: 12, display: 'flex', flexDirection: 'column', gap: 10,
@@ -1030,7 +1036,7 @@ export default function MapExplore() {
           <div
             onClick={() => openEventDetail(selectedEvent.id)}
             data-testid="map-card-cta"
-            style={{ ...inkButton({}), padding: '10px 0', fontSize: 13 }}
+            style={{ ...inkButton({ borderRadius: 10 }), padding: '10px 0', fontSize: 13 }}
           >
             {T('Xem chi tiết', 'View details')}
           </div>
@@ -1041,7 +1047,7 @@ export default function MapExplore() {
         ref={sheetRef}
         data-testid="map-sheet"
         style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0, top: `${sheetTopVh}vh`,
+          position: 'absolute', left: 0, right: 0, bottom: 0, top: `${sheetTopVh}vh`, zIndex: 4,
           background: paper, borderRadius: '20px 20px 0 0', boxShadow: '0 -6px 24px rgba(27,25,22,0.18)',
           display: 'flex', flexDirection: 'column',
           // ANIMATION REQUIREMENT: the extra `transform` (only non-identity
@@ -1093,7 +1099,7 @@ export default function MapExplore() {
             arrival from Home's search button (see the mount effect
             above). */}
         <div style={{ padding: 'max(6px, env(safe-area-inset-top, 0px)) 16px 10px' }}>
-          <div style={{ ...fieldGlass({}), display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px' }}>
+          <div style={{ ...fieldGlass({ borderRadius: 12 }), display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px' }}>
             <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.55, flex: 'none' }}>
               <circle cx="11" cy="11" r="7" />
               <path d="M21 21l-4.35-4.35" />
@@ -1138,33 +1144,33 @@ export default function MapExplore() {
         {/* Task 2a (11-realtime-map.md follow-up): wraps onto as many rows
             as needed instead of requiring horizontal scrolling to see
             every category — every filter is visible up front now. */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '0 16px 10px' }}>
+        <div className="bb-noscroll" style={{ display: 'flex', gap: 8, padding: '0 16px 10px', overflowX: 'auto', flex: 'none', scrollbarWidth: 'none' }}>
           {FILTER_DEFS.map(f => (
             <div
               key={f.key}
               onClick={() => setCatFilter(f.key)}
               data-testid={`map-cat-${f.key}`}
-              style={{ ...fieldGlass({}), padding: '6px 12px', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer', color: ink, fontWeight: catFilter === f.key ? 700 : 400, border: catFilter === f.key ? `1px solid ${ink}` : 'none' }}
+              style={{ ...fieldGlass({ borderRadius: 999 }), flex: 'none', padding: '6px 12px', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer', color: ink, fontWeight: catFilter === f.key ? 700 : 400, border: 'none' }}
             >
               {CAT_GLYPH[f.key]} {T(f.vi, f.en)}
             </div>
           ))}
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '0 16px 10px' }}>
+        <div className="bb-noscroll" style={{ display: 'flex', gap: 8, padding: '0 16px 10px', overflowX: 'auto', flex: 'none', scrollbarWidth: 'none' }}>
           {/* Location hierarchy — opens the same shared area sheet Home
               uses (AreaSheet.jsx); shows the current short label. */}
           <div
             onClick={openArea}
             data-testid="map-chip-area"
-            style={{ ...fieldGlass({}), padding: '5px 10px', fontSize: 11, cursor: 'pointer', color: ink, fontWeight: curArea.key !== 'all' ? 700 : 400, border: curArea.key !== 'all' ? `1px solid ${ink}` : 'none' }}
+            style={{ ...fieldGlass({ borderRadius: 999 }), flex: 'none', whiteSpace: 'nowrap', padding: '5px 10px', fontSize: 11, cursor: 'pointer', color: ink, fontWeight: curArea.key !== 'all' ? 700 : 400, border: 'none' }}
           >
             {curArea.key === 'all' ? T('Tất cả khu vực', 'All areas') : curArea.label} ▾
           </div>
           <div
             onClick={() => setOpenNowOnly(v => !v)}
             data-testid="map-chip-open-now"
-            style={{ ...fieldGlass({}), padding: '5px 10px', fontSize: 11, cursor: 'pointer', color: ink, fontWeight: openNowOnly ? 700 : 400 }}
+            style={{ ...fieldGlass({ borderRadius: 999 }), flex: 'none', whiteSpace: 'nowrap', padding: '5px 10px', fontSize: 11, cursor: 'pointer', color: ink, fontWeight: openNowOnly ? 700 : 400 }}
           >
             {T('Còn chỗ', 'Open now')}
           </div>
@@ -1172,7 +1178,7 @@ export default function MapExplore() {
             <div
               onClick={() => setSortByDistance(v => !v)}
               data-testid="map-chip-nearby"
-              style={{ ...fieldGlass({}), padding: '5px 10px', fontSize: 11, cursor: 'pointer', color: ink, fontWeight: sortByDistance ? 700 : 400 }}
+              style={{ ...fieldGlass({ borderRadius: 999 }), flex: 'none', whiteSpace: 'nowrap', padding: '5px 10px', fontSize: 11, cursor: 'pointer', color: ink, fontWeight: sortByDistance ? 700 : 400 }}
             >
               {T('Gần bạn', 'Nearby')}
             </div>
@@ -1182,7 +1188,7 @@ export default function MapExplore() {
         <div
           ref={listRef}
           data-testid="map-list-scroll"
-          style={{ flex: 1, overflowY: 'auto', padding: '0 16px 24px', position: 'relative', touchAction: 'pan-y' }}
+          style={{ flex: 1, overflowY: 'auto', padding: '0 16px 110px', position: 'relative', touchAction: 'pan-y' }}
           onScroll={(e) => {
             const el = e.currentTarget;
             if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) loadMore();

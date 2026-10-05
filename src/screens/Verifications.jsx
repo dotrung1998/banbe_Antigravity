@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
-import { paper, ink, rule, display, fieldGlass, cardGlass, alert } from '../theme.js';
+import { paper, ink, rule, display, alert } from '../theme.js';
+import HostTitleIcon from './HostTitleIcon.jsx';
+import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
 import RefundDisputeEntry from './RefundDisputeEntry.jsx';
 import { supabase, supabaseUrl } from '../lib/supabase.js';
@@ -178,7 +180,8 @@ export default function Verifications() {
         ‹ {backLabel}
       </div>
       <div style={{ padding: '14px 22px 0' }}>
-        <h1 style={{ ...display(24, { margin: 0 }) }} data-testid="verifications-title">
+        <h1 style={{ ...display(24, { margin: 0, display: 'flex', alignItems: 'center', gap: 10 }) }} data-testid="verifications-title">
+          <HostTitleIcon kind="checklist" group="hostOps" />
           {focusId ? T('Chi tiết thanh toán', 'Payment Detail') : T('Chờ xác nhận', 'Awaiting Verification')}
         </h1>
         <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
@@ -212,7 +215,7 @@ export default function Verifications() {
               <span style={{ ...display(19, { whiteSpace: 'nowrap' }) }}>{formatVnd(v.total_vnd)}</span>
             </div>
 
-            <div style={{ ...fieldGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }}>
+            <div style={{ ...insetField({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }}>
               <Line label={T('Nội dung CK', 'Reference')} value={v.payment_ref} mono />
               <Line label={T('Mã giao dịch', 'Transaction ID')} value={v.transaction_id || T('Không Có Thông Tin', 'Not Provided')} mono />
               <Line label={T('Đã chờ', 'Waiting')} value={waitLabel(v.proof_submitted_at, T)} />
@@ -239,7 +242,7 @@ export default function Verifications() {
                   style={{ width: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 10, background: 'rgba(27,25,22,0.04)' }}
                 />
               ) : (
-                <div style={{ ...fieldGlass({ padding: '20px 12px', textAlign: 'center' }) }} data-testid="verification-proof-loading">
+                <div style={{ ...insetField({ padding: '20px 12px', textAlign: 'center' }) }} data-testid="verification-proof-loading">
                   <span style={{ fontSize: 11.5, color: ink, opacity: 0.6 }}>{T('Đang tải ảnh biên lai…', 'Loading receipt image…')}</span>
                 </div>
               )
@@ -277,7 +280,7 @@ export default function Verifications() {
                     ? T('Mô tả ngắn gọn vướng mắc cho banbe', 'Briefly describe the issue for banbe')
                     : T('Vì sao chưa xác nhận được?', "Why can't you confirm it?")}
                   data-testid="verification-reason"
-                  style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
+                  style={{ ...insetField({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
                 />
                 <p style={{ fontSize: 11, lineHeight: 1.45, color: ink, opacity: 0.7, margin: 0 }}>
                   {reasonFor.kind === 'escalate'
@@ -461,11 +464,11 @@ export default function Verifications() {
                       value={refundNote} onChange={(e) => setRefundNote(e.target.value)}
                       placeholder={T('Ghi chú/mã tham chiếu (không bắt buộc)', 'Note/reference (optional)')}
                       data-testid="refund-queue-note"
-                      style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
+                      style={{ ...insetField({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
                     />
                     {/* Optional proof of the transfer — shown to the guest when
                         they're asked to confirm they received the money. */}
-                    <label style={{ ...fieldGlass({ padding: '11px 12px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }), fontSize: 13, color: ink }}>
+                    <label style={{ ...insetField({ padding: '11px 12px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }), fontSize: 13, color: ink }}>
                       <span>{refundProof ? T('Đã chọn ảnh chuyển khoản', 'Transfer proof selected') : T('Đính kèm ảnh chuyển khoản (không bắt buộc)', 'Attach transfer proof (optional)')}</span>
                       <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.75 }}>{refundProof ? T('Đổi', 'Change') : T('Chọn', 'Choose')}</span>
                       <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} data-testid="refund-queue-proof"

@@ -405,10 +405,10 @@ export default function PulseViewer() {
             key={item.event_id}
             onClick={() => openPulseOrganizerSheet(item)}
             data-testid="pulse-card"
-            style={{ ...cardGlass({ padding: 0, display: 'flex', overflow: 'hidden', cursor: 'pointer' }) }}
+            style={{ background: fieldSolid, borderRadius: 14, padding: 0, display: 'flex', overflow: 'hidden', cursor: 'pointer', flex: 'none' }}
           >
             <div style={{
-              width: 88, height: 88, flex: 'none', borderRadius: '12px 0 0 12px',
+              width: 88, height: 88, flex: 'none', borderRadius: '14px 0 0 14px',
               background: photoReady ? `center/cover url(${photoUrl})` : 'none',
               backgroundColor: fieldSolid,
             }} />
@@ -467,10 +467,10 @@ export default function PulseViewer() {
               key={item.photo_id}
               onClick={() => openPulsePhotoSheet(item)}
               data-testid="pulse-photo-card"
-              style={{ ...cardGlass({ padding: 0, display: 'flex', overflow: 'hidden', cursor: 'pointer' }) }}
+              style={{ background: fieldSolid, borderRadius: 14, padding: 0, display: 'flex', overflow: 'hidden', cursor: 'pointer', flex: 'none' }}
             >
               <div style={{
-                width: 88, height: 88, flex: 'none', position: 'relative', borderRadius: '12px 0 0 12px',
+                width: 88, height: 88, flex: 'none', position: 'relative', borderRadius: '14px 0 0 14px',
                 background: photoReady ? `center/cover url(${photoUrl})` : 'none',
                 backgroundColor: fieldSolid,
               }}>

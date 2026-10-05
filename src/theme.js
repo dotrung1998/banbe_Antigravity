@@ -89,6 +89,16 @@ export const barGlass = (extra) => ({
   ...clipBackdropFilter, ...extra,
 });
 
+// Dock glass — iOS-style translucent capsule (dock + round "+" button):
+// ink-tinted frosted fill, hairline, soft shadow.
+export const dockGlass = (extra) => ({
+  background: 'linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0.04)), rgba(var(--bb-fg-rgb), 0.10)',
+  backdropFilter: 'blur(22px) saturate(1.5)', WebkitBackdropFilter: 'blur(22px) saturate(1.5)',
+  border: '1px solid rgba(var(--bb-fg-rgb), 0.12)',
+  boxShadow: '0 8px 24px rgba(27,25,22,0.18), inset 0 1px 0 rgba(255,255,255,0.45)',
+  ...clipBackdropFilter, ...extra,
+});
+
 // Ink glass button — primary CTAs.
 export const inkButton = (extra) => ({
   background: 'linear-gradient(165deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.07) 30%, rgba(255,255,255,0) 55%), var(--bb-button)',

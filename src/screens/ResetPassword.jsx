@@ -1,5 +1,5 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { paper, ink, display, fieldGlass, alert } from '../theme.js';
+import { paper, ink, display, inkButton, alert } from '../theme.js';
 
 // Landed on only via a real Supabase "recovery" session (the emailed
 // password-reset link) — see the PASSWORD_RECOVERY branch of
@@ -10,36 +10,27 @@ export default function ResetPassword() {
   const s = state;
   const valid = s.newPassword.length >= 8 && s.newPassword === s.newPasswordConfirm;
 
-  const btnStyle = {
-    marginTop: 14, fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 15,
+  const btnStyle = inkButton({
+    marginTop: 14, padding: '15px 0', borderRadius: 18,
     cursor: valid && !s.resetPasswordBusy ? 'pointer' : 'default',
-    background: valid ? ink : 'rgba(27,25,22,0.16)',
-    color: valid ? paper : ink,
-    transition: 'background .15s',
-  };
+    ...(valid ? {} : { background: 'rgba(var(--bb-fg-rgb), 0.16)', color: ink, boxShadow: 'none', border: 'none', textShadow: 'none' }),
+  });
+  const fieldStyle = { width: '100%', boxSizing: 'border-box', padding: 13, borderRadius: 12, border: 'none', background: 'var(--bb-field)', fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' };
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="ResetPassword">
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 26px' }}>
-        <h2 style={{ ...display(25, { lineHeight: 1.3, margin: 0 }) }}>{T('Đặt mật khẩu mới', 'Set a new password')}</h2>
-        <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '12px 0 0' }}>
-          {T('Chọn một mật khẩu mới cho tài khoản banbe của bạn.', 'Choose a new password for your banbe account.')}
-        </p>
-        <input
-          value={s.newPassword} onChange={newPasswordType} type="password"
-          placeholder={T('Mật khẩu mới', 'New password')}
-          style={{ ...fieldGlass({ marginTop: 18, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }}
-        />
-        <input
-          value={s.newPasswordConfirm} onChange={newPasswordConfirmType} type="password"
-          placeholder={T('Nhập lại mật khẩu mới', 'Confirm new password')}
-          style={{ ...fieldGlass({ marginTop: 10, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }}
-        />
-        <div onClick={valid && !s.resetPasswordBusy ? submitNewPassword : undefined} style={btnStyle}>
-          {s.resetPasswordBusy ? T('Đang lưu…', 'Saving…') : T('Lưu mật khẩu mới', 'Save new password')}
-        </div>
-        {s.resetPasswordError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '12px 0 0', textAlign: 'center' }}>{s.resetPasswordError}</p>}
+    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: '66px 26px 40px', background: paper, color: ink }} data-screen-label="ResetPassword">
+      <h2 style={{ ...display(25, { lineHeight: 1.2, margin: '34px 0 0' }) }}>{T('Đặt mật khẩu mới', 'Set a new password')}</h2>
+      <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '12px 0 0' }}>
+        {T('Chọn một mật khẩu mới cho tài khoản banbe của bạn.', 'Choose a new password for your banbe account.')}
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 18 }}>
+        <input value={s.newPassword} onChange={newPasswordType} type="password" placeholder={T('Mật khẩu mới', 'New password')} style={fieldStyle} />
+        <input value={s.newPasswordConfirm} onChange={newPasswordConfirmType} type="password" placeholder={T('Nhập lại mật khẩu mới', 'Confirm new password')} style={fieldStyle} />
       </div>
+      <div onClick={valid && !s.resetPasswordBusy ? submitNewPassword : undefined} style={btnStyle}>
+        {s.resetPasswordBusy ? T('Đang lưu…', 'Saving…') : T('Lưu mật khẩu mới', 'Save new password')}
+      </div>
+      {s.resetPasswordError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '12px 0 0', textAlign: 'center' }}>{s.resetPasswordError}</p>}
     </div>
   );
 }

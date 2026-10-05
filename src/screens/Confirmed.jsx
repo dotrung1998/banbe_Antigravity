@@ -12,7 +12,7 @@ import { giftPdfData, isAppleWalletBrowser, addToAppleWallet, walletErrorMessage
 
 export default function Confirmed() {
   const {
-    state, T, set, curEvent: ev, backFromConfirmed, openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, openPaymentDetails, forfeitExpiredHold, goReserve,
+    state, T, trStatus, stripKm, set, curEvent: ev, backFromConfirmed, openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, openPaymentDetails, forfeitExpiredHold, goReserve,
     loadReceiptStatus, requestReceipt, openDocumentFromNotification, loadBookingAttendees,
   } = useGoc();
   const s = state;
@@ -230,7 +230,7 @@ export default function Confirmed() {
           : s.confirmedBack === 'accountGroup' ? T('Tài khoản', 'Account')
           : T('Quay lại', 'Back')}
       </div>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '24px 30px 0' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px 30px 0' }}>
         <span style={{ fontSize: 11.5, color: ink }}>{confirmEyebrow}</span>
         <h2 style={{ ...display(27, { lineHeight: 1.35, margin: '12px 0 0' }) }}>{confirmHeading}</h2>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '18px 0 0' }}>{confirmNote}</p>
@@ -314,7 +314,7 @@ export default function Confirmed() {
               <span style={{ ...display(17) }}>{ev.name}</span>
               <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.65, flex: 'none' }}>{attendees.length} {T('vé', attendees.length === 1 ? 'ticket' : 'tickets')}</span>
             </div>
-            <span style={{ fontSize: 12, color: ink }}>{ev.where}</span>
+            <span style={{ fontSize: 12, color: ink }}>{trStatus(stripKm(ev.where, ev))}</span>
             <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{T('Mỗi người có mã QR riêng — đưa mã của chính họ ở cửa.', 'Each person has their own QR — show their own code at the door.')}</span>
             {attendees.map(a => {
               const on = selected.has(a.id);
@@ -331,7 +331,7 @@ export default function Confirmed() {
                   </div>
                   <QrCode value={a.admission_token} size={72} />
                   <span onClick={() => runDownload([attendeePdf(a)])} title={T('Tải vé PDF', 'Download PDF')} data-testid={`confirmed-attendee-download-${a.seat_no}`}
-                    style={{ flex: 'none', width: 34, height: 34, borderRadius: 17, background: 'rgba(27,25,22,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: pdfBusy ? 0.5 : 1 }}>
+                    style={{ flex: 'none', width: 34, height: 34, borderRadius: 17, background: 'var(--bb-field)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: pdfBusy ? 0.5 : 1 }}>
                     <Icon kind="download" size={16} />
                   </span>
                 </div>
@@ -353,7 +353,7 @@ export default function Confirmed() {
         <div style={{ marginTop: 28, borderTop: `1px solid ${rule}`, paddingTop: 14, display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'center' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
             <span style={{ ...display(17) }}>{ev.name}</span>
-            <span style={{ fontSize: 12, color: ink }}>{ev.where}</span>
+            <span style={{ fontSize: 12, color: ink }}>{trStatus(stripKm(ev.where, ev))}</span>
             {showQr && !isGifted && s.booking?.code && <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.12em', color: ink }}>{T('Mã vào cửa: ', 'Entry code: ')}{s.booking.code}</span>}
             {!showQr && (
               <span style={{ fontSize: 11.5, color: ink }}>
@@ -382,7 +382,7 @@ export default function Confirmed() {
                   <span style={{ fontSize: 14, fontWeight: 600, color: ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.recipient_name}</span>
                 </div>
                 <span onClick={() => runDownload([giftPdfOf(g)])} title={T('Tải lại vé PDF', 'Re-download the PDF')} data-testid={`confirmed-gifted-seat-download-${g.id}`}
-                  style={{ flex: 'none', width: 34, height: 34, borderRadius: 17, background: 'rgba(27,25,22,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: pdfBusy ? 0.5 : 1 }}>
+                  style={{ flex: 'none', width: 34, height: 34, borderRadius: 17, background: 'var(--bb-field)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: pdfBusy ? 0.5 : 1 }}>
                   <Icon kind="download" size={16} />
                 </span>
               </div>
@@ -395,7 +395,7 @@ export default function Confirmed() {
             the same shared Banbe loading GIF, at half its previous pixel
             size (public/banbe-loading.gif was resized 380x297 -> 190x148,
             not just displayed smaller) per this follow-up's own request. */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 20 }}>
+        <div style={{ flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 20, paddingBottom: 24 }}>
           <BanbeLoadingVisual size={190} />
         </div>
       </div>
@@ -495,7 +495,7 @@ function FooterRow({ icon, label, onClick, testId, chip = false, dim = false }) 
         padding: '10px 30px', minHeight: 54, boxSizing: 'border-box', cursor: onClick ? 'pointer' : 'default', opacity: dim ? 0.6 : 1,
       }}
     >
-      <span style={{ flex: 'none', width: 34, height: 34, borderRadius: 17, display: 'flex', alignItems: 'center', justifyContent: 'center', background: chip ? 'rgba(27,25,22,0.06)' : 'transparent' }}>
+      <span style={{ flex: 'none', width: 34, height: 34, borderRadius: 17, display: 'flex', alignItems: 'center', justifyContent: 'center', background: chip ? 'var(--bb-field)' : 'transparent' }}>
         <Icon kind={icon} size={16} />
       </span>
       <span style={{ flex: 1, minWidth: 0 }}>{label}</span>

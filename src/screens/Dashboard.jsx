@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, findEvent, bg } from '../data/events.js';
 import { liveEventOverrides } from '../lib/countdown.js';
-import { paper, ink, rule, alert, display, fieldGlass, cardGlass, inkButton } from '../theme.js';
+import { paper, ink, rule, alert, display } from '../theme.js';
+import { fieldGlass, cardGlass, inkButton } from './hostStyle.js';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
 import ActionCenter from './ActionCenter.jsx';
 import { supabase } from '../lib/supabase.js';
@@ -254,7 +255,7 @@ export default function Dashboard() {
             <div
               onClick={s.orgTeamInviteBusy ? undefined : () => inviteOrganizerMember(s.myOrganizerId)}
               data-testid="dashboard-team-invite-submit"
-              style={{ ...inkButton({ padding: 10, fontSize: 12.5, opacity: s.orgTeamInviteBusy ? 0.6 : 1 }) }}
+              style={{ ...inkButton({ opacity: s.orgTeamInviteBusy ? 0.6 : 1 }) }}
             >
               {s.orgTeamInviteBusy ? T('Đang gửi…', 'Sending…') : T('Mời thành viên', 'Invite member')}
             </div>
@@ -293,7 +294,7 @@ export default function Dashboard() {
               <div
                 onClick={creditEventKey && creditUserId ? async () => { await assignEventCredit(creditEventKey, creditUserId); setCreditEventKey(''); setCreditUserId(''); } : undefined}
                 data-testid="dashboard-credit-submit"
-                style={{ ...inkButton({ padding: 10, fontSize: 12.5, opacity: creditEventKey && creditUserId ? 1 : 0.5 }) }}
+                style={{ ...inkButton({ opacity: creditEventKey && creditUserId ? 1 : 0.5 }) }}
               >
                 {T('Ghi nhận', 'Credit')}
               </div>
@@ -309,7 +310,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <ActionCenter items={actionItems} onSeeAll={() => openVerifications('dashboard')} T={T} />
+      <ActionCenter items={actionItems} onSeeAll={() => openVerifications('dashboard')} T={T} inset={22} />
 
       {/* Event review queue — a real submission's own status/reason, never
           the static catalogue. Pending: still awaiting an admin decision,
@@ -404,7 +405,7 @@ export default function Dashboard() {
                     <span
                       onClick={() => setViewingPending(e)}
                       data-testid={`dashboard-view-pending-${e.key}`}
-                      style={{ fontSize: 12, fontWeight: 600, color: ink, border: `1px solid ${rule}`, borderRadius: 999, padding: '7px 16px', cursor: 'pointer' }}
+                      style={{ fontSize: 12, fontWeight: 600, color: ink, border: '1px solid rgba(var(--bb-fg-rgb), 0.5)', borderRadius: 999, padding: '7px 16px', cursor: 'pointer' }}
                     >
                       {T('Xem', 'View')}
                     </span>
@@ -507,7 +508,7 @@ export default function Dashboard() {
           GocContext.jsx — this whole screen only ever renders for an
           organizer) are unchanged. */}
       <div style={{ flex: 'none', padding: '10px 22px calc(env(safe-area-inset-bottom, 0px) + 14px)' }}>
-        <div onClick={goCreate} data-testid="dashboard-create-event" style={{ ...inkButton({ padding: 10, fontSize: 12.5 }) }}>
+        <div onClick={goCreate} data-testid="dashboard-create-event" style={{ ...inkButton() }}>
           {T('+ Tạo sự kiện mới', '+ Create new event')}
         </div>
       </div>

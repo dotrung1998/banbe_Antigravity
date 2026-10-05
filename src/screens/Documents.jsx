@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { formatVnd, formatShortDate, eventDateAnchor } from '../lib/paymentDocument.js';
+import HostTitleIcon from './HostTitleIcon.jsx';
 import { paper, ink, rule, display, fieldGlass } from '../theme.js';
 
 // One list, four ways in: invoices or receipts, mine or the ones I issued.
@@ -46,7 +47,7 @@ export default function Documents() {
         ‹ {backLabel}
       </div>
       <div style={{ padding: '14px 22px 0' }}>
-        <h1 style={{ ...display(24, { margin: 0 }) }} data-testid="documents-title">{title}</h1>
+        <h1 style={{ ...display(24, { margin: 0, display: 'flex', alignItems: 'center', gap: 10 }) }} data-testid="documents-title"><HostTitleIcon kind={isReceipt ? 'receipt' : 'document'} group="payments" />{title}</h1>
         <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>{subtitle}</p>
       </div>
 

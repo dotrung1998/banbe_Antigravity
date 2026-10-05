@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { supabase } from '../lib/supabase.js';
-import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
+import { paper, ink, rule, display, fieldGlass, fieldSolid, cardGlass, inkButton, alert } from '../theme.js';
 import { AttachMenuIcon } from './Chat.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
@@ -63,7 +63,10 @@ export const ROW_ACCENT_COLORS = {
   preferences: PROFILE_PALETTE_COLORS.ink,
   hostOps: PROFILE_PALETTE_COLORS.moss,
   adminReview: PROFILE_PALETTE_COLORS.rose,
-  adminTeam: PROFILE_PALETTE_COLORS.ink,
+  // iOS parity: standalone screens reached from an Account row, and adminTeam
+  // on sand (ink at 0.33 alpha read as a plain gray circle).
+  reports: PROFILE_PALETTE_COLORS.moss,
+  adminTeam: PROFILE_PALETTE_COLORS.sand,
 };
 
 export function RowIcon({ kind, size = 22, accent }) {
@@ -330,13 +333,20 @@ export default function Account() {
               style={{ ...fieldGlass({ flex: 1, minWidth: 0, padding: '10px 14px', borderRadius: 999, fontSize: 13.5, color: ink, border: 'none', outline: 'none' }) }}
             />
           ) : (
-            <span style={{ ...display(27) }}>{T('Tài khoản', 'Account')}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+              <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 96, height: 'auto', display: 'block' }} />
+              <span style={{ ...display(27), lineHeight: 1.1 }}>{T('Tài khoản', 'Account')}</span>
+            </div>
           )}
           <span style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 'none', marginLeft: searchOpen ? 12 : 0 }}>
-            <span onClick={toggleSearch} data-testid="account-search-toggle" style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>
-              {searchOpen ? T('Đóng', 'Close') : T('Tìm', 'Search')}
+            <span onClick={toggleSearch} data-testid="account-search-toggle" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', color: ink }}>
+              <span style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: fieldSolid }}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+                  {searchOpen ? <path d="M5 5l14 14M19 5L5 19" /> : <><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></>}
+                </svg>
+              </span>
+              <span style={{ fontSize: 9.5, opacity: 0.7 }}>{searchOpen ? T('Đóng', 'Close') : T('Tìm', 'Search')}</span>
             </span>
-            {!searchOpen && <span onClick={goHome} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>Xong</span>}
           </span>
         </div>
 
@@ -372,9 +382,9 @@ export default function Account() {
             data-testid={`account-tab-${tab.key}`}
             style={{
               fontSize: 13, fontWeight: 600, padding: '9px 16px', borderRadius: 999, cursor: 'pointer',
-              background: accountTab === tab.key ? ink : 'transparent',
-              color: accountTab === tab.key ? paper : ink,
-              border: accountTab === tab.key ? 'none' : `1px solid ${rule}`,
+              ...(accountTab === tab.key
+                ? { background: 'rgba(var(--bb-fg-rgb), 0.92)', color: paper, border: '1px solid transparent', boxShadow: '0 2px 6px rgba(27,25,22,0.18)' }
+                : { background: 'linear-gradient(180deg, rgba(255,255,255,0.35), rgba(255,255,255,0.05)), rgba(var(--bb-fg-rgb), 0.06)', color: ink, border: '1px solid rgba(var(--bb-fg-rgb), 0.14)', backdropFilter: 'blur(14px) saturate(1.1)', WebkitBackdropFilter: 'blur(14px) saturate(1.1)', boxShadow: '0 2px 8px rgba(27,25,22,0.08), inset 0 1px 0 rgba(255,255,255,0.5)' }),
               display: 'flex', alignItems: 'center', gap: 6,
             }}
           >

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { formatVnd } from '../lib/paymentDocument.js';
-import { paper, ink, rule, display, fieldGlass, cardGlass, alert } from '../theme.js';
+import { paper, ink, rule, display, alert } from '../theme.js';
+import HostTitleIcon from './HostTitleIcon.jsx';
+import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
 
 // Mirrors public.dispute_reason_category (migration 047) exactly — this is
@@ -49,10 +51,10 @@ export default function Disputes() {
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Disputes">
       <div onClick={backFromDocuments} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="disputes-back">
-        ‹ {T('Tài khoản', 'Account')}
+        ‹ {T('Duyệt & Kiểm Duyệt', 'Review & Moderation')}
       </div>
       <div style={{ padding: '14px 22px 0' }}>
-        <h1 style={{ ...display(24, { margin: 0 }) }} data-testid="disputes-title">{T('Tranh Chấp Thanh Toán', 'Payment Disputes')}</h1>
+        <h1 style={{ ...display(24, { margin: 0, display: 'flex', alignItems: 'center', gap: 10 }) }} data-testid="disputes-title"><HostTitleIcon kind="alertShield" group="adminReview" />{T('Tranh Chấp Thanh Toán', 'Payment Disputes')}</h1>
         <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
           {T('Khách khẳng định đã chuyển, người tổ chức không tìm thấy. Chỗ vẫn đang bị khoá cho tới khi có quyết định.',
              "The guest says they paid; the organizer can't find it. The seat stays locked until this is decided.")}
@@ -70,7 +72,7 @@ export default function Disputes() {
               <span style={{ ...display(19, { whiteSpace: 'nowrap' }) }}>{formatVnd(d.total_vnd)}</span>
             </div>
 
-            <div style={{ ...fieldGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }}>
+            <div style={{ ...insetField({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }}>
               <Line label={T('Nội dung CK', 'Reference')} value={d.payment_ref} />
               <Line label={T('Mã giao dịch khách khai', 'Buyer transaction ID')} value={d.transaction_id || T('Không Có Thông Tin', 'Not Provided')} />
               <Line label={T('Ảnh biên lai', 'Proof')} value={d.proof_path ? T('có', 'on file') : T('không có', 'none')} />
@@ -89,7 +91,7 @@ export default function Disputes() {
                   style={{ width: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 10, background: 'rgba(27,25,22,0.04)' }}
                 />
               ) : (
-                <div style={{ ...fieldGlass({ padding: '20px 12px', textAlign: 'center' }) }} data-testid="dispute-proof-loading">
+                <div style={{ ...insetField({ padding: '20px 12px', textAlign: 'center' }) }} data-testid="dispute-proof-loading">
                   <span style={{ fontSize: 11.5, color: ink, opacity: 0.6 }}>{T('Đang tải ảnh biên lai…', 'Loading receipt image…')}</span>
                 </div>
               )
@@ -112,7 +114,7 @@ export default function Disputes() {
             )}
 
             {s.auditBookingId === d.booking_id && s.auditTrail.length > 0 && (
-              <div style={{ ...fieldGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }) }} data-testid="dispute-audit-trail">
+              <div style={{ ...insetField({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }) }} data-testid="dispute-audit-trail">
                 {s.auditTrail.map(a => (
                   <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{a.action}</span>
@@ -129,7 +131,7 @@ export default function Disputes() {
                 shown to the guest/organizer, never part of the note above. */}
             <select value={reasonCategory} onChange={(e) => setReasonCategory(e.target.value)}
                     data-testid="dispute-reason-category"
-                    style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}>
+                    style={{ ...insetField({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}>
               {REASON_CATEGORIES.map(c => (
                 <option key={c.value} value={c.value}>{T(c.vi, c.en)}</option>
               ))}
@@ -137,7 +139,7 @@ export default function Disputes() {
             <input value={note} onChange={(e) => setNote(e.target.value)}
                    placeholder={T('Ghi chú quyết định', 'Resolution note')}
                    data-testid="dispute-note"
-                   style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }} />
+                   style={{ ...insetField({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }} />
             <div style={{ display: 'flex', gap: 8 }}>
               <Action label={s.disputeBusy === d.booking_id ? T('Đang lưu…', 'Saving…') : T('Khách đúng ▪︎ cấp vé', 'Buyer is right ▪︎ issue ticket')}
                       testid="dispute-uphold" onClick={() => { resolveDispute(d.booking_id, true, note, reasonCategory); setNote(''); setReasonCategory('other'); }} />
@@ -186,7 +188,7 @@ export default function Disputes() {
                       still within that window. */}
                   {isExpanded && (
                     <>
-                      <div style={{ ...cardGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }}>
+                      <div style={{ ...insetField({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }}>
                         <Line label={T('Lý do từ chối', 'Rejection reason')} value={d.dispute_reason || T('Không Có Thông Tin', 'Not Provided')} />
                         <Line label={T('Quyết định', 'Decision')} value={d.dispute_resolution || T('Không Có Thông Tin', 'Not Provided')} />
                       </div>
@@ -208,7 +210,7 @@ export default function Disputes() {
                       )}
 
                       {s.auditBookingId === d.booking_id && s.auditTrail.length > 0 && (
-                        <div style={{ ...cardGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }) }} data-testid="dispute-audit-trail-closed">
+                        <div style={{ ...insetField({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }) }} data-testid="dispute-audit-trail-closed">
                           {s.auditTrail.map(a => (
                             <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                               <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{a.action}</span>

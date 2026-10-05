@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { BAR_HEIGHT, BAR_BOTTOM_OFFSET, DOCK_MARGIN, CREATE_SIZE } from './BottomTabBar.jsx';
-import { ink, paper, rule, barGlass } from '../theme.js';
+import { ink, paper, rule, dockGlass } from '../theme.js';
 import { AttachMenuIcon } from './Chat.jsx';
 
 // TASK C (2026-10-03 fix pass) — replaces the old floating "Tạo sự kiện"
@@ -91,13 +91,12 @@ export default function DockCreateButton() {
         aria-expanded={open}
         role="button"
         style={{
-          ...barGlass({}),
+          ...dockGlass({}),
           flex: '0 0 auto',
           width: CREATE_SIZE, height: CREATE_SIZE, borderRadius: '50%',
           color: ink,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 8px 24px rgba(27,25,22,0.18)', cursor: 'pointer',
-          border: `1px solid ${rule}`,
+          cursor: 'pointer',
           transition: 'transform 0.15s ease',
           transform: open ? 'rotate(45deg)' : 'rotate(0deg)',
         }}

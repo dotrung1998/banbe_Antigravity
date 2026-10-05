@@ -1,5 +1,6 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { paper, ink, display, cardGlass } from '../theme.js';
+import { paper, ink, display } from '../theme.js';
+import { cardGlass } from './hostStyle.js';
 
 function memberAvatarUrl(url) {
   return url || '';
@@ -19,7 +20,13 @@ export default function TeamPage() {
   const team = s.organizerTeam;
 
   if (s.organizerTeamLoading) {
-    return <div style={{ minHeight: '100%', background: paper }} data-screen-label="Organizer team" />;
+    return (
+      <div style={{ minHeight: '100%', background: paper }} data-screen-label="Organizer team">
+        <div style={{ padding: '66px 20px 0' }}>
+          <span onClick={backFromOrganizerTeam} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('‹ Quay lại', '‹ Back')}</span>
+        </div>
+      </div>
+    );
   }
   if (s.organizerTeamError || !team) {
     return (
@@ -48,7 +55,7 @@ export default function TeamPage() {
       <div style={{ padding: '66px 20px 0' }}>
         <span onClick={backFromOrganizerTeam} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('‹ Quay lại', '‹ Back')}</span>
       </div>
-      <div style={{ padding: '14px 20px 0' }}>
+      <div style={{ padding: '10px 20px 0' }}>
         <span style={{ ...display(24) }}>{T(`Đội ngũ ${team.organizer_name || ''}`, `The ${team.organizer_name || ''} Team`)}</span>
       </div>
 

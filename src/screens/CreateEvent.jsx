@@ -5,7 +5,8 @@ import { liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
 import { supabase } from '../lib/supabase.js';
 import { parseExcelOrZipPackage } from '../lib/excelEventImport.js';
 import { formatVnd } from '../lib/paymentDocument.js';
-import { paper, ink, rule, FACE, display, fieldGlass, cardGlass, alert } from '../theme.js';
+import { paper, ink, rule, FACE, display, alert } from '../theme.js';
+import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
 
 const IMPORT_FIELD_LABELS = {
   name: ['Tên sự kiện', 'Event name'],
@@ -255,7 +256,7 @@ export default function CreateEvent() {
   const createNameShown = s.createName.trim() || T('Tên sự kiện của bạn', 'Your event name');
 
   const createBtnStyle = {
-    marginTop: 26, fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 16, borderRadius: 999,
+    marginTop: 26, fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 15, borderRadius: 999,
     background: s.createSent ? 'rgba(27,25,22,0.16)' : (s.createName.trim() ? ink : 'rgba(27,25,22,0.16)'),
     color: s.createSent ? ink : (s.createName.trim() ? paper : ink),
     cursor: s.createName.trim() && !s.createSent ? 'pointer' : 'default', transition: 'background .15s',
@@ -287,76 +288,20 @@ export default function CreateEvent() {
           <Field label={T('Giới thiệu', 'About')} value={s.orgRegDesc} onChange={orgRegDescType} placeholder={T('Minh nấu cho người lạ từ 2021…', 'Minh has cooked for strangers since 2021…')} />
         </div>
 
-        <div style={{ marginTop: 22 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Sự kiện sắp tới', 'Upcoming events')}</span>
-            <span style={{ fontSize: 10.5, color: ink }}>{upcoming.length}{T(' sự kiện', upcoming.length === 1 ? ' event' : ' events')}</span>
-          </div>
-          <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, margin: '6px 0 0' }}>{orgTrustNote}</p>
-          <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
-            {upcoming.map((e, i, arr) => (
-              <div key={e.key} onClick={() => goEvent(e.key)} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '13px 16px', borderBottom: i < arr.length - 1 ? `1px solid ${rule}` : 'none', cursor: 'pointer' }}>
-                <div style={bg(e.img, { flex: 'none', width: 52, height: 52 })} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
-                  <span style={{ ...display(15, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</span>
-                  <span style={{ fontSize: 11.5, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{trStatus(stripKm(e.meta, e))}</span>
-                </div>
-                <span style={{ fontSize: 11.5, color: ink, flex: 'none' }}>{trStatus(e.soldOut ? 'Hết chỗ' : e.seats)}</span>
-              </div>
-            ))}
-            {upcoming.length === 0 && (
-              <p style={{ fontSize: 12.5, color: ink, padding: '14px 16px', margin: 0 }}>{T('Bạn chưa có sự kiện nào sắp tới. Tạo bên dưới.', 'No upcoming events yet. Create one below.')}</p>
-            )}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 22 }}>
+        <div style={{ ...cardGlass({ marginTop: 22, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }) }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Sự kiện', 'Event')}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
           <label style={labelStyle}>{T('Tên sự kiện', 'Event name')} <span style={{ color: alert }}>*</span></label>
           <input value={s.createName} onChange={createNameType} placeholder="Bếp Nhỏ №13" style={fieldInput} />
         </div>
 
-        <div style={{ marginTop: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontSize: 11.5, color: ink }}>{T('Danh mục', 'Category')} <span style={{ color: alert }}>*</span></span>
-            <span style={{ fontSize: 10.5, color: ink }}>{T('Tối đa 2 danh mục', 'Max 2 categories')}</span>
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-            {CAT_DEFS.map(c => {
-              const on = s.createCats.includes(c.key);
-              const isSecond = on && s.createCats[1] === c.key;
-              return (
-                <span key={c.key} onClick={() => pickCreateCat(c.key)} style={{ fontSize: 12.5, padding: '8px 15px', borderRadius: 999, cursor: 'pointer', border: on ? `1.5px solid ${ink}` : '1px solid rgba(27,25,22,0.16)', background: on ? paper : 'transparent', color: ink, fontWeight: on ? 600 : 400 }}>
-                  {T(c.vi, c.en)}{isSecond ? ' ▪︎ +' : ''}
-                </span>
-              );
-            })}
-          </div>
-          {attemptedReview && fieldErrors.cats && <p style={{ fontSize: 11, color: alert, margin: '6px 0 0' }}>{T('Hãy chọn ít nhất một danh mục.', 'Please pick at least one category.')}</p>}
-        </div>
-
-        {/* Keyword-search fix (migration 108) — so this event actually
-            surfaces in Map's search box for terms beyond its literal
-            name/district. Left blank, submission defaults it to the
-            category label(s) picked just above (never silently empty). */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 20 }}>
-          <label style={labelStyle}>{T('Từ khoá tìm kiếm', 'Search keywords')}</label>
-          <input
-            value={s.createKeywords} onChange={createKeywordsType}
-            placeholder={T('vd. tiệc tối, rượu vang, ẩm thực Việt', 'e.g. supper club, wine, Vietnamese food')}
-            style={fieldInput}
-          />
-          <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.75 }}>
-            {T('Cách nhau bằng dấu phẩy. Để trống sẽ tự dùng danh mục đã chọn ở trên.', 'Comma-separated. Left blank, the category picked above is used instead.')}
-          </p>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 20 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
           <label style={labelStyle}>{T('Mô tả', 'Description')} <span style={{ color: alert }}>*</span></label>
           <input value={s.createDesc} onChange={createDescType} placeholder={T('Mười bốn chỗ. Một ga-ra cải tạo…', 'Fourteen seats. A converted garage…')} style={fieldInput} />
           {attemptedReview && fieldErrors.desc && <p style={{ fontSize: 11, color: alert, margin: 0 }}>{T('Hãy nhập mô tả.', 'Please enter a description.')}</p>}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 20 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <label style={labelStyle}>{T('Giới thiệu sự kiện', 'Event introduction')}</label>
             <span style={{ fontSize: 10.5, color: ink }}>{s.createIntro.length}/4000</span>
@@ -371,7 +316,7 @@ export default function CreateEvent() {
           />
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
           <label style={labelStyle}>{T('Địa điểm', 'Location')} <span style={{ color: alert }}>*</span></label>
           <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.75 }}>
             {T(
@@ -445,7 +390,7 @@ export default function CreateEvent() {
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+        <div style={{ display: 'flex', gap: 10, marginTop: 0 }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
             <label style={labelStyle}>{T('Ngày', 'Date')} <span style={{ color: alert }}>*</span></label>
             <input
@@ -464,7 +409,7 @@ export default function CreateEvent() {
         </div>
         {attemptedReview && fieldErrors.dateTime && <p style={{ fontSize: 11, color: alert, margin: '6px 0 0' }}>{T('Hãy chọn ngày và giờ diễn ra.', 'Please pick a date and time.')}</p>}
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+        <div style={{ display: 'flex', gap: 10, marginTop: 0 }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
             <label style={labelStyle}>{T('Giá vé', 'Ticket price')}</label>
             <input value={s.createPrice} onChange={createPriceType} placeholder="500.000₫" style={fieldInput} />
@@ -483,9 +428,9 @@ export default function CreateEvent() {
             capacity. Kept separate from approval mode (not exposed in this
             form at all) and from admin review — see set_event_visibility's
             own migration comment: private is not auto-approved. */}
-        <div style={{ marginTop: 18 }}>
+        <div style={{ marginTop: 0 }}>
           <label style={labelStyle}>{T('Quyền riêng tư', 'Privacy')}</label>
-          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 0 }}>
             {[
               { key: 'public', vi: 'Công khai', en: 'Public' },
               { key: 'invite', vi: 'Chỉ mời', en: 'Invite-only' },
@@ -512,6 +457,43 @@ export default function CreateEvent() {
               ? T('Chỉ người được mời mới thấy và đặt được sự kiện này. Bạn vẫn cần được banbe duyệt.', 'Only invited people can see or book this event. It still needs banbe approval.')
               : T('Ai cũng có thể tìm thấy và đặt sự kiện này.', 'Anyone can discover and book this event.')}
           </p>
+        </div>
+
+        <div style={{ marginTop: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontSize: 11.5, color: ink }}>{T('Danh mục', 'Category')} <span style={{ color: alert }}>*</span></span>
+            <span style={{ fontSize: 10.5, color: ink }}>{T('Tối đa 2 danh mục', 'Max 2 categories')}</span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 0 }}>
+            {CAT_DEFS.map(c => {
+              const on = s.createCats.includes(c.key);
+              const isSecond = on && s.createCats[1] === c.key;
+              return (
+                <span key={c.key} onClick={() => pickCreateCat(c.key)} style={{ fontSize: 12.5, padding: '9px 14px', borderRadius: 999, cursor: 'pointer', border: on ? '1px solid transparent' : `1px solid ${rule}`, background: on ? ink : 'transparent', color: on ? paper : ink, fontWeight: on ? 600 : 400 }}>
+                  {T(c.vi, c.en)}{isSecond ? ' ▪︎ +' : ''}
+                </span>
+              );
+            })}
+          </div>
+          {attemptedReview && fieldErrors.cats && <p style={{ fontSize: 11, color: alert, margin: '6px 0 0' }}>{T('Hãy chọn ít nhất một danh mục.', 'Please pick at least one category.')}</p>}
+        </div>
+
+        {/* Keyword-search fix (migration 108) — so this event actually
+            surfaces in Map's search box for terms beyond its literal
+            name/district. Left blank, submission defaults it to the
+            category label(s) picked just above (never silently empty). */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
+          <label style={labelStyle}>{T('Từ khoá tìm kiếm', 'Search keywords')}</label>
+          <input
+            value={s.createKeywords} onChange={createKeywordsType}
+            placeholder={T('vd. tiệc tối, rượu vang, ẩm thực Việt', 'e.g. supper club, wine, Vietnamese food')}
+            style={fieldInput}
+          />
+          <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.75 }}>
+            {T('Cách nhau bằng dấu phẩy. Để trống sẽ tự dùng danh mục đã chọn ở trên.', 'Comma-separated. Left blank, the category picked above is used instead.')}
+          </p>
+        </div>
+
         </div>
 
         {/* Photo-management cleanup (task 1, screenshot 1 follow-up) — a
@@ -618,7 +600,7 @@ export default function CreateEvent() {
                     value={it.label} maxLength={60}
                     onChange={(e) => setCreateIncludedItem(i, 'label', e.target.value)}
                     placeholder={T('Tên mục (vd. Nước uống)', 'Label (e.g. Drinks)')}
-                    style={{ ...fieldGlass({ padding: '9px 11px' }), flex: 1, fontSize: 13, fontFamily: FACE, color: ink, outline: 'none', border: 'none', minWidth: 0 }}
+                    style={{ ...insetField({ padding: '9px 11px' }), flex: 1, fontSize: 13, fontFamily: FACE, color: ink, outline: 'none', border: 'none', minWidth: 0 }}
                   />
                   <span onClick={() => removeCreateIncludedItem(i)} style={{ fontSize: 12, color: ink, opacity: 0.6, cursor: 'pointer', flex: 'none' }}>{T('Xoá', 'Remove')}</span>
                 </div>
@@ -626,7 +608,7 @@ export default function CreateEvent() {
                   value={it.detail} maxLength={300}
                   onChange={(e) => setCreateIncludedItem(i, 'detail', e.target.value)}
                   placeholder={T('Giải thích rõ hơn (không bắt buộc)', 'Fuller explanation (optional)')}
-                  style={{ ...fieldGlass({ padding: '9px 11px' }), fontSize: 12.5, fontFamily: FACE, color: ink, outline: 'none', border: 'none' }}
+                  style={{ ...insetField({ padding: '9px 11px' }), fontSize: 12.5, fontFamily: FACE, color: ink, outline: 'none', border: 'none' }}
                 />
               </div>
             ))}
@@ -890,7 +872,7 @@ function ReviewStep({ T, trStatus, stripKm, s, items, coverKey, createCatLabel, 
                 <span style={{ fontSize: 11.5, color: ink }}>{T('Thứ tự ảnh', 'Photo order')}</span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
                   {items.map((p, i) => (
-                    <div key={p.url} style={{ ...fieldGlass({ padding: 8, display: 'flex', alignItems: 'center', gap: 10 }) }}>
+                    <div key={p.url} style={{ ...insetField({ padding: 8, display: 'flex', alignItems: 'center', gap: 10 }) }}>
                       <div style={{ position: 'relative', flex: 'none', width: 56, height: 56, borderRadius: 10, overflow: 'hidden' }}>
                         <div style={bg(p.url, { width: '100%', height: '100%' })} />
                       </div>
@@ -1044,10 +1026,10 @@ function Field({ label, value, onChange, placeholder, style }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0, width: '100%', boxSizing: 'border-box', ...style }}>
       <label style={labelStyle}>{label}</label>
-      <input value={value} onChange={onChange} placeholder={placeholder} style={{ ...fieldGlass({ padding: '11px 12px' }), fontSize: 13.5, fontFamily: FACE, color: ink, outline: 'none', minWidth: 0, width: '100%', boxSizing: 'border-box', border: 'none' }} />
+      <input value={value} onChange={onChange} placeholder={placeholder} style={{ ...insetField({ padding: '11px 12px' }), fontSize: 13.5, fontFamily: FACE, color: ink, outline: 'none', minWidth: 0, width: '100%', boxSizing: 'border-box', border: 'none' }} />
     </div>
   );
 }
 
 const labelStyle = { fontSize: 11.5, color: ink };
-const fieldInput = { ...fieldGlass({ padding: '13px 14px' }), fontSize: 14, fontFamily: FACE, color: ink, outline: 'none', minWidth: 0, width: '100%', boxSizing: 'border-box', border: 'none' };
+const fieldInput = { ...insetField({ padding: '13px 14px' }), fontSize: 14, fontFamily: FACE, color: ink, outline: 'none', minWidth: 0, width: '100%', boxSizing: 'border-box', border: 'none' };

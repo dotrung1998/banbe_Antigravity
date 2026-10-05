@@ -83,6 +83,37 @@ function KindIcon({ category }) {
 // snapped open/closed instantly instead of the 600ms fade Inbox uses.
 const SHEET_ANIM_MS = 600;
 
+
+// iOS parity header controls (NotificationsView.iconButton / InboxView.iconButton):
+// a 34pt round glass button with a tiny caption beneath. Shared with Inbox.jsx.
+const HEADER_ICONS = {
+  search: <><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></>,
+  select: <><circle cx="12" cy="12" r="9" /><path d="M8 12.5l2.8 2.8L16.5 9.5" /></>,
+  selectAll: <><path d="M3.5 6.5l1.6 1.6L8 5.2M3.5 12.5l1.6 1.6L8 11.2M3.5 18.5l1.6 1.6L8 17.2" /><path d="M11.5 7h9M11.5 13h9M11.5 19h9" /></>,
+  close: <path d="M6 6l12 12M18 6L6 18" />,
+  gear: <><circle cx="12" cy="12" r="3" /><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /></>,
+};
+export function HeaderIconButton({ icon, label, onClick, testId, tint, style }) {
+  return (
+    <div
+      onClick={onClick}
+      data-testid={testId}
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', userSelect: 'none', ...style }}
+    >
+      <span style={{
+        ...fieldGlass({ borderRadius: '50%', border: '1px solid rgba(var(--bb-fg-rgb), 0.12)', boxShadow: '0 2px 8px rgba(27,25,22,0.08), inset 0 1px 0 rgba(255,255,255,0.5)' }),
+        width: 36, height: 36, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tint || ink,
+      }}>
+        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">{HEADER_ICONS[icon]}</svg>
+      </span>
+      <span style={{ fontSize: 9.5, color: tint || ink, opacity: tint ? 0.85 : 0.7 }}>{label}</span>
+    </div>
+  );
+}
+export function HeaderWordmark() {
+  return <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 96, height: 'auto', display: 'block', flex: 'none' }} />;
+}
+
 function classifyAtLoad(n, now) {
   return !n.read_at ? 'new' : notificationAgeBucket(n.created_at, now);
 }
@@ -200,12 +231,10 @@ export default function Notifications() {
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Notifications">
-      <div style={{ padding: '70px 24px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        {/* TASK 2 (2026-09-22 nineteenth follow-up) — "Done" removed
-            entirely from normal mode (this screen is reached from the
-            dock's own Notifications tab, same as Inbox — no separate
-            "done" affordance needed there either). Search input replaces
-            the title, exactly mirroring Inbox.jsx's own search-open state. */}
+      <div style={{ padding: '62px 24px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+        {/* iOS parity: wordmark BEFORE the title, inline (hidden while the
+            search field is showing). Search input replaces the title,
+            mirroring Inbox.jsx's own search-open state. */}
         {searchOpen ? (
           <input
             autoFocus
@@ -214,67 +243,45 @@ export default function Notifications() {
             placeholder={T('Tìm thông báo…', 'Search notifications…')}
             data-testid="notifications-search-input"
             style={{
-              ...fieldGlass({ flex: 1, padding: '10px 14px', borderRadius: 999, border: 'none', marginRight: 10 }),
+              ...fieldGlass({ flex: 1, minWidth: 0, padding: '10px 14px', borderRadius: 999, border: 'none' }),
               fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none',
               animation: `gocIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both`,
             }}
           />
-        ) : selectionMode ? (
-          <span style={{ ...display(27) }}>{T('Đang Chọn', 'Selecting')}</span>
         ) : (
-          <span style={{ ...display(27) }}>{T('Thông Báo', 'Notifications')}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+            <HeaderWordmark />
+            <span style={{ ...display(27), lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {selectionMode ? T('Đang Chọn', 'Selecting') : T('Thông Báo', 'Notifications')}
+            </span>
+          </div>
         )}
-        {/* TASK 2 (2026-09-22 twentieth follow-up) — the two right-side
-            header slots morph in place (same two fixed positions, content
-            crossfades via key+gocFade) into Select all + Cancel rather than
-            being replaced by a single plain-text "Huỷ" elsewhere in the
-            header — same icon-above-label sizing as the normal Search/Select
-            controls, Cancel in the shared `alert` destructive color. */}
+        {/* The two right-side slots morph in place (key + gocFade) into
+            Select all + Cancel; Cancel is in the shared `alert` color. */}
         <div style={{ display: 'flex', gap: 14, flex: 'none' }}>
           {selectionMode ? (
-            <div
-              key="select-all"
-              onClick={selectAll}
-              data-testid="notifications-select-all"
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
-            >
-              <span style={{ width: 34, height: 34, borderRadius: '50%', ...fieldGlass({}), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: ink }}>☑</span>
-              <span style={{ fontSize: 9.5, color: ink, opacity: 0.7 }}>{T('Chọn tất cả', 'Select all')}</span>
-            </div>
+            <HeaderIconButton
+              key="select-all" icon="selectAll" label={T('Chọn tất cả', 'Select all')} onClick={selectAll}
+              testId="notifications-select-all" style={{ animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
+            />
           ) : (
-            <div
-              key="search"
+            <HeaderIconButton
+              key="search" icon={searchOpen ? 'close' : 'search'} label={searchOpen ? T('Đóng', 'Close') : T('Tìm', 'Search')}
               onClick={() => { if (searchOpen) setQuery(''); setSearchOpen(v => !v); }}
-              data-testid="notifications-search-toggle"
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
-            >
-              <span style={{ width: 34, height: 34, borderRadius: '50%', ...fieldGlass({}), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: ink }}>
-                {searchOpen ? '✕' : '🔍'}
-              </span>
-              <span style={{ fontSize: 9.5, color: ink, opacity: 0.7 }}>{searchOpen ? T('Đóng', 'Close') : T('Tìm', 'Search')}</span>
-            </div>
+              testId="notifications-search-toggle" style={{ animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
+            />
           )}
           {selectionMode ? (
-            <div
-              key="cancel"
-              onClick={exitSelectionMode}
-              data-testid="notifications-selection-cancel"
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
-            >
-              <span style={{ width: 34, height: 34, borderRadius: '50%', ...fieldGlass({}), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: alert }}>✕</span>
-              <span style={{ fontSize: 9.5, color: alert, opacity: 0.85 }}>{T('Huỷ', 'Cancel')}</span>
-            </div>
+            <HeaderIconButton
+              key="cancel" icon="close" label={T('Huỷ', 'Cancel')} tint={alert} onClick={exitSelectionMode}
+              testId="notifications-selection-cancel" style={{ animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
+            />
           ) : (
             s.notifications.length > 0 && (
-              <div
-                key="select"
-                onClick={() => setSelectionMode(true)}
-                data-testid="notifications-select-mode"
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer', animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
-              >
-                <span style={{ width: 34, height: 34, borderRadius: '50%', ...fieldGlass({}), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: ink }}>☑</span>
-                <span style={{ fontSize: 9.5, color: ink, opacity: 0.7 }}>{T('Chọn', 'Select')}</span>
-              </div>
+              <HeaderIconButton
+                key="select" icon="select" label={T('Chọn', 'Select')} onClick={() => setSelectionMode(true)}
+                testId="notifications-select-mode" style={{ animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
+              />
             )
           )}
         </div>
@@ -454,7 +461,7 @@ function AvatarFallback({ kind }) {
         fontSize: 16, color: ink,
       }}
     >
-      {isTeam ? '👥' : '🔔'}
+      {isTeam ? <svg width={17} height={17} viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.55 }}><circle cx="8.5" cy="8" r="3.3" /><circle cx="16.5" cy="9" r="2.7" /><path d="M2.5 19.5c.4-3.4 2.9-5.3 6-5.3s5.6 1.9 6 5.3zM15 14.4c3 .1 5.6 1.7 6 5.1h-4.6c-.1-2-.7-3.6-1.4-5.1z" /></svg> : '🔔'}
     </div>
   );
 }
@@ -485,7 +492,7 @@ function Row({ n, unread, avatar, onClick, onOpenMenu, selectionMode, selected }
         <span
           data-testid="notification-row-checkbox"
           style={{
-            flex: 'none', width: 22, height: 22, borderRadius: '50%', alignSelf: 'center',
+            flex: 'none', width: 20, height: 20, borderRadius: '50%', alignSelf: 'center', boxSizing: 'border-box',
             border: `1.5px solid ${selected ? alert : rule}`, background: selected ? alert : 'transparent',
             color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700,
           }}
@@ -520,9 +527,9 @@ function Row({ n, unread, avatar, onClick, onOpenMenu, selectionMode, selected }
         <span
           onClick={(e) => { e.stopPropagation(); onOpenMenu(); }}
           data-testid="notification-menu"
-          style={{ flex: 'none', fontSize: 15, color: ink, opacity: 0.4, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
+          style={{ flex: 'none', width: 32, alignSelf: 'center', height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', color: ink, opacity: 0.4, cursor: 'pointer' }}
         >
-          •••
+          <svg width={18} height={18} viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.9" /><circle cx="12" cy="12" r="1.9" /><circle cx="19" cy="12" r="1.9" /></svg>
         </span>
       )}
     </div>

@@ -81,7 +81,7 @@ export default function EditProfile() {
             maxLength={4000}
             rows={6}
             data-testid="edit-profile-intro-long"
-            style={{ ...fieldGlass({ padding: '12px 14px', fontSize: 13.5, resize: 'vertical' }), fontFamily: 'inherit' }}
+            style={{ ...fieldGlass({ padding: '12px 14px', fontSize: 13.5, resize: 'vertical', border: 'none', outline: 'none', color: ink, borderRadius: 14 }), fontFamily: 'inherit' }}
           />
           <span style={{ fontSize: 10.5, color: ink, opacity: 0.55, textAlign: 'right' }}>{s.editProfileIntroLong.length}/4000</span>
         </div>

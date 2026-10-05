@@ -26,11 +26,12 @@ const inputStyle = (extra) => ({
 function Scaffold({ title, subtitle, children }) {
   const { T, logout } = useGoc();
   return (
-    <div style={{ minHeight: '100%', padding: '84px 26px 40px', boxSizing: 'border-box', color: ink }}>
-      <h1 style={display(26, { margin: 0, lineHeight: 1.25 })} data-testid="gate-title">{title}</h1>
+    <div style={{ minHeight: '100%', padding: '62px 24px 40px', boxSizing: 'border-box', color: ink }}>
+      <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 96, height: 'auto', display: 'block', marginTop: 36 }} />
+      <h1 style={display(26, { margin: '28px 0 0', lineHeight: 1.25 })} data-testid="gate-title">{title}</h1>
       <p style={{ fontSize: 14, lineHeight: 1.55, color: ink, opacity: 0.8, margin: '10px 0 0' }}>{subtitle}</p>
       <div style={{ marginTop: 22, display: 'flex', flexDirection: 'column', gap: 14 }}>{children}</div>
-      <div onClick={logout} data-testid="gate-signout" style={{ fontSize: 13, textAlign: 'center', marginTop: 28, cursor: 'pointer', textDecoration: 'underline' }}>
+      <div onClick={logout} data-testid="gate-signout" style={{ fontSize: 13, textAlign: 'center', marginTop: 28, cursor: 'pointer' }}>
         {T('Đăng xuất', 'Sign out')}
       </div>
     </div>

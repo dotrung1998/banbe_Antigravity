@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
+import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
 
 function maskAccountNumber(number) {
@@ -104,7 +105,7 @@ export default function RefundAccounts() {
         ‹ {T('Tài khoản', 'Account')}
       </div>
       <div style={{ padding: '14px 22px 0' }}>
-        <h1 style={{ ...display(24, { margin: 0 }) }}>{T('Tài Khoản Nhận Hoàn Tiền', 'Refund Accounts')}</h1>
+        <h1 style={{ ...display(24, { margin: 0, display: 'flex', alignItems: 'center', gap: 10 }) }}><RowIcon kind="banknote" size={34} accent={ROW_ACCENT_COLORS.payments} />{T('Tài Khoản Nhận Hoàn Tiền', 'Refund Accounts')}</h1>
         {s.refundDestinations.length > 1 && (
           <p style={{ fontSize: 11.5, color: ink, opacity: 0.6, margin: '6px 0 0' }}>{T('Kéo để sắp xếp', 'Drag to reorder')}</p>
         )}
@@ -129,10 +130,9 @@ export default function RefundAccounts() {
       {!formOpen && (
         <div style={{ margin: '18px 22px 0' }}>
           {s.refundDestinations.length === 0 ? (
-            <div style={{ ...fieldGlass({ display: 'flex', flexDirection: 'column' }) }}>
-              <p style={{ fontSize: 13, color: ink, margin: 0, padding: '20px 16px', textAlign: 'center' }}>{T('Chưa có tài khoản nhận hoàn tiền', 'No refund accounts saved yet')}</p>
-              <div style={{ borderTop: `1px solid ${rule}` }} />
-              <div onClick={openAddForm} style={{ padding: '13px 14px', fontSize: 13, color: ink, cursor: 'pointer' }} data-testid="refund-account-add">
+            <div>
+              <p style={{ ...fieldGlass({ borderRadius: 14 }), fontSize: 13, color: ink, margin: 0, padding: 20, textAlign: 'center' }}>{T('Chưa có tài khoản nhận hoàn tiền', 'No refund accounts saved yet')}</p>
+              <div onClick={openAddForm} style={{ marginTop: 12, padding: 13, fontSize: 13, color: ink, cursor: 'pointer', textAlign: 'center', borderRadius: 12, border: `1px solid ${rule}` }} data-testid="refund-account-add">
                 {T('+ Thêm tài khoản', '+ Add account')}
               </div>
             </div>
@@ -225,7 +225,7 @@ export default function RefundAccounts() {
               ))}
               <div
                 onClick={openAddForm}
-                style={{ padding: '13px 14px', fontSize: 13, color: ink, cursor: 'pointer' }}
+                style={{ padding: '13px 14px', fontSize: 13, color: ink, cursor: 'pointer', textAlign: 'center' }}
                 data-testid="refund-account-add"
               >
                 {T('+ Thêm tài khoản', '+ Add account')}

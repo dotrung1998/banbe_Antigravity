@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, alert, display, cardGlass, fieldGlass, inkButton } from '../theme.js';
+import HostTitleIcon from './HostTitleIcon.jsx';
 import { metricLabel } from '../lib/reportMetricLabels.js';
 
 const ROLE_LABEL = { personal: ['Cá nhân', 'Personal'], host: ['Tổ chức', 'Host'], admin: ['Quản trị', 'Admin'] };
@@ -176,10 +177,10 @@ export default function Reports() {
   return (
     <div style={{ minHeight: '100%', background: paper, animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both' }} data-screen-label="Reports">
       <div style={{ padding: '66px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span onClick={backFromReports} style={{ fontSize: 13, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</span>
+        <span onClick={backFromReports} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</span>
       </div>
       <div style={{ padding: '10px 20px 0' }}>
-        <span style={{ ...display(24) }}>{T('Số liệu & báo cáo', 'Metrics & Reports')}</span>
+        <span style={{ ...display(24, { display: 'flex', alignItems: 'center', gap: 10 }) }}><HostTitleIcon kind="checklist" group="reports" />{T('Số liệu & báo cáo', 'Metrics & Reports')}</span>
         <p style={{ fontSize: 12, color: ink, opacity: 0.65, margin: '4px 0 0' }}>{roleLabel}</p>
       </div>
 
@@ -199,12 +200,12 @@ export default function Reports() {
         <input
           type="date" value={s.reportsCustomStart} data-testid="kpi-range-custom-start"
           onChange={(e) => setReportsCustomRange(e.target.value, s.reportsCustomEnd || e.target.value)}
-          style={{ ...fieldGlass({ padding: '6px 8px', fontSize: 12 }) }}
+          style={{ ...fieldGlass({ padding: '8px 10px', fontSize: 12, border: 'none', outline: 'none', color: ink, fontFamily: 'inherit' }) }}
         />
         <input
           type="date" value={s.reportsCustomEnd} data-testid="kpi-range-custom-end"
           onChange={(e) => setReportsCustomRange(s.reportsCustomStart || e.target.value, e.target.value)}
-          style={{ ...fieldGlass({ padding: '6px 8px', fontSize: 12 }) }}
+          style={{ ...fieldGlass({ padding: '8px 10px', fontSize: 12, border: 'none', outline: 'none', color: ink, fontFamily: 'inherit' }) }}
         />
       </div>
 

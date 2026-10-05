@@ -135,7 +135,7 @@ export default function EventDetail() {
   const reserveBarTap = myBooking ? openHeld : (ev.cancelled || ended) ? undefined : (ev.soldOut ? goChat : goReserve);
   const reserveBarStyle = (myBooking || (!ev.soldOut && !ended && !ev.cancelled))
     ? { ...inkButton({ flex: 'none', margin: '0 20px 22px', padding: '15px 0' }) }
-    : { flex: 'none', margin: '0 20px 22px', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 0', borderRadius: 18, cursor: (ended || ev.cancelled) ? 'default' : 'pointer', background: 'rgba(238,232,218,0.92)', color: ink };
+    : { flex: 'none', margin: '0 20px 22px', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 0', borderRadius: 18, cursor: (ended || ev.cancelled) ? 'default' : 'pointer', background: 'var(--bb-field)', color: ink };
 
   return (
     <div style={{ animation: 'gocFade 0.32s ease both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Event">
@@ -144,8 +144,8 @@ export default function EventDetail() {
           of the content, inside this screen's OWN scroll container below —
           not the shared Shell-level one) into a fixed overlay, so both
           stay visible/tappable the whole time the user scrolls. */}
-      <div onClick={backFromEvent} data-testid="event-detail-back" style={photoPill({ position: 'fixed', top: 66, left: 16, padding: '8px 13px', zIndex: 5 })}>‹ {backLabel}</div>
-      <div onClick={() => shareEvent(ev)} style={photoPill({ position: 'fixed', top: 66, right: 16, padding: '8px 13px', zIndex: 5, minWidth: 84, textAlign: 'center', boxSizing: 'border-box' })}>
+      <div onClick={backFromEvent} data-testid="event-detail-back" style={photoPill({ position: 'fixed', top: 66, left: 16, padding: '8px 14px', zIndex: 5, borderRadius: 999 })}>‹ {backLabel}</div>
+      <div onClick={() => shareEvent(ev)} style={photoPill({ position: 'fixed', top: 66, right: 16, padding: '8px 14px', zIndex: 5, minWidth: 84, textAlign: 'center', boxSizing: 'border-box', borderRadius: 999 })}>
         {s.shared ? T('Đã sao chép link', 'Link copied') : T('Chia sẻ', 'Share')}
       </div>
       {/* Blocker fix (retention roadmap follow-up) — EventDetail had no save
@@ -159,7 +159,7 @@ export default function EventDetail() {
       <div
         onClick={() => toggleFav(ev.key)}
         data-testid="event-detail-save"
-        style={photoPill({ position: 'fixed', top: 112, right: 16, padding: '8px 13px', zIndex: 5, minWidth: 84, textAlign: 'center', boxSizing: 'border-box' })}
+        style={photoPill({ position: 'fixed', top: 112, right: 16, padding: '8px 14px', zIndex: 5, minWidth: 84, textAlign: 'center', boxSizing: 'border-box', borderRadius: 999 })}
       >
         {isSaved(ev.key) ? T('Đã lưu', 'Saved') : T('Lưu', 'Save')}
       </div>

@@ -3,7 +3,9 @@ import { useGoc, resolveCoverUrl } from '../state/GocContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { mapsUrl } from '../data/events.js';
-import { paper, ink, rule, display, fieldGlass, cardGlass, alert } from '../theme.js';
+import { paper, ink, rule, display, alert } from '../theme.js';
+import HostTitleIcon from './HostTitleIcon.jsx';
+import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
 
 // Event submission -> admin review -> publish. A SEPARATE desk from
 // Disputes.jsx (payment verification) — reviewing a new event submission
@@ -71,19 +73,19 @@ export default function AdminEvents() {
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Admin events">
       <div onClick={backFromDocuments} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="admin-events-back">
-        ‹ {T('Tài khoản', 'Account')}
+        ‹ {T('Duyệt & Kiểm Duyệt', 'Review & Moderation')}
       </div>
       <div style={{ padding: '14px 22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 10 }}>
         <div>
-          <h1 style={{ ...display(24, { margin: 0 }) }} data-testid="admin-events-title">{T('Sự Kiện Chờ Duyệt', 'Pending Events')}</h1>
+          <h1 style={{ ...display(24, { margin: 0, display: 'flex', alignItems: 'center', gap: 10 }) }} data-testid="admin-events-title"><HostTitleIcon kind="alertShield" group="adminReview" />{T('Sự Kiện Chờ Duyệt', 'Pending Events')}</h1>
           <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
             {T('Sự kiện chỉ hiển thị công khai sau khi được duyệt ở đây.', 'An event only shows publicly once approved here.')}
           </p>
         </div>
         {s.adminEvents.length > 0 && (
-          <div style={{ display: 'flex', gap: 10, flex: 'none' }}>
-            <span onClick={expandAll} data-testid="admin-events-expand-all" style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer', textDecoration: 'underline' }}>{T('Mở tất cả', 'Expand all')}</span>
-            <span onClick={collapseAll} data-testid="admin-events-collapse-all" style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer', textDecoration: 'underline' }}>{T('Thu gọn tất cả', 'Collapse all')}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flex: 'none' }}>
+            <span onClick={expandAll} data-testid="admin-events-expand-all" style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Mở tất cả', 'Expand all')}</span>
+            <span onClick={collapseAll} data-testid="admin-events-collapse-all" style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Thu gọn tất cả', 'Collapse all')}</span>
           </div>
         )}
       </div>
@@ -138,12 +140,12 @@ export default function AdminEvents() {
                       ))}
                     </div>
                   ) : (
-                    <div style={{ ...fieldGlass({ padding: '30px 12px', textAlign: 'center' }) }}>
+                    <div style={{ ...insetField({ padding: '30px 12px', textAlign: 'center' }) }}>
                       <span style={{ fontSize: 11.5, color: ink, opacity: 0.55 }}>{T('Chưa có ảnh', 'No photo yet')}</span>
                     </div>
                   )}
 
-                  <div style={{ ...fieldGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }}>
+                  <div style={{ ...insetField({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }}>
                     <Line label={T('Trạng thái', 'Status')} value={e.status} />
                     <Line label={T('Danh mục', 'Category')} value={e.catLabel || e.catKey || T('Không Có Thông Tin', 'Not Provided')} />
                     <Line label={T('Từ khoá', 'Keywords')} value={e.keywords?.length ? e.keywords.join(', ') : T('Không Có Thông Tin', 'Not Provided')} />
@@ -158,7 +160,7 @@ export default function AdminEvents() {
                     />
                   </div>
 
-                  <div style={{ ...fieldGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }} data-testid="admin-event-address">
+                  <div style={{ ...insetField({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }} data-testid="admin-event-address">
                     <Line label={T('Địa chỉ', 'Address')} value={addressLabel} />
                     <Line label={T('Đã xác minh (chủ nhà tự khai)', 'Address confirmed (host-provided)')} value={e.addressVerified ? T('Có', 'Yes') : T('Không', 'No')} />
                     {e.lat != null && e.lng != null && (
@@ -169,7 +171,7 @@ export default function AdminEvents() {
                   </div>
 
                   {e.intro && (
-                    <div style={{ ...fieldGlass({ padding: '10px 12px' }) }}>
+                    <div style={{ ...insetField({ padding: '10px 12px' }) }}>
                       <span style={{ fontSize: 10.5, color: ink, opacity: 0.65 }}>{T('Giới thiệu sự kiện', 'Event introduction')}</span>
                       <p style={{ fontSize: 12.5, lineHeight: 1.5, color: ink, margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{e.intro}</p>
                     </div>
@@ -180,14 +182,14 @@ export default function AdminEvents() {
                       write path anywhere in this schema (migration 109's own
                       comment) — labelled "Not verified" always, never implied
                       otherwise. Never shows bank/payout details here. */}
-                  <div style={{ ...fieldGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }} data-testid="admin-event-organizer">
+                  <div style={{ ...insetField({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }} data-testid="admin-event-organizer">
                     <Line label={T('Loại người tổ chức (tự khai)', 'Organizer type (self-declared)')} value={e.organizerType === 'business' ? T('Doanh nghiệp', 'Business') : T('Cá nhân', 'Individual')} />
                     <Line label={T('Đăng ký kinh doanh', 'Business registration')} value={e.organizerHasTaxCode ? T('Đã cung cấp mã số thuế (chưa xác minh)', 'Tax code provided (not verified)') : T('Chưa cung cấp', 'Not provided')} />
                     <Line label={T('Xác minh nền tảng', 'Platform verification')} value={T('Chưa xác minh', 'Not verified')} />
                   </div>
 
                   {(e.rejectionReason || e.withdrawalReason) && (
-                    <div style={{ ...fieldGlass({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }} data-testid="admin-event-history">
+                    <div style={{ ...insetField({ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }) }} data-testid="admin-event-history">
                       {e.rejectionReason && <Line label={T('Lý do từ chối trước đó', 'Previous rejection reason')} value={e.rejectionReason} />}
                       {e.withdrawalReason && <Line label={T('Lý do rút lại trước đó', 'Previous withdrawal reason')} value={e.withdrawalReason} />}
                     </div>
@@ -198,7 +200,7 @@ export default function AdminEvents() {
                     onChange={(ev) => setReason(e.key, ev.target.value)}
                     placeholder={T('Lý do từ chối (bắt buộc nếu từ chối)', 'Rejection reason (required if rejecting)')}
                     data-testid="admin-event-reason"
-                    style={{ ...fieldGlass({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
+                    style={{ ...insetField({ padding: '11px 12px', border: 'none' }), fontSize: 13, color: ink, outline: 'none', fontFamily: 'inherit' }}
                   />
                   <div style={{ display: 'flex', gap: 8 }}>
                     <Action

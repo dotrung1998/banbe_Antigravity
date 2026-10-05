@@ -1,5 +1,6 @@
 import { useGoc } from '../state/GocContext.jsx';
 import { HostPaymentQr } from './sheets/PaymentQrManager.jsx';
+import HostTitleIcon from './HostTitleIcon.jsx';
 import { paper, ink, FACE, display, fieldGlass, inkButton, alert } from '../theme.js';
 
 // Where the organizer says how they want to be paid. Without this filled in,
@@ -20,7 +21,7 @@ export default function Payout() {
         ‹ {T('Tài khoản', 'Account')}
       </div>
       <div style={{ padding: '14px 22px 0' }}>
-        <h1 style={{ ...display(24, { margin: 0 }) }}>{T('Nhận Thanh Toán', 'Getting Paid')}</h1>
+        <h1 style={{ ...display(24, { margin: 0, display: 'flex', alignItems: 'center', gap: 10 }) }}><HostTitleIcon kind="banknote" group="hostOps" />{T('Nhận Thanh Toán', 'Getting Paid')}</h1>
         <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
           {T('Khách chuyển khoản thẳng cho bạn. banbe không giữ tiền và không thu phí.',
              'Guests transfer straight to you. banbe never holds the money and takes no cut.')}

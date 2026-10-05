@@ -1,8 +1,15 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { paper, ink, cardGlass, display } from '../theme.js';
+import { paper, ink, rule, display } from '../theme.js';
+
+const choiceStyle = (active) => ({
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderRadius: 14, padding: 18, cursor: 'pointer',
+  background: 'var(--bb-field)', boxSizing: 'border-box',
+  border: active ? `1.5px solid ${ink}` : `1px solid ${rule}`,
+});
 
 export default function LangPick() {
-  const { pickVi, pickEn } = useGoc();
+  const { state, pickVi, pickEn } = useGoc();
+  const lang = state.lang;
 
   return (
     <div
@@ -13,8 +20,8 @@ export default function LangPick() {
         background: paper,
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'center',
-        padding: '0 30px',
+        justifyContent: 'flex-start',
+        padding: '78px 30px 0',
         animation: 'gocFade 0.4s ease both',
       }}
       data-screen-label="Language"
@@ -47,53 +54,34 @@ export default function LangPick() {
         Choose your language
       </span>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 30 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 28 }}>
         <div
-          onClick={pickVi}
+          onClick={pickVi} data-testid="lang-vi"
           style={{
-            ...cardGlass({
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-              borderRadius: 15,
-              padding: '17px 18px',
-              cursor: 'pointer',
-            }),
+            ...choiceStyle(lang === 'vi'),
           }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ ...display(17, { color: ink }) }}>Tiếng Việt</span>
-            <span style={{ fontSize: 11.5, color: ink, opacity: 0.58 }}>Mặc định</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <span style={{ ...display(19, { color: ink }) }}>Tiếng Việt</span>
+            <span style={{ fontSize: 11.5, color: ink }}>Mặc định</span>
           </div>
-          <span style={{ fontSize: 14, color: ink }}>›</span>
+          <span style={{ fontSize: 15, color: ink }}>›</span>
         </div>
 
         <div
-          onClick={pickEn}
+          onClick={pickEn} data-testid="lang-en"
           style={{
-            ...cardGlass({
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-              borderRadius: 15,
-              padding: '17px 18px',
-              cursor: 'pointer',
-            }),
+            ...choiceStyle(lang === 'en'),
           }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ ...display(17, { color: ink }) }}>English</span>
-            <span style={{ fontSize: 11.5, color: ink, opacity: 0.58 }}>You can switch anytime</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <span style={{ ...display(19, { color: ink }) }}>English</span>
+            <span style={{ fontSize: 11.5, color: ink }}>Switch anytime</span>
           </div>
-          <span style={{ fontSize: 14, color: ink }}>›</span>
+          <span style={{ fontSize: 15, color: ink }}>›</span>
         </div>
       </div>
 
-      <span style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.58, marginTop: 18 }}>
-        Đổi lại bất cứ lúc nào trong Tài khoản.
-      </span>
     </div>
   );
 }

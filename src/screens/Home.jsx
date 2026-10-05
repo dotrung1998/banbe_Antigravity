@@ -375,6 +375,21 @@ const HOME_EXTRA_FILTERS = [
   { key: 'ended', vi: 'Đã kết thúc', en: 'Ended' },
 ];
 
+// iOS HomeView.homeGlassCapsule parity: translucent ink-tinted fill, 1px
+// hairline, soft shadow, 999px radius, fixed 36px height.
+function homeCapsule(extra, active = false) {
+  return {
+    display: 'inline-flex', alignItems: 'center', height: 36, boxSizing: 'border-box', padding: '0 14px',
+    borderRadius: 999, fontSize: 14, whiteSpace: 'nowrap', cursor: 'pointer', flex: 'none', userSelect: 'none',
+    color: active ? 'var(--bb-bg)' : ink,
+    background: active ? 'rgba(var(--bb-fg-rgb), 0.92)' : 'linear-gradient(180deg, rgba(255,255,255,0.35), rgba(255,255,255,0.05)), rgba(var(--bb-fg-rgb), 0.06)',
+    backdropFilter: 'blur(14px) saturate(1.1)', WebkitBackdropFilter: 'blur(14px) saturate(1.1)',
+    border: '1px solid ' + (active ? 'transparent' : 'rgba(var(--bb-fg-rgb), 0.14)'),
+    boxShadow: active ? '0 2px 6px rgba(27,25,22,0.18)' : '0 2px 8px rgba(27,25,22,0.08), inset 0 1px 0 rgba(255,255,255,0.5)',
+    ...extra,
+  };
+}
+
 export const FILTER_DEFS = [
   { key: 'all', vi: 'Tất cả', en: 'All' },
   { key: 'supper', vi: 'Supper club', en: 'Supper club' },
@@ -548,11 +563,7 @@ export default function Home() {
   const filters = FILTER_DEFS.map(f => ({
     key: f.key,
     label: T(f.vi, f.en),
-    style: {
-      fontSize: 12.5, cursor: 'pointer', paddingBottom: 6, color: ink,
-      fontWeight: s.filter === f.key ? 600 : 400,
-      borderBottom: s.filter === f.key ? `2px solid ${ink}` : '2px solid transparent',
-    },
+    style: homeCapsule({ fontWeight: s.filter === f.key ? 600 : 400 }, s.filter === f.key),
   }));
 
   // Discovery-bug fix — every real event (loadDiscoveryEvents above),
@@ -783,37 +794,33 @@ export default function Home() {
   return (
     <>
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Home">
-      <div style={{ padding: '70px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 126, height: 'auto', display: 'block', margin: '0 0 2px' }} />
-          {/* Home quick event search moved OUT of this header (2026-09-28
-              dock/search pass) — see HomeSearchFab below (rendered at the
-              bottom of this component, floating lower-right above the
-              dock). Kept here only as the comment marker for why the slot
-              beside the wordmark is now empty. */}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-          {/* Task 2c (2026-09-21 follow-up) — a quick Appearance (light/dark)
-              toggle next to the existing language/area switchers, separated
-              by this app's own "▪" glyph (already used throughout its copy,
-              e.g. event captions like "Th 5, 09.07 ▪ 21:00") rather than a
-              new divider style. Wired to the SAME `toggleTheme` Preferences.jsx
-              already uses — no parallel theme state. */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-            {/* Task 1 (2026-09-21 follow-up) — bumped 11px -> 13px, just
-                enough to read/tap more easily without unbalancing the rest
-                of the header row (area/appearance stay at their existing
-                size). */}
-            <span onClick={toggleLang} style={{ fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer', letterSpacing: '0.06em', padding: '4px 2px' }}>{T('English', 'Tiếng Việt')}</span>
-            <span style={{ fontSize: 9, color: ink, opacity: 0.4 }}>▪</span>
-            {/* Task 3 (2026-09-22 twelfth follow-up) — area/appearance bumped to
-                match the language toggle's size/weight/hit-area (13px/600,
-                4px vertical padding) instead of the smaller 11px/400 they'd
-                been left at when the language toggle was enlarged. */}
-            <span onClick={openArea} data-testid="home-area-toggle" style={{ fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer', padding: '4px 2px' }}>banbe ▪︎ {curArea.key === 'all' ? T('Tất cả', 'All') : curArea.label} ▾</span>
-            <span style={{ fontSize: 9, color: ink, opacity: 0.4 }}>▪</span>
-            <span onClick={toggleTheme} data-testid="home-theme-toggle" style={{ fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer', padding: '4px 2px' }}>{s.theme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}</span>
+      {/* iOS parity header: wordmark + "Home" title + round glass search
+          button, then a row of three equal glass capsules (language, area,
+          theme). Search lives here again (same openEventSearch action and
+          data-testid as the old floating button). */}
+      <div style={{ padding: '62px 20px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 96, height: 'auto', display: 'block' }} />
+            <span style={{ ...display(27), lineHeight: 1.1 }}>{T('Nhà', 'Home')}</span>
           </div>
+          <div
+            onClick={openEventSearch}
+            data-testid="home-search-fab"
+            aria-label={T('Tìm sự kiện', 'Search events')}
+            role="button"
+            style={{ ...homeCapsule(), width: 48, height: 48, borderRadius: '50%', padding: 0, justifyContent: 'center', flex: 'none' }}
+          >
+            <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+          </div>
+        </div>
+        <div data-hscroll="true" style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', padding: '2px 0 4px' }}>
+          <span onClick={toggleLang} data-testid="home-lang-toggle" style={homeCapsule({ fontWeight: 600 })}>{T('EN', 'VN')}</span>
+          <span onClick={openArea} data-testid="home-area-toggle" style={homeCapsule({ fontWeight: 600 })}>{curArea.key === 'all' ? T('Mọi nơi', 'Everywhere') : curArea.label} <span style={{ fontSize: 9, marginLeft: 5 }}>▾</span></span>
+          <span onClick={toggleTheme} data-testid="home-theme-toggle" style={homeCapsule({ fontWeight: 600 })}>{s.theme === 'dark' ? T('Sáng', 'Light') : T('Tối', 'Dark')}</span>
         </div>
       </div>
 
@@ -826,27 +833,27 @@ export default function Home() {
       {savedList.length > 0 && (
         <div style={{ padding: '16px 20px 4px', borderBottom: `1px solid ${rule}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-            <span style={{ ...display(15) }}>{T('Sự kiện của bạn', 'Your events')}</span>
+            <span style={{ ...display(18) }}>{T('Sự kiện của bạn', 'Your events')}</span>
             <span style={{ fontSize: 11.5, color: ink }}>{T('Sự kiện đã qua sẽ ẩn sau 48h', 'Past events clear after 48h')}</span>
           </div>
           <div data-hscroll="true" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6 }}>
             {savedList.map(sv => (
-              <div key={sv.key} onClick={sv.unavailable ? undefined : () => openSaved(sv)} style={{ flex: 'none', width: 152, cursor: sv.unavailable ? 'default' : 'pointer' }}>
+              <div key={sv.key} onClick={sv.unavailable ? undefined : () => openSaved(sv)} style={{ flex: 'none', width: 164, cursor: sv.unavailable ? 'default' : 'pointer' }}>
                 <div style={{ position: 'relative' }}>
                   {sv.photoUrl ? (
-                    <div style={bg(sv.photoUrl, { width: 152, height: 96, borderRadius: 12, filter: 'none' })} />
+                    <div style={bg(sv.photoUrl, { width: 164, height: 104, borderRadius: 18, filter: 'none' })} />
                   ) : (
-                    <div style={{ ...cardGlass({ width: 152, height: 96 }), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ ...cardGlass({ width: 164, height: 104, borderRadius: 18 }), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <span style={{ fontSize: 10.5, color: ink, opacity: 0.55 }}>{sv.unavailable ? sv.tag : T('Chưa có ảnh', 'No photo yet')}</span>
                     </div>
                   )}
-                  <span style={photoChip(sv.chip, { top: 6, left: 6, fontSize: 9, padding: '4px 8px', borderRadius: 12 })}>{sv.tag}</span>
+                  <span style={photoChip(sv.chip, { top: 8, left: 8, fontSize: 10, padding: '5px 11px', borderRadius: 999 })}>{sv.tag}</span>
                   {sv.canRemove && (
                     <span onClick={(ev) => { ev.stopPropagation(); toggleFav(sv.key); }} style={lightChip({ top: 6, right: 6, fontSize: 10, padding: '4px 8px', borderRadius: 12 })}>{T('Bỏ', 'Remove')}</span>
                   )}
                 </div>
-                <div style={{ ...display(15, { marginTop: 7, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{sv.name}</div>
-                <div style={{ fontSize: 11, color: ink, marginTop: 1 }}>{sv.status}</div>
+                <div style={{ ...display(17, { marginTop: 8, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{sv.name}</div>
+                <div style={{ fontSize: 12, color: ink, marginTop: 2, opacity: 0.8 }}>{sv.status}</div>
               </div>
             ))}
           </div>
@@ -887,7 +894,7 @@ export default function Home() {
               below) disables it, leaving the gradient's own resting frame
               — still colorful, just not moving — as the static fallback. */}
           <div ref={pulseRingRef} className="bb-pulse-ring" style={{
-            width: 56, height: 56, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 60, height: 60, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'linear-gradient(150deg, #E7C9C2, #E3CFA6 50%, #C8CBB2)',
           }}>
             <span style={{ fontSize: 20, color: '#fff', textShadow: '0 0 6px rgba(255,255,255,0.55)' }}>✦</span>
@@ -954,25 +961,22 @@ export default function Home() {
           data-testid="home-survey-discovery-toggle"
           style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', minHeight: 32 }}
         >
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.7 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: ink, opacity: 0.7 }}>
             {T('Góp ý cho sự kiện sắp tới', 'Help Shape Upcoming Events')}
           </span>
           {!s.homeSurveyDiscoveryLoading && !s.homeSurveyDiscoveryError && s.homeSurveyDiscovery.length > 0 && (
             // Honest LOADED count, never a fabricated total — "+" only when
             // the server told us more exist (`hasMore`), never guessed from
             // a page-size cap.
-            <span style={{ fontSize: 10.5, fontWeight: 600, color: ink, opacity: 0.7, background: `${ink}1a`, borderRadius: 999, padding: '2px 7px' }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: ink, opacity: 0.75, background: `${ink}1a`, borderRadius: 999, padding: '2px 10px' }}>
               {s.homeSurveyDiscoveryHasMore ? `${s.homeSurveyDiscovery.length}+` : s.homeSurveyDiscovery.length}
             </span>
           )}
           <span style={{ flex: 1 }} />
-          <span style={{
-            fontSize: 11, color: ink, opacity: 0.5,
-            transform: s.homeSurveyDiscoveryExpanded ? 'rotate(180deg)' : 'none',
-            transition: 'transform 0.15s ease',
-          }}>
-            ▾
-          </span>
+          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"
+            style={{ color: ink, opacity: 0.55, transform: s.homeSurveyDiscoveryExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>
+            <path d="M6 9l6 6 6-6" />
+          </svg>
         </div>
         {s.homeSurveyDiscoveryExpanded && (
         <div style={{ marginTop: 10 }}>
@@ -1055,7 +1059,7 @@ export default function Home() {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 20, padding: '16px 20px 14px' }}>
+      <div data-hscroll="true" style={{ display: 'flex', gap: 8, padding: '14px 20px 8px', overflowX: 'auto', scrollbarWidth: 'none' }}>
         {filters.map(f => (
           <span key={f.key} onClick={() => pickFilter(f.key)} style={f.style}>{f.label}</span>
         ))}
@@ -1065,7 +1069,7 @@ export default function Home() {
           `overflowX` instead of a horizontally-scrolling single row: every
           chip is now always visible (wraps to a second line if it doesn't
           fit), no swipe needed to see the rest. */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '0 20px 14px' }}>
+      <div data-hscroll="true" style={{ display: 'flex', gap: 8, padding: '0 20px 14px', overflowX: 'auto', scrollbarWidth: 'none' }}>
         {HOME_EXTRA_FILTERS.map(f => {
           // Every filter key maps to its state field by simple
           // capitalization (attending -> filterAttending, notConfirmed ->
@@ -1076,7 +1080,7 @@ export default function Home() {
               key={f.key}
               onClick={() => toggleHomeFilter(f.key)}
               data-testid={`home-filter-${f.key.toLowerCase()}`}
-              style={{ ...fieldGlass({}), padding: '6px 12px', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer', color: ink, fontWeight: active ? 700 : 400, border: active ? `1px solid ${ink}` : 'none' }}
+              style={homeCapsule({ fontWeight: active ? 600 : 400 }, !!active)}
             >
               {T(f.vi, f.en)}
             </span>
@@ -1198,64 +1202,6 @@ export default function Home() {
       <div onClick={homeHostLink} style={{ padding: '4px 20px 44px', fontSize: 14.5, fontWeight: 600, letterSpacing: '-0.01em', color: ink, cursor: 'pointer' }}>{homeHostLinkLabel} ›</div>
     </div>
 
-    {/* Home search relocation (2026-09-28 dock/search pass) — replaces
-        the old top-header icon (fd5fe61) with a compact floating button,
-        lower-right, stacked ABOVE the dock's own row (not beside it —
-        same vertical band the dock create-"+" tray anchors itself from,
-        `BAR_HEIGHT + BAR_BOTTOM_OFFSET + 14`, DockCreateButton.jsx),
-        which keeps it clear of the "+" button, dock icons and safe-area
-        bottom edge by construction rather than by tuned pixel overlap
-        checks. `position: fixed` — same technique the create-"+" tray
-        and Home's own Pulse teaser bubbles already use for chrome that
-        must never be clipped by an ancestor's scroll/overflow. Reuses
-        `barGlass()` verbatim (same material as the dock/"+" button) per
-        this ticket's own "keep Banbe's existing FAB styling language"
-        instruction — no new visual treatment invented. Same action as
-        before: opens MapExplore with its search input already focused
-        (`openEventSearch`, unchanged). Hides on scroll-down, reappears
-        on scroll-up/at-top (searchFabHidden effect above) so it never
-        sits over content mid-scroll, matching the dock's own existing
-        shrink-on-scroll-down convention instead of a bespoke one.
-        Deliberately rendered as a SIBLING of the root `data-screen-label`
-        div above, not a descendant — that root div's own `animation:
-        gocIn` (see index.css's own doc comment on `gocIn`, which already
-        documents this exact CSS quirk for a different element) makes it
-        an animated-property element, which establishes a containing
-        block for any `position: fixed` DESCENDANT for as long as the
-        animation instance is live — silently repositioning this button
-        relative to Home's own (scrolled, sometimes very tall) content box
-        instead of the real viewport, exactly the "position: fixed"
-        pointer-interception flakiness a first pass of this button hit in
-        Playwright (intercepted by `home-weekend-section` because the
-        button had scrolled off-screen along with the rest of the page).
-        A sibling of that animated div is never one of its descendants, so
-        it can never be captured by that containing block. */}
-    <div
-      onClick={openEventSearch}
-      data-testid="home-search-fab"
-      aria-label={T('Tìm sự kiện', 'Search events')}
-      role="button"
-      style={{
-        ...barGlass({}),
-        position: 'fixed',
-        right: DOCK_MARGIN,
-        bottom: BAR_HEIGHT + BAR_BOTTOM_OFFSET + 14,
-        width: 46, height: 46, borderRadius: '50%',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: ink, cursor: 'pointer', zIndex: 20,
-        border: `1px solid ${rule}`,
-        boxShadow: '0 8px 24px rgba(27,25,22,0.18)',
-        transition: 'transform 0.22s cubic-bezier(.22,.61,.36,1), opacity 0.22s ease',
-        transform: searchFabHidden ? 'translateY(16px) scale(0.9)' : 'translateY(0) scale(1)',
-        opacity: searchFabHidden ? 0 : 1,
-        pointerEvents: searchFabHidden ? 'none' : 'auto',
-      }}
-    >
-      <svg width={19} height={19} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="11" cy="11" r="7" />
-        <path d="M21 21l-4.35-4.35" />
-      </svg>
-    </div>
     </>
   );
 }

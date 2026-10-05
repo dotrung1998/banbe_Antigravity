@@ -1,135 +1,52 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { paper, ink, display, inkButton } from '../theme.js';
+import { paper, ink, rule, display, inkButton } from '../theme.js';
 
+// Mirrors iOS ThemePickView: caption, title, helper, two stacked choice rows
+// (name + subtitle, "✓"/"›" trailing), then a full-width ink Continue button.
 export default function ThemePick() {
   const { state, T, pickLight, pickDark, finishOnboarding } = useGoc();
   const isDark = state.theme === 'dark';
 
-  const lightCardStyle = {
-    flex: 1,
-    cursor: 'pointer',
-    padding: '10px',
-    borderRadius: '15px',
-    border: !isDark ? '1.5px solid var(--bb-fg)' : '1px solid var(--bb-rule)',
-    background: !isDark ? 'var(--bb-card)' : 'var(--bb-card2)',
-    display: 'flex',
-    flexDirection: 'column',
-  };
-
-  const darkCardStyle = {
-    flex: 1,
-    cursor: 'pointer',
-    padding: '10px',
-    borderRadius: '15px',
-    border: isDark ? '1.5px solid var(--bb-fg)' : '1px solid var(--bb-rule)',
-    background: isDark ? 'var(--bb-card)' : 'var(--bb-card2)',
-    display: 'flex',
-    flexDirection: 'column',
-  };
+  const choice = (title, subtitle, active, onClick, id) => (
+    <div
+      onClick={onClick}
+      data-testid={id}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderRadius: 14, padding: 18,
+        cursor: 'pointer', boxSizing: 'border-box', background: 'var(--bb-field)',
+        border: active ? `1.5px solid ${ink}` : `1px solid ${rule}`,
+      }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <span style={{ ...display(19, { color: ink }) }}>{title}</span>
+        <span style={{ fontSize: 11.5, color: ink }}>{subtitle}</span>
+      </div>
+      <span style={{ fontSize: 15, color: ink }}>{active ? '✓' : '›'}</span>
+    </div>
+  );
 
   return (
     <div
       style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 38,
-        background: paper,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        padding: '0 30px',
-        animation: 'gocFade 0.4s ease both',
+        position: 'absolute', inset: 0, zIndex: 38, background: paper, display: 'flex', flexDirection: 'column',
+        justifyContent: 'flex-start', padding: '78px 30px 0', animation: 'gocFade 0.4s ease both',
       }}
       data-screen-label="Appearance"
     >
-      <span style={{ ...display(27, { lineHeight: 1.2, color: ink }) }}>
-        {T('Sáng hay tối?', 'Light or dark?')}
+      <span style={{ fontSize: 11.5, color: ink }}>{T('Hiển thị', 'Appearance')}</span>
+      <span style={{ ...display(27, { lineHeight: 1.2, color: ink, marginTop: 8 }) }}>
+        {T('Bạn thích nền sáng hay tối?', 'Light or dark?')}
       </span>
-      <span
-        style={{
-          fontSize: 12.5,
-          lineHeight: 1.5,
-          color: ink,
-          opacity: 0.58,
-          marginTop: 7,
-        }}
-      >
-        {T(
-          'Chọn kiểu hiển thị bạn thích. Đổi lại bất cứ lúc nào trong Tài khoản.',
-          'Pick how banbe looks. You can change it anytime in Account.'
-        )}
+      <span style={{ fontSize: 13.5, lineHeight: 1.5, color: ink, marginTop: 10 }}>
+        {T('Bạn có thể đổi lại bất cứ lúc nào trong Tài khoản.', 'You can change this anytime in your account.')}
       </span>
 
-      <div style={{ display: 'flex', gap: 10, marginTop: 26 }}>
-        {/* Light Mode Card */}
-        <div onClick={pickLight} style={lightCardStyle}>
-          <div
-            style={{
-              height: 74,
-              borderRadius: 9,
-              border: '1px solid rgba(27,25,22,0.16)',
-              background: '#F7F4EC',
-              padding: 9,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 5,
-            }}
-          >
-            <div style={{ height: 8, width: '60%', borderRadius: 3, background: '#1B1916' }} />
-            <div style={{ height: 6, width: '88%', borderRadius: 3, background: 'rgba(27,25,22,0.22)' }} />
-            <div
-              style={{
-                flex: 1,
-                borderRadius: 6,
-                background: 'rgba(224,214,194,0.58)',
-                border: '1px solid rgba(27,25,22,0.16)',
-              }}
-            />
-          </div>
-          <span style={{ ...display(15, { color: ink, marginTop: 12 }) }}>{T('Sáng', 'Light')}</span>
-        </div>
-
-        {/* Dark Mode Card */}
-        <div onClick={pickDark} style={darkCardStyle}>
-          <div
-            style={{
-              height: 74,
-              borderRadius: 9,
-              border: '1px solid rgba(242,237,225,0.2)',
-              background: '#14120E',
-              padding: 9,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 5,
-            }}
-          >
-            <div style={{ height: 8, width: '60%', borderRadius: 3, background: '#F2EDE1' }} />
-            <div style={{ height: 6, width: '88%', borderRadius: 3, background: 'rgba(242,237,225,0.28)' }} />
-            <div
-              style={{
-                flex: 1,
-                borderRadius: 6,
-                background: 'rgba(74,68,57,0.55)',
-                border: '1px solid rgba(242,237,225,0.2)',
-              }}
-            />
-          </div>
-          <span style={{ ...display(15, { color: ink, marginTop: 12 }) }}>{T('Tối', 'Dark')}</span>
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 28 }}>
+        {choice(T('Sáng', 'Light'), T('Nền giấy ấm', 'Warm paper'), !isDark, pickLight, 'theme-light')}
+        {choice(T('Tối', 'Dark'), T('Nền mực dịu mắt', 'Soft ink background'), isDark, pickDark, 'theme-dark')}
       </div>
 
-      <div
-        onClick={finishOnboarding}
-        style={{
-          ...inkButton({
-            marginTop: 26,
-            padding: 15,
-            borderRadius: 14,
-            fontSize: 15,
-            fontWeight: 600,
-          }),
-        }}
-      >
+      <div onClick={finishOnboarding} data-testid="onboarding-continue" style={{ ...inkButton({ marginTop: 26, padding: '15px 0', borderRadius: 18 }) }}>
         {T('Tiếp tục', 'Continue')}
       </div>
     </div>

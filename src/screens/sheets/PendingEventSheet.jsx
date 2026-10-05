@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useGoc, resolveCoverUrl } from '../../state/GocContext.jsx';
 import { supabase } from '../../lib/supabase.js';
 import { formatVnd } from '../../lib/paymentDocument.js';
-import { paper, ink, rule, display, alert, honeyBg, inkButton } from '../../theme.js';
+import { paper, ink, rule, display, alert, honeyBg } from '../../theme.js';
+import { inkButton } from '../hostStyle.js';
 
 // Web port of iOS PendingEventDetailSheet (DashboardView.swift, commit
 // 7fd7086): what the host submitted, read-only, plus the "remind admin"

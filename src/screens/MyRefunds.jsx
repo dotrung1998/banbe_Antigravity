@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { formatVnd, formatShortDate } from '../lib/paymentDocument.js';
 import { REFUND_AUTO_CONFIRM_DAYS } from '../lib/refundPresentation.js';
+import HostTitleIcon from './HostTitleIcon.jsx';
 import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 
 const STATUS_LABEL = {
@@ -29,7 +30,7 @@ export default function MyRefunds() {
         ‹ {T('Tài khoản', 'Account')}
       </div>
       <div style={{ padding: '14px 22px 0' }}>
-        <h1 style={{ ...display(24, { margin: 0 }) }}>{T('Hoàn Tiền', 'Refunds')}</h1>
+        <h1 style={{ ...display(24, { margin: 0, display: 'flex', alignItems: 'center', gap: 10 }) }}><HostTitleIcon kind="checklist" group="payments" />{T('Hoàn Tiền', 'Refunds')}</h1>
         <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, opacity: 0.75, margin: '8px 0 0' }}>
           {T('Các khoản hoàn tiền đang cần xử lý của bạn.', 'Your refund claims that are still active.')}
         </p>
@@ -37,7 +38,7 @@ export default function MyRefunds() {
 
       <div style={{ margin: '18px 22px 40px' }}>
         {s.myRefunds.length === 0 ? (
-          <div style={{ ...fieldGlass({ padding: '20px 16px', textAlign: 'center' }) }}>
+          <div style={{ ...fieldGlass({ padding: 20, textAlign: 'center', borderRadius: 14 }) }}>
             <p style={{ fontSize: 13, color: ink, margin: 0 }}>
               {s.myRefundsLoading ? T('Đang tải…', 'Loading…') : T('Không có khoản hoàn tiền nào đang xử lý.', 'No refunds in progress.')}
             </p>

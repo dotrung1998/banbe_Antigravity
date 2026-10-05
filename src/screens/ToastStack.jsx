@@ -20,6 +20,11 @@ import { ink, rule, cardGlass } from '../theme.js';
 // and badge count are untouched by anything on this screen. See
 // .claude/notes/07-notifications.md.
 const VISIBLE_COUNT = 3;
+// Same media query index.css uses to draw the desktop phone frame: there the
+// frame's own status bar occupies the top 50px, so (like iOS's safe-area top
+// padding) the banner sits just below it instead of over the Dynamic Island.
+const IN_PHONE_FRAME = typeof window !== 'undefined' && !!window.matchMedia
+  && window.matchMedia('(min-width: 700px) and (min-height: 560px) and (hover: hover) and (pointer: fine)').matches;
 
 // Notification banner fix pass (2026-09-30 third) — one toast card,
 // factored out so it can own its own mount effect (marks the auto-dismiss
@@ -66,7 +71,7 @@ function ToastCard({ t, markVisible, onOpen, onDismiss, onPause, onResume }) {
             cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
-          ✕
+          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round"><path d="M5 5l14 14M19 5L5 19" /></svg>
         </button>
       </div>
     </div>
@@ -85,7 +90,7 @@ export default function ToastStack() {
   return (
     <div
       style={{
-        position: 'fixed', top: 14, left: '50%', transform: 'translateX(-50%)',
+        position: 'fixed', top: IN_PHONE_FRAME ? 58 : 14, left: '50%', transform: 'translateX(-50%)',
         width: 'calc(100% - 32px)', maxWidth: 448, zIndex: 80,
         display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none',
       }}

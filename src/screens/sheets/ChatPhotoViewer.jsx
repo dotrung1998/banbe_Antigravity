@@ -201,7 +201,7 @@ export default function ChatPhotoViewer() {
           opacity: chromeHidden ? 0 : 1, pointerEvents: chromeHidden ? 'none' : 'auto', transition: `opacity ${DISMISS_MS}ms ease`,
         }}
       >
-        <span onClick={dismiss} data-testid="chat-photo-close" style={{ color: '#fff', fontSize: 22, cursor: 'pointer', filter: 'drop-shadow(0 1px 3px rgba(12,12,12,0.55))' }}>×</span>
+        <span onClick={dismiss} data-testid="chat-photo-close" style={{ color: '#fff', cursor: 'pointer', display: 'flex', filter: 'drop-shadow(0 1px 3px rgba(12,12,12,0.55))' }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M5 5l14 14M19 5L5 19" /></svg></span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
           {canHost && (
             <span onClick={openPostToStoryConfirm} data-testid="chat-photo-post-story" title={T('Đăng story', 'Post to Story')} style={{ color: '#fff', cursor: 'pointer', filter: 'drop-shadow(0 1px 3px rgba(12,12,12,0.55))' }}>
@@ -211,7 +211,7 @@ export default function ChatPhotoViewer() {
           <span onClick={doDownload} data-testid="chat-photo-save" title={T('Lưu ảnh', 'Save')} style={{ color: '#fff', cursor: 'pointer', filter: 'drop-shadow(0 1px 3px rgba(12,12,12,0.55))' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3.5v11.5M7.5 10.5 12 15l4.5-4.5" /><path d="M5 18.5h14" /></svg>
           </span>
-          <span onClick={() => setMenuOpen(v => !v)} data-testid="chat-photo-menu" style={{ color: '#fff', fontSize: 20, cursor: 'pointer', letterSpacing: 2, filter: 'drop-shadow(0 1px 3px rgba(12,12,12,0.55))' }}>•••</span>
+          <span onClick={() => setMenuOpen(v => !v)} data-testid="chat-photo-menu" style={{ color: '#fff', cursor: 'pointer', display: 'flex', filter: 'drop-shadow(0 1px 3px rgba(12,12,12,0.55))' }}><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></span>
         </div>
       </div>
 

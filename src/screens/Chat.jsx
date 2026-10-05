@@ -128,6 +128,15 @@ export default function Chat() {
     setCameraPreview(null);
   };
 
+  // iOS ChatView scrolls to the newest message when the count changes.
+  useEffect(() => {
+    const el = messagesListRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    const t = setTimeout(() => { el.scrollTop = el.scrollHeight; }, 350);
+    return () => clearTimeout(t);
+  }, [s.chatMessages.length]);
+
   const thread = s.chatMessages.length
     ? s.chatMessages.map(m => ({ id: m.id, who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body, kind: m.kind, createdAt: m.created_at, attachmentPath: m.attachment_path, attachmentType: m.attachment_type, attachmentWidth: m.attachment_width, attachmentHeight: m.attachment_height, replyToMessageId: m.reply_to_message_id }))
     : [{ who: 'host', text: ev.greeting }];
@@ -159,13 +168,13 @@ export default function Chat() {
   const headerTitle = s.chatOtherName || ev.hostShort;
 
   return (
-    <div style={{ position: 'relative', animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Chat">
+    <div style={{ position: 'absolute', inset: 0, animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Chat">
       <div style={{ padding: '66px 22px 14px', borderBottom: `1px solid ${rule}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
           <span onClick={chatBackFn} data-testid="chat-back" style={{ fontSize: 11, color: ink, cursor: 'pointer' }}>‹ {chatBackLabel}</span>
           <span style={{ ...display(18) }}>{headerTitle}</span>
           {/* Task 3b — event date + name subtitle directly under the title. */}
-          <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{ev.dayLong} · {ev.name}</span>
+          <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{[ev.dayLong, ev.name].filter(Boolean).join(' · ')}</span>
         </div>
         <div
           onClick={() => goEvent(s.eventKey)}
@@ -313,8 +322,7 @@ export default function Chat() {
           onClick={() => s.chatThreadId && setMenuOpen(v => !v)}
           data-testid="chat-attach-toggle"
           style={{
-            width: 40, height: 40, borderRadius: '50%', flex: 'none',
-            ...fieldGlass({}), display: 'flex', alignItems: 'center', justifyContent: 'center',
+            ...fieldGlass({ borderRadius: '50%' }), width: 40, height: 40, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 20, color: ink, cursor: s.chatThreadId ? 'pointer' : 'default', opacity: s.chatThreadId ? 1 : 0.5,
           }}
         >
@@ -358,7 +366,7 @@ export default function Chat() {
           disabled={!s.chatThreadId}
           style={{ ...fieldGlass({ flex: 1, padding: '12px 14px', borderRadius: 999, border: 'none' }), fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none', opacity: s.chatThreadId ? 1 : 0.6 }}
         />
-        <div onClick={s.chatThreadId ? chatSend : undefined} style={{ ...inkButton({ borderRadius: 999, padding: '12px 20px', display: 'flex', alignItems: 'center', flex: 'none' }), opacity: s.chatThreadId ? 1 : 0.5, cursor: s.chatThreadId ? 'pointer' : 'default' }}>Gửi</div>
+        <div onClick={s.chatThreadId ? chatSend : undefined} style={{ borderRadius: 999, padding: '12px 20px', display: 'flex', alignItems: 'center', flex: 'none', fontSize: 13.5, fontWeight: 600, background: ink, color: paper, userSelect: 'none', opacity: s.chatThreadId ? 1 : 0.5, cursor: s.chatThreadId ? 'pointer' : 'default' }}>Gửi</div>
       </div>
 
       {/* Task 4 — camera review step: Retake / Use Photo, before actually

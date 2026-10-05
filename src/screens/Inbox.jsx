@@ -4,6 +4,7 @@ import { bg } from '../data/events.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass, honey, honeyBg } from '../theme.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
+import { HeaderIconButton, HeaderWordmark } from './Notifications.jsx';
 import { isActiveDisputeChat } from './ConversationDispute.jsx';
 
 // Same 6s poll interval the ordinary conversation list uses, for the same
@@ -241,9 +242,10 @@ function InboxRow({ c, onOpen, onStar, onArchive, T, disputeActive }) {
         data-dispute={disputeActive ? 'true' : undefined}
         style={{
           display: 'flex', gap: 16, alignItems: 'center', padding: '16px 0', cursor: 'pointer',
-          background: disputeActive ? 'color-mix(in srgb, var(--bb-alert) 9%, var(--bb-bg))' : paper,
-          boxShadow: disputeActive ? 'inset 3px 0 0 var(--bb-alert)' : undefined,
-          paddingLeft: disputeActive ? 10 : 0, transform: `translateX(${offset}px)`, transition: dragRef.current.active ? 'none' : 'transform 0.2s ease',
+          // iOS parity: a full-row rounded pale-red surface, not a left bar.
+          background: disputeActive ? 'color-mix(in srgb, var(--bb-alert) 10%, var(--bb-bg))' : paper,
+          borderRadius: disputeActive ? 12 : 0,
+          paddingLeft: disputeActive ? 8 : 0, paddingRight: disputeActive ? 4 : 0, transform: `translateX(${offset}px)`, transition: dragRef.current.active ? 'none' : 'transform 0.2s ease',
           touchAction: 'pan-y',
         }}
       >
@@ -297,7 +299,17 @@ function InboxRow({ c, onOpen, onStar, onArchive, T, disputeActive }) {
             it doesn't interfere with the vertically-centered content above
             it (requirement 4 — this is a sibling of the row's own
             onClick/swipe handlers, not layered over them). */}
-        <span aria-hidden data-testid="inbox-row-swipe-hint" style={{ fontSize: 13, color: ink, opacity: unread ? 0.32 : 0.2, flex: 'none', alignSelf: 'flex-end', paddingBottom: 1 }}>‹</span>
+        {/* iOS parity: a tap-only "…" control at the trailing edge (iOS's
+            Menu). Here it just reveals the same Star/Archive actions the
+            swipe does, so no behaviour is added. Keeps the old hint testid. */}
+        <span
+          data-testid="inbox-row-swipe-hint"
+          aria-label="more"
+          onClick={(e) => { e.stopPropagation(); setOffset(prev => (prev === 0 ? -REVEAL_WIDTH : 0)); }}
+          style={{ flex: 'none', width: 32, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', color: ink, opacity: 0.55, cursor: 'pointer' }}
+        >
+          <svg width={18} height={18} viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.9" /><circle cx="12" cy="12" r="1.9" /><circle cx="19" cy="12" r="1.9" /></svg>
+        </span>
       </div>
     </div>
   );
@@ -392,7 +404,7 @@ function FeedbackFlow({ onClose, T }) {
 }
 
 export default function Inbox() {
-  const { state, T, backFromInbox, openThread, toggleThreadStar, archiveThread, unarchiveThread, setInboxView } = useGoc();
+  const { state, T, openThread, toggleThreadStar, archiveThread, unarchiveThread, setInboxView } = useGoc();
   const s = state;
 
   const [searchOpen, setSearchOpen] = useState(false);
@@ -425,7 +437,7 @@ export default function Inbox() {
 
   return (
     <div style={{ position: 'relative', animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Inbox">
-      <div style={{ padding: '70px 24px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ padding: '62px 24px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
         {searchOpen ? (
           <input
             autoFocus
@@ -434,36 +446,29 @@ export default function Inbox() {
             placeholder={T('Tìm cuộc trò chuyện…', 'Search conversations…')}
             data-testid="inbox-search-input"
             style={{
-              ...fieldGlass({ flex: 1, padding: '10px 14px', borderRadius: 999, border: 'none', marginRight: 10 }),
+              ...fieldGlass({ flex: 1, minWidth: 0, padding: '10px 14px', borderRadius: 999, border: 'none' }),
               fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none',
               animation: `gocIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both`,
             }}
           />
         ) : (
-          <span style={{ ...display(27) }}>{s.inboxView === 'archived' ? T('Đã Lưu Trữ', 'Archived') : T('Tin Nhắn', 'Messages')}</span>
+          // iOS parity: wordmark BEFORE the title, inline in the same row.
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+            <HeaderWordmark />
+            <span style={{ ...display(27), lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.inboxView === 'archived' ? T('Đã Lưu Trữ', 'Archived') : T('Tin Nhắn', 'Messages')}</span>
+          </div>
         )}
         {/* Task 1 — "Done" replaced with search + settings icons. Task 5 —
             each icon-only control gets a small label underneath. */}
         <div style={{ display: 'flex', gap: 14, flex: 'none' }}>
-          <div
+          <HeaderIconButton
+            icon={searchOpen ? 'close' : 'search'}
+            label={searchOpen ? T('Đóng', 'Close') : T('Tìm', 'Search')}
             onClick={() => { if (searchOpen) setQuery(''); setSearchOpen(v => !v); }}
-            data-testid="inbox-search-toggle"
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}
-          >
-            <span style={{ width: 34, height: 34, borderRadius: '50%', ...fieldGlass({}), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: ink }}>
-              {searchOpen ? '✕' : '🔍'}
-            </span>
-            <span style={{ fontSize: 9.5, color: ink, opacity: 0.7 }}>{searchOpen ? T('Đóng', 'Close') : T('Tìm', 'Search')}</span>
-          </div>
+            testId="inbox-search-toggle"
+          />
           {s.inboxView === 'active' && (
-            <div
-              onClick={() => setSettingsOpen(true)}
-              data-testid="inbox-settings-toggle"
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}
-            >
-              <span style={{ width: 34, height: 34, borderRadius: '50%', ...fieldGlass({}), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: ink }}>⚙</span>
-              <span style={{ fontSize: 9.5, color: ink, opacity: 0.7 }}>{T('Cài đặt', 'Settings')}</span>
-            </div>
+            <HeaderIconButton icon="gear" label={T('Cài đặt', 'Settings')} onClick={() => setSettingsOpen(true)} testId="inbox-settings-toggle" />
           )}
         </div>
       </div>
@@ -496,12 +501,6 @@ export default function Inbox() {
       ) : (
         <div style={{ padding: '80px 40px', textAlign: 'center' }}>
           <p style={{ fontSize: 14, lineHeight: 1.55, color: ink }}>{s.inboxView === 'archived' ? emptyArchived : empty}</p>
-        </div>
-      )}
-
-      {!searchOpen && s.inboxView === 'active' && (
-        <div onClick={backFromInbox} data-testid="inbox-done" style={{ position: 'absolute', top: 22, right: 24, fontSize: 11, color: ink, opacity: 0.5, cursor: 'pointer' }}>
-          {T('Xong', 'Done')}
         </div>
       )}
 

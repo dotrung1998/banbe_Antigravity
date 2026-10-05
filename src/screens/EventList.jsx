@@ -74,8 +74,13 @@ export default function EventList() {
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label={SCREEN_LABELS[mode]}>
-      <div style={{ padding: '66px 20px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span onClick={backFromEventList} data-testid="event-list-back" style={{ fontSize: 15, color: ink, cursor: 'pointer', lineHeight: 1 }}>‹</span>
+      <div onClick={backFromEventList} data-testid="event-list-back" style={{ padding: '70px 20px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
+      <div style={{ padding: '10px 20px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flex: 'none' }}>
+          {mode === 'saved' ? <path d="M6.5 3.5h11v17l-5.5-4.2-5.5 4.2z" />
+            : mode === 'completed' ? <><rect x="3.5" y="5" width="17" height="15.5" rx="2.3" /><path d="M3.5 9.7h17" /><path d="M8 3v4M16 3v4" /><path d="M8.7 14.7l2 2 4.3-4.3" /></>
+            : <><circle cx="12" cy="12" r="8.5" /><path d="M8.2 12.3l2.6 2.6 5-5.2" /></>}
+        </svg>
         <span style={{ ...display(24) }}>{eventListTitle}</span>
       </div>
 

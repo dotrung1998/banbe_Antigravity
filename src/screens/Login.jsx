@@ -1,11 +1,11 @@
 import { useGoc } from '../state/GocContext.jsx';
-import { paper, ink, display, fieldGlass, alert } from '../theme.js';
+import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
 
 export default function Login() {
   const {
     state, T, set,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType,
-    loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram,
+    loginPasswordType, loginPasswordConfirmType, toggleLang, pickTheme, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram,
     emailValid, passwordValid, setAuthMethod, requestPasswordResetSubmit, submitCurrentForm,
     togglePolicyConsent, openPolicy,
   } = useGoc();
@@ -51,145 +51,116 @@ export default function Login() {
       ? (isSignup ? T('Tạo tài khoản', 'Create account') : T('Đăng nhập', 'Log in'))
       : (isSignup ? T('Gửi mã đăng ký', 'Send sign-up code') : T('Gửi mã đăng nhập', 'Send sign-in code'));
 
-  const loginBtnStyle = {
-    marginTop: 12, fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 15, cursor: valid ? 'pointer' : 'default',
-    background: valid ? ink : 'rgba(27,25,22,0.16)',
-    color: valid ? paper : ink,
-    transition: 'background .15s',
-  };
-
-  const zaloBtn = {
-    marginTop: 26,
-    background: 'linear-gradient(165deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.07) 30%, rgba(255,255,255,0) 55%), rgba(0,72,196,0.66)',
-    color: '#FFFFFF', backdropFilter: 'blur(22px) saturate(1.7)', WebkitBackdropFilter: 'blur(22px) saturate(1.7)',
-    border: '1px solid rgba(255,255,255,0.35)',
-    boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.5), inset 0 -12px 22px rgba(255,255,255,0.1), 0 14px 34px rgba(0,104,255,0.35)',
-    borderRadius: 18, textShadow: '0 1px 2px rgba(0,60,150,0.35)', fontSize: 15, fontWeight: 600,
-    textAlign: 'center', padding: 15, cursor: 'pointer',
-  };
-
+  const FF = "'Be Vietnam Pro', sans-serif";
+  // iOS BanbeField: 14pt text, 13pt padding, radius 12, flat field fill.
+  const fieldStyle = (extra) => ({ width: '100%', boxSizing: 'border-box', padding: 13, borderRadius: 12, border: 'none', background: 'var(--bb-field)', fontSize: 14, fontFamily: FF, color: ink, outline: 'none', ...extra });
+  const note = (extra) => ({ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0', textAlign: 'center', ...extra });
+  const oauthBtn = { width: '100%', boxSizing: 'border-box', padding: '13px 0', borderRadius: 12, background: 'var(--bb-field)', color: ink, fontSize: 14, fontWeight: 600, textAlign: 'center', cursor: 'pointer' };
+  const pref = { padding: '0 12px', minHeight: 34, display: 'inline-flex', alignItems: 'center', borderRadius: 999, background: 'var(--bb-field)', border: `1px solid ${rule}`, fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer' };
   const methodTabStyle = (method) => ({
     flex: 1, textAlign: 'center', fontSize: 12, fontWeight: s.authMethod === method ? 600 : 400,
-    color: ink, padding: '9px 0', cursor: 'pointer',
-    background: s.authMethod === method ? 'rgba(27,25,22,0.1)' : 'transparent',
+    color: ink, padding: '9px 0', cursor: 'pointer', borderRadius: 999,
+    background: s.authMethod === method ? 'rgba(var(--bb-fg-rgb), 0.1)' : 'transparent',
   });
+  const submitStyle = inkButton({
+    marginTop: 14, padding: '15px 0', borderRadius: 18, cursor: valid ? 'pointer' : 'default',
+    ...(valid ? {} : { background: 'rgba(var(--bb-fg-rgb), 0.16)', color: ink, boxShadow: 'none', border: 'none', textShadow: 'none' }),
+  });
+  const smallBtn = { flex: 1, padding: '10px 4px', borderRadius: 12, background: 'var(--bb-field)', color: ink, fontSize: 12, fontWeight: 500, textAlign: 'center', cursor: 'pointer' };
+  const dark = s.theme === 'dark';
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Login">
-      {/* The Back link itself is hidden when this login was reached by
-          force (Task 1's mandatory gate — post-splash, post-onboarding, or
-          a stray screen change while signed out) rather than a deliberate
-          "sign in to do X" prompt: there's nowhere legitimate for it to go.
-          The row (and its top spacing) stays either way. */}
-      <div style={{ padding: '66px 22px 0', fontSize: 12, color: ink }}>
+    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: '66px 26px 40px', background: paper, color: ink }} data-screen-label="Login">
+      {/* Back link is hidden when login was reached by force (mandatory
+          gate); the row stays so the pills keep their place. Language and
+          theme pills mirror iOS LoginView's prefPill pair. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 34, fontSize: 12, color: ink }}>
         {!s.authMandatory && <span onClick={() => set({ screen: s.authBackScreen })} style={{ cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</span>}
+        <span style={{ flex: 1 }} />
+        <span onClick={toggleLang} data-testid="login-lang" style={pref}>{T('EN', 'VN')}</span>
+        <span onClick={() => pickTheme(dark ? 'light' : 'dark')} data-testid="login-theme" style={pref}>{dark ? T('Sáng', 'Light') : T('Tối', 'Dark')}</span>
       </div>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 26px' }}>
-        <div style={{ display: 'flex', gap: 16, borderBottom: '1px solid rgba(27,25,22,0.16)', paddingBottom: 8 }}>
-          {['login', 'signup'].map(mode => <span key={mode} onClick={() => changeAuthMode(mode)} style={{ fontSize: 11.5, color: ink, fontWeight: s.authMode === mode ? 600 : 400, borderBottom: s.authMode === mode ? `2px solid ${ink}` : '2px solid transparent', paddingBottom: 6, cursor: 'pointer' }}>{mode === 'login' ? T('Đăng nhập', 'Log in') : T('Đăng ký', 'Sign up')}</span>)}
-        </div>
-        <h2 style={{ ...display(25, { lineHeight: 1.3, margin: '10px 0 0' }) }}>{s.authMode === 'signup' ? T('Tạo tài khoản banbe', 'Create your banbe account') : T('Chào mừng trở lại', 'Welcome back')}</h2>
-        <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '12px 0 0' }}>{T('Một tài khoản cho tất cả. Muốn tổ chức sự kiện, bạn chỉ cần bật chế độ tổ chức trong Tài khoản.', 'One account for everything. To host events, just switch on organizer mode from your Account.')}</p>
-        {/* Task 2 (note 10) — real Supabase OAuth, not a stub like the three
-            below. Not gated on the consent checkbox at all (fixed after a
-            regression — see note 10's follow-up): consent for a genuinely
-            new OAuth profile is handled AFTER the redirect completes, by
-            routing to a mandatory one-time Policy screen, not by trying to
-            gate the button beforehand. A returning user goes straight
-            through with zero friction, same as password login. */}
-        <div onClick={loginGoogle} data-testid="login-google" style={{ ...fieldGlass({ marginTop: 12, padding: 13, border: 'none' }), display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: ink }}>{T('Tiếp tục với Google', 'Continue with Google')}</span>
-        </div>
-        <div onClick={loginZalo} style={zaloBtn}>{T('Tiếp tục với Zalo', 'Continue with Zalo')}</div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <div onClick={loginPhone} style={{ ...fieldGlass({ padding: '13px 4px', border: 'none' }), ...socialBtn }}>{T('Gửi OTP', 'Send OTP')}</div>
-          <div onClick={loginFacebook} data-testid="login-facebook" style={{ ...fieldGlass({ padding: '13px 4px', border: 'none' }), ...socialBtn }}>Facebook</div>
-          <div onClick={loginInstagram} style={{ ...fieldGlass({ padding: '13px 4px', border: 'none' }), ...socialBtn }}>Instagram</div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16 }}>
-          <span style={{ flex: 1, height: 1, background: 'rgba(27,25,22,0.16)' }} />
-          <span style={{ fontSize: 11, color: ink }}>{T('hoặc dùng email', 'or use email')}</span>
-          <span style={{ flex: 1, height: 1, background: 'rgba(27,25,22,0.16)' }} />
-        </div>
 
-        {!awaitingCode && (
-          <div style={{ ...fieldGlass({ marginTop: 14, padding: 3, border: 'none', display: 'flex' }) }}>
+      <div style={{ display: 'flex', gap: 16, marginTop: 24, borderBottom: `1px solid ${rule}` }}>
+        {['login', 'signup'].map(mode => <span key={mode} onClick={() => changeAuthMode(mode)} style={{ fontSize: 11.5, color: ink, fontWeight: s.authMode === mode ? 600 : 400, borderBottom: s.authMode === mode ? `2px solid ${ink}` : '2px solid transparent', paddingBottom: 6, marginBottom: -1, cursor: 'pointer' }}>{mode === 'login' ? T('Đăng nhập', 'Log in') : T('Đăng ký', 'Sign up')}</span>)}
+      </div>
+      <h2 style={{ ...display(25, { lineHeight: 1.2, margin: '16px 0 0' }) }}>{s.authMode === 'signup' ? T('Tạo tài khoản banbe', 'Create your banbe account') : T('Chào mừng trở lại', 'Welcome back')}</h2>
+      <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '12px 0 0' }}>{T('Một tài khoản cho tất cả. Muốn tổ chức sự kiện, bạn chỉ cần bật chế độ tổ chức trong Tài khoản.', 'One account for everything. To host events, just switch on organizer mode from your Account.')}</p>
+
+      {/* Real Supabase OAuth, not gated on the consent checkbox (note 10). */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
+        <div onClick={loginGoogle} data-testid="login-google" style={oauthBtn}>{T('Tiếp tục với Google', 'Continue with Google')}</div>
+        <div onClick={loginFacebook} data-testid="login-facebook" style={oauthBtn}>{T('Tiếp tục với Facebook', 'Continue with Facebook')}</div>
+      </div>
+
+      {awaitingCode ? (
+        <input value={s.loginEmailCode} onChange={loginEmailCodeType} onKeyDown={loginEmailKey} placeholder={T('Mã 8 số', '8-digit code')} inputMode="numeric" autoFocus style={{ ...fieldStyle({ marginTop: 22 }), letterSpacing: '0.2em', textAlign: 'center', fontSize: 20 }} />
+      ) : (
+        <>
+          <div style={{ display: 'flex', padding: 3, marginTop: 20, borderRadius: 999, background: 'var(--bb-field)' }}>
             <div onClick={() => setAuthMethod('code')} style={methodTabStyle('code')}>{T('Mã qua email', 'Email code')}</div>
             <div onClick={() => setAuthMethod('password')} style={methodTabStyle('password')}>{T('Mật khẩu', 'Password')}</div>
           </div>
-        )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
+            {isSignup && <input value={s.loginNickname} onChange={loginNicknameType} placeholder={T('Tên hiển thị của bạn', 'Your display name')} style={fieldStyle()} />}
+            <input value={s.loginEmail} onChange={loginEmailType} onKeyDown={loginEmailKey} placeholder="ban@email.com" data-testid="login-email" style={fieldStyle()} />
+            {showEmailFormatError && (
+              <p data-testid="login-email-error" style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: 0 }}>
+                {T('Email chưa đúng định dạng (ví dụ: ban@email.com)', "That doesn't look like an email address (e.g. ban@email.com)")}
+              </p>
+            )}
+            {isPassword && <input value={s.loginPassword} onChange={loginPasswordType} onKeyDown={loginEmailKey} type="password" placeholder={T('Mật khẩu', 'Password')} style={fieldStyle()} />}
+            {isPassword && isSignup && <input value={s.loginPasswordConfirm} onChange={loginPasswordConfirmType} onKeyDown={loginEmailKey} type="password" placeholder={T('Nhập lại mật khẩu', 'Confirm password')} style={fieldStyle()} />}
+          </div>
+          {isPassword && !isSignup && (
+            <div onClick={requestPasswordResetSubmit} style={{ fontSize: 12, color: ink, opacity: 0.75, textAlign: 'right', marginTop: 8, cursor: 'pointer' }}>{T('Quên mật khẩu?', 'Forgot password?')}</div>
+          )}
+        </>
+      )}
 
-        {isSignup && !awaitingCode && (
-          <input value={s.loginNickname} onChange={loginNicknameType} placeholder={T('Tên hiển thị của bạn', 'Your display name')} style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
-        )}
-        {!awaitingCode && (
-          <input value={s.loginEmail} onChange={loginEmailType} onKeyDown={loginEmailKey} placeholder="ban@email.com" data-testid="login-email" style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
-        )}
-        {showEmailFormatError && (
-          <p data-testid="login-email-error" style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '8px 2px 0' }}>
-            {T('Email chưa đúng định dạng (ví dụ: ban@email.com)', "That doesn't look like an email address (e.g. ban@email.com)")}
-          </p>
-        )}
-        {!awaitingCode && isPassword && (
-          <input value={s.loginPassword} onChange={loginPasswordType} onKeyDown={loginEmailKey} type="password" placeholder={T('Mật khẩu', 'Password')} style={{ ...fieldGlass({ marginTop: 10, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
-        )}
-        {!awaitingCode && isPassword && isSignup && (
-          <input value={s.loginPasswordConfirm} onChange={loginPasswordConfirmType} onKeyDown={loginEmailKey} type="password" placeholder={T('Nhập lại mật khẩu', 'Confirm password')} style={{ ...fieldGlass({ marginTop: 10, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
-        )}
-        {!awaitingCode && isPassword && !isSignup && (
-          <div onClick={requestPasswordResetSubmit} style={{ fontSize: 12, color: ink, opacity: 0.75, textAlign: 'right', marginTop: 8, cursor: 'pointer' }}>{T('Quên mật khẩu?', 'Forgot password?')}</div>
-        )}
-
-        {!awaitingCode && (
-          <input value={s.loginPhoneNumber} onChange={loginPhoneType} placeholder="+84 901 234 567" inputMode="tel" style={{ ...fieldGlass({ marginTop: 10, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
-        )}
-        {s.loginSentVia === 'phone' && <div style={{ display: 'flex', gap: 8, marginTop: 10 }}><input value={s.loginCode} onChange={loginCodeType} placeholder={T('Mã OTP', 'OTP code')} inputMode="numeric" style={{ ...fieldGlass({ flex: 1, padding: 14, border: 'none' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} /><div onClick={verifyLoginCode} style={{ ...fieldGlass({ padding: '14px 12px', border: 'none' }), fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Xác nhận', 'Verify')}</div></div>}
-
-        {awaitingCode && (
-          <input value={s.loginEmailCode} onChange={loginEmailCodeType} onKeyDown={loginEmailKey} placeholder={T('Mã 8 số', '8-digit code')} inputMode="numeric" autoFocus style={{ ...fieldGlass({ marginTop: 14, padding: 14, border: 'none' }), fontSize: 20, letterSpacing: '0.2em', textAlign: 'center', fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' }} />
-        )}
-
-        {/* Task 1 — unticked by default, gates `valid`/submit above. Exactly
-            banbe_User_Policy.md's summary-screen wording. Signup only — a
-            returning account signing in already consented once. (Note 10
-            briefly made this render on both tabs to also gate the OAuth
-            buttons; reverted — OAuth consent is handled post-redirect now,
-            see the button comment above, so this goes back to exactly
-            note 09's fix.) */}
-        {!awaitingCode && isSignup && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14 }}>
-            <input
-              type="checkbox" checked={s.policyConsent} onChange={togglePolicyConsent}
-              data-testid="login-policy-consent"
-              style={{ marginTop: 2, flex: 'none', width: 16, height: 16, cursor: 'pointer' }}
-            />
-            <span onClick={togglePolicyConsent} style={{ fontSize: 12, lineHeight: 1.5, color: ink, cursor: 'pointer' }}>
-              {T('Tôi đồng ý với ', 'I agree to the ')}
-              <span onClick={(e) => { e.stopPropagation(); openPolicy(); }} style={{ textDecoration: 'underline', fontWeight: 600 }} data-testid="login-policy-link">
-                {T('Điều khoản sử dụng và Thông báo quyền riêng tư', 'Terms of Service and Privacy Notice')}
-              </span>
+      {!awaitingCode && isSignup && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14 }}>
+          <input
+            type="checkbox" checked={s.policyConsent} onChange={togglePolicyConsent}
+            data-testid="login-policy-consent"
+            style={{ marginTop: 2, flex: 'none', width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--bb-fg)' }}
+          />
+          <span onClick={togglePolicyConsent} style={{ fontSize: 12, lineHeight: 1.5, color: ink, cursor: 'pointer' }}>
+            {T('Tôi đồng ý với ', 'I agree to the ')}
+            <span onClick={(e) => { e.stopPropagation(); openPolicy(); }} style={{ textDecoration: 'underline', fontWeight: 600 }} data-testid="login-policy-link">
+              {T('Điều khoản sử dụng và Thông báo quyền riêng tư', 'Terms of Service and Privacy Notice')}
             </span>
+          </span>
+        </div>
+      )}
+
+      {showSubmit && <div onClick={submitCurrentForm} data-testid="login-submit" style={submitStyle}>{submitLabel}</div>}
+
+      {s.resetRequested && !s.reserveError && <p style={note()}>{T('Nếu email này có tài khoản, một email đặt lại mật khẩu vừa được gửi.', 'If that email has an account, a password reset email was just sent.')}</p>}
+      {awaitingCode && <p style={note()}>{T('Đã gửi mã tới email của bạn. Nhập mã để tiếp tục.', 'A code was sent to your email. Enter it to continue.')}</p>}
+      {s.loginSentVia === 'phone' && <p style={note()}>{T('Đã gửi mã OTP. Hãy nhập mã để tiếp tục.', 'OTP sent. Enter the code to continue.')}</p>}
+      {s.reserveError && <p style={note({ color: alert })}>{s.reserveError}</p>}
+
+      {/* Web-only extras with no iOS counterpart (Zalo / phone OTP /
+          Instagram are still stubs; kept for behaviour + tests), pushed
+          below the main iOS-shaped form and kept visually quiet. */}
+      <div style={{ marginTop: 22, paddingTop: 14, borderTop: `1px solid ${rule}` }}>
+        {!awaitingCode && (
+          <input value={s.loginPhoneNumber} onChange={loginPhoneType} placeholder="+84 901 234 567" inputMode="tel" style={fieldStyle()} />
+        )}
+        {s.loginSentVia === 'phone' && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <input value={s.loginCode} onChange={loginCodeType} placeholder={T('Mã OTP', 'OTP code')} inputMode="numeric" style={fieldStyle({ flex: 1, width: 'auto' })} />
+            <div onClick={verifyLoginCode} style={{ ...smallBtn, flex: 'none', padding: '14px 14px', fontWeight: 600 }}>{T('Xác nhận', 'Verify')}</div>
           </div>
         )}
-
-        {showSubmit && <div onClick={submitCurrentForm} data-testid="login-submit" style={loginBtnStyle}>{submitLabel}</div>}
-
-        {awaitingCode && (
-          <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0', textAlign: 'center' }}>
-            {T('Đã gửi mã tới email của bạn. Nhập mã để tiếp tục.', 'A code was sent to your email. Enter it to continue.')}
-          </p>
-        )}
-        {s.loginSentVia === 'phone' && <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0', textAlign: 'center' }}>{T('Đã gửi mã OTP. Hãy nhập mã để tiếp tục.', 'OTP sent. Enter the code to continue.')}</p>}
-        {s.resetRequested && !s.reserveError && (
-          <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, margin: '12px 0 0', textAlign: 'center' }}>
-            {T('Nếu email này có tài khoản, một email đặt lại mật khẩu vừa được gửi.', 'If that email has an account, a password reset email was just sent.')}
-          </p>
-        )}
-        {s.reserveError && <p style={{ fontSize: 12, lineHeight: 1.5, color: alert, margin: '12px 0 0', textAlign: 'center' }}>{s.reserveError}</p>}
-        <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: '16px 0 0', textAlign: 'center' }}>{T('Đã giữ chỗ sự kiện nào thì bạn đã đăng nhập sẵn.', "If you've already reserved a spot, you're already logged in.")}</p>
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <div onClick={loginPhone} style={smallBtn}>{T('Gửi OTP', 'Send OTP')}</div>
+          <div onClick={loginZalo} style={smallBtn}>{T('Tiếp tục với Zalo', 'Continue with Zalo')}</div>
+          <div onClick={loginInstagram} style={smallBtn}>Instagram</div>
+        </div>
       </div>
+      <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: '16px 0 0', textAlign: 'center', opacity: 0.8 }}>{T('Đã giữ chỗ sự kiện nào thì bạn đã đăng nhập sẵn.', "If you've already reserved a spot, you're already logged in.")}</p>
     </div>
   );
 }
-
-const socialBtn = { flex: 1, color: ink, fontSize: 13, fontWeight: 500, textAlign: 'center', cursor: 'pointer' };

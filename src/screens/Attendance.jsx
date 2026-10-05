@@ -4,7 +4,8 @@ import { findEvent, isCosmeticCatalogMatch } from '../data/events.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { liveEventOverrides } from '../lib/countdown.js';
 import { formatShortDate } from '../lib/paymentDocument.js';
-import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
+import { paper, ink, rule, display, alert } from '../theme.js';
+import { fieldGlass, cardGlass, inkButton, insetField } from './hostStyle.js';
 import CancelEventModal from '../components/CancelEventModal.jsx';
 import { HostPromoSheet } from '../components/HostPromo.jsx'; // account gate (web parity)
 
@@ -241,17 +242,6 @@ export default function Attendance() {
         </div>
         <div onClick={openQrScan} style={{ flex: 'none', fontSize: 12, fontWeight: 600, color: paper, background: ink, borderRadius: 12, padding: '9px 14px', cursor: 'pointer', whiteSpace: 'nowrap' }}>{T('Quét QR', 'Scan QR')}</div>
       </div>
-      {/* Same corner-radius language as the Scan QR control above
-          (borderRadius: 12) — this panel used to be a sharp rectangle, the
-          only un-rounded surface on the screen. */}
-      <div style={{ margin: '18px 22px 0', background: ink, borderRadius: 12, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 12.5, color: paper }}>{T('Đã đến', 'Checked in')}</span>
-        <span style={{ fontFamily: "'Be Vietnam Pro', sans-serif", fontWeight: 600, letterSpacing: '-0.02em', fontSize: 24, color: paper }}>{checkedCount} / {guests.length}</span>
-      </div>
-      {/* Modest breathing room below the now-rounded panel — bumped from
-          10px into this screen's own 12-16px spacing ladder. */}
-      <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, margin: '14px 22px 0' }}>{T('Chạm vào tên khách hoặc quét mã QR vé khi họ tới nơi.', "Tap a guest's name, or scan their ticket QR, when they arrive.")}</p>
-      <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '6px 22px 0' }}>{T('Đánh dấu "Đã thanh toán" khi bạn thấy tiền vào tài khoản, rồi tải lên hoá đơn/biên nhận thật của bạn cho khách.', 'Mark a guest paid once you see the money arrive, then upload your own real invoice/receipt for them.')}</p>
       <p onClick={() => setPromoOpen(true)} data-testid="attendance-promo"
          style={{ fontSize: 12.5, color: ink, cursor: 'pointer', margin: '10px 22px 0' }}>✉ {T('Nhắn tin quảng bá sự kiện', 'Text a promo about this event')}</p>
       {promoOpen && <HostPromoSheet eventKey={attKey} onClose={() => setPromoOpen(false)} />}
@@ -266,9 +256,20 @@ export default function Attendance() {
           onClose={() => setCancelEventOpen(false)}
           onFinished={() => { setCancelEventOpen(false); backFromAttendance(); }} />
       )}
+      {/* Same corner-radius language as the Scan QR control above
+          (borderRadius: 12) — this panel used to be a sharp rectangle, the
+          only un-rounded surface on the screen. */}
+      <div style={{ margin: '18px 22px 0', background: ink, borderRadius: 12, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 12.5, color: paper }}>{T('Đã đến', 'Checked in')}</span>
+        <span style={{ fontFamily: "'Be Vietnam Pro', sans-serif", fontWeight: 600, letterSpacing: '-0.02em', fontSize: 24, color: paper }}>{checkedCount} / {guests.length}</span>
+      </div>
+      {/* Modest breathing room below the now-rounded panel — bumped from
+          10px into this screen's own 12-16px spacing ladder. */}
+      <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, margin: '14px 22px 0' }}>{T('Chạm vào tên khách hoặc quét mã QR vé khi họ tới nơi.', "Tap a guest's name, or scan their ticket QR, when they arrive.")}</p>
+      <p style={{ fontSize: 11.5, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '6px 22px 0' }}>{T('Đánh dấu "Đã thanh toán" khi bạn thấy tiền vào tài khoản, rồi tải lên hoá đơn/biên nhận thật của bạn cho khách.', 'Mark a guest paid once you see the money arrive, then upload your own real invoice/receipt for them.')}</p>
       <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: 'none' }} onChange={onReceiptFileChosen} data-testid="attendance-receipt-input" />
       <div style={{ ...fieldGlass({ margin: '14px 22px 0', display: 'flex', flexDirection: 'column' }) }}>
-        {guests.map(g => {
+        {guests.map((g, gi) => {
           const meta = g.qty > 1 ? (g.qty + T(' vé', ' tickets')) : T('1 vé', '1 ticket');
           // 14-organizer-checkin.md (Bugs 2a/3): check-in only makes sense
           // once payment is actually confirmed — an unpaid guest's row is
@@ -278,7 +279,7 @@ export default function Attendance() {
           const rowClickable = g.paid;
           return (
             <div key={g.id} onClick={rowClickable ? () => toggleCheckin(g.id, g.checkedIn) : undefined}
-                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: `1px solid ${rule}`, cursor: rowClickable ? 'pointer' : 'default', background: g.checkedIn ? 'rgba(27,25,22,0.16)' : 'transparent' }}>
+                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: gi < guests.length - 1 ? `1px solid ${rule}` : 'none', cursor: rowClickable ? 'pointer' : 'default', background: g.checkedIn ? 'rgba(var(--bb-fg-rgb), 0.08)' : 'transparent' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                 <span style={{ ...display(15) }}>{g.name}</span>
                 <span style={{ fontSize: 11.5, color: ink }}>{meta} ▪︎ {formatVnd(g.totalVnd)}</span>
@@ -504,10 +505,10 @@ export default function Attendance() {
                 </div>
 
                 <div style={{ ...fieldGlass({ display: 'flex', flexDirection: 'column' }) }}>
-                  {visibleRows.map(c => {
+                  {visibleRows.map((c, ci) => {
                     const label = REFUND_STATUS_LABEL[statusKey(c)] || REFUND_STATUS_LABEL[c.status] || ['Không Xác Định', 'Unknown'];
                     return (
-                      <div key={c.id} style={{ padding: '12px 14px', borderBottom: `1px solid ${rule}`, display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="refund-center-row">
+                      <div key={c.id} style={{ padding: '12px 14px', borderBottom: ci < visibleRows.length - 1 ? `1px solid ${rule}` : 'none', display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="refund-center-row">
                         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                           <input
                             type="checkbox"
@@ -576,12 +577,12 @@ export default function Attendance() {
                                 <input
                                   value={resendBank} onChange={(e) => setResendBank(e.target.value)}
                                   placeholder={T('Ngân hàng', 'Bank')}
-                                  style={{ ...fieldGlass({ padding: '9px 10px', border: 'none' }), fontSize: 12, color: ink, outline: 'none', fontFamily: 'inherit' }}
+                                  style={{ ...insetField({ padding: '9px 10px', border: 'none' }), fontSize: 12, color: ink, outline: 'none', fontFamily: 'inherit' }}
                                 />
                                 <input
                                   value={resendReference} onChange={(e) => setResendReference(e.target.value)}
                                   placeholder={T('Mã tham chiếu', 'Reference')}
-                                  style={{ ...fieldGlass({ padding: '9px 10px', border: 'none' }), fontSize: 12, color: ink, outline: 'none', fontFamily: 'inherit' }}
+                                  style={{ ...insetField({ padding: '9px 10px', border: 'none' }), fontSize: 12, color: ink, outline: 'none', fontFamily: 'inherit' }}
                                 />
                                 <div
                                   onClick={async () => {

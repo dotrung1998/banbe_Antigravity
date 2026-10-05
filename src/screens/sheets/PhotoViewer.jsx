@@ -256,7 +256,7 @@ export default function PhotoViewer() {
     <div
       data-screen-label="Photo viewer"
       style={{
-        position: 'absolute', inset: 0, zIndex: 24, overflow: 'hidden',
+        position: 'absolute', inset: 0, zIndex: 24, overflow: 'hidden', containerType: 'size',
         animation: entered ? undefined : 'gocFade 0.2s ease both',
         opacity: closing ? 0 : 1,
         // Always present, even before there's anything to transition —
@@ -336,8 +336,8 @@ export default function PhotoViewer() {
             justifySelf: 'center',
             width: 'auto',
             height: 'auto',
-            maxWidth: 'calc(min(100vw, 480px) - 40px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))',
-            maxHeight: 'calc(100dvh - 64px - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
+            maxWidth: 'calc(100cqw - 40px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))',
+            maxHeight: 'calc(100cqh - 64px - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
             objectFit: 'contain',
             // Same photo treatment `bg()` gives every other photo in the app.
             filter: 'saturate(0.92) contrast(1.07)',

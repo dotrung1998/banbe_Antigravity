@@ -58,7 +58,7 @@ export default function Reserve() {
         <div style={bg(ev.img, { flex: 'none', width: 52, height: 52 })} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
           <span style={{ ...display(15) }}>{ev.name}</span>
-          <span style={{ fontSize: 11.5, color: ink }}>{ev.when} ▪︎ {s.qty} chỗ ▪︎ {trStatus(totalStr)}</span>
+          <span style={{ fontSize: 11.5, color: ink }}>{ev.when} ▪︎ {s.qty} {T('chỗ', 'seats')} ▪︎ {trStatus(totalStr)}</span>
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '20px 22px 0' }}>

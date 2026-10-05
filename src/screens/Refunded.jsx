@@ -2,7 +2,7 @@ import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, display, fieldGlass } from '../theme.js';
 
 export default function Refunded() {
-  const { state, T, curEvent: ev, goHome, goChat } = useGoc();
+  const { state, T, curEvent: ev, trStatus, stripKm, goHome, goChat } = useGoc();
   const s = state;
 
   const priceNum = parseInt((ev.price.match(/[\d.]+/) || ['0'])[0].replace(/\./g, ''), 10) || 0;
@@ -12,7 +12,7 @@ export default function Refunded() {
 
   return (
     <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Refunded">
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '60px 30px 0' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '96px 30px 0' }}>
         <span style={{ fontSize: 11.5, color: ink }}>{T('Sự kiện đã hủy', 'Event cancelled')}</span>
         <h2 style={{ ...display(27, { lineHeight: 1.35, margin: '12px 0 0' }) }}>{T('Đừng lo, tiền của bạn đã về túi rồi!', "No worries, you're already refunded!")}</h2>
         <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '18px 0 0' }}>
@@ -27,7 +27,7 @@ export default function Refunded() {
         </div>
         <div style={{ marginTop: 28, borderTop: `1px solid ${rule}`, paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ ...display(17) }}>{ev.name}</span>
-          <span style={{ fontSize: 12, color: ink }}>{ev.where}</span>
+          <span style={{ fontSize: 12, color: ink }}>{trStatus(stripKm(ev.where, ev))}</span>
           <span style={{ fontSize: 11.5, color: ink }}>{refundCancelledWhen}</span>
         </div>
       </div>
