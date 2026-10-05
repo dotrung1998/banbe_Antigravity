@@ -220,23 +220,45 @@ extension AppState {
         Task { await loadPulsePhotos() }
     }
     func closePulseViewer() { pulseOpen = false; pulseOrganizerSheet = nil; pulsePhotoSheet = nil }
-    func openPulseOrganizerSheet(_ item: PulseItem) { pulseOrganizerSheet = item }
+    func openPulseOrganizerSheet(_ item: PulseItem) {
+        pulseOrganizerSheet = item
+        // `following` is not part of the RPC row — hydrate it from `follows`
+        // so the button reflects (and toggles) the real state instead of
+        // re-inserting a duplicate row that fails silently.
+        guard let uid = userID else { return }
+        let organizerID = item.organizerId
+        Task {
+            struct Row: Decodable { let organizer_id: String }
+            let rows: [Row]? = try? await SupabaseService.client.from("follows")
+                .select("organizer_id")
+                .eq("user_id", value: uid.uuidString)
+                .eq("organizer_id", value: organizerID)
+                .execute().value
+            guard pulseOrganizerSheet?.organizerId == organizerID else { return }
+            pulseOrganizerSheet?.following = !(rows ?? []).isEmpty
+        }
+    }
     func closePulseOrganizerSheet() { pulseOrganizerSheet = nil }
     func openPulsePhotoSheet(_ item: PulsePhotoItem) { pulsePhotoSheet = item }
     func closePulsePhotoSheet() { pulsePhotoSheet = nil }
 
-    /// Follow straight from the Pulse organizer sheet — same plain
+    /// Follow/unfollow straight from the Pulse organizer sheet — same plain
     /// optimistic table write as toggleFollowOrganizer (TASK D), just
     /// patching the lighter PulseItem shape.
     func followPulseOrganizer(_ organizerID: String) async {
-        guard let uid = userID else { return }
-        pulseOrganizerSheet?.following = true
+        guard let uid = userID, let wasFollowing = pulseOrganizerSheet?.following else { return }
+        pulseOrganizerSheet?.following = !wasFollowing
         do {
-            _ = try await SupabaseService.client.from("follows")
-                .insert(["user_id": uid.uuidString, "organizer_id": organizerID]).execute()
+            if wasFollowing {
+                _ = try await SupabaseService.client.from("follows")
+                    .delete().eq("user_id", value: uid.uuidString).eq("organizer_id", value: organizerID).execute()
+            } else {
+                _ = try await SupabaseService.client.from("follows")
+                    .insert(["user_id": uid.uuidString, "organizer_id": organizerID]).execute()
+            }
         } catch {
             print("followPulseOrganizer failed:", error)
-            pulseOrganizerSheet?.following = false
+            pulseOrganizerSheet?.following = wasFollowing
         }
     }
 

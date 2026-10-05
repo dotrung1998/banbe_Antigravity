@@ -33,6 +33,12 @@ struct SurveyStoryCardView: View {
     /// accidental submit/navigation action").
     var onAnswerSurvey: (() -> Void)? = nil
     var fill: Bool = false
+    /// Pre-loaded avatar, for rendering the card to an image (ImageRenderer can't
+    /// wait for a remote photo).
+    var hostAvatarImage: UIImage? = nil
+    /// False when the card is a backdrop for the story editor, whose own link
+    /// button replaces it.
+    var showAnswerButton: Bool = true
 
     private var closed: Bool { (status ?? "active") != "active" }
 
@@ -65,7 +71,9 @@ struct SurveyStoryCardView: View {
                     // code needed here), and paints `Color.clear` while
                     // empty/failed — the `initialGlyph` underneath is what's
                     // actually visible until then, so there's no blank gap.
-                    if let url = hostAvatarURL {
+                    if let hostAvatarImage {
+                        Image(uiImage: hostAvatarImage).resizable().scaledToFill()
+                    } else if let url = hostAvatarURL {
                         RemoteImage(path: url.absoluteString, maxPixel: 68)
                     }
                 }
@@ -103,6 +111,10 @@ struct SurveyStoryCardView: View {
             }
             .buttonStyle(.plain)
             .disabled(onAnswerSurvey == nil)
+            // Kept (invisible) so the card's layout is identical either way —
+            // the story editor draws its own tappable button in this spot.
+            .opacity(showAnswerButton ? 1 : 0)
+            .allowsHitTesting(showAnswerButton)
         }
         .padding(fill ? 22 : 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

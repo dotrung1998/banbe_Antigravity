@@ -4764,7 +4764,7 @@ export function GocProvider({ children }) {
     if (wasFollowing) {
       await supabase.from('follows').delete().eq('user_id', s.user.id).eq('organizer_id', event.organizer_id);
     } else {
-      await supabase.from('follows').upsert({ user_id: s.user.id, organizer_id: event.organizer_id }, { onConflict: 'user_id,organizer_id' });
+      await supabase.from('follows').insert({ user_id: s.user.id, organizer_id: event.organizer_id }, { onConflict: 'user_id,organizer_id' });
     }
   }, [set, s.following, s.user]);
 
@@ -5135,24 +5135,38 @@ export function GocProvider({ children }) {
     try { if (window.history.state?.bbSheet === 'pulse') window.history.back(); } catch { /* unsupported */ }
   }, [set]);
   const setPulseTab = useCallback((tab) => set({ pulseTab: tab }), [set]);
-  const openPulseOrganizerSheet = useCallback((item) => set({ pulseOrganizerSheet: item }), [set]);
+  const openPulseOrganizerSheet = useCallback((item) => {
+    set({ pulseOrganizerSheet: item });
+    // `following` isn't part of the RPC row — hydrate it from `follows` so the
+    // button reflects (and toggles) the real state.
+    if (!s.user?.id || !item?.organizer_id) return;
+    supabase.from('follows').select('organizer_id')
+      .eq('user_id', s.user.id).eq('organizer_id', item.organizer_id).limit(1)
+      .then(({ data }) => {
+        set(prev => (prev.pulseOrganizerSheet?.organizer_id === item.organizer_id
+          ? { pulseOrganizerSheet: { ...prev.pulseOrganizerSheet, following: !!data?.length } }
+          : {}));
+      });
+  }, [set, s.user?.id]);
   const closePulseOrganizerSheet = useCallback(() => set({ pulseOrganizerSheet: null }), [set]);
   /** Follow straight from the Pulse organizer sheet — same plain optimistic
    * table write as toggleFollowOrganizer (TASK D), just patching the
    * lighter Pulse item shape instead of a full public-profile object. */
   const followPulseOrganizer = useCallback(async (organizerId) => {
     if (!s.user?.id) return;
-    set(prev => ({
-      pulseOrganizerSheet: prev.pulseOrganizerSheet ? { ...prev.pulseOrganizerSheet, following: true } : null,
+    const wasFollowing = !!s.pulseOrganizerSheet?.following;
+    const patch = (following) => set(prev => ({
+      pulseOrganizerSheet: prev.pulseOrganizerSheet ? { ...prev.pulseOrganizerSheet, following } : null,
     }));
-    const { error } = await supabase.from('follows').insert({ user_id: s.user.id, organizer_id: organizerId });
+    patch(!wasFollowing);
+    const { error } = wasFollowing
+      ? await supabase.from('follows').delete().eq('user_id', s.user.id).eq('organizer_id', organizerId)
+      : await supabase.from('follows').insert({ user_id: s.user.id, organizer_id: organizerId });
     if (error) {
       console.warn('followPulseOrganizer failed:', error);
-      set(prev => ({
-        pulseOrganizerSheet: prev.pulseOrganizerSheet ? { ...prev.pulseOrganizerSheet, following: false } : null,
-      }));
+      patch(wasFollowing);
     }
-  }, [set, s.user?.id]);
+  }, [set, s.user?.id, s.pulseOrganizerSheet?.following]);
 
   // 2026-09-25 fix pass — the ranked-photo popup: photo + organizer
   // identity/verified badge + a "view event" action, per this ticket's own

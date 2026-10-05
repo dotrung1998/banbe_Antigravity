@@ -117,12 +117,19 @@ struct NewStory: Encodable {
     let mediaType: String
     let width: Int?
     let height: Int?
+    var overlays: [StoryOverlay] = []
+    var linkUrl: String?
+    var linkLabel: String?
+    var surveyId: UUID?
     enum CodingKeys: String, CodingKey {
         case organizerId = "organizer_id"
         case authorId = "author_id"
         case mediaPath = "media_path"
         case mediaType = "media_type"
-        case width, height
+        case width, height, overlays
+        case linkUrl = "link_url"
+        case linkLabel = "link_label"
+        case surveyId = "survey_id"
     }
 }
 /// STAGE C (2026-09-25) — uploadEventPhoto()'s own INSERT row.
@@ -3333,11 +3340,20 @@ extension AppState {
             return
         }
         do {
-            let rows: [Story] = try await SupabaseService.client
-                .from("stories")
-                .select("id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at, kind, event_id, survey_id")
-                .order("created_at", ascending: true)
-                .execute().value
+            // migration 147's overlays/link columns — falls back to the
+            // original column list if it hasn't been applied yet, so the
+            // story ring never breaks over a missing migration.
+            let baseCols = "id, organizer_id, author_id, media_path, media_type, width, height, created_at, expires_at, kind, event_id, survey_id"
+            let rows: [Story]
+            if let withEdits: [Story] = try? await SupabaseService.client
+                .from("stories").select(baseCols + ", overlays, link_url, link_label")
+                .order("created_at", ascending: true).execute().value {
+                rows = withEdits
+            } else {
+                rows = try await SupabaseService.client
+                    .from("stories").select(baseCols)
+                    .order("created_at", ascending: true).execute().value
+            }
             guard !rows.isEmpty else {
                 homeStories = []
                 return
@@ -3450,7 +3466,7 @@ extension AppState {
                     return StoryEventSnapshot(eventKey: ev.key, img: ev.img, name: ev.name, when: ev.when, location: ev.where, lat: ev.lat, lng: ev.lng)
                 }()
                 let card: SurveyCard? = r.kind == "survey_share" ? r.surveyId.flatMap { cardBySurveyId[$0] } : nil
-                let item = StoryItem(id: r.id, mediaPath: r.mediaPath, url: urlByPath[r.mediaPath], width: r.width, height: r.height, createdAt: r.createdAt, viewed: viewedSet.contains(r.id), kind: r.kind, eventSnapshot: snapshot, surveyCard: card, hostAvatarURL: orgAvatarURLById[r.organizerId])
+                let item = StoryItem(id: r.id, mediaPath: r.mediaPath, url: urlByPath[r.mediaPath], width: r.width, height: r.height, createdAt: r.createdAt, viewed: viewedSet.contains(r.id), kind: r.kind, eventSnapshot: snapshot, surveyCard: card, hostAvatarURL: orgAvatarURLById[r.organizerId], overlays: r.overlays ?? [], linkURL: r.linkUrl, linkLabel: r.linkLabel)
                 if byOrg[r.organizerId] != nil { byOrg[r.organizerId]!.stories.append(item) }
                 else { byOrg[r.organizerId] = StoryGroup(organizerId: r.organizerId, orgName: name, stories: [item]) }
             }
@@ -3510,25 +3526,92 @@ extension AppState {
     /// signed-in host's (first) organizer.
     func publishStory() async -> Bool {
         guard let image = storyCreatePreviewImage, let uid = userID else { return false }
-        let orgIds = await currentOrganizerIds()
-        guard let orgId = orgIds.first else { return false }
-        guard let data = ProofImage.jpegDataUnderLimit(from: image) else { return false }
-        let dims = UIImage(data: data)?.size
+        let overlays = storyDraftOverlays.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let link = storyDraftLinkURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let label = storyDraftLinkLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         storyCreateBusy = true
         defer { storyCreateBusy = false }
         do {
-            let path = "\(orgId)/\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
-            _ = try await SupabaseService.client.storage.from("stories")
-                .upload(path, data: data, options: FileOptions(contentType: "image/jpeg"))
-            _ = try await SupabaseService.client.from("stories").insert(
-                NewStory(organizerId: orgId, authorId: uid, mediaPath: path, mediaType: "image/jpeg", width: dims.map { Int($0.width) }, height: dims.map { Int($0.height) })
-            ).execute()
-            storyCreatePreviewImage = nil
+            if let editingID = storyEditingID {
+                // Edit: overlays/link only — the media itself is untouched.
+                struct Edit: Encodable {
+                    let overlays: [StoryOverlay]
+                    let linkUrl: String?
+                    let linkLabel: String?
+                    enum CodingKeys: String, CodingKey { case overlays; case linkUrl = "link_url"; case linkLabel = "link_label" }
+                    func encode(to encoder: Encoder) throws {
+                        var c = encoder.container(keyedBy: CodingKeys.self)
+                        try c.encode(overlays, forKey: .overlays)
+                        try c.encode(linkUrl, forKey: .linkUrl)      // explicit null clears the column
+                        try c.encode(linkLabel, forKey: .linkLabel)
+                    }
+                }
+                _ = try await SupabaseService.client.from("stories")
+                    .update(Edit(overlays: overlays, linkUrl: link.isEmpty ? nil : link, linkLabel: link.isEmpty || label.isEmpty ? nil : label))
+                    .eq("id", value: editingID.uuidString).execute()
+            } else {
+                let orgIds = await currentOrganizerIds()
+                guard let orgId = orgIds.first else { return false }
+                guard let data = ProofImage.jpegDataUnderLimit(from: image) else { return false }
+                let dims = UIImage(data: data)?.size
+                let path = "\(orgId)/\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
+                _ = try await SupabaseService.client.storage.from("stories")
+                    .upload(path, data: data, options: FileOptions(contentType: "image/jpeg"))
+                _ = try await SupabaseService.client.from("stories").insert(
+                    NewStory(organizerId: orgId, authorId: uid, mediaPath: path, mediaType: "image/jpeg",
+                             width: dims.map { Int($0.width) }, height: dims.map { Int($0.height) },
+                             overlays: overlays, linkUrl: link.isEmpty ? nil : link,
+                             linkLabel: link.isEmpty || label.isEmpty ? nil : label,
+                             surveyId: storyDraftSurveyID)
+                ).execute()
+            }
+            let hadSurvey = storyDraftSurveyID != nil
+            clearStoryDraft()
+            Haptics.success()
+            await loadHomeStories()
+            if hadSurvey { await loadMySurveys() }
+            return true
+        } catch {
+            print("publishStory failed:", error)
+            return false
+        }
+    }
+
+    func clearStoryDraft() {
+        storyCreatePreviewImage = nil
+        storyDraftOverlays = []
+        storyDraftLinkURL = ""
+        storyDraftLinkLabel = ""
+        storyEditingID = nil
+        storyDraftSurveyID = nil
+    }
+
+    /// Opens the story editor on an already-posted story (overlays/link only).
+    func beginEditStory(_ story: StoryItem) async {
+        guard let url = story.url,
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let image = UIImage(data: data) else { return }
+        storyDraftOverlays = story.overlays
+        storyDraftLinkURL = story.linkURL ?? ""
+        storyDraftLinkLabel = story.linkLabel ?? ""
+        storyEditingID = story.id
+        storyCreatePreviewImage = image
+    }
+
+    /// Deletes a posted story (author / organizer owner — RLS decides) and
+    /// its media object (best effort; the row is what makes it disappear).
+    func deleteStory(_ story: StoryItem) async -> Bool {
+        do {
+            _ = try await SupabaseService.client.from("stories").delete()
+                .eq("id", value: story.id.uuidString).execute()
+            if !story.mediaPath.isEmpty {
+                _ = try? await SupabaseService.client.storage.from("stories").remove(paths: [story.mediaPath])
+            }
             Haptics.success()
             await loadHomeStories()
             return true
         } catch {
-            print("publishStory failed:", error)
+            print("deleteStory failed:", error)
             return false
         }
     }

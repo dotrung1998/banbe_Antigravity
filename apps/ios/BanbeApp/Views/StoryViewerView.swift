@@ -114,7 +114,107 @@ struct StoryViewerView: View {
         .saturation(0.85)
     }
 
+
     var body: some View {
+        // The owner's "⋯" menu lives OUTSIDE the view that carries the
+        // full-screen stage gesture: a native Menu never receives its tap
+        // underneath that gesture (the close X only works because it's a
+        // plain Button). Same native menu/glass popover as Home's area picker.
+        ZStack {
+            stage
+            ownerMenu
+        }
+    }
+
+    @State private var menuResumeTask: Task<Void, Never>?
+
+    @State private var menuPaused = false
+
+    /// After a delete: keep watching if there's another story (the next one
+    /// takes the deleted one's place — or the previous one if it was the last);
+    /// move on to the next host if this host has none left; otherwise leave,
+    /// sliding down.
+    private func deleteAndContinue(_ story: StoryItem) async {
+        guard await app.deleteStory(story) else { endMenuPause(); return }
+        guard let v = app.storyViewer else { return }
+        var groups = v.groups
+        groups[v.groupIndex].stories.removeAll { $0.id == story.id }
+        menuResumeTask?.cancel(); menuPaused = false
+        if !groups[v.groupIndex].stories.isEmpty {
+            let idx = min(v.storyIndex, groups[v.groupIndex].stories.count - 1)
+            app.storyViewer = StoryViewerState(groups: groups, groupIndex: v.groupIndex, storyIndex: idx, originRect: v.originRect)
+        } else if let gi = groups.indices.first(where: { $0 > v.groupIndex && !groups[$0].stories.isEmpty })
+                    ?? groups.indices.last(where: { $0 < v.groupIndex && !groups[$0].stories.isEmpty }) {
+            app.storyViewer = StoryViewerState(groups: groups, groupIndex: gi, storyIndex: 0, originRect: v.originRect)
+        } else {
+            dismissDown()
+            return
+        }
+        // The story at this index changed without the index changing, so the
+        // index observers won't fire — restart the timer by hand.
+        isPaused = false
+        resetProgress(); tickCurrentStory(); resetDragTransforms()
+    }
+
+    /// Top-to-bottom exit (used when the last story is deleted).
+    private func dismissDown() {
+        guard !closing else { return }
+        pauseProgress()
+        withAnimation(.easeIn(duration: 0.3)) {
+            entryOffsetY = UIScreen.main.bounds.height
+            entryCornerRadius = 28
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { app.closeStoryViewer() }
+    }
+    @State private var menuWindowSeen = false
+
+    private func pauseForMenu() {
+        guard !menuPaused else { return }
+        menuPaused = true
+        menuWindowSeen = false
+        pauseProgress()
+        menuResumeTask?.cancel()
+        menuResumeTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            if !Task.isCancelled { endMenuPause() }
+        }
+    }
+
+    private func endMenuPause() {
+        guard menuPaused else { return }
+        menuPaused = false
+        menuResumeTask?.cancel()
+        resumeProgress()
+    }
+
+    @ViewBuilder private var ownerMenu: some View {
+        if let viewer = app.storyViewer, !closing, !isSuspended,
+           let group = viewer.groups[safe: viewer.groupIndex],
+           let story = group.stories[safe: viewer.storyIndex],
+           app.myOrganizerIdsCache.contains(group.organizerId) {
+            StoryOwnerMenuButton(
+                canEdit: story.kind == "media",
+                editTitle: app.T("Chỉnh sửa story", "Edit story"),
+                deleteTitle: app.T("Xóa story", "Delete story"),
+                confirmTitle: app.T("Xóa cho mọi người", "Delete for everyone"),
+                onTouchDown: { pauseForMenu() },
+                onEdit: { Task { await app.beginEditStory(story); dismiss() } },
+                onDelete: { Task { await deleteAndContinue(story) } })
+                .frame(width: 44, height: 44)
+                // Resume as soon as the menu's window goes away; the timeout in
+                // pauseForMenu() is the fallback if that signal never comes.
+                .onReceive(NotificationCenter.default.publisher(for: UIWindow.didBecomeVisibleNotification)) { _ in
+                    if menuPaused { menuWindowSeen = true }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIWindow.didBecomeHiddenNotification)) { _ in
+                    if menuPaused && menuWindowSeen { endMenuPause() }
+                }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .padding(.top, 54).padding(.trailing, 56)
+        }
+    }
+
+    @ViewBuilder private var stage: some View {
         if let viewer = app.storyViewer, let group = viewer.groups[safe: viewer.groupIndex], let story = group.stories[safe: viewer.storyIndex] {
             ZStack {
                 Color.black.ignoresSafeArea()
@@ -151,7 +251,15 @@ struct StoryViewerView: View {
                     } else if story.kind == "survey_share" {
                         SurveyShareCard(story: story)
                     } else {
-                        AsyncImage(url: story.url) { $0.resizable().scaledToFit() } placeholder: { ProgressView().tint(.white) }
+                        AsyncImage(url: story.url) {
+                            $0.resizable().scaledToFit()
+                                .overlay {
+                                    if StoryLink.isSurveyAnswer(story.linkURL), let link = story.linkURL {
+                                        StorySurveyHotspot(label: story.linkLabel ?? "", urlString: link, interactive: true)
+                                    }
+                                }
+                                .overlay { StoryOverlayLayer(overlays: story.overlays) }
+                        } placeholder: { ProgressView().tint(.white) }
                             .accessibilityIdentifier("story.viewer.image")
                     }
                 }
@@ -194,7 +302,7 @@ struct StoryViewerView: View {
                     }
                 }
             }
-            .onDisappear { advanceTask?.cancel() }
+            .onDisappear { advanceTask?.cancel(); menuResumeTask?.cancel() }
             // BUG 3 (2026-09-22 eleventh follow-up) — background preload,
             // keyed on `groupIndex` (the target set only actually changes
             // when the host does, not per-post). `.task(id:)` is SwiftUI's
@@ -303,6 +411,14 @@ struct StoryViewerView: View {
             .accessibilityIdentifier("story.viewer.close")
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             .padding(.top, 60).padding(.trailing, 16)
+
+            if let story = group.stories[safe: storyIndex], story.kind == "media" {
+                if let link = story.linkURL, !link.isEmpty, !StoryLink.isSurveyAnswer(link) {
+                    StoryLinkPill(urlString: link, label: story.linkLabel)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, 84)
+                }
+            }
 
             Text("banbe ▪︎ \(app.T("story", "story"))")
                 .font(.system(size: 10.5))
@@ -658,7 +774,11 @@ private struct SurveyShareCard: View {
                 onAnswerSurvey: { Task { await app.openSurveyStoryModal(publicID: publicId) } },
                 fill: false
             )
-            .frame(maxWidth: 340, maxHeight: 460)
+            // Same size as an EDITED survey story: that one is a 360x640 canvas
+            // scaled to the screen width, so lay the card out at 340x460 and scale
+            // it by the same factor (fonts included) instead of a fixed 340pt.
+            .frame(width: 340, height: 460)
+            .scaleEffect(UIScreen.main.bounds.width / 360)
             .accessibilityIdentifier("story.surveyCard")
             .onTapGesture { Task { await app.openSurveyStoryModal(publicID: publicId) } }
         } else {

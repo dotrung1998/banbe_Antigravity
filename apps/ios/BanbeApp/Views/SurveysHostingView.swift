@@ -622,6 +622,24 @@ private struct ShareSurveyToStoryConfirmView: View {
                     .padding(.horizontal, 16).padding(.top, 10)
             }
 
+            Button {
+                app.closeShareToStoryConfirm()
+                dismiss()
+                Task {
+                    try? await Task.sleep(nanoseconds: 450_000_000)   // let this sheet finish closing
+                    await app.beginSurveyStory(survey)
+                }
+            } label: {
+                Label(app.T("Chỉnh sửa trước khi đăng (thêm chữ, liên kết)", "Edit before posting (add text, a link)"), systemImage: "slider.horizontal.3")
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .frame(maxWidth: .infinity).padding(.vertical, 13)
+                    .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 11))
+                    .overlay(RoundedRectangle(cornerRadius: 11).stroke(app.palette.honey.opacity(0.45)))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16).padding(.top, 14)
+            .accessibilityIdentifier("survey.shareToStory.edit")
+
             HStack(spacing: 8) {
                 Button(app.T("Huỷ", "Cancel")) { app.closeShareToStoryConfirm(); dismiss() }
                     .frame(maxWidth: .infinity).padding(.vertical, 13)
@@ -640,7 +658,7 @@ private struct ShareSurveyToStoryConfirmView: View {
             }
             .buttonStyle(.plain)
             .font(.system(size: 13.5, weight: .semibold))
-            .padding(.horizontal, 16).padding(.top, 14)
+            .padding(.horizontal, 16).padding(.top, 10)
         }
         .padding(.bottom, 8)
         .presentationDetents([.large])
@@ -854,5 +872,44 @@ private struct CreateSurveyFormView: View {
                 .padding(10)
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(app.palette.rule))
         }
+    }
+}
+
+extension AppState {
+    /// Renders the survey's story card to an image and opens the story editor
+    /// on it (text + a link to answer), instead of the one-tap interactive
+    /// survey story. Nothing is published until "Post story" in the editor.
+    func beginSurveyStory(_ survey: SurveySummary) async {
+        var avatar: UIImage?
+        if !myOrganizerAvatarPath.isEmpty,
+           let url = try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: myOrganizerAvatarPath),
+           let (data, _) = try? await URLSession.shared.data(from: url) {
+            avatar = UIImage(data: data)
+        }
+        // Same look as the regular survey story: the card at its in-story size,
+        // centred on black. Its button is drawn by the viewer/editor so it stays tappable.
+        let card = ZStack {
+            Color.black
+            SurveyStoryCardView(
+                hostName: orgRegName, hostAvatarURL: nil,
+                title: survey.title, description: survey.description,
+                closesAt: survey.closesAt, status: "active",
+                onAnswerSurvey: nil, fill: false, hostAvatarImage: avatar, showAnswerButton: false)
+                .frame(width: StorySurveyHotspot.cardSize.width, height: StorySurveyHotspot.cardSize.height)
+        }
+        .environmentObject(self)
+        .frame(width: 360, height: 640)
+        let image = await MainActor.run { () -> UIImage? in
+            let r = ImageRenderer(content: card)
+            r.scale = 3
+            return r.uiImage
+        }
+        guard let image else { return }
+        storyDraftOverlays = []
+        storyDraftLinkURL = "banbe://survey/\(survey.publicId)"
+        storyDraftLinkLabel = T("Trả lời khảo sát", "Answer Survey")
+        storyEditingID = nil
+        storyDraftSurveyID = survey.id   // so the survey shows as shared once posted
+        storyCreatePreviewImage = image
     }
 }

@@ -11,12 +11,13 @@ import SwiftUI
 struct PublicProfileView: View {
     @EnvironmentObject private var app: AppState
     @State private var qrOpen = false
+    @State private var shareCardOpen = false
 
     private var isOwnProfile: Bool { app.userID != nil && app.publicProfile?.id == app.userID }
 
     private var profileURL: URL? {
         guard let handle = app.publicProfile?.handle else { return nil }
-        return URL(string: "https://banbe.app/u/\(handle)")
+        return URL(string: "banbe://u/\(handle)")
     }
 
     var body: some View {
@@ -25,8 +26,8 @@ struct PublicProfileView: View {
                 HStack {
                     BackLink(label: app.T("Quay lại", "Back")) { app.backFromPublicProfile() }
                     Spacer()
-                    if let url = profileURL {
-                        ShareLink(item: url, subject: Text(shareTitle)) {
+                    if profileURL != nil {
+                        Button { shareCardOpen = true } label: {
                             Text(app.T("Chia sẻ", "Share")).font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
                         }
                         .accessibilityIdentifier("publicProfile.share")
@@ -100,16 +101,61 @@ struct PublicProfileView: View {
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 20)
         }
-        .sheet(isPresented: $qrOpen) {
+        .sheet(isPresented: $qrOpen) { qrSheet }
+        .sheet(isPresented: $shareCardOpen) {
+            if let p = app.publicProfile, let url = profileURL {
+                ProfileShareSheet(
+                    kindLabel: app.T("Thành viên", "Member"),
+                    name: p.displayName ?? "",
+                    subtitle: p.handle.map { "@\($0)" } ?? "",
+                    detail: p.bio ?? "",
+                    avatarURL: p.avatarURL.flatMap(URL.init(string:)),
+                    roundAvatar: true, link: url, idPrefix: "publicProfile")
+            }
+        }
+    }
+
+    /// QR for the in-app `banbe://u/<handle>` link — a phone camera scan
+    /// opens the installed app on this profile; long-pressing the code does
+    /// the same from right here.
+    private var qrSheet: some View {
+        ZStack(alignment: .topTrailing) {
             VStack(spacing: 14) {
                 if let handle = app.publicProfile?.handle, let url = profileURL {
                     QRCodeImage(value: url.absoluteString, size: 220)
-                    Text("@\(handle)").font(.system(size: 12)).foregroundStyle(app.palette.ink)
+                        .contentShape(Rectangle())
+                        .onLongPressGesture(minimumDuration: 0.5) {
+                            Haptics.light()
+                            qrOpen = false
+                            app.handleDeepLink(url)
+                        }
+                        .accessibilityHint(app.T("Nhấn giữ để mở hồ sơ", "Press and hold to open the profile"))
+                        .accessibilityIdentifier("publicProfile.qrCode")
+                    Text("@\(handle)").font(.system(size: 14, weight: .semibold)).foregroundStyle(app.palette.ink)
+                    Text(app.T(
+                        "Quét bằng camera điện thoại để mở hồ sơ này trong ứng dụng banbe. Nhấn giữ mã QR để mở ngay.",
+                        "Scan with a phone camera to open this profile in the banbe app. Press and hold the QR code to open it right now."))
+                        .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(30)
-            .presentationDetents([.medium])
+
+            Button { qrOpen = false } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(app.palette.ink)
+                    .frame(width: 44, height: 44)
+                    .background(app.palette.field, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(14)
+            .accessibilityLabel(app.T("Đóng", "Close"))
+            .accessibilityIdentifier("publicProfile.qrClose")
         }
+        .presentationDetents([.medium])
     }
 
     private var shareTitle: String {

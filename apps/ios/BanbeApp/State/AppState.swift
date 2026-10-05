@@ -738,6 +738,14 @@ final class AppState: ObservableObject {
     var pulseTeaserAdvance: (() -> Void)?
     var pulseTeaserOpenPhotos: (() -> Void)?
     @Published var storyCreatePreviewImage: UIImage?
+    // Story editor draft (text stickers + one link); `storyEditingID` is set
+    // when editing an already-posted story instead of creating a new one.
+    @Published var storyDraftOverlays: [StoryOverlay] = []
+    @Published var storyDraftLinkURL = ""
+    @Published var storyDraftLinkLabel = ""
+    @Published var storyEditingID: UUID?
+    /// Set when the draft is an edited survey story, so the survey counts as shared.
+    @Published var storyDraftSurveyID: UUID?
     @Published var storyCreateBusy = false
     // TASK 1 (dock "+" native-menu pass) — moved up from AccountView's own
     // local @State so both AccountView's "Đăng story" menu AND the dock
@@ -1226,6 +1234,7 @@ final class AppState: ObservableObject {
     @Published var organizerProfileLoading = false
     @Published var organizerProfileError = ""
     @Published var organizerProfileBackScreen: Screen = .profile
+    @Published var organizerProfileReturnsToPulse = false
     @Published var organizerProfileID = ""
     @Published var organizerProfileUpcoming: [OrganizerUpcomingEvent] = []
     @Published var organizerProfilePhotos: [OrganizerPhoto] = []
@@ -2906,6 +2915,47 @@ final class AppState: ObservableObject {
         guard url.scheme == "banbe" else { return }
         if url.host == "gift" {
             handleGiftClaimLink(url)
+            return
+        }
+        // banbe://org/<organizer_id> — a host's own page (the organizer QR).
+        if url.host == "org" {
+            guard let id = url.pathComponents.filter({ $0 != "/" }).first, !id.isEmpty else { return }
+            photoViewer = nil
+            pulseOpen = false
+            storyViewer = nil
+            openOrganizerProfile(organizerID: id, back: screen == .organizerProfile ? organizerProfileBackScreen : (screen == .login ? .home : screen))
+            return
+        }
+        // banbe://event/<event id> — what an event story's link opens.
+        if url.host == "event" {
+            guard let key = url.pathComponents.filter({ $0 != "/" }).first, !key.isEmpty else { return }
+            photoViewer = nil
+            pulseOpen = false
+            goEvent(key)
+            return
+        }
+        // banbe://survey/<public id> — what an edited survey story's link opens.
+        if url.host == "survey" {
+            guard let pid = url.pathComponents.filter({ $0 != "/" }).first, !pid.isEmpty else { return }
+            photoViewer = nil
+            pulseOpen = false
+            // Tapped from inside a story: answer in the same in-story sheet the
+            // survey story itself uses (the viewer would otherwise stay on top
+            // of the survey screen, making the link look dead).
+            if storyViewer != nil {
+                Task { await openSurveyStoryModal(publicID: pid) }
+            } else {
+                Task { await openSurveyPublic(publicID: pid, back: .home) }
+            }
+            return
+        }
+        // banbe://u/<handle> — a person's public profile (the personal QR).
+        if url.host == "u" {
+            guard let handle = url.pathComponents.filter({ $0 != "/" }).first, !handle.isEmpty else { return }
+            photoViewer = nil
+            pulseOpen = false
+            storyViewer = nil
+            openPublicProfile(handle: handle.lowercased(), back: screen == .publicProfile ? publicProfileBackScreen : (screen == .login ? .home : screen))
             return
         }
         let parts = ([url.host] + url.pathComponents.filter { $0 != "/" }).compactMap { $0 }

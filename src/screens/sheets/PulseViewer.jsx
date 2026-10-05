@@ -578,7 +578,7 @@ export default function PulseViewer() {
                 border: s.pulseOrganizerSheet.following ? `1px solid ${rule}` : 'none',
               }}
             >
-              {s.pulseOrganizerSheet.following ? T('Đang theo dõi', 'Following') : T('Theo dõi', 'Follow')}
+              {s.pulseOrganizerSheet.following ? T('Đang theo dõi', 'Following') : T('Theo dõi tổ chức này', 'Follow this host')}
             </div>
             <div
               onClick={() => { closePulseOrganizerSheet(); closePulseViewer(); goEvent(s.pulseOrganizerSheet.event_id); }}

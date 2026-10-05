@@ -538,7 +538,15 @@ struct RootView: View {
                 // (narrower than `storyUnderlaysEvent`, see its own comment)
                 // so an Organizer -> Event Detail edge-swipe still peeks at
                 // real Event Detail content here, not nothing.
-                if !eventDetailFromStory {
+                if app.screen == .organizerProfile && app.organizerProfileReturnsToPulse {
+                    // Host page opened from Pulse: Pulse itself is what a
+                    // swipe-back lands on, so peek at it (static copy,
+                    // no hit-testing) instead of the screen under it.
+                    PulseViewerView()
+                        .offset(x: peekOffset)
+                        .overlay(Color.black.opacity((1 - dragProgress) * 0.1))
+                        .allowsHitTesting(false)
+                } else if !eventDetailFromStory {
                     screenView(for: app.backTargetScreen, isPreview: true, isActive: false)
                         .offset(x: peekOffset)
                         .overlay(Color.black.opacity((1 - dragProgress) * 0.1))
@@ -1162,7 +1170,7 @@ struct RootView: View {
             }
             .ignoresSafeArea()
         }
-        .fullScreenCover(isPresented: Binding(get: { app.storyCreatePreviewImage != nil }, set: { if !$0 { app.storyCreatePreviewImage = nil } })) {
+        .fullScreenCover(isPresented: Binding(get: { app.storyCreatePreviewImage != nil }, set: { if !$0 { app.clearStoryDraft() } })) {
             StoryCreatePreviewView()
         }
         // Same reasoning as AccountView's own removed `syncDockHidden()`:

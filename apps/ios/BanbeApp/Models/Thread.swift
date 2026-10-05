@@ -74,6 +74,11 @@ struct Story: Codable, Identifiable, Hashable {
     var kind: String = "media"
     var eventId: String?
     var surveyId: UUID?
+    // Story editor (migration 147) — optional so a row from before the
+    // migration (or a select that omits them) still decodes.
+    var overlays: [StoryOverlay]?
+    var linkUrl: String?
+    var linkLabel: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -87,7 +92,25 @@ struct Story: Codable, Identifiable, Hashable {
         case kind
         case eventId = "event_id"
         case surveyId = "survey_id"
+        case overlays
+        case linkUrl = "link_url"
+        case linkLabel = "link_label"
     }
+}
+
+/// One text sticker on a media story. Position is the sticker's CENTRE as a
+/// 0...1 fraction of the media frame, so it lands in the same spot on any
+/// screen size; font size scales with the frame's width for the same reason.
+struct StoryOverlay: Codable, Identifiable, Hashable {
+    var id: String = UUID().uuidString
+    var text: String
+    var x: Double = 0.5
+    var y: Double = 0.5
+    var scale: Double = 1
+    var colorHex: String = "#FFFFFF"
+    var background: Bool = false
+
+    enum CodingKeys: String, CodingKey { case id, text, x, y, scale, colorHex = "color", background = "bg" }
 }
 
 /// get_survey_card()'s own return shape (migration 117) — the same safe,
@@ -195,6 +218,10 @@ struct StoryItem: Identifiable, Hashable {
     // notification-avatar map, AccountView/DashboardView's own
     // `organizerAvatarURL`), travels alongside it on the `StoryItem` itself.
     var hostAvatarURL: URL?
+    // Story editor (migration 147).
+    var overlays: [StoryOverlay] = []
+    var linkURL: String?
+    var linkLabel: String?
 }
 
 /// One host's set of active stories, grouped for the ring/row UI.

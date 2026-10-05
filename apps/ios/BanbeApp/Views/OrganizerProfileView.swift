@@ -13,6 +13,7 @@ import PhotosUI
 struct OrganizerProfileView: View {
     @EnvironmentObject private var app: AppState
     @State private var qrOpen = false
+    @State private var shareCardOpen = false
     @State private var editing = false
     @State private var avatarPickerItem: PhotosPickerItem?
     @State private var avatarPreviewImage: UIImage?
@@ -22,7 +23,7 @@ struct OrganizerProfileView: View {
 
     private var profileURL: URL? {
         guard let id = org?.id else { return nil }
-        return URL(string: "https://banbe.app/org/\(id)")
+        return URL(string: "banbe://org/\(id)")
     }
     private var organizerAvatarURL: URL? {
         guard let path = org?.avatarPath, !path.isEmpty else { return nil }
@@ -33,10 +34,10 @@ struct OrganizerProfileView: View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    BackLink(label: app.T("Quay lại", "Back")) { app.backFromOrganizerProfile() }
+                    BackLink(label: app.organizerProfileReturnsToPulse ? app.T("Về Pulse", "Back to Pulse") : app.T("Quay lại", "Back")) { app.backFromOrganizerProfile() }
                     Spacer()
-                    if let url = profileURL, let name = org?.name {
-                        ShareLink(item: url, subject: Text(app.T("Trang tổ chức banbe của \(name)", "\(name)\u{2019}s banbe organizer page"))) {
+                    if profileURL != nil, org?.name != nil {
+                        Button { shareCardOpen = true } label: {
                             Text(app.T("Chia sẻ", "Share")).font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
                         }
                         .accessibilityIdentifier("organizerProfile.share")
@@ -107,7 +108,7 @@ struct OrganizerProfileView: View {
                             ForEach(app.organizerProfileUpcoming) { e in
                                 Button { app.goEvent(e.id) } label: {
                                     HStack(spacing: 12) {
-                                        CatalogPhoto(path: EventCatalog.find(e.id)?.img ?? "", height: 48, width: 48, cornerRadius: 10)
+                                        CatalogPhoto(path: e.coverURL ?? "", height: 48, width: 48, cornerRadius: 10)
                                         Text(e.name).font(BanbeTheme.display(14)).lineLimit(1)
                                         Spacer(minLength: 0)
                                     }
@@ -146,16 +147,61 @@ struct OrganizerProfileView: View {
             guard let id = app.organizerProfileID.isEmpty ? nil : app.organizerProfileID else { return }
             await app.loadOrganizerProfileExtras(organizerID: id)
         }
-        .sheet(isPresented: $qrOpen) {
+        .sheet(isPresented: $qrOpen) { qrSheet }
+        .sheet(isPresented: $shareCardOpen) {
+            if let org, let url = profileURL {
+                ProfileShareSheet(
+                    kindLabel: app.T("Tổ chức", "Host"),
+                    name: org.name ?? "",
+                    subtitle: app.T("\(org.eventCount ?? 0) sự kiện · \(org.followerCount ?? 0) người theo dõi", "\(org.eventCount ?? 0) events · \(org.followerCount ?? 0) followers"),
+                    detail: org.about ?? "",
+                    avatarURL: organizerAvatarURL,
+                    roundAvatar: false, link: url, idPrefix: "organizerProfile")
+            }
+        }
+    }
+
+    /// QR for the in-app `banbe://org/<id>` link — a phone camera scan opens
+    /// the installed app straight on this host; long-pressing the code does
+    /// the same thing from right here.
+    private var qrSheet: some View {
+        ZStack(alignment: .topTrailing) {
             VStack(spacing: 14) {
                 if let name = org?.name, let url = profileURL {
                     QRCodeImage(value: url.absoluteString, size: 220)
-                    Text(name).font(.system(size: 12)).foregroundStyle(app.palette.ink)
+                        .contentShape(Rectangle())
+                        .onLongPressGesture(minimumDuration: 0.5) {
+                            Haptics.light()
+                            qrOpen = false
+                            app.handleDeepLink(url)
+                        }
+                        .accessibilityHint(app.T("Nhấn giữ để mở trang tổ chức", "Press and hold to open the host page"))
+                        .accessibilityIdentifier("organizerProfile.qrCode")
+                    Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(app.palette.ink)
+                    Text(app.T(
+                        "Quét bằng camera điện thoại để mở trang tổ chức này trong ứng dụng banbe. Nhấn giữ mã QR để mở ngay.",
+                        "Scan with a phone camera to open this host's page in the banbe app. Press and hold the QR code to open it right now."))
+                        .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.6))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(30)
-            .presentationDetents([.medium])
+
+            Button { qrOpen = false } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(app.palette.ink)
+                    .frame(width: 44, height: 44)
+                    .background(app.palette.field, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(14)
+            .accessibilityLabel(app.T("Đóng", "Close"))
+            .accessibilityIdentifier("organizerProfile.qrClose")
         }
+        .presentationDetents([.medium])
     }
 
     @ViewBuilder

@@ -467,7 +467,7 @@ extension AppState {
                 enum CodingKeys: String, CodingKey { case surveyId = "survey_id" } }
             let shareRows: [ShareRow] = (try? await SupabaseService.client
                 .from("stories").select("survey_id")
-                .eq("organizer_id", value: organizerID).eq("kind", value: "survey_share")
+                .eq("organizer_id", value: organizerID)   // survey_share rows AND edited (photo) survey stories
                 .execute().value) ?? []
             mySurveySharedIds = Set(shareRows.compactMap(\.surveyId))
         } catch {

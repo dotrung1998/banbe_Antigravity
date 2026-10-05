@@ -342,38 +342,20 @@ struct AccountView: View {
             // existing nested tap targets unchanged — a separate
             // trailing chevron (not the whole card) opens EditProfile.
             HStack(spacing: 14) {
-                // Task 3.3 (07-notifications.md) — story ring: bright
-                // while an active, not-fully-viewed story exists;
-                // subdued once every active story has been viewed; no
-                // ring with no active story. Tap opens the viewer only
-                // when there's something to view.
-                SwipeSafeButton {
-                    if let g = myStoryGroup { app.openStoryViewer(g.organizerId) }
-                } label: {
-                    ZStack {
-                        if let g = myStoryGroup {
-                            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                                .strokeBorder(g.allViewed ? Color.clear : BanbeTheme.alert, lineWidth: 2.5)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                                        .strokeBorder(g.allViewed ? app.palette.rule : .clear, lineWidth: 2.5)
-                                )
-                                .frame(width: 64, height: 64)
-                        }
-                        if let urlStr = app.user?.avatarURL, let url = URL(string: urlStr) {
-                            AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
-                                .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        } else {
-                            Text(String(app.displayName.prefix(1)).uppercased())
-                                .font(BanbeTheme.display(22))
-                                .frame(width: 56, height: 56)
-                                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
+                // The story ring lives on the Host card (stories are a host
+                // feature) — this personal avatar is just the picture.
+                Group {
+                    if let urlStr = app.user?.avatarURL, let url = URL(string: urlStr) {
+                        AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.clear }
+                            .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    } else {
+                        Text(String(app.displayName.prefix(1)).uppercased())
+                            .font(BanbeTheme.display(22))
+                            .frame(width: 56, height: 56)
+                            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                 }
-                .buttonStyle(.plain)
-                .disabled(myStoryGroup == nil)
-                .accessibilityIdentifier("account.storyRing")
+                .frame(width: 64, height: 64)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(app.displayName).font(BanbeTheme.display(22)).lineLimit(1)
@@ -393,32 +375,7 @@ struct AccountView: View {
                         Text("@\(handle)").font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.7))
                     }
                     Text(subtitle).font(.system(size: 11)).kerning(0.6)
-                    // Task 3.2 — story creation entry point, hosts only.
-                    // TASK B (2026-10-03) — host-only action, hidden
-                    // while organizerMode is off (current mode, not
-                    // eligibility).
-                    if app.organizerMode {
-                        Menu {
-                            // Task 1 — icons on each row, matching the
-                            // chat composer's "+" menu exactly (same SF
-                            // Symbols) so the two read as one family.
-                            SwipeSafeButton {
-                                app.storyLibraryPickerOpen = true
-                            } label: {
-                                Label(app.T("Thư Viện Ảnh", "Photo Library"), systemImage: "photo.on.rectangle")
-                            }
-                            SwipeSafeButton {
-                                app.storyCameraOpen = true
-                            } label: {
-                                Label(app.T("Camera", "Camera"), systemImage: "camera")
-                            }
-                        } label: {
-                            Text(app.T("▪︎ Đăng story", "▪︎ Post story"))
-                                .font(.system(size: 11.5))
-                                .foregroundStyle(app.palette.ink.opacity(0.65))
-                        }
-                        .accessibilityIdentifier("account.postStory")
-                    }
+                    // Story posting moved to the Host tab (hostStoryAndShareCard).
                 }
                 Spacer(minLength: 0)
                 if app.isSignedIn {
@@ -450,6 +407,7 @@ struct AccountView: View {
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
             .padding(.top, 22)
             .accessibilityIdentifier("account.profileCard")
+            shareCardCTA(host: false)
             } // app.accountTab == "personal" (profile card)
 
             if app.accountTab == "personal" {
@@ -645,6 +603,8 @@ struct AccountView: View {
             // Account IA pass (2026-09-27) — identity card FIRST (was:
             // reports row, then this card).
             orgProfileCard()
+            postStoryCTA
+            shareCardCTA(host: true)
             ActionCenterView(items: hostActionItems, onSeeAll: { app.openVerifications(back: .profile) })
             hostManagementRows
             // Metrics & Reports now lives as the last row INSIDE
@@ -716,6 +676,8 @@ struct AccountView: View {
         // `retryScrollRestoreIfNeeded` already uses for a full screen
         // return, just re-keyed per tab instead of per screen visit.
         .id(app.accountTab)
+        .sheet(isPresented: $shareCardOpen) { shareCardSheet }
+        .sheet(isPresented: $eventStoryPickerOpen) { eventStoryPicker }
     }
 
     // iPhone fix pass (2026-09-27), Issue 1 — consumes whichever highlight
@@ -1534,6 +1496,159 @@ struct AccountView: View {
         .padding(.top, 14)
     }
 
+    @State private var shareCardOpen = false
+    @State private var eventStoryPickerOpen = false
+    @State private var eventStoryBusyKey: String?
+    @State private var eventStoryLoaded = false
+    @State private var eventStoryMessage: String?
+    @State private var shareCardForHost = false
+
+    /// Prominent entry point to the shareable profile card (Personal + Host).
+    private func shareCardCTA(host: Bool) -> some View {
+        Button {
+            shareCardForHost = host
+            shareCardOpen = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "qrcode").font(.system(size: 22, weight: .semibold)).foregroundStyle(app.palette.honey)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(host ? app.T("Chia sẻ thẻ tổ chức của bạn", "Share your host card")
+                              : app.T("Chia sẻ thẻ hồ sơ của bạn", "Share your profile card"))
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(app.T("Thẻ có mã QR, tuỳ chỉnh màu và ảnh nền", "A card with a QR code — pick your colours and background"))
+                        .font(.system(size: 11.5)).opacity(0.8)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "square.and.arrow.up").font(.system(size: 16, weight: .semibold)).foregroundStyle(app.palette.honey)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .foregroundStyle(app.palette.ink)
+            .background(app.palette.honeyBg, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(app.palette.honey.opacity(0.45), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 14)
+        .accessibilityIdentifier(host ? "account.shareHostCard" : "account.shareProfileCard")
+    }
+
+    /// Story posting is a host action — lives on the Host tab.
+    private var postStoryCTA: some View {
+        Menu {
+            Button { app.storyLibraryPickerOpen = true } label: {
+                Label(app.T("Thư Viện Ảnh", "Photo Library"), systemImage: "photo.on.rectangle")
+            }
+            Button { app.storyCameraOpen = true } label: {
+                Label(app.T("Camera", "Camera"), systemImage: "camera")
+            }
+            Button { eventStoryPickerOpen = true } label: {
+                Label(app.T("Chọn từ sự kiện của tôi", "Share one of my events"), systemImage: "calendar")
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "plus.circle.fill").font(.system(size: 22))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.T("Đăng story", "Post a story")).font(.system(size: 15, weight: .semibold))
+                    Text(app.T("Thêm chữ và liên kết, sửa hoặc xóa sau khi đăng", "Add text and a link; edit or delete after posting"))
+                        .font(.system(size: 11.5)).opacity(0.65)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 12)).opacity(0.5)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .foregroundStyle(app.palette.ink)
+            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .padding(.top, 14)
+        .accessibilityIdentifier("account.postStory")
+    }
+
+    /// Pick one of the host's own live events to post as a story (the same
+    /// server-checked `create_event_share_story` the Event Detail button uses).
+    private var eventStoryPicker: some View {
+        let events = app.myOrgEvents.filter { $0.isOpen }
+        return NavigationStack {
+            ScrollView {
+                VStack(spacing: 10) {
+                    if let msg = eventStoryMessage {
+                        Text(msg).font(.system(size: 12.5, weight: .semibold)).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if !eventStoryLoaded {
+                        ProgressView().padding(.top, 40)
+                    } else if events.isEmpty {
+                        Text(app.T("Bạn chưa có sự kiện nào đang mở để đăng.", "You have no live events to post yet."))
+                            .font(.system(size: 13)).opacity(0.7).padding(.top, 40)
+                    }
+                    ForEach(events, id: \.key) { ev in
+                        Button {
+                            guard eventStoryBusyKey == nil else { return }
+                            eventStoryBusyKey = ev.key
+                            Task {
+                                // Open the story editor on this event's card — nothing
+                                // is published until the host taps "Post story".
+                                eventStoryPickerOpen = false
+                                try? await Task.sleep(nanoseconds: 450_000_000)   // let the sheet finish closing
+                                await app.beginEventStory(ev)
+                                eventStoryBusyKey = nil
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                CatalogPhoto(path: ev.img, height: 52, width: 52, cornerRadius: 10)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(ev.name).font(BanbeTheme.display(15)).lineLimit(1)
+                                    Text(ev.when).font(.system(size: 11.5)).opacity(0.7).lineLimit(1)
+                                }
+                                Spacer(minLength: 0)
+                                if eventStoryBusyKey == ev.key { ProgressView() }
+                                else { Image(systemName: "chevron.right").font(.system(size: 12)).opacity(0.4) }
+                            }
+                            .padding(12)
+                            .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("account.eventStory.\(ev.key)")
+                    }
+                    Text(app.T("Bạn có thể thêm chữ và liên kết trước khi đăng. Story hiển thị trong 24 giờ.", "You can add text and a link before posting. The story stays up for 24 hours."))
+                        .font(.system(size: 11)).opacity(0.6).padding(.top, 6)
+                }
+                .padding(20)
+            }
+            .foregroundStyle(app.palette.ink)
+            .background(app.palette.paper.ignoresSafeArea())
+            // The host's event list is only loaded on screens that need it —
+            // load it here so the picker never shows an empty list just
+            // because Account hadn't fetched it yet.
+            .task {
+                eventStoryLoaded = false
+                await app.loadMyOrgEventSummaries()
+                eventStoryLoaded = true
+            }
+            .navigationTitle(app.T("Đăng sự kiện lên story", "Post an event to your story"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(app.T("Đóng", "Close")) { eventStoryPickerOpen = false } } }
+        }
+    }
+
+    @ViewBuilder
+    private var shareCardSheet: some View {
+        if shareCardForHost, let id = app.myOrganizerID, let link = URL(string: "banbe://org/\(id)") {
+            ProfileShareSheet(
+                kindLabel: app.T("Tổ chức", "Host"),
+                name: app.orgRegName.isEmpty ? app.T("Chưa đặt tên", "Unnamed host") : app.orgRegName,
+                subtitle: app.myOrgPublishedEventCount.map { app.T("\($0) sự kiện", "\($0) events") } ?? "",
+                detail: app.orgRegDesc,
+                avatarURL: organizerAvatarURL, roundAvatar: false, link: link, idPrefix: "account.host")
+        } else if !shareCardForHost, let u = app.user, let handle = u.handle, !handle.isEmpty,
+                  let link = URL(string: "banbe://u/\(handle)") {
+            ProfileShareSheet(
+                kindLabel: app.T("Thành viên", "Member"),
+                name: u.displayName, subtitle: "@\(handle)", detail: "",
+                avatarURL: u.avatarURL.flatMap(URL.init(string:)), roundAvatar: true, link: link, idPrefix: "account.personal")
+        } else {
+            Text(app.T("Chưa thể tạo thẻ.", "The card isn't available yet.")).padding(40)
+        }
+    }
+
     /// Host tab's OWN rounded profile card (Stage D) — organizer avatar/
     /// name/introduction, stored on `organizers` (migration 090), never
     /// profiles.display_name. Only shown once this account has ever
@@ -1552,18 +1667,36 @@ struct AccountView: View {
             } label: {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 14) {
-                        ZStack {
-                            if let url = organizerAvatarURL {
-                                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
-                            } else {
-                                Text((app.orgRegName.first.map(String.init) ?? "B").uppercased())
-                                    .font(BanbeTheme.display(20))
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    .background(app.palette.field)
+                        // Story ring (host feature): bright while there's an
+                        // unviewed active story, subdued once all are viewed,
+                        // none without a story. Tapping opens the viewer; the
+                        // rest of the card still opens the dashboard.
+                        SwipeSafeButton {
+                            if let g = myStoryGroup { app.openStoryViewer(g.organizerId) }
+                            else { app.goDashboard(back: .profile) }
+                        } label: {
+                            ZStack {
+                                if let g = myStoryGroup {
+                                    RoundedRectangle(cornerRadius: 17, style: .continuous)
+                                        .strokeBorder(g.allViewed ? app.palette.rule : BanbeTheme.alert, lineWidth: 2.5)
+                                        .frame(width: 66, height: 66)
+                                }
+                                ZStack {
+                                    if let url = organizerAvatarURL {
+                                        AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
+                                    } else {
+                                        Text((app.orgRegName.first.map(String.init) ?? "B").uppercased())
+                                            .font(BanbeTheme.display(20))
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                            .background(app.palette.field)
+                                    }
+                                }
+                                .frame(width: 56, height: 56)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             }
+                            .frame(width: 66, height: 66)
                         }
-                        .frame(width: 56, height: 56)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .accessibilityIdentifier("account.storyRing")
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text(app.orgRegName.isEmpty ? app.T("Chưa đặt tên", "Unnamed host") : app.orgRegName)
@@ -1656,47 +1789,7 @@ struct AccountView: View {
 /// original behavior, regardless of whether library or camera was the
 /// original source.
 struct StoryCreatePreviewView: View {
-    @EnvironmentObject var app: AppState
-
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 0) {
-                if let image = app.storyCreatePreviewImage {
-                    Image(uiImage: image).resizable().scaledToFit()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                HStack(spacing: 10) {
-                    SwipeSafeButton {
-                        app.storyCreatePreviewImage = nil
-                        app.storyCameraOpen = true
-                    } label: {
-                        Text(app.T("Chụp lại", "Retake"))
-                            .font(.system(size: 13.5, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                            .foregroundStyle(.white)
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.35)))
-                    }
-                    .accessibilityIdentifier("story.retake")
-                    SwipeSafeButton {
-                        Task { _ = await app.publishStory() }
-                    } label: {
-                        Text(app.storyCreateBusy ? app.T("Đang đăng…", "Posting…") : app.T("Dùng ảnh", "Use photo"))
-                            .font(.system(size: 13.5, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                            .foregroundStyle(.black)
-                            .background(Color.white, in: RoundedRectangle(cornerRadius: 12))
-                            .opacity(app.storyCreateBusy ? 0.6 : 1)
-                    }
-                    .disabled(app.storyCreateBusy)
-                    .accessibilityIdentifier("story.usePhoto")
-                }
-                .padding(.horizontal, 22).padding(.top, 16).padding(.bottom, 34)
-            }
-        }
-    }
+    var body: some View { StoryEditorView() }
 }
 
 

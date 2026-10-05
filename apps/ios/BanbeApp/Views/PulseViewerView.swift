@@ -709,7 +709,7 @@ struct PulseViewerView: View {
                 Button {
                     Task { await app.followPulseOrganizer(item.organizerId) }
                 } label: {
-                    Text(item.following ? app.T("Đang theo dõi", "Following") : app.T("Theo dõi", "Follow"))
+                    Text(item.following ? app.T("Đang theo dõi", "Following") : app.T("Theo dõi tổ chức này", "Follow this host"))
                         .font(.system(size: 13.5, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14).padding(.horizontal, 10)
@@ -738,9 +738,7 @@ struct PulseViewerView: View {
                 .accessibilityIdentifier("pulse.viewEvent")
             }
             Button {
-                app.closePulseOrganizerSheet()
-                app.closePulseViewer()
-                app.openOrganizerProfile(organizerID: item.organizerId, back: .profile)
+                app.openOrganizerProfileFromPulse(organizerID: item.organizerId)
             } label: {
                 Text(app.T("Xem trang tổ chức", "View host page"))
                     .font(.system(size: 12.5, weight: .semibold))

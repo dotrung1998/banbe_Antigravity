@@ -137,8 +137,12 @@ struct OrganizerProfile: Decodable, Equatable {
 struct OrganizerUpcomingEvent: Decodable, Identifiable {
     let id: String
     let name: String
+    /// The event's real first photo (lowest sort_order) as a public URL —
+    /// filled in after the fetch; nil when the event has no photo yet.
+    var coverURL: String? = nil
     enum CodingKeys: String, CodingKey { case id, name }
 }
+private struct OrganizerUpcomingCoverRow: Decodable { let event_id: String; let storage_path: String }
 private struct OrganizerProfilePhotoEventRow: Decodable { let id: String }
 
 private struct SaveProfileResult: Decodable {
@@ -382,6 +386,7 @@ extension AppState {
     /// nav or a deep link).
     func openOrganizerProfile(organizerID: String, back: Screen = .profile) {
         organizerProfileBackScreen = back
+        organizerProfileReturnsToPulse = false
         organizerProfile = nil
         organizerProfileLoading = true
         organizerProfileError = ""
@@ -408,7 +413,21 @@ extension AppState {
             organizerProfileError = T("Không tìm thấy tổ chức này.", "This organizer couldn't be found.")
         }
     }
-    func backFromOrganizerProfile() { screen = organizerProfileBackScreen }
+    /// Opened from the Pulse popup: Pulse is an overlay, so remember the
+    /// screen underneath and restore Pulse itself on back (not Account).
+    func openOrganizerProfileFromPulse(organizerID: String) {
+        let origin = screen == .organizerProfile ? organizerProfileBackScreen : screen
+        closePulseOrganizerSheet()
+        pulseOpen = false
+        openOrganizerProfile(organizerID: organizerID, back: origin)
+        organizerProfileReturnsToPulse = true
+    }
+    func backFromOrganizerProfile() {
+        let toPulse = organizerProfileReturnsToPulse
+        organizerProfileReturnsToPulse = false
+        screen = organizerProfileBackScreen
+        if toPulse { pulseOpen = true }  // lists kept — no refetch/clear
+    }
 
     /// Small preview content for the organizer public profile — real
     /// upcoming events (published, soonest first) and a handful of real
@@ -429,7 +448,20 @@ extension AppState {
                 .eq("organizer_id", value: organizerID).eq("status", value: "live").eq("visibility", value: "public")
                 .execute().value
             let (upcoming, photoEvents) = try await (upcomingReq, photoEventsReq)
-            organizerProfileUpcoming = upcoming
+            var withCovers = upcoming
+            if !withCovers.isEmpty {
+                let covers: [OrganizerUpcomingCoverRow] = (try? await SupabaseService.client
+                    .from("event_photos").select("event_id, storage_path")
+                    .in("event_id", values: withCovers.map(\.id))
+                    .order("sort_order", ascending: true)
+                    .execute().value) ?? []
+                for i in withCovers.indices {
+                    guard let path = covers.first(where: { $0.event_id == withCovers[i].id })?.storage_path else { continue }
+                    let rel = path.hasPrefix("event-photos/") ? String(path.dropFirst("event-photos/".count)) : path
+                    withCovers[i].coverURL = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: rel).absoluteString
+                }
+            }
+            organizerProfileUpcoming = withCovers
             let photoEventIDs = photoEvents.map(\.id)
             if photoEventIDs.isEmpty {
                 organizerProfilePhotos = []
