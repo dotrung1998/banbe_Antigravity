@@ -78,10 +78,15 @@ enum GiftTicketPDFGenerator {
                 y += 26
             }
 
+            // Plain right-aligned label: no pill, no border.
             let badgeText = isEN ? "GIFT TICKET" : "VÉ TẶNG"
-            drawBadge(badgeText, at: CGPoint(x: pageWidth - margin - 104, y: y - 2),
-                      font: UIFont.systemFont(ofSize: 9, weight: .bold),
-                      fill: surface, border: rule, textColor: accent)
+            let badgeAttrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 9, weight: .bold),
+                .foregroundColor: accent,
+                .kern: 1.1,
+            ]
+            let badgeWidth = ceil((badgeText as NSString).size(withAttributes: badgeAttrs).width)
+            badgeText.draw(at: CGPoint(x: pageWidth - margin - badgeWidth, y: y + 3), withAttributes: badgeAttrs)
 
             y += 18
             drawRule(from: margin, to: pageWidth - margin, at: y, color: rule, width: 1)
@@ -165,14 +170,14 @@ enum GiftTicketPDFGenerator {
                 let codeLabel = isEN ? "ENTRY CODE  " : "MÃ VÀO CỬA  "
                 let labelFont = UIFont.systemFont(ofSize: 9, weight: .semibold)
                 let codeFont = UIFont.monospacedSystemFont(ofSize: 13, weight: .bold)
-                let labelSize = (codeLabel as NSString).size(withAttributes: [.font: labelFont])
+                let labelSize = (codeLabel as NSString).size(withAttributes: [.font: labelFont, .kern: 1.2])
                 let codeSize = (codeText as NSString).size(withAttributes: [.font: codeFont])
-                let total = labelSize.width + codeSize.width
+                let total = ceil(labelSize.width) + 4 + ceil(codeSize.width)
                 let startX = (pageWidth - total) / 2
                 codeLabel.draw(at: CGPoint(x: startX, y: y + 2), withAttributes: [
                     .font: labelFont, .foregroundColor: muted, .kern: 1.2,
                 ])
-                codeText.draw(at: CGPoint(x: startX + labelSize.width, y: y), withAttributes: [
+                codeText.draw(at: CGPoint(x: startX + ceil(labelSize.width) + 4, y: y), withAttributes: [
                     .font: codeFont, .foregroundColor: ink,
                 ])
                 y += 26
@@ -211,7 +216,7 @@ enum GiftTicketPDFGenerator {
                 title: isEN ? "Open banbe · Register & import" : "Mở banbe · Đăng ký & Nhập vé",
                 filled: true, ink: ink, ruleColor: rule)
             if let importURL {
-                ctx.setURL(importURL, for: importRect)
+                ctx.setURL(importURL, for: pdfLinkRect(importRect, pageHeight: pageHeight))
             }
 
             drawActionButton(
@@ -219,7 +224,17 @@ enum GiftTicketPDFGenerator {
                 title: isEN ? "Add to Google Calendar" : "Thêm vào Google Calendar",
                 filled: false, ink: ink, ruleColor: rule)
             if let calendarURL {
-                ctx.setURL(calendarURL, for: calendarRect)
+                ctx.setURL(calendarURL, for: pdfLinkRect(calendarRect, pageHeight: pageHeight))
+            }
+
+            let appleRect = CGRect(x: calendarRect.origin.x, y: y + buttonHeight + 10,
+                                   width: buttonWidth, height: buttonHeight)
+            drawActionButton(
+                rect: appleRect,
+                title: isEN ? "Add to Apple Calendar" : "Thêm vào Lịch Apple",
+                filled: false, ink: ink, ruleColor: rule)
+            if let appleURL = appleCalendarURL(document: doc) {
+                ctx.setURL(appleURL, for: pdfLinkRect(appleRect, pageHeight: pageHeight))
             }
 
             y += buttonHeight + 8
@@ -232,16 +247,16 @@ enum GiftTicketPDFGenerator {
                     ? "Opens the installed banbe app. Register or sign in with the email this ticket was sent to; you can still attend without an account."
                     : "Mở ứng dụng banbe đã cài. Đăng ký hoặc đăng nhập bằng email nhận vé; bạn vẫn có thể tham dự mà không cần tài khoản.")
             (importNote as NSString).draw(
-                with: CGRect(x: importRect.origin.x, y: y, width: importRect.width, height: 46),
+                with: CGRect(x: importRect.origin.x, y: y, width: importRect.width, height: 80),
                 options: [.usesLineFragmentOrigin],
                 attributes: [.font: UIFont.systemFont(ofSize: 8), .foregroundColor: muted],
                 context: nil)
 
             let calendarNote = isEN
-                ? "Opens Google's calendar page in your browser. The .ics file shared with this ticket adds it to Apple Calendar."
-                : "Mở trang lịch Google trong trình duyệt. Tệp .ics đi kèm vé để thêm vào Lịch Apple."
+                ? "Google opens its calendar page in your browser. Apple adds the event straight to the Calendar app."
+                : "Google mở trang lịch trong trình duyệt. Apple thêm sự kiện thẳng vào ứng dụng Lịch."
             (calendarNote as NSString).draw(
-                with: CGRect(x: calendarRect.origin.x, y: y, width: calendarRect.width, height: 46),
+                with: CGRect(x: calendarRect.origin.x, y: appleRect.maxY + 8, width: calendarRect.width, height: 46),
                 options: [.usesLineFragmentOrigin],
                 attributes: [.font: UIFont.systemFont(ofSize: 8), .foregroundColor: muted],
                 context: nil)
@@ -273,6 +288,25 @@ enum GiftTicketPDFGenerator {
             URLQueryItem(name: "location", value: doc.venue),
         ]
         return components?.url
+    }
+
+    /// Apple Calendar: a `webcal://` link to api/calendar, which serves the event
+    /// as an .ics. iOS and macOS hand webcal links to Calendar, which offers to
+    /// add the event; a PDF cannot embed a downloadable .ics itself.
+    static func appleCalendarURL(document doc: GiftTicketDocument) -> URL? {
+        guard let start = doc.startDate,
+              var components = URLComponents(string: AppConfig.apiBaseURL + "/api/calendar")
+        else { return nil }
+        components.scheme = "webcal"
+        components.queryItems = [
+            URLQueryItem(name: "title", value: doc.eventName),
+            URLQueryItem(name: "start", value: String(Int(start.timeIntervalSince1970))),
+            URLQueryItem(name: "end", value: String(Int(start.addingTimeInterval(2 * 3600).timeIntervalSince1970))),
+            URLQueryItem(name: "loc", value: doc.venue),
+            URLQueryItem(name: "desc", value: doc.details),
+            URLQueryItem(name: "uid", value: doc.admissionToken.uuidString),
+        ]
+        return components.url
     }
 
     /// Generates an accompanying RFC 5545 .ics calendar file. Works with no
@@ -320,6 +354,16 @@ enum GiftTicketPDFGenerator {
 
     // MARK: - Drawing helpers
 
+    /// `UIGraphicsPDFRendererContext.setURL(_:for:)` takes the rect in raw PDF
+    /// space (origin bottom-left), not the flipped UIKit space everything else on
+    /// the page is drawn in. Passing the drawn rect straight through puts the link
+    /// at the mirrored spot at the bottom of the page, so the buttons look
+    /// right but do nothing when tapped.
+    private static func pdfLinkRect(_ rect: CGRect, pageHeight: CGFloat) -> CGRect {
+        CGRect(x: rect.origin.x, y: pageHeight - rect.origin.y - rect.height,
+               width: rect.width, height: rect.height)
+    }
+
     private static func icsDate(_ d: Date) -> String {
         let f = DateFormatter()
         f.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
@@ -345,22 +389,6 @@ enum GiftTicketPDFGenerator {
         color.setStroke()
         path.lineWidth = width
         path.stroke()
-    }
-
-    private static func drawBadge(_ text: String, at point: CGPoint, font: UIFont,
-                                  fill: UIColor, border: UIColor, textColor: UIColor) {
-        let padding: CGFloat = 11
-        let textSize = (text as NSString).size(withAttributes: [.font: font])
-        let rect = CGRect(x: point.x, y: point.y, width: textSize.width + padding * 2, height: 22)
-        let path = UIBezierPath(roundedRect: rect, cornerRadius: 11)
-        fill.setFill()
-        path.fill()
-        border.setStroke()
-        path.lineWidth = 1
-        path.stroke()
-        text.draw(at: CGPoint(x: rect.origin.x + padding, y: rect.origin.y + 5), withAttributes: [
-            .font: font, .foregroundColor: textColor, .kern: 1.1,
-        ])
     }
 
     private static func drawActionButton(rect: CGRect, title: String, filled: Bool,

@@ -11,6 +11,11 @@ import SwiftUI
 /// architectural need.
 struct AccountGroupView: View {
     @EnvironmentObject var app: AppState
+    @ObservedObject private var retention = TicketRetentionStore.shared
+    @State private var selecting = false
+    @State private var selected: Set<UUID> = []
+    @State private var confirmDelete = false
+    @State private var pdfShare: PDFShareItem?
 
     // Kept on AppState (`accountGroupTitle(for:)`) so back-button labels
     // elsewhere can show the same text without drifting from this title.
@@ -60,7 +65,10 @@ struct AccountGroupView: View {
                 Group {
                     switch app.accountGroupKey {
                     case "team": teamContent
-                    case "activity": activityContent
+                    // One container: `.padding(.top, 22)` below is applied to every
+                    // child of the Group, so a multi-view body got 22pt above each
+                    // heading AND each card instead of once above the screen.
+                    case "activity": VStack(alignment: .leading, spacing: 0) { activityContent }
                     case "payments": paymentsContent
                     case "preferences": preferencesContent
                     case "hostOps": hostOpsContent
@@ -76,6 +84,19 @@ struct AccountGroupView: View {
             .padding(.top, 16)
             .padding(.bottom, 60)
         }
+        .confirmationDialog(
+            app.T("Xóa \(selected.count) mục khỏi danh sách?", "Remove \(selected.count) item(s) from your list?"),
+            isPresented: $confirmDelete, titleVisibility: .visible
+        ) {
+            Button(app.T("Xóa", "Delete"), role: .destructive) {
+                if let uid = app.userID { retention.remove(selected, user: uid) }
+                selected = []
+                selecting = false
+            }
+            Button(app.T("Hủy", "Cancel"), role: .cancel) {}
+        }
+        .sheet(item: $pdfShare) { item in ActivityShareSheet(url: item.url) }
+        .task(id: app.paymentBookings.map(\.id)) { reconcileRetention() }
         // Safety net (mirrors AccountView's own accountTab role-sync) — a
         // role change while this happens to be open sends it back to
         // Account rather than showing a group its role no longer has.
@@ -243,8 +264,12 @@ struct AccountGroupView: View {
             let active = app.paymentBookings.filter {
                 ["pending", "confirmed", "attended"].contains($0.status) && !endedGiftIDs.contains($0.id)
             }
-            let inactive = app.paymentBookings.filter {
+            let allInactive = app.paymentBookings.filter {
                 ["cancelled", "expired", "no_show"].contains($0.status) || endedGiftIDs.contains($0.id)
+            }
+            let inactive = allInactive.filter { booking in
+                guard let uid = app.userID else { return true }
+                return !retention.isHidden(booking.id, user: uid)
             }
             if !active.isEmpty {
                 Text(app.T("Vé của tôi", "My Tickets")).font(.system(size: 11.5, weight: .semibold))
@@ -258,7 +283,18 @@ struct AccountGroupView: View {
                 .padding(.top, 8)
             }
             if !inactive.isEmpty {
-                Text(app.T("Đã hủy / hết hạn", "Cancelled / expired")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
+                HStack {
+                    Text(app.T("Đã hủy / hết hạn", "Cancelled / Expired")).font(.system(size: 11.5, weight: .semibold))
+                    Spacer(minLength: 0)
+                    Button(selecting ? app.T("Xong", "Done") : app.T("Chọn", "Select")) {
+                        selecting.toggle()
+                        selected = []
+                    }
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("tickets.inactive.select")
+                }
+                .padding(.top, 18)
                 VStack(spacing: 0) {
                     ForEach(Array(inactive.enumerated()), id: \.element.id) { i, b in
                         finishedTicketRow(b)
@@ -267,6 +303,25 @@ struct AccountGroupView: View {
                 }
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.top, 8)
+                if selecting {
+                    HStack(spacing: 10) {
+                        Button(selected.count == inactive.count ? app.T("Bỏ chọn tất cả", "Deselect all") : app.T("Chọn tất cả", "Select all")) {
+                            selected = selected.count == inactive.count ? [] : Set(inactive.map(\.id))
+                        }
+                        .accessibilityIdentifier("tickets.inactive.selectAll")
+                        Spacer(minLength: 0)
+                        Button(app.T("Xóa (\(selected.count))", "Delete (\(selected.count))"), role: .destructive) {
+                            confirmDelete = true
+                        }
+                        .disabled(selected.isEmpty)
+                        .accessibilityIdentifier("tickets.inactive.delete")
+                    }
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .padding(.top, 10)
+                }
+                Text(app.T("Các mục này tự động bị xóa sau 30 ngày. Xóa chỉ ẩn khỏi danh sách của bạn; hồ sơ hoàn tiền vẫn được giữ.",
+                           "These are removed automatically after 30 days. Deleting only clears them from your list; any refund record is kept."))
+                    .font(.system(size: 10.5)).opacity(0.6).padding(.top, 8)
             }
         }
 
@@ -275,11 +330,12 @@ struct AccountGroupView: View {
         // ordinary grouped row on the same 18pt section rhythm as the two above
         // (it used to sit below them with no rhythm of its own), carrying its
         // real count in the same trailing position every other group row uses.
+        Text(app.T("Lịch sử", "History")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 18)
         VStack(spacing: 0) {
             row(app.T("Sự Kiện Quá Khứ", "Past Events"), identifier: "account.completedList", icon: "calendar.badge.checkmark", trailing: "\(completedCount) ›") { app.goCompletedList() }
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .padding(.top, 18)
+        .padding(.top, 8)
 
         // The recipient's own entry point for a claim code — deliberately its
         // own row, never reachable from the check-in QR, which is a different
@@ -339,7 +395,9 @@ struct AccountGroupView: View {
     /// one still to come. The purchaser's copy of what they sent never goes
     /// away.
     private func giftPDFButton(_ b: PayableBooking) -> some View {
-        Button { app.exportGiftPDF(for: b) } label: {
+        Button {
+            if let url = app.exportGiftPDF(for: b) { pdfShare = PDFShareItem(url: url) }
+        } label: {
             HStack(spacing: 5) {
                 Image(systemName: "arrow.down.document").font(.system(size: 12, weight: .medium))
                 Text(app.T("PDF", "PDF")).font(.system(size: 12, weight: .semibold))
@@ -356,6 +414,10 @@ struct AccountGroupView: View {
     /// finished. Read-only in both cases.
     private func finishedTicketRow(_ b: PayableBooking) -> some View {
         HStack(spacing: 10) {
+            if selecting {
+                Image(systemName: selected.contains(b.id) ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18))
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(b.eventName.isEmpty ? app.T("Một sự kiện", "An event") : b.eventName).font(.system(size: 13, weight: .semibold))
                 Text(terminalStatusLabel(b)).font(.system(size: 11))
@@ -366,7 +428,23 @@ struct AccountGroupView: View {
         .foregroundStyle(app.palette.ink)
         .padding(14)
         .opacity(0.65)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard selecting else { return }
+            if selected.contains(b.id) { selected.remove(b.id) } else { selected.insert(b.id) }
+        }
         .accessibilityIdentifier("myTicketInactive.\(b.id)")
+    }
+
+    private func reconcileRetention() {
+        guard let uid = app.userID else { return }
+        let inactive = app.paymentBookings.filter {
+            ["cancelled", "expired", "no_show"].contains($0.status) || app.isFinishedGift($0)
+        }
+        // A refund that is still open keeps its row, whatever its age.
+        let openRefunds = Set(app.myRefunds.compactMap(\.bookingId))
+        retention.reconcile(user: uid, inactive: inactive.map(\.id),
+                            protected: Set(inactive.map(\.id)).intersection(openRefunds))
     }
 
     private func ticketStatusLabel(_ b: PayableBooking) -> String {
@@ -394,7 +472,7 @@ struct AccountGroupView: View {
         // of borrowing the cancellation wording (and never touches status, which
         // would destroy the refund record's meaning).
         if app.isFinishedGift(b) {
-            return app.T("Sự kiện đã kết thúc · Đã tặng", "Event ended · Gifted")
+            return app.T("Sự kiện đã kết thúc ▪︎ Đã tặng", "Event ended ▪︎ Gifted")
         }
         let base: String
         switch b.status {
@@ -719,4 +797,18 @@ struct AccountGroupView: View {
         .buttonStyle(.plain)
         .accessibilityIdentifier(identifier ?? title)
     }
+}
+
+
+private struct PDFShareItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct ActivityShareSheet: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }

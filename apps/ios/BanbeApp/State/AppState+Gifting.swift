@@ -326,15 +326,13 @@ extension AppState {
                                data: GiftTicketPDFGenerator.renderPDF(document: document, isEN: isEN))
     }
 
-    func exportGiftPDF(for payable: PayableBooking) {
-        guard let event = giftEvent(for: payable.eventKey) else {
-            giftPDFURL = nil
-            return
-        }
-        let document = GiftTicketDocument.make(payable: payable, event: event)
-        let url = writeExportFile(name: "banbe-gift-ticket-\(document.ticketCode).pdf",
+    @discardableResult
+    func exportGiftPDF(for payable: PayableBooking) -> URL? {
+        let document = GiftTicketDocument.make(payable: payable, event: giftEvent(for: payable.eventKey))
+        let url = writeExportFile(name: "banbe-gift-ticket-\(document.ticketCode.isEmpty ? payable.id.uuidString : document.ticketCode).pdf",
                                   data: GiftTicketPDFGenerator.renderPDF(document: document, isEN: isEN))
         giftPDFURL = url
+        return url
     }
 
     func exportGiftICS(for payable: PayableBooking) {

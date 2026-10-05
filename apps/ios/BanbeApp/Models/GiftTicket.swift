@@ -150,14 +150,17 @@ struct GiftTicketDocument {
         )
     }
 
-    static func make(payable: PayableBooking, event: CatalogEvent) -> GiftTicketDocument {
+    /// `event` is optional: an ended event may no longer be in the catalogue or
+    /// the live cache, and the purchaser must still be able to re-download the
+    /// PDF from what the booking itself carries.
+    static func make(payable: PayableBooking, event: CatalogEvent?) -> GiftTicketDocument {
         GiftTicketDocument(
-            eventName: event.name.isEmpty ? payable.eventName : event.name,
-            organizer: event.orgName.isEmpty ? event.host : event.orgName,
-            startDate: event.startDate,
-            whenText: event.when,
-            venue: event.locationLabel ?? event.where,
-            details: event.desc,
+            eventName: (event?.name.isEmpty == false ? event?.name : nil) ?? payable.eventName,
+            organizer: event.map { $0.orgName.isEmpty ? $0.host : $0.orgName } ?? payable.organizerName,
+            startDate: event?.startDate,
+            whenText: event?.when ?? "",
+            venue: event.map { $0.locationLabel ?? $0.where } ?? "",
+            details: event?.desc ?? "",
             recipientName: payable.recipientName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
             ticketCode: payable.code,
             admissionToken: payable.admissionToken ?? payable.id,
