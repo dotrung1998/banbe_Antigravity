@@ -164,7 +164,10 @@ struct DisputeChatSummary: Codable, Identifiable, Hashable {
     var isActiveDispute: Bool {
         // A payment thread (host reported "not found", or escalated) is live
         // until it is resolved/auto-closed; a refund one until closed/settled.
-        isRefund ? (disputeClosedAt == nil && claimStatus == "disputed") : resolvedAt == nil
+        // A payment thread is live only while its booking is still unsettled;
+        // a thread left open by an already-confirmed/expired booking is not.
+        isRefund ? (disputeClosedAt == nil && claimStatus == "disputed")
+                 : (resolvedAt == nil && ["pending_verification", "holding", "disputed"].contains(bookingPaymentState ?? ""))
     }
 
     enum CodingKeys: String, CodingKey {

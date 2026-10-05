@@ -152,6 +152,14 @@ BEGIN
     BEGIN
       v_from := v_row.payment_state;
 
+
+      UPDATE dispute_threads SET
+        resolved_at = now(),
+        resolution_kind = 'cancelled',
+        resolution_note = 'Auto-closed: no agreement within 2 days',
+        purge_after = now() + interval '72 hours'
+      WHERE booking_id = v_row.id AND resolved_at IS NULL;
+
       UPDATE bookings SET
         payment_state = 'expired', status = 'expired', verify_due_at = NULL
       WHERE id = v_row.id;
@@ -160,13 +168,6 @@ BEGIN
                                 NULL, 'system', NULL, NULL,
                                 jsonb_build_object('payment_ref', v_row.payment_ref,
                                                    'reported_at', v_row.not_found_at));
-
-      UPDATE dispute_threads SET
-        resolved_at = now(),
-        resolution_kind = 'cancelled',
-        resolution_note = 'Auto-closed: no agreement within 2 days',
-        purge_after = now() + interval '72 hours'
-      WHERE booking_id = v_row.id AND resolved_at IS NULL;
 
       SELECT id INTO v_thread_id FROM threads
        WHERE event_id = v_row.event_id AND guest_id = v_row.user_id;
@@ -310,3 +311,43 @@ END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.get_my_dispute_chats() FROM anon;
 GRANT EXECUTE ON FUNCTION public.get_my_dispute_chats() TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- A payment dispute chat must not outlive the thing it is about. Before this,
+-- confirming the payment (or any other exit from the unsettled states) left
+-- dispute_threads.resolved_at NULL forever, so the chat — and any "dispute in
+-- progress" marker built on it — stayed up after nothing was left to dispute.
+-- A booking leaving pending_verification/holding closes its open thread.
+-- ('disputed' is excluded: resolve_dispute() closes its own, with the note.)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.close_payment_dispute_thread_on_settle()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  UPDATE dispute_threads SET
+    resolved_at = now(),
+    resolution_kind = CASE WHEN NEW.payment_state::text = 'confirmed' THEN 'ticket_issued' ELSE 'cancelled' END,
+    resolution_note = 'Auto-closed: booking settled',
+    purge_after = now() + interval '72 hours'
+  WHERE booking_id = NEW.id AND kind = 'payment' AND resolved_at IS NULL;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS bookings_close_payment_dispute_thread ON public.bookings;
+CREATE TRIGGER bookings_close_payment_dispute_thread
+AFTER UPDATE OF payment_state ON public.bookings
+FOR EACH ROW
+WHEN (OLD.payment_state::text IN ('pending_verification', 'holding')
+      AND NEW.payment_state::text IN ('confirmed', 'expired', 'cancelled'))
+EXECUTE FUNCTION public.close_payment_dispute_thread_on_settle();
+
+-- Backfill: threads already stranded open by a settled booking.
+UPDATE dispute_threads t SET
+  resolved_at = now(),
+  resolution_kind = CASE WHEN b.payment_state::text = 'confirmed' THEN 'ticket_issued' ELSE 'cancelled' END,
+  resolution_note = 'Auto-closed: booking settled',
+  purge_after = now() + interval '72 hours'
+FROM bookings b
+WHERE b.id = t.booking_id AND t.kind = 'payment' AND t.resolved_at IS NULL
+  AND b.payment_state::text NOT IN ('pending_verification', 'holding', 'disputed');
