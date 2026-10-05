@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import Combine
 
 /// The buyer's side of the two-phase payment machine.
 ///
@@ -871,19 +872,21 @@ struct PaymentDetailsView: View {
                     Text(pickError).font(.system(size: 12)).foregroundStyle(Color(red: 0.60, green: 0.24, blue: 0.18))
                 }
 
+                let pickTitle = pickedImage == nil ? app.T("Chọn ảnh biên lai", "Choose a receipt image") : pickedName
+                let pickAction = pickedImage == nil ? app.T("Chọn", "Choose") : app.T("Đổi", "Change")
+                let inkColor = app.palette.ink
+                let fieldColor = app.palette.field
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     HStack {
-                        Text(pickedImage == nil
-                             ? app.T("Chọn ảnh biên lai", "Choose a receipt image")
-                             : pickedName)
-                            .font(.system(size: 13.5)).foregroundStyle(app.palette.ink)
+                        Text(pickTitle)
+                            .font(.system(size: 13.5)).foregroundStyle(inkColor)
                         Spacer()
-                        Text(pickedImage == nil ? app.T("Chọn", "Choose") : app.T("Đổi", "Change"))
+                        Text(pickAction)
                             .font(.system(size: 11.5, weight: .semibold))
-                            .foregroundStyle(app.palette.ink.opacity(0.75))
+                            .foregroundStyle(inkColor.opacity(0.75))
                     }
                     .padding(13)
-                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(fieldColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .accessibilityIdentifier("payment.proofPick")
 

@@ -62,12 +62,13 @@ struct WalletPassDesignView: View {
 
                     Text(app.T("Ảnh banner", "Banner image")).font(.system(size: 11.5, weight: .semibold)).padding(.top, 4)
                     HStack(spacing: 10) {
+                        let bannerTitle = style.bannerPNG == nil ? app.T("Chọn ảnh", "Choose a photo") : app.T("Đổi ảnh", "Change photo")
+                        let ruleColor = app.palette.rule
                         PhotosPicker(selection: $bannerItem, matching: .images) {
-                            Label(style.bannerPNG == nil ? app.T("Chọn ảnh", "Choose a photo") : app.T("Đổi ảnh", "Change photo"),
-                                  systemImage: "photo")
+                            Label(bannerTitle, systemImage: "photo")
                                 .font(.system(size: 13, weight: .semibold))
                                 .padding(.horizontal, 14).padding(.vertical, 10)
-                                .overlay(Capsule().stroke(app.palette.rule))
+                                .overlay(Capsule().stroke(ruleColor))
                         }
                         .accessibilityIdentifier("wallet.pickBanner")
                         if style.bannerPNG != nil {

@@ -211,10 +211,10 @@ struct RefundDisputeFlows: ViewModifier {
     }
 
     /// Alerts can't present while a sheet is still animating away.
-    private func afterSheetClosed(_ action: @escaping () -> Void) {
-        Task {
+    private func afterSheetClosed(_ action: @escaping @MainActor () -> Void) {
+        Task { @MainActor in
             try? await Task.sleep(nanoseconds: 450_000_000)
-            await MainActor.run(body: action)
+            action()
         }
     }
 

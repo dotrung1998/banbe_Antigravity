@@ -500,13 +500,17 @@ struct DashboardView: View {
     @ViewBuilder
     private func addPhotoButton(for eventID: String) -> some View {
         let busy = app.eventPhotoUploadBusy[eventID] == true
+        // Resolved here, not inside PhotosPicker's label closure, which is not
+        // main-actor-isolated (Swift concurrency warnings otherwise).
+        let title = app.eventPhotoUploaded[eventID] == true ? app.T("Đã thêm ✓", "Added ✓")
+            : busy ? app.T("Đang tải…", "Uploading…")
+            : app.T("+ Ảnh", "+ Photo")
+        let ruleColor = app.palette.rule
         PhotosPicker(selection: $photoPickerItem, matching: .images) {
-            Text(app.eventPhotoUploaded[eventID] == true ? app.T("Đã thêm ✓", "Added ✓")
-                 : busy ? app.T("Đang tải…", "Uploading…")
-                 : app.T("+ Ảnh", "+ Photo"))
+            Text(title)
                 .font(.system(size: 11, weight: .semibold))
                 .padding(.horizontal, 10).padding(.vertical, 6)
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(ruleColor, lineWidth: 1))
                 .opacity(busy ? 0.5 : 1)
         }
         .disabled(busy)

@@ -39,8 +39,10 @@ struct EditProfileView: View {
                         }
                     }
                     HStack(spacing: 14) {
+                        let changePhotoTitle = app.T("Đổi ảnh", "Change photo")
+                        let inkColor = app.palette.ink
                         PhotosPicker(selection: $avatarPickerItem, matching: .images) {
-                            Text(app.T("Đổi ảnh", "Change photo")).font(.system(size: 12, weight: .semibold)).foregroundStyle(app.palette.ink)
+                            Text(changePhotoTitle).font(.system(size: 12, weight: .semibold)).foregroundStyle(inkColor)
                         }
                         .accessibilityIdentifier("editProfile.avatarPick")
                         if app.user?.avatarURL != nil {

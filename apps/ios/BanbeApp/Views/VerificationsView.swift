@@ -323,18 +323,22 @@ struct VerificationsView: View {
                             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                             .accessibilityIdentifier("refundQueue.proofPreview")
                     }
+                    let proofTitle = refundProofJPEG == nil
+                        ? app.T("Đính kèm ảnh chuyển khoản (không bắt buộc)", "Attach transfer proof (optional)")
+                        : app.T("Đã chọn ảnh chuyển khoản", "Transfer proof selected")
+                    let proofAction = refundProofJPEG == nil ? app.T("Chọn", "Choose") : app.T("Đổi", "Change")
+                    let inkColor = app.palette.ink
+                    let fieldColor = app.palette.field
                     PhotosPicker(selection: $refundProofItem, matching: .images) {
                         HStack {
-                            Text(refundProofJPEG == nil
-                                 ? app.T("Đính kèm ảnh chuyển khoản (không bắt buộc)", "Attach transfer proof (optional)")
-                                 : app.T("Đã chọn ảnh chuyển khoản", "Transfer proof selected"))
-                                .font(.system(size: 13)).foregroundStyle(app.palette.ink)
+                            Text(proofTitle)
+                                .font(.system(size: 13)).foregroundStyle(inkColor)
                             Spacer()
-                            Text(refundProofJPEG == nil ? app.T("Chọn", "Choose") : app.T("Đổi", "Change"))
-                                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(app.palette.ink.opacity(0.75))
+                            Text(proofAction)
+                                .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(inkColor.opacity(0.75))
                         }
                         .padding(11)
-                        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10))
+                        .background(fieldColor, in: RoundedRectangle(cornerRadius: 10))
                     }
                     .accessibilityIdentifier("refundQueue.proofPick")
                     .onChange(of: refundProofItem) { _, item in

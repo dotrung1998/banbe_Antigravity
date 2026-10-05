@@ -125,8 +125,6 @@ struct DeleteAccountView: View {
 
     @ViewBuilder
     private var confirmSection: some View {
-        let submitting = step == .submitting
-
         Text(app.T("Xác nhận xóa", "Confirm deletion")).font(BanbeTheme.display(20))
 
         // Reauthentication — reuses the SAME emailed login-code flow

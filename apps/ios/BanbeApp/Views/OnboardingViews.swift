@@ -499,16 +499,19 @@ struct CreateEventView: View {
                     .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 if galleryItems.count < maxPhotos {
+                    let addTitle = app.T("Thêm ảnh", "Add photo")
+                    let inkColor = app.palette.ink
+                    let paperColor = app.palette.paper
                     PhotosPicker(selection: $pickerItems, maxSelectionCount: maxPhotos - galleryItems.count, matching: .images) {
                         HStack(spacing: 8) {
                             Image(systemName: "plus")
-                            Text(app.T("Thêm ảnh", "Add photo")).font(.system(size: 12.5, weight: .semibold))
+                            Text(addTitle).font(.system(size: 12.5, weight: .semibold))
                         }
-                        .foregroundStyle(app.palette.ink)
+                        .foregroundStyle(inkColor)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(app.palette.paper, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(app.palette.ink, style: StrokeStyle(lineWidth: 1, dash: [4])))
+                        .background(paperColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(inkColor, style: StrokeStyle(lineWidth: 1, dash: [4])))
                     }
                 }
             }

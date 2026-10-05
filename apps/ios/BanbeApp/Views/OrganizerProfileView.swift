@@ -284,14 +284,15 @@ struct OrganizerProfileView: View {
         VStack(alignment: .leading, spacing: 10) {
             if editing {
                 HStack(spacing: 12) {
+                    let fieldColor = app.palette.field
                     PhotosPicker(selection: $avatarPickerItem, matching: .images) {
                         ZStack {
                             if let avatarPreviewImage {
                                 Image(uiImage: avatarPreviewImage).resizable().scaledToFill()
                             } else if let url = organizerAvatarURL {
-                                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
+                                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { fieldColor }
                             } else {
-                                app.palette.field
+                                fieldColor
                             }
                         }
                         .frame(width: 52, height: 52)

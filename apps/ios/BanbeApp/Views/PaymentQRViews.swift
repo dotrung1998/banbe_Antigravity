@@ -136,15 +136,18 @@ struct PaymentQRUploadControl: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
+                let uploadTitle = hasQR ? app.T("Thay mã QR", "Replace QR code") : app.T("Tải mã QR lên", "Upload a QR code")
+                let fieldColor = app.palette.field
+                let inkColor = app.palette.ink
                 PhotosPicker(selection: $item, matching: .images) {
                     HStack(spacing: 8) {
                         Image(systemName: working || busy ? "hourglass" : "qrcode.viewfinder")
-                        Text(hasQR ? app.T("Thay mã QR", "Replace QR code") : app.T("Tải mã QR lên", "Upload a QR code"))
+                        Text(uploadTitle)
                     }
                     .font(.system(size: 13, weight: .semibold))
                     .padding(.horizontal, 14).padding(.vertical, 9)
-                    .background(app.palette.field, in: Capsule())
-                    .foregroundStyle(app.palette.ink)
+                    .background(fieldColor, in: Capsule())
+                    .foregroundStyle(inkColor)
                 }
                 .disabled(working || busy)
                 .accessibilityIdentifier("paymentQR.upload")

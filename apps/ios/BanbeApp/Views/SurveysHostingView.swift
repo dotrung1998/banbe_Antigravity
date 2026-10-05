@@ -183,7 +183,7 @@ struct SurveysHostingView: View {
             // reads as a single smooth transition instead of a pop.
             .animation(.spring(response: 0.38, dampingFraction: 0.86), value: selectMode)
         }
-        .onChange(of: tab) { _ in selectMode = false; selected = [] }
+        .onChange(of: tab) { _, _ in selectMode = false; selected = [] }
         .alert(
             deleteRequest?.isSurvey == true ? app.T("Xoá vĩnh viễn?", "Delete permanently?") : app.T("Xoá ý tưởng?", "Delete ideas?"),
             isPresented: Binding(get: { deleteRequest != nil }, set: { if !$0 { deleteRequest = nil } }),

@@ -511,7 +511,7 @@ struct DisputeChatPanel: View {
             // Attachments (migration 131). REFUND disputes only — the payment
             // dispute panel above (host's verification queue) is admin-resolved
             // and has no bucket, no columns and no send RPC for this.
-            if let refundClaimID {
+            if refundClaimID != nil {
                 ChatAttachButton(
                     isEnabled: !readOnly && !completed,
                     isSending: sendingAttachment,
