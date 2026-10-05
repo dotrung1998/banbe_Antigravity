@@ -106,7 +106,7 @@ function GroupCard({ groupKey, iconKind, label, badge, onClick, marginTop = 8 })
     <div
       onClick={onClick}
       data-testid={`account-group-${groupKey}`}
-      style={{ ...fieldGlass({ marginTop, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+      style={{ ...fieldGlass({ margin: `${marginTop}px 20px 0`, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
     >
       <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
         <RowIcon kind={iconKind} accent={ROW_ACCENT_COLORS[groupKey]} />

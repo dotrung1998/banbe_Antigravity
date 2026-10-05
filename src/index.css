@@ -216,3 +216,81 @@ input::placeholder {
     line-height: 1.6;
   }
 }
+
+/* ------------------------------------------------------------------------
+   Desktop phone frame. A MacBook / Windows browser shows the app as a single
+   vertical iPhone-shaped screen (393pt wide) instead of a stretched web page.
+   Phones, tablets and narrow windows are untouched: there `.bb-device` and
+   `.bb-screen` are `display: contents` and the status bar is hidden, so the
+   app is full-bleed exactly as before.
+   ------------------------------------------------------------------------ */
+.bb-device, .bb-screen { display: contents; }
+.bb-statusbar { display: none; }
+
+@media (min-width: 700px) and (min-height: 560px) and (hover: hover) and (pointer: fine) {
+  .bb-stage {
+    align-items: center;
+    background: radial-gradient(1200px 700px at 50% 0%, #F6F2E8 0%, #E7E1D3 70%) !important;
+  }
+  .bb-device {
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+    width: 415px;
+    height: min(874px, calc(100vh - 32px));
+    padding: 11px;
+    border-radius: 66px;
+    background: #1B1916;
+    box-shadow: 0 0 0 2px #3A3733, 0 0 0 5px #1B1916, 0 40px 90px rgba(27, 25, 22, 0.38);
+  }
+  .bb-screen {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 55px;
+    overflow: hidden;
+    background: var(--bb-bg);
+    /* A transformed ancestor becomes the containing block for position:fixed
+       descendants, which keeps sheets, toasts and overlays inside the phone. */
+    transform: translateZ(0);
+    isolation: isolate;
+  }
+  .bb-screen > [data-testid="app-scroll-viewport"] {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto !important;
+    max-width: none !important;
+    scrollbar-width: none;
+  }
+  .bb-screen > [data-testid="app-scroll-viewport"]::-webkit-scrollbar { display: none; }
+
+  .bb-statusbar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    height: 50px;
+    padding: 6px 30px 0 34px;
+    box-sizing: border-box;
+    background: var(--bb-bg);
+    color: var(--bb-fg);
+    position: relative;
+    z-index: 60;
+    pointer-events: none;
+    user-select: none;
+  }
+  .bb-statusbar-time { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; width: 70px; }
+  .bb-statusbar-icons { display: flex; align-items: center; gap: 6px; width: 70px; justify-content: flex-end; }
+  .bb-island {
+    position: absolute;
+    left: 50%;
+    top: 11px;
+    width: 122px;
+    height: 35px;
+    margin-left: -61px;
+    border-radius: 20px;
+    background: #000;
+  }
+}

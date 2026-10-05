@@ -1,7 +1,7 @@
 import {
   readWalletConfig, getWalletAdmin, buildPass, designFromRow, tokenMatches, TICKET_SELECT, stateHash,
-} from '../_lib/walletPass.js';
-import { refreshWalletPass } from '../_lib/walletRefresh.js';
+} from '../walletPass.js';
+import { refreshWalletPass } from '../walletRefresh.js';
 
 // Apple's PassKit web service, which Wallet calls itself (no Supabase login:
 // each pass carries its own HMAC authenticationToken). `webServiceURL` in every
@@ -25,7 +25,9 @@ export default async function handler(req, res) {
   const admin = getWalletAdmin();
   if (!cfg || !admin) return res.status(503).json({ error: 'WALLET_NOT_CONFIGURED' });
 
-  const parts = [].concat(req.query?.path || []).map(String);
+  // The rewrite in vercel.json delivers the rest of the URL as ONE string
+  // ("v1/devices/..."); a dynamic-route file used to deliver an array.
+  const parts = [].concat(req.query?.path || []).flatMap((p) => String(p).split('/')).filter(Boolean);
   if (parts[0] !== 'v1') return res.status(404).end();
 
   try {

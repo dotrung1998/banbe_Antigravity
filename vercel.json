@@ -4,6 +4,18 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/wallet-pass",
+      "destination": "/api/wallet?op=pass"
+    },
+    {
+      "source": "/api/wallet-refresh",
+      "destination": "/api/wallet?op=refresh"
+    },
+    {
+      "source": "/api/wallet/:path+",
+      "destination": "/api/wallet?op=ws&path=:path+"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
@@ -11,20 +23,25 @@
   "headers": [
     {
       "source": "/.well-known/apple-app-site-association",
-      "headers": [{ "key": "Content-Type", "value": "application/json" }]
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ]
     }
   ],
   "crons": [
     {
-      "path": "/api/cron/escalate-verifications",
+      "path": "/api/cron?job=escalate-verifications",
       "schedule": "0 9 * * *"
     },
     {
-      "path": "/api/cron/purge-payment-documents",
+      "path": "/api/cron?job=purge-payment-documents",
       "schedule": "0 10 * * *"
     },
     {
-      "path": "/api/cron/wallet-pass-sweep",
+      "path": "/api/cron?job=wallet-pass-sweep",
       "schedule": "30 10 * * *"
     }
   ]

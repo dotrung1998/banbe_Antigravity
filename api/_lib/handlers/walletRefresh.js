@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { readWalletConfig, getWalletAdmin, TICKET_SELECT } from './_lib/walletPass.js';
-import { refreshWalletPass } from './_lib/walletRefresh.js';
+import { readWalletConfig, getWalletAdmin, TICKET_SELECT } from '../walletPass.js';
+import { refreshWalletPass } from '../walletRefresh.js';
 
 // "This ticket just changed — update its Wallet pass now." The app calls it
 // right after a successful gift so the purchaser's pass is voided straight away

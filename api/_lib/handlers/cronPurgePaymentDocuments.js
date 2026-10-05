@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { getMissingEmailVariables, sendWithGmail } from '../_lib/email.js';
-import { renderEmail, renderEmailText, escapeHtml } from '../_lib/emailTemplate.js';
+import { getMissingEmailVariables, sendWithGmail } from '../email.js';
+import { renderEmail, renderEmailText, escapeHtml } from '../emailTemplate.js';
 
 // Two jobs in one daily run (migration 057 added the 7d/1d reminder
 // columns this needs) — reminders always run before the purge sweep, so a

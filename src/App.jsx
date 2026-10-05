@@ -1,3 +1,4 @@
+import PhoneStatusBar from './components/PhoneFrame.jsx';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GocProvider, useGoc } from './state/GocContext.jsx';
 import BottomTabBar, { showsBottomBar, DOCK_ORDER, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET } from './screens/BottomTabBar.jsx';
@@ -573,7 +574,14 @@ function Shell() {
   };
 
   return (
-    <div data-bb-theme={state.theme} style={{ position: 'fixed', inset: 0, display: 'flex', justifyContent: 'center', background: '#EFEBE0' }}>
+    <div className="bb-stage" data-bb-theme={state.theme} style={{ position: 'fixed', inset: 0, display: 'flex', justifyContent: 'center', background: '#EFEBE0' }}>
+     {/* On a desktop browser .bb-device/.bb-screen draw a phone around the app
+         (index.css); anywhere else they are `display: contents` and change
+         nothing. .bb-screen is also the containing block for every
+         position:fixed overlay inside it, so sheets, toasts and the dock stay
+         within the phone instead of spanning the whole window. */}
+     <div className="bb-device"><div className="bb-screen">
+      <PhoneStatusBar />
       <div
         ref={scrollRef}
         data-testid="app-scroll-viewport"
@@ -636,7 +644,7 @@ function Shell() {
             drops the old sibling), so React never tears down and remounts
             the destination the way changing `<Screen key={state.screen}/>`'s
             own key used to. */}
-        <div style={{ paddingBottom: showBar ? 92 : 0, display: 'grid' }}>
+        <div style={{ paddingBottom: showBar ? 92 : 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
           {[state.screen, ...(swipeNeighbor ? [swipeNeighbor] : [])].map((s) => {
             const isCurrent = s === state.screen;
             const ScreenComp = SCREENS[s] || Home;
@@ -674,6 +682,7 @@ function Shell() {
       <StoryCreateOverlay />
       {state.deleteAccountOpen && <DeleteAccountSheet />}
       <ToastStack />
+     </div></div>
     </div>
   );
 }

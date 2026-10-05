@@ -1,3 +1,4 @@
+import { getFrameBox } from '../../lib/viewport.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useGoc } from '../../state/GocContext.jsx';
 import { paper, ink, display, cardGlass } from '../../theme.js';
@@ -279,11 +280,14 @@ export default function StoryViewer() {
   // clipped region by itself, no separate `pointer-events` gating needed.
   const ringClipPath = (rect) => {
     if (typeof window === 'undefined') return null;
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const top = Math.max(0, rect.top);
-    const left = Math.max(0, rect.left);
-    const right = Math.max(0, vw - (rect.left + rect.width));
-    const bottom = Math.max(0, vh - (rect.top + rect.height));
+    // Relative to the app's screen (the phone frame on desktop), not the window.
+    const box = getFrameBox();
+    const vw = box.width, vh = box.height;
+    const relLeft = rect.left - box.left, relTop = rect.top - box.top;
+    const top = Math.max(0, relTop);
+    const left = Math.max(0, relLeft);
+    const right = Math.max(0, vw - (relLeft + rect.width));
+    const bottom = Math.max(0, vh - (relTop + rect.height));
     return `inset(${top}px ${right}px ${bottom}px ${left}px round 15px)`;
   };
 

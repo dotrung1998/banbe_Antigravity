@@ -1,5 +1,5 @@
-import { readWalletConfig, getWalletAdmin } from '../_lib/walletPass.js';
-import { refreshWalletPass } from '../_lib/walletRefresh.js';
+import { readWalletConfig, getWalletAdmin } from '../walletPass.js';
+import { refreshWalletPass } from '../walletRefresh.js';
 
 // Safety net for the Wallet update service: re-checks every issued pass whose
 // ticket may have changed without anyone calling api/wallet-refresh (a hold that

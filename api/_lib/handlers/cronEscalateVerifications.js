@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { sendVerificationAlert, sendUrgentEscalation, isTelegramConfigured } from '../_lib/alerts.js';
+import { sendVerificationAlert, sendUrgentEscalation, isTelegramConfigured } from '../alerts.js';
 
 // Drains alert_outbox. Runs on a Vercel Cron schedule (see vercel.json).
 //

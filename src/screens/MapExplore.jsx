@@ -1,3 +1,4 @@
+import { screenHeight } from '../lib/viewport.js';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useGoc, resolveCoverUrl, firstPhotoUrlByEvent } from '../state/GocContext.jsx';
 import { supabase } from '../lib/supabase.js';
@@ -275,11 +276,11 @@ export default function MapExplore() {
   const cardRef = useRef(null);
   const [topControlsBottom, setTopControlsBottom] = useState(56);
   const [cardHeight, setCardHeight] = useState(150);
-  const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
+  const [viewportHeight, setViewportHeight] = useState(() => screenHeight());
   const CARD_TOP_GAP = 12;
 
   useEffect(() => {
-    const onResize = () => setViewportHeight(window.innerHeight);
+    const onResize = () => setViewportHeight(screenHeight());
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
@@ -369,7 +370,7 @@ export default function MapExplore() {
     // nowhere on the map to fly to; still selects it (the compact card
     // still shows its real info), just skips the camera move.
     if (!ev.hasLocation) return;
-    const sheetPx = window.innerHeight * (1 - mapStripFraction);
+    const sheetPx = screenHeight() * (1 - mapStripFraction);
     const CARD_ALLOWANCE = 150; // approx. compact card height + gap
     map.flyTo({
       center: [ev.lng, ev.lat],
@@ -812,7 +813,7 @@ export default function MapExplore() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !selectedEvent) return;
-    const sheetPx = window.innerHeight * (1 - mapStripFraction);
+    const sheetPx = screenHeight() * (1 - mapStripFraction);
     const CARD_ALLOWANCE = 150;
     map.easeTo({ padding: { top: 80, bottom: sheetPx + CARD_ALLOWANCE, left: 30, right: 30 }, duration: 300 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -885,7 +886,7 @@ export default function MapExplore() {
   };
   const onHandlePointerMove = (e) => {
     if (!dragState.current) return;
-    const deltaVh = ((e.clientY - dragState.current.startY) / window.innerHeight);
+    const deltaVh = ((e.clientY - dragState.current.startY) / screenHeight());
     setDragOffsetVh(deltaVh);
   };
   const onHandlePointerUp = () => {

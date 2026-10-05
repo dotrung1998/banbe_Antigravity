@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import {
   readWalletConfig, getWalletAdmin, buildPass, stateHash, isLive, isLiveGift, TICKET_SELECT,
-} from './_lib/walletPass.js';
+} from '../walletPass.js';
 
 // Issues a signed Apple Wallet pass (.pkpass) for ONE ticket the caller owns.
 //
