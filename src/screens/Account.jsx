@@ -633,7 +633,7 @@ export default function Account() {
       <div
         onClick={() => s.user?.handle && openPublicProfile(s.user.handle, 'profile')}
         data-testid="account-personal-profile"
-        style={{ ...fieldGlass({ marginTop: 14, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+        style={{ ...fieldGlass({ margin: '14px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
           <RowIcon kind="pencil" />{T('Hồ Sơ Cá Nhân', 'Personal Profile')}
@@ -663,7 +663,7 @@ export default function Account() {
       <div
         onClick={openPolicy}
         data-testid="account-help-legal"
-        style={{ ...fieldGlass({ marginTop: 8, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+        style={{ ...fieldGlass({ margin: '8px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
           <RowIcon kind="shield" />{T('Trợ Giúp & Pháp Lý', 'Help & Legal')}
@@ -680,7 +680,7 @@ export default function Account() {
         <div
           onClick={() => openAccountGroup('team')}
           data-testid="account-team-invite-banner"
-          style={{ ...fieldGlass({ marginTop: 8, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+          style={{ ...fieldGlass({ margin: '8px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
             <RowIcon kind="users" accent={ROW_ACCENT_COLORS.team} />{T('Bạn có lời mời Team', 'You have a team invite')}
@@ -706,7 +706,7 @@ export default function Account() {
         <div
           onClick={() => openAccountGroup('adminTeam')}
           data-testid="account-admin-invite-banner"
-          style={{ ...fieldGlass({ marginTop: 8, padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+          style={{ ...fieldGlass({ margin: '8px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
             <RowIcon kind="alertShield" accent={ROW_ACCENT_COLORS.adminReview} />{T('Bạn có lời mời quản trị', 'You have an admin invite')}
