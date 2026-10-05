@@ -528,20 +528,6 @@ struct VerificationsView: View {
                         reasonFor = (row.bookingId, .reject)
                     }
                 }
-                // Deliberately separate from "Can't find it" — that's just
-                // feedback to the guest. This is the one action that
-                // actually brings banbe in, for when the two of you
-                // genuinely can't resolve it directly.
-                Button {
-                    reasonFor = (row.bookingId, .escalate)
-                } label: {
-                    Text(app.T("Không tự giải quyết được ▪︎ chuyển cho banbe", "Can't resolve it directly ▪︎ escalate to banbe"))
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(app.palette.ink.opacity(0.6))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("verification.escalate")
             }
         }
         .padding(18)

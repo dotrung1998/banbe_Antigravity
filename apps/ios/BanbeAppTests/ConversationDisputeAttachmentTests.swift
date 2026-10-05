@@ -64,18 +64,18 @@ final class ConversationDisputeAttachmentTests: XCTestCase {
         // thread's resolved_at is the only thing proving it is over.
         let id = AppState.livePaymentDisputeBookingID(
             threadRows: [(bookingA, true)],
-            bookingStates: [bookingA: ("disputed", nil)]
+            bookingStates: [bookingA: ("disputed", nil, nil)]
         )
         XCTAssertNil(id, "a resolved thread must never mount a payment panel")
     }
 
     func testUnresolvedThreadWithSettledBookingIsNotLive() {
         // Booking moved on to confirmed/expired after the dispute concluded.
-        for state in ["confirmed", "expired", "cancelled", "pending_verification"] {
+        for state in ["confirmed", "expired", "cancelled", "pending_verification", "holding"] {
             XCTAssertNil(
                 AppState.livePaymentDisputeBookingID(
                     threadRows: [(bookingA, false)],
-                    bookingStates: [bookingA: (state, nil)]
+                    bookingStates: [bookingA: (state, nil, nil)]
                 ),
                 "payment_state \(state) is not a live payment dispute"
             )
@@ -86,7 +86,7 @@ final class ConversationDisputeAttachmentTests: XCTestCase {
         XCTAssertNil(
             AppState.livePaymentDisputeBookingID(
                 threadRows: [(bookingA, false)],
-                bookingStates: [bookingA: ("disputed", Date())]
+                bookingStates: [bookingA: ("disputed", Date(), nil)]
             ),
             "a stamped dispute_resolved_at means banbe already ruled"
         )
@@ -97,7 +97,7 @@ final class ConversationDisputeAttachmentTests: XCTestCase {
         XCTAssertEqual(
             AppState.livePaymentDisputeBookingID(
                 threadRows: [(bookingA, false)],
-                bookingStates: [bookingA: ("disputed", nil)]
+                bookingStates: [bookingA: ("disputed", nil, nil)]
             ),
             bookingA
         )
@@ -117,14 +117,25 @@ final class ConversationDisputeAttachmentTests: XCTestCase {
         )
     }
 
+    func testNotFoundWindowIsLiveBeforeEscalation() {
+        // Migration 149: host reported "not found", nothing escalated yet.
+        XCTAssertEqual(
+            AppState.livePaymentDisputeBookingID(
+                threadRows: [(bookingA, false)],
+                bookingStates: [bookingA: ("pending_verification", nil, Date())]
+            ),
+            bookingA
+        )
+    }
+
     func testStaleRowIsSkippedAndLiveOneStillChosen() {
         // Two payment threads: one stale, one genuinely open. The stale one must
         // not win just by being first.
         let id = AppState.livePaymentDisputeBookingID(
             threadRows: [(bookingA, true), (bookingB, false)],
             bookingStates: [
-                bookingA: ("disputed", nil),
-                bookingB: ("disputed", nil),
+                bookingA: ("disputed", nil, nil),
+                bookingB: ("disputed", nil, nil),
             ]
         )
         XCTAssertEqual(id, bookingB)
@@ -133,8 +144,8 @@ final class ConversationDisputeAttachmentTests: XCTestCase {
     func testChoiceIsDeterministicWhenSeveralAreLive() {
         let rows: [(bookingId: UUID?, resolved: Bool)] =
             [(bookingC, false), (bookingA, false), (bookingB, false)]
-        let states: [UUID: (paymentState: String, disputeResolvedAt: Date?)] = [
-            bookingA: ("disputed", nil), bookingB: ("disputed", nil), bookingC: ("disputed", nil),
+        let states: [UUID: (paymentState: String, disputeResolvedAt: Date?, notFoundAt: Date?)] = [
+            bookingA: ("disputed", nil, nil), bookingB: ("disputed", nil, nil), bookingC: ("disputed", nil, nil),
         ]
         let first = AppState.livePaymentDisputeBookingID(threadRows: rows, bookingStates: states)
         let shuffled = AppState.livePaymentDisputeBookingID(threadRows: rows.reversed(), bookingStates: states)

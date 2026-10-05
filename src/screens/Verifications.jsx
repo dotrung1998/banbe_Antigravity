@@ -304,17 +304,6 @@ export default function Verifications() {
                   <Action label={T('Chưa thấy', "Can't find it")} ghost testid="verification-reject"
                           onClick={() => setReasonFor({ bookingId: v.booking_id, kind: 'reject' })} />
                 </div>
-                {/* Deliberately separate from "Can't find it" — that's just
-                    feedback to the guest. This is the one action that
-                    actually brings banbe in, for when the two of you
-                    genuinely can't resolve it directly. */}
-                <div
-                  onClick={() => setReasonFor({ bookingId: v.booking_id, kind: 'escalate' })}
-                  data-testid="verification-escalate"
-                  style={{ fontSize: 11.5, fontWeight: 600, color: ink, opacity: 0.6, textAlign: 'center', cursor: 'pointer', padding: '2px 0' }}
-                >
-                  {T('Không tự giải quyết được ▪︎ chuyển cho banbe', "Can't resolve it directly ▪︎ escalate to banbe")}
-                </div>
               </div>
             )}
           </div>

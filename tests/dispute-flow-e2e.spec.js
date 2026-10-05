@@ -220,9 +220,15 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
     expect(results.chatBothDirections, `expected both directions in: ${JSON.stringify(chatTexts)}`).toBe(true);
 
     // --- Organizer escalates to banbe ---
-    await row.locator('[data-testid="verification-escalate"]').click();
-    await organizerPage.locator('[data-testid="verification-reason"]').fill(`E2E ${label}: cannot reconcile, escalating`);
-    await organizerPage.locator('[data-testid="verification-reject-confirm"]').click();
+    // The "escalate to banbe" button was removed from the UI (product
+    // decision, 2026-10-05); the RPC is kept, so the admin leg below is
+    // still exercised by calling it as the organizer.
+    const { client: organizerClient } = await signIn(organizerUser.email, organizerUser.password);
+    const { data: escalated, error: escalateError } = await organizerClient.rpc('escalate_payment_dispute', {
+      p_booking: bookingId, p_reason: `E2E ${label}: cannot reconcile, escalating`,
+    });
+    expect(escalateError, `escalate failed: ${escalateError?.message}`).toBeNull();
+    expect(escalated.success, `escalate returned: ${JSON.stringify(escalated)}`).toBe(true);
     await expect(async () => {
       const { data } = await admin.from('bookings').select('payment_state').eq('id', bookingId).single();
       expect(data.payment_state).toBe('disputed');

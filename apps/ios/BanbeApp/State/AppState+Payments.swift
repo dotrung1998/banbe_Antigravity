@@ -2350,12 +2350,19 @@ extension AppState {
     /// exercise it without a main-actor hop.
     nonisolated static func livePaymentDisputeBookingID(
         threadRows: [(bookingId: UUID?, resolved: Bool)],
-        bookingStates: [UUID: (paymentState: String, disputeResolvedAt: Date?)]
+        bookingStates: [UUID: (paymentState: String, disputeResolvedAt: Date?, notFoundAt: Date?)]
     ) -> UUID? {
-        threadRows
+        // Live = escalated to banbe and unresolved, OR the host reported the
+        // transfer "not found" and the 2-day window (migration 149) is running.
+        func isLive(_ id: UUID) -> Bool {
+            guard let st = bookingStates[id] else { return false }
+            if st.paymentState == "disputed" { return st.disputeResolvedAt == nil }
+            return (st.paymentState == "pending_verification" || st.paymentState == "holding") && st.notFoundAt != nil
+        }
+        return threadRows
             .filter { !$0.resolved }
             .compactMap(\.bookingId)
-            .filter { bookingStates[$0]?.paymentState == "disputed" && bookingStates[$0]?.disputeResolvedAt == nil }
+            .filter(isLive)
             .sorted { $0.uuidString < $1.uuidString }
             .first
     }
@@ -2446,10 +2453,12 @@ extension AppState {
             let id: UUID
             let paymentState: String
             let disputeResolvedAt: Date?
+            let notFoundAt: Date?
             enum CodingKeys: String, CodingKey {
                 case id
                 case paymentState = "payment_state"
                 case disputeResolvedAt = "dispute_resolved_at"
+                case notFoundAt = "not_found_at"
             }
         }
         let openPaymentRows: [DisputeThreadRow]? = try? await SupabaseService.client
@@ -2462,15 +2471,15 @@ extension AppState {
         guard myGeneration == conversationDisputeGeneration else { return }
 
         let candidates = (openPaymentRows ?? []).map { ($0.bookingId, $0.resolvedAt != nil) }
-        var states: [UUID: (paymentState: String, disputeResolvedAt: Date?)] = [:]
+        var states: [UUID: (paymentState: String, disputeResolvedAt: Date?, notFoundAt: Date?)] = [:]
         let candidateBookingIDs = Array(Set(candidates.compactMap { $0.0 }))
         if !candidateBookingIDs.isEmpty {
             let bookings: [PaymentDisputeBooking]? = try? await SupabaseService.client
-                .from("bookings").select("id, payment_state, dispute_resolved_at")
+                .from("bookings").select("id, payment_state, dispute_resolved_at, not_found_at")
                 .in("id", values: candidateBookingIDs.map(\.uuidString))
                 .execute().value
             guard myGeneration == conversationDisputeGeneration else { return }
-            for b in bookings ?? [] { states[b.id] = (b.paymentState, b.disputeResolvedAt) }
+            for b in bookings ?? [] { states[b.id] = (b.paymentState, b.disputeResolvedAt, b.notFoundAt) }
         }
         conversationPaymentDisputeBookingID = Self.livePaymentDisputeBookingID(
             threadRows: candidates, bookingStates: states

@@ -152,6 +152,9 @@ struct DisputeChatSummary: Codable, Identifiable, Hashable {
     /// the active-dispute indicator on both sides.
     var disputeClosedAt: Date?
     var disputeClosedByRole: String?
+    /// Migration 149 — end of the 2-day "transfer not found" window.
+    var expiresAt: Date?
+    var bookingPaymentState: String?
     var id: UUID { threadId }
     var isRefund: Bool { kind == "refund" }
     var isConcluded: Bool { resolvedAt != nil }
@@ -159,7 +162,9 @@ struct DisputeChatSummary: Codable, Identifiable, Hashable {
     /// its 'disputed' state. This, not `isConcluded`, is what highlights the
     /// Inbox row — a dispute can conclude without either party closing it.
     var isActiveDispute: Bool {
-        isRefund && disputeClosedAt == nil && claimStatus == "disputed"
+        // A payment thread (host reported "not found", or escalated) is live
+        // until it is resolved/auto-closed; a refund one until closed/settled.
+        isRefund ? (disputeClosedAt == nil && claimStatus == "disputed") : resolvedAt == nil
     }
 
     enum CodingKeys: String, CodingKey {
@@ -185,6 +190,8 @@ struct DisputeChatSummary: Codable, Identifiable, Hashable {
         case conversationThreadId = "conversation_thread_id"
         case disputeClosedAt = "dispute_closed_at"
         case disputeClosedByRole = "dispute_closed_by_role"
+        case expiresAt = "expires_at"
+        case bookingPaymentState = "booking_payment_state"
     }
 }
 

@@ -807,7 +807,16 @@ struct ChatView: View {
         if body.hasPrefix("Người tổ chức không nhận yêu cầu đặt chỗ này") || body.hasPrefix("Booking cancelled.") {
             return ("declined", app.T("Đặt chỗ đã bị huỷ", "Booking cancelled"))
         }
+        if body.hasPrefix("Người tổ chức chưa tìm thấy khoản chuyển khoản") || body.hasPrefix("The host could not find this transfer") {
+            return ("notfound", app.T("Chưa tìm thấy chuyển khoản", "Transfer not found"))
+        }
         return nil
+    }
+
+    /// The newest "transfer not found" card — the one the temporary chat for
+    /// that report (migration 149) hangs off.
+    private var notFoundCardMessageID: UUID? {
+        app.chatMessages.last { $0.kind == "system" && classifySystemMessage($0.body)?.status == "notfound" }?.id
     }
 
     @ViewBuilder
@@ -875,9 +884,9 @@ struct ChatView: View {
             // admin-only resolution: nothing here closes it, exports nothing
             // on its behalf, and it collapses to the plain card once banbe has
             // ruled.
-            if card.status == "confirmed",
-               let paymentBookingID = app.conversationPaymentDisputeBookingID,
-               disputeCardMessageIDs.payment == message.id {
+            if let paymentBookingID = app.conversationPaymentDisputeBookingID,
+               (card.status == "confirmed" && disputeCardMessageIDs.payment == message.id)
+                || (card.status == "notfound" && notFoundCardMessageID == message.id) {
                 Divider().overlay(app.palette.rule).padding(.vertical, 2)
                 DisputeChatPanel(bookingID: paymentBookingID)
                     .accessibilityIdentifier("chat.dispute.paymentPanel")
@@ -888,7 +897,7 @@ struct ChatView: View {
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(attached?.isActive == true ? BanbeTheme.alert.opacity(0.55) : app.palette.rule, lineWidth: 1)
+                .stroke((attached?.isActive == true || (card.status == "notfound" && notFoundCardMessageID == message.id && app.conversationPaymentDisputeBookingID != nil)) ? BanbeTheme.alert.opacity(0.55) : app.palette.rule, lineWidth: 1)
         )
         .foregroundStyle(app.palette.ink)
         .id(message.id)

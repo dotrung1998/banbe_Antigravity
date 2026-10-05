@@ -56,6 +56,9 @@ function classifySystemMessage(body) {
   if (body.startsWith('Người tổ chức không nhận yêu cầu đặt chỗ này') || body.startsWith('Booking cancelled.')) {
     return { status: 'declined', label: { vi: 'Đặt chỗ đã bị huỷ', en: 'Booking cancelled' } };
   }
+  if (body.startsWith('Người tổ chức chưa tìm thấy khoản chuyển khoản') || body.startsWith('The host could not find this transfer')) {
+    return { status: 'notfound', label: { vi: 'Chưa tìm thấy chuyển khoản', en: 'Transfer not found' } };
+  }
   return null;
 }
 

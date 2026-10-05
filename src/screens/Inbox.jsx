@@ -25,6 +25,16 @@ function daysLeftLabel(purgeAfter, T) {
     : T(`tự xoá sau ~${days} ngày`, `deletes in ~${days} days`);
 }
 
+// "Ticket returns to inventory in ~Nh" for the 2-day not-found window.
+function windowLeftLabel(expiresAt, T) {
+  const msLeft = new Date(expiresAt).getTime() - Date.now();
+  if (!(msLeft > 0)) return T('sắp đóng', 'closing soon');
+  const h = Math.ceil(msLeft / 3600000);
+  return h >= 24
+    ? T(`đóng sau ~${Math.ceil(h / 24)} ngày`, `closes in ~${Math.ceil(h / 24)}d`)
+    : T(`đóng sau ~${h} giờ`, `closes in ~${h}h`);
+}
+
 /**
  * The yellow "dispute" section pinned above the conversation list (migration
  * 129). One entry per live dispute chat this account is a party to — a goer
@@ -105,7 +115,9 @@ function InboxDisputeSection({ T }) {
                 <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>
                   {chat.kind === 'refund'
                     ? T('Chưa nhận được khoản hoàn', 'Refund not received')
-                    : T('Chờ banbe quyết định', "Awaiting banbe's decision")}
+                    : chat.expires_at && chat.booking_payment_state !== 'disputed'
+                      ? T('Chưa tìm thấy chuyển khoản — trao đổi để thống nhất', 'Transfer not found — sort it out in the chat')
+                      : T('Chờ banbe quyết định', "Awaiting banbe's decision")}
                   {chat.amount_vnd != null && ` ▪︎ ${formatVnd(chat.amount_vnd)}`}
                 </span>
                 {chat.last_message_body && (
@@ -118,6 +130,11 @@ function InboxDisputeSection({ T }) {
                 {chat.message_count > 0 && (
                   <span style={{ fontSize: 10.5, fontWeight: 600, color: honey }}>
                     {chat.message_count} {T('tin nhắn', chat.message_count === 1 ? 'message' : 'messages')}
+                  </span>
+                )}
+                {!concluded && chat.expires_at && chat.booking_payment_state !== 'disputed' && (
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--alert, #c0392b)' }} data-testid="inbox-dispute-window">
+                    {windowLeftLabel(chat.expires_at, T)}
                   </span>
                 )}
                 {concluded && (

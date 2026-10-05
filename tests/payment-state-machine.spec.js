@@ -108,10 +108,10 @@ test.describe('Payment screens wiring', () => {
   // banbe in the picture by itself — only a separate, explicit escalation
   // does. Guarded at the source rather than by rendering the (sign-in-gated)
   // Verifications screen, same reasoning as the test above.
-  test('a plain rejection never frames itself as banbe stepping in — only escalation does', () => {
+  test('a plain rejection never frames itself as banbe stepping in', () => {
     const src = fs.readFileSync(fileURLToPath(new URL('../src/screens/Verifications.jsx', import.meta.url)), 'utf8');
-    expect(src).toContain('escalateDispute');
-    expect(src).toContain('verification-escalate');
+    // The escalate button was removed from the UI (2026-10-05).
+    expect(src).not.toContain('verification-escalate');
     // The reject-reason disclaimer must not claim banbe reviews it — only
     // the escalate-reason disclaimer may say that.
     expect(src).toContain('banbe không tham gia ở bước này');

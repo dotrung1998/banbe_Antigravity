@@ -303,3 +303,13 @@ client's Inbox was not re-run against the redefined `get_my_dispute_chats()`.
 `host_marked_sent`, NOT `disputed` — `dispute_refund()` short-circuits with
 `already=true` on an already-disputed claim and never creates the thread, so a
 `disputed` seed silently tests nothing at all.
+
+## 2026-10-05 — "Not found" now has a 2-day window (migration 149)
+
+**`supabase/migrations/20261129000149_149_not_found_two_day_window.sql` — written, verified in `supabase/_localtest` (assertion `10_not_found_window_assert.sql`), NOT applied to any deployed DB.**
+
+- `reject_payment()` stamps `bookings.not_found_at` (first report only — never extended by repeat reports or goer re-uploading proof) and `dispute_threads.expires_at = not_found_at + 2 days`.
+- `expire_not_found_bookings()` (pg_cron every 5 min, `bb_expire_not_found_bookings`): for bookings still `pending_verification`/`holding` past the window → `payment_state/status = 'expired'` (seat back to inventory, same end state as hold expiry), thread soft-closed (`resolution_kind='cancelled'`, purged after 72h by the existing cron), system message in the permanent chat, notification to goer + host.
+- "Settled" needs no extra code: host confirming → `confirmed`, escalating to banbe → `disputed`; the sweep only looks at the two pre-settlement states.
+- **Surfacing (follow-up, same day):** user saw no chat/notification/red highlight. Causes: (1) migration 149 (and 129-148) not applied remotely, so nothing exists server-side yet; (2) iOS only attached a payment chat to the conversation once the booking was `disputed`, and `isActiveDispute` was refund-only. Fixed: `livePaymentDisputeBookingID` now also accepts `pending_verification`/`holding` with `not_found_at` set; new "Transfer not found" system card (iOS `MessagingViews`, web `Chat.jsx`) hosts the panel with red border; `DisputeChatSummary.isActiveDispute` true for open payment threads (red Inbox row); host now gets a notification on the first report; `get_my_dispute_chats()` gained `expires_at` + `booking_payment_state` (web Inbox shows "closes in ~Nh" + proper label). Web does not yet have the red Inbox row (uses the yellow dispute section). Unit tests 19/19, web build green; no device click-through.
+- **Not done (old note):** iOS panel has no countdown line; web no countdown inside the chat panel itself; no countdown UI on web/iOS yet (`window_ends_at` is returned by `reject_payment` and put in the notification `data`, and `dispute_threads.expires_at` is readable under existing RLS). `resolution_kind='cancelled'` is reused rather than a new value because `dispute_resolution_stats` has a CHECK on it (and the sweep doesn't write stats).
