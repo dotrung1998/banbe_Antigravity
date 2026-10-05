@@ -727,7 +727,8 @@ struct ChatView: View {
                             systemCard(card, message: message)
                         } else {
                             bubble(
-                                text: message.body, mine: message.senderId == app.userID,
+                                text: message.kind == "system" ? SystemMessageLocale.localize(message.body, isEN: app.isEN) : message.body,
+                                mine: message.senderId == app.userID,
                                 messageID: message.id,
                                 senderLabel: message.senderId == app.userID ? app.T("Bạn", "You") : headerTitle,
                                 createdAt: message.createdAt,
@@ -835,7 +836,7 @@ struct ChatView: View {
                         .accessibilityIdentifier("chat.dispute.completed")
                 }
             }
-            Text(message.body)
+            Text(SystemMessageLocale.localize(message.body, isEN: app.isEN))
                 .font(.system(size: 12.5))
                 .foregroundStyle(app.palette.ink.opacity(0.75))
             Button(app.T("Xem chi tiết", "Show details")) { app.goEvent(event.key) }

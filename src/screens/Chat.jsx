@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { localizeSystemMessage } from '../lib/systemMessageLocale.js';
 import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass } from '../theme.js';
 
@@ -184,7 +185,7 @@ export default function Chat() {
                 <span style={{ fontSize: 11, fontWeight: 700, color: sysCard.status === 'confirmed' ? ink : alert }}>
                   {T(sysCard.label.vi, sysCard.label.en)}
                 </span>
-                <span style={{ fontSize: 12.5, color: ink, opacity: 0.75, lineHeight: 1.4 }}>{m.text}</span>
+                <span style={{ fontSize: 12.5, color: ink, opacity: 0.75, lineHeight: 1.4 }}>{localizeSystemMessage(m.text, s.lang)}</span>
                 <div
                   onClick={() => goEvent(s.eventKey)}
                   data-testid="chat-system-card-details"
@@ -269,7 +270,7 @@ export default function Chat() {
                     background: m.who === 'me' ? ink : paper,
                     color: m.who === 'me' ? paper : ink,
                     border: m.who === 'me' ? 'none' : `1px solid ${rule}`,
-                  }}>{m.text}</div>
+                  }}>{m.kind === 'system' ? localizeSystemMessage(m.text, s.lang) : m.text}</div>
                 )}
               </div>
             </div>

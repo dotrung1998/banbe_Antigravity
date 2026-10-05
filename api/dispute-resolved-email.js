@@ -105,6 +105,13 @@ export default async function handler(req, res) {
     const { data: guestAuth, error: guestAuthError } = await admin.auth.admin.getUserById(booking.user_id);
     if (guestAuthError) console.error('dispute-resolved-email: guest auth lookup failed:', guestAuthError);
     const organizerUserId = organizer?.owner_id || organizer?.user_id;
+    // The organizer's email follows THEIR language setting too (it used to be
+    // hard-coded Vietnamese, whatever they had chosen).
+    let organizerLocale = 'vi';
+    if (organizerUserId) {
+      const { data: organizerProfile } = await admin.from('profiles').select('locale').eq('id', organizerUserId).maybeSingle();
+      organizerLocale = organizerProfile?.locale === 'en' ? 'en' : 'vi';
+    }
     let organizerAuth = null;
     if (organizerUserId) {
       const result = await admin.auth.admin.getUserById(organizerUserId);
@@ -174,7 +181,7 @@ export default async function handler(req, res) {
     // total success in what the client saw.
     const recipients = [
       { role: 'guest', email: guestAuth?.user?.email, locale: guestProfile?.locale === 'en' ? 'en' : 'vi' },
-      { role: 'organizer', email: organizerAuth?.user?.email, locale: 'vi' },
+      { role: 'organizer', email: organizerAuth?.user?.email, locale: organizerLocale },
     ];
     let sent = 0;
     const failures = [];
