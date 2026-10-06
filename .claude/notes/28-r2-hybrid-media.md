@@ -85,3 +85,63 @@ NOT MEASURED. No Cloudflare account/domain exists, nothing was deployed, and per
 
 ## Deployed vs implemented
 IMPLEMENTED LOCALLY: everything above. DEPLOYED/EXECUTED: nothing — no migration applied, no bucket/domain/token created, no migration script run (dry-run not run either: needs service-role env), no commit/push.
+
+---
+# Local isolated verification (2026-10-06) — nothing here touched live Supabase/R2/Cloudflare
+
+Harness: `scripts/e2e-local/` (README there). Isolated Supabase stack (project `banbe-e2e-r2`, all 149 migrations applied from zero),
+a SigV4-validating S3 server (Versity S3 Gateway — MinIO's images are no longer pullable from Docker Hub/quay), the REAL `api/media.js`
++ `api/cron.js` handlers behind a Vercel-style adapter, a modelled "media domain", and a Cloudflare purge mock.
+
+## Results on the final fresh stack
+| Suite | Result |
+|---|---|
+| R2 specs (`run.sh <label> r2`): S3 client 7, API 15, migration script 5, real browser 6 | **33 passed, 0 failed, 0 skipped** |
+| Existing app specs, R2 flags off (`run.sh <label> focused`) | **38 passed, 21 failed, 0 skipped** (was 34/25) — remaining failures below |
+| `npm run test:unit` | 66 passed |
+| `r2-db-guard.mjs` (migration 153 behaviour) | 17 passed |
+| `privacy-gaps.mjs after` (migration 154 + code fixes) | 30 passed, 1 GAP (draft photos, by design), 0 failed |
+| iOS `BanbeAppTests` on simulator (iPhone 17 Pro, iOS 26.5) | 61 passed (incl. `MediaResolverTests` 4/4), 0 failed |
+
+## What the 21 remaining focused failures are (none caused by the R2 work; identical on the pre-R2 commit)
+- 18 stale assertions in `map-explore.spec.js` (selector `open-map-explore` no longer exists; Home now uses `tab-map`; sheet/filter behaviour deliberately changed since the specs were written; flex-wrap -> horizontal scroll).
+- 1 stale test setup (`organizer-profile-hierarchy` "signed-out visitor": `newContext()` inherits the signed-in storageState).
+- 2 app bugs, reported not fixed: `MapExplore.jsx:~733` skip-first-mount ref fires twice under StrictMode (detent flips before the poll); `PulseViewer.jsx:282-284` inline transform loses to the finished `animation ... both` fill so the close slide never plays. Also found: `MapExplore.jsx:~619` marker wrapper `cssText='position:relative;'` displaces pins.
+Local fixtures (`fixtures.mjs`): 20 synthetic live events with the catalogue keys + organizers owned by `e2e-fixture-owner@example.invalid`. They prove data-shape wiring only (their photo rows have no objects).
+
+## Defects the local run found in this work (all fixed in the working tree)
+1. Migration 154 policy used a bare `name` inside an `EXISTS` subquery -> resolved to `events.name`. Fixed with `(objects).name`.
+2. Migration 153 trigger: a field reference for another table broke every `organizers` write (PL/pgSQL resolves `NEW.col` at prepare time). Fixed with nested checks.
+3. Legacy replacement of an avatar/cover left a stale `*_r2_ref` (resolvers preferring it would show the OLD image). The trigger now re-derives it; the sweep retires orphaned assets.
+4. `/api/media` + cron: the sweep did nothing without R2 configured; Supabase-only cleanups now run independently behind their own flags.
+
+## SAFETY INCIDENT (disclosed): one existing spec bypassed the isolation guard
+`tests/story-event-card-identity.spec.js` reads `.env.local` itself (hosted URL + service-role key, hardcoded hosted anon key). In 3 early harness runs it executed against the LIVE project:
+sign-in of the shared test account, service-role upsert of 2 `follows` rows (`org_phong302`, `org_jazzgac`), a failed story insert (`TypeError ... reading 'id'`), then its `afterAll` deleted those follows. Net effect should be 3 auth sessions for the shared test account (+ 2 leftover follow rows only if `afterAll` did not run). Not verified against live (that would be another live access).
+Closed by: `net-guard.cjs` (socket-level block of every non-loopback connection in every harness Node process, self-tested and proven inside a Playwright worker), `scan-specs.mjs` (refuses specs that read `.env*`, mention the live ref/JWT or hosted URLs), and a guard-safe local copy of that spec. Other specs with the same `.env.local` pattern (inbox-unread, story-preload, story-gallery-drift, story-viewer-deck, story-viewer) must not be added without copies.
+
+## Known privacy gaps — status
+| Gap | Verified | Status |
+|---|---|---|
+| Draft/review event photos sit in the PUBLIC bucket (URL fetch bypasses RLS) | yes (GAP line) | **OPEN by design**: needs draft uploads to go to a private bucket + an authorization-checked promote on publish (server copy only after `eventIsPublic`). Mitigated: migration 154 stops anonymous LISTING of non-public events' photos. Client routing change NOT made (touches create-event on web+iOS). |
+| Existing public photos after an invite-only change | yes | Fixed in code: `demoteLegacyInvitePhotos` (reconcile + sweep, flag `MEDIA_DEMOTE_LEGACY_INVITE`, default OFF): private copy first, row repointed, public object deleted, never a new public copy. |
+| Expired stories never removed; `cleanup_expired_stories()` callable by any signed-in user | yes | Fixed: function locked to service role (154); `sweepExpiredStories` removes objects then rows (flag `MEDIA_SWEEP_STORIES`, default OFF). |
+| Account deletion left stories/organizer photo (legacy + R2) | yes | Fixed for sole-owned organizers (`api/_lib/accountMedia.js`, step `owned_media`). RETAINED by design: event photos, pay-proof, payment-documents, refund proof/QR, chat and dispute attachments (financial/dispute records) — policy decision needed. |
+Both new sweep behaviours are OFF until flagged, so deploying changes no live object by itself.
+
+## Local measurements (NOT production numbers)
+Synthetic 1800x1200 photo: original 824 KB (what every client downloads today) -> thumb 8 KB, card 71 KB, full 399 KB. Browser: organizer page cold 2 requests / 27 KB from the media domain, warm revisit 0 requests (immutable cache honoured by Chromium). The image is generated noise/gradient, so real-photo ratios will differ; production savings depend on real traffic mix (no per-object hit counts exist) and are an estimate only.
+
+## What the local S3 server / media-domain model CANNOT prove about real R2
+- Cloudflare R2 specifics: its SigV4 quirks (region `auto`), error codes (it returns 403 for an unknown key id, this emulator 404), limits, eventual-consistency and lifecycle rules (staging expiry is a bucket setting, untested here), CORS config format.
+- The custom domain, TLS, Cloudflare cache behaviour/headers (`cf-cache-status`), tiered caching, and real cache **purge by URL** (only the request shape/token is checked against a mock).
+- Real R2 pricing/operation counts, and egress behaviour.
+- iOS runtime against the media domain (iOS unit tests only) and Safari/WebKit/Firefox.
+
+## Minimal real-R2 staging setup (needs approval; nothing created)
+1. Cloudflare account with R2 enabled (payment method required; free tier 10 GB, 1M class-A, 10M class-B ops/month, free egress) and a throwaway domain/zone on Cloudflare DNS (a subdomain such as `media-staging.<domain>` is enough).
+2. Two NEW buckets `banbe-staging-public`, `banbe-staging-staging`; custom domain on the public one only (r2.dev OFF); 1-day lifecycle on the staging one; CORS on it for the staging web origin only.
+3. One R2 API token scoped to those two buckets (Object Read & Write) and one zone token (Cache Purge, that zone only).
+4. A separate Supabase STAGING project (free tier) or branch — never the production project — with migrations 153/154 applied; a Vercel preview deployment with the env from `.env.example`, `MEDIA_R2_UPLOADS=allowlist` for one test user.
+5. Re-run `scripts/e2e-local/specs` with `R2_*`/`MEDIA_*` pointed at staging (needs a staging variant of `guard.mjs` allowlisting exactly those hosts) and check: real purge (`cf-cache-status: MISS` after purge), staging lifecycle expiry, CORS from the real origin, and cold/warm bytes on a real device.
+Cost: ~free at test volumes; the only recurring items are the domain and (beyond free tier) R2 storage/ops.
