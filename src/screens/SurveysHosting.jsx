@@ -3,11 +3,11 @@ import { useGoc } from '../state/GocContext.jsx';
 import { paper, ink, rule, display, alert } from '../theme.js';
 import { surveyPublicUrl } from '../lib/surveyLink.js';
 import { supabase } from '../lib/supabase.js';
+import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
 import SurveyStoryCard from './sheets/SurveyStoryCard.jsx';
 
-function organizerAvatarUrl(path) {
-  if (!path) return '';
-  return supabase.storage.from('organizer-photos').getPublicUrl(path).data.publicUrl;
+function organizerAvatarUrl(path, r2Ref, variant = 'thumb') {
+  return organizerAvatarPublicUrl(path, r2Ref, variant);
 }
 
 // One short word per tab so all four fit a single full-width segmented
@@ -657,7 +657,7 @@ export default function SurveysHosting() {
                 <SurveyStoryCard
                   T={T}
                   hostName={s.orgRegName}
-                  hostAvatarUrl={organizerAvatarUrl(s.myOrganizerAvatarPath)}
+                  hostAvatarUrl={organizerAvatarUrl(s.myOrganizerAvatarPath, s.myOrganizerAvatarR2Ref)}
                   title={s.surveyShareToStoryTarget.title}
                   description={s.surveyShareToStoryTarget.description}
                   closesAt={s.surveyShareToStoryTarget.closes_at}

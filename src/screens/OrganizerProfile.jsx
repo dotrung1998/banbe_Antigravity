@@ -2,19 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { useGoc } from '../state/GocContext.jsx';
 import { supabase } from '../lib/supabase.js';
+import { organizerAvatarPublicUrl, publicEventPhotoUrl } from '../lib/mediaUrls.js';
 import { paper, ink, rule, alert, display, cardGlass } from '../theme.js';
 import { bg } from '../data/events.js';
 import { SocialLinksEditor } from './SocialLinksEditor.jsx';
 import ProfileShareSheet, { profileShareLinks } from './sheets/ProfileShareSheet.jsx';
 import { LongIntroPreview, SocialLinksRow } from './LongIntro.jsx';
 
-function organizerAvatarUrl(path) {
-  if (!path) return '';
-  return supabase.storage.from('organizer-photos').getPublicUrl(path).data.publicUrl;
+function organizerAvatarUrl(path, r2Ref, variant = 'card') {
+  return organizerAvatarPublicUrl(path, r2Ref, variant);
 }
-function organizerPhotoUrl(path) {
-  const relative = (path || '').replace(/^event-photos\//, '');
-  return supabase.storage.from('event-photos').getPublicUrl(relative).data.publicUrl;
+function organizerPhotoUrl(path, r2Ref) {
+  return publicEventPhotoUrl(path, r2Ref, 'card') || '';
 }
 
 // Personal-vs-organizer hierarchy pass (2026-09-27) — the organizer's own,
@@ -86,7 +85,7 @@ export default function OrganizerProfile() {
   }
 
   const monogram = (org.name || '?').trim()[0]?.toUpperCase() || '?';
-  const avatarSrc = avatarPreview || organizerAvatarUrl(org.avatar_path);
+  const avatarSrc = avatarPreview || organizerAvatarUrl(org.avatar_path, org.avatar_r2_ref || (org.id === s.myOrganizerId ? s.myOrganizerAvatarR2Ref : ''));
 
   return (
     <div style={{ minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Organizer profile">
@@ -259,7 +258,7 @@ export default function OrganizerProfile() {
           <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Ảnh', 'Photos')}</span>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginTop: 8 }}>
             {s.organizerProfilePhotos.map(p => (
-              <div key={p.id} style={bg(organizerPhotoUrl(p.storage_path), { width: '100%', height: 100, borderRadius: 8 })} />
+              <div key={p.id} style={bg(organizerPhotoUrl(p.storage_path, p.r2_ref), { width: '100%', height: 100, borderRadius: 8 })} />
             ))}
           </div>
         </div>
@@ -281,7 +280,7 @@ export default function OrganizerProfile() {
         name={org.name || ''}
         subtitle={T(`${org.event_count ?? 0} sự kiện · ${org.follower_count ?? 0} người theo dõi`, `${org.event_count ?? 0} events · ${org.follower_count ?? 0} followers`)}
         detail={org.about || ''}
-        avatarUrl={organizerAvatarUrl(org.avatar_path)}
+        avatarUrl={organizerAvatarUrl(org.avatar_path, org.avatar_r2_ref || (org.id === s.myOrganizerId ? s.myOrganizerAvatarR2Ref : ''))}
         roundAvatar={false}
         link={profileShareLinks().host(org.id)}
         idPrefix="organizer-profile-share-card"

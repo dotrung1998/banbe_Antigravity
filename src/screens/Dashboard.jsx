@@ -7,6 +7,7 @@ import { fieldGlass, cardGlass, inkButton } from './hostStyle.js';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
 import ActionCenter from './ActionCenter.jsx';
 import { supabase } from '../lib/supabase.js';
+import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
 
 // THIRD STALE-AVATAR SITE (2026-09-28) — this header's round avatar next to
 // the org name / "Bởi <org> Team" line used to always be `bg(ev.img, ...)`,
@@ -16,9 +17,8 @@ import { supabase } from '../lib/supabase.js';
 // (`s.myOrganizerAvatarPath`, kept fresh in place by saveOrganizerProfile's
 // success branch), so a real host photo change now shows here too, without
 // re-deriving a second copy of the URL logic.
-function organizerAvatarUrl(path) {
-  if (!path) return '';
-  return supabase.storage.from('organizer-photos').getPublicUrl(path).data.publicUrl;
+function organizerAvatarUrl(path, r2Ref, variant = 'thumb') {
+  return organizerAvatarPublicUrl(path, r2Ref, variant);
 }
 
 import { useSubmittedEvents, useFormatWhen } from '../lib/submittedEvents.jsx';
@@ -180,9 +180,9 @@ export default function Dashboard() {
             `ev.img`'s demo-catalogue photo is only ever the fallback for a
             never-hosted dev/seed account, same fallback rule the org
             name/stats lines above already follow. */}
-        {s.myOrganizerId && organizerAvatarUrl(s.myOrganizerAvatarPath) ? (
+        {s.myOrganizerId && organizerAvatarUrl(s.myOrganizerAvatarPath, s.myOrganizerAvatarR2Ref) ? (
           <img
-            src={organizerAvatarUrl(s.myOrganizerAvatarPath)}
+            src={organizerAvatarUrl(s.myOrganizerAvatarPath, s.myOrganizerAvatarR2Ref)}
             alt=""
             data-testid="dashboard-organizer-avatar"
             style={{ flex: 'none', width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }}

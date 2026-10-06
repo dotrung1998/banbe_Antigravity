@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useGoc, resolveCoverUrl } from '../state/GocContext.jsx';
 import { supabase } from '../lib/supabase.js';
+import { withR2Columns } from '../lib/mediaUrls.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { mapsUrl } from '../data/events.js';
 import { paper, ink, rule, display, alert } from '../theme.js';
@@ -51,10 +52,10 @@ export default function AdminEvents() {
 
   const loadGallery = async (eventId) => {
     if (galleryByEvent[eventId]) return;
-    const { data, error } = await supabase
-      .from('event_photos').select('id, storage_path').eq('event_id', eventId).order('sort_order', { ascending: true });
+    const { data, error } = await withR2Columns(withR2 => supabase
+      .from('event_photos').select(withR2 ? 'id, storage_path, r2_ref' : 'id, storage_path').eq('event_id', eventId).order('sort_order', { ascending: true }));
     if (error) { console.warn('AdminEvents loadGallery failed:', error); return; }
-    setGalleryByEvent(prev => ({ ...prev, [eventId]: (data || []).map(p => resolveCoverUrl(p.storage_path)) }));
+    setGalleryByEvent(prev => ({ ...prev, [eventId]: (data || []).map(p => resolveCoverUrl(p.storage_path, null, p.r2_ref, 'full')) }));
   };
 
   const toggleExpanded = (key) => {

@@ -2,6 +2,7 @@ import { screenHeight } from '../lib/viewport.js';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useGoc, resolveCoverUrl, firstPhotoUrlByEvent } from '../state/GocContext.jsx';
 import { supabase } from '../lib/supabase.js';
+import { withR2Columns } from '../lib/mediaUrls.js';
 import { findEvent, isCosmeticCatalogMatch, haversineKm, distanceLabel } from '../data/events.js';
 import { liveEventOverrides } from '../lib/countdown.js';
 import { formatVnd } from '../lib/paymentDocument.js';
@@ -46,6 +47,7 @@ const POLL_MS = 5000;
 const SHEET_SNAPS = { tall: 0.30, mid: 0.58, peek: 0.86 }; // fraction of viewport height reserved for the visible map strip above the sheet
 
 async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
+  const buildQuery = (withR2) => {
   let q = supabase
     .from('events')
     // Keyword-search fix (migration 108) — re-enabled 2026-09-29, see
@@ -56,7 +58,7 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
     // search document built below (`buildEventSearchDoc`) can include
     // category/organizer/description text regardless of whether
     // `keywords` happens to be populated for a given row.
-    .select('id, key, name, cat_key, cat_label, area, city, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, country_code, state_province, neighborhood, organizers(name)')
+    .select('id, key, name, cat_key, cat_label, area, city, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, ' + (withR2 ? 'cover_r2_ref, ' : '') + 'keywords, description, intro, country_code, state_province, neighborhood, organizers(name)')
     .eq('status', 'live')
     // Strict invite-only events (2026-10-25): unlike loadWeekendEvents/
     // loadDiscoveryEvents (GocContext.jsx), this query never filtered
@@ -79,7 +81,9 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
     // entirely just because Map couldn't plot it.
     q = q.gte('lat', bounds.south).lte('lat', bounds.north).gte('lng', bounds.west).lte('lng', bounds.east);
   }
-  const { data, error } = await q;
+  return q;
+  };
+  const { data, error } = await withR2Columns(buildQuery);
   if (error) { console.warn('Failed to load map events:', error); return []; }
   const rows = data || [];
 
@@ -166,7 +170,7 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
       // same as null/undefined. Same convention Home.jsx's own
       // `discoveryShaped` mapping already uses for a real event's price.
       price: row.price_vnd > 0 ? formatVnd(row.price_vnd) : 'Miễn phí',
-      img: isCosmeticMatch ? cosmetic?.img : resolveCoverUrl(row.cover_image, fallbackPhotoByEvent[row.id]),
+      img: isCosmeticMatch ? cosmetic?.img : resolveCoverUrl(row.cover_image, fallbackPhotoByEvent[row.id], row.cover_r2_ref),
       when: dateOverrides?.when || cosmetic?.when,
       urgent: row.seats_remaining != null && row.seats_remaining <= 5,
       isNew: (dateOverrides?.until ?? cosmetic?.until) != null && (dateOverrides?.until ?? cosmetic?.until) <= 1,

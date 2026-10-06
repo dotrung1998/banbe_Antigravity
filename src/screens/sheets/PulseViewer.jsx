@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useGoc } from '../../state/GocContext.jsx';
 import { supabase } from '../../lib/supabase.js';
+import { publicEventPhotoUrl } from '../../lib/mediaUrls.js';
 import { paper, ink, rule, fieldSolid, display, cardGlass } from '../../theme.js';
 import BanbeLoadingVisual from '../BanbeLoadingVisual.jsx';
 
@@ -75,8 +76,7 @@ const DISMISS_DURATION_MS = 260;
 
 function eventPhotoUrl(path) {
   if (!path) return null;
-  const relative = path.replace(/^event-photos\//, '');
-  return supabase.storage.from('event-photos').getPublicUrl(relative).data.publicUrl;
+  return publicEventPhotoUrl(path, null, 'full');
 }
 
 // 2026-09-25 fix pass (photo viewer task) — same heart glyph/path

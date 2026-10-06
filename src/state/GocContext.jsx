@@ -11,6 +11,23 @@ import { refundClaimPresentation } from '../lib/refundPresentation.js';
 import { buildLocationTree, eventMatchesLocation, locationShortLabel, migrateLegacyAreaKey, LOCATION_ALL } from '../lib/locationTree.js';
 import { surveyPublicUrl } from '../lib/surveyLink.js';
 import { metricLabel } from '../lib/reportMetricLabels.js';
+import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
+import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns } from '../lib/mediaUrls.js';
+
+/** Media-API upload with the current session token. Resolves `{provider:'supabase'}`
+ * when the caller must use the legacy path; throws MediaUploadError only after bytes were PUT. */
+function reconcileEventMediaFireAndForget(eventId) {
+  (async () => {
+    const accessToken = (await supabase.auth.getSession())?.data?.session?.access_token || null;
+    await reconcileEventViaMediaApi({ eventId, accessToken });
+  })().catch(() => {});
+}
+
+async function tryMediaApiUpload(args) {
+  let accessToken = null;
+  try { accessToken = (await supabase.auth.getSession())?.data?.session?.access_token || null; } catch { /* legacy path */ }
+  return uploadViaMediaApi({ ...args, accessToken });
+}
 
 const GocCtx = createContext(null);
 
@@ -48,7 +65,7 @@ function shapeRealEvent(row, extra = {}) {
     visibility: row.visibility,
     approval: row.approval || '',
     organizerId: row.organizer_id,
-    photoUrl: resolveCoverUrl(row.cover_image, extra.photoUrl),
+    photoUrl: resolveCoverUrl(row.cover_image, extra.photoUrl, row.cover_r2_ref),
     organizerName: extra.organizerName || '',
     // TASK 3 (event creation validation pass) — AdminEvents.jsx's own
     // detailed review section. `organizerType`/`organizerVerified`/
@@ -76,6 +93,7 @@ function shapeRealEvent(row, extra = {}) {
     rejectionReason: row.rejection_reason || '',
     // Real cover/gallery + structured "Bao gồm" (migration 087).
     coverImage: row.cover_image || '',
+    coverR2Ref: row.cover_r2_ref || '',
     included: row.included || '',
     includedItems: Array.isArray(row.included_items) ? row.included_items : [],
     // "Giới thiệu sự kiện" (migration 088) — a separate, longer editorial
@@ -115,7 +133,9 @@ function shapeRealEvent(row, extra = {}) {
 // `withdrawn_at` added for AdminEvents.jsx's own detailed review section
 // (booking-approval mode + withdrawal history); additive, same table, no
 // new join, so every other existing reader of this constant is unaffected.
-const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, approval, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, withdrawal_reason, withdrawn_at, cover_image, included, included_items, intro, address_line, city, postal_code, address_verified, keywords, country_code, state_province, neighborhood';
+const REAL_EVENT_ROW_COLUMNS_BASE = 'id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, approval, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, withdrawal_reason, withdrawn_at, cover_image, included, included_items, intro, address_line, city, postal_code, address_verified, keywords, country_code, state_province, neighborhood';
+// `cover_r2_ref` exists only after migration 153 — see withR2Columns (mediaUrls.js).
+const realEventColumns = (withR2) => (withR2 ? `${REAL_EVENT_ROW_COLUMNS_BASE}, cover_r2_ref` : REAL_EVENT_ROW_COLUMNS_BASE);
 
 /** A real event's own selected `cover_image` (migration 087) resolved to a
  * public URL, falling back to `fallbackUrl` (the first `event_photos` row
@@ -125,8 +145,8 @@ const REAL_EVENT_ROW_COLUMNS = 'id, name, cat_key, cat_label, area, lat, lng, st
  * can set ANY staged photo as cover) — this is what makes the card,
  * EventDetail and the admin review queue all show the SAME chosen cover
  * instead of whichever photo happens to sort first. */
-export function resolveCoverUrl(coverImagePath, fallbackUrl) {
-  if (!coverImagePath) return fallbackUrl || null;
+export function resolveCoverUrl(coverImagePath, fallbackUrl, coverR2Ref, variant = 'card') {
+  if (!coverImagePath && !coverR2Ref) return fallbackUrl || null;
   // Strict invite-only events (migration 113) — a private-bucket path
   // can't be resolved synchronously (createSignedUrl is a network call);
   // every call site that can actually reach one (EventDetail, CreateEvent
@@ -135,9 +155,8 @@ export function resolveCoverUrl(coverImagePath, fallbackUrl) {
   // Pulse) never legitimately hold a private-bucket path in the first
   // place, since invite-only events are excluded from all of them — this
   // is a defensive fallback, not the real gate.
-  if (coverImagePath.startsWith('event-photos-private/')) return fallbackUrl || null;
-  const relative = coverImagePath.replace(/^event-photos\//, '');
-  return supabase.storage.from('event-photos').getPublicUrl(relative).data.publicUrl;
+  if (coverImagePath?.startsWith('event-photos-private/')) return fallbackUrl || null;
+  return publicEventPhotoUrl(coverImagePath, coverR2Ref, variant) || fallbackUrl || null;
 }
 
 /** Async counterpart of resolveCoverUrl — the ONLY correct way to resolve
@@ -147,16 +166,15 @@ export function resolveCoverUrl(coverImagePath, fallbackUrl) {
  * cheap synchronous getPublicUrl() building block. 1-hour signed URL —
  * long enough for one screen visit, short enough that a leaked link
  * (screenshot, cached tab) doesn't stay valid indefinitely. */
-export async function resolveEventPhotoUrlAsync(storagePath) {
-  if (!storagePath) return null;
-  if (storagePath.startsWith('event-photos-private/')) {
+export async function resolveEventPhotoUrlAsync(storagePath, r2Ref, variant = 'card') {
+  if (!storagePath && !r2Ref) return null;
+  if (storagePath?.startsWith('event-photos-private/')) {
     const relative = storagePath.replace(/^event-photos-private\//, '');
     const { data, error } = await supabase.storage.from('event-photos-private').createSignedUrl(relative, 3600);
     if (error) { if (import.meta.env?.DEV) console.warn('resolveEventPhotoUrlAsync signed-url failed:', error); return null; }
     return data.signedUrl;
   }
-  const relative = storagePath.replace(/^event-photos\//, '');
-  return supabase.storage.from('event-photos').getPublicUrl(relative).data.publicUrl;
+  return publicEventPhotoUrl(storagePath, r2Ref, variant);
 }
 
 /** event_photos rows for `eventIds` -> { [event_id]: first public photo URL },
@@ -166,13 +184,13 @@ export async function resolveEventPhotoUrlAsync(storagePath) {
  * fetchLiveEvents don't each reimplement it. */
 export async function firstPhotoUrlByEvent(eventIds) {
   if (!eventIds.length) return {};
-  const { data } = await supabase
-    .from('event_photos').select('event_id, storage_path, sort_order')
-    .in('event_id', eventIds).order('sort_order', { ascending: true });
+  const { data } = await withR2Columns(withR2 => supabase
+    .from('event_photos').select(withR2 ? 'event_id, storage_path, r2_ref, sort_order' : 'event_id, storage_path, sort_order')
+    .in('event_id', eventIds).order('sort_order', { ascending: true }));
   const byEvent = {};
   for (const p of data || []) {
     if (byEvent[p.event_id]) continue;
-    byEvent[p.event_id] = await resolveEventPhotoUrlAsync(p.storage_path);
+    byEvent[p.event_id] = await resolveEventPhotoUrlAsync(p.storage_path, p.r2_ref, 'card');
   }
   return byEvent;
 }
@@ -1077,6 +1095,7 @@ const initialState = {
   // either).
   myOrganizerId: null,
   myOrganizerAvatarPath: '',
+  myOrganizerAvatarR2Ref: '',
   orgProfileSaving: false,
   orgProfileError: '',
   orgProfileSaved: false,
@@ -1767,19 +1786,19 @@ export function GocProvider({ children }) {
       // promises to preserve (a VACUUM FULL/rewrite could reshuffle it).
       // `.order('id')` as an explicit secondary key makes the "primary
       // organizer" pick genuinely deterministic, not just observed-stable.
-      const { data: org } = await supabase
+      const { data: org } = await withR2Columns(withR2 => supabase
         .from('organizers')
-        .select('id, name, about, avatar_path, intro_long, social_links')
+        .select(withR2 ? 'id, name, about, avatar_path, avatar_r2_ref, intro_long, social_links' : 'id, name, about, avatar_path, intro_long, social_links')
         .or(`owner_id.eq.${user.id},user_id.eq.${user.id}`)
         .order('created_at', { ascending: true })
         .order('id', { ascending: true })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle());
       if (org?.name) {
         set({
           orgRegName: org.name, orgRegDesc: org.about || '', hasHosted: true,
           orgRegIntroLong: org.intro_long || '', orgRegLinks: org.social_links || [],
-          myOrganizerId: org.id, myOrganizerAvatarPath: org.avatar_path || '',
+          myOrganizerId: org.id, myOrganizerAvatarPath: org.avatar_path || '', myOrganizerAvatarR2Ref: org.avatar_r2_ref || '',
         });
       }
 
@@ -2119,9 +2138,9 @@ export function GocProvider({ children }) {
 
   const loadEventPhotos = useCallback(async (eventId) => {
     set({ eventPhotosLoading: true });
-    const { data, error } = await supabase
-      .from('event_photos').select('id, storage_path, sort_order')
-      .eq('event_id', eventId).order('sort_order', { ascending: true });
+    const { data, error } = await withR2Columns(withR2 => supabase
+      .from('event_photos').select(withR2 ? 'id, storage_path, r2_ref, sort_order' : 'id, storage_path, sort_order')
+      .eq('event_id', eventId).order('sort_order', { ascending: true }));
     if (error) { if (import.meta.env?.DEV) console.warn('loadEventPhotos failed:', error); }
     // Strict invite-only events (migration 113) — resolve each row's
     // display URL HERE (already async) rather than at every render-time
@@ -2129,7 +2148,7 @@ export function GocProvider({ children }) {
     // which is what lets an invite-only event's private-bucket photos
     // resolve via a real signed URL instead of a broken/blocked public one.
     const rows = data || [];
-    const withUrls = await Promise.all(rows.map(async p => ({ ...p, url: await resolveEventPhotoUrlAsync(p.storage_path) })));
+    const withUrls = await Promise.all(rows.map(async p => ({ ...p, url: await resolveEventPhotoUrlAsync(p.storage_path, p.r2_ref, 'full') })));
     set({ eventPhotos: withUrls, eventPhotosLoading: false });
     loadPhotoEngagement(rows.map(p => p.id));
   }, [set, loadPhotoEngagement]);
@@ -2158,9 +2177,9 @@ export function GocProvider({ children }) {
     const { data: orgEvents } = await eventsQuery;
     const eventIds = (orgEvents || []).map(e => e.id);
     if (!eventIds.length) { set({ organizerPhotos: [], organizerPhotosLoading: false }); return; }
-    const { data: photos, error } = await supabase
-      .from('event_photos').select('id, event_id, storage_path, sort_order')
-      .in('event_id', eventIds).order('sort_order', { ascending: true });
+    const { data: photos, error } = await withR2Columns(withR2 => supabase
+      .from('event_photos').select(withR2 ? 'id, event_id, storage_path, r2_ref, sort_order' : 'id, event_id, storage_path, sort_order')
+      .in('event_id', eventIds).order('sort_order', { ascending: true }));
     if (error) { if (import.meta.env?.DEV) console.warn('loadOrganizerPhotos failed:', error); }
     set({ organizerPhotos: photos || [], organizerPhotosLoading: false });
     loadPhotoEngagement((photos || []).map(p => p.id));
@@ -2188,14 +2207,14 @@ export function GocProvider({ children }) {
   const loadWeekendEvents = useCallback(async () => {
     set({ weekendEventsLoading: true });
     const { start, end } = thisWeekendWindow();
-    const { data: rows, error } = await supabase
+    const { data: rows, error } = await withR2Columns(withR2 => supabase
       .from('events')
-      .select(REAL_EVENT_ROW_COLUMNS)
+      .select(realEventColumns(withR2))
       .eq('status', 'live')
       .eq('visibility', 'public')
       .gte('starts_at', start)
       .lte('starts_at', end)
-      .order('starts_at', { ascending: true });
+      .order('starts_at', { ascending: true }));
     if (error) {
       console.warn('Failed to load weekend events:', error);
       set({ weekendEvents: [], weekendEventsLoading: false });
@@ -2263,13 +2282,13 @@ export function GocProvider({ children }) {
    */
   const loadDiscoveryEvents = useCallback(async () => {
     set({ discoveryEventsLoading: true });
-    const { data: rows, error } = await supabase
+    const { data: rows, error } = await withR2Columns(withR2 => supabase
       .from('events')
-      .select(REAL_EVENT_ROW_COLUMNS)
+      .select(realEventColumns(withR2))
       .eq('visibility', 'public')
       .in('status', ['live', 'cancelled', 'ended'])
       .order('starts_at', { ascending: true })
-      .limit(300);
+      .limit(300));
     if (error) {
       console.warn('Failed to load discovery events:', error);
       set({ discoveryEvents: [], discoveryEventsLoading: false });
@@ -2320,7 +2339,7 @@ export function GocProvider({ children }) {
     const wanted = [...new Set(ids)].filter(id => !(id in s.realEventsById) && !realEventsInFlightRef.current.has(id));
     if (!wanted.length) return;
     wanted.forEach(id => realEventsInFlightRef.current.add(id));
-    const { data: rows, error } = await supabase.from('events').select(REAL_EVENT_ROW_COLUMNS).in('id', wanted);
+    const { data: rows, error } = await withR2Columns(withR2 => supabase.from('events').select(realEventColumns(withR2)).in('id', wanted));
     if (error) {
       console.warn('Failed to load real events by id:', error);
       wanted.forEach(id => realEventsInFlightRef.current.delete(id));
@@ -4171,11 +4190,11 @@ export function GocProvider({ children }) {
     // query only reads them, it never implies either is admin-confirmed.
     // Never joins bank_name/bank_account_no/momo_phone or any other
     // payout/banking field — those stay out of every review/public query.
-    const { data, error } = await supabase
+    const { data, error } = await withR2Columns(withR2 => supabase
       .from('events')
-      .select(`${REAL_EVENT_ROW_COLUMNS}, organizers(name, organizer_type, verified, tax_code)`)
+      .select(`${realEventColumns(withR2)}, organizers(name, organizer_type, verified, tax_code)`)
       .eq('status', 'review')
-      .order('submitted_at', { ascending: true });
+      .order('submitted_at', { ascending: true }));
     if (error) {
       console.warn('loadPendingEvents failed:', error);
       set({ adminEvents: [], adminEventsLoading: false, adminEventError: error.message });
@@ -4828,7 +4847,7 @@ export function GocProvider({ children }) {
     const ownRows = rows.filter(r => isMineOrFollowed(r.organizer_id));
 
     const orgIds = [...new Set(rows.map(r => r.organizer_id))];
-    const { data: orgRows } = await supabase.from('organizers').select('id, name, owner_id, user_id, avatar_path').in('id', orgIds);
+    const { data: orgRows } = await withR2Columns(withR2 => supabase.from('organizers').select(withR2 ? 'id, name, owner_id, user_id, avatar_path, avatar_r2_ref' : 'id, name, owner_id, user_id, avatar_path').in('id', orgIds));
     const orgById = Object.fromEntries((orgRows || []).map(o => [o.id, o]));
     // Avatar pass — real, confirmed bug: `get_survey_card()` (migration 117)
     // returns no avatar field at all (see note 21's own "not done this pass"
@@ -4842,7 +4861,7 @@ export function GocProvider({ children }) {
     // Dashboard.jsx/OrganizerProfile.jsx/SurveysHosting.jsx's own
     // `organizerAvatarUrl`), travels alongside it on the story item itself.
     const orgAvatarUrlById = Object.fromEntries(
-      (orgRows || []).filter(o => o.avatar_path).map(o => [o.id, supabase.storage.from('organizer-photos').getPublicUrl(o.avatar_path).data.publicUrl])
+      (orgRows || []).filter(o => o.avatar_path || o.avatar_r2_ref).map(o => [o.id, organizerAvatarPublicUrl(o.avatar_path, o.avatar_r2_ref, 'thumb')])
     );
 
     const { data: viewRows } = await supabase.from('story_views').select('story_id').eq('viewer_id', s.user.id).in('story_id', ownRows.map(r => r.id));
@@ -4959,7 +4978,7 @@ export function GocProvider({ children }) {
       // Avatar pass — same public-bucket resolver (`organizer-photos`,
       // synchronous `getPublicUrl`) every other organizer avatar in this
       // app already uses — no signing, no extra network call.
-      host_avatar_url: row.host_avatar_path ? supabase.storage.from('organizer-photos').getPublicUrl(row.host_avatar_path).data.publicUrl : null,
+      host_avatar_url: row.host_avatar_path ? (organizerAvatarPublicUrl(row.host_avatar_path, row.host_avatar_r2_ref, 'thumb') || null) : null,
     }));
     return { cards, hasMore: !!data.has_more };
   }, []);
@@ -5993,6 +6012,22 @@ export function GocProvider({ children }) {
     // decision as reconcileEventMedia; a recap photo added to an
     // invite-only event after the fact must not land in the public bucket.
     const bucketId = s.realEventsById[eventId]?.visibility === 'invite' ? 'event-photos-private' : 'event-photos';
+    // R2 media API first; `provider:'supabase'` (flag off / ineligible / any init failure) falls through to the legacy path below.
+    try {
+      const viaApi = await tryMediaApiUpload({ kind: 'event_photo', eventId, file, sortOrder: 0 });
+      if (viaApi.provider === 'r2') {
+        set(prev => ({
+          eventPhotoUploadBusy: { ...prev.eventPhotoUploadBusy, [eventId]: false },
+          eventPhotoUploaded: { ...prev.eventPhotoUploaded, [eventId]: true },
+        }));
+        setTimeout(() => set(prev => ({ eventPhotoUploaded: { ...prev.eventPhotoUploaded, [eventId]: false } })), 1800);
+        return true;
+      }
+    } catch (err) {
+      console.warn('uploadEventPhoto media api failed after upload:', err?.code || 'error');
+      set(prev => ({ eventPhotoUploadBusy: { ...prev.eventPhotoUploadBusy, [eventId]: false }, eventPhotoUploadError: T('Không thể lưu ảnh. Vui lòng thử lại.', 'Could not save the photo. Please try again.') }));
+      return false;
+    }
     let blob = file, ext = (file.name.split('.').pop() || 'jpg').toLowerCase(), contentType = file.type;
     try {
       const normalized = await normalizeImageForUpload(file, EVENT_PHOTO_UPLOAD_BUDGET);
@@ -6485,7 +6520,7 @@ export function GocProvider({ children }) {
     if (!organizerId || s.organizerProfileExtrasLoadedFor === organizerId) return;
     set({ organizerProfileExtrasLoadedFor: organizerId });
     const [eventsRes, photoEventsRes] = await Promise.all([
-      supabase.from('events').select(REAL_EVENT_ROW_COLUMNS).eq('organizer_id', organizerId).eq('status', 'live').order('starts_at', { ascending: true }).limit(5),
+      withR2Columns(withR2 => supabase.from('events').select(realEventColumns(withR2)).eq('organizer_id', organizerId).eq('status', 'live').order('starts_at', { ascending: true }).limit(5)),
       supabase.from('events').select('id').eq('organizer_id', organizerId).eq('status', 'live').eq('visibility', 'public'),
     ]);
     const rows = eventsRes.data || [];
@@ -6493,7 +6528,7 @@ export function GocProvider({ children }) {
     const upcoming = rows.map(r => shapeRealEvent(r, { photoUrl: photoUrlByEvent[r.id] }));
     const photoEventIds = (photoEventsRes.data || []).map(e => e.id);
     const { data: photos } = photoEventIds.length
-      ? await supabase.from('event_photos').select('id, event_id, storage_path, sort_order').in('event_id', photoEventIds).order('sort_order', { ascending: true }).limit(8)
+      ? await withR2Columns(withR2 => supabase.from('event_photos').select(withR2 ? 'id, event_id, storage_path, r2_ref, sort_order' : 'id, event_id, storage_path, sort_order').in('event_id', photoEventIds).order('sort_order', { ascending: true }).limit(8))
       : { data: [] };
     set({ organizerProfileUpcoming: upcoming, organizerProfilePhotos: photos || [] });
   }, [set, s.organizerProfileExtrasLoadedFor]);
@@ -7071,9 +7106,9 @@ export function GocProvider({ children }) {
       // getPublicUrl(), this doubles the bucket segment
       // ('.../public/event-photos/event-photos/...'), a broken URL.
       // Stripped defensively so either convention resolves correctly.
-      const { data: photos } = await supabase
-        .from('event_photos').select('event_id, storage_path, sort_order')
-        .in('event_id', eventIds).order('sort_order', { ascending: true });
+      const { data: photos } = await withR2Columns(withR2 => supabase
+        .from('event_photos').select(withR2 ? 'event_id, storage_path, r2_ref, sort_order' : 'event_id, storage_path, sort_order')
+        .in('event_id', eventIds).order('sort_order', { ascending: true }));
       for (const p of photos || []) {
         if (!eventPhotoByEventId[p.event_id]) {
           // Strict invite-only events (migration 113) — a notification
@@ -7081,7 +7116,7 @@ export function GocProvider({ children }) {
           // (e.g. the recipient's own booking confirmation), so this must
           // resolve through the same async/private-bucket-aware helper,
           // not a bare getPublicUrl() that would silently 403 on it.
-          eventPhotoByEventId[p.event_id] = await resolveEventPhotoUrlAsync(p.storage_path);
+          eventPhotoByEventId[p.event_id] = await resolveEventPhotoUrlAsync(p.storage_path, p.r2_ref, 'card');
         }
       }
     }
@@ -8414,9 +8449,15 @@ export function GocProvider({ children }) {
     set({ orgProfileSaving: true, orgProfileError: '', orgProfileSaved: false });
     try {
       let avatarPath = null;
+      let avatarR2Ref = '';
       if (avatarFile) {
         if (!['image/jpeg', 'image/png', 'image/webp'].includes(avatarFile.type)) throw new Error('INVALID_IMAGE_TYPE');
         if (avatarFile.size > 5 * 1024 * 1024) throw new Error('IMAGE_TOO_LARGE');
+        // R2 media API first (server decides eligibility); legacy upload on `provider:'supabase'`.
+        const viaApi = await tryMediaApiUpload({ kind: 'organizer_avatar', organizerId: s.myOrganizerId, file: avatarFile });
+        if (viaApi.provider === 'r2') { avatarPath = viaApi.ref; avatarR2Ref = viaApi.ref; }
+      }
+      if (avatarFile && !avatarPath) {
         let blob = avatarFile, ext = (avatarFile.name.split('.').pop() || 'jpg').toLowerCase(), contentType = avatarFile.type;
         try {
           const normalized = await normalizeImageForUpload(avatarFile, AVATAR_UPLOAD_BUDGET);
@@ -8454,12 +8495,14 @@ export function GocProvider({ children }) {
       set(prev => ({
         orgProfileSaving: false, orgProfileSaved: true,
         myOrganizerAvatarPath: avatarPath || prev.myOrganizerAvatarPath,
+        myOrganizerAvatarR2Ref: avatarPath ? avatarR2Ref : prev.myOrganizerAvatarR2Ref,
         organizerProfile: (prev.organizerProfile && prev.organizerProfile.id === prev.myOrganizerId)
           ? {
               ...prev.organizerProfile,
               name: prev.orgRegName.trim(),
               about: prev.orgRegDesc.trim(),
               avatar_path: avatarPath || prev.organizerProfile.avatar_path,
+              avatar_r2_ref: avatarPath ? avatarR2Ref : prev.organizerProfile.avatar_r2_ref,
               intro_long: prev.orgRegIntroLong,
               social_links: links,
             }
@@ -8760,7 +8803,13 @@ export function GocProvider({ children }) {
     let removed = 0;
     for (const photoId of removeIds) {
       const row = (s.eventPhotos || []).find(p => p.id === photoId);
-      if (row?.storage_path) {
+      if (row?.r2_ref) {
+        // Best-effort: server deletes the public R2 objects and nulls refs; the row delete below still runs.
+        let accessToken = null;
+        try { accessToken = (await supabase.auth.getSession())?.data?.session?.access_token || null; } catch { /* ignore */ }
+        await deleteViaMediaApi({ ref: row.r2_ref, accessToken });
+      }
+      if (row?.storage_path && !row.storage_path.startsWith('r2:')) {
         const [rowBucket, ...rest] = row.storage_path.split('/');
         const bucket = rowBucket === 'event-photos-private' ? 'event-photos-private' : 'event-photos';
         const relative = bucket === rowBucket ? rest.join('/') : row.storage_path.replace(/^event-photos\//, '');
@@ -8775,6 +8824,18 @@ export function GocProvider({ children }) {
       const file = newFiles[i];
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) continue;
       if (file.size > 50 * 1024 * 1024) continue;
+      // R2 media API first (server decides eligibility — drafts/invite-only stay in Supabase).
+      try {
+        const viaApi = await tryMediaApiUpload({ kind: 'event_photo', eventId, file, setCover: i === coverIndex, sortOrder: i });
+        if (viaApi.provider === 'r2') {
+          uploaded++;
+          if (i === coverIndex) newCoverPath = viaApi.ref;
+          continue;
+        }
+      } catch (err) {
+        console.warn('reconcileEventMedia media api failed after upload:', err?.code || 'error');
+        continue;
+      }
       let blob = file, ext = (file.name.split('.').pop() || 'jpg').toLowerCase(), contentType = file.type;
       try {
         const normalized = await normalizeImageForUpload(file, EVENT_PHOTO_UPLOAD_BUDGET);
@@ -8987,6 +9048,7 @@ export function GocProvider({ children }) {
           p_event_id: eventId, p_visibility: s.createVisibility,
         });
         if (visibilityError) console.warn('set_event_visibility failed:', visibilityError);
+        reconcileEventMediaFireAndForget(eventId);
       }
 
       let mediaNote = '';
@@ -9138,6 +9200,7 @@ export function GocProvider({ children }) {
         p_event_id: eventId, p_reason: trimmed,
       });
       if (error) throw error;
+      if (data?.success !== false) reconcileEventMediaFireAndForget(eventId);
       if (data?.success === false) {
         const message = data.error === 'NOT_PENDING'
           ? T('Sự kiện này không còn ở trạng thái chờ duyệt.', 'This event is no longer pending review.')

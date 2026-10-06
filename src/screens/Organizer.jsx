@@ -3,11 +3,11 @@ import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS, bg } from '../data/events.js';
 import { liveEventOverrides } from '../lib/countdown.js';
 import { supabase } from '../lib/supabase.js';
+import { publicEventPhotoUrl } from '../lib/mediaUrls.js';
 import { paper, ink, rule, display, cardGlass, inkButton } from '../theme.js';
 
-function organizerPhotoUrl(path) {
-  const relative = path.replace(/^event-photos\//, '');
-  return supabase.storage.from('event-photos').getPublicUrl(relative).data.publicUrl;
+function organizerPhotoUrl(path, r2Ref) {
+  return publicEventPhotoUrl(path, r2Ref, 'card') || '';
 }
 
 export default function Organizer() {
@@ -29,7 +29,7 @@ export default function Organizer() {
   // kiện" on a photo from a different event silently saved/showed the
   // WRONG event. Each photo now carries its own real `event_id` (already
   // fetched, just previously discarded).
-  const orgPhotos = (s.organizerPhotos || []).map(p => ({ id: p.id, url: organizerPhotoUrl(p.storage_path), eventId: p.event_id }));
+  const orgPhotos = (s.organizerPhotos || []).map(p => ({ id: p.id, url: organizerPhotoUrl(p.storage_path, p.r2_ref), eventId: p.event_id }));
 
   const evOrgStats = T('Tổ chức từ ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' sự kiện', 'Hosting since ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' events');
   const following = s.following.includes(ev.key);

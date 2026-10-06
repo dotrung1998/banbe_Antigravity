@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { supabase } from '../lib/supabase.js';
+import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
 import { paper, ink, rule, display, fieldGlass, fieldSolid, cardGlass, inkButton, alert } from '../theme.js';
 import { AttachMenuIcon } from './Chat.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
@@ -14,9 +15,8 @@ import ProfileShareSheet, { ShareCardRow, profileShareLinks } from './sheets/Pro
 import { pickSoonest } from '../lib/countdown.js';
 import { computeAdminModerationCount, computeHostActionCount, computeMyTicketsActionCount, computeMyRefundActionCount, computePersonalActionCount, formatBadgeCount } from '../lib/badges.js';
 
-function organizerAvatarUrl(path) {
-  if (!path) return '';
-  return supabase.storage.from('organizer-photos').getPublicUrl(path).data.publicUrl;
+function organizerAvatarUrl(path, r2Ref, variant = 'thumb') {
+  return organizerAvatarPublicUrl(path, r2Ref, variant);
 }
 
 // TASK 3C (2026-09-22 twenty-first follow-up) — no existing icon
@@ -815,8 +815,8 @@ export default function Account() {
                 (organizer name's own first letter), never a broken
                 image/placeholder icon. */}
             <div style={{ flex: 'none', width: 56, height: 56, borderRadius: 14, overflow: 'hidden' }}>
-              {organizerAvatarUrl(s.myOrganizerAvatarPath) ? (
-                <img src={organizerAvatarUrl(s.myOrganizerAvatarPath)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              {organizerAvatarUrl(s.myOrganizerAvatarPath, s.myOrganizerAvatarR2Ref) ? (
+                <img src={organizerAvatarUrl(s.myOrganizerAvatarPath, s.myOrganizerAvatarR2Ref)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: ink, color: paper, ...display(20) }}>
                   {(s.orgRegName || 'B').trim()[0]?.toUpperCase() || 'B'}
@@ -995,7 +995,7 @@ export default function Account() {
           ? (s.myOrgPublishedEventCount !== null && s.myOrgPublishedEventCount !== undefined ? T(`${s.myOrgPublishedEventCount} sự kiện`, `${s.myOrgPublishedEventCount} events`) : '')
           : (s.user?.handle ? `@${s.user.handle}` : '')}
         detail={shareCardFor === 'host' ? (s.orgRegDesc || '') : ''}
-        avatarUrl={shareCardFor === 'host' ? organizerAvatarUrl(s.myOrganizerAvatarPath) : (s.user?.avatarUrl || '')}
+        avatarUrl={shareCardFor === 'host' ? organizerAvatarUrl(s.myOrganizerAvatarPath, s.myOrganizerAvatarR2Ref, 'card') : (s.user?.avatarUrl || '')}
         roundAvatar={shareCardFor !== 'host'}
         link={shareCardFor === 'host' ? profileShareLinks().host(s.myOrganizerId) : profileShareLinks().member(s.user?.handle)}
         idPrefix={shareCardFor === 'host' ? 'account-host-share' : 'account-personal-share'}

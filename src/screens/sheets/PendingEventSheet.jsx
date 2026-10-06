@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useGoc, resolveCoverUrl } from '../../state/GocContext.jsx';
 import { supabase } from '../../lib/supabase.js';
+import { withR2Columns } from '../../lib/mediaUrls.js';
 import { formatVnd } from '../../lib/paymentDocument.js';
 import { paper, ink, rule, display, alert, honeyBg } from '../../theme.js';
 import { inkButton } from '../hostStyle.js';
@@ -45,7 +46,7 @@ export default function PendingEventSheet({ eventId, name, onClose, onChanged })
     (async () => {
       const [{ data: row }, { data: ph }] = await Promise.all([
         supabase.from('events').select('*').eq('id', eventId).maybeSingle(),
-        supabase.from('event_photos').select('storage_path').eq('event_id', eventId).order('sort_order', { ascending: true }),
+        withR2Columns(withR2 => supabase.from('event_photos').select(withR2 ? 'storage_path, r2_ref' : 'storage_path').eq('event_id', eventId).order('sort_order', { ascending: true })),
       ]);
       if (!live) return;
       if (row) {
@@ -53,7 +54,7 @@ export default function PendingEventSheet({ eventId, name, onClose, onChanged })
         if (typeof row.admin_remind_count === 'number') setRemindCount(row.admin_remind_count);
         setLastReminded(row.last_admin_reminded_at || null);
       }
-      setPhotos((ph || []).map(p => resolveCoverUrl(p.storage_path)).filter(Boolean));
+      setPhotos((ph || []).map(p => resolveCoverUrl(p.storage_path, null, p.r2_ref, 'full')).filter(Boolean));
     })();
     return () => { live = false; };
   }, [eventId]);
