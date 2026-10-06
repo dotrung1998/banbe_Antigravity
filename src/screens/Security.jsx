@@ -1,4 +1,4 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { PromoConsentSection } from '../components/HostPromo.jsx'; // account gate (web parity)
 
@@ -10,7 +10,7 @@ export default function Security() {
   const {
     state: s, T, set, securityPasswordType, securityPasswordConfirmType,
     saveSecurityPassword, sendSecurityPasswordReset,
-  } = useGoc();
+  } = useBanBe();
 
   const fieldStyle = {
     ...fieldGlass({ marginTop: 10, padding: 14, border: 'none', width: '100%', boxSizing: 'border-box' }),
@@ -20,7 +20,7 @@ export default function Security() {
   const canSave = !s.securityBusy && s.securityPassword.length >= 8 && s.securityPassword === s.securityPasswordConfirm;
 
   return (
-    <div style={{ animation: 'gocFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="Security">
+    <div style={{ animation: 'banbeFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="Security">
       <div onClick={() => set({ screen: 'profile' })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
       <div style={{ padding: '16px 30px 42px' }}>
         <h1 style={{ ...display(27, { margin: 0, lineHeight: 1.2 }) }}>{T('Bảo Mật', 'Security')}</h1>

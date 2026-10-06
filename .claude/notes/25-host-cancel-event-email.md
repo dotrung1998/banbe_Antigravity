@@ -2,7 +2,7 @@
 
 ## Status: PARTIALLY WORKING (web + iOS built and compiling; migration 141 NOT applied remotely; nothing exercised against a real event/mail account)
 
-- Individual booking cancel: `guest_requested` ("Guest asked to cancel") removed from `CANCEL_BOOKING_REASONS` (`GocContext.jsx`) and `ReasonOption.cancelBooking` (`AppState.swift`). Server never validated the key; old bookings that already carry it are unaffected.
+- Individual booking cancel: `guest_requested` ("Guest asked to cancel") removed from `CANCEL_BOOKING_REASONS` (`BanBeContext.jsx`) and `ReasonOption.cancelBooking` (`AppState.swift`). Server never validated the key; old bookings that already carry it are unaffected.
 - Guest check-in screen (`Attendance.jsx` / `AttendanceView.swift`) has a "Cancel event" action → `CancelEventModal.jsx` / `CancelEventSheet.swift`, two phases:
   1. **plan** — pick one of 4 apology templates (unforeseen / venue / low sign-ups / safety, vi+en, in `src/lib/eventCancellationTemplates.js` and `Lib/EventCancellationTemplates.swift` — keep in step), preview, confirm → existing `cancel_event` RPC (cancels bookings, opens refund claims, posts thread message).
   2. **send** — one personalised draft PER ticket holder, each opened in the HOST'S OWN mail app (`mailto:` on web; `MFMailComposeViewController` on iOS, `mailto:` fallback when no Mail account). banbe sends nothing: the host presses Send from their own mailbox (server-side sending is reserved for the planned "Plus" plan). Each guest sees only their own address. A secondary "one email to everyone (BCC)" link remains for convenience.

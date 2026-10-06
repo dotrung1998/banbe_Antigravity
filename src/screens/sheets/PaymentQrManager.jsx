@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useGoc } from '../../state/GocContext.jsx';
+import { useBanBe } from '../../state/BanBeContext.jsx';
 import { supabase } from '../../lib/supabase.js';
 import { ink, display, fieldGlass, cardGlass, inkButton, alert } from '../../theme.js';
 import {
@@ -95,7 +95,7 @@ function PayActions({ payload, T }) {
 // owners and people holding a pending/confirmed/attended booking read it, so
 // a failed download simply renders nothing.
 export function GuestPaymentQr({ orgId, path }) {
-  const { T } = useGoc();
+  const { T } = useBanBe();
   const { url, blob, failed } = useQrImage(path);
   const [stored, setStored] = useState('');
   useEffect(() => {
@@ -124,7 +124,7 @@ export function GuestPaymentQr({ orgId, path }) {
 
 // ---- Host: upload / replace / remove on the Getting Paid screen ----
 export function HostPaymentQr() {
-  const { state: s, T } = useGoc();
+  const { state: s, T } = useBanBe();
   const orgId = s.myOrganizerIds?.[0];
   const [qr, setQr] = useState({ path: '', payload: '' });
   const [busy, setBusy] = useState(false);

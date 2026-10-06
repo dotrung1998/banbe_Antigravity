@@ -1,8 +1,8 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, fieldGlass } from '../theme.js';
 
 export default function Refunded() {
-  const { state, T, curEvent: ev, trStatus, stripKm, goHome, goChat } = useGoc();
+  const { state, T, curEvent: ev, trStatus, stripKm, goHome, goChat } = useBanBe();
   const s = state;
 
   const priceNum = parseInt((ev.price.match(/[\d.]+/) || ['0'])[0].replace(/\./g, ''), 10) || 0;
@@ -11,7 +11,7 @@ export default function Refunded() {
   const refundCancelledWhen = ev.cancelledHoursAgo != null ? ev.agoLabel(ev.cancelledHoursAgo) + T(' ▪︎ người tổ chức đã hủy', ' ▪︎ cancelled by the organizer') : '';
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Refunded">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Refunded">
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '96px 30px 0' }}>
         <span style={{ fontSize: 11.5, color: ink }}>{T('Sự kiện đã hủy', 'Event cancelled')}</span>
         <h2 style={{ ...display(27, { lineHeight: 1.35, margin: '12px 0 0' }) }}>{T('Đừng lo, tiền của bạn đã về túi rồi!', "No worries, you're already refunded!")}</h2>

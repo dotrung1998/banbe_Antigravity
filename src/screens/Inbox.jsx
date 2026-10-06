@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg } from '../data/events.js';
 import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass } from '../theme.js';
 import { HeaderIconButton, HeaderWordmark } from './Notifications.jsx';
@@ -168,10 +168,10 @@ function InboxRow({ c, onOpen, onStar, onArchive, T, disputeActive }) {
 
 // Task 1b — "Give feedback": single-choice screen -> text+bug-toggle screen,
 // matching the attached reference screenshots. Local, ephemeral UI state
-// (not global GocContext state) — same convention Notifications.jsx's own
+// (not global BanBeContext state) — same convention Notifications.jsx's own
 // `expandedSections` toggle already uses for a purely in-screen concern.
 function FeedbackFlow({ onClose, T }) {
-  const { submitFeedback } = useGoc();
+  const { submitFeedback } = useBanBe();
   const [step, setStep] = useState('choice'); // 'choice' | 'detail'
   const [text, setText] = useState('');
   const [isBug, setIsBug] = useState(false);
@@ -185,7 +185,7 @@ function FeedbackFlow({ onClose, T }) {
   };
 
   return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 40, background: paper, display: 'flex', flexDirection: 'column', animation: 'gocIn 0.28s cubic-bezier(.22,.61,.36,1) both' }} data-testid="feedback-flow">
+    <div style={{ position: 'absolute', inset: 0, zIndex: 40, background: paper, display: 'flex', flexDirection: 'column', animation: 'banbeIn 0.28s cubic-bezier(.22,.61,.36,1) both' }} data-testid="feedback-flow">
       <div style={{ padding: '20px 22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span
           onClick={step === 'detail' ? () => setStep('choice') : onClose}
@@ -255,7 +255,7 @@ function FeedbackFlow({ onClose, T }) {
 }
 
 export default function Inbox() {
-  const { state, T, openThread, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, loadDisputeChats } = useGoc();
+  const { state, T, openThread, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, loadDisputeChats } = useBanBe();
   const s = state;
 
   // Keeps the dispute index fresh — it drives the "Dispute in progress" row
@@ -296,7 +296,7 @@ export default function Inbox() {
   const emptyArchived = T('Chưa có cuộc trò chuyện nào được lưu trữ.', 'No archived conversations yet.');
 
   return (
-    <div style={{ position: 'relative', animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Inbox">
+    <div style={{ position: 'relative', animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Inbox">
       <div style={{ padding: '62px 24px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
         {searchOpen ? (
           <input
@@ -308,7 +308,7 @@ export default function Inbox() {
             style={{
               ...fieldGlass({ flex: 1, minWidth: 0, padding: '10px 14px', borderRadius: 999, border: 'none' }),
               fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none',
-              animation: `gocIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both`,
+              animation: `banbeIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both`,
             }}
           />
         ) : (
@@ -363,13 +363,13 @@ export default function Inbox() {
       )}
 
       {settingsOpen && (
-        <div onClick={() => setSettingsOpen(false)} style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'gocFade 0.2s ease both' }}>
+        <div onClick={() => setSettingsOpen(false)} style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
           {/* Bug 1b (2026-09-21 follow-up): the entrance was 0.32s — bumped
               to the SAME slower SHEET_ANIM_MS the search reveal now also
               uses. Row height/padding increased (13px -> 22px vertical) so
               the two options actually fill the sheet instead of leaving a
               dead gap below them. */}
-          <div onClick={(e) => e.stopPropagation()} style={{ ...cardGlass({ borderRadius: '18px 18px 0 0' }), padding: '18px 22px 34px', display: 'flex', flexDirection: 'column', animation: `gocSheetIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both` }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ ...cardGlass({ borderRadius: '18px 18px 0 0' }), padding: '18px 22px 34px', display: 'flex', flexDirection: 'column', animation: `banbeSheetIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <span style={{ ...display(18) }}>{T('Cài Đặt Tin Nhắn', 'Messaging Settings')}</span>
               <span onClick={() => setSettingsOpen(false)} style={{ fontSize: 18, color: ink, cursor: 'pointer' }}>✕</span>

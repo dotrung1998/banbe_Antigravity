@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
-import { useGoc } from '../../state/GocContext.jsx';
+import { useBanBe } from '../../state/BanBeContext.jsx';
 import { supabase } from '../../lib/supabase.js';
 import { paper, ink, rule, alert, cardGlass } from '../../theme.js';
 
@@ -35,7 +35,7 @@ function ageFromIso(iso) {
 }
 
 export default function QrScanSheet() {
-  const { T, closeQrScan, state, loadAttendanceGuests } = useGoc();
+  const { T, closeQrScan, state, loadAttendanceGuests } = useBanBe();
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);

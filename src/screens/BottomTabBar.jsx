@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { ink, alert, dockGlass, dockHighlight } from '../theme.js';
 import { computeAccountDockBadge } from '../lib/badges.js';
 
@@ -162,14 +162,14 @@ export const DOCK_GAP = 10;
 export const CREATE_SIZE = BAR_HEIGHT;
 
 export default function BottomTabBar({ collapsed }) {
-  const { state, T, goHome, goProfile, goInbox, goNotifications, goMapExplore } = useGoc();
+  const { state, T, goHome, goProfile, goInbox, goNotifications, goMapExplore } = useBanBe();
   const s = state;
 
   // Notifications' badge is s.unreadNotifications (bell inbox, per-account
   // read_at), capped at "9+" — this app's existing convention. Inbox's
   // badge is s.unreadMessages — number of CONVERSATIONS with an unread
   // message (not raw message count, see the poll effect near
-  // loadInboxThreads in GocContext.jsx), shown uncapped per this ticket's
+  // loadInboxThreads in BanBeContext.jsx), shown uncapped per this ticket's
   // own ask: unlike a raw message count, a conversation count naturally
   // stays small enough that "9+" would just be hiding real information.
   // Stage 3 (2026-09-27 nav/discovery pass) — visible dock text labels

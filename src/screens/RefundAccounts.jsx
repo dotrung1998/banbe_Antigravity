@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
 
@@ -19,7 +19,7 @@ export default function RefundAccounts() {
   const {
     state, T, backFromRefundAccounts, loadRefundDestinations, saveRefundDestination, deleteRefundDestination, setDefaultRefundDestination,
     selectRefundDestinationForClaim, openPaymentDetails, reorderRefundDestinations,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
 
   useEffect(() => { loadRefundDestinations(); }, [loadRefundDestinations]);
@@ -100,7 +100,7 @@ export default function RefundAccounts() {
   };
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="RefundAccounts">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="RefundAccounts">
       <div onClick={backFromRefundAccounts} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="refund-accounts-back">
         ‹ {T('Tài khoản', 'Account')}
       </div>

@@ -6,7 +6,7 @@
 // pass (out of scope) — translated here instead, keyed by the metric's own
 // stable `key` (never its `label`, which is the untranslated value this
 // fixes), shared by both Reports.jsx (on-screen cards/chart) and
-// GocContext.jsx (PDF export) so the two can never show different English
+// BanBeContext.jsx (PDF export) so the two can never show different English
 // wording for the same metric. Falls back to the raw server label if a key
 // is ever missing here (a future new metric), so this can never show a
 // blank — only, at worst, temporarily untranslated until added below.

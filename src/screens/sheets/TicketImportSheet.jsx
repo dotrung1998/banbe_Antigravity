@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { useGoc } from '../../state/GocContext.jsx';
+import { useBanBe } from '../../state/BanBeContext.jsx';
 import { paper, ink, rule, display, fieldGlass, alert } from '../../theme.js';
 import { downloadTicketPdfs } from '../../lib/ticketPdf.js';
 
@@ -24,7 +24,7 @@ function SheetFrame({ onClose, title, testId, children }) {
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%', maxHeight: '92%', overflowY: 'auto', background: paper, borderRadius: '24px 24px 0 0', padding: '12px 22px 30px', boxSizing: 'border-box',
-          animation: closing ? 'none' : 'gocSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both',
+          animation: closing ? 'none' : 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both',
           transform: closing ? 'translateY(100%)' : 'none', transition: closing ? 'transform .22s ease-in' : 'none',
         }}
       >
@@ -40,7 +40,7 @@ function SheetFrame({ onClose, title, testId, children }) {
 }
 
 export function ImportSheet() {
-  const { state: s, T, closeTicketImport, setImportCode, claimTicket } = useGoc();
+  const { state: s, T, closeTicketImport, setImportCode, claimTicket } = useBanBe();
   return (
     <SheetFrame onClose={closeTicketImport} testId="ticket-import-sheet" title={T('Nhập vé được tặng hoặc vé nhóm', 'Import a gift or group ticket')}>
       <p style={{ fontSize: 13, lineHeight: 1.55, color: ink, margin: '14px 0 0' }}>
@@ -76,7 +76,7 @@ export function ImportSheet() {
 }
 
 export function ImportedTicketSheet() {
-  const { state: s, T, closeImportedTicket } = useGoc();
+  const { state: s, T, closeImportedTicket } = useBanBe();
   const t = s.importedTicketOpen;
   const [qr, setQr] = useState(null);
   const [busy, setBusy] = useState(false);

@@ -337,7 +337,7 @@ private struct OrganizerAvatarRow: Decodable {
 }
 /// Row shape for the payment_documents query loadAttendanceGuests() runs to
 /// populate AttendanceGuest.hasReceipt/receiptVersionCount/receiptPendingDelete
-/// — mirrors the web's equivalent query in GocContext.jsx.
+/// — mirrors the web's equivalent query in BanBeContext.jsx.
 private struct AttendanceReceiptRow: Decodable {
     let id: UUID
     let bookingId: UUID
@@ -492,7 +492,7 @@ extension AppState {
                 .single().execute().value
             user = profile
             // BUG 2 (2026-10-06 fix pass) / BUG (2026-10-08 fix pass) —
-            // same race family as GocContext.jsx's organizerModeBusyRef
+            // same race family as BanBeContext.jsx's organizerModeBusyRef
             // guard (this file's web equivalent): skip the role-derived
             // fields while a toggle is in flight, so a session/profile
             // reload landing mid-toggle can never read `profiles.role`
@@ -550,7 +550,7 @@ extension AppState {
             // (password/emailed-code — LoginView.canRequest already
             // requires the tick before either ever runs), any profile with
             // no recorded consent yet just passed through that gate and
-            // can be stamped unconditionally, same as GocContext.jsx's
+            // can be stamped unconditionally, same as BanBeContext.jsx's
             // syncUser(). An OAuth session is different: nothing gated it
             // client-side (signInWithGoogle()/signInWithFacebook() run with
             // no consent check at all — a returning user must be able to
@@ -612,7 +612,7 @@ extension AppState {
         // Roles belong to the account that just left — leaving them behind
         // would leak the previous user's hosting state into the next sign-in.
         // Stage 1 — belt-and-suspenders alongside applySession(nil)'s own
-        // clear, same reasoning as web's logout() (GocContext.jsx).
+        // clear, same reasoning as web's logout() (BanBeContext.jsx).
         favoritesLoadedForUID = nil
         favorites = []
         homeSurveyDiscoveryExpanded = false
@@ -793,7 +793,7 @@ extension AppState {
         }
     }
 
-    /// Port of web's reconcileEventMedia (GocContext.jsx, Stage A media-
+    /// Port of web's reconcileEventMedia (BanBeContext.jsx, Stage A media-
     /// parity pass, 2026-09-26) — CreateEventView's cover/gallery editor
     /// hands this the event's current staged state in one call: existing
     /// `event_photos` ids the host removed, new UIImages to upload, and
@@ -814,7 +814,7 @@ extension AppState {
         // status), never the public 'event-photos' bucket whose public
         // URL bypasses RLS entirely. Public events are unaffected (same
         // bucket/path as always). Mirrors web's identical fix
-        // (GocContext.jsx's reconcileEventMedia).
+        // (BanBeContext.jsx's reconcileEventMedia).
         let bucketID = visibility == "invite" ? "event-photos-private" : "event-photos"
         var removed = 0
         for photoID in removeExistingIDs {
@@ -992,7 +992,7 @@ extension AppState {
             if let avatarPath { myOrganizerAvatarPath = avatarPath; myOrganizerAvatarR2Ref = nil }
             if let avatarR2Ref { myOrganizerAvatarPath = avatarR2Ref; myOrganizerAvatarR2Ref = avatarR2Ref }
             // DATA FRESHNESS FIX — same root cause and fix as web's
-            // saveOrganizerProfile (GocContext.jsx): `organizerProfile` is a
+            // saveOrganizerProfile (BanBeContext.jsx): `organizerProfile` is a
             // one-shot snapshot fetched by openOrganizerProfile(), never
             // patched after this real, successful DB write. Only
             // `myOrganizerAvatarPath` used to get refreshed above, so once
@@ -1069,7 +1069,7 @@ extension AppState {
     /// getPublicURL() building block. 1-hour signed URL — long enough for
     /// one screen visit, short enough that a leaked link doesn't stay
     /// valid indefinitely. Mirrors web's resolveEventPhotoUrlAsync
-    /// (GocContext.jsx) exactly.
+    /// (BanBeContext.jsx) exactly.
     func resolveEventPhotoURL(_ storagePath: String, r2Ref: String? = nil, variant: MediaVariant = .card) async -> URL? {
         if storagePath.hasPrefix("event-photos-private/") {
             let relative = String(storagePath.dropFirst("event-photos-private/".count))
@@ -1686,7 +1686,7 @@ extension AppState {
                     // report directed extending this to receipt_requested
                     // too, overriding the prior pass's own "deliberately
                     // skipped, routes to a list" reasoning — see web
-                    // GocContext.jsx's own comment on this same extension.
+                    // BanBeContext.jsx's own comment on this same extension.
                     // TASK 1 (2026-09-22 seventeenth follow-up) — hold_created/
                     // dispute_message extended onto the SAME check
                     // payment_confirmed already used: both reference
@@ -1853,7 +1853,7 @@ extension AppState {
         return maps
     }
 
-    /// Refetches on a 5s poll (mirrors GocContext.jsx's own poll — no
+    /// Refetches on a 5s poll (mirrors BanBeContext.jsx's own poll — no
     /// realtime subscription anywhere in this app, see
     /// .claude/notes/03-dispute-chat.md) and pushes a toast for any row
     /// created after this task started that hasn't been toasted yet.
@@ -2488,7 +2488,7 @@ extension AppState {
     }
 
     /// TASK 2 (2026-09-22 seventeenth follow-up) — bulk delete for a
-    /// selection-mode "Xoá (n)" action, web parity (GocContext.jsx's
+    /// selection-mode "Xoá (n)" action, web parity (BanBeContext.jsx's
     /// deleteNotifications). Same RLS scoping as deleteNotification() above
     /// (notifications_delete_own, migration 050 — caller's own rows only,
     /// not a manual filter here); bounded to exactly the ids passed in
@@ -3017,7 +3017,7 @@ extension AppState {
     /// Task 3 (2026-09-22 follow-up) — the chat-photo viewer's own reply/
     /// reaction composer. A separate function from `chatSend()` (Views
     /// aren't shown here but mirror ChatView's own `chatSend` on web's
-    /// GocContext.jsx) since this viewer has its own local `@State` draft,
+    /// BanBeContext.jsx) since this viewer has its own local `@State` draft,
     /// not `AppState.chatDraft`, and always sets `reply_to_message_id`
     /// (migration 067) rather than encoding "replying to X" in body text.
     /// `isTypedReply` distinguishes a typed reply (the composer's own Send
@@ -3114,13 +3114,13 @@ extension AppState {
     }
 
     /// The columns shapeReal(As)*'s callers all need — same set web's own
-    /// REAL_EVENT_ROW_COLUMNS uses (GocContext.jsx), kept as one constant so
+    /// REAL_EVENT_ROW_COLUMNS uses (BanBeContext.jsx), kept as one constant so
     /// loadWeekendEvents and loadRealEventsByID never drift apart.
     ///
     /// Real-event-maps-link fix pass (2026-09-28) — `lat, lng` were missing
     /// here despite the doc comment above claiming parity with web's own
     /// column list, which had the identical gap (fixed there in the same
-    /// pass — GocContext.jsx's `REAL_EVENT_ROW_COLUMNS`). Neither platform
+    /// pass — BanBeContext.jsx's `REAL_EVENT_ROW_COLUMNS`). Neither platform
     /// ever actually fetched a real event's own stored coordinates for its
     /// Event Detail screen, even though `create_event_draft`/
     /// `resubmit_event_for_review` have stored them since migration 094.
@@ -3139,7 +3139,7 @@ extension AppState {
 
     /// `events.cover_image` (migration 087) always wins over the gallery's
     /// own sort_order-first fallback when a host has explicitly picked one —
-    /// same root-cause fix as web's resolveCoverUrl (GocContext.jsx): a
+    /// same root-cause fix as web's resolveCoverUrl (BanBeContext.jsx): a
     /// batch upload's sort_order reflects upload order, not cover status.
     private func resolveCoverURL(_ coverImagePath: String?, r2Ref: String? = nil) -> URL? {
         // R2 cover (events.cover_r2_ref, or a cover_image that is itself an
@@ -3160,7 +3160,7 @@ extension AppState {
         // (discovery/Home/Organizer public surfaces) already excludes
         // invite-only events by visibility filtering, so this is a
         // defensive fallback, not the real gate — mirrors web's identical
-        // resolveCoverUrl decision (GocContext.jsx).
+        // resolveCoverUrl decision (BanBeContext.jsx).
         guard !path.hasPrefix("event-photos-private/") else { return nil }
         let relative = path.hasPrefix("event-photos/") ? String(path.dropFirst("event-photos/".count)) : path
         return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative)
@@ -3250,7 +3250,7 @@ extension AppState {
     }
 
     /// Blocker fix (retention roadmap follow-up) — the canonical real-event
-    /// lookup by id, mirroring web's loadRealEventsById (GocContext.jsx)
+    /// lookup by id, mirroring web's loadRealEventsById (BanBeContext.jsx)
     /// exactly: shared by `currentEvent`'s own fallback (see AppState.swift)
     /// and any saved/attending/invited event that isn't in the bundled
     /// catalogue. Never invents a fallback — an id that isn't returned
@@ -3291,7 +3291,7 @@ try await SupabaseService.client
     /// (Countdown.thisWeekendWindow, Asia/Ho_Chi_Minh), never the bundled
     /// demo catalogue. `status == "live" AND visibility == "public"` is the
     /// same public-eligibility rule the web side uses (loadWeekendEvents,
-    /// GocContext.jsx) — drafts, invite-only and cancelled/ended rows are
+    /// BanBeContext.jsx) — drafts, invite-only and cancelled/ended rows are
     /// excluded by construction. A sold-out event still appears (excluded
     /// from booking via CatalogEvent.soldOut, not from discovery).
     ///
@@ -3344,7 +3344,7 @@ try await SupabaseService.client
     }
 
     /// Home-visibility fix (2026-09-29) — iOS port of web's identical
-    /// `loadDiscoveryEvents` (GocContext.jsx): every real, publicly-visible
+    /// `loadDiscoveryEvents` (BanBeContext.jsx): every real, publicly-visible
     /// event (`status IN ('live','cancelled','ended')`, `visibility =
     /// 'public'` — 'review'/'draft' never included, so pending/withdrawn
     /// stays hidden exactly as intended), not narrowed to this weekend.
@@ -3410,7 +3410,7 @@ try await SupabaseService.client
     /// thread's own path (chat_attachments_participant_read RLS grants
     /// read by the object's OWN path prefix, not by the message row, so a
     /// forwarded message can't just reference the source thread's copy —
-    /// same reasoning as the web fix, GocContext.jsx's forwardChatPhoto).
+    /// same reasoning as the web fix, BanBeContext.jsx's forwardChatPhoto).
     func forwardChatPhoto(to targetThreadId: UUID) async -> Bool {
         guard let item = chatPhotoViewer, let uid = userID else { return false }
         do {
@@ -3618,7 +3618,7 @@ try await SupabaseService.client
     }
 
     /// Organizer ids the signed-in account owns/co-owns — iOS has no cached
-    /// `myOrganizerIds` (unlike web's GocContext.jsx), so this mirrors the
+    /// `myOrganizerIds` (unlike web's BanBeContext.jsx), so this mirrors the
     /// same on-demand `organizers` lookup `refreshUnreadMessageCount()`/
     /// `loadDocuments()` already use.
     func currentOrganizerIds() async -> [String] {
@@ -3814,7 +3814,7 @@ try await SupabaseService.client
         // comment on lastReadWriteAt.
         lastReadWriteAt = Date()
         // Task 6 (2026-09-22 twelfth follow-up) — mirrors web's same fix in
-        // GocContext.jsx's markThreadMessagesRead: `chatBackAction()` returns
+        // BanBeContext.jsx's markThreadMessagesRead: `chatBackAction()` returns
         // straight to `.inbox` without re-calling `loadInboxThreads()`, so
         // the row's local `unread` flag (and the dock's `unreadMessages`
         // count) stayed stale — bold/dotted — until Inbox was re-entered
@@ -4225,7 +4225,7 @@ try await SupabaseService.client
             // (056) requires a reason exactly when one does — plus how many
             // superseded-but-still-queryable copies (056's 24h soft-delete
             // window) are still pending deletion. Mirrors the web's
-            // equivalent query in GocContext.jsx's loadAttendanceGuests().
+            // equivalent query in BanBeContext.jsx's loadAttendanceGuests().
             var receiptsByBooking: [UUID: [AttendanceReceipt]] = [:]
             if !bookings.isEmpty {
                 let isoFormatter = ISO8601DateFormatter()
@@ -4616,7 +4616,7 @@ try await SupabaseService.client
     /// resubmit_event_for_review's own returned `error` code (migration
     /// 107), e.g. "RESUBMISSION_LIMIT_REACHED" — thrown so the catch block
     /// below can map it to the same user-facing message web's
-    /// createSubmit/GocContext.jsx uses for the identical code.
+    /// createSubmit/BanBeContext.jsx uses for the identical code.
     struct ResubmitEventError: Error { let code: String }
 
     // TASK 3 (event creation validation pass) — returns real success/
@@ -4678,7 +4678,7 @@ try await SupabaseService.client
 
         // "Bao gồm" item validation — mirrors migration 087's own server-
         // side gate (max 3, label 1-60, detail <=300) exactly the way web's
-        // identical `createSubmit` does (GocContext.jsx); the RPC is the
+        // identical `createSubmit` does (BanBeContext.jsx); the RPC is the
         // real gate, this only avoids a round trip for an obviously-
         // invalid client state.
         let includedItemsPayload = createIncludedItems
@@ -4744,7 +4744,7 @@ try await SupabaseService.client
                     // Surface migration 107's specific error code (e.g.
                     // RESUBMISSION_LIMIT_REACHED) instead of a generic
                     // "server error" — mirrors web's identical mapping
-                    // (GocContext.jsx's createSubmit catch block).
+                    // (BanBeContext.jsx's createSubmit catch block).
                     let code: String
                     if case .string(let s)? = result["error"] { code = s } else { code = "" }
                     throw ResubmitEventError(code: code)
@@ -4898,7 +4898,7 @@ try await SupabaseService.client
         } catch {
             loading = false
             // Migration 107's specific error codes surfaced with the SAME
-            // user-facing copy web's createSubmit (GocContext.jsx) uses —
+            // user-facing copy web's createSubmit (BanBeContext.jsx) uses —
             // both are a banbe PRODUCT POLICY limit (2 resubmissions per
             // rolling 24h), never phrased as a legal/Ticketbox requirement.
             // `create_event_draft`'s RAISE EXCEPTION messages arrive as a
@@ -4995,7 +4995,7 @@ try await SupabaseService.client
 
     /// Owner-only withdrawal of a PENDING ('review') submission (migration
     /// 107, `withdraw_event_submission`) — iOS port of web's identical
-    /// `withdrawEventSubmission` (GocContext.jsx). Requires a non-empty
+    /// `withdrawEventSubmission` (BanBeContext.jsx). Requires a non-empty
     /// reason (the RPC re-enforces this). Preserves the event row: the RPC
     /// moves it to 'draft', same status a rejection uses, with
     /// `withdrawal_reason`/`withdrawn_at` recorded separately from

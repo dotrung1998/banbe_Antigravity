@@ -1,4 +1,4 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, FACE, display, fieldGlass, inkButton, alert } from '../theme.js';
 
 // The buyer block on every invoice and receipt this account is ever issued.
@@ -9,7 +9,7 @@ export default function Billing() {
   const {
     state, T, backFromBilling,
     billingNameType, billingAddressType, billingPhoneType, billingTaxCodeType, saveBillingDetails,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
 
   // An address is what a document actually needs and the one field a person
@@ -17,7 +17,7 @@ export default function Billing() {
   const canSave = s.billingName.trim().length > 0 && s.billingAddress.trim().length > 0 && !s.billingSaving;
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Billing">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Billing">
       <div onClick={backFromBilling} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>
         ‹ {T('Quay lại', 'Back')}
       </div>

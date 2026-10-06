@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
@@ -65,7 +65,7 @@ export default function AccountGroup() {
     requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite,
     requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite,
     requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin,
-  } = useGoc();
+  } = useBanBe();
   const key = s.accountGroupKey;
 
   // Safety net (mirrors Account.jsx's own accountTab role-sync effect) — a
@@ -102,7 +102,7 @@ export default function AccountGroup() {
     .filter(e => e && e.endedHoursAgo != null).length;
 
   return (
-    <div style={{ animation: 'gocFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="AccountGroup">
+    <div style={{ animation: 'banbeFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="AccountGroup">
       <div onClick={() => set({ screen: 'profile' })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="account-group-back">
         ‹ {T('Tài khoản', 'Account')}
       </div>
@@ -206,7 +206,7 @@ export default function AccountGroup() {
           <>
             {/* Account IA reorg (2026-09-30) — Task 2b: "My Tickets" is now
                 REAL DB-backed data, reusing `s.paymentBookings`
-                (`loadPaymentBookings()`, GocContext.jsx) — the exact same
+                (`loadPaymentBookings()`, BanBeContext.jsx) — the exact same
                 `bookings` query Account.jsx's own Action Center already
                 loads (`user_id`-scoped, joined to `events`/`organizers` for
                 real name/date), not the static demo catalogue and not a

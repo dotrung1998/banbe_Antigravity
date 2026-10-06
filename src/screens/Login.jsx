@@ -1,4 +1,4 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
 
 export default function Login() {
@@ -8,7 +8,7 @@ export default function Login() {
     loginPasswordType, loginPasswordConfirmType, toggleLang, pickTheme, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram,
     emailValid, passwordValid, setAuthMethod, requestPasswordResetSubmit, submitCurrentForm,
     togglePolicyConsent, openPolicy,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   const isSignup = s.authMode === 'signup';
   const isPassword = s.authMethod === 'password';
@@ -70,7 +70,7 @@ export default function Login() {
   const dark = s.theme === 'dark';
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: '66px 26px 40px', background: paper, color: ink }} data-screen-label="Login">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: '66px 26px 40px', background: paper, color: ink }} data-screen-label="Login">
       {/* Back link is hidden when login was reached by force (mandatory
           gate); the row stays so the pills keep their place. Language and
           theme pills mirror iOS LoginView's prefPill pair. */}

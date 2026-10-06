@@ -1,7 +1,7 @@
 import Foundation
 
 /// Photo-interactions redesign (2026-09-26) — the iOS port of
-/// src/state/GocContext.jsx's own canonical `photoEngagement` section.
+/// src/state/BanBeContext.jsx's own canonical `photoEngagement` section.
 /// Migration 086 (already live, do not re-run `supabase db push`) added
 /// `get_photo_engagement(p_photo_ids)`, the general-purpose read path for
 /// ANY real `event_photos` id (migration 083's `get_pulse_photo_ranked`
@@ -32,7 +32,7 @@ private struct PhotoEngagementResult: Decodable {
     let items: [PhotoEngagementRow]?
 }
 
-/// Pure merge — mirrors GocContext.jsx's own top-level `mergePhotoEngagement`
+/// Pure merge — mirrors BanBeContext.jsx's own top-level `mergePhotoEngagement`
 /// function-for-function: merges rows into the canonical map WITHOUT
 /// dropping ids not present in THIS particular batch (used by every loader
 /// that touches `photoEngagement`), never a full replace.
@@ -68,11 +68,11 @@ extension AppState {
     /// 083's `toggle_photo_like` RPC) — the ONE like path for EventDetail's/
     /// Organizer's grids, the full-screen PhotoViewerView AND Pulse's photo
     /// tab (replaces the old per-surface `togglePulsePhotoLike`, folded in
-    /// here — mirrors web's unified `togglePhotoLike` in GocContext.jsx).
+    /// here — mirrors web's unified `togglePhotoLike` in BanBeContext.jsx).
     /// Optimistic with rollback on failure; `photoEngagementBusy` blocks a
     /// double-tap/racing toggle on the same photo id.
     ///
-    /// Race-condition discipline (proven live on web, see GocContext.jsx's
+    /// Race-condition discipline (proven live on web, see BanBeContext.jsx's
     /// own comment on this exact function): `optimistic` is computed ONCE,
     /// from the state observed BEFORE this function's only `await`, and
     /// captured in a local `let` — never re-derived a second time from

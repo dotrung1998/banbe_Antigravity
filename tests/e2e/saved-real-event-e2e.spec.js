@@ -100,7 +100,7 @@ test.describe('Real (non-catalogue) event — save/weekend E2E (retention roadma
 
     // Confirms the real DB row, not just optimistic client state — the
     // persist itself is fire-and-forget from toggleFav's own click handler
-    // (see GocContext.jsx), so this polls rather than checking once
+    // (see BanBeContext.jsx), so this polls rather than checking once
     // immediately after the click.
     await expect(async () => {
       const { data: favRow } = await admin.from('favorites').select('*').eq('user_id', sharedUserId).eq('event_id', eventId).maybeSingle();

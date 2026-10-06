@@ -309,7 +309,7 @@ struct CreateEventView: View {
     @State private var pickerItems: [PhotosPickerItem] = []
     /// Address-autocomplete fix pass (2026-09-28) — debounce for the
     /// location search box, same 500ms/4-char-minimum convention web's
-    /// own `createLocType` (GocContext.jsx) uses. Cancelling the previous
+    /// own `createLocType` (BanBeContext.jsx) uses. Cancelling the previous
     /// `Task` on every keystroke is this view's equivalent of web's
     /// `clearTimeout` — `Task.sleep` throws `CancellationError` when
     /// cancelled, which the `try?` below simply treats as "never fired."
@@ -634,7 +634,7 @@ struct CreateEventView: View {
 
     // Address-autocomplete fix pass (2026-09-28) — replaces the old
     // single-shot "type free text, tap Confirm, get ONE geocode result"
-    // flow (mirrors web's identical GocContext.jsx/CreateEvent.jsx
+    // flow (mirrors web's identical BanBeContext.jsx/CreateEvent.jsx
     // change, same pass). Publishing now REQUIRES a real, selected
     // address — there is no more "Skip".
     @ViewBuilder

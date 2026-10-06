@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { screenToPath, pathToRoute, TRANSIENT_SCREENS } from './routes.js';
 
 // Deep link the visitor opened the app on (read once, before React mounts).
-// Paths already handled by GocContext's own shared-link boot code (/u/<handle>,
+// Paths already handled by BanBeContext's own shared-link boot code (/u/<handle>,
 // /org/<id>, /surveys/<id>, ?org=) are skipped: that code opens the screen
 // itself, so the URL already matches the state.
 function readBootRoute() {
@@ -24,13 +24,13 @@ const bootRoute = readBootRoute();
 //                                 the URL writer in the meantime).
 export default function useUrlSync(goc) {
   const { state, set } = goc;
-  const gocRef = useRef(goc);
-  gocRef.current = goc;
+  const banbeRef = useRef(goc);
+  banbeRef.current = goc;
   const pending = useRef(bootRoute);
   const prevScreen = useRef(state.screen);
 
   const applyRoute = (route) => {
-    const g = gocRef.current;
+    const g = banbeRef.current;
     let target = route;
     if (target.needs && !target.needs(g.state)) {
       target = pathToRoute(target.parent || '/') || { screen: 'home', params: {} };
@@ -78,7 +78,7 @@ export default function useUrlSync(goc) {
       pending.current = null;
       const route = pathToRoute(window.location.pathname);
       if (route) applyRoute(route);
-      else gocRef.current.set({ screen: 'home' });
+      else banbeRef.current.set({ screen: 'home' });
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);

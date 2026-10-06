@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 // Task 6 (2026-09-22 twelfth follow-up) — one shared unread definition
 // (messages.read_at IS NULL AND sender_id != me) now backs Inbox row
 // styling, the dock badge, AND is patched locally the instant
-// markThreadMessagesRead() succeeds (GocContext.jsx), instead of waiting
+// markThreadMessagesRead() succeeds (BanBeContext.jsx), instead of waiting
 // on Inbox's own next full reload. Real root cause found: chatBackFn()
 // (Chat.jsx's own back arrow) returns straight to 'inbox' without ever
 // re-calling loadInboxThreads(), so the Inbox row's local `unread` flag

@@ -7,7 +7,7 @@
 // sends (or cancels) the text themselves; banbe never sends.
 
 import { useEffect, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { getHostPromoConsent, setHostPromoConsent } from '../lib/accountGate.js';
 import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
@@ -15,7 +15,7 @@ import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
 const small = { fontSize: 11.5, lineHeight: 1.55, color: ink, opacity: 0.7 };
 
 export function PromoConsentSection() {
-  const { T } = useGoc();
+  const { T } = useBanBe();
   const [on, setOn] = useState(null); // null = loading/unknown
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -98,7 +98,7 @@ function promoBody(c) {
 }
 
 export function HostPromoSheet({ eventKey, onClose }) {
-  const { T } = useGoc();
+  const { T } = useBanBe();
   // phase: loading | recipient | none | failed | composing | finished
   const [phase, setPhase] = useState('loading');
   const [recipient, setRecipient] = useState(null);

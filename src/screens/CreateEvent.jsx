@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, CREATE_PALETTES, bg, mapsUrl } from '../data/events.js';
 import { liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
 import { supabase } from '../lib/supabase.js';
@@ -42,7 +42,7 @@ export default function CreateEvent() {
     addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent,
     createSubmit, goEvent, loadHomeLiveEvents,
     goCreate, goHome, goDashboard, goProfile,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
 
   // Unified gallery staging — a single ordered list mixing the event's
@@ -50,7 +50,7 @@ export default function CreateEvent() {
   // seeded below from `s.eventPhotos`) and newly-picked local files
   // (`kind: 'new'`), so remove/reorder/cover-pick works the same way on
   // both. Never round-tripped through the global store itself (see
-  // GocContext.jsx's own comment on `createIncludedItems`) — only the
+  // BanBeContext.jsx's own comment on `createIncludedItems`) — only the
   // final File[]/removed-id list/cover reference are handed to createSubmit
   // on actual submit.
   const [items, setItems] = useState([]); // { kind, id?, file?, url, storagePath? }[]
@@ -263,7 +263,7 @@ export default function CreateEvent() {
   };
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Create event">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Create event">
       <div onClick={createBack} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {createBackLabel}</div>
       <div style={{ padding: '14px 22px 40px', display: 'flex', flexDirection: 'column' }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Dành cho người tổ chức', 'For organizers')}</span>
@@ -326,7 +326,7 @@ export default function CreateEvent() {
           </p>
           {/* Address-autocomplete fix pass (2026-09-28) — replaces the old
               single-shot "type free text, tap Confirm, get ONE geocode
-              result" flow. `createLocType` (GocContext.jsx) debounces a
+              result" flow. `createLocType` (BanBeContext.jsx) debounces a
               live Nominatim search as the host types; a real, structured
               address must be SELECTED from the results below before
               publishing is possible at all — there is no more "Skip",
@@ -779,7 +779,7 @@ function ReviewStep({ T, trStatus, stripKm, s, items, coverKey, createCatLabel, 
   const addressLabel = s.createLocLabel || [s.createAddressLine, s.createDistrict, s.createCity].filter(Boolean).join(', ') || T('Chưa xác nhận địa chỉ', 'Address not confirmed');
   const includedItems = (s.createIncludedItems || []).filter(it => (it.label || '').trim());
 
-  // Same parsing createSubmit itself uses (GocContext.jsx) — the public
+  // Same parsing createSubmit itself uses (BanBeContext.jsx) — the public
   // preview's price must match exactly what gets persisted and later
   // rendered on the real Event Detail page, not a re-guess of the raw
   // free-text field.
@@ -823,7 +823,7 @@ function ReviewStep({ T, trStatus, stripKm, s, items, coverKey, createCatLabel, 
   return (
     <div
       data-testid="create-review-step"
-      style={{ position: 'fixed', inset: 0, background: paper, zIndex: 40, display: 'flex', flexDirection: 'column', animation: 'gocIn 0.25s cubic-bezier(.22,.61,.36,1) both' }}
+      style={{ position: 'fixed', inset: 0, background: paper, zIndex: 40, display: 'flex', flexDirection: 'column', animation: 'banbeIn 0.25s cubic-bezier(.22,.61,.36,1) both' }}
     >
       <div onClick={onBack} data-testid="create-review-back" style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer', flex: 'none' }}>
         ‹ {T('Quay lại chỉnh sửa', 'Back to edit')}
@@ -948,7 +948,7 @@ function ReviewStep({ T, trStatus, stripKm, s, items, coverKey, createCatLabel, 
 
       {/* Confirm — the ONLY call site that actually submits, available from
           either tab. A local `confirmBusy` disables the button for the
-          duration of this ONE click (on top of GocContext's own synchronous
+          duration of this ONE click (on top of BanBeContext's own synchronous
           createSubmitInFlightRef guard), matching this screen's own
           "createSent" style-dimming convention rather than inventing a
           new one. */}

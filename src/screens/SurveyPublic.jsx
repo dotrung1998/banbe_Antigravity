@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, alert } from '../theme.js';
 
 const chipStyle = (active) => ({
@@ -36,7 +36,7 @@ function formatDeadline(iso, timezone, T) {
  * IS the additive consent path for someone who never saw the ordinary
  * Login screen's own checkbox. */
 function RespondVerifyInline({ T }) {
-  const { state, set, sendSurveyRespondCode, verifySurveyRespondCode } = useGoc();
+  const { state, set, sendSurveyRespondCode, verifySurveyRespondCode } = useBanBe();
   const s = state;
   const [email, setEmail] = useState('');
 
@@ -117,7 +117,7 @@ export default function SurveyPublic() {
   const {
     state, T, backFromSurveyPublic, closeSurveyStoryModal, promptLoginForSurvey, loadMySurveyResponse, updateSurveyDraft,
     submitSurveyResponseAction, toggleSurveyEditMode,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   const survey = s.surveyPublic;
   const config = survey?.config || {};

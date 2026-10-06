@@ -647,7 +647,7 @@ test.describe('Map Explore — selection/filter decoupling (design change follow
     await expect(page.locator('[data-screen-label="EventDetail"], [data-screen-label="Event"]')).toBeVisible();
     await page.locator('[data-testid="event-detail-back"]').click();
     await page.waitForSelector('[data-screen-label="MapExplore"]', { timeout: 5000 });
-    // Let the restored pin's one-shot "pop" overshoot (`gocPinPop`, 0.32s)
+    // Let the restored pin's one-shot "pop" overshoot (`banbePinPop`, 0.32s)
     // settle to its final resting scale before asserting on it.
     await page.waitForTimeout(500);
 
@@ -697,7 +697,7 @@ test.describe('Map Explore — selection/filter decoupling (design change follow
 // Task 7 (2026-09-21 follow-up) — real regression repro/fix verification,
 // per this ticket's own explicit "confirm against a real Open in Map flow
 // followed by a category filter tap" ask. Root cause: "Open in Map"
-// (GocContext.jsx's openEventOnMap) constructs the map at a deliberately
+// (BanBeContext.jsx's openEventOnMap) constructs the map at a deliberately
 // tight zoom (15.5, a focused single-pin view) — `lastQueriedBounds` used
 // to be seeded from that same tight viewport, so the 5s freshness poll
 // silently replaced the full loaded `events` set with just the one or two

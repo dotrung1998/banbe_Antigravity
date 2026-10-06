@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { rule, alert, cardGlass } from '../theme.js';
 import DisputeChatPanel from './DisputeChatPanel.jsx';
 
@@ -53,7 +53,7 @@ export function useConversationDispute(threadId) {
 /** The dispute hosted INSIDE a system card: payment chat under "Transfer not
  *  found", refund chat under "Booking cancelled". */
 export function DisputeBlock({ kind, dispute }) {
-  const { T } = useGoc();
+  const { T } = useBanBe();
   if (!dispute) return null;
   if (kind === 'payment') {
     return (

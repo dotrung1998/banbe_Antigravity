@@ -29,7 +29,7 @@
 // `adminReview` redirect-guard already use. `computeHostActionCount`
 // mirrors the equivalent `organizerMode` gate the Host tab itself uses.
 // Both naturally return 0 (hidden) right after logout/account-switch,
-// since the arrays they read are already cleared then (GocContext's own
+// since the arrays they read are already cleared then (BanBeContext's own
 // sign-out `set({ verifications: [], refundQueue: [], pendingEventsCount: 0, ... })`).
 
 /** Admin's one real moderation queue today (`admin.events` row / "Review &

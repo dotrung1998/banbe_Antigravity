@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { BAR_HEIGHT, BAR_BOTTOM_OFFSET, DOCK_MARGIN, CREATE_SIZE } from './BottomTabBar.jsx';
 import { ink, paper, rule, dockGlass } from '../theme.js';
 import { AttachMenuIcon } from './Chat.jsx';
@@ -24,7 +24,7 @@ import { AttachMenuIcon } from './Chat.jsx';
 // screen, which an absolutely-positioned popover anchored to this button
 // alone could never do convincingly.
 export default function DockCreateButton() {
-  const { state, T, goCreate, openStoryLibraryPicker, openStoryCameraPicker } = useGoc();
+  const { state, T, goCreate, openStoryLibraryPicker, openStoryCameraPicker } = useBanBe();
   const [open, setOpen] = useState(false);
   const [dragY, setDragY] = useState(0);
   // TASK 1 (dock "+" menu pass) — "Post a story" is a two-option row

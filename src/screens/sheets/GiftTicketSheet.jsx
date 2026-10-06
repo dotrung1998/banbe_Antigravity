@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useGoc } from '../../state/GocContext.jsx';
+import { useBanBe } from '../../state/BanBeContext.jsx';
 import { paper, ink, rule, display, fieldGlass, alert } from '../../theme.js';
 import { downloadTicketPdfs } from '../../lib/ticketPdf.js';
 import { newGiftKey, todayIso, validateRecipient, giftErrorMessage, giftTicketRpc, giftPdfData } from '../../lib/giftTicket.js';
@@ -23,7 +23,7 @@ function SheetFrame({ onClose, title, testId, children }) {
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%', maxHeight: '92%', overflowY: 'auto', background: paper, borderRadius: '24px 24px 0 0', padding: '12px 22px 30px', boxSizing: 'border-box',
-          animation: closing ? 'none' : 'gocSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both',
+          animation: closing ? 'none' : 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both',
           transform: closing ? 'translateY(100%)' : 'none', transition: closing ? 'transform .22s ease-in' : 'none',
         }}
       >
@@ -50,7 +50,7 @@ const btn = (filled, busy) => ({ marginTop: 14, textAlign: 'center', fontSize: 1
  * @param {()=>void} props.onClose
  */
 export default function GiftTicketSheet({ bookingId, seats, eventName, pdfBase, onGifted, onClose }) {
-  const { T } = useGoc();
+  const { T } = useBanBe();
   const [step, setStep] = useState('form');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');

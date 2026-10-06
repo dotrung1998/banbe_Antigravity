@@ -46,7 +46,7 @@ export async function setupToHome(page) {
   // Task 1, mandatory login) means the browser is already signed in as a
   // real, persistent test account before the page even loads. Once that
   // account's own profile.prefs_saved is true (set once in global-setup),
-  // GocContext's syncUser() jumps straight from splash/langPick/themePick to
+  // BanBeContext's syncUser() jumps straight from splash/langPick/themePick to
   // 'home' entirely on its own the moment the session resolves — often
   // before the splash timer even fires, so Language/Appearance may never
   // appear at all. Each step below actually waits for its own screen (or

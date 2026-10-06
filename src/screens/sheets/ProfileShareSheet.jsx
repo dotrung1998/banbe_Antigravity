@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { useGoc } from '../../state/GocContext.jsx';
+import { useBanBe } from '../../state/BanBeContext.jsx';
 import { paper, ink, rule, display, alert, inkButton } from '../../theme.js';
 
 // Web port of apps/ios/BanbeApp/Views/ProfileShareCardView.swift. The card is
@@ -251,7 +251,7 @@ const SHEET_CSS = `
 `;
 
 export default function ProfileShareSheet({ open, onClose, kindLabel, name, subtitle = '', detail = '', avatarUrl = '', roundAvatar = true, link, idPrefix = 'share-card' }) {
-  const { T } = useGoc();
+  const { T } = useBanBe();
   const [closing, setClosing] = useState(false);
   const [style, setStyle] = useState(loadStyle);
   const [avatarImg, setAvatarImg] = useState(null);
@@ -382,7 +382,7 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
     <div
       onClick={requestClose}
       data-testid={`${idPrefix}-sheet`}
-      style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(27,25,22,0.5)', display: 'flex', alignItems: 'flex-end', animation: closing ? 'bbShareScrimOut 0.22s ease both' : 'gocFade 0.22s ease both' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(27,25,22,0.5)', display: 'flex', alignItems: 'flex-end', animation: closing ? 'bbShareScrimOut 0.22s ease both' : 'banbeFade 0.22s ease both' }}
     >
       <style>{SHEET_CSS}</style>
       <div
@@ -390,7 +390,7 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
         role="dialog" aria-modal="true" aria-label={T('Thẻ chia sẻ', 'Share card')}
         style={{
           background: paper, width: '100%', maxHeight: '94%', overflowY: 'auto', borderRadius: '18px 18px 0 0', padding: '10px 20px 28px', boxSizing: 'border-box',
-          animation: closing ? 'bbShareSheetOut 0.22s cubic-bezier(.22,.61,.36,1) both' : 'gocSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both',
+          animation: closing ? 'bbShareSheetOut 0.22s cubic-bezier(.22,.61,.36,1) both' : 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both',
         }}
       >
         <div style={{ width: 36, height: 4, background: rule, borderRadius: 2, margin: '6px auto 12px' }} />
@@ -460,7 +460,7 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
 // The "Share your profile card" / "Share your host card" entry row (iOS
 // `shareCardCTA`), shared by the Account screen's personal + host tabs.
 export function ShareCardRow({ host = false, onClick, testId, marginTop = 14 }) {
-  const { T } = useGoc();
+  const { T } = useBanBe();
   return (
     <div
       onClick={onClick} role="button" data-testid={testId}

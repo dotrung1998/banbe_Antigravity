@@ -161,7 +161,7 @@ enum PhotoLoader {
 
     /// Strips a signed Storage URL's query string (the token + expiry that
     /// rotate on every re-sign, even though the underlying object hasn't
-    /// changed — web/GocContext.jsx re-signs on a 10min-1h TTL) so the
+    /// changed — web/BanBeContext.jsx re-signs on a 10min-1h TTL) so the
     /// identity used for both caches is the stable bucket/object path, not
     /// a value that churns on a timer. Safe because every upload in this
     /// app writes a brand-new, timestamped path (`Date.now()`-based) rather

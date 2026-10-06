@@ -1,9 +1,9 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, barGlass } from '../theme.js';
 import { fieldGlass, inkButton } from './hostStyle.js';
 
 export default function HostIntro() {
-  const { state, T, goProfile, goCreate } = useGoc();
+  const { state, T, goProfile, goCreate } = useBanBe();
   const s = state;
 
   const hostIntroName = (s.orgRegName || '').trim() || 'Bếp Nhỏ';
@@ -18,7 +18,7 @@ export default function HostIntro() {
   ];
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Host intro">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Host intro">
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div onClick={goProfile} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
       <div style={{ padding: '16px 22px 30px' }}>

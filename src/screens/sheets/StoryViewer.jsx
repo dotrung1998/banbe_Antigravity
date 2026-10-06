@@ -1,6 +1,6 @@
 import { getFrameBox } from '../../lib/viewport.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useGoc } from '../../state/GocContext.jsx';
+import { useBanBe } from '../../state/BanBeContext.jsx';
 import { paper, ink, display, cardGlass } from '../../theme.js';
 import { bg, distanceLabel } from '../../data/events.js';
 import SurveyStoryCard from './SurveyStoryCard.jsx';
@@ -15,7 +15,7 @@ import SurveyStoryCard from './SurveyStoryCard.jsx';
 //
 // BUG 5 fix (2026-09-22 follow-up) — `s.storyViewer` now stores the FULL
 // ordered deck (`groups`/`groupIndex`/`storyIndex`), not one organizer's
-// stories in isolation — see GocContext.jsx's own comment on
+// stories in isolation — see BanBeContext.jsx's own comment on
 // openStoryViewer()/storyNext()/storyPrev().
 const STORY_MS = 5000;
 const DISMISS_MS = 260;
@@ -65,7 +65,7 @@ function coverUrlFor(st) {
 // site below rather than extracted, to avoid a temporal-dead-zone issue.
 
 export default function StoryViewer() {
-  const { state: s, T, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, markStoryViewedAt } = useGoc();
+  const { state: s, T, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, markStoryViewedAt } = useBanBe();
   const viewer = s.storyViewer;
   const group = viewer?.groups?.[viewer.groupIndex];
   const story = group?.stories?.[viewer?.storyIndex];
@@ -695,10 +695,10 @@ export default function StoryViewer() {
 
 // Task 4 — an event-share story renders as a dedicated card, not a plain
 // photo. `story.kind === 'event_share'` carries `eventSnapshot`
-// (denormalized at load time — see GocContext.jsx's own comment on why) so
+// (denormalized at load time — see BanBeContext.jsx's own comment on why) so
 // the card still renders correctly even if the event later changes.
 function EventShareCard({ story, T }) {
-  const { state: s, goEventFromStory } = useGoc();
+  const { state: s, goEventFromStory } = useBanBe();
   const snap = story.eventSnapshot;
   if (!snap) {
     return (
@@ -709,7 +709,7 @@ function EventShareCard({ story, T }) {
   }
   // BUG 2 (2026-09-22 tenth follow-up) — the same canonical `distanceLabel()`
   // helper Event Detail/MapExplore use, recomputed on EVERY render from
-  // the CURRENT `s.userCoords`/`s.located` (both live GocContext state) —
+  // the CURRENT `s.userCoords`/`s.located` (both live BanBeContext state) —
   // never cached at the moment the story was opened, so it updates live if
   // location resolves/changes while the card is on screen, and shows
   // nothing at all (never a static/wrong number) whenever a real distance
@@ -744,7 +744,7 @@ function EventShareCard({ story, T }) {
 
 // Survey-sharing pass (section 4's card spec: "host, title, short purpose,
 // deadline, Answer Survey") — `story.surveySnapshot` is get_survey_card()'s
-// own live response (GocContext.jsx's loadHomeStories), never frozen at
+// own live response (BanBeContext.jsx's loadHomeStories), never frozen at
 // share time, so "closing the survey updates the viewer's truthful state"
 // holds even for a story whose own 24h lifetime outlives the survey. The
 // CTA opens the in-app response MODAL (openSurveyStoryModal) — NOT
@@ -752,7 +752,7 @@ function EventShareCard({ story, T }) {
 // "not an unrelated full-screen navigation destination" rule; the story
 // stays mounted and paused underneath (see the pause/resume effect above).
 function SurveyShareCard({ story, T }) {
-  const { openSurveyStoryModal } = useGoc();
+  const { openSurveyStoryModal } = useBanBe();
   const snap = story.surveySnapshot;
   if (!snap) {
     return (

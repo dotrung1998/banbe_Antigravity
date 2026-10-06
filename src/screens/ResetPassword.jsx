@@ -1,12 +1,12 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, display, inkButton, alert } from '../theme.js';
 
 // Landed on only via a real Supabase "recovery" session (the emailed
 // password-reset link) — see the PASSWORD_RECOVERY branch of
-// onAuthStateChange in GocContext.jsx. There's no "back" here on purpose:
+// onAuthStateChange in BanBeContext.jsx. There's no "back" here on purpose:
 // this session is only good for setting a new password.
 export default function ResetPassword() {
-  const { state, T, newPasswordType, newPasswordConfirmType, submitNewPassword } = useGoc();
+  const { state, T, newPasswordType, newPasswordConfirmType, submitNewPassword } = useBanBe();
   const s = state;
   const valid = s.newPassword.length >= 8 && s.newPassword === s.newPasswordConfirm;
 
@@ -18,7 +18,7 @@ export default function ResetPassword() {
   const fieldStyle = { width: '100%', boxSizing: 'border-box', padding: 13, borderRadius: 12, border: 'none', background: 'var(--bb-field)', fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' };
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: '66px 26px 40px', background: paper, color: ink }} data-screen-label="ResetPassword">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: '66px 26px 40px', background: paper, color: ink }} data-screen-label="ResetPassword">
       <h2 style={{ ...display(25, { lineHeight: 1.2, margin: '34px 0 0' }) }}>{T('Đặt mật khẩu mới', 'Set a new password')}</h2>
       <p style={{ fontSize: 13.5, lineHeight: 1.55, color: ink, margin: '12px 0 0' }}>
         {T('Chọn một mật khẩu mới cho tài khoản banbe của bạn.', 'Choose a new password for your banbe account.')}

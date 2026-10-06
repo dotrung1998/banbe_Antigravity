@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink } from '../theme.js';
 
 // Splash-only logo: the Adobe Animate/CreateJS "logomotion" export, vendored
@@ -13,7 +13,7 @@ const LOGOMOTION_WIDTH = 280;
 const LOGOMOTION_HEIGHT = Math.round((LOGOMOTION_WIDTH / 1288) * 800);
 
 export default function Splash() {
-  const { dismissSplash, notifyLogomotionComplete } = useGoc();
+  const { dismissSplash, notifyLogomotionComplete } = useBanBe();
   const iframeRef = useRef(null);
 
   // Completion-gating fix (2026-09-30) — `logomotion2309.html` posts a
@@ -38,7 +38,7 @@ export default function Splash() {
       onClick={dismissSplash}
       style={{
         position: 'absolute', inset: 0, zIndex: 40, background: paper, display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center', cursor: 'pointer', animation: 'gocFade 0.4s ease both',
+        alignItems: 'center', justifyContent: 'center', cursor: 'pointer', animation: 'banbeFade 0.4s ease both',
       }}
       data-screen-label="Splash"
     >
@@ -50,10 +50,10 @@ export default function Splash() {
         data-testid="splash-logomotion"
         style={{
           width: LOGOMOTION_WIDTH, height: LOGOMOTION_HEIGHT, border: 'none', display: 'block',
-          background: 'transparent', pointerEvents: 'none', animation: 'gocIn 0.7s cubic-bezier(.22,.61,.36,1) both',
+          background: 'transparent', pointerEvents: 'none', animation: 'banbeIn 0.7s cubic-bezier(.22,.61,.36,1) both',
         }}
       />
-      <span style={{ fontFamily: "'Be Vietnam Pro',sans-serif", fontSize: 14, fontWeight: 400, letterSpacing: '0.01em', color: ink, marginTop: 16, animation: 'gocFade 0.9s ease 0.5s both' }}>bạn mới mỗi tuần</span>
+      <span style={{ fontFamily: "'Be Vietnam Pro',sans-serif", fontSize: 14, fontWeight: 400, letterSpacing: '0.01em', color: ink, marginTop: 16, animation: 'banbeFade 0.9s ease 0.5s both' }}>bạn mới mỗi tuần</span>
     </div>
   );
 }

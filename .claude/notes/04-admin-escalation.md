@@ -100,7 +100,7 @@ sent on one tap), pending-invites list with inline revoke+confirm, and the
 current-admin roster with inline revoke+confirm (self-row has no revoke
 button at all).
 
-**Files**: migration 121 (new); web `src/state/GocContext.jsx` (state,
+**Files**: migration 121 (new); web `src/state/BanBeContext.jsx` (state,
 `loadMyAdminInvite`/`respondToAdminInvite`/`loadAdminTeam`/
 `confirmAdminInvite`/`confirmRevokeAdminInvite`/`confirmRevokeAdmin` etc.,
 `syncUser`'s profile select, the notification poll's `admin_access_revoked`
@@ -157,7 +157,7 @@ allowed to roll back before any permission write.
 ## 2026-09-14 — "Khách đúng ▪︎ cấp vé" / "Mở lại chỗ" appeared to do nothing (see 03-dispute-chat.md diagnosis #3 for full detail)
 
 Not caused by the dispute-thread linkage bug (separate root cause). `resolveDispute`
-(`src/state/GocContext.jsx`, `apps/ios/BanbeApp/State/AppState+Payments.swift`)
+(`src/state/BanBeContext.jsx`, `apps/ios/BanbeApp/State/AppState+Payments.swift`)
 used to `await` the `api/dispute-resolved-email.js` fetch *before* clearing
 `disputeBusy`/refreshing the list — a slow/untested Vercel function call
 (puppeteer-core + chromium, see `05-notify-retention.md`) silently blocked
@@ -242,7 +242,7 @@ blocked after 72h purge" (migration
    conflicting row, so the bare `INSERT` fired unconditionally and
    silently resurrected a fresh, empty, unresolved-looking thread —
    defeating the purge. Reachable from the client: `loadDisputeChat()`
-   (`src/state/GocContext.jsx:1084-1086`) calls `resync_dispute_thread()`
+   (`src/state/BanBeContext.jsx:1084-1086`) calls `resync_dispute_thread()`
    automatically whenever a thread read comes back empty, which looks
    identical to "purged" from the client's point of view. Fixed by
    refusing to resync once `bookings.dispute_resolved_at` (permanent,
@@ -276,7 +276,7 @@ consequence of the exact same row update, not a second write. Nothing to
 fix here.
 
 **Task 2 — the "Going" list's query, CONFIRMED not the bug either**:
-`src/state/GocContext.jsx:472-506` (`loadMyEvents`, formerly an inline
+`src/state/BanBeContext.jsx:472-506` (`loadMyEvents`, formerly an inline
 effect) selects `bookings` `.in('status', ['pending', 'confirmed',
 'attended'])` — `'expired'` was never in that list. The SQL-level filter
 already excludes a released booking correctly, on every single fetch.
@@ -286,7 +286,7 @@ excludes task 1's status.
 
 **Task 4 — ACTUAL ROOT CAUSE, a client-side staleness bug**:
 the effect that populated `s.attending`/`s.tickets`
-(`src/state/GocContext.jsx`, previously inline at the old lines 472-503)
+(`src/state/BanBeContext.jsx`, previously inline at the old lines 472-503)
 merged every fetch's result into whatever was already there —
 `set(prev => ({ attending: [...new Set([...prev.attending, ...attending])],
 ... }))` — a pure union, never a removal. Once an event_id entered
@@ -302,7 +302,7 @@ web side now matches.
 
 Compounding it: nothing ever re-ran that fetch after the first one. The
 effect is keyed only on `s.user?.id` (fires once per sign-in), and
-`goGoingList()` (`GocContext.jsx`, formerly line 1433) just changed
+`goGoingList()` (`BanBeContext.jsx`, formerly line 1433) just changed
 `screen`/`eventListMode` — no refetch, no realtime subscription (this repo
 has none anywhere, see `03-dispute-chat.md`), no polling. So even
 opening the Going tab specifically, at any later point in the same
@@ -312,7 +312,7 @@ persisted to `localStorage` and the merge starts from `[]` again on a
 fresh mount — but the bug reproduces for as long as the tab/app stays
 open, which is exactly what the report described.)
 
-**Fix**: `src/state/GocContext.jsx` — the fetch is now a named
+**Fix**: `src/state/BanBeContext.jsx` — the fetch is now a named
 `loadMyEvents(uid)` `useCallback` that does a plain replace
 (`set({ attending, tickets })`, mirroring iOS), and `goGoingList()` now
 calls `loadMyEvents(s.user.id)` every time the Going tab is opened, not

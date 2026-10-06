@@ -3,7 +3,7 @@ import Supabase
 import UIKit
 import Photos
 
-// Payments and documents — the iOS half of what GocContext.jsx does for the
+// Payments and documents — the iOS half of what BanBeContext.jsx does for the
 // web app. banbe never holds the money on either platform; what these carry
 // is where to send it, the evidence it was sent, and the paperwork after.
 extension AppState {
@@ -328,7 +328,7 @@ extension AppState {
             // uploaded file's row leaves the `event` jsonb column at its
             // '{}' default (only event_id is set), confirmed live
             // (08-payment-documents.md's 2026-09-17 follow-up #4) — the web
-            // side's loadDocuments() (GocContext.jsx) embeds the same way.
+            // side's loadDocuments() (BanBeContext.jsx) embeds the same way.
             let nowIso = ISO8601DateFormatter().string(from: Date())
             var query = SupabaseService.client
                 .from("payment_documents").select("*, events(name, starts_at, event_date, event_time)")
@@ -3002,7 +3002,7 @@ struct RefundDestination: Codable, Equatable, Identifiable {
 
 /// Refund MVP — one row in the host's per-event Refund Center, a
 /// `RefundClaim` joined with the guest's name and a computed eligibility
-/// flag (mirrors src/state/GocContext.jsx's own `loadRefundCenter()`
+/// flag (mirrors src/state/BanBeContext.jsx's own `loadRefundCenter()`
 /// enrichment exactly). `destination` is the claim's own snapshot, not a
 /// live join — see `RefundClaim.recipientSnapshot`'s own doc comment.
 struct RefundCenterClaim: Identifiable, Equatable {

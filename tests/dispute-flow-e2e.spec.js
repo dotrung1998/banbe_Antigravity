@@ -143,7 +143,7 @@ test.describe('Dispute flow — real backend E2E (notes 01-05)', () => {
     if (outcome === 'release') {
       participantContext = await browser.newContext();
       participantPage = await participantContext.newPage();
-      // Signing in fires GocContext.jsx's user-id-keyed effect as a side
+      // Signing in fires BanBeContext.jsx's user-id-keyed effect as a side
       // effect (not a click this test controls), which fetches and
       // populates `attending` — attach the listener before login so it
       // catches that fetch, and confirm the booking was actually there

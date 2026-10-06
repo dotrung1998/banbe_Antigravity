@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, alert, display, cardGlass, fieldGlass, inkButton } from '../theme.js';
 import HostTitleIcon from './HostTitleIcon.jsx';
 import { metricLabel } from '../lib/reportMetricLabels.js';
@@ -165,7 +165,7 @@ export default function Reports() {
   const {
     state, T, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard,
     expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   const roleLabel = ROLE_LABEL[s.reportsScope] ? T(...ROLE_LABEL[s.reportsScope]) : s.reportsScope;
   const data = s.reportsData;
@@ -175,7 +175,7 @@ export default function Reports() {
     : '';
 
   return (
-    <div style={{ minHeight: '100%', background: paper, animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both' }} data-screen-label="Reports">
+    <div style={{ minHeight: '100%', background: paper, animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both' }} data-screen-label="Reports">
       <div style={{ padding: '66px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span onClick={backFromReports} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</span>
       </div>

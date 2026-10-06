@@ -540,7 +540,7 @@ ordering issue 80c1ac3 fixed, not a leftover of it.
   used by the pre-existing "▪︎ Về trang chính"/"▪︎ Back to home" link,
   which shows on the OPPOSITE condition). No new "cameFrom" flag was
   invented. The button calls a new `openEventOnMap(ev)` (web:
-  `GocContext.jsx`) / `app.openEventOnMap(_:)` (iOS: `AppState.swift`) that
+  `BanBeContext.jsx`) / `app.openEventOnMap(_:)` (iOS: `AppState.swift`) that
   populates `mapExploreState`/`MapExploreState` — the SAME restore-snapshot
   mechanism `MapExplore.jsx`'s `openEventDetail`/`MapExploreView.swift`'s
   `openEventDetail(_:)` already use in the opposite direction — with just
@@ -601,7 +601,7 @@ ordering issue 80c1ac3 fixed, not a leftover of it.
   hero photo's height) and re-checks `event.back` is still `isHittable`
   and functional afterward — not just that the modifier was moved in the
   source.
-- File:line — web: `src/state/GocContext.jsx` (`openEventOnMap`, next to
+- File:line — web: `src/state/BanBeContext.jsx` (`openEventOnMap`, next to
   `setMapExploreState`), `src/screens/EventDetail.jsx` (fixed-position back/
   share pills + the "▪︎ Xem trên bản đồ"/"▪︎ Open in map" link),
   `src/screens/BottomTabBar.jsx` (`home` icon + item, widened `maxWidth`).

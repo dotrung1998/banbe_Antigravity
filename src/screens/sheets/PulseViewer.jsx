@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useGoc } from '../../state/GocContext.jsx';
+import { useBanBe } from '../../state/BanBeContext.jsx';
 import { supabase } from '../../lib/supabase.js';
 import { publicEventPhotoUrl } from '../../lib/mediaUrls.js';
 import { paper, ink, rule, fieldSolid, display, cardGlass } from '../../theme.js';
@@ -194,7 +194,7 @@ export default function PulseViewer() {
   const {
     state, T, closePulseViewer, setPulseTab, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer,
     openPulsePhotoSheet, closePulsePhotoSheet, togglePhotoLike, sharePhoto, goEvent, openOrganizerProfile,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -281,7 +281,7 @@ export default function PulseViewer() {
         borderRadius: '24px 24px 0 0', overflow: 'hidden', boxShadow: '0 -10px 40px rgba(27,25,22,0.18)',
         transform: `translateY(${slideY}px)`,
         transition: isDragging ? 'none' : `transform ${DISMISS_DURATION_MS}ms cubic-bezier(.22,.61,.36,1)`,
-        animation: 'gocSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both',
+        animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both',
       }}
       data-testid="pulse-viewer"
     >

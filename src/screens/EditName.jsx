@@ -1,12 +1,12 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
 
 export default function EditName() {
-  const { state, T, set, editNameType, saveDisplayName } = useGoc();
+  const { state, T, set, editNameType, saveDisplayName } = useBanBe();
   const s = state;
 
   return (
-    <div style={{ animation: 'gocFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="Edit name">
+    <div style={{ animation: 'banbeFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="Edit name">
       {/* TASK 4 (Reserve→edit-name pass) — editNameReturnScreen (set by
           goEditName) is wherever this was actually opened from now, not
           always Account. */}

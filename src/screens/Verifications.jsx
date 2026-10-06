@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, alert } from '../theme.js';
@@ -85,7 +85,7 @@ export default function Verifications() {
   const {
     state, T, set, loadVerifications, approvePayment, rejectPayment, escalateDispute, loadDisputes, backFromVerifications,
     loadRefundQueue, markRefundSent,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   // Same documentBack-style pattern (07-notifications.md's 2026-09-18
   // follow-up) — the label follows verificationsBack too.
@@ -153,7 +153,7 @@ export default function Verifications() {
   }, [s.verificationsScrollToRefunds, s.refundQueue, s.refundQueueLoading, s.refundQueueError, set]);
 
   // Tapping a 'dispute_message' toast/notification (openNotification,
-  // GocContext.jsx) lands an organizer here with s.chatHighlight set —
+  // BanBeContext.jsx) lands an organizer here with s.chatHighlight set —
   // unlike PaymentDetails.jsx, this screen only mounts DisputeChatPanel
   // once its own local toggle is opened, so that has to happen here before
   // DisputeChatPanel can scroll to/highlight anything itself.
@@ -175,7 +175,7 @@ export default function Verifications() {
   const clearVerificationsFocus = () => set({ verificationsFocusBookingId: null });
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Verifications">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Verifications">
       <div onClick={backFromVerifications} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="verifications-back">
         ‹ {backLabel}
       </div>

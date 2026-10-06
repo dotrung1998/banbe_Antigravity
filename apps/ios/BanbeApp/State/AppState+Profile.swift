@@ -5,7 +5,7 @@ import UIKit
 /// TASK D (2026-10-01 UX foundation pass) — shareable profile card: the
 /// owner's own edit flow, the public read-only profile screen (reachable by
 /// handle, works signed-out too), avatar upload, follow/unfollow, share,
-/// and the universal-link entry point. Mirrors src/state/GocContext.jsx's
+/// and the universal-link entry point. Mirrors src/state/BanBeContext.jsx's
 /// own TASK D section function-for-function.
 struct PublicProfile: Decodable, Equatable {
     struct OrganizerSummary: Decodable, Equatable {

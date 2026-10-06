@@ -1,8 +1,8 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 
 export default function Preferences() {
-  const { state, T, set, pickTheme, toggleAutoEmailDocuments } = useGoc();
+  const { state, T, set, pickTheme, toggleAutoEmailDocuments } = useBanBe();
   const options = [
     { key: 'vi', title: 'Tiếng Việt', subtitle: T('Mặc định', 'Vietnamese') },
     { key: 'en', title: 'English', subtitle: T('Bạn có thể đổi lại bất cứ lúc nào', 'Switch anytime') },
@@ -13,7 +13,7 @@ export default function Preferences() {
   ];
 
   return (
-    <div style={{ animation: 'gocFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="Preferences">
+    <div style={{ animation: 'banbeFade 0.32s ease both', minHeight: '100%', background: paper }} data-screen-label="Preferences">
       <div onClick={() => set({ screen: 'profile' })} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
       <div style={{ padding: '16px 30px 42px' }}>
         <h1 style={{ ...display(27, { margin: 0, lineHeight: 1.2 }) }}>{T('Ngôn Ngữ & Hiển Thị', 'Language & Appearance')}</h1>

@@ -1,4 +1,4 @@
-import { useGoc } from '../../state/GocContext.jsx';
+import { useBanBe } from '../../state/BanBeContext.jsx';
 import { paper, ink, rule, cardGlass, fieldGlass, inkButton, alert, display } from '../../theme.js';
 
 // Account deletion (Task 2, Account/Settings pass) — a full-screen sheet
@@ -37,7 +37,7 @@ export default function DeleteAccountSheet() {
   const { state: s, T, closeDeleteAccount, setDeleteAccountStep,
     setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput,
     setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode,
-    confirmDeleteAccount, deleteAccountPhraseMatches, goHome } = useGoc();
+    confirmDeleteAccount, deleteAccountPhraseMatches, goHome } = useBanBe();
 
   if (!s.deleteAccountOpen) return null;
 

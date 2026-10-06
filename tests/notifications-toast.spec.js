@@ -3,7 +3,7 @@
 //
 // Real-backend check for the in-app toast fix (.claude/notes/07-notifications.md,
 // Step 2): a `notifications` row that appears while the app is already open
-// must surface as a toast within one poll cycle (GocContext.jsx's 5s poll),
+// must surface as a toast within one poll cycle (BanBeContext.jsx's 5s poll),
 // not sit invisible until someone opens the bell screen. Gated the same way
 // as tests/dispute-flow-e2e.spec.js — real Supabase Auth user, real table
 // write, no mocked routes. Both files hit the same live backend from real
@@ -46,7 +46,7 @@ test.describe('In-app toast (real backend)', () => {
       });
       expect(error, `notification insert failed: ${error?.message}`).toBeNull();
 
-      // Poll is 5s (GocContext.jsx) — generous timeout for a full cycle plus
+      // Poll is 5s (BanBeContext.jsx) — generous timeout for a full cycle plus
       // slack for a slower browser/test-runner startup (firefox/webkit have
       // shown a bit more jitter here than chromium).
       const toast = page.locator('[data-testid="toast"]');

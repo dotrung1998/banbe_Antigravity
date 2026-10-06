@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 
 // TASK 1 (dock "+" menu pass) — the story photo/camera picker + Retake/Use
 // Photo preview, mounted ONCE, globally (Shell/App.jsx, next to
@@ -7,12 +7,12 @@ import { useGoc } from '../state/GocContext.jsx';
 // Account.jsx's own "▪︎ Đăng story" menu and the dock "+" menu
 // (DockCreateButton.jsx — a different, always-mounted component, not a
 // child of Account) drive the SAME `s.storyLibraryPickerOpen`/
-// `s.storyCameraPickerOpen`/`s.storyCreatePreview` state (GocContext) —
+// `s.storyCameraPickerOpen`/`s.storyCreatePreview` state (BanBeContext) —
 // one upload pipeline, reachable from any screen. `position: fixed` (not
 // Account's old `position: absolute` relative to its own screen div) since
 // this can now open while a different screen is mounted underneath.
 export default function StoryCreateOverlay() {
-  const { state, T, pickStoryFile, cancelStoryCreate, publishStory, openStoryCameraPicker, closeStoryPickerRequests } = useGoc();
+  const { state, T, pickStoryFile, cancelStoryCreate, publishStory, openStoryCameraPicker, closeStoryPickerRequests } = useBanBe();
   const s = state;
   const libraryRef = useRef(null);
   const cameraRef = useRef(null);

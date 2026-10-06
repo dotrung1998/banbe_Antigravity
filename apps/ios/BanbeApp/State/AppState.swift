@@ -107,7 +107,7 @@ struct PhotoViewerItem: Equatable {
 /// as). ONE shared model read by EventDetail's/Organizer's grids, the
 /// full-screen PhotoViewerView, AND Pulse's photo tab — a like/share done
 /// on any surface is immediately correct everywhere else, including after
-/// Pulse re-loads. Mirrors src/state/GocContext.jsx's own `photoEngagement`
+/// Pulse re-loads. Mirrors src/state/BanBeContext.jsx's own `photoEngagement`
 /// map entry shape exactly.
 struct PhotoEngagement: Equatable {
     var likeCount: Int
@@ -147,7 +147,7 @@ struct StoryViewerState: Equatable {
     // for StoryViewerView's expand-from-ring entrance. Carried through
     // every storyNext/storyPrev/storyNextHost/storyPrevHost update below
     // (each passes `originRect: v.originRect` along) exactly like web's
-    // GocContext.jsx spreads `...v` — see openStoryViewer()'s own comment
+    // BanBeContext.jsx spreads `...v` — see openStoryViewer()'s own comment
     // for why dismissing toward a ring is a SEPARATE live lookup, not this.
     var originRect: CGRect?
 }
@@ -240,7 +240,7 @@ struct ThreadPreference: Equatable {
 enum InboxViewMode { case active, archived }
 
 /// The whole app's state and behaviour — the iOS counterpart of
-/// src/state/GocContext.jsx. Deliberately one object, like the web app, so
+/// src/state/BanBeContext.jsx. Deliberately one object, like the web app, so
 /// the two stay easy to compare; screens read it from the environment.
 @MainActor
 final class AppState: ObservableObject {
@@ -280,7 +280,7 @@ final class AppState: ObservableObject {
     @Published var dockVisible: Bool = true
     private var lastScaffoldScrollOffset: CGFloat = 0
     // Blocker fix (retention roadmap follow-up) — mirrors web's own
-    // useEffect on s.eventKey (GocContext.jsx): whenever this is set to a
+    // useEffect on s.eventKey (BanBeContext.jsx): whenever this is set to a
     // real, non-catalogue event id, kick off the canonical realEventsByID
     // fetch so `currentEvent` (below) has something real to resolve to
     // instead of sitting on the loading placeholder indefinitely.
@@ -452,7 +452,7 @@ final class AppState: ObservableObject {
     var organizerModeInFlight = false
     // Stage 1 (retention roadmap P0, real favorites) — which account's
     // `favorites` rows are currently loaded/loading, mirroring web's own
-    // favoritesUidRef (GocContext.jsx): applySession() re-runs on every
+    // favoritesUidRef (BanBeContext.jsx): applySession() re-runs on every
     // sign-in AND on the app returning to the foreground with an existing
     // session, so this stops a same-account re-run from re-clearing/
     // reloading (no flash), while a genuine account switch still does.
@@ -487,7 +487,7 @@ final class AppState: ObservableObject {
     /// from `myOrganizerIDs.isEmpty`. 'idle' | 'loading' | 'loaded' | 'error'.
     @Published var myOrganizerIdsStatus = "idle"
     // Part B audit (2026-09-28) — Dashboard-identity-mismatch fix (mirrors
-    // web's GocContext.jsx `myOrgEventOrganizerId`). `myOrgEventKeys` above
+    // web's BanBeContext.jsx `myOrgEventOrganizerId`). `myOrgEventKeys` above
     // stays the full union across every organizer row this account owns
     // on purpose — it's the real per-event ownership gate elsewhere (the
     // dual-role-account check in the notification handlers below) — but
@@ -540,7 +540,7 @@ final class AppState: ObservableObject {
     @Published var weekendEventsLoading = false
     // Home-visibility fix (2026-09-29) — root cause of "an approved real
     // event never shows on Home" on iOS, confirmed by grepping this whole
-    // file/HomeView.swift before assuming: unlike web (GocContext.jsx's
+    // file/HomeView.swift before assuming: unlike web (BanBeContext.jsx's
     // `discoveryEvents`/`loadDiscoveryEvents`), iOS's `feed` (below) was
     // built ONLY from `EventCatalog.all` — the static demo catalogue —
     // with no real-event data source merged in AT ALL. `weekendEvents`
@@ -676,7 +676,7 @@ final class AppState: ObservableObject {
     // — the viewer is a ZStack overlay, not a separate `screen`) can scroll
     // that message into view and clear the flag; chatFocusComposer only
     // true for a typed reply, never a one-tap quick reaction. Mirrors web's
-    // GocContext.jsx chatScrollToMessageId/chatFocusComposer exactly.
+    // BanBeContext.jsx chatScrollToMessageId/chatFocusComposer exactly.
     @Published var chatScrollToMessageID: UUID?
     @Published var chatFocusComposer = false
     // Task 3 (07-notifications.md) — active stories, grouped by organizer,
@@ -770,7 +770,7 @@ final class AppState: ObservableObject {
     @Published var storyPhotoItem: PhotosPickerItem?
     @Published var storyViewedIds: Set<UUID> = []
     // Cached by loadHomeStories()/currentOrganizerIds() — iOS has no
-    // upfront-loaded organizer-id list the way web's GocContext.jsx does,
+    // upfront-loaded organizer-id list the way web's BanBeContext.jsx does,
     // so AccountView's story ring reads this instead of awaiting an async
     // call from inside a computed `View` property.
     @Published var myOrganizerIdsCache: [String] = []
@@ -790,7 +790,7 @@ final class AppState: ObservableObject {
     @Published var unreadMessages: Int = 0
     // BUG 1 (2026-09-22 fourteenth follow-up) — the timestamp of the most
     // recent successful messages.read_at write, mirrors web's
-    // GocContext.jsx `lastReadWriteAtRef` exactly: markThreadMessagesRead()
+    // BanBeContext.jsx `lastReadWriteAtRef` exactly: markThreadMessagesRead()
     // stamps this on success; loadInboxThreads()/refreshUnreadMessageCount()
     // (AppState+Data.swift) each capture their OWN request's start time and
     // discard their result if it started before this — a request whose
@@ -873,7 +873,7 @@ final class AppState: ObservableObject {
 
     /// Notification banner fix pass (2026-09-30 third) — named constant
     /// (was a bare 2.5s `Task.sleep`), matching web's `TOAST_DURATION_MS`
-    /// (GocContext.jsx) value-for-value.
+    /// (BanBeContext.jsx) value-for-value.
     static let toastDurationSeconds: TimeInterval = 8.0
 
     /// Real per-toast timer bookkeeping (pause/resume needs a cancellable
@@ -1251,7 +1251,7 @@ final class AppState: ObservableObject {
     @Published var organizerProfilePhotos: [OrganizerPhoto] = []
     @Published var organizerProfileExtrasLoadedFor = ""
     // Interest surveys (Slice B, migration 114) — mirrors web's
-    // GocContext.jsx state field-for-field. `surveyPublic` is exactly
+    // BanBeContext.jsx state field-for-field. `surveyPublic` is exactly
     // get_survey_public()'s return shape (never raw table rows).
     @Published var surveyPublic: SurveyPublic?
     @Published var surveyPublicLoading = false
@@ -1647,7 +1647,7 @@ final class AppState: ObservableObject {
     // items EventDetailView already shows via includedItems.
     @Published var createIntro = ""
     // "Bao gồm" item-editing parity fix (2026-09-29) — mirrors web's
-    // identical `createIncludedItems` (GocContext.jsx): up to 3 { label,
+    // identical `createIncludedItems` (BanBeContext.jsx): up to 3 { label,
     // detail } items, sent as `p_included_items` to the same
     // create_event_draft/resubmit_event_for_review RPCs. iOS previously
     // had no editing UI for this at all, so it never had anywhere to keep
@@ -1656,14 +1656,14 @@ final class AppState: ObservableObject {
     // intended one (this was a real, reported gap, not a placeholder).
     @Published var createIncludedItems: [IncludedItem] = []
     // Keyword-search fix (migration 108) — mirrors web's identical
-    // `createKeywords` (GocContext.jsx): free-text, comma-separated. Left
+    // `createKeywords` (BanBeContext.jsx): free-text, comma-separated. Left
     // blank, `submitCreateEvent` defaults it to the event's own selected
     // category label(s), so an event is never left with nothing to match
     // on beyond its literal name/district in Map's search box.
     @Published var createKeywords = ""
     // Address-autocomplete fix pass (2026-09-28) — `createLoc` is now
     // purely the live search box's own text (mirrors web's identical
-    // GocContext.jsx change, same pass). A SELECTED suggestion's
+    // BanBeContext.jsx change, same pass). A SELECTED suggestion's
     // decomposed fields live separately below, so the concise location
     // line can show just the district while the full structured address
     // is still available for validation/re-editing. `createLocConfirmed`
@@ -1704,7 +1704,7 @@ final class AppState: ObservableObject {
     @Published var createPrice = ""
     @Published var createSeats = ""
     // Strict invite-only events (migration 113) — "public" | "invite",
-    // same field/values as web's `s.createVisibility` (GocContext.jsx).
+    // same field/values as web's `s.createVisibility` (BanBeContext.jsx).
     // Deliberately separate from `events.approval` (not exposed in this
     // form): visibility is who can even see/book the event; approval is
     // whether a booking still needs the host's manual OK.
@@ -1720,7 +1720,7 @@ final class AppState: ObservableObject {
     // Event review queue — set while editing/resubmitting a previously-
     // REJECTED event rather than creating a new one; submitCreateEvent()
     // branches on this. Cleared whenever "create a new event" is entered
-    // fresh (goCreate's own reset, mirroring web's GocContext.jsx).
+    // fresh (goCreate's own reset, mirroring web's BanBeContext.jsx).
     @Published var createEditEventId: String?
     @Published var orgVerifyRequested = false
 
@@ -2191,7 +2191,7 @@ final class AppState: ObservableObject {
     }
 
     // Withdrawal (migration 107) + resubmission-limit surfacing — iOS
-    // port of web's identical GocContext.jsx state (withdrawEventBusy/
+    // port of web's identical BanBeContext.jsx state (withdrawEventBusy/
     // withdrawEventError/resubmissionStatusByEvent). A banbe PRODUCT
     // POLICY limit (2 successful resubmissions per rolling 24h), never a
     // legal/Ticketbox requirement.
@@ -2404,7 +2404,7 @@ final class AppState: ObservableObject {
     /// actually headed, so signing in lands there instead of always Home.
     private func postAuthDestination(isSignedIn: Bool) {
         // TASK A point 4 — "the route must survive app relaunch", same
-        // convention as web's own `banbe.lastScreen` (GocContext.jsx):
+        // convention as web's own `banbe.lastScreen` (BanBeContext.jsx):
         // only these two screens persist themselves (openRefundAccounts/
         // openMyRefunds below), restored here on cold start rather than
         // building a general route-restoration system this ticket didn't
@@ -3013,7 +3013,7 @@ final class AppState: ObservableObject {
     func backFromInbox() { screen = inboxBack }
 
     // Re-fetches on every open, not just once at sign-in — mirrors the same
-    // fix on the web side (GocContext.jsx's goGoingList). Nothing else
+    // fix on the web side (BanBeContext.jsx's goGoingList). Nothing else
     // invalidates `attending` in between (no realtime subscription, no
     // polling), so without this a dispute resolved against the guest by an
     // admin in a different session never clears this list until the app
@@ -3092,7 +3092,7 @@ final class AppState: ObservableObject {
     }
 
     // "Bao gồm" item editing (mirrors web's addCreateIncludedItem/
-    // removeCreateIncludedItem/setCreateIncludedItem, GocContext.jsx) —
+    // removeCreateIncludedItem/setCreateIncludedItem, BanBeContext.jsx) —
     // same cap (3) migration 087 itself enforces server-side; this only
     // avoids a round trip for an obviously-full list.
     func addCreateIncludedItem() {
@@ -3402,7 +3402,7 @@ final class AppState: ObservableObject {
 
     // Stage 1 (retention roadmap P0) — persists to the real `favorites`
     // table (owner-only RLS, 003_social_chat.sql), mirrors web's own
-    // toggleFav (GocContext.jsx) exactly: optimistic UI flip, in-flight
+    // toggleFav (BanBeContext.jsx) exactly: optimistic UI flip, in-flight
     // dedupe per event key so a fast double-tap can't fire two opposite
     // writes for the same row, and a rollback that only applies if this is
     // still the same signed-in account by the time the request settles.
@@ -3418,7 +3418,7 @@ final class AppState: ObservableObject {
 
     // 2026-09-21 follow-up (stories, 07-notifications.md) — REAL bug found
     // while wiring stories' audience, mirrors the same fix on web
-    // (GocContext.jsx): this was local-only, never persisted to the real
+    // (BanBeContext.jsx): this was local-only, never persisted to the real
     // `follows(user_id, organizer_id)` table (003_social_chat.sql). Local
     // `following` (by event key) stays as the optimistic UI toggle
     // OrganizerView.swift already reads — now ALSO persists, resolved via

@@ -8,7 +8,7 @@
 - `src/screens/Verifications.jsx:15` — "Can't find it" (calls `rejectPayment`) vs "Escalate to banbe" (calls `escalateDispute`), two distinct buttons
 - `src/screens/DisputeChatPanel.jsx:12` `DisputeChatPanel()` — shared chat UI (web)
 - `apps/ios/BanbeApp/Views/DisputeChatPanel.swift` `DisputeChatPanel` — same, iOS
-- `src/state/GocContext.jsx:962` `escalateDispute()`; `apps/ios/BanbeApp/State/AppState+Payments.swift:621` `escalateDispute()`
+- `src/state/BanBeContext.jsx:962` `escalateDispute()`; `apps/ios/BanbeApp/State/AppState+Payments.swift:621` `escalateDispute()`
 
 ## DB tables/columns
 - `public.dispute_threads` (id, booking_id UNIQUE, event_id, guest_id, organizer_id, resolved_at, resolution_kind, resolution_note, email_sent_at, purge_after)
@@ -26,7 +26,7 @@
 
 Root cause A (session/linkage, CONFIRMED): `reject_payment()` (032:36) never
 inserted into `dispute_threads` — only `escalate_payment_dispute()` (033:129)
-did. `loadDisputeChat` (`src/state/GocContext.jsx:1049`) looks a thread up by
+did. `loadDisputeChat` (`src/state/BanBeContext.jsx:1049`) looks a thread up by
 `booking_id`, finds none for a plain "not found," and silently resolves to an
 empty chat — reads exactly like "not delivering" when there was no session to
 link to. Compounded by UI gating: `PaymentDetails.jsx:150` only rendered
@@ -37,7 +37,7 @@ plain `pending_verification` + a reason — same gap in `Verifications.jsx`'s
 — `reject_payment()` now also opens the `dispute_threads` row (`ON CONFLICT
 (booking_id) DO NOTHING`), without touching `payment_state`/`disputed_at`;
 `v_pending_verifications` now exposes `dispute_reason`. Client: `dispute_reason`
-added to the `loadPaymentBookings` select (`GocContext.jsx:679-681`) and to
+added to the `loadPaymentBookings` select (`BanBeContext.jsx:679-681`) and to
 `PayableBookingRow`/`PayableBooking` (`AppState+Payments.swift:351-403`,
 `PaymentDocument.swift:107-136`); new gated blocks render `<DisputeChatPanel>`
 for `pending_verification` + `dispute_reason` in `PaymentDetails.jsx:150-165`
@@ -78,7 +78,7 @@ booking whose `dispute_threads` row was ever created with the wrong
 column is nullable) can never be repaired by a later call. `dispute_threads_
 select`/`dispute_messages_select` RLS (`033:57-73`) then silently returns
 ZERO rows to the real organizer — not an error, just nothing — which
-`loadDisputeChat` (`GocContext.jsx:1049`, `.maybeSingle()` on web,
+`loadDisputeChat` (`BanBeContext.jsx:1049`, `.maybeSingle()` on web,
 `.single()`-throws on iOS) can't distinguish from a genuinely empty
 conversation. `send_dispute_message()` (`033:84`) independently re-checks
 `v_t.guest_id`/`organizer_id` against the same row and returns
@@ -89,7 +89,7 @@ like it did nothing at all (network request DOES fire; the RPC responds
 
 The Send-button-disabled-looking-frozen report itself is not a separate
 bug: `disputeChatDraft`/`onChange` (`DisputeChatPanel.jsx:63,` `disputeChat
-DraftType` at `GocContext.jsx:1064`) were verified correct in isolation —
+DraftType` at `BanBeContext.jsx:1064`) were verified correct in isolation —
 typing does update state and the button's enabled style does key off
 `s.disputeChatDraft.trim()`. The perceived "stays disabled" is this same
 silent-failure symptom described imprecisely: every send attempt fails
@@ -102,8 +102,8 @@ next time either runs on that booking. For ART10025 specifically: the
 organizer re-tapping "Can't find it" now re-links the existing row — no
 manual data fix was made (no DB write access to target that one row
 directly in this session). Client: added `disputeChatError` (state +
-initial value `GocContext.jsx:130`; set in `loadDisputeChat`/
-`sendDisputeMessage`, `GocContext.jsx:1049-1093`; rendered
+initial value `BanBeContext.jsx:130`; set in `loadDisputeChat`/
+`sendDisputeMessage`, `BanBeContext.jsx:1049-1093`; rendered
 `DisputeChatPanel.jsx:44,74-78`; same on iOS — `AppState.swift:258`,
 `AppState+Payments.swift:742-793`, `DisputeChatPanel.swift`) so a real
 RLS/RPC denial now shows an actual error message instead of an
@@ -128,7 +128,7 @@ repair the row, "silent freeze" became "error banner that never clears."
 ## 2026-09-14 diagnosis #3 — regression: chat now errors instead of freezing silently; admin's resolve buttons still do nothing
 
 `git diff HEAD~1` (commit `40a4361`, the 042 fix) confirmed the resolve
-buttons' code (`resolveDispute`, `GocContext.jsx`) was **not touched** by
+buttons' code (`resolveDispute`, `BanBeContext.jsx`) was **not touched** by
 that commit — its "still does nothing" is a separate, pre-existing bug, not
 caused by 042. Two distinct root causes, not one shared one:
 
@@ -142,7 +142,7 @@ so the self-heal was structurally dead code for exactly this case. Fixed:
 booking)` — a new RPC with NO `payment_state` restriction at all (guest,
 event organizer, or admin), purely re-linking `dispute_threads.guest_id`/
 `organizer_id`. Wired into `loadDisputeChat` on both platforms
-(`GocContext.jsx:1068-1095`, `AppState+Payments.swift:769-`) to call it
+(`BanBeContext.jsx:1068-1095`, `AppState+Payments.swift:769-`) to call it
 once and retry the load automatically the moment a thread lookup comes back
 empty — no manual admin action needed. `resolve_dispute()` itself
 (`20260914000043_...sql`) also now re-links `guest_id`/`organizer_id` as
@@ -151,7 +151,7 @@ still-open case, but stops a resolved dispute from ever locking in a stale
 link before the transcript email reads it).
 
 **(2) Resolve buttons doing nothing, PRE-EXISTING, unrelated to (1)
-(CONFIRMED):** `resolveDispute` (`GocContext.jsx`, and `AppState+Payments.
+(CONFIRMED):** `resolveDispute` (`BanBeContext.jsx`, and `AppState+Payments.
 swift`'s counterpart) `await`ed the `api/dispute-resolved-email.js` fetch
 call **inside the same try block as, and before,** `disputeBusy` being
 cleared and `loadDisputes()`/`loadAdminDisputes()` refreshing the list. That
@@ -162,7 +162,7 @@ blocked every visible sign that `resolve_dispute()` (the DB RPC) had
 already succeeded, which reads exactly like "the button does nothing" even
 though the dispute really was resolved server-side. Fixed: the email send
 is now fire-and-forget, called only *after* `disputeBusy`/`loadDisputes()`
-update the screen — `GocContext.jsx`'s `resolveDispute`/new
+update the screen — `BanBeContext.jsx`'s `resolveDispute`/new
 `sendDisputeResolvedEmail`, `AppState+Payments.swift`'s `resolveDispute`/new
 `sendDisputeResolvedEmail`.
 
@@ -264,7 +264,7 @@ is declared `RETURNS TABLE(...)`, so adding four columns to its OUT list failed
 the whole migration with `cannot change return type of existing function`. It
 needed `DROP FUNCTION IF EXISTS` + `CREATE FUNCTION`. Nothing depends on that
 function (a leaf read path called only over PostgREST — web
-`src/state/GocContext.jsx`, iOS `loadDisputeChats`; no view, trigger or other
+`src/state/BanBeContext.jsx`, iOS `loadDisputeChats`; no view, trigger or other
 function references it), so the drop is safe, and it all happens inside one
 transaction. This would have failed `supabase db push` outright.
 

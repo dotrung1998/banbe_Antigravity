@@ -74,7 +74,7 @@ export default async function globalSetup() {
   }
 
   // Deterministic screen sequence for every test that reuses this account:
-  // GocContext.jsx's syncUser() jumps straight to 'home' once it resolves
+  // BanBeContext.jsx's syncUser() jumps straight to 'home' once it resolves
   // if profile.prefs_saved is already true, regardless of which of
   // splash/langPick/themePick the screen happens to be sitting on at that
   // moment — without this, a freshly (re)created account still has

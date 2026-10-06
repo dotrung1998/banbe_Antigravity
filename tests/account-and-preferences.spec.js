@@ -70,7 +70,7 @@ test.describe('Account & Preferences Screen', () => {
   // A guest-mode "organizer toggle sends you to Login" test used to live
   // here, but Task 1 (mandatory login, 2026-09-18) means Account itself is
   // no longer reachable while signed out at all — 'account' isn't in
-  // GocContext.jsx's GUEST_ALLOWED_SCREENS, so the blanket guard routes a
+  // BanBeContext.jsx's GUEST_ALLOWED_SCREENS, so the blanket guard routes a
   // guest to Login before Account ever renders. The scenario this tested
   // (a guest seeing the toggle at all) can no longer happen.
 

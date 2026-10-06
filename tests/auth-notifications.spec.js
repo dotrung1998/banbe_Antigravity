@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 
 // Every test here exercises the Login screen's own signed-out behavior —
 // Task 1 (mandatory login, 2026-09-18) means Home/Account are no longer
-// reachable while signed out at all (the blanket guard in GocContext.jsx
+// reachable while signed out at all (the blanket guard in BanBeContext.jsx
 // routes any non-guest-allowed screen straight to Login), so this file
 // opts out of the shared, already-signed-in storageState
 // (tests/global-setup.js) and reaches Login the only way a real

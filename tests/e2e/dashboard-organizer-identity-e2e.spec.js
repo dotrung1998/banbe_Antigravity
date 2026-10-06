@@ -19,11 +19,11 @@
 // earliest-created row). So every one of the account's organizers' events
 // appeared under just the one branded name. EventDetail's own "Ghé" line
 // was never wrong — it always joins each event's own real `organizer_id`
-// (see loadRealEventsById/loadWeekendEvents in GocContext.jsx) — so this
+// (see loadRealEventsById/loadWeekendEvents in BanBeContext.jsx) — so this
 // was a genuine query-SCOPE bug in Dashboard.jsx, not a bad FK and not an
 // EventDetail display bug. No database rows needed changing; the fix is a
 // client-side filter (Dashboard.jsx's `myOrgEventKeysForEv`, backed by a
-// new `myOrgEventOrganizerId` map GocContext.jsx's loadMyEvents populates
+// new `myOrgEventOrganizerId` map BanBeContext.jsx's loadMyEvents populates
 // alongside the existing ownership-gate list, which is deliberately left
 // untouched — openNotification()/openVerificationDetail() still need the
 // FULL union for their own real per-event ownership gate).
@@ -71,7 +71,7 @@ test.describe('Dashboard organizer-identity scope — real backend E2E', () => {
     await admin.auth.admin.updateUserById(uid, { password: TEST_PASSWORD });
 
     // Real, live read of every organizer this account owns — same `.or(...)`
-    // GocContext.jsx's loadMyEvents()/syncUser() use, plus the same
+    // BanBeContext.jsx's loadMyEvents()/syncUser() use, plus the same
     // deterministic tie-break (`created_at` then `id`, both ascending) the
     // app itself now applies, so this test's expectation is derived from
     // the exact same rule the app uses, never a hardcoded name.

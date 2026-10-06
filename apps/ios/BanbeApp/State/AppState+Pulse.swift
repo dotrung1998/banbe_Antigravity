@@ -3,7 +3,7 @@ import Foundation
 /// TASK E (2026-10-01 UX foundation pass) — Banbe Pulse: a permanent,
 /// system-generated ring entry — deliberately NOT a real row in `stories`
 /// (that table hard-expires everything in 24h). Mirrors src/state/
-/// GocContext.jsx's own TASK E section function-for-function.
+/// BanBeContext.jsx's own TASK E section function-for-function.
 // 2026-09-25 fix pass — `.photos` added for the third Pulse tab (ranked
 // individual event photos). `loadPulsePhotos()` below always calls the RPC
 // with `daily`'s window (see that function's own doc comment for why), so

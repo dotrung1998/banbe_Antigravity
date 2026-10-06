@@ -1,10 +1,10 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, inkButton } from '../theme.js';
 
 // Mirrors iOS ThemePickView: caption, title, helper, two stacked choice rows
 // (name + subtitle, "✓"/"›" trailing), then a full-width ink Continue button.
 export default function ThemePick() {
-  const { state, T, pickLight, pickDark, finishOnboarding } = useGoc();
+  const { state, T, pickLight, pickDark, finishOnboarding } = useBanBe();
   const isDark = state.theme === 'dark';
 
   const choice = (title, subtitle, active, onClick, id) => (
@@ -29,7 +29,7 @@ export default function ThemePick() {
     <div
       style={{
         position: 'absolute', inset: 0, zIndex: 38, background: paper, display: 'flex', flexDirection: 'column',
-        justifyContent: 'flex-start', padding: '78px 30px 0', animation: 'gocFade 0.4s ease both',
+        justifyContent: 'flex-start', padding: '78px 30px 0', animation: 'banbeFade 0.4s ease both',
       }}
       data-screen-label="Appearance"
     >

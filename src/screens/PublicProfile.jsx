@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
 import { APP_STORE_URL } from '../lib/appStore.js';
@@ -25,7 +25,7 @@ const isMobileBrowser = typeof navigator !== 'undefined' && /iPhone|iPad|Android
 // edit) is OrganizerProfile.jsx, reached from the management page
 // (Dashboard.jsx's "Hồ sơ công khai của tổ chức" button), never from here.
 export default function PublicProfile() {
-  const { state, T, backFromPublicProfile, sharePublicProfile, openEditProfile, openOrganizerTeam, goEvent } = useGoc();
+  const { state, T, backFromPublicProfile, sharePublicProfile, openEditProfile, openOrganizerTeam, goEvent } = useBanBe();
   const s = state;
   const [qrOpen, setQrOpen] = useState(false);
   const [shareCardOpen, setShareCardOpen] = useState(false);

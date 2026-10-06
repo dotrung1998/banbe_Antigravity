@@ -1,4 +1,4 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { HostPaymentQr } from './sheets/PaymentQrManager.jsx';
 import HostTitleIcon from './HostTitleIcon.jsx';
 import { paper, ink, FACE, display, fieldGlass, inkButton, alert } from '../theme.js';
@@ -7,7 +7,7 @@ import { paper, ink, FACE, display, fieldGlass, inkButton, alert } from '../them
 // a guest's payment screen has nothing to show them — so this is the one
 // hosting setting that actually blocks money moving.
 export default function Payout() {
-  const { state, T, backFromDocuments, payoutField, savePayoutDetails } = useGoc();
+  const { state, T, backFromDocuments, payoutField, savePayoutDetails } = useBanBe();
   const s = state;
 
   // Either rail is enough. save_organizer_payment() derives pay_methods from
@@ -16,7 +16,7 @@ export default function Payout() {
   const canSave = (s.payoutAccountNo.trim() || s.payoutMomo.trim()) && !s.payoutSaving;
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Payout">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Payout">
       <div onClick={backFromDocuments} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>
         ‹ {T('Tài khoản', 'Account')}
       </div>

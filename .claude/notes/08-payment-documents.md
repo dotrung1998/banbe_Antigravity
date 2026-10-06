@@ -19,7 +19,7 @@ Auto-generation is `public.ensure_payment_document(p_booking, p_kind)` (024:259-
 | 4 | SQL trigger | `supabase/migrations/20260913000025_025_reserve_payment_workflow.sql:117-118` | inside the original reserve-workflow free-event auto-confirm |
 | 5 | SQL trigger | `supabase/migrations/20260914000031_031_fix_hold_and_sla_durations.sql:130-131` | same free-event auto-confirm, re-created after a hold/SLA duration fix |
 | 6 | SQL trigger | `supabase/migrations/20260917000053_053_hold_seats_guest_notification.sql:110-111` | same again, re-created alongside a guest-notification fix |
-| 7 | Web client | `src/state/GocContext.jsx:1440` | `loadDocuments()` — mints a missing **invoice** for every one of the guest's own bookings just from opening the Documents list (guest role, invoice kind only) |
+| 7 | Web client | `src/state/BanBeContext.jsx:1440` | `loadDocuments()` — mints a missing **invoice** for every one of the guest's own bookings just from opening the Documents list (guest role, invoice kind only) |
 | 8 | iOS client | `apps/ios/BanbeApp/State/AppState+Payments.swift:236` | same, `loadDocuments()` |
 
 All 6 SQL call sites (#1-6) are `PERFORM`-only or assign to a `RECORD` variable inside a `BEGIN ... EXCEPTION WHEN OTHERS THEN NULL END` block (or the caller only reads `.number` off the result, which is NULL-safe in plpgsql) — confirmed by reading each in full. This means **neutering `ensure_payment_document()` itself into a no-op is safe for all 6 without touching any of those 5 large trigger functions' bodies** (see Task 2).
@@ -29,7 +29,7 @@ All 6 SQL call sites (#1-6) are `PERFORM`-only or assign to a `RECORD` variable 
 | Screen | file:line | What it does today |
 |---|---|---|
 | `src/screens/DocumentView.jsx:23` | web | calls `renderPaymentDocument(doc, ...)` client-side, iframes the resulting HTML — the actual viewer |
-| `src/state/GocContext.jsx:1477-1487` `downloadDocument()` | web | re-renders the same HTML into a new window and calls `.print()` — web's own "Download ▪︎ Print" |
+| `src/state/BanBeContext.jsx:1477-1487` `downloadDocument()` | web | re-renders the same HTML into a new window and calls `.print()` — web's own "Download ▪︎ Print" |
 | `api/payment-document.js` | API | renders the same HTML server-side for iOS's web view (`renderPaymentDocument`, same module) |
 | `apps/ios/BanbeApp/State/AppState+Payments.swift:278-284` `documentURL(_:)` | iOS | points `DocumentWebView` at the above API route |
 | `apps/ios/BanbeApp/Views/DocumentViews.swift:106-150` `DocumentViewerView` | iOS | hosts that web view + iOS's own print pipeline |
@@ -100,7 +100,7 @@ hypothesis is false**, confirmed with real objects, not assumptions:
   one `.webp` (`9baf4be7-fe03-4dd4-80d0-bfc16a48bec7/receipt-1789650129477.webp`).
   Both `file_path`s have the booking id as their exact first path segment,
   character for character — the web upload path
-  (`GocContext.jsx:1742`, `` `${bookingId}/${kind}-${Date.now()}.${ext}` ``)
+  (`BanBeContext.jsx:1742`, `` `${bookingId}/${kind}-${Date.now()}.${ext}` ``)
   is what wrote both; there is no image-vs-PDF branch divergence in it.
 - Storage `object/list` confirms both objects actually exist at those exact
   paths with correct `mimetype` (`application/pdf` / `image/webp`).
@@ -290,7 +290,7 @@ no collision with the existing singular `event` jsonb column).
 - `src/lib/paymentDocument.js` — added `formatShortDate(value, lang)`
   ("12 Thg 9" / "Sep 12") and `eventDateAnchor(event)` (starts_at falling
   back to event_date+event_time — same precedence as 057's retention clock).
-- `src/state/GocContext.jsx` `loadDocuments()` — select now embeds
+- `src/state/BanBeContext.jsx` `loadDocuments()` — select now embeds
   `events(name, starts_at, event_date, event_time)`.
 - `src/screens/Documents.jsx` — the amount line only renders when
   `total_vnd > 0`; otherwise renders `"<event name> · <date>"`, sourced from
@@ -336,7 +336,7 @@ reason is rejected with exactly `REASON_REQUIRED`; the same second upload
 below now drives correctly.
 
 **Fix applied**:
-- `src/state/GocContext.jsx` `uploadPaymentDocument()` — now returns the
+- `src/state/BanBeContext.jsx` `uploadPaymentDocument()` — now returns the
   RPC's actual exception code (`REASON_REQUIRED`, `FILE_REQUIRED`,
   `AUTH_REQUIRED`, `NOT_AUTHORIZED`, `INVALID_PATH`, `BOOKING_NOT_FOUND`)
   instead of collapsing every failure into `UPLOAD_FAILED`.
@@ -347,7 +347,7 @@ below now drives correctly.
   the reason; a first upload skips this and uploads immediately, matching
   the RPC's own condition exactly. The error line now renders
   `uploadErrorMessage(code)` instead of one hardcoded string.
-- `src/state/GocContext.jsx` `loadAttendanceGuests()` — now also queries
+- `src/state/BanBeContext.jsx` `loadAttendanceGuests()` — now also queries
   `payment_documents` (`kind=receipt`, `booking_id IN (...)`,
   `superseded_at IS NULL OR purge_after > now()`) and attaches
   `hasReceipt`/`receiptVersionCount`/`receiptPendingDelete` per guest. The
@@ -408,7 +408,7 @@ screen let anyone actually open the still-live superseded copy during its
 still looked wrong on the real guest Receipts screen.
 
 **BUG 1 — both versions now listed and individually tappable**:
-- `src/state/GocContext.jsx` `loadDocuments()` (Documents.jsx's query, both
+- `src/state/BanBeContext.jsx` `loadDocuments()` (Documents.jsx's query, both
   host and guest roles) — filter changed from `superseded_at IS NULL` to
   `superseded_at IS NULL OR purge_after > now()`. RLS
   (`payment_documents_select_guest`/`_host`, 024) doesn't gate on
@@ -420,7 +420,7 @@ still looked wrong on the real guest Receipts screen.
   (superseded) or "Bản hiện tại" (only shown when a superseded twin for the
   same `booking_id` is *also* in the list — otherwise it's noise on the far
   more common single-version case).
-- `src/screens/Attendance.jsx`/`GocContext.jsx` `loadAttendanceGuests()` —
+- `src/screens/Attendance.jsx`/`BanBeContext.jsx` `loadAttendanceGuests()` —
   previously only aggregated counts; now also carries each receipt's `id`
   so both the live and any still-live superseded copy render as their own
   tappable row ("Bản hiện tại ›" / "Bản cũ · xoá sau 24h ›"). Reused

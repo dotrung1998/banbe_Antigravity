@@ -9,10 +9,10 @@
 nailed down the canonical "Going" status set after a real bug: bookings
 query `.in('status', ['pending', 'confirmed', 'attended'])` —
 `'expired'`/`'cancelled'`/`'no_show'` never count. Confirmed still current:
-- Web: `src/state/GocContext.jsx:690-697` (`loadMyEvents`) and `:2499`
+- Web: `src/state/BanBeContext.jsx:690-697` (`loadMyEvents`) and `:2499`
   (`loadPaymentBookings`'s own copy) both use the identical three-value
   list; result lands in `s.attending`, read via `isGoing(key)` at
-  `GocContext.jsx:1656`.
+  `BanBeContext.jsx:1656`.
 - iOS: `apps/ios/BanbeApp/State/AppState+Data.swift:260` (`loadMyEvents`)
   — same three values; `isGoing(_:)` at `AppState.swift:526`.
 
@@ -24,9 +24,9 @@ NOT backed by `public.favorites` today, on either platform**, even though
 the table already exists (`supabase/migrations/20260906000003_003_social_chat.sql:30-34`,
 `(user_id, event_id)` PK + owner-only RLS). Grepped both clients for
 `from('favorites')`/`.from("favorites")` — zero hits anywhere. `s.favorites`
-(`GocContext.jsx:267`) and iOS's `favorites` (`AppState.swift:179`) are both
+(`BanBeContext.jsx:267`) and iOS's `favorites` (`AppState.swift:179`) are both
 plain in-memory arrays, toggled locally (`toggleFav`/`toggleFavorite`,
-`GocContext.jsx:1657`, `AppState.swift:946-948`) and never read from or
+`BanBeContext.jsx:1657`, `AppState.swift:946-948`) and never read from or
 written to the DB table — a reload empties them (web doesn't even persist
 to `localStorage`, unlike `located`/`lang`/`theme`). **This filter ticket
 reuses `isSaved`/`s.favorites` exactly as they already behave** (matching
@@ -66,7 +66,7 @@ those are), and at least one venue-plus-district compound
 (`Yentown, Quận 1`) — genuinely inconsistent free text, confirming a
 dropdown built directly off this column would show duplicate/incoherent
 options. **But Home doesn't need one**: it already has its own curated,
-non-free-text district picker — `AREAS` (`GocContext.jsx:302-309`; iOS
+non-free-text district picker — `AREAS` (`BanBeContext.jsx:302-309`; iOS
 mirror likely named similarly, see `AppState.swift`'s `currentArea`/`AREAS`
 usage) — five fixed entries (`Toàn Sài Gòn`/`Quận 1`/`Thảo Điền`/
 `Bình Thạnh`/`Quận khác`/`Đà Nẵng`) matched via `.includes()` against the
@@ -89,7 +89,7 @@ UI pattern, not a new one).
 
 ## Implementation
 
-**Web** (`src/state/GocContext.jsx`):
+**Web** (`src/state/BanBeContext.jsx`):
 - New `initialState` fields: `filterAttending: false`, `filterSaved: false`,
   `filterSoldOut: false`.
 - New `toggleHomeFilter(key)` — `key` one of `'attending'|'saved'|'soldOut'`,
@@ -136,7 +136,7 @@ UI pattern, not a new one).
 
 Both are real, opposite-direction bugs from the same root cause (a frozen number standing in for a live clock) — one item that should have cleared never did, one item that shouldn't have been hidden always was.
 
-**Fix**: new batched live-status fetch — `loadHomeLiveEvents()` (`GocContext.jsx`, right after the existing single-event `liveEvent` effect; `AppState+Data.swift`, right after `loadLiveEventStatus()`) — queries `events(slug, status, starts_at, cancelled_at, cancel_reason)` for every catalogue key at once (public info, no sign-in gate, same as the existing single-event version), stored in new `s.homeLiveEvents`/`app.homeLiveEvents` (keyed by catalogue key). `Home.jsx`'s new `withLive(e)` / `AppState.swift`'s new `withLive(_:)` merge this onto a catalogue event via the SAME `liveEventOverrides`/`Countdown.liveEventOverrides` function `curEvent` already uses for a single event — applied to both `feed` and `savedList`/`savedStrip` before their own filtering. `endedHoursAgo` is only ever set once `status == 'ended'` (confirmed by re-reading `liveEventOverrides`'s own branches) — an upcoming/ongoing event's `endedHoursAgo` stays `null` regardless of `homeLiveEvents` having a row for it, so the 48h clause (`!(e.endedHoursAgo != null && e.endedHoursAgo > 48)`, unchanged) structurally can never fire for anything that hasn't actually finished. Re-ran the same live query after implementing: `phokhuya` now resolves `endedHoursAgo ≈ 792` (correctly excluded), `motlop` now resolves `endedHoursAgo: null` (correctly no longer hidden).
+**Fix**: new batched live-status fetch — `loadHomeLiveEvents()` (`BanBeContext.jsx`, right after the existing single-event `liveEvent` effect; `AppState+Data.swift`, right after `loadLiveEventStatus()`) — queries `events(slug, status, starts_at, cancelled_at, cancel_reason)` for every catalogue key at once (public info, no sign-in gate, same as the existing single-event version), stored in new `s.homeLiveEvents`/`app.homeLiveEvents` (keyed by catalogue key). `Home.jsx`'s new `withLive(e)` / `AppState.swift`'s new `withLive(_:)` merge this onto a catalogue event via the SAME `liveEventOverrides`/`Countdown.liveEventOverrides` function `curEvent` already uses for a single event — applied to both `feed` and `savedList`/`savedStrip` before their own filtering. `endedHoursAgo` is only ever set once `status == 'ended'` (confirmed by re-reading `liveEventOverrides`'s own branches) — an upcoming/ongoing event's `endedHoursAgo` stays `null` regardless of `homeLiveEvents` having a row for it, so the 48h clause (`!(e.endedHoursAgo != null && e.endedHoursAgo > 48)`, unchanged) structurally can never fire for anything that hasn't actually finished. Re-ran the same live query after implementing: `phokhuya` now resolves `endedHoursAgo ≈ 792` (correctly excluded), `motlop` now resolves `endedHoursAgo: null` (correctly no longer hidden).
 
 Caption renamed (was "Tự xóa sau 48 giờ"/"Clears after 48h", implying everything in the strip is time-limited) to "Sự kiện đã qua sẽ ẩn sau 48h"/"Past events clear after 48h" — `Home.jsx`, `HomeView.swift`.
 

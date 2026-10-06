@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useGoc } from '../../state/GocContext.jsx';
+import { useBanBe } from '../../state/BanBeContext.jsx';
 import { bg } from '../../data/events.js';
 
 // Minimal line icons — the app has no icon set, and emoji would sit badly
@@ -17,7 +17,7 @@ function Icon({ name, filled }) {
 }
 
 // Same easing this app already uses for its entrance animations (index.css's
-// gocIn/gocSheetIn) — reused here for the dismiss transform rather than a
+// banbeIn/banbeSheetIn) — reused here for the dismiss transform rather than a
 // new curve.
 const DISMISS_EASING = 'cubic-bezier(.22,.61,.36,1)';
 const DISMISS_MS = 280;
@@ -54,7 +54,7 @@ const GESTURE_THRESHOLD = 44;
 const DRAG_REVEAL_DISTANCE = 200;
 
 export default function PhotoViewer() {
-  const { state: s, T, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, isSaved, toggleFav } = useGoc();
+  const { state: s, T, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, isSaved, toggleFav } = useBanBe();
   const drag = useRef(null);
   const photoRef = useRef(null);
   // Task 2b follow-up: the blurred-copy backdrop and its dim overlay, so a
@@ -79,7 +79,7 @@ export default function PhotoViewer() {
   const index = s.photoViewer?.index;
   // True once the entrance animation has had time to finish. Deliberately
   // NOT the same render as `closing` turning on — a CSS Animation
-  // (`gocIn`) still assigned to `transform` blocks a same-property CSS
+  // (`banbeIn`) still assigned to `transform` blocks a same-property CSS
   // Transition from ever interpolating when both are toggled in one
   // update (confirmed by sampling the computed transform frame-by-frame
   // during dismiss: it always jumped straight to the end value instead of
@@ -257,7 +257,7 @@ export default function PhotoViewer() {
       data-screen-label="Photo viewer"
       style={{
         position: 'absolute', inset: 0, zIndex: 24, overflow: 'hidden', containerType: 'size',
-        animation: entered ? undefined : 'gocFade 0.2s ease both',
+        animation: entered ? undefined : 'banbeFade 0.2s ease both',
         opacity: closing ? 0 : 1,
         // Always present, even before there's anything to transition —
         // adding this in the SAME render that first changes `opacity`
@@ -348,11 +348,11 @@ export default function PhotoViewer() {
             WebkitUserSelect: 'none',
             WebkitUserDrag: 'none',
             WebkitTouchCallout: 'none',
-            animation: entered ? undefined : 'gocIn 0.22s cubic-bezier(.22,.61,.36,1) both',
+            animation: entered ? undefined : 'banbeIn 0.22s cubic-bezier(.22,.61,.36,1) both',
             transform: closing ? closing.transform : 'none',
             transformOrigin: 'center',
             // Always present — same reasoning as the backdrop's opacity
-            // transition above. `animation: gocIn` (which also animates
+            // transition above. `animation: banbeIn` (which also animates
             // `transform`) wins over this while it's running; once it
             // finishes the element is at rest with `transform: none` and
             // this transition, so a later JS-driven change to `transform`

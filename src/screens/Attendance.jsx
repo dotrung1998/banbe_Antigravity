@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useGoc, shapeRealEventAsCurEvent } from '../state/GocContext.jsx';
+import { useBanBe, shapeRealEventAsCurEvent } from '../state/BanBeContext.jsx';
 import { findEvent, isCosmeticCatalogMatch } from '../data/events.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { liveEventOverrides } from '../lib/countdown.js';
@@ -28,7 +28,7 @@ export default function Attendance() {
     state, set, T, trStatus, backFromAttendance, toggleCheckin, openQrScan, openCancelBooking, markGuestPaid, uploadPaymentDocument,
     openVerificationDetail, openRejectGuest, loadAttendanceGuests, openDocumentFromNotification, loadHomeLiveEvents,
     cancelEvent, loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo, markRefundSent,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   // Same documentBack-style pattern (07-notifications.md's 2026-09-18
   // follow-up): the back link's own label follows attendanceBack too, so
@@ -170,7 +170,7 @@ export default function Attendance() {
 
   if (!attKey || attEvLoading || attEvUnavailable) {
     return (
-      <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
+      <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
         <div onClick={backFromAttendance} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
         {attKey && (
           <p style={{ padding: '40px 22px', fontSize: 13, color: ink }}>
@@ -199,7 +199,7 @@ export default function Attendance() {
 
   if (eventEnded) {
     return (
-      <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
+      <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
         <div onClick={backFromAttendance} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
         <p style={{ padding: '40px 22px 0', fontSize: 13, color: ink }}>{attEvLive.cancelled ? T('Sự kiện đã bị huỷ.', 'This event was cancelled.') : T('Sự kiện đã kết thúc.', 'This event has ended.')}</p>
         {/* A cancelled event keeps its guest emails reachable, so the host can
@@ -222,12 +222,12 @@ export default function Attendance() {
   }
 
   // The guest list is whoever actually holds a real booking for this event
-  // (GocContext's loadAttendanceGuests), not a generated placeholder list.
+  // (BanBeContext's loadAttendanceGuests), not a generated placeholder list.
   const guests = s.attendanceGuests;
   const checkedCount = guests.filter(g => g.checkedIn).length;
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Attendance">
       <div onClick={backFromAttendance} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {backLabel}</div>
       <div style={{ padding: '14px 22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <div style={{ minWidth: 0 }}>
@@ -430,7 +430,7 @@ export default function Attendance() {
         })}
         {/* TASK D — three distinct states, not two: still-loading text is
             shown until the guest query is FULLY resolved (attendanceLoading,
-            guarded server-side by attendanceGuestsSeq in GocContext against
+            guarded server-side by attendanceGuestsSeq in BanBeContext against
             an out-of-order response ever flipping this back on stale data);
             once genuinely loaded-and-empty, the copy itself depends on
             whether this event has ANY refund history at all

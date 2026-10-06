@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { formatVnd, formatShortDate, eventDateAnchor } from '../lib/paymentDocument.js';
 import HostTitleIcon from './HostTitleIcon.jsx';
 import { paper, ink, rule, display, fieldGlass } from '../theme.js';
@@ -8,7 +8,7 @@ import { paper, ink, rule, display, fieldGlass } from '../theme.js';
 // Account opens it with the pair already chosen, so the screen itself never
 // needs a filter control.
 export default function Documents() {
-  const { state, T, loadDocuments, openDocument, backFromDocuments, downloadDocument } = useGoc();
+  const { state, T, loadDocuments, openDocument, backFromDocuments, downloadDocument } = useBanBe();
   const s = state;
 
   useEffect(() => { loadDocuments(); }, [loadDocuments]);
@@ -42,7 +42,7 @@ export default function Documents() {
     : T('Tài khoản', 'Account');
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Documents">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Documents">
       <div onClick={backFromDocuments} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="documents-back">
         ‹ {backLabel}
       </div>

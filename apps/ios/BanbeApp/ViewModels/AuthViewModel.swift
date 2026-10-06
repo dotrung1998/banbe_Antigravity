@@ -2,8 +2,8 @@ import Foundation
 import Supabase
 
 /// Owns the current auth session and profile — the iOS equivalent of
-/// GocContext's `user`/`accountType` state and its onAuthStateChange
-/// listener on the web side (src/state/GocContext.jsx).
+/// BanBeContext's `user`/`accountType` state and its onAuthStateChange
+/// listener on the web side (src/state/BanBeContext.jsx).
 @MainActor
 final class AuthViewModel: ObservableObject {
     @Published var session: Session?
@@ -40,7 +40,7 @@ final class AuthViewModel: ObservableObject {
     /// Splash completion-gating fix (2026-09-30) — true once the FIRST auth
     /// event (of any kind — almost always `.initialSession`, the cold-
     /// launch session restore) has actually been processed. Web's
-    /// equivalent is `GocContext.jsx`'s `sessionChecked`
+    /// equivalent is `BanBeContext.jsx`'s `sessionChecked`
     /// (09-auth-onboarding.md's `postAuthDestination(prev)` explicitly
     /// treats `!prev.sessionChecked` as "don't decide signed-out yet" for
     /// exactly this reason). Before this fix, iOS's `SplashView` had no
@@ -57,7 +57,7 @@ final class AuthViewModel: ObservableObject {
             guard let self else { return }
             // Restores any persisted session on launch, then keeps listening
             // for sign-in/out and token refresh — mirrors
-            // supabase.auth.onAuthStateChange in GocContext.jsx.
+            // supabase.auth.onAuthStateChange in BanBeContext.jsx.
             for await (event, session) in SupabaseService.client.auth.authStateChanges {
                 if event == .initialSession || event == .signedIn || event == .tokenRefreshed {
                     self.session = session
@@ -231,7 +231,7 @@ final class AuthViewModel: ObservableObject {
     /// app, there's no page navigation away from the app here, so
     /// AppState.policyConsent (checked by the caller before this ever
     /// runs) simply survives in memory across the whole flow; no
-    /// localStorage-style stash needed the way GocContext.jsx's
+    /// localStorage-style stash needed the way BanBeContext.jsx's
     /// syncUser()/PENDING_OAUTH_CONSENT_KEY needs one.
     ///
     /// `redirectTo` reuses the `banbe://` scheme already registered for the

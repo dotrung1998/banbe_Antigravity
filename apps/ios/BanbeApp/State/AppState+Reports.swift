@@ -191,7 +191,7 @@ extension AppState {
 
     // MARK: - Export
 
-    /// Spreadsheet-injection guard — see GocContext.jsx's `csvCell` for the
+    /// Spreadsheet-injection guard — see BanBeContext.jsx's `csvCell` for the
     /// full rationale (a hostile event/organizer name starting with
     /// =/+/-/@ could otherwise execute as a formula when opened).
     private func csvCell(_ value: Any) -> String {

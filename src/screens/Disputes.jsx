@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { paper, ink, rule, display, alert } from '../theme.js';
 import HostTitleIcon from './HostTitleIcon.jsx';
@@ -29,7 +29,7 @@ const REASON_CATEGORIES = [
 export default function Disputes() {
   const {
     state, T, loadDisputes, resolveDispute, loadAuditTrail, backFromDocuments,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   const [note, setNote] = useState('');
   const [reasonCategory, setReasonCategory] = useState('other');
@@ -49,7 +49,7 @@ export default function Disputes() {
   const closed = s.disputes.filter(d => d.dispute_resolved_at);
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Disputes">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Disputes">
       <div onClick={backFromDocuments} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="disputes-back">
         ‹ {T('Duyệt & Kiểm Duyệt', 'Review & Moderation')}
       </div>

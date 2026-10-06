@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
-import { useGoc } from '../../state/GocContext.jsx';
+import { useBanBe } from '../../state/BanBeContext.jsx';
 import { paper, ink, rule, dockGlass } from '../../theme.js';
 import {
   LOCATION_ALL, countryLabel, locationAncestorIds, buildLocationSearchIndex, searchLocationTree,
 } from '../../lib/locationTree.js';
 
 // Location hierarchy sheet (2026-09-30, migration 112) — replaces the old
-// flat, hardcoded 6-row "Khu vực" list (AREAS in GocContext.jsx) with the
+// flat, hardcoded 6-row "Khu vực" list (AREAS in BanBeContext.jsx) with the
 // data-driven tree from src/lib/locationTree.js (built once in
-// GocContext.jsx as `locationTree`, from the same browsable discovery set
+// BanBeContext.jsx as `locationTree`, from the same browsable discovery set
 // the old counts used — static demo events that aren't cancelled/ended/
 // invite-only + real live public events).
 //
@@ -25,7 +25,7 @@ import {
 //  - picking any node (including the empty US root) only calls pickArea —
 //    it never touches the GPS/location-permission flow below.
 export default function AreaSheet() {
-  const { state, set, T, located, pickArea, allowLocation, denyLocation, locationTree, curArea } = useGoc();
+  const { state, set, T, located, pickArea, allowLocation, denyLocation, locationTree, curArea } = useBanBe();
   const s = state;
   const lang = s.lang === 'en' ? 'en' : 'vi';
   const closeArea = () => set({ areaAsking: false });
@@ -99,8 +99,8 @@ export default function AreaSheet() {
   );
 
   return (
-    <div onClick={closeArea} style={{ position: 'absolute', inset: 0, zIndex: 21, background: 'rgba(12,12,12,0.32)', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '4px 16px 86px', boxSizing: 'border-box', animation: 'gocFade 0.2s ease both' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ ...dockGlass({ borderRadius: 26, background: 'color-mix(in srgb, var(--bb-bg) 92%, transparent)', border: '1px solid var(--bb-rule, rgba(var(--bb-fg-rgb), 0.12))' }), position: 'relative', padding: '22px 24px 16px', display: 'flex', flexDirection: 'column', maxHeight: '100%', minHeight: 0, boxSizing: 'border-box', animation: 'gocSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+    <div onClick={closeArea} style={{ position: 'absolute', inset: 0, zIndex: 21, background: 'rgba(12,12,12,0.32)', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '4px 16px 86px', boxSizing: 'border-box', animation: 'banbeFade 0.2s ease both' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...dockGlass({ borderRadius: 26, background: 'color-mix(in srgb, var(--bb-bg) 92%, transparent)', border: '1px solid var(--bb-rule, rgba(var(--bb-fg-rgb), 0.12))' }), position: 'relative', padding: '22px 24px 16px', display: 'flex', flexDirection: 'column', maxHeight: '100%', minHeight: 0, boxSizing: 'border-box', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
         {/* Absolutely positioned (not a sibling-wrapping header row) so
             "Khu vực" stays a direct child of this sheet container —
             existing tests locate the sheet via

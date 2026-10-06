@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { ink, rule, fieldGlass, cardGlass, alert } from '../theme.js';
 import { supabase } from '../lib/supabase.js';
 import { buildRefundDisputeExport, saveBlob } from '../lib/disputeExport.js';
@@ -64,7 +64,7 @@ function retentionLabel(thread, T) {
 // only the selector, the RPCs and the explanatory copy differ. Exactly one of
 // bookingId / refundClaimId is passed.
 export default function DisputeChatPanel({ bookingId, refundClaimId }) {
-  const { state, T, loadDisputeChat, loadRefundDisputeChat, disputeChatDraftType, sendDisputeMessage, sendRefundDisputeMessage, clearChatHighlight, loadDisputeChats } = useGoc();
+  const { state, T, loadDisputeChat, loadRefundDisputeChat, disputeChatDraftType, sendDisputeMessage, sendRefundDisputeMessage, clearChatHighlight, loadDisputeChats } = useBanBe();
   const s = state;
   const listRef = useRef(null);
   const messageRefs = useRef({}); // message id -> DOM node, for scrollIntoView
@@ -211,7 +211,7 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
   };
 
   // Reached by tapping a 'dispute_message' toast/notification
-  // (openNotification, GocContext.jsx) — scrolls to and briefly highlights
+  // (openNotification, BanBeContext.jsx) — scrolls to and briefly highlights
   // the specific message named by `chatHighlight.messageId`, or just the
   // bottom of the thread if that's null (an older notification row from
   // before migration 050 added message_id). Only runs once per highlight —

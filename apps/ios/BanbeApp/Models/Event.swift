@@ -155,7 +155,7 @@ struct MapExploreState {
 
 /// Address-autocomplete fix pass (2026-09-28) — one candidate from
 /// `AppState.searchCreateAddress(_:)` (MKLocalSearch). Mirrors web's own
-/// `shapeAddressSuggestion` (GocContext.jsx) field-for-field, so both
+/// `shapeAddressSuggestion` (BanBeContext.jsx) field-for-field, so both
 /// platforms validate/store the exact same shape server-side (migration
 /// 105) despite using different underlying providers (MapKit here,
 /// Nominatim there) — "compare iOS and web behavior without creating

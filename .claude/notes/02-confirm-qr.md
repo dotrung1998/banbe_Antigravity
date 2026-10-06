@@ -7,7 +7,7 @@
 - `supabase/migrations/20260913000027_027_organizer_alert_routing.sql:92` `verify_payment_from_bot()` — Telegram-bot confirm path (alt entry to verify_payment)
 - `supabase/migrations/20260913000026_026_payment_state_machine.sql:939` `sweep_verification_slas()` — cron, reminds/escalates overdue, **does NOT auto-confirm**
 - `api/cron/escalate-verifications.js` — drains `alert_outbox`, sends Telegram alerts only
-- `src/state/GocContext.jsx:918` `approvePayment()` / `apps/ios/BanbeApp/State/AppState+Payments.swift:584` `approvePayment()`
+- `src/state/BanBeContext.jsx:918` `approvePayment()` / `apps/ios/BanbeApp/State/AppState+Payments.swift:584` `approvePayment()`
 - `src/screens/Verifications.jsx:15` — organizer queue UI ("Money received" button)
 - `src/screens/Confirmed.jsx:200,216` `QrCode()` — QR render via `qrcode` lib, value = `booking.id`
 

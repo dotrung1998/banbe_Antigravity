@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { agoLabel, bg } from '../data/events.js';
 import { avatarSourceFor, notificationAgeBucket, groupNotificationsByDay, collapseDayGroups } from '../lib/notifications.js';
 import { paper, ink, rule, alert, display, fieldGlass } from '../theme.js';
@@ -122,7 +122,7 @@ export default function Notifications() {
   const {
     state, T, trStatus, goHome, openNotification, deleteNotification, deleteNotifications,
     markNotificationRead, markNotificationUnread, muteNotificationKind,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   // Which sections have had their "Xem thêm" tapped — purely a render-time
   // slice of already-loaded data (loadNotifications() fetches up to 50 at
@@ -166,7 +166,7 @@ export default function Notifications() {
   // Without this, section membership was being recomputed from live
   // read_at on every render — the exact same array (s.notifications) is
   // also overwritten wholesale every 5s by the app-wide toast poll
-  // (startNotificationPolling(), GocContext.jsx), so a plain
+  // (startNotificationPolling(), BanBeContext.jsx), so a plain
   // useMemo/derived-state approach re-shuffles a notification the instant
   // either markNotificationRead() OR that unrelated poll tick re-renders
   // this screen — which is what "reading moves it" actually was.
@@ -230,7 +230,7 @@ export default function Notifications() {
   };
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Notifications">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Notifications">
       <div style={{ padding: '62px 24px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
         {/* iOS parity: wordmark BEFORE the title, inline (hidden while the
             search field is showing). Search input replaces the title,
@@ -245,7 +245,7 @@ export default function Notifications() {
             style={{
               ...fieldGlass({ flex: 1, minWidth: 0, padding: '10px 14px', borderRadius: 999, border: 'none' }),
               fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none',
-              animation: `gocIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both`,
+              animation: `banbeIn ${SHEET_ANIM_MS}ms cubic-bezier(.22,.61,.36,1) both`,
             }}
           />
         ) : (
@@ -256,31 +256,31 @@ export default function Notifications() {
             </span>
           </div>
         )}
-        {/* The two right-side slots morph in place (key + gocFade) into
+        {/* The two right-side slots morph in place (key + banbeFade) into
             Select all + Cancel; Cancel is in the shared `alert` color. */}
         <div style={{ display: 'flex', gap: 14, flex: 'none' }}>
           {selectionMode ? (
             <HeaderIconButton
               key="select-all" icon="selectAll" label={T('Chọn tất cả', 'Select all')} onClick={selectAll}
-              testId="notifications-select-all" style={{ animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
+              testId="notifications-select-all" style={{ animation: `banbeFade ${SHEET_ANIM_MS}ms ease both` }}
             />
           ) : (
             <HeaderIconButton
               key="search" icon={searchOpen ? 'close' : 'search'} label={searchOpen ? T('Đóng', 'Close') : T('Tìm', 'Search')}
               onClick={() => { if (searchOpen) setQuery(''); setSearchOpen(v => !v); }}
-              testId="notifications-search-toggle" style={{ animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
+              testId="notifications-search-toggle" style={{ animation: `banbeFade ${SHEET_ANIM_MS}ms ease both` }}
             />
           )}
           {selectionMode ? (
             <HeaderIconButton
               key="cancel" icon="close" label={T('Huỷ', 'Cancel')} tint={alert} onClick={exitSelectionMode}
-              testId="notifications-selection-cancel" style={{ animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
+              testId="notifications-selection-cancel" style={{ animation: `banbeFade ${SHEET_ANIM_MS}ms ease both` }}
             />
           ) : (
             s.notifications.length > 0 && (
               <HeaderIconButton
                 key="select" icon="select" label={T('Chọn', 'Select')} onClick={() => setSelectionMode(true)}
-                testId="notifications-select-mode" style={{ animation: `gocFade ${SHEET_ANIM_MS}ms ease both` }}
+                testId="notifications-select-mode" style={{ animation: `banbeFade ${SHEET_ANIM_MS}ms ease both` }}
               />
             )
           )}
@@ -401,8 +401,8 @@ export default function Notifications() {
 function NotificationActionSheet({ n, T, onClose, onDelete, onToggleRead, onMute }) {
   const isRead = !!n.read_at;
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 30, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'gocFade 0.2s ease both' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: paper, borderRadius: '18px 18px 0 0', padding: '10px 0 28px', animation: 'gocSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 30, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: paper, borderRadius: '18px 18px 0 0', padding: '10px 0 28px', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
         <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(27,25,22,0.16)', margin: '4px auto 10px' }} />
         <MenuRow onClick={onToggleRead} testId="notification-menu-toggle-read">
           {isRead ? T('Đánh dấu chưa đọc', 'Mark as unread') : T('Đánh dấu đã đọc', 'Mark as read')}

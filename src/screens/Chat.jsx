@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { localizeSystemMessage } from '../lib/systemMessageLocale.js';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { useConversationDispute, DisputeBlock } from './ConversationDispute.jsx';
 import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass } from '../theme.js';
 
@@ -69,7 +69,7 @@ function formatTime(iso) {
 }
 
 export default function Chat() {
-  const { state, set, T, curEvent: ev, chatBackFn, chatOnType, chatOnKey, chatSend, deleteMessage, goEvent, sendChatAttachment, openChatPhoto } = useGoc();
+  const { state, set, T, curEvent: ev, chatBackFn, chatOnType, chatOnKey, chatSend, deleteMessage, goEvent, sendChatAttachment, openChatPhoto } = useBanBe();
   const s = state;
   const composerInputRef = useRef(null);
   const messagesListRef = useRef(null);
@@ -164,11 +164,11 @@ export default function Chat() {
   // guest name for an organizer), set once at openThread()/openChatFor()
   // time since it depends on which side of the thread I'm on, not just the
   // event. Falls back to ev.hostShort for the one caller that doesn't know
-  // it yet (a 'new_message' notification tap — see GocContext.jsx).
+  // it yet (a 'new_message' notification tap — see BanBeContext.jsx).
   const headerTitle = s.chatOtherName || ev.hostShort;
 
   return (
-    <div style={{ position: 'absolute', inset: 0, animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Chat">
+    <div style={{ position: 'absolute', inset: 0, animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Chat">
       <div style={{ padding: '66px 22px 14px', borderBottom: `1px solid ${rule}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
           <span onClick={chatBackFn} data-testid="chat-back" style={{ fontSize: 11, color: ink, cursor: 'pointer' }}>‹ {chatBackLabel}</span>
@@ -190,7 +190,7 @@ export default function Chat() {
           // Task 2 — unread divider: rendered once, right above the first
           // message that was unread at the moment this thread was opened
           // (s.chatUnreadDividerId, captured once by loadChatMessages'
-          // computeDivider pass — see GocContext.jsx). Naturally disappears
+          // computeDivider pass — see BanBeContext.jsx). Naturally disappears
           // on the next open since those rows are marked read immediately.
           if (m.id && m.id === s.chatUnreadDividerId) {
             rows.push(
@@ -270,7 +270,7 @@ export default function Chat() {
                 {/* Task 4 — attachment rendering: an inline image for an
                     image/* attachment, a small document chip otherwise.
                     `attachmentUrl` comes from signChatAttachmentUrls()
-                    (GocContext.jsx), the same batched-signed-URL pattern
+                    (BanBeContext.jsx), the same batched-signed-URL pattern
                     proofUrls already uses for the private payment-proof
                     bucket.
                     2026-09-21 follow-up (14-photo-viewer.md) — an image tap

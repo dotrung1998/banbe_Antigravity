@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, fieldGlass, alert, inkButton } from '../theme.js';
 import { PROFILE_PALETTES } from '../lib/profileTheme.js';
 import { LINK_PLATFORMS, SocialLinksEditor } from './SocialLinksEditor.jsx';
@@ -12,7 +12,7 @@ export default function EditProfile() {
   const {
     state, T, backFromEditProfile, set, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile,
     editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   const fileRef = useRef(null);
 
@@ -28,7 +28,7 @@ export default function EditProfile() {
   const monogram = (s.editProfileName || s.user?.name || 'B').trim()[0]?.toUpperCase() || 'B';
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Edit profile">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Edit profile">
       <div style={{ padding: '66px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span onClick={backFromEditProfile} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('‹ Tài khoản', '‹ Account')}</span>
         <span style={{ ...display(18) }}>{T('Chỉnh Sửa Hồ Sơ', 'Edit Profile')}</span>

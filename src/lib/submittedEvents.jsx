@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { supabase } from './supabase.js';
 import { paper, ink, rule, alert, display, fieldGlass } from '../theme.js';
@@ -21,7 +21,7 @@ const COLS_REMIND = `${COLS}, admin_remind_count, last_admin_reminded_at`;
 const POLL_MS = 30000;
 
 export function useSubmittedEvents(enabled = true) {
-  const { state: s } = useGoc();
+  const { state: s } = useBanBe();
   const keys = useMemo(() => (s.myOrgEventKeys || []).filter(k => !EVENTS.some(e => e.key === k)), [s.myOrgEventKeys]);
   const keyStr = keys.join(',');
   const [rows, setRows] = useState([]);
@@ -58,14 +58,14 @@ export function useSubmittedEvents(enabled = true) {
 }
 
 export function useFormatWhen() {
-  const { T } = useGoc();
+  const { T } = useBanBe();
   const locale = T('vi-VN', 'en-GB');
   return (iso) => (iso ? new Date(iso).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' }) : '');
 }
 
 /** Expandable "Submitted Events" row for the Host tab. */
 export function SubmittedEventsRow({ submitted }) {
-  const { T, goDashboard } = useGoc();
+  const { T, goDashboard } = useBanBe();
   const fmt = useFormatWhen();
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState(null);

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { renderPaymentDocument } from '../lib/paymentDocument.js';
 import { paper, ink, alert, inkButton } from '../theme.js';
 
@@ -14,7 +14,7 @@ import { paper, ink, alert, inkButton } from '../theme.js';
 export default function DocumentView() {
   const {
     state, T, currentDocument, backFromDocument, downloadDocument, uploadPaymentDocument,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   const doc = currentDocument;
   const isHost = s.documentsRole === 'host';
@@ -27,7 +27,7 @@ export default function DocumentView() {
 
   if (!doc) {
     return (
-      <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Document">
+      <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Document">
         <div onClick={backFromDocument} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</div>
         <p style={{ fontSize: 13, color: ink, margin: '18px 22px 0' }}>{T('Không tìm thấy chứng từ.', "Couldn't find that document.")}</p>
       </div>
@@ -64,7 +64,7 @@ export default function DocumentView() {
     : uploadError ? T('Không tải lên được. Thử lại nhé.', "Couldn't upload. Please try again.") : '';
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Document">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Document">
       <div onClick={backFromDocument} style={{ flex: 'none', padding: '66px 22px 14px', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="document-view-back">
         ‹ {T('Quay lại', 'Back')}
       </div>

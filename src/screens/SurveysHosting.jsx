@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, alert } from '../theme.js';
 import { surveyPublicUrl } from '../lib/surveyLink.js';
 import { supabase } from '../lib/supabase.js';
@@ -288,7 +288,7 @@ export default function SurveysHosting() {
     mySurveyCandidates, mySurveyCandidatesLoading, mySurveyCandidatesError, mySurveyCandidatesBusySurveyId,
     loadSurveyCandidates, refreshSurveyCandidatesAction, dismissSurveyCandidateAction, restoreSurveyCandidateAction, applySurveyCandidateAction,
     setSurveyCandidatesStatusAction, archiveSurveysAction, unarchiveSurveyAction, deleteArchivedSurveysAction, deleteSurveyCandidatesAction, searchAddressSuggestions,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   // Returning from a survey Preview restores the tab it was opened from
   // (e.g. Archived) rather than resetting to Active.

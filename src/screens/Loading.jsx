@@ -12,7 +12,7 @@ export default function Loading({ label }) {
     <div
       style={{
         position: 'absolute', inset: 0, zIndex: 50, background: paper, display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center', animation: 'gocFade 0.2s ease both',
+        alignItems: 'center', justifyContent: 'center', animation: 'banbeFade 0.2s ease both',
       }}
       data-screen-label="Loading"
     >

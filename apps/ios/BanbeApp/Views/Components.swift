@@ -105,7 +105,7 @@ struct BanbeLiquidToggleStyle: ToggleStyle {
 /// this. Honors Reduce Motion: shows the GIF's own first frame, static,
 /// instead of looping it — there's no earlier Reduce-Motion precedent on
 /// this codebase to match (grepped both platforms — neither `Loading.jsx`'s
-/// `gocTumble` spin nor `SplashView`'s orbit arc guards on it today), so
+/// `banbeTumble` spin nor `SplashView`'s orbit arc guards on it today), so
 /// this is a new, narrowly-scoped guard rather than a wider retrofit.
 struct BanbeLoadingVisual: View {
     var size: CGFloat = 72

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, bg } from '../data/events.js';
 import { liveEventOverrides } from '../lib/countdown.js';
 import { supabase } from '../lib/supabase.js';
@@ -11,7 +11,7 @@ function organizerPhotoUrl(path, r2Ref) {
 }
 
 export default function Organizer() {
-  const { state, T, trStatus, stripKm, curEvent: ev, backToEvent, goEvent, goChat, toggleFollow, openPhoto, loadHomeLiveEvents, loadOrganizerPhotos } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent: ev, backToEvent, goEvent, goChat, toggleFollow, openPhoto, loadHomeLiveEvents, loadOrganizerPhotos } = useBanBe();
   const s = state;
   // 2026-09-25 fix pass (Task 0 audit) — see `orgEvents`' own comment
   // below; this screen never fetched live status before, so it's fetched
@@ -43,7 +43,7 @@ export default function Organizer() {
     .filter(e => e.orgName === ev.orgName && !e.cancelled && e.endedHoursAgo == null);
 
   return (
-    <div style={{ animation: 'gocFade 0.3s ease both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Organizer">
+    <div style={{ animation: 'banbeFade 0.3s ease both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Organizer">
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div onClick={backToEvent} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {ev.name}</div>
       {s.arrivedFromSharedLink && (

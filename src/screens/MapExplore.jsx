@@ -1,6 +1,6 @@
 import { screenHeight } from '../lib/viewport.js';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { useGoc, resolveCoverUrl, firstPhotoUrlByEvent } from '../state/GocContext.jsx';
+import { useBanBe, resolveCoverUrl, firstPhotoUrlByEvent } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { withR2Columns } from '../lib/mediaUrls.js';
 import { findEvent, isCosmeticCatalogMatch, haversineKm, distanceLabel } from '../data/events.js';
@@ -40,7 +40,7 @@ const CAT_DOT_COLOR = {
 // — reused verbatim for the compass button while location is denied.
 const DISABLED_OPACITY = 0.16;
 
-// Same poll cadence as GocContext.jsx's notification poll (07-notifications.md) —
+// Same poll cadence as BanBeContext.jsx's notification poll (07-notifications.md) —
 // this app has no realtime subscriptions anywhere, everything polls.
 const POLL_MS = 5000;
 
@@ -51,7 +51,7 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
   let q = supabase
     .from('events')
     // Keyword-search fix (migration 108) — re-enabled 2026-09-29, see
-    // REAL_EVENT_ROW_COLUMNS's own doc comment (GocContext.jsx) for why it
+    // REAL_EVENT_ROW_COLUMNS's own doc comment (BanBeContext.jsx) for why it
     // was briefly reverted and how its return was verified.
     // Search-matcher fix (Issue 2) — `cat_label`, `description`, `intro`
     // and the event's own organizer name are now selected too, so the
@@ -61,7 +61,7 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
     .select('id, key, name, cat_key, cat_label, area, city, lat, lng, starts_at, event_date, event_time, price_vnd, seats_remaining, status, cover_image, ' + (withR2 ? 'cover_r2_ref, ' : '') + 'keywords, description, intro, country_code, state_province, neighborhood, organizers(name)')
     .eq('status', 'live')
     // Strict invite-only events (2026-10-25): unlike loadWeekendEvents/
-    // loadDiscoveryEvents (GocContext.jsx), this query never filtered
+    // loadDiscoveryEvents (BanBeContext.jsx), this query never filtered
     // visibility at all — a real invite-only event would have shown up
     // on the Map for anyone. RLS (migration 113) is the actual backstop
     // now, but this list should stay honest client-side too: an invitee
@@ -99,7 +99,7 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
   // actually selected. Root-cause fix: only treat `cosmetic` as real
   // cosmetic data when it's a genuine match, and resolve the map card's own
   // image the SAME way Home/EventDetail already do for a real row —
-  // `resolveCoverUrl(row.cover_image, firstPhotoUrl)` (GocContext.jsx,
+  // `resolveCoverUrl(row.cover_image, firstPhotoUrl)` (BanBeContext.jsx,
   // migration 087's `cover_image` falling back to the first `event_photos`
   // row by sort_order) — never the static catalogue for a row that isn't
   // actually in it.
@@ -163,7 +163,7 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
       // "bepnho"), the exact bug reported: a real event created at 0 VND
       // showed "900.000đ" on Map while correctly showing "Miễn phí"/Free
       // on Event Detail (which reads the real row through a completely
-      // different, already-correct path, GocContext.jsx's
+      // different, already-correct path, BanBeContext.jsx's
       // `shapeRealEventAsCurEvent`). `price_vnd` itself is a real, valid
       // 0 for a genuinely free event — NOT "missing" — so this checks
       // `> 0`, never a bare truthiness/`||` check that would treat 0 the
@@ -184,7 +184,7 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
 }
 
 export default function MapExplore() {
-  const { state: s, T, goEvent, backFromMapExplore, allowLocation, setMapExploreState, curArea, openArea } = useGoc();
+  const { state: s, T, goEvent, backFromMapExplore, allowLocation, setMapExploreState, curArea, openArea } = useBanBe();
   // Restored once, at mount, if MapExplore.jsx's own CTA saved a snapshot
   // right before navigating to Event Detail (bug 2) — App.jsx's Shell
   // unmounts/remounts this whole component on every `screen` change, so
@@ -235,7 +235,7 @@ export default function MapExplore() {
     }
   }, []);
   // Task 6 (2026-09-21 follow-up) — "Open in Map"'s own snapshot
-  // (GocContext.jsx's openEventOnMap) never sets `sheetSnap` (only
+  // (BanBeContext.jsx's openEventOnMap) never sets `sheetSnap` (only
   // camera/selectedId), so a genuine MapExplore-to-MapExplore restore
   // (which DOES carry a real `sheetSnap`) is untouched; only the "arrives
   // with a card already selected, no restored sheet position of its own"
@@ -461,7 +461,7 @@ export default function MapExplore() {
       // with "Search here" (that's tied only to the explicit button).
       map.on('click', () => setSelectedId(null));
       // Task 7 fix (2026-09-21 follow-up) — `restored.singleEventFocus`
-      // ("Open in Map", GocContext.jsx's openEventOnMap) sets `cameraZoom:
+      // ("Open in Map", BanBeContext.jsx's openEventOnMap) sets `cameraZoom:
       // 15.5`, a deliberately tight single-pin view meant only for the
       // VISUAL camera. Seeding `lastQueriedBounds` from `map.getBounds()`
       // at that same tight zoom meant the very first freshness poll
@@ -600,7 +600,7 @@ export default function MapExplore() {
         // poll tick rebuilds every marker from scratch (`markersRef.current
         // .forEach(m => m.remove())` above, then brand-new `el`s here),
         // whichever pin stays selected got a FRESH element with no ongoing
-        // `gocPinPop` animation (deliberately not replayed — see below) to
+        // `banbePinPop` animation (deliberately not replayed — see below) to
         // paper over this: previously the SAME `el` carried both our own
         // inline `transform:scale(...)` AND Marker's position transform,
         // and only the pop keyframe's `fill-mode: both` accidentally kept
@@ -627,7 +627,7 @@ export default function MapExplore() {
           pinEl.appendChild(dot);
         }
         if (isSelected && lastAnimatedPinIdRef.current !== ev.id) {
-          pinEl.style.animation = 'gocPinPop 0.32s cubic-bezier(.22,.61,.36,1) both';
+          pinEl.style.animation = 'banbePinPop 0.32s cubic-bezier(.22,.61,.36,1) both';
           lastAnimatedPinIdRef.current = ev.id;
         }
         pinEl.addEventListener('click', (e) => { e.stopPropagation(); selectEvent(ev); });
@@ -825,7 +825,7 @@ export default function MapExplore() {
 
   // Bug 2: snapshot everything MapExplore itself owns right before handing
   // off to the full-screen Event Detail screen, so returning restores it
-  // instead of re-initializing from scratch. Saved into GocContext (not
+  // instead of re-initializing from scratch. Saved into BanBeContext (not
   // local state) because App.jsx's Shell unmounts this whole component the
   // instant `screen` changes away from 'mapExplore'.
   const openEventDetail = useCallback((id) => {

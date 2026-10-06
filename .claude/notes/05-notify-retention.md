@@ -6,7 +6,7 @@
 - `src/lib/disputeTranscript.js:38` `renderDisputeTranscript()` — HTML template (event/guest/organizer/resolution + message rows)
 - `api/_lib/email.js` `sendWithGmail()` — nodemailer, `attachments` array passed through unchanged
 - `api/_lib/emailTemplate.js` `renderEmail()`, `renderEmailText()` — shared email shell, reused as-is
-- `src/state/GocContext.jsx:1004` `resolveDispute()` — fires `fetch('/api/dispute-resolved-email')` after RPC success, best-effort
+- `src/state/BanBeContext.jsx:1004` `resolveDispute()` — fires `fetch('/api/dispute-resolved-email')` after RPC success, best-effort
 - `apps/ios/BanbeApp/State/AppState+Payments.swift:707` `resolveDispute()` — same, via `URLSession`
 - `supabase/migrations/20260914000033_033_dispute_thread_and_resolution.sql:304` `purge_resolved_dispute_threads()` — hard DELETE, cron
 - `supabase/migrations/20260914000033_033_dispute_thread_and_resolution.sql:324` `cron.schedule('banbe_purge_resolved_dispute_threads', '30 3 * * *', ...)`
@@ -129,7 +129,7 @@ not a report made after delivery.
    sent })` **even when `sent === 0`** — if both recipient emails ended up
    unresolvable (via gap 1, or an organizer row with both `owner_id` and
    `user_id` null), the endpoint reported HTTP 200, which the client's
-   `if (!res.ok)` check (`GocContext.jsx`'s `sendDisputeResolvedEmail`,
+   `if (!res.ok)` check (`BanBeContext.jsx`'s `sendDisputeResolvedEmail`,
    `AppState+Payments.swift`'s counterpart) reads as success — zero emails
    sent, zero errors surfaced anywhere.
 3. (Related, not separately fatal) all sends shared one try/catch — a

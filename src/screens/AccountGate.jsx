@@ -8,7 +8,7 @@
 // cannot bypass it; once it clears, the user is exactly where they were headed.
 
 import { useEffect, useRef, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { PHONE_COUNTRIES, DEFAULT_PHONE_COUNTRY, flagOf, toE164 } from '../lib/phone.js';
 import { digitsOnly, validateDob, dobProblemText } from '../lib/dob.js';
@@ -24,7 +24,7 @@ const inputStyle = (extra) => ({
 });
 
 function Scaffold({ title, subtitle, children }) {
-  const { T, logout } = useGoc();
+  const { T, logout } = useBanBe();
   return (
     <div style={{ minHeight: '100%', padding: '62px 24px 40px', boxSizing: 'border-box', color: ink }}>
       <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 96, height: 'auto', display: 'block', marginTop: 36 }} />
@@ -53,7 +53,7 @@ const ErrorLine = ({ text, testid }) => text
 
 // Day / Month / Year as three digit-only fields; focus moves on as each fills.
 function DobFields({ value, onChange, prefix }) {
-  const { T } = useGoc();
+  const { T } = useBanBe();
   const refs = [useRef(null), useRef(null), useRef(null)];
   const field = (key, label, ph, max, idx) => (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: key === 'year' ? 1.4 : 1, minWidth: 0 }}>
@@ -79,7 +79,7 @@ function DobFields({ value, onChange, prefix }) {
 }
 
 function PhoneEnrollment() {
-  const { T } = useGoc();
+  const { T } = useBanBe();
   const [country, setCountry] = useState(DEFAULT_PHONE_COUNTRY);
   const [number, setNumber] = useState('');
   const [e164, setE164] = useState('');
@@ -168,7 +168,7 @@ function PhoneEnrollment() {
 }
 
 function DobEnrollment() {
-  const { T } = useGoc();
+  const { T } = useBanBe();
   const [input, setInput] = useState({ day: '', month: '', year: '' });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -192,7 +192,7 @@ function DobEnrollment() {
 }
 
 function ConfirmDob({ lockedUntil }) {
-  const { T } = useGoc();
+  const { T } = useBanBe();
   const [input, setInput] = useState({ day: '', month: '', year: '' });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -242,7 +242,7 @@ function ConfirmDob({ lockedUntil }) {
 }
 
 export default function AccountGate() {
-  const { state, T } = useGoc();
+  const { state, T } = useBanBe();
   const { gate, status, blocking } = useAccountGate();
   // Like iOS: the splash plays first, then the gate takes over.
   if (!blocking || state.screen === 'splash') return null;
@@ -269,7 +269,7 @@ export default function AccountGate() {
     );
   }
   return (
-    <div data-testid="account-gate" data-gate={gate} style={{ position: 'fixed', inset: 0, zIndex: 2000, background: paper, overflowY: 'auto', animation: 'gocFade 0.25s ease both' }}>
+    <div data-testid="account-gate" data-gate={gate} style={{ position: 'fixed', inset: 0, zIndex: 2000, background: paper, overflowY: 'auto', animation: 'banbeFade 0.25s ease both' }}>
       {/* Home's Pulse teaser bubble is portaled to <body> (outside this overlay's
           stacking context) and would float over the gate; hide it while gated. */}
       <style>{'[data-testid="home-pulse-teaser-bubble"]{display:none !important}'}</style>

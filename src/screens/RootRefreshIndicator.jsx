@@ -40,7 +40,7 @@ export default function RootRefreshIndicator({ screen, progress, refreshing, lab
           shapeEl({
             stroke: ink, strokeWidth: 2.4, strokeLinecap: 'round',
             strokeDasharray: `${SEGMENT_PCT} ${100 - SEGMENT_PCT}`,
-            style: { animation: 'gocRefreshTravel 0.9s linear infinite' },
+            style: { animation: 'banbeRefreshTravel 0.9s linear infinite' },
           })
         ) : (
           shapeEl({

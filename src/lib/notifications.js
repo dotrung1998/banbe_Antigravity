@@ -1,4 +1,4 @@
-// Notification-bell presentation helpers — kept separate from GocContext.jsx
+// Notification-bell presentation helpers — kept separate from BanBeContext.jsx
 // so the row renderer (Notifications.jsx) doesn't need per-kind branching
 // scattered through its JSX. Mirrors apps/ios/BanbeApp/Lib/NotificationPresentation.swift.
 import { EVENTS } from '../data/events.js';
@@ -21,7 +21,7 @@ const GUEST_AVATAR_KINDS = new Set([
  * Resolves what a notification row's left-side circle should show.
  * `maps` = { bookingById, eventPhotoByEventId, avatarByUserId } — the three
  * lookup tables loadNotifications() batch-fetches once per screen-open
- * (see GocContext.jsx). Returns `{ type: 'image', url }` or `{ type: 'fallback' }`
+ * (see BanBeContext.jsx). Returns `{ type: 'image', url }` or `{ type: 'fallback' }`
  * — the caller decides how to render the fallback (this never returns a
  * broken/missing image URL).
  */

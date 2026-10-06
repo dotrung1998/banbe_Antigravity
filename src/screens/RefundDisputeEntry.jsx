@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { ink, honey, honeyBg } from '../theme.js';
 
@@ -23,7 +23,7 @@ const POLL_MS = 6000;
  * that grows a full chat transcript inside a card about something else.
  */
 export default function RefundDisputeEntry({ refundClaimId, amountVnd, eventName }) {
-  const { state, T, openDisputeChatInInbox, loadDisputeChats } = useGoc();
+  const { state, T, openDisputeChatInInbox, loadDisputeChats } = useBanBe();
   const s = state;
   const chat = s.disputeChats.find(c => c.refund_claim_id === refundClaimId) || null;
   const [tried, setTried] = useState(false);

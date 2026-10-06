@@ -103,7 +103,7 @@ test('approved event is discoverable anonymously; pending/withdrawn stays hidden
   assert.equal(afterApproval.visibility, 'public');
   assert.equal(afterApproval.price_vnd, 0, 'the real 0 VND price must round-trip correctly, never coerced to null/missing');
 
-  // 6. Exercise the EXACT discovery-query shape Home/GocContext.jsx's
+  // 6. Exercise the EXACT discovery-query shape Home/BanBeContext.jsx's
   // loadDiscoveryEvents() uses, not just a single-row lookup — this is
   // what actually proves "shows up on Home for a signed-out visitor",
   // the specific behavior task 2 fixed.

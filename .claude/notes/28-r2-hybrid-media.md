@@ -48,7 +48,7 @@ Rollback: reads -> unset read flag (clients immediately use legacy Supabase copi
 
 ## Files (all new unless marked)
 Backend: `api/media.js`, `api/_lib/{media,mediaCtx,mediaDb,r2,imageSafe}.js`, `api/_lib/handlers/cronMediaSweep.js`, `api/cron.js` (+job), `vercel.json` (+cron `media-sweep` 45 10 * * *), `supabase/migrations/20261203000153_153_r2_public_media.sql`, `scripts/migrate-media-to-r2.mjs`.
-Web: `src/lib/{mediaResolver,mediaUpload,mediaUrls}.js`; `src/state/GocContext.jsx` and 9 screens (modified).
+Web: `src/lib/{mediaResolver,mediaUpload,mediaUrls}.js`; `src/state/BanBeContext.jsx` and 9 screens (modified).
 iOS: `Services/{MediaResolver,MediaUploader}.swift`, `BanbeAppTests/MediaResolverTests.swift`; AppState+Data/Profile/Surveys, several views (modified).
 Tests: `tests/unit/{media-api,imageSafe,mediaResolver}.test.mjs`.
 

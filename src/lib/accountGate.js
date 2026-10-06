@@ -4,7 +4,7 @@
 // this module only reads it and exposes the RPCs the gate screen calls.
 // Booleans only — the stored date of birth is never sent to a client.
 //
-// Own tiny store (not GocContext) so the gate can't be skipped by app
+// Own tiny store (not BanBeContext) so the gate can't be skipped by app
 // navigation: App.jsx mounts <AccountGate/> as an overlay above every screen
 // whenever `blocking` is true.
 
@@ -37,7 +37,7 @@ export function refreshGate() {
       const wasBlocked = snap.gate === 'blocked' || snap.gate === 'unavailable' || snap.gate === 'unknown';
       emit({ gate: data?.ready ? 'ready' : 'blocked', status: data || null });
       // Profile/booking reads were blocked by RLS while gated; a token refresh
-      // re-fires onAuthStateChange so GocContext re-syncs the user profile.
+      // re-fires onAuthStateChange so BanBeContext re-syncs the user profile.
       if (data?.ready && wasBlocked) supabase.auth.refreshSession().catch(() => {});
     } catch {
       if (snap.gate === 'unknown' || snap.gate === 'none') emit({ gate: 'unavailable' });

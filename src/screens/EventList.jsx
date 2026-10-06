@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, bg } from '../data/events.js';
 import { liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass } from '../theme.js';
@@ -16,7 +16,7 @@ const SCREEN_LABELS = { going: 'Going', saved: 'Saved', completed: 'Completed' }
 // view rather than redirecting to Home, so "back" is a single step to
 // Account instead of losing the trip there.
 export default function EventList() {
-  const { state, T, trStatus, stripKm, eventListTitle, goEvent, backFromEventList, loadHomeLiveEvents, loadRealEventsById } = useGoc();
+  const { state, T, trStatus, stripKm, eventListTitle, goEvent, backFromEventList, loadHomeLiveEvents, loadRealEventsById } = useBanBe();
   const s = state;
   const mode = s.eventListMode;
   // 2026-09-25 fix pass (Task 0 audit) — see `list`'s own comment below;
@@ -73,7 +73,7 @@ export default function EventList() {
   const emptyMsg = T(...EMPTY_MESSAGES[mode]);
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label={SCREEN_LABELS[mode]}>
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label={SCREEN_LABELS[mode]}>
       <div onClick={backFromEventList} data-testid="event-list-back" style={{ padding: '70px 20px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Tài khoản', 'Account')}</div>
       <div style={{ padding: '10px 20px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
         <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flex: 'none' }}>

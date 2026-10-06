@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { formatVnd, formatShortDate } from '../lib/paymentDocument.js';
 import { REFUND_AUTO_CONFIRM_DAYS } from '../lib/refundPresentation.js';
 import HostTitleIcon from './HostTitleIcon.jsx';
@@ -15,7 +15,7 @@ const STATUS_LABEL = {
 // claim for the signed-in goer, reachable from Account and from Payment &
 // refund accounts, independent of any notification.
 export default function MyRefunds() {
-  const { state, T, backFromMyRefunds, loadMyRefunds, openPaymentDetails } = useGoc();
+  const { state, T, backFromMyRefunds, loadMyRefunds, openPaymentDetails } = useBanBe();
   const s = state;
 
   useEffect(() => { loadMyRefunds(); }, [loadMyRefunds]);
@@ -25,7 +25,7 @@ export default function MyRefunds() {
   }, [loadMyRefunds]);
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="MyRefunds">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="MyRefunds">
       <div onClick={backFromMyRefunds} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="my-refunds-back">
         ‹ {T('Tài khoản', 'Account')}
       </div>

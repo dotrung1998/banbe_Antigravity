@@ -4,9 +4,9 @@
 
 ## Task 1 — audit + consent-flow decision
 
-**Existing auth surface** (`src/screens/Login.jsx`, `src/state/GocContext.jsx`, `apps/ios/BanbeApp/Views/LoginView.swift`, `apps/ios/BanbeApp/State/AppState.swift` + `ViewModels/AuthViewModel.swift`): email+password, emailed 6-digit code, phone OTP (web only, stub), Zalo/Facebook/Instagram buttons (all three were stubs saying "not available yet" — `GocContext.jsx:2205,2217,2218`). **iOS has no social buttons at all** — `LoginView.swift`'s own header comment says "The social buttons are still web-only."
+**Existing auth surface** (`src/screens/Login.jsx`, `src/state/BanBeContext.jsx`, `apps/ios/BanbeApp/Views/LoginView.swift`, `apps/ios/BanbeApp/State/AppState.swift` + `ViewModels/AuthViewModel.swift`): email+password, emailed 6-digit code, phone OTP (web only, stub), Zalo/Facebook/Instagram buttons (all three were stubs saying "not available yet" — `BanBeContext.jsx:2205,2217,2218`). **iOS has no social buttons at all** — `LoginView.swift`'s own header comment says "The social buttons are still web-only."
 
-**The consent mechanism (note 09) assumes a premise that OAuth breaks.** `GocContext.jsx`'s `syncUser()` (~line 445) auto-stamps `policy_accepted_at` unconditionally for any profile that doesn't have it yet, on the stated justification that "the ONLY way to ever reach a session at all now is through Login.jsx's mandatory, unticked-by-default consent checkbox." That's true for email/password/code sign-up (the checkbox gates `codeRequestSubmit`/`passwordSignupSubmit` before either ever runs). It is **not** true for OAuth: `supabase.auth.signInWithOAuth()` establishes a session directly from a provider redirect — no client-side submit function runs at all, so a brand-new Google/Facebook signup could reach `syncUser()` with no recorded consent and get auto-stamped anyway, without ever having ticked anything. This is exactly the gap Task 1 asked to find.
+**The consent mechanism (note 09) assumes a premise that OAuth breaks.** `BanBeContext.jsx`'s `syncUser()` (~line 445) auto-stamps `policy_accepted_at` unconditionally for any profile that doesn't have it yet, on the stated justification that "the ONLY way to ever reach a session at all now is through Login.jsx's mandatory, unticked-by-default consent checkbox." That's true for email/password/code sign-up (the checkbox gates `codeRequestSubmit`/`passwordSignupSubmit` before either ever runs). It is **not** true for OAuth: `supabase.auth.signInWithOAuth()` establishes a session directly from a provider redirect — no client-side submit function runs at all, so a brand-new Google/Facebook signup could reach `syncUser()` with no recorded consent and get auto-stamped anyway, without ever having ticked anything. This is exactly the gap Task 1 asked to find.
 
 **Web complication**: `signInWithOAuth` does a **full-page redirect** away from the SPA and back (confirmed: no popup mode used anywhere in this codebase, and `src/lib/supabase.js`'s `detectSessionInUrl: true` is the standard full-redirect pattern). The whole React app remounts on return — any in-memory flag (`s.policyConsent`) is lost across that round trip. So checking `s.policyConsent` *after* the redirect, in `syncUser()`, is checking a value that has already reset to `initialState`'s `false`.
 
@@ -21,8 +21,8 @@
 **A second, pre-existing gap found while checking iOS for the equivalent mechanism**: iOS **never wrote `policy_accepted_at` at all**, on any path — grepped the whole iOS app, zero hits for `policy_accepted_at`/`policyAcceptedAt`. The checkbox (`app.policyConsent`) only ever gated the local `canRequest` computed property; nothing recorded consent server-side afterward. Any account created purely through the iOS app (no web visit ever) would have `policy_accepted_at` permanently NULL. Fixed as part of this pass (see Task 3) rather than leaving OAuth as the only path that records consent on iOS while password/code signup still silently doesn't.
 
 ## Task 2 — web (file:line)
-- `src/state/GocContext.jsx` — `loginGoogle()`/`loginFacebook()` (new, replacing the old Facebook stub), consent-gated, stash `banbe.pendingOAuthConsent`, call `supabase.auth.signInWithOAuth({ provider, options: { redirectTo: getAuthRedirectUrl() } })`.
-- `src/state/GocContext.jsx` `syncUser()` — OAuth-aware consent branch (see decision above).
+- `src/state/BanBeContext.jsx` — `loginGoogle()`/`loginFacebook()` (new, replacing the old Facebook stub), consent-gated, stash `banbe.pendingOAuthConsent`, call `supabase.auth.signInWithOAuth({ provider, options: { redirectTo: getAuthRedirectUrl() } })`.
+- `src/state/BanBeContext.jsx` `syncUser()` — OAuth-aware consent branch (see decision above).
 - `src/screens/Login.jsx` — two new buttons, checkbox now renders on both tabs.
 - No new callback route: this is a client-state SPA with no router (`src/App.jsx`'s `SCREENS` map); the existing `onAuthStateChange` listener + splash-timer + `postAuthDestination()` already cooperate to route a freshly-landed session correctly (this was the whole point of postAuthDestination's `!prev.sessionChecked` fix in note 09) — confirmed by reading that flow, not re-built.
 
@@ -61,9 +61,9 @@ Nothing above is a credential this session can generate — Client ID/Secret pai
 ## Implementation notes (file:line, added once actually built)
 
 **Web:**
-- `src/state/GocContext.jsx:21-27` `PENDING_OAUTH_CONSENT_KEY` constant + comment.
-- `src/state/GocContext.jsx` `syncUser()`'s consent block (~line 453) — now branches on `user.app_metadata?.provider`; signs back out and shows an error (`reserveError`, deliberately a fixed bilingual string, not `T(...)` — this effect's deps are `[set]` only, so any `T` it closed over is frozen at mount-time `s.lang`, not the user's current choice) if an OAuth session has no `PENDING_OAUTH_CONSENT_KEY` proof.
-- `src/state/GocContext.jsx` `startOAuth()`/`loginGoogle()`/`loginFacebook()` (replacing the old Facebook stub) — consent-gated, stash-then-redirect.
+- `src/state/BanBeContext.jsx:21-27` `PENDING_OAUTH_CONSENT_KEY` constant + comment.
+- `src/state/BanBeContext.jsx` `syncUser()`'s consent block (~line 453) — now branches on `user.app_metadata?.provider`; signs back out and shows an error (`reserveError`, deliberately a fixed bilingual string, not `T(...)` — this effect's deps are `[set]` only, so any `T` it closed over is frozen at mount-time `s.lang`, not the user's current choice) if an OAuth session has no `PENDING_OAUTH_CONSENT_KEY` proof.
+- `src/state/BanBeContext.jsx` `startOAuth()`/`loginGoogle()`/`loginFacebook()` (replacing the old Facebook stub) — consent-gated, stash-then-redirect.
 - `src/screens/Login.jsx` — new "Continue with Google" button (`data-testid="login-google"`), Facebook's existing button now wired to the real `loginFacebook` (`data-testid="login-facebook"`), consent checkbox block now `{!awaitingCode && (...)}` (was `&& isSignup`).
 - `getAuthRedirectUrl()` (already existed, `src/lib/supabase.js`) reused for `redirectTo` — no new redirect-origin logic needed.
 
@@ -94,7 +94,7 @@ Nothing above is a credential this session can generate — Client ID/Secret pai
 
 **Web:**
 - `src/screens/Login.jsx` — checkbox condition reverted to `{!awaitingCode && isSignup && (...)}`; Google/Facebook `onClick` handlers unchanged (call `loginGoogle`/`loginFacebook` directly — they were never gated at the JSX layer, only inside `startOAuth`, which is what changed).
-- `src/state/GocContext.jsx` — `PENDING_OAUTH_CONSENT_KEY` constant removed; `startOAuth()` no longer checks `s.policyConsent` or touches `localStorage`; `syncUser()`'s consent block now sets `{ policyGateActive: true, screen: 'policy' }` instead of signing out, for a non-`'email'`-provider profile with no `policy_accepted_at`; new `acceptPolicyGate()` action (stamps consent, calls `postAuthDestination`).
+- `src/state/BanBeContext.jsx` — `PENDING_OAUTH_CONSENT_KEY` constant removed; `startOAuth()` no longer checks `s.policyConsent` or touches `localStorage`; `syncUser()`'s consent block now sets `{ policyGateActive: true, screen: 'policy' }` instead of signing out, for a non-`'email'`-provider profile with no `policy_accepted_at`; new `acceptPolicyGate()` action (stamps consent, calls `postAuthDestination`).
 - `src/screens/Policy.jsx` — `gateActive` (from `state.policyGateActive`) switches the header (no back link, a "read and agree" notice instead) and adds a `position: fixed` bottom bar (`data-testid="policy-gate-bar"`/`"policy-gate-accept"`) calling `acceptPolicyGate`.
 
 **iOS:**

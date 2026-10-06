@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg, mapsUrl } from '../data/events.js';
 import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 
 export default function EventDetail() {
-  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useGoc();
+  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
   const s = state;
   // Structured "Bao gồm" (migration 087) — up to 3 { label, detail } items.
   // Legacy `ev.included` (plain text) stays readable as before when no
@@ -24,7 +24,7 @@ export default function EventDetail() {
   useEffect(() => { loadEventPhotos(ev.key); }, [ev.key, loadEventPhotos]);
   // Photo identity fix — each gallery entry now carries its own real
   // event_photos.id + owning event id, not just a URL (see openPhoto's own
-  // comment in GocContext.jsx). Every photo here belongs to THIS event, so
+  // comment in BanBeContext.jsx). Every photo here belongs to THIS event, so
   // eventId is just ev.key, but it travels per-photo like Organizer.jsx's
   // gallery does, for the same shape both screens hand to openPhoto.
   const realPhotos = (s.eventPhotos || []).filter(p => p.url).map(p => ({ id: p.id, url: p.url, eventId: ev.key }));
@@ -138,7 +138,7 @@ export default function EventDetail() {
     : { flex: 'none', margin: '0 20px 22px', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 0', borderRadius: 18, cursor: (ended || ev.cancelled) ? 'default' : 'pointer', background: 'var(--bb-field)', color: ink };
 
   return (
-    <div style={{ animation: 'gocFade 0.32s ease both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Event">
+    <div style={{ animation: 'banbeFade 0.32s ease both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Event">
       {/* Task 3 (14-photo-viewer.md follow-up notes / 06-design-tokens.md):
           moved out of the photo header (which scrolls away with the rest
           of the content, inside this screen's OWN scroll container below —
@@ -214,8 +214,8 @@ export default function EventDetail() {
             convention ReasonSheet.jsx already established (dim overlay +
             a paper panel sliding up). Cancel writes nothing at all. */}
         {shareConfirmOpen && (
-          <div onClick={s.storyCreateBusy ? undefined : () => setShareConfirmOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'gocFade 0.2s ease both' }}>
-            <div onClick={(e) => e.stopPropagation()} style={{ background: paper, padding: '20px 20px 30px', animation: 'gocSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+          <div onClick={s.storyCreateBusy ? undefined : () => setShareConfirmOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ background: paper, padding: '20px 20px 30px', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 <div style={bg(ev.img, { width: 64, height: 64, borderRadius: 12, flex: 'none' })} />
                 <div style={{ minWidth: 0 }}>

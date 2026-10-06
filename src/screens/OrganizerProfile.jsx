@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { organizerAvatarPublicUrl, publicEventPhotoUrl } from '../lib/mediaUrls.js';
 import { paper, ink, rule, alert, display, cardGlass } from '../theme.js';
@@ -31,7 +31,7 @@ export default function OrganizerProfile() {
     loadOrganizerProfileExtras, goEvent, orgRegNameType, orgRegDescType, saveOrganizerProfile,
     openOrganizerTeam,
     orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   const [qrOpen, setQrOpen] = useState(false);
   const [shareCardOpen, setShareCardOpen] = useState(false);

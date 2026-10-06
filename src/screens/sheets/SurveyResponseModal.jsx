@@ -1,4 +1,4 @@
-import { useGoc } from '../../state/GocContext.jsx';
+import { useBanBe } from '../../state/BanBeContext.jsx';
 import { paper } from '../../theme.js';
 import SurveyPublic from '../SurveyPublic.jsx';
 
@@ -13,7 +13,7 @@ import SurveyPublic from '../SurveyPublic.jsx';
  * zIndex 28 — one above StoryViewer's own 27, so it visually floats over
  * the (now paused) story rather than beside it. */
 export default function SurveyResponseModal() {
-  const { state } = useGoc();
+  const { state } = useBanBe();
   if (!state.storySurveyModalPublicId) return null;
   return (
     <div

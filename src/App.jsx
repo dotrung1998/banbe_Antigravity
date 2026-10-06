@@ -1,7 +1,7 @@
 import PhoneStatusBar from './components/PhoneFrame.jsx';
 import { ImportSheet, ImportedTicketSheet } from './screens/sheets/TicketImportSheet.jsx';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { GocProvider, useGoc } from './state/GocContext.jsx';
+import { BanBeProvider, useBanBe } from './state/BanBeContext.jsx';
 import useUrlSync from './lib/useUrlSync.js';
 import BottomTabBar, { showsBottomBar, DOCK_ORDER, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET } from './screens/BottomTabBar.jsx';
 import { paper, ink, rule } from './theme.js';
@@ -184,7 +184,7 @@ function DockRow({ collapsed, showCreate }) {
 }
 
 function Shell() {
-  const goc = useGoc();
+  const goc = useBanBe();
   useUrlSync(goc);
   const {
     state, T,
@@ -193,7 +193,7 @@ function Shell() {
     loadNotifications, loadInboxThreads,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadMyOrgStats,
     canHost,
-  } = useGoc();
+  } = useBanBe();
   const scrollRef = useRef(null);
   const scrollPositions = useRef({});
   const lastScrollTop = useRef(0);
@@ -268,14 +268,14 @@ function Shell() {
   // `<Screen key={state.screen}/>`'s own key — forcing React to unmount
   // the old component and mount a BRAND NEW instance of the destination,
   // replaying that screen's own CSS mount-in animation (every screen's
-  // root div carries `animation: gocIn ...`) on top of a drag that had
+  // root div carries `animation: banbeIn ...`) on top of a drag that had
   // already visually placed it. `swipeNeighbor` (the adjacent screen's
   // key, or null) makes the render below mount that REAL destination
   // screen early and move it together with the current one in one shared
   // transform-based coordinate system (see the render's own CSS Grid
   // stacking comment) — and since a screen's `key` never changes across
   // the eventual commit (see endGesture's own comment), React keeps that
-  // SAME instance instead of remounting it, so its `gocIn` animation
+  // SAME instance instead of remounting it, so its `banbeIn` animation
   // plays exactly once, during the reveal, never a second time on release.
   const [swipeNeighbor, setSwipeNeighbor] = useState(null);
 
@@ -507,7 +507,7 @@ function Shell() {
 
     // Home task 3 (2026-09-21 follow-up) — this synchronous restore alone
     // wasn't enough for Home specifically: `loadHomeLiveEvents()`
-    // (GocContext.jsx, added 1c62d4c) fetches asynchronously and can
+    // (BanBeContext.jsx, added 1c62d4c) fetches asynchronously and can
     // shrink/reorder `feed`/`savedList` a beat AFTER this effect already
     // ran, silently pulling the restored position back toward the top
     // once the page's total scrollable height changes underneath it —
@@ -698,8 +698,8 @@ function Shell() {
 
 export default function App() {
   return (
-    <GocProvider>
+    <BanBeProvider>
       <Shell />
-    </GocProvider>
+    </BanBeProvider>
   );
 }

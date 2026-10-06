@@ -29,7 +29,7 @@ async function tryMediaApiUpload(args) {
   return uploadViaMediaApi({ ...args, accessToken });
 }
 
-const GocCtx = createContext(null);
+const BanBeCtx = createContext(null);
 
 /**
  * Canonical real-`events`-row -> plain-data shape, shared by loadWeekendEvents
@@ -800,7 +800,7 @@ const initialState = {
   // never confused with the true total.
   homeSurveyDiscoveryHasMore: false,
   // Compact Home discovery pass — collapsed by default (the section takes
-  // too much vertical space once many hosts publish). Lives in GocContext
+  // too much vertical space once many hosts publish). Lives in BanBeContext
   // state, not local component state, so it survives Home re-rendering
   // around a trip into the survey modal and back; reset to false on
   // logout (see `logout()` below) and on a signed-out loadHomeStories()
@@ -1421,7 +1421,7 @@ function cancelBookingErrorMessage(code, T) {
   }
 }
 
-export function GocProvider({ children }) {
+export function BanBeProvider({ children }) {
   const [state, setStateRaw] = useState(() => {
     try {
       const raw = localStorage.getItem('banbe.preferences');
@@ -1937,7 +1937,7 @@ export function GocProvider({ children }) {
   }, []);
 
   // A toast auto-dismisses in two steps: `leaving: true` swaps it to the
-  // exit animation (gocToastOut, index.css), then a second timeout actually
+  // exit animation (banbeToastOut, index.css), then a second timeout actually
   // drops it from the array once that animation has had time to finish.
   const finishToastDismiss = useCallback((id) => {
     delete toastTimersRef.current[id];
@@ -5855,7 +5855,7 @@ export function GocProvider({ children }) {
   // ---- display name ----
   // TASK 4 (Reserve→edit-name pass) — captures the CALLER's screen (e.g.
   // 'reserve', still holding its own event id/qty/hold state — none of
-  // that is touched by this flow, it's global GocContext state) so
+  // that is touched by this flow, it's global BanBeContext state) so
   // save/back return to wherever this was actually opened from, not
   // always 'profile'. Account.jsx's own "Đổi tên" entry still returns to
   // Account because `s.screen` there IS 'profile' when this runs. Mirrors
@@ -9993,12 +9993,12 @@ export function GocProvider({ children }) {
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   ]);
 
-  return <GocCtx.Provider value={value}>{children}</GocCtx.Provider>;
+  return <BanBeCtx.Provider value={value}>{children}</BanBeCtx.Provider>;
 }
 
-export function useGoc() {
-  const ctx = useContext(GocCtx);
-  if (!ctx) throw new Error('useGoc must be used within GocProvider');
+export function useBanBe() {
+  const ctx = useContext(BanBeCtx);
+  if (!ctx) throw new Error('useBanBe must be used within BanBeProvider');
   return ctx;
 }
 

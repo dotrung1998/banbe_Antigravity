@@ -31,7 +31,7 @@ Slice C was never built, nothing ever generated candidates.
   already-closed/archived survey (so the existing "T2" gets drafts on push).
   Re-generation replaces only `suggested` rows; dismissed/used pairs are
   never re-suggested.
-- Clients: web `GocContext.jsx` (`loadSurveyCandidates`,
+- Clients: web `BanBeContext.jsx` (`loadSurveyCandidates`,
   `refreshSurveyCandidatesAction`, `dismissSurveyCandidateAction`,
   `applySurveyCandidateAction`) + `SurveysHosting.jsx`; iOS
   `AppState+Surveys.swift` (`SurveyCandidate`, same four functions) +
@@ -207,7 +207,7 @@ not independently tested.
   dock stays correctly hidden under it (reasoned from the existing pattern
   already working for those other covers, not independently confirmed here).
 - **`shareOrganizerProfile`/`u/<handle>`-style links elsewhere in this
-  codebase still hardcode `banbe.app`** (e.g. `GocContext.jsx`'s
+  codebase still hardcode `banbe.app`** (e.g. `BanBeContext.jsx`'s
   `shareOrganizerProfile`) — found while auditing this area, deliberately
   NOT touched (this ticket's own "do not modify unrelated links blindly"
   rule); worth a follow-up pass with the same canonical-origin treatment.
@@ -253,7 +253,7 @@ Also fixed while here (not previously implemented): `loadHomeStories()`
 (both platforms) used to treat a real query/decode error identically to
 "zero stories" for the WHOLE function, including the public-discovery
 feed — `homeSurveyDiscoveryLoading`/`homeSurveyDiscoveryError` (web:
-`GocContext.jsx`; iOS: `AppState.swift`/`AppState+Data.swift`) now
+`BanBeContext.jsx`; iOS: `AppState.swift`/`AppState+Data.swift`) now
 distinguish loading/error/empty/cards, and Home's "Help Shape Upcoming
 Events" section (`Home.jsx`/`HomeView.swift`) is now always rendered (not
 only when cards already exist) so a real failure is never indistinguishable
@@ -306,7 +306,7 @@ RLS-sensitive RPC's return shape without a specific need for it).
 ## Fix pass — Home discovery collapse/expand, dock hidden during survey modal (iOS), keyboard handling for every survey field
 
 **1. Compact Home discovery** — `app.homeSurveyDiscoveryExpanded` (iOS:
-`AppState.swift`; web: `GocContext.jsx`'s `homeSurveyDiscoveryExpanded`),
+`AppState.swift`; web: `BanBeContext.jsx`'s `homeSurveyDiscoveryExpanded`),
 collapsed by default. `HomeView.swift`'s/`Home.jsx`'s `surveyDiscoveryRow`
 header is now a tappable row (title + an honest active-survey count +
 chevron) — the row's own existing compact horizontal card strip (already
@@ -315,7 +315,7 @@ wanted — it was never rebuilt) only renders while expanded. Count is
 `app.homeSurveyDiscovery.count`, shown as `"20+"` once at
 `loadHomeStories()`'s own `.prefix(20)` cap (iOS) / `.slice(0, 20)` (web)
 rather than claiming that's the real total. State lives on
-`AppState`/`GocContext`, not local component state, specifically so it
+`AppState`/`BanBeContext`, not local component state, specifically so it
 survives a round trip into the survey modal and back (HomeView/Home.jsx
 never unmount for that — RootView's `.fullScreenCover` / App.jsx's
 `SurveyResponseModal` overlay); reset to `false` on sign-out
@@ -564,7 +564,7 @@ verify, "admin/service-role reads are not proof") cannot be confirmed until
 it's deployed.
 
 **Client rewrite, both platforms** — `loadHomeStories()` (iOS
-`AppState+Data.swift`, web `GocContext.jsx`) no longer builds
+`AppState+Data.swift`, web `BanBeContext.jsx`) no longer builds
 `homeSurveyDiscovery` at all; it now only builds the ordinary follow/
 ownership-gated per-organizer story ring (unchanged behavior, just fewer
 RPC calls — `get_survey_card()` is now only fetched for THAT ring's own
@@ -572,7 +572,7 @@ RPC calls — `get_survey_card()` is now only fetched for THAT ring's own
 `loadHomeSurveyDiscovery()`/`loadMoreHomeSurveyDiscovery()`
 (`AppState+Surveys.swift`, new `SurveyDiscoveryCard` shape in
 `Models/Thread.swift` — dropped `storyId`/`description`/`status`, added
-`hostAvatarURL`/`createdAt`); web's own pair in `GocContext.jsx`
+`hostAvatarURL`/`createdAt`); web's own pair in `BanBeContext.jsx`
 (`fetchSurveyDiscoveryPage`, a keyset cursor kept in a `useRef` outside
 React state). Both reject stale async results via a generation/seq token
 (same idiom `BottomTabBarOverlay.visibilityToken`/`navGeneration`/web's own
@@ -676,7 +676,7 @@ iPhone — the user's own iPhone 6788 repro is the next real test.
   additive policy for the invited case, same pattern as the existing
   `events_select_admin` (085).
 - **CRITICAL, found and fixed after the first pass looked done**:
-  `claim_seats` (007) was gated first, but reading `GocContext.jsx`'s own
+  `claim_seats` (007) was gated first, but reading `BanBeContext.jsx`'s own
   `submitReserve` comment revealed the REAL reserve flow calls
   **`hold_seats()` (migration 053)**, not `claim_seats` — the latter is
   explicitly described in that comment as legacy (it never touches
@@ -706,7 +706,7 @@ iPhone — the user's own iPhone 6788 repro is the next real test.
   forwarded link cannot grant a different account access.
 - Existing-user invites insert a real `notifications` row (kind
   `event_invite`), reusing the existing table/RLS/toast pipeline — no new
-  inbox. `openNotification()` routes it to `goEvent()` (GocContext.jsx).
+  inbox. `openNotification()` routes it to `goEvent()` (BanBeContext.jsx).
 - `MapExplore.jsx`'s `fetchLiveEvents` now filters `visibility='public'`
   (it never had before — the only web discovery query with this gap).
 - **iOS parity fix, found by re-auditing after the web fix**:
@@ -883,7 +883,7 @@ identities (`request.jwt.uid` session var standing in for `auth.uid()`):
 An earlier audit pass concluded this app has "no client-side router...
 so `/surveys/:publicId` must be a query-param convention," based on
 `MapExplore.jsx` and query-param usage. That was **wrong** — re-checking
-`GocContext.jsx` directly during implementation found `sharedProfileHandle`/
+`BanBeContext.jsx` directly during implementation found `sharedProfileHandle`/
 `sharedOrganizerId` already parsing REAL paths (`/u/<handle>`, `/org/<id>`)
 from `window.location.pathname` at module load, working fine under
 `vercel.json`'s catch-all SPA rewrite (any path still serves `index.html`,
@@ -917,7 +917,7 @@ Same local-Postgres-harness method as Slice A (extended with `surveys`/
 - Host `close_survey()` → subsequent respondent submit →
   `SURVEY_NOT_ACTIVE`; `get_survey_public` reports `closed`.
 - `npx vite build` — clean (`SurveyPublic.jsx`, `SurveysHosting.jsx`,
-  `Account.jsx`, `App.jsx`, `GocContext.jsx` changes).
+  `Account.jsx`, `App.jsx`, `BanBeContext.jsx` changes).
 
 **Not run**: no iOS survey code was written this pass, so no iOS build
 was needed for it (the earlier Slice A iOS build already covers the fixes

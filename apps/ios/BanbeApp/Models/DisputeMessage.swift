@@ -14,7 +14,7 @@ enum DisputeAttachments {
 }
 
 /// One line in the temporary dispute chat (`dispute_messages`) — the Swift
-/// counterpart of GocContext.jsx's disputeChatMessages. Purged along with
+/// counterpart of BanBeContext.jsx's disputeChatMessages. Purged along with
 /// its thread once resolve_dispute() closes it out and the grace window in
 /// purge_resolved_dispute_threads() elapses.
 ///

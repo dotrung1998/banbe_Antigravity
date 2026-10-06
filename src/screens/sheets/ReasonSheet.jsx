@@ -1,4 +1,4 @@
-import { useGoc, UNDO_CHECKIN_REASONS, CANCEL_BOOKING_REASONS, REJECT_GUEST_REASONS } from '../../state/GocContext.jsx';
+import { useBanBe, UNDO_CHECKIN_REASONS, CANCEL_BOOKING_REASONS, REJECT_GUEST_REASONS } from '../../state/BanBeContext.jsx';
 import { paper, ink, rule, alert } from '../../theme.js';
 
 // Shown whenever an organizer reverses a check-in, cancels an already-paid
@@ -8,7 +8,7 @@ import { paper, ink, rule, alert } from '../../theme.js';
 // 'confirmCheckin' (14-organizer-checkin.md, Bug 3), has no reason list at
 // all — a plain yes/no before actually marking a guest arrived.
 export default function ReasonSheet() {
-  const { state, T, closeReasonPrompt, submitReasonPrompt, confirmCheckin } = useGoc();
+  const { state, T, closeReasonPrompt, submitReasonPrompt, confirmCheckin } = useBanBe();
   const s = state;
   const prompt = s.reasonPrompt;
   if (!prompt) return null;
@@ -16,8 +16,8 @@ export default function ReasonSheet() {
   const isConfirmCheckin = prompt.kind === 'confirmCheckin';
   if (isConfirmCheckin) {
     return (
-      <div onClick={s.reasonPromptBusy ? undefined : closeReasonPrompt} style={{ position: 'absolute', inset: 0, zIndex: 23, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'gocFade 0.2s ease both' }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ background: paper, padding: '26px 24px 36px', display: 'flex', flexDirection: 'column', animation: 'gocSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+      <div onClick={s.reasonPromptBusy ? undefined : closeReasonPrompt} style={{ position: 'absolute', inset: 0, zIndex: 23, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ background: paper, padding: '26px 24px 36px', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
           <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Xác nhận điểm danh', 'Confirm check-in')}</span>
           <p style={{ fontSize: 13, lineHeight: 1.5, color: ink, margin: '8px 0 0' }}>
             {prompt.guestName
@@ -54,8 +54,8 @@ export default function ReasonSheet() {
     : '';
 
   return (
-    <div onClick={s.reasonPromptBusy ? undefined : closeReasonPrompt} style={{ position: 'absolute', inset: 0, zIndex: 23, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'gocFade 0.2s ease both' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: paper, padding: '26px 24px 36px', display: 'flex', flexDirection: 'column', animation: 'gocSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+    <div onClick={s.reasonPromptBusy ? undefined : closeReasonPrompt} style={{ position: 'absolute', inset: 0, zIndex: 23, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: paper, padding: '26px 24px 36px', display: 'flex', flexDirection: 'column', animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{title}</span>
         {subtitle && <p style={{ fontSize: 13, lineHeight: 1.5, color: ink, margin: '8px 0 0' }}>{subtitle}</p>}
         <p style={{ fontSize: 12, lineHeight: 1.5, color: ink, opacity: 0.7, margin: '6px 0 0' }}>

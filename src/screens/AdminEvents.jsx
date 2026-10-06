@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useGoc, resolveCoverUrl } from '../state/GocContext.jsx';
+import { useBanBe, resolveCoverUrl } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { withR2Columns } from '../lib/mediaUrls.js';
 import { formatVnd } from '../lib/paymentDocument.js';
@@ -17,7 +17,7 @@ import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
 // identifying summary (name/organizer/status/submitted date/price) plus an
 // expandable detailed section, reusing the SAME fold pattern Reports
 // already established (toggleReportCard/expandAllReportCards/
-// collapseAllReportCards, GocContext.jsx) — a local `Set` of expanded keys
+// collapseAllReportCards, BanBeContext.jsx) — a local `Set` of expanded keys
 // here instead, since this screen's own expand state has nothing to do
 // with Reports' and doesn't need to survive a navigation away. Keyed by
 // the event's own stable `key` (its real id), never row index, so
@@ -25,7 +25,7 @@ import { fieldGlass, cardGlass, insetField } from './hostStyle.js';
 // never silently expands/collapses a DIFFERENT row that happened to land
 // on the same index.
 export default function AdminEvents() {
-  const { state, T, loadPendingEvents, reviewEvent, backFromDocuments } = useGoc();
+  const { state, T, loadPendingEvents, reviewEvent, backFromDocuments } = useBanBe();
   const s = state;
   const [reasonByEvent, setReasonByEvent] = useState({});
   const [expanded, setExpanded] = useState(() => new Set());
@@ -72,7 +72,7 @@ export default function AdminEvents() {
   const collapseAll = () => setExpanded(new Set());
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Admin events">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Admin events">
       <div onClick={backFromDocuments} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="admin-events-back">
         ‹ {T('Duyệt & Kiểm Duyệt', 'Review & Moderation')}
       </div>

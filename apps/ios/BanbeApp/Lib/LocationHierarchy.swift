@@ -2,7 +2,7 @@ import Foundation
 
 /// Location hierarchy (migration 112) — the ONE place the discovery
 /// feed's location tree is modelled on iOS. Built to the same spec as
-/// web's `src/state/GocContext.jsx` hierarchy (implemented independently):
+/// web's `src/state/BanBeContext.jsx` hierarchy (implemented independently):
 ///
 ///   Vietnam (VN) → State/Province → legacy "familiar area" (`events.area`)
 ///                → neighborhood

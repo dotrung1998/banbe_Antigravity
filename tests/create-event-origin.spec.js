@@ -5,7 +5,7 @@ import { hasServiceRole, adminClient } from './e2e/setup.mjs';
 
 // Stage 1 (2026-09-27 nav/discovery pass) — dock + > Tạo sự kiện > Back
 // used to hard-route to 'dashboard'/'hostIntro' regardless of which root
-// tab + was actually tapped from (GocContext.jsx's old createBack). This
+// tab + was actually tapped from (BanBeContext.jsx's old createBack). This
 // verifies the real fix: Back returns to the EXACT originating screen
 // (Home here), not a fixed destination.
 test.describe('Create event — Back returns to the real origin', () => {

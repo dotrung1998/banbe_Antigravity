@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { supabase } from '../lib/supabase.js';
 import { organizerAvatarPublicUrl } from '../lib/mediaUrls.js';
@@ -108,7 +108,7 @@ export function RowIcon({ kind, size = 22, accent }) {
 // `ROW_ACCENT_COLORS` lookup AND the `data-testid`/route id both platforms
 // share, so iOS/web can't drift on what a given group actually is.
 function GroupCard({ groupKey, iconKind, label, badge, onClick, marginTop = 8 }) {
-  const { T } = useGoc();
+  const { T } = useBanBe();
   return (
     <div
       onClick={onClick}
@@ -165,7 +165,7 @@ export default function Account() {
     loadMyOrganizerMemberships,
     loadMyEventCredits, loadMyConfirmedEventCredits, openPolicy,
     loadMyAdminInvite, respondToAdminInvite, loadAdminTeam,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   const [shareCardFor, setShareCardFor] = useState(null); // 'member' | 'host' | null
   // Account search — restored only when we're coming back from a search result
@@ -190,12 +190,12 @@ export default function Account() {
   // iPhone fix pass (2026-09-26) — lifted into global state (s.accountTab)
   // so it survives this component remounting on any navigation away and
   // back (Preferences, the public-profile link below, etc.) — see the
-  // state's own comment (GocContext.jsx) for the full root cause.
+  // state's own comment (BanBeContext.jsx) for the full root cause.
   const accountTab = s.accountTab;
   // Account extension (2026-09-27, Stage 1/2) — a role change (organizer
   // mode toggled off elsewhere, an admin demoted, an account switch) can
   // land this component with `accountTab` pointing at a tab that's no
-  // longer in the list above; the toggle's own redirect (GocContext.jsx,
+  // longer in the list above; the toggle's own redirect (BanBeContext.jsx,
   // applyOrganizerMode) covers the direct toggle path, this is the general
   // safety net for every other path (mount, account switch, server resync).
   useEffect(() => {
@@ -311,7 +311,7 @@ export default function Account() {
   const profileSub = s.accountType === 'admin' ? T('Quản trị viên', 'Admin') : isOrganizer ? T('Người tham gia ▪︎ Người tổ chức', 'Goer ▪︎ Host') : T('Người tham gia', 'Goer');
 
   return (
-    <div style={{ position: 'relative', animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Account">
+    <div style={{ position: 'relative', animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Account">
       {/* Fixed-header pass (2026-10-02) — title row + tabs used to just
           scroll away with the rest of the page (this screen has no sticky
           header at all before this pass, unlike iOS's own `accountHeader`/
@@ -726,7 +726,7 @@ export default function Account() {
       <div style={{ padding: '22px 20px 0' }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Tổ Chức', 'Hosting')}</span>
         {/* TASK 2 (2026-10-05 fix pass) — `organizerModeBusy` (real guard
-            in toggleOrganizerMode/applyOrganizerMode, see GocContext.jsx)
+            in toggleOrganizerMode/applyOrganizerMode, see BanBeContext.jsx)
             mirrored here as `.opacity`/no-op click so a second tap while
             one request is already in flight visibly does nothing instead
             of silently queuing a race. */}

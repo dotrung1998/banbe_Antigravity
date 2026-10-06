@@ -8,7 +8,7 @@
 //
 // Provider: Nominatim reverse geocoding (https://nominatim.openstreetmap.org/reverse),
 // the SAME free, no-API-key provider the web app's own forward-geocode
-// address autocomplete already uses (GocContext.jsx's searchCreateAddress).
+// address autocomplete already uses (BanBeContext.jsx's searchCreateAddress).
 // Sequential requests, 1 req/sec (matches Nominatim's usage policy — the
 // same discipline the existing 500ms-debounced forward search already
 // follows, just sequential here since this is a batch job, not a keystroke

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, bg, agoLabel } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass, barGlass } from '../theme.js';
@@ -34,7 +34,7 @@ import ActionCenter from './ActionCenter.jsx';
 // second one.
 //
 // Positioning pass (2026-09-28) — real root cause of "obscured on web"
-// confirmed by reading the CSS, not guessed: `src/index.css`'s `gocIn`/
+// confirmed by reading the CSS, not guessed: `src/index.css`'s `banbeIn`/
 // `bbIn` keyframes ended with an explicit `transform: translateY(0)`,
 // which — combined with every caller's `animation-fill-mode: both` —
 // left a non-`none` transform permanently applied to Home's own root
@@ -75,7 +75,7 @@ import ActionCenter from './ActionCenter.jsx';
 // an actual rect INTERSECTION instead, which a constant offset does
 // break, and did catch this.
 //
-// Actual fix: stop trying to keep `gocIn`/`bbIn` transform-free at every
+// Actual fix: stop trying to keep `banbeIn`/`bbIn` transform-free at every
 // future call site (a whack-a-mole this ticket's own history shows
 // doesn't hold) and instead render this bubble through a REACT PORTAL
 // straight to `document.body` — same architecture iOS already uses
@@ -318,7 +318,7 @@ function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen
         textAlign: 'right',
         padding: '11px 14px', borderRadius: 12, maxWidth: 220, zIndex: 45, cursor: 'pointer',
         boxShadow: '0 6px 18px rgba(27,25,22,0.28)',
-        animation: reduceMotion ? 'none' : 'gocFade 0.22s ease both',
+        animation: reduceMotion ? 'none' : 'banbeFade 0.22s ease both',
         // See `measuredForStep`'s own comment above — invisible and
         // non-interactive for the one frame before a real measurement for
         // THIS step exists, so nothing can ever visibly or interactively
@@ -357,7 +357,7 @@ function PulseTeaserBubble({ T, userId, pulseDaily, pulseDailyLoading, pulseOpen
 //
 // 2026-09-21 follow-up (07-notifications.md) — extended with notConfirmed
 // (a refinement of the original three, now that isGoing is scoped to
-// genuinely-confirmed — see GocContext.jsx's own comment on isGoing) plus
+// genuinely-confirmed — see BanBeContext.jsx's own comment on isGoing) plus
 // upcoming/ended, using the same live-status data the "Sự kiện của bạn"
 // strip's real 48h expiry now needs anyway (homeLiveEvents) — not a
 // separate concept.
@@ -409,7 +409,7 @@ export default function Home() {
     loadMyRefunds, openMyRefunds, loadRefundQueue, goNotifications,
     openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, loadPulse,
     loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery,
-  } = useGoc();
+  } = useBanBe();
 
   const s = state;
   const hasHosted = s.hasHosted;
@@ -483,7 +483,7 @@ export default function Home() {
 
   // 2026-09-21 follow-up — real (not baked-in) ended/cancelled status for
   // every catalogue event Home might show, public info so this runs for
-  // every visitor (see GocContext.jsx's own comment on loadHomeLiveEvents).
+  // every visitor (see BanBeContext.jsx's own comment on loadHomeLiveEvents).
   useEffect(() => { loadHomeLiveEvents(); }, [loadHomeLiveEvents]);
   // Discovery-bug fix — fires on every Home mount, same as every other
   // real-events loader on this screen (App.jsx's Shell remounts the whole
@@ -503,7 +503,7 @@ export default function Home() {
   // initial load, own refresh, own pagination state.
   useEffect(() => { if (s.user?.id) loadHomeSurveyDiscovery(); }, [s.user?.id, loadHomeSurveyDiscovery]);
   // Merges a real DB row's live status onto a static catalogue event —
-  // same idea as curEvent's own single-event version (GocContext.jsx), just
+  // same idea as curEvent's own single-event version (BanBeContext.jsx), just
   // applied to every event this screen might list instead of one.
   const withLive = (e) => {
     const overrides = liveEventOverrides(s.homeLiveEvents[e.key], e);
@@ -793,7 +793,7 @@ export default function Home() {
 
   return (
     <>
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Home">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Home">
       {/* iOS parity header: wordmark + "Home" title + round glass search
           button, then a row of three equal glass capsules (language, area,
           theme). Search lives here again (same openEventSearch action and
@@ -953,7 +953,7 @@ export default function Home() {
         {/* Collapse/expand pass — collapsed by default; the compact
             horizontal strip below (already the "compact cards, not a tall
             stack" shape this ticket asks for) only renders while expanded.
-            `homeSurveyDiscoveryExpanded` lives in GocContext state, not
+            `homeSurveyDiscoveryExpanded` lives in BanBeContext state, not
             local component state, so it survives Home unmounting/remounting
             around a trip into the survey modal and back. */}
         <div
@@ -1073,7 +1073,7 @@ export default function Home() {
         {HOME_EXTRA_FILTERS.map(f => {
           // Every filter key maps to its state field by simple
           // capitalization (attending -> filterAttending, notConfirmed ->
-          // filterNotConfirmed, ...) — see GocContext.jsx's HOME_FILTER_STATE_KEY.
+          // filterNotConfirmed, ...) — see BanBeContext.jsx's HOME_FILTER_STATE_KEY.
           const active = s['filter' + f.key[0].toUpperCase() + f.key.slice(1)];
           return (
             <span

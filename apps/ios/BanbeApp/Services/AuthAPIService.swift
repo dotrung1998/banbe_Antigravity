@@ -1,7 +1,7 @@
 import Foundation
 
 /// Which flow a code request is for — matches the web app's `mode` field
-/// (src/state/GocContext.jsx's authMode), not a Supabase auth concept.
+/// (src/state/BanBeContext.jsx's authMode), not a Supabase auth concept.
 enum AuthMode: String {
     case login
     case signup
@@ -13,7 +13,7 @@ enum AuthMode: String {
 
 /// One of the JSON `{ "error": "SOME_CODE" }` bodies api/auth/index.js (type: send_email_code)
 /// (see api/_lib/authLookup.js) can return — mirrors the codes
-/// src/state/GocContext.jsx's authEmailErrorMessage() maps to Vietnamese/
+/// src/state/BanBeContext.jsx's authEmailErrorMessage() maps to Vietnamese/
 /// English copy; this maps the same set to English only, since the iOS
 /// scaffold has no language toggle yet.
 struct AuthAPIError: LocalizedError {
@@ -161,7 +161,7 @@ enum AuthAPIService {
     /// this body sends). Returns the raw decoded JSON so the caller
     /// (DeleteAccountView) can read `openEvents` on a 409 refusal or
     /// `requestId` on success, mirroring web's equivalent fetch in
-    /// GocContext.jsx's `confirmDeleteAccount`.
+    /// BanBeContext.jsx's `confirmDeleteAccount`.
     static func deleteAccount(reasonCode: String?, reasonText: String?) async throws -> [String: Any] {
         guard let url = URL(string: AppConfig.apiBaseURL + "/api/auth"),
               let token = try? await SupabaseService.client.auth.session.accessToken

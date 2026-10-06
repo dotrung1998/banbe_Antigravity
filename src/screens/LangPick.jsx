@@ -1,4 +1,4 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display } from '../theme.js';
 
 const choiceStyle = (active) => ({
@@ -8,7 +8,7 @@ const choiceStyle = (active) => ({
 });
 
 export default function LangPick() {
-  const { state, pickVi, pickEn } = useGoc();
+  const { state, pickVi, pickEn } = useBanBe();
   const lang = state.lang;
 
   return (
@@ -22,7 +22,7 @@ export default function LangPick() {
         flexDirection: 'column',
         justifyContent: 'flex-start',
         padding: '78px 30px 0',
-        animation: 'gocFade 0.4s ease both',
+        animation: 'banbeFade 0.4s ease both',
       }}
       data-screen-label="Language"
     >
@@ -35,7 +35,7 @@ export default function LangPick() {
           height: 44,
           display: 'block',
           marginBottom: 26,
-          animation: 'gocIn 0.6s cubic-bezier(.22,.61,.36,1) both',
+          animation: 'banbeIn 0.6s cubic-bezier(.22,.61,.36,1) both',
         }}
       />
       <span style={{ ...display(27, { lineHeight: 1.2, color: ink }) }}>Chọn ngôn ngữ</span>

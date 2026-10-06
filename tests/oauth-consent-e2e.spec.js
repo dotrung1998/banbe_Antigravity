@@ -10,7 +10,7 @@ import { hasServiceRole, adminClient, createTestUser, signIn, cleanup } from './
 // user.app_metadata.provider is a non-'email' value, built via the admin
 // API the same way tests/global-setup.js already builds a real signed-in
 // storageState. That's the one thing this repo's own auth code actually
-// branches on (GocContext.jsx's syncUser(), AppState+Data.swift's
+// branches on (BanBeContext.jsx's syncUser(), AppState+Data.swift's
 // applySession()), so faking it this way exercises the real client-side
 // routing logic against a real session and a real database row — nothing
 // about the consent gate itself is mocked.

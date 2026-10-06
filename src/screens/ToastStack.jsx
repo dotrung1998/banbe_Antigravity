@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { ink, rule, cardGlass } from '../theme.js';
 
 // Small, ephemeral in-app toasts — separate from Notifications.jsx (the
@@ -28,7 +28,7 @@ const IN_PHONE_FRAME = typeof window !== 'undefined' && !!window.matchMedia
 
 // Notification banner fix pass (2026-09-30 third) — one toast card,
 // factored out so it can own its own mount effect (marks the auto-dismiss
-// timer's real start, GocContext.jsx's own `markToastVisible` doc comment)
+// timer's real start, BanBeContext.jsx's own `markToastVisible` doc comment)
 // and its own pointer/touch handlers (pause/resume the SAME real timer,
 // never just a visual state). The whole card is the tap target — the ✕
 // button is the only nested target, and it stops propagation so it doesn't
@@ -52,7 +52,7 @@ function ToastCard({ t, markVisible, onOpen, onDismiss, onPause, onResume }) {
         ...cardGlass({ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 2 }),
         border: `1px solid ${rule}`,
         cursor: 'pointer', pointerEvents: 'auto',
-        animation: t.leaving ? 'gocToastOut 0.28s ease both' : 'gocToastIn 0.3s cubic-bezier(.22,.61,.36,1) both',
+        animation: t.leaving ? 'banbeToastOut 0.28s ease both' : 'banbeToastIn 0.3s cubic-bezier(.22,.61,.36,1) both',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
@@ -79,7 +79,7 @@ function ToastCard({ t, markVisible, onOpen, onDismiss, onPause, onResume }) {
 }
 
 export default function ToastStack() {
-  const { state, openNotification, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer } = useGoc();
+  const { state, openNotification, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer } = useBanBe();
   const toasts = state.toasts || [];
   const [expanded, setExpanded] = useState(false);
   if (toasts.length === 0) return null;

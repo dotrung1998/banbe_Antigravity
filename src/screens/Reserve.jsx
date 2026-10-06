@@ -1,4 +1,4 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg } from '../data/events.js';
 import { paper, ink, FACE, display, fieldGlass, alert } from '../theme.js';
 
@@ -6,7 +6,7 @@ export default function Reserve() {
   const {
     state, T, trStatus, curEvent: ev, backToEvent,
     qtyMinus, qtyPlus, formNameType, setNameAtHold, submitReserve, goEditName, setAttendeeField,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
 
   // 01-hold-payment.md's 2026-09-17 follow-up #6: Name/Email used to be
@@ -49,7 +49,7 @@ export default function Reserve() {
   };
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Reserve">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Reserve">
       <div onClick={backToEvent} style={{ padding: '70px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }}>‹ {T('Quay lại', 'Back')}</div>
       <div style={{ padding: '16px 22px 0' }}>
         <h2 style={{ ...display(24, { margin: 0 }) }}>{T('Gần xong rồi.', 'Almost there.')}</h2>

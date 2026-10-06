@@ -1,4 +1,4 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display } from '../theme.js';
 import { POLICY_VERSION } from '../lib/policy.js';
 
@@ -7,7 +7,7 @@ import { POLICY_VERSION } from '../lib/policy.js';
 // document's own alternating structure) — not a paraphrase or summary.
 // Where the source and English differ, the Vietnamese text prevails (A1).
 export default function Policy() {
-  const { state, backFromPolicy, acceptPolicyGate } = useGoc();
+  const { state, backFromPolicy, acceptPolicyGate } = useBanBe();
   return <PolicyView state={state} backFromPolicy={backFromPolicy} acceptPolicyGate={acceptPolicyGate} />;
 }
 
@@ -28,7 +28,7 @@ function PolicyView({ state, backFromPolicy, acceptPolicyGate, standalone }) {
   const gateActive = state.policyGateActive;
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Policy">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Policy">
       <div style={{ padding: '66px 22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         {standalone
           ? <span style={{ fontSize: 12, color: ink, opacity: 0.7 }}>banbe</span>

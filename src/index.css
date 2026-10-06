@@ -105,14 +105,14 @@ input::placeholder {
    CSS spec, any element with a used transform value other than `none`
    establishes a new containing block for `position: fixed` descendants —
    so every `position:fixed` element anywhere inside one of these animated
-   screens (e.g. Home's root wrapper, which uses `gocIn`) was silently
+   screens (e.g. Home's root wrapper, which uses `banbeIn`) was silently
    being positioned relative to THAT wrapper's box instead of the
    viewport, not the browser bug it looked like. Dropping the explicit
    `transform` from "to" keeps the exact same visual motion (interpolates
    toward the element's own underlying value, which is `none` here) but
    the `both` fill-mode no longer has an explicit transform to hold onto
    once the animation completes, so no lingering containing block remains. */
-@keyframes gocIn {
+@keyframes banbeIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; }
 }
@@ -122,40 +122,40 @@ input::placeholder {
   to { opacity: 1; }
 }
 
-@keyframes gocSheetIn {
+@keyframes banbeSheetIn {
   from { opacity: 0; transform: translateY(28px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes gocFade {
+@keyframes banbeFade {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
 /* Stage 2 (2026-09-27 nav/discovery pass) — pull-to-refresh's own native-
    style spinner (App.jsx's Shell). */
-@keyframes gocSpin {
+@keyframes banbeSpin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 
 /* Refresh-indicator fix pass (2026-09-27, follow-up A) — travels a fixed-
    length stroke segment around the refreshing tab's own icon outline
-   (RootRefreshIndicator.jsx), replacing gocSpin's generic circle. Each
+   (RootRefreshIndicator.jsx), replacing banbeSpin's generic circle. Each
    shape's pathLength is normalized to 100 (see TAB_OUTLINE_SHAPES), so one
    dashoffset range works for every icon regardless of its real geometry. */
-@keyframes gocRefreshTravel {
+@keyframes banbeRefreshTravel {
   from { stroke-dashoffset: 0; }
   to { stroke-dashoffset: -100; }
 }
 
 /* Story viewer progress bar fill (StoryViewer.jsx) — 07-notifications.md Task 3.4. */
-@keyframes gocStoryFill {
+@keyframes banbeStoryFill {
   from { width: 0%; }
   to { width: 100%; }
 }
 
-@keyframes gocTumble {
+@keyframes banbeTumble {
   0% { transform: rotate(0deg); }
   22% { transform: rotate(180deg); }
   50% { transform: rotate(180deg); }
@@ -163,19 +163,19 @@ input::placeholder {
   100% { transform: rotate(360deg); }
 }
 
-@keyframes gocOrbit {
+@keyframes banbeOrbit {
   to { transform: rotate(360deg); }
 }
 
 /* Small in-app toast (ToastStack.jsx) — soft fade + slide, not the sheet's
-   bigger 28px travel (gocSheetIn) since this is a minimal, easy-to-ignore
+   bigger 28px travel (banbeSheetIn) since this is a minimal, easy-to-ignore
    notice, not something asking for attention the way a sheet does. */
-@keyframes gocToastIn {
+@keyframes banbeToastIn {
   from { opacity: 0; transform: translateY(-6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes gocToastOut {
+@keyframes banbeToastOut {
   from { opacity: 1; transform: translateY(0); }
   to { opacity: 0; transform: translateY(-6px); }
 }
@@ -183,8 +183,8 @@ input::placeholder {
 /* A map pin picking up selection (MapExplore.jsx) — grows briefly past its
    resting selected size then settles back, once per selection change (not
    replayed on every poll refresh while the same pin stays selected). Same
-   easing as gocIn/gocSheetIn, not a new curve. */
-@keyframes gocPinPop {
+   easing as banbeIn/banbeSheetIn, not a new curve. */
+@keyframes banbePinPop {
   0% { transform: scale(1); }
   55% { transform: scale(1.32); }
   100% { transform: scale(1.15); }

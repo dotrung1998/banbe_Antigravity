@@ -194,7 +194,7 @@ export function haversineKm(a, b) {
 
 // BUG 2 (2026-09-22 tenth follow-up) — the ONE canonical "give me a live
 // km string or nothing" helper, built on the exact same `haversineKm`
-// primitive `stripKm()` (GocContext.jsx) and MapExplore's own list-row
+// primitive `stripKm()` (BanBeContext.jsx) and MapExplore's own list-row
 // distance already use — so the event-share story card (which had NO
 // distance line at all before this pass) shows a number that can never
 // diverge from either of those. Never returns a static/cached/placeholder

@@ -1,4 +1,4 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, display } from '../theme.js';
 import { cardGlass } from './hostStyle.js';
 
@@ -15,7 +15,7 @@ function memberAvatarUrl(url) {
 // public_visible members alone; a member who has opted out simply never
 // appears here, with no trace (no hidden count, no placeholder row).
 export default function TeamPage() {
-  const { state, T, backFromOrganizerTeam, openPublicProfile } = useGoc();
+  const { state, T, backFromOrganizerTeam, openPublicProfile } = useBanBe();
   const s = state;
   const team = s.organizerTeam;
 
@@ -51,7 +51,7 @@ export default function TeamPage() {
   }
 
   return (
-    <div style={{ minHeight: '100%', background: paper, animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both' }} data-screen-label="Organizer team">
+    <div style={{ minHeight: '100%', background: paper, animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both' }} data-screen-label="Organizer team">
       <div style={{ padding: '66px 20px 0' }}>
         <span onClick={backFromOrganizerTeam} style={{ fontSize: 12, color: ink, cursor: 'pointer' }}>{T('‹ Quay lại', '‹ Back')}</span>
       </div>

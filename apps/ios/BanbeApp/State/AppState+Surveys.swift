@@ -2,7 +2,7 @@ import Foundation
 import Supabase
 import MapKit
 
-/// Interest surveys (Slice B, migration 114) — mirrors web's GocContext.jsx
+/// Interest surveys (Slice B, migration 114) — mirrors web's BanBeContext.jsx
 /// survey section function-for-function and RPC-for-RPC. One screen
 /// (SurveyPublicView) serves both the dedicated browser-equivalent deep
 /// link (/surveys/<publicId>, handled by AppState+Profile.swift's

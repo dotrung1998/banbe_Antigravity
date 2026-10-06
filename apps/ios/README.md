@@ -18,7 +18,7 @@ apps/ios/
     Models/                 # Codable structs matching the Postgres schema,
                             # plus the shared event catalogue
     Services/               # Supabase client, auth API, biometrics, location
-    State/                  # AppState — the port of GocContext
+    State/                  # AppState — the port of BanBeContext
     Views/                  # the screens
     Resources/              # events.json + asset catalog
   BanbeAppUITests/          # XCUITest smoke suite (the Playwright analogue)

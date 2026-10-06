@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
 // are specifically about the unauthenticated experience, which the shared,
 // already-signed-in storageState (tests/global-setup.js) would short-circuit
 // entirely — so this file opts out of it. Home/Event/Reserve are no longer
-// reachable while signed out at all (the blanket guard in GocContext.jsx
+// reachable while signed out at all (the blanket guard in BanBeContext.jsx
 // routes any non-guest-allowed screen straight to Login), so "browse
 // anonymously, then get redirected only once you try to reserve" is no
 // longer a real flow to test; a signed-out visitor lands on Login as soon

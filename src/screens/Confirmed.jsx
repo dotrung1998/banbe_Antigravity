@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { formatCountdown, msUntil, useTicking } from '../lib/countdown.js';
 import { paper, ink, rule, display, cardGlass, alert } from '../theme.js';
@@ -14,7 +14,7 @@ export default function Confirmed() {
   const {
     state, T, trStatus, stripKm, set, curEvent: ev, backFromConfirmed, openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, openPaymentDetails, forfeitExpiredHold, goReserve,
     loadReceiptStatus, requestReceipt, openDocumentFromNotification, loadBookingAttendees,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
 
   // payment_state is the source of truth for every phase distinction below;
@@ -222,7 +222,7 @@ export default function Confirmed() {
   const calendarLabel = s.calAdded ? T('Đã thêm vào lịch', 'Added to calendar') : T('Thêm vào lịch', 'Add to calendar');
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Confirmed">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper, display: 'flex', flexDirection: 'column' }} data-screen-label="Confirmed">
       {/* Back, top-left — where the thumb and the OS convention expect it. */}
       <div onClick={backFromConfirmed} data-testid="confirmed-back" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '14px 30px 0', fontSize: 14, color: ink, cursor: 'pointer', alignSelf: 'flex-start' }}>
         <svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 1.5 2 8l6 6.5" /></svg>

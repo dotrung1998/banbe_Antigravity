@@ -1,7 +1,7 @@
 import Foundation
 
 // Organizer Team pass (2026-09-27, Stage 1) — real, opt-in organizer
-// membership (organizer_members, migration 098). Mirrors GocContext.jsx's
+// membership (organizer_members, migration 098). Mirrors BanBeContext.jsx's
 // own Team actions field-for-field — see that file's doc comment for the
 // full privacy model (public_visible defaults false, only the member's
 // own switch can ever turn it on, the owner can remove but never publish).

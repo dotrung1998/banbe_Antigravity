@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { formatVnd, formatShortDate } from '../lib/paymentDocument.js';
 import { paper, ink, rule, display, fieldGlass, cardGlass, inkButton, alert } from '../theme.js';
@@ -52,7 +52,7 @@ export default function PaymentDetails() {
     openBilling, forfeitExpiredHold, openBookingConfirmed,
     loadPaymentRefundClaim, confirmRefundReceived, disputeRefund,
     loadRefundDestinations, selectRefundDestinationForClaim, openRefundAccounts, openChatFor,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   const fileRef = useRef(null);
   const [file, setFile] = useState(null);
@@ -812,7 +812,7 @@ function VietQr({ payload }) {
 
 function Frame({ children, onBack, T }) {
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Payment">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Payment">
       <div onClick={onBack} style={{ padding: '66px 22px 0', fontSize: 12, color: ink, cursor: 'pointer' }} data-testid="payment-back">
         ‹ {T('Quay lại', 'Back')}
       </div>

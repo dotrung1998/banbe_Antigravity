@@ -1,7 +1,7 @@
 import Foundation
 
 /// The real `events` row's own status for whichever event is currently
-/// open — the Swift counterpart of the same-named fetch in GocContext.jsx.
+/// open — the Swift counterpart of the same-named fetch in BanBeContext.jsx.
 /// Unlike `Booking`, this has nothing to do with a signed-in account: an
 /// event being cancelled or having ended is public information, so this is
 /// fetched for every visitor regardless of session.

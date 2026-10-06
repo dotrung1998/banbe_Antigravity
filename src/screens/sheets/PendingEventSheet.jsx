@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useGoc, resolveCoverUrl } from '../../state/GocContext.jsx';
+import { useBanBe, resolveCoverUrl } from '../../state/BanBeContext.jsx';
 import { supabase } from '../../lib/supabase.js';
 import { withR2Columns } from '../../lib/mediaUrls.js';
 import { formatVnd } from '../../lib/paymentDocument.js';
@@ -31,7 +31,7 @@ export function remindErrorMessage(code, T) {
 }
 
 export default function PendingEventSheet({ eventId, name, onClose, onChanged }) {
-  const { T } = useGoc();
+  const { T } = useBanBe();
   const locale = T('vi-VN', 'en-GB');
   const [ev, setEv] = useState(null);
   const [photos, setPhotos] = useState([]);
@@ -92,7 +92,7 @@ export default function PendingEventSheet({ eventId, name, onClose, onChanged })
   const included = ev && Array.isArray(ev.included_items) ? ev.included_items.map(i => i?.label).filter(Boolean).join(' ▪︎ ') : '';
 
   return (
-    <div onClick={onClose} data-testid="pending-event-sheet" style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(27,25,22,0.5)', display: 'flex', alignItems: 'flex-end', animation: 'gocFade 0.22s ease both' }}>
+    <div onClick={onClose} data-testid="pending-event-sheet" style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(27,25,22,0.5)', display: 'flex', alignItems: 'flex-end', animation: 'banbeFade 0.22s ease both' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: paper, width: '100%', maxHeight: '90%', overflowY: 'auto', borderRadius: '22px 22px 0 0', padding: '18px 20px 28px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: ink }}>{T('Sự kiện đã gửi', 'Submitted event')}</span>

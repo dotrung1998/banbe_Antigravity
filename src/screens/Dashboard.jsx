@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, findEvent, bg } from '../data/events.js';
 import { liveEventOverrides } from '../lib/countdown.js';
 import { paper, ink, rule, alert, display } from '../theme.js';
@@ -31,7 +31,7 @@ export default function Dashboard() {
     loadRealEventsById, goEditEvent, openOrganizerProfile,
     loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember,
     assignEventCredit, withdrawEventSubmission, loadResubmissionStatus,
-  } = useGoc();
+  } = useBanBe();
   const s = state;
   const [creditEventKey, setCreditEventKey] = useState('');
   const [creditUserId, setCreditUserId] = useState('');
@@ -73,7 +73,7 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsFixReal.map(e => e.key).join(','), loadResubmissionStatus]);
   // STAGE C (2026-09-25) — the real "add a photo to one of my own events"
-  // flow; see uploadEventPhoto's own doc comment (GocContext.jsx).
+  // flow; see uploadEventPhoto's own doc comment (BanBeContext.jsx).
   const photoInputRef = useRef(null);
   const [photoUploadTarget, setPhotoUploadTarget] = useState(null);
   const pickEventPhoto = (eventId) => { setPhotoUploadTarget(eventId); photoInputRef.current?.click(); };
@@ -125,7 +125,7 @@ export default function Dashboard() {
   const dashStatsLine = T('Tổ chức từ ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' sự kiện', 'Hosting since ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' events');
 
   // Once the signed-in account actually owns events in the database (see
-  // GocContext's myOrgEventKeys), the dashboard lists those — the real
+  // BanBeContext's myOrgEventKeys), the dashboard lists those — the real
   // assignment — instead of every demo event that happens to share the
   // currently-viewed org's name. Accounts with no real assignment yet (a
   // fresh dev database, or before the demo catalogue has been seeded) still
@@ -141,7 +141,7 @@ export default function Dashboard() {
   // alone, which is the account-wide UNION of every organizer row this
   // account owns (deliberately so — it's also the real ownership gate
   // openNotification()/openVerificationDetail() use for dual-role
-  // accounts, see its own comment in GocContext.jsx). This header,
+  // accounts, see its own comment in BanBeContext.jsx). This header,
   // though, brands ONE organizer (`s.myOrganizerId`, the deterministic
   // "primary" org above) — so an account seeded with several organizer
   // rows (migration 020's per-event random assignment; a real user only
@@ -165,7 +165,7 @@ export default function Dashboard() {
     .sort((a, c) => a.endedHoursAgo - c.endedHoursAgo);
 
   return (
-    <div style={{ animation: 'gocIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Organizer dashboard">
+    <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', height: '100%', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Organizer dashboard">
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div style={{ padding: '66px 22px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div onClick={backFromDashboard} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
@@ -505,7 +505,7 @@ export default function Dashboard() {
           (`env(safe-area-inset-bottom)`, same pattern ChatPhotoViewer.jsx's
           bottom bar already uses) instead of a fixed 30px guess. Tap action
           and the screen-level host-only gate (HOST_ONLY_SCREENS in
-          GocContext.jsx — this whole screen only ever renders for an
+          BanBeContext.jsx — this whole screen only ever renders for an
           organizer) are unchanged. */}
       <div style={{ flex: 'none', padding: '10px 22px calc(env(safe-area-inset-bottom, 0px) + 14px)' }}>
         <div onClick={goCreate} data-testid="dashboard-create-event" style={{ ...inkButton() }}>

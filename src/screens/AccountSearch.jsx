@@ -1,4 +1,4 @@
-import { useGoc } from '../state/GocContext.jsx';
+import { useBanBe } from '../state/BanBeContext.jsx';
 import { ink, rule, fieldGlass } from '../theme.js';
 import { entryMatches, markReturnToSearch } from '../lib/accountSearch.js';
 import { RowIcon } from './Account.jsx';
@@ -18,7 +18,7 @@ const TABS = [
 ];
 
 export function useAccountSearchEntries() {
-  const g = useGoc();
+  const g = useBanBe();
   const { state: s, set, canHost } = g;
   const e = (id, tab, secVi, secEn, vi, en, icon, keywords, action, extra) => ({ id, tab, secVi, secEn, vi, en, icon, keywords, action, ...extra });
   const actVi = 'Hoạt Động Của Bạn', actEn = 'Your Activity';
@@ -110,7 +110,7 @@ export function useAccountSearchEntries() {
 
 /** Results grouped under Personal / Host / Admin, in the same grouped-card style as the rest of Account. */
 export default function AccountSearchResults({ query }) {
-  const { T, setAccountTab } = useGoc();
+  const { T, setAccountTab } = useBanBe();
   const entries = useAccountSearchEntries();
   const groups = TABS
     .map(t => ({ t, items: entries.filter(en => en.tab === t.key && entryMatches(en, query, t)) }))

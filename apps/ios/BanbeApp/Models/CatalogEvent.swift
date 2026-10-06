@@ -320,7 +320,7 @@ extension CatalogEvent {
         let metaLabel = [real.catLabel, real.area].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
         // Venue/address parity fix (task 2, reworked per user follow-up
         // 2026-09-29) — same fix as web's identical `shapeRealEventAsCurEvent`
-        // (GocContext.jsx): first pass surfaced the raw street address here,
+        // (BanBeContext.jsx): first pass surfaced the raw street address here,
         // but that read differently from every demo event's own "district ▪︎
         // live km ▪︎ long date ▪︎ time" line and broke `stripKm()`'s live-
         // distance injection (no " ▪︎ X,X km" segment for it to find). Now

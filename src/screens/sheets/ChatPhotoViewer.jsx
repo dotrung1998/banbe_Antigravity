@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useGoc } from '../../state/GocContext.jsx';
+import { useBanBe } from '../../state/BanBeContext.jsx';
 import { paper, ink, rule } from '../../theme.js';
 import { AttachMenuIcon } from '../Chat.jsx';
 
@@ -28,7 +28,7 @@ export default function ChatPhotoViewer() {
   const {
     state: s, T, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto,
     openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, sendChatViewerReply, sendChatAttachment, canHost,
-  } = useGoc();
+  } = useBanBe();
   const item = s.chatPhotoViewer;
   const [menuOpen, setMenuOpen] = useState(false);
   const [closing, setClosing] = useState(false);
