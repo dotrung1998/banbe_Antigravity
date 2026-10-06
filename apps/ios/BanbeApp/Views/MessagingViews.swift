@@ -461,7 +461,7 @@ private struct InboxRow: View {
                 if hasActiveDispute {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(BanbeTheme.alert.opacity(0.10))
-                        .padding(.horizontal, 4).padding(.vertical, 4)
+                        .padding(.horizontal, -10)
                         .allowsHitTesting(false)
                 }
             }
