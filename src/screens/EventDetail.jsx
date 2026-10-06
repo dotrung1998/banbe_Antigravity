@@ -173,7 +173,7 @@ export default function EventDetail() {
           // event's photo standing in for it.
           <div style={{ width: '100%', height: '100%', background: rule }} />
         )}
-        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 78, pointerEvents: 'none', background: `linear-gradient(to bottom, rgba(247,244,236,0) 0%, rgba(247,244,236,0.3) 62%, ${paper} 100%)` }} />
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 78, pointerEvents: 'none', background: `linear-gradient(to bottom, rgba(var(--bb-bg-rgb),0) 0%, rgba(var(--bb-bg-rgb),0.3) 62%, ${paper} 100%)` }} />
       </div>
       <div style={{ padding: '22px 22px 30px', display: 'flex', flexDirection: 'column' }}>
         {!cameFromHome && (

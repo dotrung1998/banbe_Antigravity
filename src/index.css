@@ -21,6 +21,11 @@
   --bb-button-text: #FFFFFF;
   --bb-white: rgba(255,255,255,0.62);
   --bb-shadow: rgba(27,25,22,0.08);
+  /* Frosted on-photo pill (theme.js photoPill): highlight strength + edge. */
+  --bb-pill-hi: 0.42;
+  --bb-pill-edge: rgba(255,255,255,0.5);
+  --bb-pill-shadow: rgba(27,25,22,0.22);
+  --bb-pill-inset: rgba(255,255,255,0.65);
   /* Warning/destructive accent — the one non-palette color. Light value
      here; the dark block below overrides it with a brighter coral
      (mirrored by BanbeTheme.alert(dark:) in BanbeTheme.swift). */
@@ -60,6 +65,10 @@
   --bb-button-text: #14120E;
   --bb-white: rgba(242,237,225,0.19);
   --bb-shadow: rgba(0,0,0,0.28);
+  --bb-pill-hi: 0.08;
+  --bb-pill-edge: rgba(242,237,225,0.22);
+  --bb-pill-shadow: rgba(0,0,0,0.5);
+  --bb-pill-inset: rgba(242,237,225,0.10);
   /* Honey's dark pair — same hue as the light values, lifted for contrast on
      the dark paper (mirrors Palette.dark.honey / .honeyBg in BanbeTheme.swift).
      Unlike --bb-alert this one DOES need a per-theme value, since a fixed

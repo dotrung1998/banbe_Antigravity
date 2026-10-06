@@ -112,9 +112,12 @@ export const inkButton = (extra) => ({
 // Frosted pill over a photo (back/share buttons, remove chip).
 export const photoPill = (extra) => ({
   position: 'absolute',
-  background: 'linear-gradient(165deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.12) 34%, rgba(255,255,255,0) 62%), rgba(247,244,236,0.85)',
+  // Theme-aware: the pill is paper-coloured (cream in light, near-black in
+  // dark) so its `ink` label always contrasts — it used to be hardcoded cream,
+  // which made the label vanish in dark mode.
+  background: 'linear-gradient(165deg, rgba(255,255,255,var(--bb-pill-hi)) 0%, rgba(255,255,255,0.12) 34%, rgba(255,255,255,0) 62%), rgba(var(--bb-bg-rgb),0.85)',
   backdropFilter: 'blur(16px) saturate(1.6)', WebkitBackdropFilter: 'blur(16px) saturate(1.6)',
-  border: '1px solid rgba(255,255,255,0.5)', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.65), 0 6px 16px rgba(27,25,22,0.22)',
+  border: '1px solid var(--bb-pill-edge)', boxShadow: 'inset 0 1px 1px var(--bb-pill-inset), 0 6px 16px var(--bb-pill-shadow)',
   borderRadius: 11, color: ink, cursor: 'pointer', fontSize: 12, ...clipBackdropFilter, ...extra,
 });
 

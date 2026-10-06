@@ -1103,7 +1103,7 @@ export default function Home() {
             ) : (
               <div style={bg(ev.img, { width: 'calc(100% - 40px)', height: 272, margin: '0 20px', borderRadius: '14px 14px 0 0' })} />
             )}
-            <div style={{ position: 'absolute', left: 20, right: 20, bottom: 0, height: 58, background: `linear-gradient(to bottom, rgba(247,244,236,0) 0%, rgba(247,244,236,0.3) 62%, ${paper} 100%)`, pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', left: 20, right: 20, bottom: 0, height: 58, background: `linear-gradient(to bottom, rgba(var(--bb-bg-rgb),0) 0%, rgba(var(--bb-bg-rgb),0.3) 62%, ${paper} 100%)`, pointerEvents: 'none' }} />
             <span
               onClick={(e) => { e.stopPropagation(); toggleFav(ev.key); }}
               style={ev.saved ? photoChip(CHIP_COLORS.going, { top: 12, right: 30 }) : lightChip({ top: 12, right: 30 })}
