@@ -17,6 +17,8 @@ struct Palette {
     /// value-for-value in both themes.
     let honey: Color
     let honeyBg: Color
+    /// Wordmark tint — ink on light, bright amber on dark.
+    let logo: Color
 
     static let light = Palette(
         paper: Color(hex: 0xF7F4EC),
@@ -24,22 +26,35 @@ struct Palette {
         rule: Color(hex: 0x1B1916).opacity(0.16),
         field: Color(hex: 0xEEE8DA),
         honey: Color(hex: 0x8C6014),
-        honeyBg: Color(hex: 0xF0E2BE)
+        honeyBg: Color(hex: 0xF0E2BE),
+        logo: Color(hex: 0x1B1916)
     )
     static let dark = Palette(
         paper: Color(hex: 0x14120E),
         ink: Color(hex: 0xF2EDE1),
-        rule: Color(hex: 0xF2EDE1).opacity(0.20),
-        field: Color(hex: 0x4A4439),
-        honey: Color(hex: 0xE0B45F),
-        honeyBg: Color(hex: 0x3D3016)
+        rule: Color(hex: 0xF2EDE1).opacity(0.28),
+        field: Color(hex: 0x3A352B),
+        honey: Color(hex: 0xF2C46D),
+        honeyBg: Color(hex: 0x3D3016),
+        logo: Color(hex: 0xF6C453)
     )
 }
 
 enum BanbeTheme {
     /// Warning/destructive accent — the one non-palette colour the web app
     /// uses, for error copy and "Cancel booking".
-    static let alert = Color(hex: 0x9A3E2D)
+    /// Dark mode swaps in a brighter coral (web's `--bb-alert` dark value) so
+    /// error text/chips stay legible on the dark paper; resolved through the
+    /// trait collection, so the root `.preferredColorScheme` drives it.
+    static let alert = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0xE8 / 255, green: 0x71 / 255, blue: 0x5B / 255, alpha: 1)
+            : UIColor(red: 0x9A / 255, green: 0x3E / 255, blue: 0x2D / 255, alpha: 1)
+    })
+    /// Label colour for text sitting ON an alert-filled surface.
+    static let onAlert = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark ? UIColor(red: 0x14 / 255, green: 0x12 / 255, blue: 0x0E / 255, alpha: 1) : .white
+    })
 
     /// On-photo state chips, the only coloured surfaces in the design
     /// (CHIP_COLORS in src/theme.js).

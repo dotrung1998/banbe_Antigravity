@@ -130,7 +130,7 @@ struct CancelEventSheet: View {
             }
             .frame(maxWidth: .infinity).padding(.vertical, 15)
             .background(BanbeTheme.alert, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .foregroundStyle(.white)
+            .foregroundStyle(BanbeTheme.onAlert)
         }
         .disabled(busy || loading || loadFailed)
         .accessibilityIdentifier("cancelEvent.confirm")

@@ -62,7 +62,7 @@ function InboxRow({ c, onOpen, onStar, onArchive, T, disputeActive }) {
         <div
           onClick={(e) => { e.stopPropagation(); onStar(); setOffset(0); }}
           data-testid="inbox-row-star"
-          style={{ width: ACTION_WIDTH, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, background: alert, color: '#fff', cursor: 'pointer' }}
+          style={{ width: ACTION_WIDTH, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, background: alert, color: 'var(--bb-on-alert)', cursor: 'pointer' }}
         >
           <span style={{ fontSize: 18, lineHeight: 1 }}>{c.starred ? '★' : '☆'}</span>
           {/* Bug 1a (2026-09-21 follow-up) — was hardcoded "Star" text

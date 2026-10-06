@@ -420,7 +420,7 @@ struct BottomTabBar: View {
             if item.badge > 0 {
                 Text(badgeText)
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(BanbeTheme.onAlert)
                     .padding(.horizontal, 4)
                     .frame(minWidth: 14, minHeight: 14)
                     .background(BanbeTheme.alert, in: Capsule())

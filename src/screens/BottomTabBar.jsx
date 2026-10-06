@@ -653,7 +653,7 @@ export default function BottomTabBar({ collapsed }) {
                     title={String(item.badge)}
                     style={{
                       position: 'absolute', top: -5, right: -7, minWidth: 14, height: 14, padding: displayText.length > 1 ? '0 4px' : '0 3px',
-                      borderRadius: 999, background: alert, color: '#fff', fontSize: 9, fontWeight: 700,
+                      borderRadius: 999, background: alert, color: 'var(--bb-on-alert)', fontSize: 9, fontWeight: 700,
                       lineHeight: '14px', textAlign: 'center', whiteSpace: 'nowrap',
                     }}
                   >

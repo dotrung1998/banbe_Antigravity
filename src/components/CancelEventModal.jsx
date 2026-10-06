@@ -197,7 +197,7 @@ export default function CancelEventModal({
       {error && <p style={{ fontSize: 12, color: alert, margin: '12px 0 0' }}>{error}</p>}
       {!confirming ? (
         <button disabled={loading || loadFailed || busy} onClick={() => setConfirming(true)} data-testid="cancel-event-confirm"
-                style={{ width: '100%', marginTop: 18, padding: '15px 0', border: 'none', borderRadius: 18, background: alert, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', opacity: loading || loadFailed ? 0.5 : 1 }}>
+                style={{ width: '100%', marginTop: 18, padding: '15px 0', border: 'none', borderRadius: 18, background: alert, color: 'var(--bb-on-alert)', fontSize: 15, fontWeight: 600, cursor: 'pointer', opacity: loading || loadFailed ? 0.5 : 1 }}>
           {T('Huỷ sự kiện', 'Cancel event')}
         </button>
       ) : (
@@ -210,7 +210,7 @@ export default function CancelEventModal({
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button disabled={busy} onClick={doCancel} data-testid="cancel-event-yes"
-                    style={{ flex: 1, padding: '12px 0', border: 'none', borderRadius: 14, background: alert, color: '#fff', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>
+                    style={{ flex: 1, padding: '12px 0', border: 'none', borderRadius: 14, background: alert, color: 'var(--bb-on-alert)', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>
               {busy ? '…' : T('Có, huỷ sự kiện', 'Yes, cancel the event')}
             </button>
             <button disabled={busy} onClick={() => setConfirming(false)}

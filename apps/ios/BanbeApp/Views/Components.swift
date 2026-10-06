@@ -258,7 +258,7 @@ struct BanbeLogo: View {
             }
         }
         .frame(width: width, height: height)
-        .foregroundStyle(app.palette.ink)
+        .foregroundStyle(app.palette.logo)
         .accessibilityLabel("banbe")
     }
 }

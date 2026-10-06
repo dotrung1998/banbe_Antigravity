@@ -276,7 +276,7 @@ private struct DeleteAccountButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 14, weight: .semibold))
             .padding(14)
-            .foregroundStyle(destructive ? Color.white : app.palette.ink)
+            .foregroundStyle(destructive ? BanbeTheme.onAlert : app.palette.ink)
             .background(destructive ? BanbeTheme.alert : app.palette.field, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .opacity(configuration.isPressed ? 0.8 : 1)
     }

@@ -374,7 +374,7 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
             style={{
               flex: 'none', display: 'flex', alignItems: 'center', padding: '0 16px', borderRadius: 12,
               fontSize: 13, fontWeight: 600, cursor: s.disputeChatDraft.trim() ? 'pointer' : 'default',
-              background: s.disputeChatDraft.trim() ? ink : 'rgba(27,25,22,0.16)', color: '#F7F4EC',
+              background: s.disputeChatDraft.trim() ? ink : 'rgba(27,25,22,0.16)', color: 'var(--bb-bg)',
               border: `1px solid ${rule}`,
             }}
           >
@@ -417,7 +417,7 @@ export default function DisputeChatPanel({ bookingId, refundClaimId }) {
                 <div onClick={() => busy === '' && doExport()} data-testid="dispute-chat-confirm-export" style={{ ...fieldGlass({ padding: '8px 12px', borderRadius: 999 }), fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}>
                   {busy === 'export' ? T('Đang tạo…', 'Building…') : T('Tải bản ghi', 'Download transcript')}
                 </div>
-                <div onClick={() => busy === '' && (confirm === 'close' ? doClose() : doDelete())} data-testid="dispute-chat-confirm-go" style={{ padding: '8px 12px', borderRadius: 999, background: alert, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: busy === 'close' || busy === 'delete' ? 0.5 : 1 }}>
+                <div onClick={() => busy === '' && (confirm === 'close' ? doClose() : doDelete())} data-testid="dispute-chat-confirm-go" style={{ padding: '8px 12px', borderRadius: 999, background: alert, color: 'var(--bb-on-alert)', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: busy === 'close' || busy === 'delete' ? 0.5 : 1 }}>
                   {confirm === 'close' ? T('Đóng tranh chấp', 'Close dispute') : T('Xoá bản của tôi', 'Delete my copy')}
                 </div>
                 <div onClick={() => setConfirm(null)} data-testid="dispute-chat-confirm-cancel" style={{ padding: '8px 12px', fontSize: 12, color: ink, cursor: 'pointer' }}>

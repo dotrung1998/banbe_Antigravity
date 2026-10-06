@@ -11,6 +11,7 @@
      needs to match iOS's own `app.palette.ink.opacity(0.12)` instead of a
      fully opaque fill. */
   --bb-fg-rgb: 27,25,22;
+  --bb-bg-rgb: 247,244,236;
   --bb-ink-deep: #0C0B09;
   --bb-rule: rgba(27,25,22,0.16);
   --bb-field: #EEE8DA;
@@ -20,12 +21,12 @@
   --bb-button-text: #FFFFFF;
   --bb-white: rgba(255,255,255,0.62);
   --bb-shadow: rgba(27,25,22,0.08);
-  /* Warning/destructive accent — the one non-palette color, same in both
-     themes (matches apps/ios/BanbeApp/Views/BanbeTheme.swift's
-     `BanbeTheme.alert`, which is likewise defined once, outside its
-     light/dark Palette). Not redeclared in the [data-bb-theme="dark"]
-     block below — it inherits this same value from :root either way. */
+  /* Warning/destructive accent — the one non-palette color. Light value
+     here; the dark block below overrides it with a brighter coral
+     (mirrored by BanbeTheme.alert(dark:) in BanbeTheme.swift). */
   --bb-alert: #9A3E2D;
+  --bb-alert-rgb: 154,62,45;
+  --bb-on-alert: #FFFFFF;
   /* Honey — the "needs attention but is not an error" accent, used for the
      dispute section pinned at the top of Messages and its matching entries on
      the payment/refund screens. Deliberately a sibling of --bb-alert (same
@@ -44,10 +45,16 @@
   --bb-bg: #14120E;
   --bb-fg: #F2EDE1;
   --bb-fg-rgb: 242,237,225;
+  --bb-bg-rgb: 20,18,14;
+  /* Brighter coral so error/destructive text and chips stay legible on the
+     dark paper (the light #9A3E2D vanishes there). */
+  --bb-alert: #E8715B;
+  --bb-alert-rgb: 232,113,91;
+  --bb-on-alert: #14120E;
   --bb-ink-deep: #F2EDE1;
-  --bb-rule: rgba(242,237,225,0.20);
-  --bb-field: #4A4439;
-  --bb-card: rgba(74,68,57,0.55);
+  --bb-rule: rgba(242,237,225,0.28);
+  --bb-field: #3A352B;
+  --bb-card: rgba(74,68,57,0.70);
   --bb-card2: rgba(86,79,66,0.40);
   --bb-button: rgba(242,237,225,0.92);
   --bb-button-text: #14120E;
@@ -57,7 +64,7 @@
      the dark paper (mirrors Palette.dark.honey / .honeyBg in BanbeTheme.swift).
      Unlike --bb-alert this one DOES need a per-theme value, since a fixed
      dark honey would disappear into --bb-bg. */
-  --bb-honey: #E0B45F;
+  --bb-honey: #F2C46D;
   --bb-honey-bg: #3D3016;
 }
 
@@ -299,3 +306,6 @@ input::placeholder {
   from { opacity: 0; transform: translateY(8px) scale(0.94); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+/* Dark mode: the wordmark is black artwork, so tint it to a bright amber. */
+[data-bb-theme="dark"] img[src="/banbe-wordmark.png"] { filter: url(#bb-logo-tint); }

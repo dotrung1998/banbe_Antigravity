@@ -84,7 +84,7 @@ export const cardGlass = (extra) => ({
 
 // Bar glass — sticky bottom bars.
 export const barGlass = (extra) => ({
-  background: 'linear-gradient(180deg, rgba(247,244,236,0.35) 0%, rgba(247,244,236,0.78) 45%, rgba(247,244,236,0.92) 100%)',
+  background: 'linear-gradient(180deg, rgba(var(--bb-bg-rgb),0.35) 0%, rgba(var(--bb-bg-rgb),0.78) 45%, rgba(var(--bb-bg-rgb),0.92) 100%)',
   backdropFilter: 'blur(16px) saturate(1.04)', WebkitBackdropFilter: 'blur(16px) saturate(1.04)',
   ...clipBackdropFilter, ...extra,
 });
@@ -138,4 +138,4 @@ export const photoChip = (bg, extra) => ({
 });
 
 // The one light chip: unsaved "Lưu" — light glass, ink label.
-export const lightChip = (extra) => photoChip('rgba(247,244,236,0.62)', { color: ink, textShadow: 'none', ...extra });
+export const lightChip = (extra) => photoChip('rgba(var(--bb-bg-rgb),0.62)', { color: ink, textShadow: 'none', ...extra });
