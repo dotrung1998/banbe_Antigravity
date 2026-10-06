@@ -79,6 +79,30 @@ LANGUAGE plpgsql SET search_path = public AS $fn$
 DECLARE
   v_new text; v_old text; v_scope text;
 BEGIN
+  -- Consistency (system-derived, so it bypasses the "server-managed" check below): when a CLIENT changes the
+  -- legacy column without touching the R2 pointer, the pointer would go stale and any resolver that prefers it would
+  -- keep showing the OLD image. Re-derive it instead. (Server/migration writes change only the r2 column, so they
+  -- never take this branch.)
+  -- (Field references stay inside branches that already checked the table: PL/pgSQL resolves NEW.<col> when the
+  -- expression is prepared, so `TG_TABLE_NAME = 'events' AND NEW.cover_image ...` would fail on other tables.)
+  IF TG_OP = 'UPDATE' THEN
+    IF TG_TABLE_NAME = 'organizers' THEN
+      IF NEW.avatar_path IS DISTINCT FROM OLD.avatar_path
+         AND NEW.avatar_r2_ref IS NOT DISTINCT FROM OLD.avatar_r2_ref AND NEW.avatar_r2_ref IS NOT NULL
+         AND NEW.avatar_path NOT LIKE 'r2:%' THEN
+        NEW.avatar_r2_ref := NULL;
+        RETURN NEW;
+      END IF;
+    ELSIF TG_TABLE_NAME = 'events' THEN
+      IF NEW.cover_image IS DISTINCT FROM OLD.cover_image
+         AND NEW.cover_r2_ref IS NOT DISTINCT FROM OLD.cover_r2_ref AND NEW.cover_r2_ref IS NOT NULL THEN
+        NEW.cover_r2_ref := (SELECT p.r2_ref FROM public.event_photos p
+                              WHERE p.event_id = NEW.id AND p.storage_path = NEW.cover_image AND p.r2_ref IS NOT NULL LIMIT 1);
+        RETURN NEW;
+      END IF;
+    END IF;
+  END IF;
+
   IF TG_TABLE_NAME = 'event_photos' THEN
     v_new := NEW.r2_ref;  v_scope := 'ev-' || NEW.event_id;
     v_old := CASE WHEN TG_OP = 'UPDATE' THEN OLD.r2_ref END;
