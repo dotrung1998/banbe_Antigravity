@@ -44,11 +44,17 @@ export const TAB_OUTLINE_SHAPES = {
   profile: { path: 'M8.2 8a3.8 3.8 0 1 1 7.6 0a3.8 3.8 0 1 1 -7.6 0 M5 19.2c1.3-3.9 4.2-5.8 7-5.8s5.7 1.9 7 5.8' },
 };
 
+// The selected tab always sits on the dock's white highlight capsule (dark ink
+// glyph on white, in both themes), so the knocked-out details of a filled icon
+// (map pin dot, envelope flap) must be that white — not the page background,
+// which is near-black in dark mode and turned both icons into solid blobs.
+const CUTOUT = '#FFFFFF';
+
 const ICONS = {
   map: (c, filled) => (
     <svg viewBox="0 0 24 24" width="100%" height="100%">
       <path d="M12 3c-3.3 0-6 2.6-6 6.1C6 13.4 12 21 12 21s6-7.6 6-11.9C18 5.6 15.3 3 12 3z" fill={filled ? c : 'none'} stroke={c} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx="12" cy="9.3" r="2.3" fill={filled ? 'var(--bb-bg)' : c} />
+      <circle cx="12" cy="9.3" r="2.3" fill={filled ? CUTOUT : c} />
     </svg>
   ),
   notifications: (c, filled) => (
@@ -60,7 +66,7 @@ const ICONS = {
   inbox: (c, filled) => (
     <svg viewBox="0 0 24 24" width="100%" height="100%">
       <rect x="4.5" y="7" width="15" height="11" rx="2.4" fill={filled ? c : 'none'} stroke={c} strokeWidth="2.4" />
-      <path d="M5.5 8.2 L12 13.5 L18.5 8.2" fill="none" stroke={filled ? 'var(--bb-bg)' : c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5.5 8.2 L12 13.5 L18.5 8.2" fill="none" stroke={filled ? CUTOUT : c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
   profile: (c, filled) => (

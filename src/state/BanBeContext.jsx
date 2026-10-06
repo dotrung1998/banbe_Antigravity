@@ -2527,9 +2527,11 @@ export function BanBeProvider({ children }) {
     // side since `organizers` itself has no avatar column.
     const orgIds2 = [...new Set(allThreads.map(t => t.organizer_id).filter(Boolean))];
     let orgOwnerByOrgId = {};
+    let orgNameByOrgId = {};
     if (orgIds2.length) {
-      const { data: orgRows } = await supabase.from('organizers').select('id, owner_id, user_id').in('id', orgIds2);
+      const { data: orgRows } = await supabase.from('organizers').select('id, name, owner_id, user_id').in('id', orgIds2);
       orgOwnerByOrgId = Object.fromEntries((orgRows || []).map(o => [o.id, o.owner_id || o.user_id]));
+      orgNameByOrgId = Object.fromEntries((orgRows || []).map(o => [o.id, o.name]));
     }
 
     const guestIds = [...new Set(allThreads.filter(t => t.guest_id !== uid).map(t => t.guest_id).filter(Boolean))];
@@ -2543,10 +2545,14 @@ export function BanBeProvider({ children }) {
     }
 
     const rows = allThreads.map(t => {
-      const ev = findEvent(t.event_id);
+      // findEvent() falls back to EVENTS[0] (demo host "Bếp Nhỏ") for any key
+      // that isn't a catalogue event, so a real event's host name/photo must
+      // come from the database (the thread's own organizer), never from it.
+      const isCatalog = EVENTS.some(e => e.key === t.event_id);
+      const ev = isCatalog ? findEvent(t.event_id) : { orgName: '', img: '' };
       const last = lastByThread[t.id];
       const iAmGuest = t.guest_id === uid;
-      const name = iAmGuest ? ev.orgName : ((guestNames[t.guest_id] || '').trim() || 'Khách');
+      const name = iAmGuest ? (orgNameByOrgId[t.organizer_id] || ev.orgName) : ((guestNames[t.guest_id] || '').trim() || 'Khách');
       const otherAvatarUrl = iAmGuest ? avatarByUserId[orgOwnerByOrgId[t.organizer_id]] : avatarByUserId[t.guest_id];
       return {
         threadId: t.id,

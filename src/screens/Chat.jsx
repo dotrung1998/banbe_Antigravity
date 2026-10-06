@@ -174,7 +174,7 @@ export default function Chat() {
           <span onClick={chatBackFn} data-testid="chat-back" style={{ fontSize: 11, color: ink, cursor: 'pointer' }}>‹ {chatBackLabel}</span>
           <span style={{ ...display(18) }}>{headerTitle}</span>
           {/* Task 3b — event date + name subtitle directly under the title. */}
-          <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{[ev.dayLong, ev.name].filter(Boolean).join(' · ')}</span>
+          <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{[ev.dayLong || ev.when, ev.name].filter(Boolean).join(' · ')}</span>
         </div>
         <div
           onClick={() => goEvent(s.eventKey)}

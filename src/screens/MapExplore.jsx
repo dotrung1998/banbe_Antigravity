@@ -934,7 +934,15 @@ export default function MapExplore() {
   return (
     <div style={{ position: 'fixed', inset: 0, background: paper }} data-screen-label="MapExplore">
       {/* iOS has no map zoom controls (mapControls {}); the web +/- sits below the compass pill. */}
-      <style>{`[data-screen-label="MapExplore"] .maplibregl-ctrl-top-right { top: ${topInset + 56}px; right: 6px; } [data-screen-label="MapExplore"] .bb-noscroll::-webkit-scrollbar { display: none; }`}</style>
+      <style>{`[data-screen-label="MapExplore"] .maplibregl-ctrl-top-right { top: ${topInset + 56}px; right: 6px; } [data-screen-label="MapExplore"] .bb-noscroll::-webkit-scrollbar { display: none; }
+        /* Dark theme: the OpenFreeMap "positron" basemap is light-only, so invert just the tile canvas
+           (markers/controls are separate DOM and stay untouched) into a dark, low-glare map. */
+        [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-canvas { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.7); }
+        [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl-group { background: var(--bb-field); box-shadow: 0 0 0 1px var(--bb-rule); }
+        [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl-group button + button { border-top: 1px solid var(--bb-rule); }
+        [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl button .maplibregl-ctrl-icon { filter: invert(1); }
+        [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl-attrib { background: rgba(var(--bb-bg-rgb), 0.6); color: var(--bb-fg); }
+        [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl-attrib a { color: var(--bb-fg); }`}</style>
       <div ref={mapDivRef} style={{ position: 'absolute', inset: 0 }} />
 
       {/* Follow-up discovery (11-realtime-map.md): maplibre-gl.css gives its
