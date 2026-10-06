@@ -11,6 +11,8 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'UNAUTHORIZED' });
   }
   const ctx = buildMediaCtx();
-  if (!ctx.db || !ctx.r2.configured) return res.status(200).json({ skipped: 'MEDIA_NOT_CONFIGURED' });
+  if (!ctx.db) return res.status(200).json({ skipped: 'MEDIA_NOT_CONFIGURED' });
+  const anyJob = ctx.r2.configured || ctx.env.MEDIA_DEMOTE_LEGACY_INVITE === 'on' || ctx.env.MEDIA_SWEEP_STORIES === 'on';
+  if (!anyJob) return res.status(200).json({ skipped: 'MEDIA_NOT_CONFIGURED' });
   return res.status(200).json(await sweep(ctx));
 }

@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { getMissingEmailVariables, sendWithGmail } from '../_lib/email.js';
 import { getSupabaseAdmin, resolveAuthUserId, linkRegistration, getRedirectUrl } from '../_lib/authLookup.js';
 import { findOpenEventsBlockingDeletion } from '../_lib/accountDeletion.js';
+import { cleanupOwnedMedia } from '../_lib/accountMedia.js';
+import { buildMediaCtx } from '../_lib/mediaCtx.js';
 import { renderEmail, renderEmailText } from '../_lib/emailTemplate.js';
 
 // Consolidated dispatcher for the /api/auth/* trio, folded together to fit
@@ -379,6 +381,15 @@ async function handleDeleteAccount(req, res, admin, body) {
     // the account itself, but it IS recorded so it can be found/cleaned up
     // later rather than silently vanishing from view.
     await markStep(admin, requestId, 'avatar_storage', `failed: ${error?.message || error}`);
+  }
+
+  // Step 1b — media only this user owns (stories, organizer profile photo incl. R2). Retained-by-design
+  // records (payment proofs, chat, disputes, event photos) are NOT touched; see note 28.
+  try {
+    const result = await cleanupOwnedMedia(admin, userId, buildMediaCtx());
+    await markStep(admin, requestId, 'owned_media', `ok: ${JSON.stringify(result)}`);
+  } catch (error) {
+    await markStep(admin, requestId, 'owned_media', `failed: ${error?.message || error}`);
   }
 
   // Step 2 — the actual account deletion. `profiles.id REFERENCES

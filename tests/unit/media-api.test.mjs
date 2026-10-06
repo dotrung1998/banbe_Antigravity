@@ -49,6 +49,8 @@ function makeCtx({ env = { MEDIA_R2_UPLOADS: 'on' }, events = {}, orgs = {}, adm
       listStalePending: async () => [...store.assets.values()].filter((a) => a.status === 'pending'),
       listPublishedEventAssets: async () => [...store.assets.values()].filter((a) => a.status === 'published' && a.kind === 'event_photo'),
       listPublishedEventAssetsForEvent: async (e) => [...store.assets.values()].filter((a) => a.status === 'published' && a.event_id === e),
+      listOrphanedPublishedAssets: async () => [...store.assets.values()].filter((a) => a.status === 'published' && !a.deleted_at && (
+        a.kind === 'organizer_avatar' ? store.avatars[a.organizer_id] !== refOf(a.scope, a.id, a.ext) : !store.photos.some((p) => p.r2_ref === refOf(a.scope, a.id, a.ext)))),
       listDeletionIntents: async () => [...store.assets.values()].filter((a) => a.deleted_at && a.status !== 'deleted'),
     },
     r2: {
@@ -265,4 +267,20 @@ test('presignUrl binds signed headers (changing content-length changes the signa
   assert.match(a, /X-Amz-SignedHeaders=content-length%3Bcontent-type%3Bhost/);
   assert.notEqual(a.split('X-Amz-Signature=')[1], b.split('X-Amz-Signature=')[1]);
   assert.ok(a.includes('/b/k/a%20b.jpg?'));
+});
+
+test('sweep retires published assets that nothing references (replaced avatar / deleted photo row), keeps referenced ones', async () => {
+  const { ctx, store } = makeCtx({ events: { e1: publicEvent }, orgs: baseOrgs });
+  const i1 = (await call(ctx, 'tokA', initBody())).json; stageAll(store, i1.assetId, jpeg());
+  const f1 = await call(ctx, 'tokA', { op: 'finalize', assetId: i1.assetId });
+  const i2 = (await call(ctx, 'tokA', initBody())).json; stageAll(store, i2.assetId, jpeg());
+  const f2 = await call(ctx, 'tokA', { op: 'finalize', assetId: i2.assetId });
+  store.photos = store.photos.filter((p) => p.r2_ref !== f1.json.ref);          // another client deleted photo 1's row
+  const stats = await sweep(ctx);
+  assert.equal(stats.orphansRetired, 1);
+  assert.equal(store.assets.get(i1.assetId).status, 'deleted');
+  assert.equal(store.assets.get(i2.assetId).status, 'published');
+  assert.equal([...store.pub.keys()].filter((k) => k.includes(i1.assetId)).length, 0);
+  assert.equal([...store.pub.keys()].filter((k) => k.includes(i2.assetId)).length, 3);
+  assert.equal((await sweep(ctx)).orphansRetired, 0);
 });

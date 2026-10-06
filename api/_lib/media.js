@@ -262,6 +262,44 @@ export async function opDelete(ctx, token, body) {
   return { ok: true, cdnPurged: !!r.purge?.ok };
 }
 
+
+// ---------- legacy (Supabase-hosted) privacy gaps; no R2 required ----------
+const CT_BY_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+
+/**
+ * Invite-only events must never serve photos from the PUBLIC bucket. Photos uploaded while the event
+ * was public (or by an older iOS build) still sit there. Move them to 'event-photos-private' FIRST,
+ * repoint the DB row, and only then delete the public object, so there is no moment where the host
+ * loses the photo and no new public copy is ever created. Idempotent; gated by MEDIA_DEMOTE_LEGACY_INVITE.
+ */
+export async function demoteLegacyInvitePhotos(ctx, { eventId } = {}) {
+  const out = { moved: 0, skipped: 0 };
+  for (const row of await ctx.db.listLegacyPublicPhotosOfInviteEvents(eventId || null)) {
+    const rel = row.storage_path.replace(/^event-photos\//, '');
+    if (!rel || rel.includes('..')) { out.skipped++; continue; }
+    const bytes = await ctx.db.downloadLegacyEventPhoto(rel);
+    if (!bytes) { out.skipped++; continue; }                       // already gone: leave the row alone
+    const ext = rel.split('.').pop().toLowerCase();
+    const next = `event-photos-private/${rel}`;
+    await ctx.db.uploadPrivateEventPhoto(rel, bytes, CT_BY_EXT[ext] || 'application/octet-stream');
+    await ctx.db.repointEventPhoto(row.id, next);
+    await ctx.db.replaceCoverPath(row.event_id, row.storage_path, next);
+    await ctx.db.removeLegacyEventPhotos([rel]);
+    out.moved++;
+  }
+  return out;
+}
+
+/** Expired stories: remove the Storage OBJECTS first, then the rows (a failed remove leaves the row so it is retried). */
+export async function sweepExpiredStories(ctx, limit = 200) {
+  const expired = await ctx.db.listExpiredStories(limit);
+  if (!expired.length) return 0;
+  const paths = expired.map((r) => r.media_path).filter(Boolean);
+  if (paths.length) await ctx.db.removeStoryObjects(paths);
+  await ctx.db.deleteStories(expired.map((r) => r.id));
+  return expired.length;
+}
+
 /** Host-triggered, immediate version of the sweep for ONE event (call right after a privacy/status change). */
 export async function opReconcile(ctx, token, body) {
   const userId = await authenticate(ctx, token);
@@ -269,32 +307,48 @@ export async function opReconcile(ctx, token, body) {
   const ev = await ctx.db.getEvent(body.eventId);
   if (!ev || !ev.organizer_id || !(await ownsOrganizer(ctx, userId, ev.organizer_id))) fail(403, 'FORBIDDEN');
   let unpublished = 0;
-  if (!eventIsPublic(ev)) {
+  let legacy = { moved: 0, skipped: 0 };
+  if (ev.visibility === 'invite' && ctx.env.MEDIA_DEMOTE_LEGACY_INVITE === 'on') legacy = await demoteLegacyInvitePhotos(ctx, { eventId: ev.id });
+  if (ctx.r2.configured && !eventIsPublic(ev)) {
     for (const a of await ctx.db.listPublishedEventAssetsForEvent(ev.id)) { await unpublishAsset(ctx, a, { demote: true }); unpublished++; }
   }
-  return { ok: true, unpublished };
+  return { ok: true, unpublished, legacyMoved: legacy.moved };
 }
 
 // ---------- scheduled sweep (called by api/_lib/handlers/cronMediaSweep.js) ----------
 export async function sweep(ctx) {
-  const stats = { orphanedPending: 0, demoted: 0, retried: 0, errors: 0 };
+  const stats = { orphanedPending: 0, demoted: 0, orphansRetired: 0, retried: 0, legacyInviteMoved: 0, storiesRemoved: 0, errors: 0 };
   const now = ctx.now ? ctx.now() : new Date();
 
-  for (const a of await ctx.db.listStalePending(new Date(now.getTime() - 3600_000).toISOString())) {
-    try { await discard(ctx, a, []); await ctx.db.updateAsset(a.id, { status: 'failed' }); stats.orphanedPending++; } catch { stats.errors++; }
+  if (ctx.r2.configured) {
+    for (const a of await ctx.db.listStalePending(new Date(now.getTime() - 3600_000).toISOString())) {
+      try { await discard(ctx, a, []); await ctx.db.updateAsset(a.id, { status: 'failed' }); stats.orphanedPending++; } catch { stats.errors++; }
+    }
+    // Published event photos whose event stopped being public (invite-only switch, withdrawn, back to draft…).
+    for (const a of await ctx.db.listPublishedEventAssets()) {
+      try {
+        const ev = await ctx.db.getEvent(a.event_id);
+        if (ev && eventIsPublic(ev)) continue;
+        await unpublishAsset(ctx, a, { demote: !!ev });   // event deleted => nothing to keep
+        stats.demoted++;
+      } catch { stats.errors++; }
+    }
+    // Published assets that nothing references any more (avatar replaced through the legacy path, photo row deleted by another
+    // client, cover re-pointed): retire them so their public objects do not outlive their use.
+    for (const a of await ctx.db.listOrphanedPublishedAssets()) {
+      try { await unpublishAsset(ctx, a, { demote: false }); stats.orphansRetired++; } catch { stats.errors++; }
+    }
+    // Half-finished deletions (R2/purge failed earlier).
+    for (const a of await ctx.db.listDeletionIntents()) {
+      try { await unpublishAsset(ctx, a, { demote: false }); stats.retried++; } catch { stats.errors++; }
+    }
   }
-  // Published event photos whose event stopped being public (invite-only switch, withdrawn, back to draft…).
-  for (const a of await ctx.db.listPublishedEventAssets()) {
-    try {
-      const ev = await ctx.db.getEvent(a.event_id);
-      if (ev && eventIsPublic(ev)) continue;
-      await unpublishAsset(ctx, a, { demote: !!ev });   // event deleted => nothing to keep
-      stats.demoted++;
-    } catch { stats.errors++; }
+  // Supabase-only clean-ups. Each is OFF until its flag is 'on', so deploying changes no live object by itself.
+  if (ctx.env.MEDIA_DEMOTE_LEGACY_INVITE === 'on') {
+    try { stats.legacyInviteMoved = (await demoteLegacyInvitePhotos(ctx)).moved; } catch { stats.errors++; }
   }
-  // Half-finished deletions (R2/purge failed earlier).
-  for (const a of await ctx.db.listDeletionIntents()) {
-    try { await unpublishAsset(ctx, a, { demote: false }); stats.retried++; } catch { stats.errors++; }
+  if (ctx.env.MEDIA_SWEEP_STORIES === 'on') {
+    try { stats.storiesRemoved = await sweepExpiredStories(ctx); } catch { stats.errors++; }
   }
   return stats;
 }

@@ -22,6 +22,7 @@ export function r2Config(env = process.env) {
   if (missing.length) return { ok: false, missing };
   return {
     ok: true, accountId, accessKeyId, secretAccessKey, publicBucket, stagingBucket,
+    region: env.R2_REGION || 'auto',
     endpoint: env.R2_ENDPOINT || `https://${accountId}.r2.cloudflarestorage.com`,
     publicBaseUrl: (env.MEDIA_PUBLIC_BASE_URL || '').replace(/\/$/, ''),
   };
@@ -60,18 +61,19 @@ export function presignUrl(cfg, { method, bucket, key, expiresIn = 300, headers 
 }
 
 /** Header-signed server-side request (GET/HEAD/PUT/DELETE). */
-async function signedFetch(cfg, { method, bucket, key, body, headers = {}, fetchImpl = fetch, now = new Date() }) {
+export async function signedFetch(cfg, { method, bucket, key, body, headers = {}, fetchImpl = fetch, now = new Date() }) {
   const host = new URL(cfg.endpoint).host;
   const stamp = amzDate(now);
   const date = stamp.slice(0, 8);
-  const scope = `${date}/auto/s3/aws4_request`;
+  const region = cfg.region || 'auto';
+  const scope = `${date}/${region}/s3/aws4_request`;
   const payload = body ? sha256hex(body) : sha256hex('');
   const hdrs = { host, 'x-amz-content-sha256': payload, 'x-amz-date': stamp, ...Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), String(v).trim()])) };
   const names = Object.keys(hdrs).sort();
-  const path = `/${bucket}/${encodeKey(key)}`;
+  const path = key ? `/${bucket}/${encodeKey(key)}` : `/${bucket}`;
   const canonical = [method, path, '', names.map((n) => `${n}:${hdrs[n]}\n`).join(''), names.join(';'), payload].join('\n');
   const toSign = ['AWS4-HMAC-SHA256', stamp, scope, sha256hex(canonical)].join('\n');
-  const signature = createHmac('sha256', signingKey(cfg.secretAccessKey, date, 'auto', 's3')).update(toSign).digest('hex');
+  const signature = createHmac('sha256', signingKey(cfg.secretAccessKey, date, region, 's3')).update(toSign).digest('hex');
   const { host: _h, ...sendHeaders } = hdrs;
   sendHeaders.authorization = `AWS4-HMAC-SHA256 Credential=${cfg.accessKeyId}/${scope}, SignedHeaders=${names.join(';')}, Signature=${signature}`;
   return fetchImpl(`${cfg.endpoint}${path}`, { method, headers: sendHeaders, body });
@@ -108,7 +110,7 @@ export async function purgeUrls(urls, env = process.env, fetchImpl = fetch) {
   if (!zone || !token) return { ok: false, reason: 'PURGE_NOT_CONFIGURED' };
   let ok = true;
   for (let i = 0; i < urls.length; i += 30) { // API limit: 30 files per call
-    const res = await fetchImpl(`https://api.cloudflare.com/client/v4/zones/${zone}/purge_cache`, {
+    const res = await fetchImpl(`${(env.CLOUDFLARE_API_BASE || 'https://api.cloudflare.com').replace(/\/$/, '')}/client/v4/zones/${zone}/purge_cache`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ files: urls.slice(i, i + 30) }),
