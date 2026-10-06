@@ -2,6 +2,7 @@ import PhoneStatusBar from './components/PhoneFrame.jsx';
 import { ImportSheet, ImportedTicketSheet } from './screens/sheets/TicketImportSheet.jsx';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GocProvider, useGoc } from './state/GocContext.jsx';
+import useUrlSync from './lib/useUrlSync.js';
 import BottomTabBar, { showsBottomBar, DOCK_ORDER, DOCK_MAX_WIDTH, DOCK_MARGIN, DOCK_GAP, CREATE_SIZE, BAR_BOTTOM_OFFSET } from './screens/BottomTabBar.jsx';
 import { paper, ink, rule } from './theme.js';
 
@@ -183,6 +184,8 @@ function DockRow({ collapsed, showCreate }) {
 }
 
 function Shell() {
+  const goc = useGoc();
+  useUrlSync(goc);
   const {
     state, T,
     goHome, goMapExplore, goNotifications, goInbox, goProfile,
