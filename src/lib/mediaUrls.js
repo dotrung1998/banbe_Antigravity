@@ -31,17 +31,35 @@ export function isMissingColumnError(error) {
 }
 
 let r2ColumnsMissing = false;
+// `events.chat_greeting` (migration 156) and `chat_greeting_en` (157) — same
+// degrade-gracefully idea as the r2 columns, tracked separately so a DB that
+// has some migrations but not others keeps whichever columns it does have.
+let chatGreetingColumnMissing = false;
+let chatGreetingEnColumnMissing = false;
+export const isChatGreetingColumnMissing = () => chatGreetingColumnMissing;
+/** The greeting columns the DB is known (or not yet known) to have. */
+export const chatGreetingColumnList = () => [
+  ...(chatGreetingColumnMissing ? [] : ['chat_greeting']),
+  ...(chatGreetingColumnMissing || chatGreetingEnColumnMissing ? [] : ['chat_greeting_en']),
+];
 
 /**
  * Runs `build(withR2)` (returns a thenable PostgREST query). First tries with
  * the new r2 columns; if the DB does not have them yet, retries once without
- * and remembers that for the rest of the session.
+ * and remembers that for the rest of the session. An error naming
+ * `chat_greeting`/`chat_greeting_en` flips only that flag (callers read it
+ * through chatGreetingColumnList() when building their column list).
  */
 export async function withR2Columns(build) {
-  if (!r2ColumnsMissing) {
-    const res = await build(true);
+  let res;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    res = await build(!r2ColumnsMissing);
     if (!isMissingColumnError(res?.error)) return res;
+    const msg = res.error.message || '';
+    if (/chat_greeting_en/i.test(msg) && !chatGreetingEnColumnMissing) { chatGreetingEnColumnMissing = true; continue; }
+    if (/chat_greeting/i.test(msg) && !/chat_greeting_en/i.test(msg) && !chatGreetingColumnMissing) { chatGreetingColumnMissing = true; continue; }
+    if (r2ColumnsMissing) return res;
     r2ColumnsMissing = true;
   }
-  return build(false);
+  return res;
 }

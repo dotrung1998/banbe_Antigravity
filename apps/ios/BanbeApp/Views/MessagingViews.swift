@@ -171,6 +171,19 @@ struct InboxView: View {
             }
         }
         .fullScreenCover(isPresented: $feedbackOpen) { FeedbackFlowView() }
+        .alert(
+            app.T("Xoá cuộc trò chuyện này?", "Delete this conversation?"),
+            isPresented: Binding(get: { app.inboxDeleteCandidate != nil }, set: { if !$0 { app.inboxDeleteCandidate = nil } })
+        ) {
+            Button(app.T("Xoá", "Delete"), role: .destructive) {
+                if let id = app.inboxDeleteCandidate { Task { await app.deleteThreadForMe(id) } }
+                app.inboxDeleteCandidate = nil
+            }
+            Button(app.T("Huỷ", "Cancel"), role: .cancel) { app.inboxDeleteCandidate = nil }
+        } message: {
+            Text(app.T("Cuộc trò chuyện chỉ bị xoá với bạn; người kia vẫn giữ nó. Nó sẽ hiện lại nếu họ nhắn cho bạn lần nữa.",
+                       "It is removed for you only; the other person keeps it. It comes back if they message you again."))
+        }
         // Bug 2a (2026-09-21 follow-up) — `FeedbackFlowView` is a hand-
         // rolled `.fullScreenCover` INSIDE the main window, but
         // BottomTabBarOverlay is a genuinely separate, always-on-top
@@ -440,6 +453,12 @@ private struct InboxRow: View {
                     Label(starred ? app.T("Bỏ đánh dấu", "Unstar") : app.T("Gắn sao", "Star"), systemImage: starred ? "star.fill" : "star")
                 }
                 .accessibilityIdentifier("inbox.thread.star")
+                Button(role: .destructive) {
+                    app.inboxDeleteCandidate = thread.id
+                } label: {
+                    Label(app.T("Xoá", "Delete"), systemImage: "trash")
+                }
+                .accessibilityIdentifier("inbox.thread.delete")
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 15, weight: .semibold))
@@ -672,9 +691,9 @@ struct ChatView: View {
     // Task 3b — the OTHER participant's own name (host name for a guest,
     // guest name for an organizer), set once at openThread()/openChat(for:)
     // time since it depends on which side of the thread I'm on, not just
-    // the event. Falls back to event.hostShort for the one caller that
+    // the event. Falls back to event.orgName (never the demo persona) for the one caller that
     // doesn't know it yet (a 'new_message' notification tap).
-    private var headerTitle: String { app.chatOtherName.isEmpty ? event.hostShort : app.chatOtherName }
+    private var headerTitle: String { app.chatOtherName.isEmpty ? event.orgName : app.chatOtherName }
 
     private var header: some View {
         HStack(alignment: .top) {
@@ -709,8 +728,12 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
-                    if app.chatMessages.isEmpty {
-                        bubble(text: event.greeting, mine: false, messageID: nil, senderLabel: headerTitle, createdAt: nil, attachmentPath: nil, attachmentType: nil)
+                    // Host's opening message: display-only, never a stored
+                    // message (no messageID => not deletable). Stays pinned as
+                    // the first bubble in a conversation a goer opened.
+                    let greetingText = app.localizedChatGreeting(eventKey: event.key, name: headerTitle)
+                    if app.chatShowsGreeting || app.chatMessages.isEmpty {
+                        bubble(text: greetingText, mine: false, messageID: nil, senderLabel: headerTitle, createdAt: nil, attachmentPath: nil, attachmentType: nil)
                     }
                     ForEach(app.chatMessages) { message in
                         // Task 2 — unread divider: rendered once, right
@@ -1143,7 +1166,7 @@ struct ChatView: View {
                 // composer uses too. It owns the pickers and the re-encode;
                 // this view still owns the upload and the send.
                 ChatAttachButton(
-                    isEnabled: app.chatThreadID != nil,
+                    isEnabled: app.chatCanCompose,
                     isSending: sendingAttachment
                 ) { payload in
                     sendingAttachment = true
@@ -1156,8 +1179,8 @@ struct ChatView: View {
                 }
 
                 TextField(
-                    app.chatThreadID != nil
-                        ? app.T("Viết cho \(event.hostShort)…", "Message \(event.hostShort)…")
+                    app.chatCanCompose
+                        ? app.T("Viết cho \(headerTitle)…", "Message \(headerTitle)…")
                         : app.T("Đang mở cuộc trò chuyện…", "Opening conversation…"),
                     text: $app.chatDraft
                 )
@@ -1165,7 +1188,7 @@ struct ChatView: View {
                 .foregroundStyle(app.palette.ink)
                 .padding(.horizontal, 14).padding(.vertical, 12)
                 .background(app.palette.field, in: Capsule())
-                .disabled(app.chatThreadID == nil)
+                .disabled(!app.chatCanCompose)
                 .focused($composerFocused)
                 .onSubmit { Task { await app.chatSend() } }
 
@@ -1175,8 +1198,8 @@ struct ChatView: View {
                     .padding(.horizontal, 20).padding(.vertical, 12)
                     .background(app.palette.ink, in: Capsule())
                     .buttonStyle(.plain)
-                    .disabled(app.chatThreadID == nil)
-                    .opacity(app.chatThreadID == nil ? 0.5 : 1)
+                    .disabled(!app.chatCanCompose)
+                    .opacity(app.chatCanCompose ? 1 : 0.5)
             }
             }
             }

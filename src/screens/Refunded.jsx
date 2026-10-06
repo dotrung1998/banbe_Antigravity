@@ -31,7 +31,7 @@ export default function Refunded() {
           <span style={{ fontSize: 11.5, color: ink }}>{refundCancelledWhen}</span>
         </div>
       </div>
-      <div onClick={goChat} style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0', cursor: 'pointer' }}>{T('Có câu hỏi? Nhắn cho ', 'Questions? Message ') + ev.hostShort}</div>
+      <div onClick={goChat} style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0', cursor: 'pointer' }}>{T('Có câu hỏi? Nhắn cho ', 'Questions? Message ') + ev.orgName}</div>
       <div onClick={goHome} style={{ borderTop: `1px solid ${rule}`, color: ink, fontSize: 13.5, textAlign: 'center', padding: '17px 0 34px', cursor: 'pointer' }}>{T('Về trang chính', 'Back to home')}</div>
     </div>
   );

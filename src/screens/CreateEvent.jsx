@@ -36,7 +36,7 @@ export default function CreateEvent() {
   const {
     state, T, trStatus, stripKm, curEvent: ev, createBack,
     orgRegNameType, orgRegIgType, orgRegDescType,
-    createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
+    createNameType, createDescType, createIntroType, createKeywordsType, createChatGreetingType, createChatGreetingEnType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, pickCreateVisibility,
     addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent,
@@ -312,6 +312,33 @@ export default function CreateEvent() {
           <textarea
             value={s.createIntro} onChange={createIntroType} maxLength={4000} rows={6}
             placeholder={T('Một buổi tối ấm cúng cho mười bốn người lạ…\n\nMón chính là…', 'A cozy evening for fourteen strangers…\n\nThe main course is…')}
+            style={{ ...fieldInput, resize: 'vertical', lineHeight: 1.5, fontFamily: FACE }}
+          />
+        </div>
+
+        {/* Message-host pass (migration 156) — shown as the first bubble from
+            the host when a goer taps "Message <host>"; display-only, never
+            stored as a message. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <label style={labelStyle}>{T('Lời nhắn mở đầu', 'Opening message')}</label>
+            <span style={{ fontSize: 10.5, color: ink }}>{s.createChatGreeting.length}/500 · {s.createChatGreetingEn.length}/500</span>
+          </div>
+          <p style={{ fontSize: 11, lineHeight: 1.5, color: ink, margin: 0, opacity: 0.75 }}>
+            {T('Không bắt buộc. Hiện như tin nhắn đầu tiên từ bạn khi khách bấm "Nhắn cho người tổ chức", theo ngôn ngữ của khách. Để trống cả hai sẽ dùng lời chào mặc định.', 'Optional. Shown as the first message from you when a guest taps "Message host", in the guest\'s language. Leave both blank for a default greeting.')}
+          </p>
+          <label style={{ ...labelStyle, fontSize: 11 }}>{T('Tiếng Việt', 'Vietnamese')}</label>
+          <textarea
+            value={s.createChatGreeting} onChange={createChatGreetingType} maxLength={500} rows={3}
+            data-testid="create-chat-greeting"
+            placeholder={T('Chào bạn! Mình sẽ trả lời sớm nhất có thể…', 'Chào bạn! Mình sẽ trả lời sớm nhất có thể…')}
+            style={{ ...fieldInput, resize: 'vertical', lineHeight: 1.5, fontFamily: FACE }}
+          />
+          <label style={{ ...labelStyle, fontSize: 11 }}>{T('Tiếng Anh', 'English')}</label>
+          <textarea
+            value={s.createChatGreetingEn} onChange={createChatGreetingEnType} maxLength={500} rows={3}
+            data-testid="create-chat-greeting-en"
+            placeholder="Hi! Happy to answer any questions, I'll reply as soon as I can."
             style={{ ...fieldInput, resize: 'vertical', lineHeight: 1.5, fontFamily: FACE }}
           />
         </div>

@@ -1,3 +1,4 @@
+import { resolveChatGreeting } from '../lib/chatGreeting.js';
 import { useEffect, useRef, useState } from 'react';
 import { localizeSystemMessage } from '../lib/systemMessageLocale.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
@@ -137,9 +138,15 @@ export default function Chat() {
     return () => clearTimeout(t);
   }, [s.chatMessages.length]);
 
-  const thread = s.chatMessages.length
-    ? s.chatMessages.map(m => ({ id: m.id, who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body, kind: m.kind, createdAt: m.created_at, attachmentPath: m.attachment_path, attachmentType: m.attachment_type, attachmentWidth: m.attachment_width, attachmentHeight: m.attachment_height, replyToMessageId: m.reply_to_message_id }))
-    : [{ who: 'host', text: ev.greeting }];
+  // Host's opening message (events.chat_greeting / chat_greeting_en, else a
+  // built-in localized default): display-only, always the first bubble, never
+  // a messages row (so no id/timestamp and no delete affordance). Shown to the
+  // guest side only — `chatGreetingFor` is set by openChatFor/openThread.
+  const greetingText = s.chatGreetingFor === s.eventKey
+    ? resolveChatGreeting({ vi: s.chatGreeting, en: s.chatGreetingEn, lang: s.lang, eventKey: s.eventKey, hostName: s.chatOtherName || ev.orgName })
+    : '';
+  const greetingRow = greetingText ? [{ who: 'host', text: greetingText, isGreeting: true }] : [];
+  const thread = [...greetingRow, ...s.chatMessages.map(m => ({ id: m.id, who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body, kind: m.kind, createdAt: m.created_at, attachmentPath: m.attachment_path, attachmentType: m.attachment_type, attachmentWidth: m.attachment_width, attachmentHeight: m.attachment_height, replyToMessageId: m.reply_to_message_id }))];
   // Task 3 (2026-09-22 follow-up) — the chat-photo viewer's reply composer
   // sets `reply_to_message_id` (migration 067); resolved client-side
   // against the same already-loaded `chatMessages` rather than a second
@@ -163,9 +170,12 @@ export default function Chat() {
   // Task 3b — the OTHER participant's own name (host name for a guest,
   // guest name for an organizer), set once at openThread()/openChatFor()
   // time since it depends on which side of the thread I'm on, not just the
-  // event. Falls back to ev.hostShort for the one caller that doesn't know
-  // it yet (a 'new_message' notification tap — see BanBeContext.jsx).
-  const headerTitle = s.chatOtherName || ev.hostShort;
+  // event. openThread() resolves it itself when a caller (a 'new_message'
+  // notification tap) doesn't know it; until then fall back to the ORGANIZER
+  // name (ev.orgName), never the demo persona (ev.hostShort).
+  const headerTitle = s.chatOtherName || ev.orgName || '';
+  // A draft chat (no threads row yet, see ensureChatThread) can already send.
+  const canCompose = !!(s.chatThreadId || s.chatDraftOrganizerId);
 
   return (
     <div style={{ position: 'absolute', inset: 0, animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', display: 'flex', flexDirection: 'column', background: paper }} data-screen-label="Chat">
@@ -243,9 +253,12 @@ export default function Chat() {
           const repliedTo = m.replyToMessageId ? messageById[m.replyToMessageId] : null;
           const repliedToUrl = repliedTo?.attachment_path ? s.chatAttachmentUrls[repliedTo.attachment_path] : null;
           rows.push(
-            <div key={m.id ?? i} data-message-id={m.id ?? undefined} style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: m.who === 'me' ? 'flex-end' : 'flex-start' }}>
+            <div key={m.id ?? (m.isGreeting ? 'greeting' : i)} data-testid={m.isGreeting ? 'chat-greeting' : undefined} data-message-id={m.id ?? undefined} style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: m.who === 'me' ? 'flex-end' : 'flex-start' }}>
               {m.createdAt && (
                 <span style={{ fontSize: 10, color: ink, opacity: 0.5, padding: '0 4px' }}>{senderLabel} · {formatTime(m.createdAt)}</span>
+              )}
+              {m.isGreeting && (
+                <span data-testid="chat-greeting-label" style={{ fontSize: 10, color: ink, opacity: 0.5, padding: '0 4px' }}>{senderLabel}</span>
               )}
               {repliedTo && (
                 <div data-testid="chat-reply-reference" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderLeft: `2px solid ${rule}`, opacity: 0.7 }}>
@@ -319,11 +332,11 @@ export default function Chat() {
       <div style={{ padding: '12px 18px 30px', borderTop: `1px solid ${rule}`, display: 'flex', gap: 8, alignItems: 'center', position: 'relative' }}>
         {/* Task 4 — "+" attach button + its two-option menu. */}
         <div
-          onClick={() => s.chatThreadId && setMenuOpen(v => !v)}
+          onClick={() => canCompose && setMenuOpen(v => !v)}
           data-testid="chat-attach-toggle"
           style={{
             ...fieldGlass({ borderRadius: '50%' }), width: 40, height: 40, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 20, color: ink, cursor: s.chatThreadId ? 'pointer' : 'default', opacity: s.chatThreadId ? 1 : 0.5,
+            fontSize: 20, color: ink, cursor: canCompose ? 'pointer' : 'default', opacity: canCompose ? 1 : 0.5,
           }}
         >
           +
@@ -362,11 +375,11 @@ export default function Chat() {
         <input
           ref={composerInputRef}
           value={s.chatDraft} onChange={chatOnType} onKeyDown={chatOnKey}
-          placeholder={s.chatThreadId ? ('Viết cho ' + headerTitle + '…') : T('Đang mở cuộc trò chuyện…', 'Opening conversation…')}
-          disabled={!s.chatThreadId}
-          style={{ ...fieldGlass({ flex: 1, padding: '12px 14px', borderRadius: 999, border: 'none' }), fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none', opacity: s.chatThreadId ? 1 : 0.6 }}
+          placeholder={canCompose ? ('Viết cho ' + headerTitle + '…') : T('Đang mở cuộc trò chuyện…', 'Opening conversation…')}
+          disabled={!canCompose}
+          style={{ ...fieldGlass({ flex: 1, padding: '12px 14px', borderRadius: 999, border: 'none' }), fontSize: 13.5, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none', opacity: canCompose ? 1 : 0.6 }}
         />
-        <div onClick={s.chatThreadId ? chatSend : undefined} style={{ borderRadius: 999, padding: '12px 20px', display: 'flex', alignItems: 'center', flex: 'none', fontSize: 13.5, fontWeight: 600, background: ink, color: paper, userSelect: 'none', opacity: s.chatThreadId ? 1 : 0.5, cursor: s.chatThreadId ? 'pointer' : 'default' }}>Gửi</div>
+        <div onClick={canCompose ? chatSend : undefined} style={{ borderRadius: 999, padding: '12px 20px', display: 'flex', alignItems: 'center', flex: 'none', fontSize: 13.5, fontWeight: 600, background: ink, color: paper, userSelect: 'none', opacity: canCompose ? 1 : 0.5, cursor: canCompose ? 'pointer' : 'default' }}>Gửi</div>
       </div>
 
       {/* Task 4 — camera review step: Retake / Use Photo, before actually

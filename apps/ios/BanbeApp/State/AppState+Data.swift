@@ -379,9 +379,11 @@ private struct ThreadPreferenceRow: Decodable {
     let threadId: UUID
     let starred: Bool
     let archived: Bool
+    let deletedAt: Date?
     enum CodingKeys: String, CodingKey {
         case threadId = "thread_id"
         case starred, archived
+        case deletedAt = "deleted_at"
     }
 }
 /// What the SECURITY DEFINER RPCs return — every one of them answers with
@@ -2837,16 +2839,29 @@ extension AppState {
 
     func goChat() { Task { await openChat(for: eventKey, back: .event) } }
 
-    /// Get-or-create the one thread between this guest and the event's
-    /// organizer. Never used for the organizer's own side — that always
-    /// opens a specific known thread (see openThread, used from Inbox).
+    /// Open the conversation between this guest and the event's organizer.
+    /// Message-host pass: this is LOOKUP-ONLY. If no threads row exists yet
+    /// the chat stays in draft state (chatThreadID nil, chatPendingOrganizerID
+    /// set) and the row is inserted by `ensureChatThread()` at the first real
+    /// send — so opening the chat and backing out leaves nothing behind (and
+    /// nothing in the inbox). Never used for the organizer's own side — that
+    /// always opens a specific known thread (see openThread, used from Inbox).
     func openChat(for key: String, back: Screen) async {
         guard let uid = userID else { return requireAuth(returnTo: .chat, backTo: .event) }
         eventKey = key
         chatBack = back
         chatThreadID = nil
+        chatPendingOrganizerID = nil
+        chatThreadCreation = nil
         chatMessages = []
-        chatOtherName = EventCatalog.find(key)?.orgName ?? ""
+        // Only an EXACT catalogue key match may supply the name —
+        // EventCatalog.find falls back to all[0] ("Bếp Nhỏ") on a miss, which
+        // is what mislabelled every real, host-created event's chat.
+        let catalogEvent = EventCatalog.find(key).flatMap { $0.key == key ? $0 : nil }
+        chatOtherName = catalogEvent?.orgName ?? ""
+        chatGreetingVi = ""
+        chatGreetingEn = ""
+        chatShowsGreeting = true
         chatUnreadDividerID = nil
         screen = .chat
 
@@ -2857,40 +2872,144 @@ extension AppState {
                 .eq("guest_id", value: uid)
                 .limit(1)
                 .execute().value
+            guard eventKey == key else { return }
             if let found = existing.first {
                 chatThreadID = found.id
+            }
+            let ref = await fetchEventChatRef(key)
+            guard eventKey == key else { return }
+            chatGreetingVi = ref?.chatGreeting ?? ""
+            chatGreetingEn = ref?.chatGreetingEn ?? ""
+            if catalogEvent == nil, let orgID = ref?.organizerId {
+                let name = (await organizerNames(for: [orgID])[orgID] ?? "").trimmingCharacters(in: .whitespaces)
+                guard eventKey == key else { return }
+                if !name.isEmpty { chatOtherName = name }
+                else if let real = realEventsByID[key] ?? nil, !real.orgName.isEmpty { chatOtherName = real.orgName }
+            }
+            if let found = existing.first {
                 await loadChatMessages(found.id, computeDivider: true)
                 return
             }
-            let events: [OrganizerRef] = try await SupabaseService.client
-                .from("events").select("organizer_id")
-                .eq("id", value: key)
-                .limit(1)
-                .execute().value
-            guard let organizerID = events.first?.organizerId else { return }
-            let created: [UUIDRow] = try await SupabaseService.client
-                .from("threads")
-                .insert(NewThread(eventId: key, guestId: uid, organizerId: organizerID))
-                .select("id")
-                .execute().value
-            if let thread = created.first {
-                chatThreadID = thread.id
-                await loadChatMessages(thread.id, computeDivider: true)
-            }
+            chatPendingOrganizerID = ref?.organizerId
         } catch {
             print("Could not open conversation:", error)
         }
+    }
+
+    struct EventChatRef: Decodable {
+        let organizerId: String?
+        let chatGreeting: String?
+        let chatGreetingEn: String?
+        enum CodingKeys: String, CodingKey { case organizerId = "organizer_id", chatGreeting = "chat_greeting", chatGreetingEn = "chat_greeting_en" }
+    }
+
+    /// organizer_id + chat_greeting for one event. chat_greeting only exists
+    /// after migration 156 — an undefined-column failure falls back to
+    /// organizer_id alone so messaging keeps working before it is applied.
+    func fetchEventChatRef(_ key: String) async -> EventChatRef? {
+        do {
+            let rows: [EventChatRef] = try await SupabaseService.client
+                .from("events").select("organizer_id, chat_greeting, chat_greeting_en")
+                .eq("id", value: key).limit(1).execute().value
+            return rows.first
+        } catch {
+            // chat_greeting_en is migration 157; chat_greeting is 156.
+            if let rows: [EventChatRef] = try? await SupabaseService.client
+                .from("events").select("organizer_id, chat_greeting")
+                .eq("id", value: key).limit(1).execute().value, let r = rows.first { return r }
+            let rows: [EventChatRef]? = try? await SupabaseService.client
+                .from("events").select("organizer_id")
+                .eq("id", value: key).limit(1).execute().value
+            return rows?.first
+        }
+    }
+
+    /// Inserts the threads row on the first real send (text or attachment) of
+    /// a draft conversation. Concurrent callers share one creation task; a
+    /// failed insert (e.g. the UNIQUE(event_id, guest_id) race) re-selects.
+    func ensureChatThread() async -> UUID? {
+        if let id = chatThreadID { return id }
+        guard let uid = userID else { return nil }
+        let key = eventKey
+        if let task = chatThreadCreation { return await task.value }
+        var orgID = chatPendingOrganizerID
+        if orgID == nil { orgID = await fetchEventChatRef(key)?.organizerId }
+        guard let organizerID = orgID else { return nil }
+        let task = Task<UUID?, Never> { [weak self] in
+            guard self != nil else { return nil }
+            for attempt in 0..<2 {
+                do {
+                    let created: [UUIDRow] = try await SupabaseService.client
+                        .from("threads")
+                        .insert(NewThread(eventId: key, guestId: uid, organizerId: organizerID))
+                        .select("id")
+                        .execute().value
+                    if let id = created.first?.id { return id }
+                } catch {
+                    print("Thread insert failed (attempt \(attempt)):", error)
+                }
+                let existing: [UUIDRow]? = try? await SupabaseService.client
+                    .from("threads").select("id")
+                    .eq("event_id", value: key).eq("guest_id", value: uid)
+                    .limit(1).execute().value
+                if let id = existing?.first?.id { return id }
+            }
+            return nil
+        }
+        chatThreadCreation = task
+        let id = await task.value
+        chatThreadCreation = nil
+        if let id, eventKey == key, chatThreadID == nil {
+            chatThreadID = id
+            chatPendingOrganizerID = nil
+        }
+        return id
     }
 
     func openThread(id: UUID, eventKey: String, back: Screen, otherName: String = "") {
         self.eventKey = eventKey
         chatBack = back
         chatThreadID = id
+        chatPendingOrganizerID = nil
+        chatThreadCreation = nil
         chatMessages = []
         chatOtherName = otherName
+        chatGreetingVi = ""
+        chatGreetingEn = ""
+        chatShowsGreeting = false
         chatUnreadDividerID = nil
         screen = .chat
         Task { await loadChatMessages(id, computeDivider: true) }
+        // Callers that don't know the other participant's name (notification
+        // tap, dispute entry points) get it resolved from the thread itself,
+        // so the header never falls back to a demo/persona name.
+        if otherName.isEmpty { Task { await resolveChatOtherName(threadID: id) } }
+        if EventCatalog.all.first(where: { $0.key == eventKey }) == nil, realEventsByID[eventKey] == nil {
+            Task { await loadRealEventsByID([eventKey]) }
+        }
+    }
+
+    private func resolveChatOtherName(threadID: UUID) async {
+        guard let uid = userID else { return }
+        struct T: Decodable {
+            let guestId: UUID?; let organizerId: String
+            enum CodingKeys: String, CodingKey { case guestId = "guest_id", organizerId = "organizer_id" }
+        }
+        guard let row = (try? await SupabaseService.client.from("threads")
+            .select("guest_id, organizer_id").eq("id", value: threadID).limit(1)
+            .execute().value as [T])?.first else { return }
+        var name = ""
+        if row.guestId == uid {
+            name = (await organizerNames(for: [row.organizerId])[row.organizerId] ?? "")
+        } else if let gid = row.guestId {
+            let profiles: [ProfileNameAvatar]? = try? await SupabaseService.client
+                .from("profiles").select("id, display_name, avatar_url")
+                .eq("id", value: gid.uuidString).execute().value
+            name = profiles?.first?.displayName ?? ""
+        }
+        name = name.trimmingCharacters(in: .whitespaces)
+        guard chatThreadID == threadID, chatOtherName.isEmpty, !name.isEmpty else { return }
+        chatOtherName = name
     }
 
     /// `computeDivider`: true only for the FIRST load of a thread-open (see
@@ -2976,7 +3095,7 @@ extension AppState {
     /// 20MB cap / allowed MIME types server-side either way).
     func sendChatAttachment(data: Data, contentType: String, fileExtension: String, width: Int? = nil, height: Int? = nil, replyToMessageId: UUID? = nil) async -> Bool {
         guard !normalMessagingPaused else { return false }
-        guard let threadID = chatThreadID, let uid = userID else { return false }
+        guard let uid = userID, chatCanCompose, let threadID = await ensureChatThread() else { return false }
         do {
             // Lowercased: Postgres's own uuid-to-text cast is always
             // lowercase, unlike Foundation's UUID.uuidString — matches the
@@ -3826,8 +3945,14 @@ try await SupabaseService.client
         // Normal messaging is paused while this conversation has an active
         // dispute; the draft is left untouched so it is still there afterwards.
         guard !normalMessagingPaused else { return }
-        guard !text.isEmpty, let threadID = chatThreadID, let uid = userID else { return }
+        guard !text.isEmpty, let uid = userID, chatCanCompose else { return }
         chatDraft = ""
+        // Lazy creation: the threads row is inserted only now, at the first
+        // real send of a draft conversation.
+        guard let threadID = await ensureChatThread() else {
+            chatDraft = text
+            return
+        }
         do {
             let sent: [ChatMessage] = try await SupabaseService.client
                 .from("messages")
@@ -3954,13 +4079,25 @@ try await SupabaseService.client
             }
 
             // Task 2 (2026-09-21 follow-up) — per-participant star/archive.
-            let prefRows: [ThreadPreferenceRow] = try await SupabaseService.client
-                .from("thread_preferences").select("thread_id, starred, archived")
-                .eq("user_id", value: uid)
-                .in("thread_id", values: threads.map(\.id))
-                .execute().value
+            // deleted_at exists only after migration 156 — fall back to the
+            // original columns on an undefined-column error.
+            var prefRows: [ThreadPreferenceRow]
+            do {
+                prefRows = try await SupabaseService.client
+                    .from("thread_preferences").select("thread_id, starred, archived, deleted_at")
+                    .eq("user_id", value: uid)
+                    .in("thread_id", values: threads.map(\.id))
+                    .execute().value
+            } catch {
+                if error is CancellationError || Task.isCancelled { throw error }
+                prefRows = try await SupabaseService.client
+                    .from("thread_preferences").select("thread_id, starred, archived")
+                    .eq("user_id", value: uid)
+                    .in("thread_id", values: threads.map(\.id))
+                    .execute().value
+            }
             var prefsByThread: [UUID: ThreadPreference] = [:]
-            for row in prefRows { prefsByThread[row.threadId] = ThreadPreference(starred: row.starred, archived: row.archived) }
+            for row in prefRows { prefsByThread[row.threadId] = ThreadPreference(starred: row.starred, archived: row.archived, deletedAt: row.deletedAt) }
             inboxThreadPrefs = prefsByThread
 
             // Task 3a (07-notifications.md, 2026-09-21) — the OTHER
@@ -4032,7 +4169,12 @@ try await SupabaseService.client
             let orgNames = await organizerNames(for: orgIDs)
 
             inboxThreads = threads.compactMap { thread -> InboxThread? in
-                let last = lastByThread[thread.id]
+                // A conversation with no messages (e.g. an empty row from
+                // before lazy creation) is not a conversation yet.
+                guard let last = lastByThread[thread.id] else { return nil }
+                // Per-user "Delete": hidden until a message newer than
+                // deleted_at arrives.
+                if let deletedAt = prefsByThread[thread.id]?.deletedAt, last.createdAt <= deletedAt { return nil }
                 let iAmGuest = thread.guestId == uid
                 let name: String
                 if iAmGuest {
@@ -4056,7 +4198,7 @@ try await SupabaseService.client
                 } else {
                     img = realEventsByID[thread.eventId]??.img ?? ""
                 }
-                let prefix = last?.senderId == uid ? "Bạn: " : ""
+                let prefix = last.senderId == uid ? "Bạn: " : ""
                 let otherAvatarURL = iAmGuest ? orgOwnerByOrgID[thread.organizerId].flatMap { avatarByUserID[$0] } : avatarByUserID[thread.guestId ?? UUID()]
                 return InboxThread(
                     id: thread.id,
@@ -4065,8 +4207,8 @@ try await SupabaseService.client
                     name: name,
                     img: img,
                     otherAvatarURL: otherAvatarURL,
-                    snippet: last.map { prefix + $0.body } ?? "",
-                    lastAt: last?.createdAt,
+                    snippet: prefix + last.body,
+                    lastAt: last.createdAt,
                     unread: unreadThreadIDs.contains(thread.id)
                 )
             }.sorted { ($0.lastAt ?? .distantPast) > ($1.lastAt ?? .distantPast) }
@@ -4102,6 +4244,34 @@ try await SupabaseService.client
         let previous = inboxThreadPrefs[threadID]
         inboxThreadPrefs[threadID] = pref
         await upsertThreadPreference(threadID, pref) { self.inboxThreadPrefs[threadID] = previous }
+    }
+
+    /// "Delete" = hide for me only (thread_preferences.deleted_at, migration
+    /// 156). Optimistic; reverts if the write fails. The other participant is
+    /// unaffected, and a newer message makes the thread reappear.
+    func deleteThreadForMe(_ threadID: UUID) async {
+        guard let uid = userID else { return }
+        let previousPref = inboxThreadPrefs[threadID]
+        let previousThreads = inboxThreads
+        var pref = previousPref ?? ThreadPreference()
+        let now = Date()
+        pref.deletedAt = now
+        inboxThreadPrefs[threadID] = pref
+        inboxThreads.removeAll { $0.id == threadID }
+        lastReadWriteAt = Date()
+        struct Upsert: Encodable {
+            let threadId: UUID; let userId: UUID; let deletedAt: Date
+            enum CodingKeys: String, CodingKey { case threadId = "thread_id", userId = "user_id", deletedAt = "deleted_at" }
+        }
+        do {
+            try await SupabaseService.client.from("thread_preferences")
+                .upsert(Upsert(threadId: threadID, userId: uid, deletedAt: now))
+                .execute()
+        } catch {
+            print("thread delete (deleted_at) failed:", error)
+            inboxThreadPrefs[threadID] = previousPref
+            inboxThreads = previousThreads
+        }
     }
 
     private func upsertThreadPreference(_ threadID: UUID, _ pref: ThreadPreference, onFailure: @escaping () -> Void) async {
@@ -4801,6 +4971,42 @@ try await SupabaseService.client
             // owner-checked, SECURITY DEFINER, does one thing. Best-effort
             // — a failure here shouldn't block the event submission
             // itself, which already succeeded above.
+            // Message-host pass (migration 156) — host's opening message.
+            // Direct owner-RLS update (events_update_own), best-effort and
+            // tolerant of the column not existing yet. Skipped on create
+            // when blank so a pre-migration DB never sees the call at all.
+            if let eventID {
+                let vi = String(createChatGreeting.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500))
+                let en = String(createChatGreetingEn.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500))
+                if !vi.isEmpty || !en.isEmpty || createEditEventId != nil {
+                    struct GreetingUpdate: Encodable {
+                        let vi: String?
+                        let en: String?
+                        let includeEn: Bool
+                        enum CodingKeys: String, CodingKey { case vi = "chat_greeting", en = "chat_greeting_en" }
+                        func encode(to encoder: Encoder) throws {
+                            var c = encoder.container(keyedBy: CodingKeys.self)
+                            try c.encode(vi, forKey: .vi) // explicit null clears it
+                            if includeEn { try c.encode(en, forKey: .en) }
+                        }
+                    }
+                    do {
+                        try await SupabaseService.client.from("events")
+                            .update(GreetingUpdate(vi: vi.isEmpty ? nil : vi, en: en.isEmpty ? nil : en, includeEn: true))
+                            .eq("id", value: eventID).execute()
+                    } catch {
+                        // Migration 157 (chat_greeting_en) may not be applied yet — retry Vietnamese only.
+                        do {
+                            try await SupabaseService.client.from("events")
+                                .update(GreetingUpdate(vi: vi.isEmpty ? nil : vi, en: nil, includeEn: false))
+                                .eq("id", value: eventID).execute()
+                        } catch {
+                            print("chat_greeting update failed (migrations 156/157 applied?):", error)
+                        }
+                    }
+                }
+            }
+
             if let eventID {
                 struct SetKeywordsParams: Encodable {
                     let eventId: String
@@ -4945,6 +5151,18 @@ try await SupabaseService.client
         createCats = real.catKey.map { [$0] } ?? []
         createDesc = real.description ?? ""
         createIntro = real.intro ?? ""
+        createChatGreeting = real.chatGreeting ?? ""
+        createChatGreetingEn = real.chatGreetingEn ?? ""
+        if real.chatGreeting == nil && real.chatGreetingEn == nil {
+            let editID = real.id
+            Task { [weak self] in
+                guard let self else { return }
+                let ref = await self.fetchEventChatRef(editID)
+                guard self.createEditEventId == editID else { return }
+                if self.createChatGreeting.isEmpty { self.createChatGreeting = ref?.chatGreeting ?? "" }
+                if self.createChatGreetingEn.isEmpty { self.createChatGreetingEn = ref?.chatGreetingEn ?? "" }
+            }
+        }
         // Address-autocomplete fix pass (2026-09-28) — an event that
         // already has a verified address (migration 105) pre-fills it as
         // ALREADY confirmed — resubmit_event_for_review preserves it via

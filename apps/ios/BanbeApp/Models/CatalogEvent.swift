@@ -228,6 +228,11 @@ struct RealEventSummary: Decodable {
     let withdrawalReason: String?
     let withdrawnAt: Date?
     var organizerName: String = ""
+    /// events.chat_greeting (migration 156). Not part of the shared select
+    /// list (that would break every query before the migration is applied);
+    /// filled by the chat/edit paths that fetch it on their own.
+    var chatGreeting: String? = nil
+    var chatGreetingEn: String? = nil
     var photoURL: URL?
     // Only ever populated by loadPendingEvents' own admin-only organizer
     // lookup (organizerIdentities(for:)) — self-declared, `verified` has

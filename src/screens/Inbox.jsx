@@ -11,9 +11,9 @@ import { isActiveDisputeChat } from './ConversationDispute.jsx';
 // the Inbox can otherwise stay visibly stale until you leave and come back.
 const DISPUTE_POLL_MS = 6000;
 
-// Swipe-left reveal width — two 72px actions (Task 2, 2026-09-21 follow-up).
+// Swipe-left reveal width — three 72px actions: Star, Archive, Delete.
 const ACTION_WIDTH = 72;
-const REVEAL_WIDTH = ACTION_WIDTH * 2;
+const REVEAL_WIDTH = ACTION_WIDTH * 3;
 
 // Bug 1b/1c (2026-09-21 follow-up) — ONE shared, noticeably slower timing
 // for both the settings sheet's entrance and the search field's reveal,
@@ -24,7 +24,7 @@ const SHEET_ANIM_MS = 600;
 // shared offset on the list) so opening one row's actions doesn't affect
 // any other row, and scrolling the list vertically isn't fought by a
 // horizontal drag started elsewhere.
-function InboxRow({ c, onOpen, onStar, onArchive, T, disputeActive }) {
+function InboxRow({ c, onOpen, onStar, onArchive, onDelete, T, disputeActive }) {
   const [offset, setOffset] = useState(0);
   const dragRef = useRef({ active: false, startX: 0, startOffset: 0, moved: false });
 
@@ -77,6 +77,16 @@ function InboxRow({ c, onOpen, onStar, onArchive, T, disputeActive }) {
         >
           <span style={{ fontSize: 16, lineHeight: 1 }}>{c.archived ? '📤' : '🗄'}</span>
           <span style={{ fontSize: 10, fontWeight: 600 }}>{c.archived ? T('Bỏ lưu trữ', 'Unarchive') : T('Lưu trữ', 'Archive')}</span>
+        </div>
+        {/* Message-host pass — hide-for-me delete; confirmed by the sheet in
+            Inbox() (see deleteThreadForMe in BanBeContext.jsx). */}
+        <div
+          onClick={(e) => { e.stopPropagation(); onDelete(); setOffset(0); }}
+          data-testid="inbox-row-delete"
+          style={{ width: ACTION_WIDTH, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, background: 'color-mix(in srgb, var(--bb-alert) 72%, #000)', color: 'var(--bb-on-alert)', cursor: 'pointer' }}
+        >
+          <span style={{ fontSize: 16, lineHeight: 1 }}>🗑</span>
+          <span style={{ fontSize: 10, fontWeight: 600 }}>{T('Xoá', 'Delete')}</span>
         </div>
       </div>
       <div
@@ -151,7 +161,7 @@ function InboxRow({ c, onOpen, onStar, onArchive, T, disputeActive }) {
             it (requirement 4 — this is a sibling of the row's own
             onClick/swipe handlers, not layered over them). */}
         {/* iOS parity: a tap-only "…" control at the trailing edge (iOS's
-            Menu). Here it just reveals the same Star/Archive actions the
+            Menu). Here it just reveals the same Star/Archive/Delete actions the
             swipe does, so no behaviour is added. Keeps the old hint testid. */}
         <span
           data-testid="inbox-row-swipe-hint"
@@ -255,7 +265,7 @@ function FeedbackFlow({ onClose, T }) {
 }
 
 export default function Inbox() {
-  const { state, T, openThread, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, loadDisputeChats } = useBanBe();
+  const { state, T, openThread, toggleThreadStar, archiveThread, unarchiveThread, deleteThreadForMe, setInboxView, loadDisputeChats } = useBanBe();
   const s = state;
 
   // Keeps the dispute index fresh — it drives the "Dispute in progress" row
@@ -271,6 +281,7 @@ export default function Inbox() {
   const [query, setQuery] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null); // threadId awaiting confirm
 
   const merged = useMemo(() => s.inboxThreads.map(c => ({
     ...c,
@@ -353,6 +364,7 @@ export default function Inbox() {
               onOpen={() => openThread(c.threadId, c.eventKey, 'inbox', c.name)}
               onStar={() => toggleThreadStar(c.threadId)}
               onArchive={() => (c.archived ? unarchiveThread(c.threadId) : archiveThread(c.threadId))}
+              onDelete={() => setDeleteTarget(c.threadId)}
             />
           ))}
         </div>
@@ -387,6 +399,21 @@ export default function Inbox() {
               style={{ padding: '22px 2px', borderTop: `1px solid ${rule}`, borderBottom: `1px solid ${rule}`, fontSize: 14.5, color: ink, cursor: 'pointer' }}
             >
               {T('Gửi Phản Hồi', 'Give Feedback')}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div onClick={() => setDeleteTarget(null)} data-testid="inbox-delete-confirm" style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(12,12,12,0.55)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', animation: 'banbeFade 0.2s ease both' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ ...cardGlass({ borderRadius: '18px 18px 0 0' }), padding: '22px 22px 34px', display: 'flex', flexDirection: 'column', gap: 14, animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}>
+            <span style={{ ...display(18) }}>{T('Xoá cuộc trò chuyện này?', 'Delete this conversation?')}</span>
+            <span style={{ fontSize: 13.5, lineHeight: 1.5, color: ink, opacity: 0.8 }}>
+              {T('Chỉ xoá với bạn; người kia vẫn giữ cuộc trò chuyện. Nếu họ nhắn lại cho bạn, cuộc trò chuyện sẽ hiện lại.', 'It is removed for you only; the other person keeps it. It comes back if they message you again.')}
+            </span>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div onClick={() => setDeleteTarget(null)} data-testid="inbox-delete-cancel" style={{ ...fieldGlass({ flex: 1, padding: '13px 0', borderRadius: 999, textAlign: 'center' }), fontSize: 13.5, fontWeight: 600, color: ink, cursor: 'pointer' }}>{T('Huỷ', 'Cancel')}</div>
+              <div onClick={() => { const id = deleteTarget; setDeleteTarget(null); deleteThreadForMe(id); }} data-testid="inbox-delete-confirm-button" style={{ flex: 1, padding: '13px 0', borderRadius: 999, textAlign: 'center', fontSize: 13.5, fontWeight: 600, background: alert, color: 'var(--bb-on-alert)', cursor: 'pointer' }}>{T('Xoá', 'Delete')}</div>
             </div>
           </div>
         </div>

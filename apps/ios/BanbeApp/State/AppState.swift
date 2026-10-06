@@ -240,6 +240,8 @@ struct InboxThread: Identifiable, Equatable {
 struct ThreadPreference: Equatable {
     var starred: Bool = false
     var archived: Bool = false
+    /// Per-participant "Delete" (migration 156) — hide for me only.
+    var deletedAt: Date? = nil
 }
 
 enum InboxViewMode { case active, archived }
@@ -663,6 +665,43 @@ final class AppState: ObservableObject {
     // a guest, guest name for an organizer) — set once per openThread()/
     // openChat(for:) call, mirrors src/screens/Chat.jsx's chatOtherName.
     @Published var chatOtherName = ""
+    // Message-host pass — the host's opening message (events.chat_greeting,
+    // or the catalogue's hardcoded greeting as fallback). Display-only: never
+    // stored as a message. Shown as the first incoming bubble when this
+    // conversation was opened by a goer via openChat(for:).
+    @Published var chatGreetingVi = ""
+    @Published var chatGreetingEn = ""
+
+    /// Greeting for the current app language: chosen language's host text,
+    /// else the other language's, else a built-in default (not stored) picked
+    /// deterministically per event key (djb2 hash — never `hashValue`, which
+    /// is randomised per launch). Only variant 0 names the organizer.
+    func localizedChatGreeting(eventKey: String, name: String) -> String {
+        let vi = chatGreetingVi.trimmingCharacters(in: .whitespacesAndNewlines)
+        let en = chatGreetingEn.trimmingCharacters(in: .whitespacesAndNewlines)
+        let chosen = isEN ? (en.isEmpty ? vi : en) : (vi.isEmpty ? en : vi)
+        if !chosen.isEmpty { return chosen }
+        let defaults: [(String, String)] = [
+            ("Chào bạn, mình là {name}. Cứ nhắn mình thoải mái nhé!", "Hi, this is {name}. Feel free to message me anytime!"),
+            ("Xin chào! Bạn có câu hỏi gì về sự kiện này không? Cứ hỏi nhé.", "Hello! Got a question about this event? Just ask."),
+            ("Cảm ơn bạn đã quan tâm đến sự kiện. Cần biết thêm gì, nhắn mình nhé!", "Thanks for your interest in the event. Message me if you need to know anything!"),
+            ("Chào bạn! Mình sẵn sàng giải đáp mọi thắc mắc trước giờ diễn ra.", "Hi there! Happy to answer any questions before the event."),
+            ("Hẹn gặp bạn ở sự kiện! Cần hỗ trợ gì cứ nhắn ở đây.", "Looking forward to seeing you! Message here if you need anything."),
+        ]
+        var h: UInt32 = 5381
+        for b in eventKey.utf8 { h = h &* 33 &+ UInt32(b) }
+        let pair = defaults[Int(h % 5)]
+        let n = name.isEmpty ? T("người tổ chức", "the organizer") : name
+        return (isEN ? pair.1 : pair.0).replacingOccurrences(of: "{name}", with: n)
+    }
+    @Published var chatShowsGreeting = false
+    // Draft state (lazy thread creation): when a goer opens "Message <host>"
+    // and no threads row exists yet, chatThreadID stays nil and this holds the
+    // organizer the row will be created for on the FIRST real send.
+    @Published var chatPendingOrganizerID: String?
+    var chatThreadCreation: Task<UUID?, Never>?
+    var chatCanCompose: Bool { chatThreadID != nil || chatPendingOrganizerID != nil }
+    @Published var inboxDeleteCandidate: UUID?
     // Id of the first unread message at the moment this thread was opened —
     // drives ChatView's "— Chưa đọc —" divider. Captured once by
     // loadChatMessages(_:computeDivider:) and never recomputed by the 4s
@@ -1652,6 +1691,8 @@ final class AppState: ObservableObject {
     // write-up, never conflated with createDesc ("Mô tả") or the "Bao gồm"
     // items EventDetailView already shows via includedItems.
     @Published var createIntro = ""
+    @Published var createChatGreeting = ""
+    @Published var createChatGreetingEn = ""
     // "Bao gồm" item-editing parity fix (2026-09-29) — mirrors web's
     // identical `createIncludedItems` (BanBeContext.jsx): up to 3 { label,
     // detail } items, sent as `p_included_items` to the same
@@ -3085,6 +3126,8 @@ final class AppState: ObservableObject {
         createSeats = ""
         createVisibility = "public"
         createIntro = ""
+        createChatGreeting = ""
+        createChatGreetingEn = ""
         // Never carry a previous session's confirmed address/coordinates
         // into an unrelated fresh event.
         createLoc = ""

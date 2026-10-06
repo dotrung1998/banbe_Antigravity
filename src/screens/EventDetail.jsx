@@ -328,7 +328,7 @@ export default function EventDetail() {
           {/* Moved here from the retired Organizer screen (merged into the
               host profile): message the host straight from the event. */}
           <div onClick={goChat} data-testid="organizer-message" style={{ margin: '12px 0 0', textAlign: 'center', fontSize: 13, fontWeight: 600, color: ink, padding: '12px 0', border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer' }}>
-            {T('Nhắn cho', 'Message')} {ev.hostShort}
+            {T('Nhắn cho', 'Message')} {ev.orgName}
           </div>
           {ev.orgTrusted && (
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 12 }}>

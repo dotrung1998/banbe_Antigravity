@@ -551,6 +551,39 @@ struct CreateEventView: View {
     }
 
     @ViewBuilder
+    private func greetingEditor() -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(app.T("Lời nhắn mở đầu (tuỳ chọn)", "Opening message (optional)")).font(.system(size: 11.5))
+            Text(app.T("Hiện ở đầu cuộc trò chuyện khi khách nhấn \"Nhắn cho bạn\". Để trống để dùng lời chào mặc định. Chỉ để hiển thị, không lưu như tin nhắn.",
+                        "Shown at the top of the chat when a guest taps \"Message\" you. Leave blank for a default greeting. Display only — not stored as a message."))
+                .font(.system(size: 11)).opacity(0.75)
+            greetingField(label: app.T("Tiếng Việt", "Vietnamese"), text: $app.createChatGreeting, id: "create.chatGreeting")
+            greetingField(label: app.T("Tiếng Anh", "English"), text: $app.createChatGreetingEn, id: "create.chatGreetingEn")
+        }
+        .foregroundStyle(app.palette.ink)
+    }
+
+    @ViewBuilder
+    private func greetingField(label: String, text: Binding<String>, id: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label).font(.system(size: 11))
+                Spacer()
+                Text("\(text.wrappedValue.count)/500").font(.system(size: 10.5))
+            }
+            TextEditor(text: text)
+                .font(.system(size: 14))
+                .frame(minHeight: 70)
+                .padding(8)
+                .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .accessibilityIdentifier(id)
+                .onChange(of: text.wrappedValue) { _, newValue in
+                    if newValue.count > 500 { text.wrappedValue = String(newValue.prefix(500)) }
+                }
+        }
+    }
+
+    @ViewBuilder
     private func introEditor() -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
@@ -916,6 +949,7 @@ struct CreateEventView: View {
                             .font(.system(size: 11)).foregroundStyle(BanbeTheme.alert)
                     }
                     introEditor()
+                    greetingEditor()
                     BanbeField(
                         label: app.T("Địa điểm", "Location"),
                         placeholder: app.T("12 Nguyễn Văn Đậu, hoặc tên địa điểm…", "12 Nguyễn Văn Đậu, or a venue name…"),

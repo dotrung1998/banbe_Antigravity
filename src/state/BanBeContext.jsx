@@ -12,7 +12,7 @@ import { buildLocationTree, eventMatchesLocation, locationShortLabel, migrateLeg
 import { surveyPublicUrl } from '../lib/surveyLink.js';
 import { metricLabel } from '../lib/reportMetricLabels.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
-import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns } from '../lib/mediaUrls.js';
+import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, isMissingColumnError } from '../lib/mediaUrls.js';
 
 /** Media-API upload with the current session token. Resolves `{provider:'supabase'}`
  * when the caller must use the legacy path; throws MediaUploadError only after bytes were PUT. */
@@ -120,6 +120,9 @@ function shapeRealEvent(row, extra = {}) {
     // event's own category label(s) at create/resubmit time when a host
     // leaves the field blank — never silently empty.
     keywords: Array.isArray(row.keywords) ? row.keywords : [],
+    // Host-set opening message for "Message host" (migration 156).
+    chatGreeting: row.chat_greeting || '',
+    chatGreetingEn: row.chat_greeting_en || '',
   };
 }
 
@@ -135,7 +138,29 @@ function shapeRealEvent(row, extra = {}) {
 // new join, so every other existing reader of this constant is unaffected.
 const REAL_EVENT_ROW_COLUMNS_BASE = 'id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, price_cents, capacity, seats_remaining, status, cancelled_at, visibility, approval, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, withdrawal_reason, withdrawn_at, cover_image, included, included_items, intro, address_line, city, postal_code, address_verified, keywords, country_code, state_province, neighborhood';
 // `cover_r2_ref` exists only after migration 153 — see withR2Columns (mediaUrls.js).
-const realEventColumns = (withR2) => (withR2 ? `${REAL_EVENT_ROW_COLUMNS_BASE}, cover_r2_ref` : REAL_EVENT_ROW_COLUMNS_BASE);
+// Per-user thread_preferences read (star/archive + the per-participant
+// "Delete" timestamp). `deleted_at` exists only after migration 156 — on a DB
+// without it this retries once without it and remembers for the session.
+let threadDeletedAtColumnMissing = false;
+async function fetchThreadPrefRows(uid, threadIds) {
+  const run = (cols) => supabase.from('thread_preferences').select(cols).eq('user_id', uid).in('thread_id', threadIds);
+  if (!threadDeletedAtColumnMissing) {
+    const res = await run('thread_id, starred, archived, deleted_at');
+    if (!isMissingColumnError(res.error) && !/deleted_at/i.test(res.error?.message || '')) return res;
+    threadDeletedAtColumnMissing = true;
+  }
+  return run('thread_id, starred, archived');
+}
+// A thread is hidden for me when I deleted it and nothing newer has arrived.
+const isThreadDeletedForMe = (deletedAt, lastMessageAt) => !!deletedAt && (!lastMessageAt || new Date(lastMessageAt) <= new Date(deletedAt));
+
+// `chat_greeting`/`chat_greeting_en` exist only after migrations 156/157 —
+// withR2Columns flips the flag when the DB rejects them, then retries.
+const realEventColumns = (withR2) => {
+  let cols = REAL_EVENT_ROW_COLUMNS_BASE;
+  for (const c of chatGreetingColumnList()) cols += `, ${c}`;
+  return withR2 ? `${cols}, cover_r2_ref` : cols;
+};
 
 /** A real event's own selected `cover_image` (migration 087) resolved to a
  * public URL, falling back to `fallbackUrl` (the first `event_photos` row
@@ -259,7 +284,7 @@ export function shapeRealEventAsCurEvent(real) {
     seatsLong: real.soldOut ? 'Hết chỗ' : (real.seatsRemaining != null ? real.seatsRemaining + ' chỗ trống' : ''),
     urgent: real.seatsRemaining != null && real.seatsRemaining <= 5,
     desc: real.description || '', included: real.included || '', includedItems: real.includedItems || [], intro: real.intro || '',
-    host: real.organizerName || '', hostShort: real.organizerName || '', greeting: '',
+    host: real.organizerName || '', hostShort: real.organizerName || '', greeting: real.chatGreeting || '',
     gallery: [], orgGallery: [], orgName: real.organizerName || '', orgIg: '', orgDesc: '',
     orgSince: '', orgCount: 0, orgTrusted: false,
     cancelled: real.status === 'cancelled', cancelledHoursAgo: null, endedHoursAgo,
@@ -1056,6 +1081,9 @@ const initialState = {
   // name/district match. Left blank, createSubmit defaults it to the
   // event's own selected category labels (never silently empty).
   createKeywords: '',
+  // Host's optional opening message for "Message host" (events.chat_greeting, migration 156).
+  createChatGreeting: '',
+  createChatGreetingEn: '',
   createMediaError: '',
   // "Giới thiệu sự kiện" (migration 088) — a separate, longer host-written
   // editorial description, never conflated with createDesc ("Mô tả") or
@@ -1170,6 +1198,18 @@ const initialState = {
   // set once per openThread()/openChatFor() call, since it depends on which
   // side of the thread the signed-in account is on, not just the event.
   chatOtherName: '',
+  // "Draft" conversation (migration 156 pass): a goer tapped "Message <host>"
+  // and no threads row exists yet. `chatDraftOrganizerId` is the organizer the
+  // row will be inserted for at the FIRST real send (ensureChatThread) —
+  // opening and backing out writes nothing, so nothing shows in the inbox.
+  chatDraftOrganizerId: null,
+  // Host's opening message (events.chat_greeting, or a catalogue event's
+  // hardcoded greeting) — display-only first bubble in Chat.jsx, never a
+  // messages row.
+  chatGreeting: '',
+  chatGreetingEn: '',
+  // Event key the greeting applies to (guest side only); null = show none.
+  chatGreetingFor: null,
   // Id of the first unread (read_at IS NULL, not sent by me) message at the
   // moment this thread was opened — drives the "— Chưa đọc —" divider in
   // Chat.jsx. Computed once per open (see loadChatMessages's `computeDivider`
@@ -1555,6 +1595,8 @@ export function BanBeProvider({ children }) {
   // this write committed, instead of letting an out-of-order stale
   // response silently revert a just-read thread back to unread.
   const lastReadWriteAtRef = useRef(0);
+  // In-flight lazy thread insert (ensureChatThread) — see openChatFor.
+  const chatThreadCreateRef = useRef(null);
   // BUG 1 fix (2026-09-22 follow-up) — real bug, confirmed by reading:
   // loadHomeStories() used to list `s.storyViewedIds` as a useCallback
   // dependency (to merge it into the freshly-fetched viewedSet), which
@@ -2536,12 +2578,9 @@ export function BanBeProvider({ children }) {
     }
 
     // Task 2 (2026-09-21 follow-up) — per-participant star/archive state.
-    const { data: prefRows } = await supabase
-      .from('thread_preferences')
-      .select('thread_id, starred, archived')
-      .eq('user_id', uid)
-      .in('thread_id', threadIds);
+    const { data: prefRows } = await fetchThreadPrefRows(uid, threadIds);
     const prefsByThread = Object.fromEntries((prefRows || []).map(p => [p.thread_id, { starred: p.starred, archived: p.archived }]));
+    const deletedAtByThread = Object.fromEntries((prefRows || []).filter(p => p.deleted_at).map(p => [p.thread_id, p.deleted_at]));
 
     // Merged-avatar badge (Inbox.jsx): the OTHER participant's own photo —
     // the guest's profiles.avatar_url when I'm the organizer, or the
@@ -2568,7 +2607,14 @@ export function BanBeProvider({ children }) {
       avatarByUserId = Object.fromEntries((profiles || []).filter(p => p.avatar_url).map(p => [p.id, p.avatar_url]));
     }
 
-    const rows = allThreads.map(t => {
+    // Message-host pass: a thread with zero messages (a goer opened "Message
+    // <host>" under the old create-on-open behaviour and left) never shows,
+    // and neither does one I deleted unless a newer message arrived since.
+    const visibleThreads = allThreads.filter(t => {
+      const last = lastByThread[t.id];
+      return !!last && !isThreadDeletedForMe(deletedAtByThread[t.id], last.created_at);
+    });
+    const rows = visibleThreads.map(t => {
       // findEvent() falls back to EVENTS[0] (demo host "Bếp Nhỏ") for any key
       // that isn't a catalogue event, so a real event's host name/photo must
       // come from the database (the thread's own organizer), never from it.
@@ -2642,6 +2688,27 @@ export function BanBeProvider({ children }) {
       set(prev => ({ inboxThreadPrefs: { ...prev.inboxThreadPrefs, [threadId]: current } }));
     }
   }, [set, s.user?.id, s.inboxThreadPrefs]);
+  // Message-host pass — "Delete" from the Inbox row menu (active or archived
+  // view). Hides the conversation for ME only: thread_preferences.deleted_at
+  // (migration 156); the other participant keeps it, and a message newer than
+  // deleted_at brings it back (see loadInboxThreads). Stamped with the
+  // thread's last message time rather than the local clock so client/server
+  // clock skew can't hide a brand-new reply or resurrect the thread at once.
+  const deleteThreadForMe = useCallback(async (threadId) => {
+    const uid = s.user?.id;
+    if (!uid) return;
+    const row = s.inboxThreads.find(t => t.threadId === threadId);
+    const deletedAt = row?.lastAt ? new Date(row.lastAt).toISOString() : new Date().toISOString();
+    const prevThreads = s.inboxThreads;
+    set(prev => ({ inboxThreads: prev.inboxThreads.filter(t => t.threadId !== threadId), unreadMessages: row?.unread ? Math.max(0, prev.unreadMessages - 1) : prev.unreadMessages }));
+    const current = s.inboxThreadPrefs[threadId] || { starred: false, archived: false };
+    const { error } = await supabase.from('thread_preferences').upsert({ thread_id: threadId, user_id: uid, ...current, deleted_at: deletedAt });
+    if (error) {
+      // Column missing (migration 156 not applied) or any other failure — warn and restore.
+      console.warn('deleteThreadForMe failed:', error);
+      set({ inboxThreads: prevThreads });
+    }
+  }, [set, s.user?.id, s.inboxThreads, s.inboxThreadPrefs]);
   const setInboxView = useCallback((view) => set({ inboxView: view }), [set]);
 
   // Task 1b — "Give feedback" (app_feedback, migration 065). No existing
@@ -2695,12 +2762,16 @@ export function BanBeProvider({ children }) {
       // (sender_id IS NULL) counts toward this badge too.
       const { data: unreadRows } = await supabase
         .from('messages')
-        .select('thread_id')
+        .select('thread_id, created_at')
         .in('thread_id', threadIds)
         .is('read_at', null)
         .or(`sender_id.is.null,sender_id.neq.${uid}`);
+      // Threads I deleted (migration 156) don't count until something newer arrives.
+      const { data: prefRows } = await fetchThreadPrefRows(uid, threadIds);
+      const deletedAt = Object.fromEntries((prefRows || []).filter(p => p.deleted_at).map(p => [p.thread_id, p.deleted_at]));
+      const counted = (unreadRows || []).filter(r => !isThreadDeletedForMe(deletedAt[r.thread_id], r.created_at));
       if (active && requestStartedAt >= lastReadWriteAtRef.current) {
-        set({ unreadMessages: new Set((unreadRows || []).map(r => r.thread_id)).size });
+        set({ unreadMessages: new Set(counted.map(r => r.thread_id)).size });
       }
     };
     poll();
@@ -5791,7 +5862,7 @@ export function BanBeProvider({ children }) {
       createCountryCode: '', createStateProvince: '', createNeighborhood: '',
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
       createEventDate: '', createEventTime: '', createPrice: '', createSeats: '',
-      createIncludedItems: [], createIntro: '', createKeywords: '', createVisibility: 'public',
+      createIncludedItems: [], createIntro: '', createKeywords: '', createChatGreeting: '', createChatGreetingEn: '', createVisibility: 'public',
     }));
   }, [set, s.user, canHost, enableOrganizerMode]);
   const openHeld = useCallback(() => set({ screen: 'confirmed' }), [set]);
@@ -8232,52 +8303,116 @@ export function BanBeProvider({ children }) {
     // host's name as the chat title. Only trust it for genuine catalogue keys.
     const isCatalog = EVENTS.some(e => e.key === key);
     const otherName = (isCatalog ? findEvent(key)?.orgName : s.realEventsById[key]?.organizerName) || '';
-    set({ screen: 'chat', eventKey: key, chatBack: back || 'event', chatThreadId: null, chatMessages: [], chatOtherName: otherName, chatUnreadDividerId: null });
-    if (!otherName) {
-      supabase.from('events').select('organizer_id').eq('id', key).maybeSingle().then(({ data: ev }) => {
-        if (!ev?.organizer_id) return;
-        supabase.from('organizers').select('name').eq('id', ev.organizer_id).maybeSingle().then(({ data: org }) => {
-          if (org?.name) set(prev => (prev.screen === 'chat' && prev.eventKey === key && !prev.chatOtherName ? { chatOtherName: org.name } : {}));
-        });
-      });
-    }
+    // Opening message pair (vi/en) — Chat.jsx picks by app language and falls
+    // back to a built-in localized default (src/lib/chatGreeting.js).
+    const knownReal = s.realEventsById[key];
+    set({ screen: 'chat', eventKey: key, chatBack: back || 'event', chatThreadId: null, chatDraftOrganizerId: null, chatMessages: [], chatOtherName: otherName, chatGreeting: knownReal?.chatGreeting || '', chatGreetingEn: knownReal?.chatGreetingEn || '', chatGreetingFor: key, chatUnreadDividerId: null });
+    // Async results only apply while this same chat is still the open one.
+    const stillHere = (prev) => prev.screen === 'chat' && prev.eventKey === key;
 
+    // Lazy creation (migration 156 pass): only LOOK for an existing thread
+    // here. No row is inserted until the first real send (ensureChatThread).
     const { data: existing } = await supabase.from('threads').select('id').eq('event_id', key).eq('guest_id', s.user.id).maybeSingle();
-    if (existing?.id) { set({ chatThreadId: existing.id }); loadChatMessages(existing.id, true); return; }
+    if (existing?.id) { set(prev => (stillHere(prev) ? { chatThreadId: existing.id, chatDraftOrganizerId: null } : {})); loadChatMessages(existing.id, true); }
 
-    const { data: event } = await supabase.from('events').select('organizer_id').eq('id', key).maybeSingle();
+    const { data: event } = await withR2Columns(() => {
+      const cols = ['organizer_id', ...chatGreetingColumnList()].join(', ');
+      return supabase.from('events').select(cols).eq('id', key).maybeSingle();
+    });
     if (!event?.organizer_id) return; // no real DB row for this event yet — nothing to open
-    const { data: created, error } = await supabase
-      .from('threads')
-      .insert({ event_id: key, guest_id: s.user.id, organizer_id: event.organizer_id })
-      .select('id')
-      .maybeSingle();
-    if (error) {
-      // Another tab/request created it first — fetch what's there now.
-      const { data: retry } = await supabase.from('threads').select('id').eq('event_id', key).eq('guest_id', s.user.id).maybeSingle();
-      if (retry?.id) { set({ chatThreadId: retry.id }); loadChatMessages(retry.id, true); }
-      return;
+    if (!existing?.id) set(prev => (stillHere(prev) && !prev.chatThreadId ? { chatDraftOrganizerId: event.organizer_id } : {}));
+    if (event.chat_greeting || event.chat_greeting_en) set(prev => (stillHere(prev) ? { chatGreeting: event.chat_greeting || '', chatGreetingEn: event.chat_greeting_en || '' } : {}));
+    if (!otherName) {
+      const { data: org } = await supabase.from('organizers').select('name').eq('id', event.organizer_id).maybeSingle();
+      if (org?.name) set(prev => (stillHere(prev) && !prev.chatOtherName ? { chatOtherName: org.name } : {}));
     }
-    if (created?.id) { set({ chatThreadId: created.id }); loadChatMessages(created.id, true); }
   }, [set, s.user, s.realEventsById, loadChatMessages]);
+  // Inserts the threads row for an open "draft" chat — the only place a
+  // conversation is ever created. Returns the thread id (or null on failure).
+  // An in-flight promise is shared so a double tap can't insert twice.
+  const ensureChatThread = useCallback(async () => {
+    if (s.chatThreadId) return s.chatThreadId;
+    const organizerId = s.chatDraftOrganizerId;
+    const key = s.eventKey;
+    if (!s.user || !organizerId) return null;
+    if (chatThreadCreateRef.current?.key === key) return chatThreadCreateRef.current.promise;
+    const promise = (async () => {
+      let id = null;
+      const { data: created, error } = await supabase
+        .from('threads')
+        .insert({ event_id: key, guest_id: s.user.id, organizer_id: organizerId })
+        .select('id')
+        .maybeSingle();
+      if (error) {
+        // Another tab/request created it first — fetch what's there now.
+        const { data: retry } = await supabase.from('threads').select('id').eq('event_id', key).eq('guest_id', s.user.id).maybeSingle();
+        id = retry?.id || null;
+      } else {
+        id = created?.id || null;
+      }
+      if (id) set(prev => (prev.screen === 'chat' && prev.eventKey === key ? { chatThreadId: id, chatDraftOrganizerId: null } : {}));
+      return id;
+    })();
+    chatThreadCreateRef.current = { key, promise };
+    promise.finally(() => { if (chatThreadCreateRef.current?.promise === promise) chatThreadCreateRef.current = null; });
+    return promise;
+  }, [set, s.user, s.chatThreadId, s.chatDraftOrganizerId, s.eventKey]);
   // "Message the host" from an event/organizer/refund screen — always about
   // whichever event is currently open.
   const goChat = useCallback(() => openChatFor(s.eventKey, 'event'), [openChatFor, s.eventKey]);
   // Opens a specific, already-known thread — used from Inbox, on either side
   // (guest continuing a conversation, or organizer replying to a guest).
   const openThread = useCallback((threadId, eventKey, back, otherName) => {
-    set({ screen: 'chat', eventKey, chatBack: back || 'inbox', chatThreadId: threadId, chatMessages: [], chatOtherName: otherName || '', chatUnreadDividerId: null });
+    const isCatalog = EVENTS.some(e => e.key === eventKey);
+    set({ screen: 'chat', eventKey, chatBack: back || 'inbox', chatThreadId: threadId, chatDraftOrganizerId: null, chatMessages: [], chatOtherName: otherName || '', chatGreeting: '', chatGreetingEn: '', chatGreetingFor: null, chatUnreadDividerId: null });
     loadChatMessages(threadId, true);
-  }, [set, loadChatMessages]);
+    // The other participant's name and (for a guest) the host's opening
+    // message aren't known to every caller (a 'new_message' notification tap
+    // passes neither), so resolve them from the thread itself. Never falls
+    // back to a demo persona: a real event's host name comes from its
+    // organizer row.
+    const stillHere = (prev) => prev.screen === 'chat' && prev.chatThreadId === threadId;
+    (async () => {
+      const uid = s.user?.id;
+      const { data: t } = await supabase.from('threads').select('guest_id, organizer_id').eq('id', threadId).maybeSingle();
+      if (!t) return;
+      const iAmGuest = t.guest_id === uid;
+      if (!otherName) {
+        let name = '';
+        if (iAmGuest) {
+          const { data: org } = await supabase.from('organizers').select('name').eq('id', t.organizer_id).maybeSingle();
+          name = (org?.name || '').trim();
+          if (!name && isCatalog) name = findEvent(eventKey)?.orgName || '';
+        } else {
+          const { data: prof } = await supabase.from('profiles').select('display_name').eq('id', t.guest_id).maybeSingle();
+          name = (prof?.display_name || '').trim() || 'Khách';
+        }
+        if (name) set(prev => (stillHere(prev) && !prev.chatOtherName ? { chatOtherName: name } : {}));
+      }
+      if (iAmGuest) {
+        let vi = s.realEventsById[eventKey]?.chatGreeting || '';
+        let en = s.realEventsById[eventKey]?.chatGreetingEn || '';
+        if (!vi && !en && chatGreetingColumnList().length) {
+          const res = await withR2Columns(() => supabase.from('events').select(['id', ...chatGreetingColumnList()].join(', ')).eq('id', eventKey).maybeSingle());
+          vi = res.data?.chat_greeting || '';
+          en = res.data?.chat_greeting_en || '';
+        }
+        set(prev => (stillHere(prev) ? { chatGreeting: vi, chatGreetingEn: en, chatGreetingFor: eventKey } : {}));
+      }
+    })();
+  }, [set, s.user?.id, s.realEventsById, loadChatMessages]);
   // openNotification is defined further down (after openAttendance exists to
   // route 'booking_requested' taps to it) — see the notifications section.
   const chatSend = useCallback(async () => {
     const text = s.chatDraft.trim();
-    if (!text || !s.chatThreadId || !s.user) return;
+    if (!text || !(s.chatThreadId || s.chatDraftOrganizerId) || !s.user) return;
     set({ chatDraft: '' });
+    // First send of a draft chat creates the thread (lazy creation).
+    const threadId = await ensureChatThread();
+    if (!threadId) { console.warn('Failed to create thread'); set({ chatDraft: text }); return; }
     const { data, error } = await supabase
       .from('messages')
-      .insert({ thread_id: s.chatThreadId, sender_id: s.user.id, body: text, kind: 'text' })
+      .insert({ thread_id: threadId, sender_id: s.user.id, body: text, kind: 'text' })
       .select('id, sender_id, body, created_at')
       .maybeSingle();
     if (error) {
@@ -8289,7 +8424,7 @@ export function BanBeProvider({ children }) {
     // No email here any more — the in-app notification (via the
     // notify_new_message trigger) is the only notification a new message
     // gets; tapping it now takes you straight to the thread.
-  }, [set, s.chatDraft, s.chatThreadId, s.user]);
+  }, [set, s.chatDraft, s.chatThreadId, s.chatDraftOrganizerId, s.user, ensureChatThread]);
   // Task 3 (2026-09-22 follow-up) — the chat-photo viewer's own bottom
   // composer (text reply / quick emoji reaction). A separate function from
   // `chatSend` rather than threading a `replyTo` param through it: this
@@ -8334,16 +8469,18 @@ export function BanBeProvider({ children }) {
   // that still reads sensibly anywhere body is shown without attachment
   // awareness (Inbox snippet, notification preview).
   const sendChatAttachment = useCallback(async (file, replyToMessageId) => {
-    if (!file || !s.chatThreadId || !s.user) return { success: false };
+    if (!file || !(s.chatThreadId || s.chatDraftOrganizerId) || !s.user) return { success: false };
     try {
       const { blob, ext, contentType, width, height } = await normalizeProofFile(file);
-      const path = `${s.chatThreadId}/${Date.now()}.${ext}`;
+      const threadId = await ensureChatThread();
+      if (!threadId) throw new Error('could not create thread');
+      const path = `${threadId}/${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage.from('chat-attachments').upload(path, blob, { contentType });
       if (upErr) throw upErr;
       const { data, error } = await supabase
         .from('messages')
         .insert({
-          thread_id: s.chatThreadId, sender_id: s.user.id, kind: 'text',
+          thread_id: threadId, sender_id: s.user.id, kind: 'text',
           body: contentType === 'application/pdf' ? T('Đã gửi một tệp', 'Sent a file') : T('Đã gửi một ảnh', 'Sent a photo'),
           attachment_path: path, attachment_type: contentType,
           attachment_width: width || null, attachment_height: height || null,
@@ -8366,7 +8503,7 @@ export function BanBeProvider({ children }) {
       console.warn('sendChatAttachment failed:', e);
       return { success: false };
     }
-  }, [set, s.chatThreadId, s.user, T, signChatAttachmentUrls]);
+  }, [set, s.chatThreadId, s.chatDraftOrganizerId, s.user, T, signChatAttachmentUrls, ensureChatThread]);
 
   // 2026-09-21 follow-up — chat photo fullscreen viewer (Task 2,
   // 07-notifications.md / 14-photo-viewer.md). A SEPARATE state slice from
@@ -8623,6 +8760,8 @@ export function BanBeProvider({ children }) {
   const createNameType = useCallback((e) => set({ createName: e.target.value }), [set]);
   const createDescType = useCallback((e) => set({ createDesc: e.target.value }), [set]);
   const createIntroType = useCallback((e) => set({ createIntro: e.target.value }), [set]);
+  const createChatGreetingType = useCallback((e) => set({ createChatGreeting: e.target.value.slice(0, 500) }), [set]);
+  const createChatGreetingEnType = useCallback((e) => set({ createChatGreetingEn: e.target.value.slice(0, 500) }), [set]);
   const createKeywordsType = useCallback((e) => set({ createKeywords: e.target.value }), [set]);
 
   // Address-autocomplete fix pass (2026-09-28) — same stale-response-
@@ -9108,6 +9247,30 @@ export function BanBeProvider({ children }) {
           p_event_id: eventId, p_visibility: s.createVisibility,
         });
         if (visibilityError) console.warn('set_event_visibility failed:', visibilityError);
+
+        // Host's opening message (migration 156) — plain owner update on
+        // events (events_update_own); best-effort like keywords/visibility.
+        // Skipped when the column isn't deployed yet, and on create when
+        // there's nothing to store (an edit still writes '' -> NULL so a
+        // host can clear a previous greeting).
+        const greeting = s.createChatGreeting.trim().slice(0, 500);
+        const greetingEn = s.createChatGreetingEn.trim().slice(0, 500);
+        const greetingCols = chatGreetingColumnList();
+        if (greetingCols.length && (greeting || greetingEn || s.createEditEventId)) {
+          const patch = { chat_greeting: greeting || null };
+          if (greetingCols.includes('chat_greeting_en')) patch.chat_greeting_en = greetingEn || null;
+          let { error: greetingError } = await supabase.from('events').update(patch).eq('id', eventId);
+          // Only 156 applied: retry without the English column.
+          if (greetingError && 'chat_greeting_en' in patch && /chat_greeting_en/i.test(greetingError.message || '')) {
+            delete patch.chat_greeting_en;
+            ({ error: greetingError } = await supabase.from('events').update(patch).eq('id', eventId));
+          }
+          if (greetingError) {
+            console.warn('chat_greeting update failed (apply migrations 156/157?):', greetingError);
+          } else {
+            set(prev => (prev.realEventsById[eventId] ? { realEventsById: { ...prev.realEventsById, [eventId]: { ...prev.realEventsById[eventId], chatGreeting: greeting, chatGreetingEn: greetingEn } } } : {}));
+          }
+        }
         reconcileEventMediaFireAndForget(eventId);
       }
 
@@ -9177,7 +9340,7 @@ export function BanBeProvider({ children }) {
     } finally {
       createSubmitInFlightRef.current = false;
     }
-  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createCountryCode, s.createStateProvince, s.createNeighborhood, s.createLat, s.createLng, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
+  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createCountryCode, s.createStateProvince, s.createNeighborhood, s.createLat, s.createLng, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.createChatGreeting, s.createChatGreetingEn, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
 
   /**
@@ -9233,6 +9396,8 @@ export function BanBeProvider({ children }) {
       createIncludedItems: Array.isArray(real.includedItems) ? real.includedItems.map(it => ({ label: it.label || '', detail: it.detail || '' })) : [],
       createIntro: real.intro || '',
       createKeywords: Array.isArray(real.keywords) ? real.keywords.join(', ') : '',
+      createChatGreeting: real.chatGreeting || '',
+      createChatGreetingEn: real.chatGreetingEn || '',
     });
     loadEventPhotos(eventId);
   }, [set, s.realEventsById, loadEventPhotos]);
@@ -9990,9 +10155,9 @@ export function BanBeProvider({ children }) {
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     setAttendeeField, loadBookingAttendees, loadImportedTickets, openTicketImport, closeTicketImport, setImportCode, openImportedTicket, closeImportedTicket, claimTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, emailValid, passwordValid, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, openStoryLibraryPicker, openStoryCameraPicker, closeStoryPickerRequests, publishStory, createEventShareStory, goEventFromStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, deleteThreadForMe, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, openStoryLibraryPicker, openStoryCameraPicker, closeStoryPickerRequests, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
-    createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
+    createNameType, createDescType, createIntroType, createKeywordsType, createChatGreetingType, createChatGreetingEnType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, toggleSurveyEditMode, openSurveyStoryModal, closeSurveyStoryModal, sendSurveyRespondCode, verifySurveyRespondCode, loadMySurveys, loadSurveyCandidates, refreshSurveyCandidatesAction, dismissSurveyCandidateAction, restoreSurveyCandidateAction, setSurveyCandidatesStatusAction, archiveSurveysAction, unarchiveSurveyAction, deleteArchivedSurveysAction, deleteSurveyCandidatesAction, searchAddressSuggestions, applySurveyCandidateAction, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction, shareSurveyLinkAction, openShareToStoryConfirm, closeShareToStoryConfirm, confirmShareSurveyToStory,
@@ -10029,9 +10194,9 @@ export function BanBeProvider({ children }) {
     openCalendarPicker, closeCalendarPicker, addToCalendarGoogle, addToCalendarICS, giveTicket,
     setAttendeeField, loadBookingAttendees, loadImportedTickets, openTicketImport, closeTicketImport, setImportCode, openImportedTicket, closeImportedTicket, claimTicket,
     loginEmailType, loginNicknameType, loginEmailKey, loginPhoneType, loginCodeType, loginEmailCodeType, loginPasswordType, loginPasswordConfirmType, verifyLoginCode, loginZalo, loginPhone, loginFacebook, loginGoogle, loginInstagram, setAuthMethod, codeRequestSubmit, passwordSignupSubmit, passwordLoginSubmit, verifyEmailCode, requestPasswordResetSubmit, submitCurrentForm, newPasswordType, newPasswordConfirmType, submitNewPassword,
-    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, openStoryLibraryPicker, openStoryCameraPicker, closeStoryPickerRequests, publishStory, createEventShareStory, goEventFromStory,
+    chatOnType, chatSend, chatOnKey, chatBackFn, deleteMessage, openChatFor, openThread, sendChatAttachment, openChatPhoto, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto, toggleThreadStar, archiveThread, unarchiveThread, deleteThreadForMe, setInboxView, submitFeedback, sendChatViewerReply, openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, loadHomeStories, loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openStoryViewer, closeStoryViewer, storyNext, storyPrev, storyNextHost, storyPrevHost, openPulseViewer, closePulseViewer, setPulseTab, loadPulse, openPulseOrganizerSheet, closePulseOrganizerSheet, followPulseOrganizer, openPulsePhotoSheet, closePulsePhotoSheet,  markStoryViewedAt, pickStoryFile, cancelStoryCreate, openStoryLibraryPicker, openStoryCameraPicker, closeStoryPickerRequests, publishStory, createEventShareStory, goEventFromStory,
     orgRegNameType, orgRegIgType, orgRegDescType, orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink, saveOrganizerProfile, loadMyOrgStats, setAccountTab,
-    createNameType, createDescType, createIntroType, createKeywordsType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
+    createNameType, createDescType, createIntroType, createKeywordsType, createChatGreetingType, createChatGreetingEnType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     searchCreateAddress, retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
     pickCreateCat, pickCreatePalette, pickCreateVisibility, tapPhotoSlot, addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent, createSubmit, requestVerify,
     goSurveyPublic, backFromSurveyPublic, promptLoginForSurvey, goSurveysHosting, loadMySurveyResponse, updateSurveyDraft, submitSurveyResponseAction, toggleSurveyEditMode, openSurveyStoryModal, closeSurveyStoryModal, sendSurveyRespondCode, verifySurveyRespondCode, loadMySurveys, loadSurveyCandidates, refreshSurveyCandidatesAction, dismissSurveyCandidateAction, restoreSurveyCandidateAction, setSurveyCandidatesStatusAction, archiveSurveysAction, unarchiveSurveyAction, deleteArchivedSurveysAction, deleteSurveyCandidatesAction, searchAddressSuggestions, applySurveyCandidateAction, createSurveyAction, publishSurveyAction, closeSurveyAction, archiveSurveyAction, deleteSurveyAction, shareSurveyLinkAction, openShareToStoryConfirm, closeShareToStoryConfirm, confirmShareSurveyToStory,
