@@ -59,6 +59,15 @@ function loadImage(src, cors) {
   });
 }
 
+// The real banbe wordmark (same asset iOS draws on the card), loaded once and
+// tinted per card in drawCard(). Falls back to plain text if it can't load.
+let wordmarkImg = null;
+let wordmarkPromise = null;
+function ensureWordmark() {
+  if (!wordmarkPromise) wordmarkPromise = loadImage('/banbe-wordmark.png', false).then((img) => { wordmarkImg = img; return img; });
+  return wordmarkPromise;
+}
+
 // Avatar from another origin: ask for CORS so the canvas stays exportable;
 // if the host refuses, fall back to the monogram rather than a tainted canvas.
 async function loadAvatar(url) {
@@ -158,8 +167,20 @@ function drawCard(canvas, scale, d) {
 
   // Header: wordmark + kind pill.
   ctx.fillStyle = fg; ctx.textAlign = 'left';
-  ctx.font = `700 16px ${FONT}`; setTracking(ctx, -0.3);
-  ctx.fillText('banbe', pad, 38);
+  if (wordmarkImg) {
+    // Template-tint the wordmark with the card's text colour, 24pt tall like iOS.
+    const mh = 24, mw = mh * wordmarkImg.width / wordmarkImg.height, ts = 3;
+    const tint = document.createElement('canvas');
+    tint.width = Math.round(mw * ts); tint.height = Math.round(mh * ts);
+    const tc = tint.getContext('2d');
+    tc.drawImage(wordmarkImg, 0, 0, tint.width, tint.height);
+    tc.globalCompositeOperation = 'source-in';
+    tc.fillStyle = fg; tc.fillRect(0, 0, tint.width, tint.height);
+    ctx.drawImage(tint, pad, 36 - mh / 2 - 1 + 0, mw, mh);
+  } else {
+    ctx.font = `700 16px ${FONT}`; setTracking(ctx, -0.3);
+    ctx.fillText('banbe', pad, 38);
+  }
   ctx.font = `600 10px ${FONT}`; setTracking(ctx, 1.2);
   const label = String(kindLabel || '').toUpperCase();
   const pw = ctx.measureText(label).width + 20;
@@ -238,6 +259,7 @@ function useCardRender(canvasRef, scale, input, ready) {
         }
       } catch { /* draw with fallback face */ }
       const photoImg = style.photo ? await loadImage(style.photo, false) : null;
+      await ensureWordmark();
       if (!live || !canvasRef.current) return;
       drawCard(canvasRef.current, scale, { style, kindLabel, name, subtitle, detail, avatarImg, roundAvatar, qrImg, footnote, photoImg });
     })();
@@ -306,6 +328,7 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
     const c = document.createElement('canvas');
     let photoImg = null;
     if (style.photo) photoImg = await loadImage(style.photo, false);
+    await ensureWordmark();
     drawCard(c, 3, { ...input, photoImg });
     return new Promise((res) => { try { c.toBlob(b => res(b), 'image/png'); } catch { res(null); } });
   }
@@ -394,9 +417,13 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
         }}
       >
         <div style={{ width: 36, height: 4, background: rule, borderRadius: 2, margin: '6px auto 12px' }} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        {/* Same header as iOS: Close pill leading, title centred. */}
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 36 }}>
+          <span
+            onClick={requestClose} role="button" data-testid={`${idPrefix}-close`}
+            style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer', padding: '7px 16px', borderRadius: 999, background: rule }}
+          >{T('Đóng', 'Close')}</span>
           <span style={{ ...display(17) }}>{T('Thẻ chia sẻ', 'Share card')}</span>
-          <span onClick={requestClose} role="button" data-testid={`${idPrefix}-close`} style={{ fontSize: 13, color: ink, cursor: 'pointer', padding: '6px 0 6px 12px' }}>{T('Đóng', 'Close')}</span>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0 10px' }}>
