@@ -212,6 +212,7 @@ export default function Account() {
   // can drive the exact same pipeline. This component only flips the
   // shared open* flags below.
   const [storyMenuOpen, setStoryMenuOpen] = useState(false);
+  const [hostStoryMenuOpen, setHostStoryMenuOpen] = useState(false);
 
   // Stage 1 (2026-09-27 nav/discovery pass) — this card's own inline
   // avatar/name/intro editor is gone: the whole card is now a single tap
@@ -867,6 +868,46 @@ export default function Account() {
           child actions/testids, moved into the shared AccountGroup screen.
           Badge = real outstanding host duties (verifications + refund
           queue), never invented. */}
+      {/* Host tab "Post a story" row — story posting is a host action (matches
+          iOS's postStoryCTA); same two pickers as the personal card's menu. */}
+      {isOrganizer && (
+        <div style={{ position: 'relative', margin: '14px 20px 0' }}>
+          <div
+            onClick={() => setHostStoryMenuOpen(v => !v)}
+            data-testid="account-host-post-story"
+            style={{ ...cardGlass({ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }) }}
+          >
+            <span aria-hidden style={{ flex: 'none', width: 24, height: 24, borderRadius: '50%', background: ink, color: paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, lineHeight: 1 }}>+</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: ink }}>{T('Đăng story', 'Post a story')}</span>
+              <span style={{ fontSize: 11.5, color: ink, opacity: 0.65 }}>{T('Thêm chữ và liên kết, sửa hoặc xóa sau khi đăng', 'Add text and a link; edit or delete after posting')}</span>
+            </div>
+            <span aria-hidden style={{ fontSize: 12, color: ink, opacity: 0.5 }}>⌃⌄</span>
+          </div>
+          {hostStoryMenuOpen && (
+            <div onClick={() => setHostStoryMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 35 }}>
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{ ...cardGlass({ position: 'absolute', right: 20, top: '50%', minWidth: 200 }), padding: 6, display: 'flex', flexDirection: 'column' }}
+              >
+                <div
+                  onClick={() => { setHostStoryMenuOpen(false); openStoryLibraryPicker(); }}
+                  style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
+                >
+                  <AttachMenuIcon name="library" />{T('Thư Viện Ảnh', 'Photo Library')}
+                </div>
+                <div
+                  onClick={() => { setHostStoryMenuOpen(false); openStoryCameraPicker(); }}
+                  style={{ padding: '12px 14px', fontSize: 13.5, color: ink, cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}
+                >
+                  <AttachMenuIcon name="camera" />{T('Camera', 'Camera')}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {canHost && s.myOrganizerId && (
         <ShareCardRow host onClick={() => setShareCardFor('host')} testId="account-share-card-host" />
       )}

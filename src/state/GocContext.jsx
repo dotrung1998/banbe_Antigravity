@@ -3293,6 +3293,9 @@ export function GocProvider({ children }) {
       .from('bookings')
       .select('hold_expires_at, events!inner(organizer_id)', { count: 'exact' })
       .eq('payment_state', 'holding')
+      .neq('status', 'cancelled')
+      // A hold whose deadline has passed (or was cleared) is not a held seat.
+      .gt('hold_expires_at', new Date().toISOString())
       .in('events.organizer_id', s.myOrganizerIds)
       .order('hold_expires_at', { ascending: true })
       .limit(1);
@@ -8179,8 +8182,20 @@ export function GocProvider({ children }) {
   // (see openThread, used from Inbox).
   const openChatFor = useCallback(async (key, back) => {
     if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'chat', authBackScreen: 'organizer' });
-    const otherName = findEvent(key)?.orgName || '';
+    // findEvent() falls back to EVENTS[0] ("Bếp Nhỏ") for any key that isn't a
+    // catalogue event, so a real, host-created event used to get that demo
+    // host's name as the chat title. Only trust it for genuine catalogue keys.
+    const isCatalog = EVENTS.some(e => e.key === key);
+    const otherName = (isCatalog ? findEvent(key)?.orgName : s.realEventsById[key]?.organizerName) || '';
     set({ screen: 'chat', eventKey: key, chatBack: back || 'organizer', chatThreadId: null, chatMessages: [], chatOtherName: otherName, chatUnreadDividerId: null });
+    if (!otherName) {
+      supabase.from('events').select('organizer_id').eq('id', key).maybeSingle().then(({ data: ev }) => {
+        if (!ev?.organizer_id) return;
+        supabase.from('organizers').select('name').eq('id', ev.organizer_id).maybeSingle().then(({ data: org }) => {
+          if (org?.name) set(prev => (prev.screen === 'chat' && prev.eventKey === key && !prev.chatOtherName ? { chatOtherName: org.name } : {}));
+        });
+      });
+    }
 
     const { data: existing } = await supabase.from('threads').select('id').eq('event_id', key).eq('guest_id', s.user.id).maybeSingle();
     if (existing?.id) { set({ chatThreadId: existing.id }); loadChatMessages(existing.id, true); return; }
@@ -8199,7 +8214,7 @@ export function GocProvider({ children }) {
       return;
     }
     if (created?.id) { set({ chatThreadId: created.id }); loadChatMessages(created.id, true); }
-  }, [set, s.user, loadChatMessages]);
+  }, [set, s.user, s.realEventsById, loadChatMessages]);
   // "Message the host" from an event/organizer/refund screen — always about
   // whichever event is currently open.
   const goChat = useCallback(() => openChatFor(s.eventKey, 'organizer'), [openChatFor, s.eventKey]);
