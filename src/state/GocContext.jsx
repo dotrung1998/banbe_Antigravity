@@ -5799,6 +5799,7 @@ export function GocProvider({ children }) {
   }, [set, s.user, canHost, enableOrganizerMode]);
   const logout = useCallback(async () => {
     await supabase.auth.signOut();
+    try { navigator.serviceWorker?.controller?.postMessage('banbe-clear-storage-cache'); } catch { /* no SW — nothing cached */ }
     // Roles belong to the account that just left; leaving them behind would
     // leak the previous user's hosting state into the next sign-in. Lands
     // on Login, not Home — Task 1: no guest browsing after signing out.
@@ -7949,6 +7950,7 @@ export function GocProvider({ children }) {
       // anywhere in this codebase today, confirmed by grep, so there is
       // nothing web-side to unregister).
       await supabase.auth.signOut().catch(() => {});
+      try { navigator.serviceWorker?.controller?.postMessage('banbe-clear-storage-cache'); } catch { /* no SW — nothing cached */ }
       try { localStorage.clear(); sessionStorage.clear(); } catch { /* private mode / blocked storage — non-fatal */ }
     } catch (e) {
       set({ deleteAccountSubmitting: false, deleteAccountStep: 'confirm', deleteAccountError: e.message || String(e) });

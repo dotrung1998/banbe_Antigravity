@@ -7,6 +7,7 @@ struct BanbeApp: App {
     @StateObject private var appState = AppState()
 
     init() {
+        StorageImageCache.install()
         // AppDelegate is instantiated by UIKit before any SwiftUI @StateObject
         // exists, so it can't reach `appState` any other way — set once here.
         AppDelegate.appState = appState

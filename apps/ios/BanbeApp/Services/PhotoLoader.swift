@@ -30,6 +30,7 @@ enum PhotoLoader {
         // The photos are immutable per filename, so a cached copy is always
         // good; this is what turns a second launch into an instant feed.
         configuration.requestCachePolicy = .returnCacheDataElseLoad
+        configuration.protocolClasses = [StorageImageCache.self] + (configuration.protocolClasses ?? [])
         return URLSession(configuration: configuration)
     }()
 
@@ -94,6 +95,7 @@ enum PhotoLoader {
     /// tickets, …) — those live elsewhere entirely.
     static func clearCache() {
         memory.removeAllObjects()
+        StorageImageCache.clear()
         session.configuration.urlCache?.removeAllCachedResponses()
     }
 
