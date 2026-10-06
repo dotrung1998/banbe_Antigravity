@@ -311,7 +311,7 @@ if (typeof window !== 'undefined') {
 
 // A shared photo's "?org=<eventKey>" link, read once at module load the same
 // way "?ref=" is above. Unlike a referral this isn't stashed for later — it
-// routes straight to that organizer's page below, so the param is consumed
+// routes straight to that event's organizer profile below, so the param is consumed
 // here and stripped from the visible URL.
 let sharedOrgEventKey = null;
 if (typeof window !== 'undefined') {
@@ -476,7 +476,7 @@ const initialState = {
   reserveNameSaving: false,
   reserveNameError: '',
   chatDraft: '',
-  chatBack: 'organizer',
+  chatBack: 'event',
   shared: false,
   // Never pre-seeded: a brand-new, unregistered visitor should see only the
   // public event feed, not a "Your events" shelf built from placeholder
@@ -775,7 +775,7 @@ const initialState = {
   // reachable by organizer id (never the owner's personal handle) so a
   // shared /org/<id> link works without knowing who owns it.
   organizerProfile: null, organizerProfileLoading: false, organizerProfileError: '', organizerProfileBack: 'profile', organizerProfileId: '',
-  organizerProfileUpcoming: [], organizerProfilePhotos: [], organizerProfileExtrasLoadedFor: '',
+  organizerProfileUpcoming: [], organizerProfileExtrasLoadedFor: '',
   // Interest surveys (Slice B) — the public/browser+in-app response
   // screen. `surveyPublic` is exactly get_survey_public()'s return shape
   // (never raw table rows) so the public route can never expose more than
@@ -1321,7 +1321,7 @@ function postAuthDestination(prev) {
   let lastScreen = null;
   try { lastScreen = localStorage.getItem('banbe.lastScreen'); } catch { /* private browsing */ }
   const restored = prev.user && lastScreen && RESTORABLE_SCREENS.has(lastScreen) ? lastScreen : null;
-  const target = restored || (prev.arrivedFromSharedLink ? 'organizer' : 'home');
+  const target = restored || (prev.arrivedFromSharedLink ? 'organizerProfile' : 'home');
   // !prev.sessionChecked means the async getSession()/profile fetch hasn't
   // resolved yet — prev.user being null here doesn't mean signed-out, just
   // "not confirmed yet" (e.g. a fast click through langPick/themePick can
@@ -1446,10 +1446,12 @@ export function BanBeProvider({ children }) {
         // see one specific organizer right away — sitting it through the
         // splash/onboarding sequence first would defeat the point of a
         // fast-opening share preview, so this bypasses both entirely and
-        // opens straight on Organizer (same as before Task 2's splash
-        // change). The blanket guard still applies from here if it turns
-        // out there's no session once that resolves.
-        ...(sharedOrgEventKey ? { eventKey: sharedOrgEventKey, arrivedFromSharedLink: true, screen: 'organizer' } : {}),
+        // opens straight on the organizer profile (same as before Task 2's
+        // splash change). The organizer id isn't known synchronously — the
+        // mount effect below resolves it from the event key. The blanket
+        // guard still applies from here if it turns out there's no session
+        // once that resolves.
+        ...(sharedOrgEventKey ? { eventKey: sharedOrgEventKey, arrivedFromSharedLink: true, screen: 'organizerProfile', organizerProfileLoading: true, organizerProfileBack: 'home' } : {}),
         // Same reasoning, for a shared /u/<handle> profile link — the
         // actual data fetch happens in the mount effect below (needs
         // `supabase.rpc`, not available at this synchronous init point).
@@ -1480,6 +1482,28 @@ export function BanBeProvider({ children }) {
       }
       setStateRaw(prev => ({ ...prev, publicProfile: data, publicProfileLoading: false }));
     });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Merged host profile — a shared "?org=<eventKey>" link used to open the
+  // retired Organizer screen. It now opens the organizer profile of that
+  // event's organizer; the id comes from the `events` row (the same lookup
+  // loadOrganizerPhotos used), then the core RPC, same as the effect below.
+  useEffect(() => {
+    if (!sharedOrgEventKey) return;
+    let active = true;
+    const fail = () => setStateRaw(prev => ({ ...prev, organizerProfileLoading: false, organizerProfileError: T('Không tìm thấy tổ chức này.', "This organizer couldn't be found.") }));
+    (async () => {
+      const { data: evRow } = await supabase.from('events').select('organizer_id').eq('id', sharedOrgEventKey).maybeSingle();
+      if (!active) return;
+      const orgId = evRow?.organizer_id;
+      if (!orgId) { fail(); return; }
+      setStateRaw(prev => ({ ...prev, organizerProfileId: orgId }));
+      const { data, error } = await supabase.rpc('get_organizer_profile', { p_organizer_id: orgId });
+      if (!active) return;
+      if (error || data?.success === false) { fail(); return; }
+      setStateRaw(prev => ({ ...prev, organizerProfile: data, organizerProfileLoading: false }));
+    })();
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -2153,7 +2177,9 @@ export function BanBeProvider({ children }) {
     loadPhotoEngagement(rows.map(p => p.id));
   }, [set, loadPhotoEngagement]);
 
-  /** STAGE B (2026-09-25) — Organizer.jsx's real photo library, replacing
+  /** STAGE B (2026-09-25) — the organizer's real photo library (now shown
+   * on OrganizerProfile.jsx — the old Organizer.jsx screen was merged into
+   * it, and this takes an organizer id instead of an event key), replacing
    * the static demo `orgGallery` render. Two-step, both steps riding
    * EXISTING RLS rather than a new RPC: `events` itself already lets the
    * owner see every one of their own rows regardless of status (draft
@@ -2166,10 +2192,8 @@ export function BanBeProvider({ children }) {
    * (`event_photos_select_public: USING (true)`, migration 001) — nothing
    * there was ever scoped by event status, so this function is the actual
    * enforcement point for "which events' photos," not a new RLS grant. */
-  const loadOrganizerPhotos = useCallback(async (eventKey) => {
+  const loadOrganizerPhotos = useCallback(async (organizerId) => {
     set({ organizerPhotosLoading: true });
-    const { data: evRow } = await supabase.from('events').select('organizer_id').eq('id', eventKey).maybeSingle();
-    const organizerId = evRow?.organizer_id;
     if (!organizerId) { set({ organizerPhotos: [], organizerPhotosLoading: false }); return; }
     const isOwner = s.myOrganizerIds.includes(organizerId);
     let eventsQuery = supabase.from('events').select('id').eq('organizer_id', organizerId);
@@ -5651,21 +5675,28 @@ export function BanBeProvider({ children }) {
   // so remember whichever one we came from — its own back arrow used to be
   // hardcoded to Home, which is what made "back" feel like it always
   // returned to the very start regardless of where you'd drilled in from.
-  // "organizer" is a pass-through, exactly like "event" itself already is:
-  // entering an event from an organizer page keeps whatever back target
-  // brought us into this event/organizer cluster in the first place.
+  // An organizer profile that was itself opened FROM an event (its back is
+  // 'event') is a pass-through, exactly like "event" itself already is:
+  // entering an event from it keeps whatever back target brought us into
+  // this event/organizer cluster in the first place.
   //
-  // Pointing back at "organizer" instead is what trapped the two screens in
-  // an inescapable loop. Organizer has no back target of its own — its back
-  // link just re-opens whichever event is current — so event's back would
-  // go to organizer, organizer's back would come straight back to the same
-  // event, forever, with no way to reach Home. That's true whichever row of
-  // its "Current events" list is tapped, including the event you arrived
-  // from (that list contains it too).
+  // Pointing back at the organizer profile instead is what trapped the two
+  // screens in an inescapable loop (back when this was the separate
+  // Organizer screen, and the same shape applies to the merged profile): the
+  // profile's back re-opens whichever event is current, so event's back would
+  // go to the profile, the profile's back would come straight back to the
+  // same event, forever, with no way to reach Home. A profile reached from
+  // anywhere else (Home, Pulse, a /org/<id> link, Dashboard) has its own real
+  // back target, so there the event's back may safely point at the profile.
   const goEvent = useCallback((key) => set(prev => ({
     screen: 'event',
     eventKey: key,
-    eventBackScreen: (prev.screen === 'event' || prev.screen === 'organizer')
+    // A chat opened from this event ("Message host" -> "Details") also passes
+    // through: its own back already returns to the event, so recording 'chat'
+    // here made event <-> chat ping-pong forever.
+    eventBackScreen: (prev.screen === 'event'
+      || (prev.screen === 'organizerProfile' && prev.organizerProfileBack === 'event')
+      || (prev.screen === 'chat' && !['inbox', 'notifications', 'paymentDetails'].includes(prev.chatBack)))
       ? prev.eventBackScreen
       : prev.screen,
     // A fresh, non-story-originated event open invalidates any pending
@@ -5712,17 +5743,15 @@ export function BanBeProvider({ children }) {
     return {
       screen: 'event',
       eventKey: key,
-      eventBackScreen: (prev.screen === 'event' || prev.screen === 'organizer') ? prev.eventBackScreen : prev.screen,
+      eventBackScreen: (prev.screen === 'event' || (prev.screen === 'organizerProfile' && prev.organizerProfileBack === 'event')) ? prev.eventBackScreen : prev.screen,
       eventBackIsStory: true,
       storyReturnSnapshot: prev.storyViewer,
       storyReturnHostName: currentGroup?.orgName || null,
       storyViewer: null,
     };
   }), [set]);
-  const goOrganizer = useCallback(() => set({ screen: 'organizer' }), [set]);
   const goReserve = useCallback(() => set(s.user ? { screen: 'reserve', attendeeDrafts: makeAttendeeDrafts(s.qty, s.user.name) } : { screen: 'login', authMode: 'login', authReturnScreen: 'reserve', authBackScreen: 'event' }), [set, s.user, s.qty]);
   const backToEvent = useCallback(() => set({ screen: 'event' }), [set]);
-  const backToOrganizer = useCallback(() => set({ screen: 'organizer' }), [set]);
   const goLogin = useCallback(() => set({ screen: 'login', authMode: 'login', authReturnScreen: 'profile', authBackScreen: 'home' }), [set]);
   // `back` is only honored when it's really a screen name — several call
   // sites (ActionCenter's onOpenDashboard) wire this straight to an
@@ -6096,7 +6125,7 @@ export function BanBeProvider({ children }) {
     if (!organizerId) return;
     set({
       screen: 'organizerProfile', organizerProfile: null, organizerProfileLoading: true, organizerProfileError: '',
-      organizerProfileBack: back, organizerProfileId: organizerId, organizerProfileExtrasLoadedFor: '',
+      organizerProfileBack: back, organizerProfileId: organizerId, organizerProfileExtrasLoadedFor: '', arrivedFromSharedLink: false,
     });
     const { data, error } = await supabase.rpc('get_organizer_profile', { p_organizer_id: organizerId });
     if (error || data?.success === false) {
@@ -6106,6 +6135,22 @@ export function BanBeProvider({ children }) {
     set({ organizerProfile: data, organizerProfileLoading: false });
   }, [set, T]);
   const backFromOrganizerProfile = useCallback(() => set(prev => ({ screen: prev.organizerProfileBack || 'profile' })), [set]);
+  /** Merged host profile — "Visit <host>" on Event Detail (and any other
+   * place that only knows an event key). Resolves the organizer id from the
+   * canonical realEventsById cache when present, otherwise from the
+   * `events` row itself (covers the seeded demo-catalogue events too, which
+   * carry no organizer id client-side). Unresolvable => stay put with a
+   * toast rather than opening a broken profile. */
+  const openOrganizerOfEvent = useCallback(async (key, back = 'event') => {
+    const eventKey = key || s.eventKey;
+    let organizerId = s.realEventsById[eventKey]?.organizerId;
+    if (!organizerId) {
+      const { data } = await supabase.from('events').select('organizer_id').eq('id', eventKey).maybeSingle();
+      organizerId = data?.organizer_id;
+    }
+    if (!organizerId) { pushToast({ title: T('Không tìm thấy trang của người tổ chức', "Couldn't find this host's page"), body: '' }); return; }
+    openOrganizerProfile(organizerId, back);
+  }, [s.eventKey, s.realEventsById, openOrganizerProfile, pushToast, T]);
 
   // ==================== Interest surveys (Slice B) ====================
   const SURVEY_DRAFT_PREFIX = 'banbe.surveyDraft.';
@@ -6521,25 +6566,19 @@ export function BanBeProvider({ children }) {
   }, [set, s.surveyShareToStoryTarget, T, loadHomeStories]);
 
   /** Small preview content for the organizer public profile — real
-   * upcoming events (published, soonest first) and a handful of real
-   * photos from those same events, never invented. Guarded on
+   * upcoming events (published, soonest first), never invented. (The photo
+   * library is loaded separately by loadOrganizerPhotos — the same grid the
+   * retired Organizer screen showed.) Guarded on
    * `organizerProfileExtrasLoadedFor` so returning to an already-loaded
    * organizer (e.g. Back then forward again) doesn't re-fetch. */
   const loadOrganizerProfileExtras = useCallback(async (organizerId) => {
     if (!organizerId || s.organizerProfileExtrasLoadedFor === organizerId) return;
     set({ organizerProfileExtrasLoadedFor: organizerId });
-    const [eventsRes, photoEventsRes] = await Promise.all([
-      withR2Columns(withR2 => supabase.from('events').select(realEventColumns(withR2)).eq('organizer_id', organizerId).eq('status', 'live').order('starts_at', { ascending: true }).limit(5)),
-      supabase.from('events').select('id').eq('organizer_id', organizerId).eq('status', 'live').eq('visibility', 'public'),
-    ]);
-    const rows = eventsRes.data || [];
+    const { data: eventRows } = await withR2Columns(withR2 => supabase.from('events').select(realEventColumns(withR2)).eq('organizer_id', organizerId).eq('status', 'live').order('starts_at', { ascending: true }).limit(5));
+    const rows = eventRows || [];
     const photoUrlByEvent = await firstPhotoUrlByEvent(rows.map(r => r.id));
     const upcoming = rows.map(r => shapeRealEvent(r, { photoUrl: photoUrlByEvent[r.id] }));
-    const photoEventIds = (photoEventsRes.data || []).map(e => e.id);
-    const { data: photos } = photoEventIds.length
-      ? await withR2Columns(withR2 => supabase.from('event_photos').select(withR2 ? 'id, event_id, storage_path, r2_ref, sort_order' : 'id, event_id, storage_path, sort_order').in('event_id', photoEventIds).order('sort_order', { ascending: true }).limit(8))
-      : { data: [] };
-    set({ organizerProfileUpcoming: upcoming, organizerProfilePhotos: photos || [] });
+    set({ organizerProfileUpcoming: upcoming });
   }, [set, s.organizerProfileExtrasLoadedFor]);
 
   /** Native share sheet with a clipboard-copy fallback — same pattern as
@@ -8187,13 +8226,13 @@ export function BanBeProvider({ children }) {
   // conversation — that always opens a specific, already-known thread
   // (see openThread, used from Inbox).
   const openChatFor = useCallback(async (key, back) => {
-    if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'chat', authBackScreen: 'organizer' });
+    if (!s.user) return set({ screen: 'login', authMode: 'login', authReturnScreen: 'chat', authBackScreen: 'event' });
     // findEvent() falls back to EVENTS[0] ("Bếp Nhỏ") for any key that isn't a
     // catalogue event, so a real, host-created event used to get that demo
     // host's name as the chat title. Only trust it for genuine catalogue keys.
     const isCatalog = EVENTS.some(e => e.key === key);
     const otherName = (isCatalog ? findEvent(key)?.orgName : s.realEventsById[key]?.organizerName) || '';
-    set({ screen: 'chat', eventKey: key, chatBack: back || 'organizer', chatThreadId: null, chatMessages: [], chatOtherName: otherName, chatUnreadDividerId: null });
+    set({ screen: 'chat', eventKey: key, chatBack: back || 'event', chatThreadId: null, chatMessages: [], chatOtherName: otherName, chatUnreadDividerId: null });
     if (!otherName) {
       supabase.from('events').select('organizer_id').eq('id', key).maybeSingle().then(({ data: ev }) => {
         if (!ev?.organizer_id) return;
@@ -8223,7 +8262,7 @@ export function BanBeProvider({ children }) {
   }, [set, s.user, s.realEventsById, loadChatMessages]);
   // "Message the host" from an event/organizer/refund screen — always about
   // whichever event is currently open.
-  const goChat = useCallback(() => openChatFor(s.eventKey, 'organizer'), [openChatFor, s.eventKey]);
+  const goChat = useCallback(() => openChatFor(s.eventKey, 'event'), [openChatFor, s.eventKey]);
   // Opens a specific, already-known thread — used from Inbox, on either side
   // (guest continuing a conversation, or organizer replying to a guest).
   const openThread = useCallback((threadId, eventKey, back, otherName) => {
@@ -8426,7 +8465,7 @@ export function BanBeProvider({ children }) {
   }, [s.chatPhotoViewer, s.user, T, closeChatForward]);
 
   const chatOnKey = useCallback((e) => { if (e.key === 'Enter') chatSend(); }, [chatSend]);
-  const chatBackFn = useCallback(() => set(prev => ({ screen: prev.chatBack === 'inbox' || prev.chatBack === 'notifications' || prev.chatBack === 'paymentDetails' ? prev.chatBack : 'organizer' })), [set]);
+  const chatBackFn = useCallback(() => set(prev => ({ screen: prev.chatBack === 'inbox' || prev.chatBack === 'notifications' || prev.chatBack === 'paymentDetails' ? prev.chatBack : 'event' })), [set]);
 
   // A real, permanent delete, own messages only — RLS (messages_delete_own,
   // migration 054) scopes this to `sender_id = auth.uid()`, which a system
@@ -9922,7 +9961,7 @@ export function BanBeProvider({ children }) {
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
     isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
-    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
+    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
     loadNotifications, loadInboxThreads,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
@@ -9961,7 +10000,7 @@ export function BanBeProvider({ children }) {
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
     isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
-    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, goOrganizer, goReserve, backToEvent, backToOrganizer, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
+    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
     loadNotifications, loadInboxThreads,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,

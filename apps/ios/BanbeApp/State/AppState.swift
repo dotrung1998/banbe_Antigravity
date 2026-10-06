@@ -9,7 +9,7 @@ import Supabase
 /// time off a string and remembers explicit "back" targets rather than using
 /// a router stack; this keeps the same model so the back behaviour matches.
 enum Screen: String {
-    case splash, langPick, themePick, home, profile, inbox, event, organizer
+    case splash, langPick, themePick, home, profile, inbox, event
     case reserve, confirmed, refunded, login, chat, dashboard, hostIntro
     case create, attendance, preferences, editName, notifications, eventList
     case security
@@ -91,6 +91,11 @@ struct PhotoGalleryItem: Equatable, Identifiable {
 /// from, so a left/right swipe can move through the rest, plus which one is
 /// showing and the organizer it belongs to (shown as the faint credit).
 struct PhotoViewerItem: Equatable {
+    /// Unique per open, so RootView can mount a brand-new PhotoViewerView each
+    /// time (fresh @State) instead of SwiftUI reusing a stale instance — one
+    /// left mid-dismiss (invisible) made every later tap on a thumbnail
+    /// vibrate but show nothing.
+    let id = UUID()
     let gallery: [PhotoGalleryItem]
     var index: Int
     let organizer: String
@@ -356,7 +361,7 @@ final class AppState: ObservableObject {
     static let demoRole = UserDefaults.standard.string(forKey: "demoRole")
     static let demoScenario = UserDefaults.standard.string(forKey: "demoScenario")
 
-    @Published var chatBack: Screen = .organizer
+    @Published var chatBack: Screen = .event
     @Published var mode: String = "goer"
     // Inbox and Dashboard are each reachable from more than one place (Home's
     // message icon/host link vs Account's "Messages" row/hosting card), so a
@@ -1248,7 +1253,8 @@ final class AppState: ObservableObject {
     @Published var organizerProfileReturnsToPulse = false
     @Published var organizerProfileID = ""
     @Published var organizerProfileUpcoming: [OrganizerUpcomingEvent] = []
-    @Published var organizerProfilePhotos: [OrganizerPhoto] = []
+    /// Event the organizer profile was opened from (back restores it).
+    @Published var organizerProfileEventKey = ""
     @Published var organizerProfileExtrasLoadedFor = ""
     // Interest surveys (Slice B, migration 114) — mirrors web's
     // BanBeContext.jsx state field-for-field. `surveyPublic` is exactly
@@ -2669,7 +2675,15 @@ final class AppState: ObservableObject {
         // Event Detail's own "other events" list while the first one was
         // itself story-suspended.
         if eventBackIsStory { closeStoryViewer() }
-        if screen != .event && screen != .organizer { eventBackScreen = screen }
+        // Opened from the organizer profile that itself was reached from an
+        // event: keep that event's own origin so back never ping-pongs
+        // event <-> organizer.
+        let fromEventOrganizer = screen == .organizerProfile && organizerProfileBackScreen == .event
+        // Same for a chat opened from this event ("Message host" -> "Details"):
+        // its own back already returns to the event, so overwriting
+        // eventBackScreen with .chat made event <-> chat ping-pong forever.
+        let fromEventChat = screen == .chat && AppState.resolveChatBackTarget(chatBack) == .event
+        if screen != .event && !fromEventOrganizer && !fromEventChat { eventBackScreen = screen }
         eventKey = key
         screen = .event
         eventBackIsStory = false
@@ -2708,7 +2722,7 @@ final class AppState: ObservableObject {
     /// reveal, not a throwaway reconstruction. `storyReturnSnapshot` is
     /// gone entirely — nothing to snapshot when the original is retained.
     func goEventFromStory(_ key: String) {
-        if screen != .event && screen != .organizer { eventBackScreen = screen }
+        if screen != .event { eventBackScreen = screen }
         eventBackIsStory = true
         if let v = storyViewer, v.groups.indices.contains(v.groupIndex) {
             storyReturnHostName = v.groups[v.groupIndex].orgName
@@ -2796,7 +2810,6 @@ final class AppState: ObservableObject {
     // centering), unlike `openEventOnMap(_:)` above.
     @Published var mapExploreFocusSearch = false
     func openEventSearch() { mapExploreFocusSearch = true; screen = .mapExplore }
-    func goOrganizer() { screen = .organizer }
     func backToEvent() { screen = .event }
     func openHeld() { screen = .confirmed }
     /// Tapping a photo in either gallery ("Hình ảnh" on an event, "Ảnh của
@@ -2981,8 +2994,11 @@ final class AppState: ObservableObject {
               EventCatalog.find(key) != nil
         else { return }
         photoViewer = nil
-        eventKey = key
-        screen = .organizer
+        pulseOpen = false
+        storyViewer = nil
+        // Land on the organizer profile (resolved from the event's
+        // organizer id) — the old standalone organizer screen is retired.
+        openEventOrganizer(eventKey: key, back: screen == .organizerProfile ? organizerProfileBackScreen : (screen == .login ? .home : screen))
     }
 
     /// banbe://gift/claim?code=… is the link annotation printed on the gift
@@ -3214,7 +3230,7 @@ final class AppState: ObservableObject {
         case .inbox: if inboxView == .archived { inboxView = .active } else { backFromInbox() }
         case .eventList: backFromEventList()
         case .event: backFromEvent()
-        case .organizer, .reserve: backToEvent()
+        case .reserve: backToEvent()
         case .chat: chatBackAction()
         case .dashboard: backFromDashboard()
         case .hostIntro: goProfile()
@@ -3347,7 +3363,7 @@ final class AppState: ObservableObject {
         case .inbox: return inboxView == .archived ? .inbox : inboxBack
         case .eventList: return eventListBack
         case .event: return eventBackScreen
-        case .organizer, .reserve: return .event
+        case .reserve: return .event
         case .chat: return AppState.resolveChatBackTarget(chatBack)
         case .dashboard: return dashboardBack
         case .hostIntro: return .profile

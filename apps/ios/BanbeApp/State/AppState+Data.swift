@@ -1177,15 +1177,10 @@ extension AppState {
     /// nothing there was ever scoped by event status, so this function is
     /// the actual enforcement point for "which events' photos," not a new
     /// RLS grant.
-    func loadOrganizerPhotos(eventKey: String) async {
+    func loadOrganizerPhotos(organizerId: String) async {
         organizerPhotosLoading = true
+        organizerPhotos = []
         do {
-            let evRow: OrganizerRef = try await SupabaseService.client
-                .from("events").select("organizer_id").eq("id", value: eventKey)
-                .single().execute().value
-            guard let organizerId = evRow.organizerId else {
-                organizerPhotos = []; organizerPhotosLoading = false; return
-            }
             let isOwner = myOrganizerIDs.contains(organizerId)
             var query = SupabaseService.client.from("events").select("id").eq("organizer_id", value: organizerId)
             if !isOwner { query = query.eq("status", value: "live").eq("visibility", value: "public") }
@@ -2840,13 +2835,13 @@ extension AppState {
 
     // MARK: - Chat
 
-    func goChat() { Task { await openChat(for: eventKey, back: .organizer) } }
+    func goChat() { Task { await openChat(for: eventKey, back: .event) } }
 
     /// Get-or-create the one thread between this guest and the event's
     /// organizer. Never used for the organizer's own side — that always
     /// opens a specific known thread (see openThread, used from Inbox).
     func openChat(for key: String, back: Screen) async {
-        guard let uid = userID else { return requireAuth(returnTo: .chat, backTo: .organizer) }
+        guard let uid = userID else { return requireAuth(returnTo: .chat, backTo: .event) }
         eventKey = key
         chatBack = back
         chatThreadID = nil
@@ -3852,8 +3847,8 @@ try await SupabaseService.client
     /// Where the Chat header's ‹ and the edge-swipe both take you. Honors
     /// every real origin screen, not just the three the old expression
     /// whitelisted — a refund dispute opened from Account (`.profile`) or
-    /// the host Dashboard (`.dashboard`) used to collapse to `.organizer`,
-    /// i.e. the unrelated organizer profile, then the event, then Home.
+    /// the host Dashboard (`.dashboard`) used to collapse to the
+    /// unrelated event page, then Home.
     ///
     /// `accountTab` is left untouched on a `.profile` return: AccountView
     /// keys its own Personal/Host/Admin body off it, and nothing here ever
@@ -3872,7 +3867,7 @@ try await SupabaseService.client
     func chatBackAction() {
         let target = AppState.resolveChatBackTarget(chatBack)
         screen = target
-        chatBack = .organizer
+        chatBack = .event
     }
 
     /// Side-effect-free half of `chatBackAction` — also mirrored by
@@ -3884,7 +3879,7 @@ try await SupabaseService.client
         switch chatBack {
         case .inbox, .notifications, .paymentDetails, .profile, .dashboard:
             return chatBack
-        default: return .organizer
+        default: return .event
         }
     }
 

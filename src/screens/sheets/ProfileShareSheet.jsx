@@ -1,17 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { useBanBe } from '../../state/BanBeContext.jsx';
+import { supabase } from '../../lib/supabase.js';
 import { paper, ink, rule, display, alert, inkButton } from '../../theme.js';
 
 // Web port of apps/ios/BanbeApp/Views/ProfileShareCardView.swift. The card is
 // drawn with canvas 2D by ONE function (drawCard) used both for the on-screen
 // preview and the downloaded/shared PNG, so the two can't drift (same idea as
-// iOS using one SwiftUI view for preview + ImageRenderer). Style is kept on
-// this device only (localStorage), like iOS's UserDefaults ShareCardStyle.
+// iOS using one SwiftUI view for preview + ImageRenderer). The style is a
+// PUBLISHED value (migration 155: get_published_share_card /
+// publish_share_card): everyone opening a profile's Share sees that profile's
+// published card read-only; only the owner gets the editor, starting from the
+// published style, plus a "Save card" button that appears once the draft
+// differs from it.
 
 const CARD_W = 340;
 const CARD_H = 520;
-const STORAGE_KEY = 'shareCardStyle.v1'; // same key name as iOS
 
 export const SHARE_CARD_PRESETS = [
   { name: 'Hoàng hôn', nameEN: 'Sunset', topHex: '#FF7E5F', bottomHex: '#C2185B', textHex: '#FFFFFF' },
@@ -24,21 +28,17 @@ export const SHARE_CARD_PRESETS = [
 const DEFAULT_STYLE = { topHex: SHARE_CARD_PRESETS[0].topHex, bottomHex: SHARE_CARD_PRESETS[0].bottomHex, textHex: SHARE_CARD_PRESETS[0].textHex, photo: null };
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
-function loadStyle() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_STYLE;
-    const o = JSON.parse(raw);
-    return {
-      topHex: HEX.test(o.topHex) ? o.topHex : DEFAULT_STYLE.topHex,
-      bottomHex: HEX.test(o.bottomHex) ? o.bottomHex : DEFAULT_STYLE.bottomHex,
-      textHex: HEX.test(o.textHex) ? o.textHex : DEFAULT_STYLE.textHex,
-      photo: typeof o.photo === 'string' && o.photo.startsWith('data:image/') ? o.photo : null,
-    };
-  } catch { return DEFAULT_STYLE; }
+// Server jsonb -> a clean style, or null when it's missing/invalid.
+function normalizeStyle(o) {
+  if (!o || typeof o !== 'object' || !HEX.test(o.topHex) || !HEX.test(o.bottomHex) || !HEX.test(o.textHex)) return null;
+  return {
+    topHex: o.topHex.toUpperCase(), bottomHex: o.bottomHex.toUpperCase(), textHex: o.textHex.toUpperCase(),
+    photo: typeof o.photo === 'string' && o.photo.startsWith('data:image/') ? o.photo : null,
+  };
 }
-function saveStyle(st) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(st)); } catch { /* quota / private mode: style just won't persist */ }
+function sameStyle(a, b) {
+  return a.topHex.toUpperCase() === b.topHex.toUpperCase() && a.bottomHex.toUpperCase() === b.bottomHex.toUpperCase()
+    && a.textHex.toUpperCase() === b.textHex.toUpperCase() && (a.photo || null) === (b.photo || null);
 }
 
 export function profileShareLinks() {
@@ -272,10 +272,23 @@ const SHEET_CSS = `
 @keyframes bbShareScrimOut { from { opacity: 1; } to { opacity: 0; } }
 `;
 
-export default function ProfileShareSheet({ open, onClose, kindLabel, name, subtitle = '', detail = '', avatarUrl = '', roundAvatar = true, link, idPrefix = 'share-card' }) {
+// `kind` ('member' | 'host') + `publishId` (handle | organizer id) say WHICH
+// published card this is; `isOwner` unlocks the editor + Save card.
+export default function ProfileShareSheet({ open, onClose, kindLabel, name, subtitle = '', detail = '', avatarUrl = '', roundAvatar = true, link, idPrefix = 'share-card', kind = 'member', publishId = '', isOwner = false }) {
   const { T } = useBanBe();
   const [closing, setClosing] = useState(false);
-  const [style, setStyle] = useState(loadStyle);
+  // `published` = the card everyone sees (null = nothing published, so the
+  // default preset); `draft` = the owner's unsaved edit. Non-owners only
+  // ever render `published`.
+  const [published, setPublished] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [draft, setDraft] = useState(DEFAULT_STYLE);
+  const [saving, setSaving] = useState(false);
+  const base = published || DEFAULT_STYLE;
+  const canEdit = !!isOwner && !!publishId;
+  const style = canEdit ? draft : base;
+  const dirty = canEdit && loaded && !sameStyle(draft, base);
+  const setStyle = setDraft;
   const [avatarImg, setAvatarImg] = useState(null);
   const [qrImg, setQrImg] = useState(null);
   const [flash, setFlash] = useState('');
@@ -285,7 +298,24 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
   const footnote = T('Quét mã QR bằng camera điện thoại để mở trong ứng dụng banbe', 'Scan with your phone camera to open this in the banbe app');
 
   useEffect(() => { if (open) setClosing(false); }, [open]);
-  useEffect(() => { saveStyle(style); }, [style]);
+
+  // Always start from the PUBLISHED card (never a device-local copy).
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    setLoaded(false); setPublished(null); setDraft(DEFAULT_STYLE);
+    if (!publishId) { setLoaded(true); return; }
+    (async () => {
+      let st = null;
+      try {
+        const { data } = await supabase.rpc('get_published_share_card', { p_kind: kind, p_id: String(publishId) });
+        st = normalizeStyle(data);
+      } catch { /* unreachable / migration not applied: show the default card */ }
+      if (!live) return;
+      setPublished(st); setDraft(st || DEFAULT_STYLE); setLoaded(true);
+    })();
+    return () => { live = false; };
+  }, [open, kind, publishId]);
 
   useEffect(() => {
     if (!open) return;
@@ -384,10 +414,36 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
     const img = await loadImage(src, false);
     URL.revokeObjectURL(src);
     if (!img) { say(T('Không đọc được ảnh', 'Could not read that image')); return; }
+    // Published inside a jsonb (server cap 400000 chars): crop to the card's
+    // aspect at 600px on the long edge, JPEG, stepping quality down until it
+    // fits comfortably under the cap.
     const c = document.createElement('canvas');
-    c.width = 680; c.height = 1040;
-    drawCover(c.getContext('2d'), img, 0, 0, 680, 1040);
-    setStyle(st => ({ ...st, photo: c.toDataURL('image/jpeg', 0.8) }));
+    c.width = 392; c.height = 600;
+    drawCover(c.getContext('2d'), img, 0, 0, 392, 600);
+    let url = '';
+    for (const q of [0.7, 0.55, 0.4, 0.3, 0.2]) {
+      url = c.toDataURL('image/jpeg', q);
+      if (url.length < 300000) break;
+    }
+    if (url.length >= 380000) { say(T('Ảnh quá lớn, hãy chọn ảnh khác', 'That photo is too large, pick another')); return; }
+    setStyle(st => ({ ...st, photo: url }));
+  }
+
+  async function saveCard() {
+    if (saving || !dirty) return;
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.rpc('publish_share_card', { p_kind: kind, p_id: String(publishId), p_style: { topHex: draft.topHex, bottomHex: draft.bottomHex, textHex: draft.textHex, photo: draft.photo || null } });
+      if (error || !data?.success) {
+        say(data?.error === 'not_allowed' ? T('Không thể lưu: bạn không có quyền', 'Could not save: not allowed') : T('Không thể lưu thẻ', 'Could not save the card'));
+      } else {
+        const next = normalizeStyle(data.share_card) || { ...draft, photo: draft.photo || null };
+        setPublished(next); setDraft(next);
+        say(T('Đã lưu thẻ', 'Card saved'));
+      }
+    } catch {
+      say(T('Không thể lưu thẻ', 'Could not save the card'));
+    } finally { setSaving(false); }
   }
 
   const presetActive = (p) => !style.photo && style.topHex.toLowerCase() === p.topHex.toLowerCase() && style.bottomHex.toLowerCase() === p.bottomHex.toLowerCase();
@@ -430,13 +486,14 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
           <canvas
             ref={canvasRef}
             data-testid={`${idPrefix}-canvas`}
-            style={{ width: CARD_W * 0.92, height: CARD_H * 0.92, borderRadius: 26, boxShadow: '0 6px 14px rgba(0,0,0,0.18)', display: 'block' }}
+            style={{ width: CARD_W * 0.92, height: CARD_H * 0.92, borderRadius: 26, boxShadow: '0 6px 14px rgba(0,0,0,0.18)', display: 'block', opacity: loaded ? 1 : 0.35, transition: 'opacity 0.2s' }}
           />
         </div>
         <p style={{ fontSize: 11, color: ink, opacity: 0.65, lineHeight: 1.5, margin: '0 0 14px' }}>
           {T('Người nhận quét mã QR bằng camera điện thoại để mở trong ứng dụng banbe (cần cài sẵn ứng dụng).', 'Recipients scan the QR with their phone camera to open it in the banbe app (the app must be installed).')}
         </p>
 
+        {canEdit && (<>
         <div style={{ fontSize: 11.5, fontWeight: 600, color: ink, marginBottom: 8 }}>{T('Phong cách', 'Style')}</div>
         <div style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '4px 4px 8px' }}>
           {SHARE_CARD_PRESETS.map(p => (
@@ -467,6 +524,14 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
           )}
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPickPhoto} data-testid={`${idPrefix}-photo-input`} />
         </div>
+
+        {dirty && (
+          <div onClick={saveCard} role="button" data-testid={`${idPrefix}-save-card`}
+            style={{ ...inkButton({ padding: '15px 0', marginBottom: 12, opacity: saving ? 0.6 : 1 }) }}>
+            {saving ? T('Đang lưu…', 'Saving…') : T('Lưu thẻ', 'Save card')}
+          </div>
+        )}
+        </>)}
 
         <div onClick={downloadImage} role="button" data-testid={`${idPrefix}-download`}
           style={{ ...inkButton({ padding: '15px 0', opacity: busy ? 0.6 : 1 }) }}>

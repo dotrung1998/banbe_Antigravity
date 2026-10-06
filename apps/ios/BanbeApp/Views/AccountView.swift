@@ -1709,13 +1709,15 @@ struct AccountView: View {
                 name: app.orgRegName.isEmpty ? app.T("Chưa đặt tên", "Unnamed host") : app.orgRegName,
                 subtitle: app.myOrgPublishedEventCount.map { app.T("\($0) sự kiện", "\($0) events") } ?? "",
                 detail: app.orgRegDesc,
-                avatarURL: organizerAvatarURL, roundAvatar: false, link: link, idPrefix: "account.host")
+                avatarURL: organizerAvatarURL, roundAvatar: false, link: link, idPrefix: "account.host",
+                cardKind: "host", cardID: id, isOwner: true)
         } else if !shareCardForHost, let u = app.user, let handle = u.handle, !handle.isEmpty,
                   let link = URL(string: "banbe://u/\(handle)") {
             ProfileShareSheet(
                 kindLabel: app.T("Thành viên", "Member"),
                 name: u.displayName, subtitle: "@\(handle)", detail: "",
-                avatarURL: u.avatarURL.flatMap(URL.init(string:)), roundAvatar: true, link: link, idPrefix: "account.personal")
+                avatarURL: u.avatarURL.flatMap(URL.init(string:)), roundAvatar: true, link: link, idPrefix: "account.personal",
+                cardKind: "member", cardID: handle, isOwner: true)
         } else {
             Text(app.T("Chưa thể tạo thẻ.", "The card isn't available yet.")).padding(40)
         }

@@ -19,7 +19,15 @@ struct OrganizerProfileView: View {
     @State private var avatarPreviewImage: UIImage?
 
     private var org: OrganizerProfile? { app.organizerProfile }
-    private var isOwner: Bool { org?.id != nil && org?.id == app.myOrganizerID }
+    private var isOwner: Bool { org?.id != nil && (org?.id == app.myOrganizerID || app.myOrganizerIDs.contains(org?.id ?? "")) }
+
+    private var orgPhotos: [PhotoGalleryItem] {
+        app.organizerPhotos.compactMap { photo in
+            guard let url = MediaURLs.eventPhoto(storagePath: photo.storagePath, r2Ref: photo.r2Ref, variant: .card)?.absoluteString
+            else { return nil }
+            return PhotoGalleryItem(id: photo.id.uuidString.lowercased(), url: url, eventId: photo.eventId)
+        }
+    }
 
     private var profileURL: URL? {
         guard let id = org?.id else { return nil }
@@ -121,16 +129,50 @@ struct OrganizerProfileView: View {
                         .padding(.top, 8)
                     }
 
-                    if !app.organizerProfilePhotos.isEmpty {
-                        Text(app.T("Ảnh", "Photos"))
-                            .font(.system(size: 11.5, weight: .semibold))
-                            .padding(.top, 22)
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                            ForEach(app.organizerProfilePhotos) { photo in
-                                photoTile(photo)
+                    // Photo section carried over unchanged from the retired
+                    // organizer page: real `event_photos` of this organizer
+                    // (loadOrganizerPhotos, .task below) fed into the same
+                    // openPhoto/PhotoViewerView pipeline every gallery uses.
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(app.T("Ảnh của", "Photos by") + " \(org.name ?? "")").font(.system(size: 11.5))
+                        Spacer()
+                        Text(app.T("do người tổ chức đăng", "posted by the organizer")).font(.system(size: 11))
+                    }
+                    .padding(.top, 30)
+
+                    if app.organizerPhotosLoading {
+                        Text(app.T("Đang tải…", "Loading…"))
+                            .font(.system(size: 12.5)).opacity(0.6)
+                            .padding(.top, 14)
+                    } else if orgPhotos.isEmpty {
+                        Text(app.T("Người tổ chức chưa đăng ảnh nào.", "This organizer hasn’t posted any photos yet."))
+                            .font(.system(size: 12.5)).opacity(0.6)
+                            .padding(.top, 14)
+                    } else {
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
+                            ForEach(Array(orgPhotos.enumerated()), id: \.element.id) { index, photo in
+                                GeometryReader { geo in
+                                    Button {
+                                        app.openPhoto(gallery: orgPhotos, index: index, organizer: org.name ?? "", originRect: geo.frame(in: .global))
+                                    } label: {
+                                        ZStack(alignment: .topTrailing) {
+                                            CatalogPhoto(path: photo.url, height: 158)
+                                            if app.photoEngagement[photo.id]?.likedByMe == true {
+                                                Image(systemName: "heart.fill")
+                                                    .font(.system(size: 13))
+                                                    .foregroundStyle(.white)
+                                                    .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
+                                                    .padding(8)
+                                                    .allowsHitTesting(false)
+                                            }
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .frame(height: 158)
                             }
                         }
-                        .padding(.top, 8)
+                        .padding(.top, 14)
                     }
                 } else {
                     Text(app.organizerProfileError.isEmpty ? app.T("Không tìm thấy tổ chức này.", "This organizer couldn't be found.") : app.organizerProfileError)
@@ -146,6 +188,10 @@ struct OrganizerProfileView: View {
             guard let id = app.organizerProfileID.isEmpty ? nil : app.organizerProfileID else { return }
             await app.loadOrganizerProfileExtras(organizerID: id)
         }
+        .task(id: app.organizerProfileID) {
+            guard !app.organizerProfileID.isEmpty else { return }
+            await app.loadOrganizerPhotos(organizerId: app.organizerProfileID)
+        }
         .sheet(isPresented: $qrOpen) { qrSheet }
         .sheet(isPresented: $shareCardOpen) {
             if let org, let url = profileURL {
@@ -155,7 +201,8 @@ struct OrganizerProfileView: View {
                     subtitle: app.T("\(org.eventCount ?? 0) sự kiện · \(org.followerCount ?? 0) người theo dõi", "\(org.eventCount ?? 0) events · \(org.followerCount ?? 0) followers"),
                     detail: org.about ?? "",
                     avatarURL: organizerAvatarURL,
-                    roundAvatar: false, link: url, idPrefix: "organizerProfile")
+                    roundAvatar: false, link: url, idPrefix: "organizerProfile",
+                    cardKind: "host", cardID: org.id ?? "", isOwner: isOwner)
             }
         }
     }
@@ -201,14 +248,6 @@ struct OrganizerProfileView: View {
             .accessibilityIdentifier("organizerProfile.qrClose")
         }
         .presentationDetents([.medium])
-    }
-
-    @ViewBuilder
-    private func photoTile(_ photo: OrganizerPhoto) -> some View {
-        if let url = MediaURLs.eventPhoto(storagePath: photo.storagePath, r2Ref: photo.r2Ref, variant: .card) {
-            AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
-                .frame(height: 100).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
     }
 
     @ViewBuilder

@@ -15,7 +15,6 @@ import Account from './screens/Account.jsx';
 import AccountGroup from './screens/AccountGroup.jsx';
 import Inbox from './screens/Inbox.jsx';
 import EventDetail from './screens/EventDetail.jsx';
-import Organizer from './screens/Organizer.jsx';
 import Reserve from './screens/Reserve.jsx';
 import Confirmed from './screens/Confirmed.jsx';
 import Refunded from './screens/Refunded.jsx';
@@ -75,7 +74,6 @@ const SCREENS = {
   accountGroup: AccountGroup,
   inbox: Inbox,
   event: EventDetail,
-  organizer: Organizer,
   reserve: Reserve,
   confirmed: Confirmed,
   refunded: Refunded,

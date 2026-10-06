@@ -28,7 +28,7 @@ function organizerPhotoUrl(path, r2Ref) {
 export default function OrganizerProfile() {
   const {
     state, T, backFromOrganizerProfile, shareOrganizerProfile, toggleFollowOrganizer,
-    loadOrganizerProfileExtras, goEvent, orgRegNameType, orgRegDescType, saveOrganizerProfile,
+    loadOrganizerProfileExtras, loadOrganizerPhotos, openPhoto, goEvent, orgRegNameType, orgRegDescType, saveOrganizerProfile,
     openOrganizerTeam,
     orgRegIntroLongType, toggleOrgRegLinksOpen, addOrgRegLink, setOrgRegLink, removeOrgRegLink,
   } = useBanBe();
@@ -42,10 +42,20 @@ export default function OrganizerProfile() {
   const avatarInputRef = useRef(null);
   const org = s.organizerProfile;
   const isOwner = !!(org && org.id === s.myOrganizerId);
+  // Who may EDIT + publish this host's share card (migration 155 checks
+  // owner_id/user_id server-side too). Wider than `isOwner` on purpose: an
+  // account owning several organizers still owns each one's card.
+  const isCardOwner = !!(org && (org.id === s.myOrganizerId || (s.myOrganizerIds || []).includes(org.id)));
 
   useEffect(() => {
     if (s.organizerProfileId) loadOrganizerProfileExtras(s.organizerProfileId);
   }, [s.organizerProfileId, loadOrganizerProfileExtras]);
+
+  // The photo library (merged in from the retired Organizer screen) —
+  // re-fetched whenever the viewed organizer changes.
+  useEffect(() => {
+    if (s.organizerProfileId) loadOrganizerPhotos(s.organizerProfileId);
+  }, [s.organizerProfileId, loadOrganizerPhotos]);
 
   useEffect(() => {
     if (!qrOpen || !org?.id) return;
@@ -84,6 +94,10 @@ export default function OrganizerProfile() {
     );
   }
 
+  // Photo identity fix (carried over from the retired Organizer screen) —
+  // this grid spans the organizer's OTHER events too, so every photo carries
+  // its own real `event_id` for PhotoViewer's "save event" action.
+  const orgPhotos = (s.organizerPhotos || []).map(p => ({ id: p.id, url: organizerPhotoUrl(p.storage_path, p.r2_ref), eventId: p.event_id }));
   const monogram = (org.name || '?').trim()[0]?.toUpperCase() || '?';
   const avatarSrc = avatarPreview || organizerAvatarUrl(org.avatar_path, org.avatar_r2_ref || (org.id === s.myOrganizerId ? s.myOrganizerAvatarR2Ref : ''));
 
@@ -95,6 +109,24 @@ export default function OrganizerProfile() {
           {T('Chia sẻ', 'Share')}
         </span>
       </div>
+
+      {s.arrivedFromSharedLink && s.eventKey && (
+        // Only shown to someone who followed a shared "?org=" link (kept
+        // from the retired Organizer screen). The banbe:// scheme opens the
+        // installed app straight to this host; there's no App Store listing
+        // to fall back to yet, so the second line points at the web app
+        // someone is already looking at rather than at a link that would 404.
+        <div style={{ ...cardGlass({ margin: '14px 20px 0', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }) }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+            <span style={{ fontSize: 13, color: ink }}>{T('Xem trong ứng dụng banbe', 'Open in the banbe app')}</span>
+            <span style={{ fontSize: 11.5, lineHeight: 1.45, color: ink, opacity: 0.7 }}>{T('Chưa có ứng dụng? Bạn vẫn xem được mọi thứ ngay tại đây.', "Don't have it? Everything here works in the browser too.")}</span>
+          </div>
+          <a
+            href={`banbe://organizer/${s.eventKey}`}
+            style={{ flex: 'none', fontSize: 12, fontWeight: 600, color: paper, background: ink, borderRadius: 999, padding: '9px 16px', textDecoration: 'none' }}
+          >{T('Mở', 'Open')}</a>
+        </div>
+      )}
 
       {/* iPhone fix pass (2026-09-27), Item 3 — top margin bumped 20→22 to
           match the same gap Account.jsx's own profile/org cards already
@@ -253,16 +285,38 @@ export default function OrganizerProfile() {
         </div>
       )}
 
-      {!!s.organizerProfilePhotos.length && (
-        <div style={{ margin: '22px 20px 30px' }}>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Ảnh', 'Photos')}</span>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginTop: 8 }}>
-            {s.organizerProfilePhotos.map(p => (
-              <div key={p.id} style={bg(organizerPhotoUrl(p.storage_path, p.r2_ref), { width: '100%', height: 100, borderRadius: 8 })} />
+      <div style={{ margin: '22px 20px 30px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <span style={{ fontSize: 11.5, color: ink }}>{T('Ảnh của', 'Photos by')} {org.name}</span>
+          <span style={{ fontSize: 11, color: ink }}>{T('do người tổ chức đăng', 'posted by the organizer')}</span>
+        </div>
+        {/* STAGE B (2026-09-25) — real event_photos rows (loadOrganizerPhotos
+            above), not the static demo `orgGallery` this used to render.
+            Scoped server-query-side to live+public events for a visitor,
+            every one of the organizer's own events (any status, Task 1's
+            own "ended must stay in the library" rule) for the owner. A
+            genuinely empty result shows plain text, never a fake/demo
+            photo standing in for a real one. (Moved here unchanged from
+            the retired Organizer screen.) */}
+        {s.organizerPhotosLoading ? (
+          <p style={{ fontSize: 12.5, color: ink, opacity: 0.6, margin: '14px 0 0' }}>{T('Đang tải…', 'Loading…')}</p>
+        ) : orgPhotos.length ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 14 }}>
+            {orgPhotos.map((p, i) => (
+              <div key={p.id} onClick={(e) => openPhoto(orgPhotos, i, org.name, e.currentTarget.getBoundingClientRect())} style={{ position: 'relative', cursor: 'pointer' }}>
+                <div style={bg(p.url, { width: '100%', height: 158 })} />
+                {s.photoEngagement[p.id]?.likedByMe && (
+                  <span style={{ position: 'absolute', top: 8, right: 8, color: '#fff', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.55))', pointerEvents: 'none' }}>
+                    <svg width={15} height={15} viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.5S3.5 15 3.5 9.2A4.7 4.7 0 0 1 12 6.5a4.7 4.7 0 0 1 8.5 2.7c0 5.8-8.5 11.3-8.5 11.3Z" /></svg>
+                  </span>
+                )}
+              </div>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <p style={{ fontSize: 12.5, color: ink, opacity: 0.6, margin: '14px 0 0' }}>{T('Người tổ chức chưa đăng ảnh nào.', 'This organizer hasn’t posted any photos yet.')}</p>
+        )}
+      </div>
 
       {qrOpen && (
         <div onClick={() => setQrOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
@@ -284,6 +338,9 @@ export default function OrganizerProfile() {
         roundAvatar={false}
         link={profileShareLinks().host(org.id)}
         idPrefix="organizer-profile-share-card"
+        kind="host"
+        publishId={org.id}
+        isOwner={isCardOwner}
       />
 
       {s.profileLinkCopiedFlash && (

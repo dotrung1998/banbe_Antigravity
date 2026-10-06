@@ -110,7 +110,9 @@ struct PublicProfileView: View {
                     subtitle: p.handle.map { "@\($0)" } ?? "",
                     detail: p.bio ?? "",
                     avatarURL: p.avatarURL.flatMap(URL.init(string:)),
-                    roundAvatar: true, link: url, idPrefix: "publicProfile")
+                    roundAvatar: true, link: url, idPrefix: "publicProfile",
+                    cardKind: "member", cardID: p.handle ?? "",
+                    isOwner: p.handle != nil && p.handle?.lowercased() == app.user?.handle?.lowercased())
             }
         }
     }

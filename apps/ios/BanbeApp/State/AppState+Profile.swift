@@ -144,7 +144,6 @@ struct OrganizerUpcomingEvent: Decodable, Identifiable {
     enum CodingKeys: String, CodingKey { case id, name }
 }
 private struct OrganizerUpcomingCoverRow: Decodable { let event_id: String; let storage_path: String; var r2_ref: String? = nil }
-private struct OrganizerProfilePhotoEventRow: Decodable { let id: String }
 
 private struct SaveProfileResult: Decodable {
     let success: Bool?
@@ -435,9 +434,42 @@ extension AppState {
         openOrganizerProfile(organizerID: organizerID, back: origin)
         organizerProfileReturnsToPulse = true
     }
+    /// The organizer profile is the one host page; an event's "Organizer"
+    /// row, a `banbe://organizer/<eventKey>` link and similar entry points
+    /// resolve the event's organizer id here and open it. Remembers the
+    /// event so back returns to that same event (events opened from the
+    /// profile can change `eventKey` in between).
+    func openEventOrganizer(eventKey key: String, back: Screen = .event) {
+        Task {
+            guard let id = await resolveOrganizerID(forEventKey: key) else { return }
+            organizerProfileEventKey = key
+            if back == .event { eventKey = key }
+            openOrganizerProfile(organizerID: id, back: back)
+        }
+    }
+    /// events.organizer_id for a real event; for a demo-catalogue event with
+    /// no real row, falls back to the organizer whose name matches.
+    func resolveOrganizerID(forEventKey key: String) async -> String? {
+        struct EventOrg: Decodable { let organizerId: String?
+            enum CodingKeys: String, CodingKey { case organizerId = "organizer_id" } }
+        struct OrgRow: Decodable { let id: String }
+        if let rows: [EventOrg] = try? await SupabaseService.client
+            .from("events").select("organizer_id").eq("id", value: key).limit(1).execute().value,
+           let id = rows.first?.organizerId { return id }
+        let name = EventCatalog.find(key)?.orgName ?? (key == eventKey ? currentEvent.orgName : "")
+        guard !name.isEmpty else { return nil }
+        let rows: [OrgRow]? = try? await SupabaseService.client
+            .from("organizers").select("id").eq("name", value: name).limit(1).execute().value
+        return rows?.first?.id
+    }
     func backFromOrganizerProfile() {
         let toPulse = organizerProfileReturnsToPulse
         organizerProfileReturnsToPulse = false
+        if organizerProfileBackScreen == .event, !organizerProfileEventKey.isEmpty, eventKey != organizerProfileEventKey {
+            eventKey = organizerProfileEventKey
+            Task { await loadBookingForCurrentEvent() }
+            Task { await loadLiveEventStatus() }
+        }
         screen = organizerProfileBackScreen
         if toPulse { pulseOpen = true }  // lists kept — no refetch/clear
     }
@@ -456,11 +488,7 @@ extension AppState {
                 .eq("organizer_id", value: organizerID).eq("status", value: "live")
                 .order("starts_at", ascending: true).limit(5)
                 .execute().value
-            async let photoEventsReq: [OrganizerProfilePhotoEventRow] = SupabaseService.client
-                .from("events").select("id")
-                .eq("organizer_id", value: organizerID).eq("status", value: "live").eq("visibility", value: "public")
-                .execute().value
-            let (upcoming, photoEvents) = try await (upcomingReq, photoEventsReq)
+            let upcoming = try await upcomingReq
             var withCovers = upcoming
             if !withCovers.isEmpty {
                 let coverIDs = withCovers.map(\.id)
@@ -477,18 +505,6 @@ extension AppState {
                 }
             }
             organizerProfileUpcoming = withCovers
-            let photoEventIDs = photoEvents.map(\.id)
-            if photoEventIDs.isEmpty {
-                organizerProfilePhotos = []
-            } else {
-                organizerProfilePhotos = try await MediaColumns.retrying { withR2 in
-                    try await SupabaseService.client
-                        .from("event_photos").select(MediaColumns.cols("id, event_id, storage_path, sort_order", "r2_ref", withR2))
-                        .in("event_id", values: photoEventIDs)
-                        .order("sort_order", ascending: true).limit(8)
-                        .execute().value
-                }
-            }
         } catch {
             print("loadOrganizerProfileExtras failed:", error, "organizerID:", organizerID)
         }

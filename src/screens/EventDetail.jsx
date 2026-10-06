@@ -5,7 +5,7 @@ import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 
 export default function EventDetail() {
-  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, goOrganizer, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
+  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
   const s = state;
   // Structured "Bao gồm" (migration 087) — up to 3 { label, detail } items.
   // Legacy `ev.included` (plain text) stays readable as before when no
@@ -50,7 +50,7 @@ export default function EventDetail() {
   const BACK_LABELS = {
     home: 'banbe',
     dashboard: T('Trang của bạn', 'Your dashboard'),
-    organizer: T('Trang tổ chức', 'Organizer page'),
+    organizerProfile: T('Trang tổ chức', 'Organizer page'),
     create: T('Tạo Sự Kiện', 'Create Event'),
     // Named after whichever list it is ("Going"/"Saved"/"Completed
     // events"), so the pill says where it actually goes.
@@ -321,9 +321,14 @@ export default function EventDetail() {
               <span style={{ color: ink, textAlign: 'right' }}>{ev.included}</span>
             </div>
           ) : null}
-          <div onClick={goOrganizer} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13, cursor: 'pointer' }}>
+          <div onClick={() => openOrganizerOfEvent(ev.key, 'event')} data-testid="event-organizer-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13, cursor: 'pointer' }}>
             <span style={{ color: ink }}>{T('Người tổ chức', 'Organizer')}</span>
             <span style={{ color: ink }}>{T('Ghé', 'Visit')} {ev.orgName} ›</span>
+          </div>
+          {/* Moved here from the retired Organizer screen (merged into the
+              host profile): message the host straight from the event. */}
+          <div onClick={goChat} data-testid="organizer-message" style={{ margin: '12px 0 0', textAlign: 'center', fontSize: 13, fontWeight: 600, color: ink, padding: '12px 0', border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer' }}>
+            {T('Nhắn cho', 'Message')} {ev.hostShort}
           </div>
           {ev.orgTrusted && (
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 12 }}>

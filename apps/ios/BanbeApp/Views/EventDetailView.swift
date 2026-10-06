@@ -51,7 +51,7 @@ struct EventDetailView: View {
         }
         switch app.eventBackScreen {
         case .dashboard: return app.T("Trang của bạn", "Your dashboard")
-        case .organizer: return app.T("Trang tổ chức", "Organizer page")
+        case .organizerProfile: return app.T("Trang tổ chức", "Organizer page")
         case .create: return app.T("Tạo Sự Kiện", "Create Event")
         // Named after whichever list it is ("Going"/"Saved"/"Completed
         // events"), so the pill says where it actually goes.
@@ -353,12 +353,19 @@ struct EventDetailView: View {
                 } else if !event.included.isEmpty {
                     detailRow(app.T("Bao gồm", "Included"), value: event.included)
                 }
-                Button { app.goOrganizer() } label: {
+                Button { app.openEventOrganizer(eventKey: app.eventKey) } label: {
                     detailRow(app.T("Người tổ chức", "Organizer"),
                               value: app.T("Ghé", "Visit") + " \(event.orgName) ›")
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("event.organizer")
+                // Moved here from the retired standalone organizer page.
+                Button { app.goChat() } label: {
+                    detailRow(app.T("Liên hệ", "Contact"),
+                              value: app.T("Nhắn cho", "Message") + " \(event.hostShort) ›")
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("event.messageHost")
                 if event.orgTrusted {
                     detailRow(app.T("Uy tín", "Track record"), value: app.T(
                         "Tổ chức từ \(event.orgSince) ▪︎ \(event.orgCount) sự kiện",

@@ -459,7 +459,7 @@ struct RootView: View {
     /// `eventBackIsStory` and leaves the `.event`/`.organizer` cluster
     /// entirely.
     private var storyUnderlaysEvent: Bool {
-        (app.screen == .event || app.screen == .organizer) && app.eventBackIsStory
+        (app.screen == .event || (app.screen == .organizerProfile && app.organizerProfileBackScreen == .event)) && app.eventBackIsStory
     }
     /// BUG 3 fix (2026-09-22 fifteenth follow-up) — narrower than
     /// `storyUnderlaysEvent` above ON PURPOSE: this ONLY gates the generic
@@ -707,7 +707,7 @@ struct RootView: View {
             // own, exactly like the Inbox's own row menus).
             if app.askingLocation { LocationSheetView() }
             if app.reasonPrompt != nil { ReasonSheetView() }
-            if let photo = app.photoViewer { PhotoViewerView(item: photo) }
+            if let photo = app.photoViewer { PhotoViewerView(item: photo).id(photo.id) }
             if app.chatPhotoViewer != nil { ChatPhotoViewerView() }
             // BUG 1 fix (2026-09-22 tenth follow-up) — `app.storyViewer`
             // now stays retained (non-nil) the whole time Event Detail is
@@ -1048,7 +1048,7 @@ struct RootView: View {
             // "still within this event's own neighborhood" (see
             // `goEvent()`'s own condition) — an Organizer round-trip must
             // not lose the story context either.
-            if oldScreen == .event, newScreen != .event, newScreen != .organizer, app.eventBackIsStory {
+            if oldScreen == .event, newScreen != .event, newScreen != .organizerProfile, app.eventBackIsStory {
                 app.eventBackIsStory = false
                 app.closeStoryViewer()
             }
@@ -1236,7 +1236,6 @@ struct RootView: View {
         // copy to the active thread list, never a duplicated Archived view.
         case .inbox: InboxView(isPreview: isPreview)
         case .event: EventDetailView()
-        case .organizer: OrganizerView()
         case .reserve: ReserveView()
         case .confirmed: ConfirmedView()
         case .refunded: RefundedView()

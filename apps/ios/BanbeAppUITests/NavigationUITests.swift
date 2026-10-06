@@ -76,8 +76,9 @@ final class NavigationUITests: XCTestCase {
         }
         organizerRow.tap()
 
-        XCTAssertTrue(app.otherElements["screen.organizer"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Sự kiện đang mở"].waitForExistence(timeout: 5))
+        // The standalone organizer page is retired: the row opens the
+        // organizer profile (resolved from the event's organizer id).
+        XCTAssertTrue(app.otherElements["screen.organizerProfile"].waitForExistence(timeout: 10))
     }
 
     func testCategoryFilterNarrowsTheFeed() {

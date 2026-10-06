@@ -1040,6 +1040,9 @@ export default function Account() {
         roundAvatar={shareCardFor !== 'host'}
         link={shareCardFor === 'host' ? profileShareLinks().host(s.myOrganizerId) : profileShareLinks().member(s.user?.handle)}
         idPrefix={shareCardFor === 'host' ? 'account-host-share' : 'account-personal-share'}
+        kind={shareCardFor === 'host' ? 'host' : 'member'}
+        publishId={shareCardFor === 'host' ? (s.myOrganizerId || '') : (s.user?.handle || '')}
+        isOwner
       />
     </div>
   );

@@ -224,6 +224,9 @@ export default function PublicProfile() {
         roundAvatar
         link={profileShareLinks().member(p.handle)}
         idPrefix="public-profile-share-card"
+        kind="member"
+        publishId={p.handle || ''}
+        isOwner={!!(p.handle && s.user?.handle && p.handle.toLowerCase() === s.user.handle.toLowerCase())}
       />
     </div>
   );

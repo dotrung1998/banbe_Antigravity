@@ -59,7 +59,7 @@ test.describe('Navigation & Event Exploration', () => {
     await expect(organizerLink).toBeVisible();
     await organizerLink.click();
 
-    await expect(page.locator('[data-screen-label="Organizer"]')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('[data-screen-label="Organizer profile"]')).toBeVisible({ timeout: 3000 });
   });
 
   // An organizer page has no back target of its own — its back link just
@@ -72,7 +72,7 @@ test.describe('Navigation & Event Exploration', () => {
     // Home -> Event (came from Home, so back means Home).
     await page.getByText('Bếp Nhỏ №12').first().click();
     const eventScreen = page.locator('[data-screen-label="Event"]');
-    const organizerScreen = page.locator('[data-screen-label="Organizer"]');
+    const organizerScreen = page.locator('[data-screen-label="Organizer profile"]');
     const homeScreen = page.locator('[data-screen-label="Home"]');
     await expect(eventScreen).toBeVisible({ timeout: 3000 });
     await expect(eventScreen.getByText('‹ banbe')).toBeVisible();
@@ -98,7 +98,7 @@ test.describe('Navigation & Event Exploration', () => {
     await expect(eventScreen).toBeVisible({ timeout: 3000 });
 
     await page.getByText(/Ghé.*›/).first().click();
-    const organizerScreen = page.locator('[data-screen-label="Organizer"]');
+    const organizerScreen = page.locator('[data-screen-label="Organizer profile"]');
     await expect(organizerScreen).toBeVisible({ timeout: 3000 });
 
     // "‹ <event name>" returns to the event, and from there one more tap
@@ -164,7 +164,7 @@ test.describe('Navigation & Event Exploration', () => {
 
   test('a shared "?org=" link opens that organizer and offers the app', async ({ page }) => {
     await page.goto('/?org=bepnho');
-    const organizerScreen = page.locator('[data-screen-label="Organizer"]');
+    const organizerScreen = page.locator('[data-screen-label="Organizer profile"]');
     await expect(organizerScreen).toBeVisible({ timeout: 5000 });
     await expect(organizerScreen.getByText('Bếp Nhỏ').first()).toBeVisible();
 

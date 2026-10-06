@@ -4,7 +4,7 @@
 // itself lives in src/lib/useUrlSync.js.
 //
 // Every screen in App.jsx's SCREENS map has a path here. Screens that hang
-// off an id carry it as a path segment (/event/<key>/organizer, /u/<handle>,
+// off an id carry it as a path segment (/org/<id>, /u/<handle>,
 // /payment/<bookingId> ...). A few screens can only be rebuilt from
 // in-memory state (a half-filled reservation, an open chat thread, a booking
 // confirmation): `needs` says what must already be in state, and `parent` is
@@ -60,7 +60,6 @@ export function screenToPath(st) {
   if (STATIC[screen]) return STATIC[screen];
   switch (screen) {
     case 'event': return st.eventKey ? `/event/${enc(st.eventKey)}` : '/';
-    case 'organizer': return st.eventKey ? `/event/${enc(st.eventKey)}/organizer` : '/';
     case 'reserve': return st.eventKey ? `/event/${enc(st.eventKey)}/reserve` : '/';
     case 'chat': return st.eventKey ? `/event/${enc(st.eventKey)}/chat` : '/';
     case 'accountGroup': return st.accountGroupKey ? `/profile/group/${enc(st.accountGroupKey)}` : '/profile';
@@ -92,14 +91,16 @@ export function pathToRoute(pathname) {
   }
   let m;
   if ((m = path.match(/^\/event\/([^/]+)$/))) return { screen: 'event', params: { eventKey: dec(m[1]) } };
-  if ((m = path.match(/^\/event\/([^/]+)\/organizer$/))) return { screen: 'organizer', params: { eventKey: dec(m[1]) } };
+  // The retired /event/<key>/organizer page (merged into the host profile,
+  // /org/<id>): an old link resolves the organizer from the event key.
+  if ((m = path.match(/^\/event\/([^/]+)\/organizer$/))) return { screen: 'organizerProfile', params: {}, open: 'openOrganizerOfEvent', openArgs: [dec(m[1]), 'home'] };
   if ((m = path.match(/^\/event\/([^/]+)\/reserve$/))) {
     const key = dec(m[1]);
     return { screen: 'reserve', params: {}, parent: `/event/${enc(key)}`, needs: (st) => st.eventKey === key && (st.attendeeDrafts || []).length > 0 };
   }
   if ((m = path.match(/^\/event\/([^/]+)\/chat$/))) {
     const key = dec(m[1]);
-    return { screen: 'chat', params: {}, parent: `/event/${enc(key)}/organizer`, needs: (st) => st.eventKey === key && !!st.chatBack };
+    return { screen: 'chat', params: {}, parent: `/event/${enc(key)}`, needs: (st) => st.eventKey === key && !!st.chatBack };
   }
   if ((m = path.match(/^\/profile\/group\/([^/]+)$/))) return { screen: 'accountGroup', params: { accountGroupKey: dec(m[1]) } };
   if ((m = path.match(/^\/events\/([^/]+)$/)) && EVENT_LIST_MODES.has(dec(m[1]))) {
