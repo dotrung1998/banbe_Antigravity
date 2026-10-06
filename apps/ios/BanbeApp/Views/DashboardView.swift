@@ -143,12 +143,15 @@ struct DashboardView: View {
                         }
                         .padding(.top, 16)
 
-                        Text(app.T(
-                            "Tổ chức từ \(event.orgSince) ▪︎ \(event.orgCount) sự kiện",
-                            "Hosting since \(event.orgSince) ▪︎ \(event.orgCount) events"
-                        ))
-                        .font(.system(size: 12.5))
-                        .padding(.top, 14)
+                        // Live track record of this account's own organizer (never the
+                        // demo catalogue's baked-in numbers).
+                        if let id = app.myOrganizerID, let stats = app.organizerStats[id], stats.count > 0 {
+                            Text(stats.sinceYear.map { year in
+                                app.T("Tổ chức từ \(year) ▪︎ \(stats.count) sự kiện", "Hosting since \(year) ▪︎ \(stats.count) events")
+                            } ?? app.T("\(stats.count) sự kiện", "\(stats.count) events"))
+                            .font(.system(size: 12.5))
+                            .padding(.top, 14)
+                        }
 
                         // Personal-vs-organizer hierarchy pass (2026-09-27)
                         // — replaces the former "Chỉnh sửa"/"Xem như khách"
@@ -388,6 +391,7 @@ struct DashboardView: View {
             await app.loadMyOrgEventSummaries()
         }
         .task { await app.loadHomeLiveEvents() }
+        .task { if let id = app.myOrganizerID { await app.loadOrganizerStats(organizerID: id) } }
         // Organizer Team pass (2026-09-27, Stage 1) — owner-only, the FULL
         // roster (every status); this screen only ever renders for the
         // account's own organizer.

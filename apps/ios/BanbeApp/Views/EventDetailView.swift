@@ -108,6 +108,7 @@ struct EventDetailView: View {
         // changes (this view can be reached repeatedly for different
         // events without ever being torn down, e.g. via `goEvent`).
         .task(id: event.key) { await app.loadEventPhotos(eventID: event.key) }
+        .task(id: event.key) { await app.loadEventOrgStats(forEventKey: event.key) }
     }
 
     // BUG 4 fix (2026-09-22 follow-up) — event cover preview, title/date,
@@ -362,15 +363,14 @@ struct EventDetailView: View {
                 // Moved here from the retired standalone organizer page.
                 Button { app.goChat() } label: {
                     detailRow(app.T("Liên hệ", "Contact"),
-                              value: app.T("Nhắn cho", "Message") + " \(event.hostShort) ›")
+                              value: app.T("Nhắn cho", "Message") + " \(event.orgName.isEmpty ? event.hostShort : event.orgName) ›")
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("event.messageHost")
-                if event.orgTrusted {
-                    detailRow(app.T("Uy tín", "Track record"), value: app.T(
-                        "Tổ chức từ \(event.orgSince) ▪︎ \(event.orgCount) sự kiện",
-                        "Hosting since \(event.orgSince) ▪︎ \(event.orgCount) events"
-                    ))
+                if let stats = app.eventOrganizerID[event.key].flatMap({ app.organizerStats[$0] }), stats.count > 0 {
+                    detailRow(app.T("Uy tín", "Track record"), value: stats.sinceYear.map { year in
+                        app.T("Tổ chức từ \(year) ▪︎ \(stats.count) sự kiện", "Hosting since \(year) ▪︎ \(stats.count) events")
+                    } ?? app.T("\(stats.count) sự kiện", "\(stats.count) events"))
                 }
                 HStack(alignment: .firstTextBaseline) {
                     Text(app.T("Giá", "Price")).font(.system(size: 13))

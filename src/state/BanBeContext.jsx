@@ -909,6 +909,7 @@ const initialState = {
   organizerTeam: null, organizerTeamLoading: false, organizerTeamError: '', organizerTeamBack: 'organizerProfile', organizerTeamOrganizerId: '',
   myEventCredits: [], myConfirmedEventCredits: [], orgEventCreditAssignBusy: '',
   // TASK E (2026-10-01 UX foundation pass) — Banbe Pulse.
+  eventOrgStats: {},
   pulseDaily: [], pulseWeekly: [], pulseOpen: false, pulseTab: 'daily', pulseOrganizerSheet: null,
   pulseDailyLoading: false, pulseWeeklyLoading: false,
   // Account deletion (Task 2, Account/Settings pass) — a self-contained
@@ -6206,6 +6207,25 @@ export function BanBeProvider({ children }) {
     set({ organizerProfile: data, organizerProfileLoading: false });
   }, [set, T]);
   const backFromOrganizerProfile = useCallback(() => set(prev => ({ screen: prev.organizerProfileBack || 'profile' })), [set]);
+  /** Live "track record" for an event's host (EventDetail's Track record row):
+   * events published (live/ended) and the year of their first one, straight
+   * from get_organizer_profile — never the catalogue's baked-in numbers.
+   * Cached per event key in `eventOrgStats` ({ count, sinceYear } or null). */
+  const loadEventOrgStats = useCallback(async (key) => {
+    if (!key || key in s.eventOrgStats) return;
+    let organizerId = s.realEventsById[key]?.organizerId;
+    if (!organizerId) {
+      const { data } = await supabase.from('events').select('organizer_id').eq('id', key).maybeSingle();
+      organizerId = data?.organizer_id;
+    }
+    let stats = null;
+    if (organizerId) {
+      const { data } = await supabase.rpc('get_organizer_profile', { p_organizer_id: organizerId });
+      if (data && data.success !== false) stats = { count: Number(data.event_count) || 0, sinceYear: data.hosting_since_year || null };
+    }
+    set(prev => ({ eventOrgStats: { ...prev.eventOrgStats, [key]: stats } }));
+  }, [set, s.eventOrgStats, s.realEventsById]);
+
   /** Merged host profile — "Visit <host>" on Event Detail (and any other
    * place that only knows an event key). Resolves the organizer id from the
    * canonical realEventsById cache when present, otherwise from the
@@ -10126,7 +10146,7 @@ export function BanBeProvider({ children }) {
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
     isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
-    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
+    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
     loadNotifications, loadInboxThreads,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,
@@ -10165,7 +10185,7 @@ export function BanBeProvider({ children }) {
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
     isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
-    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
+    goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
     loadNotifications, loadInboxThreads,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
     goGoingList, goSavedList, goCompletedList, backFromEventList, eventListTitle,

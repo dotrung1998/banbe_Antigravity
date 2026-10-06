@@ -5,7 +5,7 @@ import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 
 export default function EventDetail() {
-  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
+  const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
   const s = state;
   // Structured "Bao gồm" (migration 087) — up to 3 { label, detail } items.
   // Legacy `ev.included` (plain text) stays readable as before when no
@@ -91,7 +91,16 @@ export default function EventDetail() {
   const evWhere = trStatus(stripKm(ev.where, ev));
   const evMapsUrl = mapsUrl(ev);
   const evSeatsLong = trStatus(ev.soldOut ? 'Hết chỗ' : ev.seatsLong);
-  const evOrgStats = T('Tổ chức từ ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' sự kiện', 'Hosting since ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' events');
+  // Track record is live (get_organizer_profile via loadEventOrgStats), not the
+  // catalogue's baked-in orgSince/orgCount; the row is hidden until real stats
+  // exist for this host.
+  const orgStats = s.eventOrgStats[ev.key];
+  const evOrgStats = orgStats && orgStats.count > 0
+    ? (orgStats.sinceYear
+      ? T(`Tổ chức từ ${orgStats.sinceYear} ▪︎ ${orgStats.count} sự kiện`, `Hosting since ${orgStats.sinceYear} ▪︎ ${orgStats.count} events`)
+      : T(`${orgStats.count} sự kiện`, `${orgStats.count} events`))
+    : null;
+  useEffect(() => { loadEventOrgStats(ev.key); }, [ev.key, loadEventOrgStats]);
   const showRefund = !ev.cancelled && ev.endedHoursAgo == null && !/Miễn phí|Free/.test(ev.price);
   const refundNote = T('Nếu sự kiện bị hủy, bạn được hoàn tiền tự động 100%.', 'If the event is cancelled, you are automatically refunded in full.');
 
@@ -330,7 +339,7 @@ export default function EventDetail() {
           <div onClick={goChat} data-testid="organizer-message" style={{ margin: '12px 0 0', textAlign: 'center', fontSize: 13, fontWeight: 600, color: ink, padding: '12px 0', border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer' }}>
             {T('Nhắn cho', 'Message')} {ev.orgName}
           </div>
-          {ev.orgTrusted && (
+          {evOrgStats && (
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 12 }}>
               <span style={{ color: ink }}>{T('Uy tín', 'Track record')}</span>
               <span style={{ color: ink }}>{evOrgStats}</span>

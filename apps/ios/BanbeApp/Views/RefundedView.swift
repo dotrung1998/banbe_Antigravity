@@ -64,7 +64,7 @@ struct RefundedView: View {
 
                 VStack(spacing: 0) {
                     Divider().overlay(app.palette.rule)
-                    Button(app.T("Có câu hỏi? Nhắn cho ", "Questions? Message ") + event.hostShort) { app.goChat() }
+                    Button(app.T("Có câu hỏi? Nhắn cho ", "Questions? Message ") + (event.orgName.isEmpty ? event.hostShort : event.orgName)) { app.goChat() }
                         .font(.system(size: 13.5))
                         .foregroundStyle(app.palette.ink)
                         .frame(maxWidth: .infinity).padding(.vertical, 17)

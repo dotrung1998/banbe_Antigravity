@@ -101,6 +101,13 @@ struct PublicProfileCreditedEvent: Decodable, Equatable, Identifiable {
 /// `PublicProfile.OrganizerSummary` field-for-field (same RPC logic,
 /// migration 091) plus `about`/`avatarPath`, which that nested summary
 /// doesn't carry.
+/// A host's live track record: events published (live/ended) and the year of
+/// their first one (nil when none has a start time).
+struct OrganizerStats: Equatable {
+    let count: Int
+    let sinceYear: Int?
+}
+
 struct OrganizerProfile: Decodable, Equatable {
     let success: Bool?
     let error: String?
@@ -461,6 +468,22 @@ extension AppState {
         let rows: [OrgRow]? = try? await SupabaseService.client
             .from("organizers").select("id").eq("name", value: name).limit(1).execute().value
         return rows?.first?.id
+    }
+    /// Fetches (and caches) an organizer's real track record. Re-fetched each
+    /// time a screen asks, so it stays current; the cache only avoids a blank flash.
+    func loadOrganizerStats(organizerID: String) async {
+        guard let result: OrganizerProfile = try? await SupabaseService.client
+            .rpc("get_organizer_profile", params: ["p_organizer_id": organizerID])
+            .execute().value,
+            result.success == true else { return }
+        organizerStats[organizerID] = OrganizerStats(count: result.eventCount ?? 0, sinceYear: result.hostingSinceYear)
+    }
+    func loadEventOrgStats(forEventKey key: String) async {
+        let id: String?
+        if let known = eventOrganizerID[key] { id = known } else { id = await resolveOrganizerID(forEventKey: key) }
+        guard let id else { return }
+        eventOrganizerID[key] = id
+        await loadOrganizerStats(organizerID: id)
     }
     func backFromOrganizerProfile() {
         let toPulse = organizerProfileReturnsToPulse

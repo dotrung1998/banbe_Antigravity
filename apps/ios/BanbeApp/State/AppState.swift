@@ -1294,6 +1294,12 @@ final class AppState: ObservableObject {
     @Published var organizerProfileUpcoming: [OrganizerUpcomingEvent] = []
     /// Event the organizer profile was opened from (back restores it).
     @Published var organizerProfileEventKey = ""
+    /// Live "track record" per organizer id (events published + year of the
+    /// first), from get_organizer_profile — see loadOrganizerStats. Replaces the
+    /// catalogue's baked-in orgSince/orgCount. eventOrganizerID maps an event
+    /// key to its resolved organizer id.
+    @Published var organizerStats: [String: OrganizerStats] = [:]
+    @Published var eventOrganizerID: [String: String] = [:]
     @Published var organizerProfileExtrasLoadedFor = ""
     // Interest surveys (Slice B, migration 114) — mirrors web's
     // BanBeContext.jsx state field-for-field. `surveyPublic` is exactly

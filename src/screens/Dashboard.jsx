@@ -31,6 +31,7 @@ export default function Dashboard() {
     loadRealEventsById, goEditEvent, openOrganizerProfile,
     loadOrgTeamRoster, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember,
     assignEventCredit, withdrawEventSubmission, loadResubmissionStatus,
+    loadMyOrgStats,
   } = useBanBe();
   const s = state;
   const [creditEventKey, setCreditEventKey] = useState('');
@@ -122,7 +123,15 @@ export default function Dashboard() {
   };
   const b = badgeMap[verifyState];
 
-  const dashStatsLine = T('Tổ chức từ ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' sự kiện', 'Hosting since ' + ev.orgSince + ' ▪︎ ' + ev.orgCount + ' events');
+  // Live track record of this account's own organizer (loadMyOrgStats ->
+  // get_public_profile's published-events count), never the demo catalogue's
+  // baked-in orgSince/orgCount. Empty until loaded / when there are none.
+  useEffect(() => { if (s.myOrganizerId) loadMyOrgStats(); }, [s.myOrganizerId, loadMyOrgStats]);
+  const dashStatsLine = s.myOrgPublishedEventCount > 0
+    ? (s.myOrgHostingSinceYear
+      ? T(`Tổ chức từ ${s.myOrgHostingSinceYear} ▪︎ ${s.myOrgPublishedEventCount} sự kiện`, `Hosting since ${s.myOrgHostingSinceYear} ▪︎ ${s.myOrgPublishedEventCount} events`)
+      : T(`${s.myOrgPublishedEventCount} sự kiện`, `${s.myOrgPublishedEventCount} events`))
+    : '';
 
   // Once the signed-in account actually owns events in the database (see
   // BanBeContext's myOrgEventKeys), the dashboard lists those — the real
