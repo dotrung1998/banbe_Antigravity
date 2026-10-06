@@ -181,11 +181,12 @@ private struct OrganizerRow: Decodable {
     let name: String
     let about: String?
     let avatarPath: String?
+    var avatarR2Ref: String? = nil
     // Organizer Team pass (2026-09-27, Stage 3).
     let introLong: String?
     let socialLinks: [SocialLink]?
     enum CodingKeys: String, CodingKey {
-        case id, name, about, avatarPath = "avatar_path"
+        case id, name, about, avatarPath = "avatar_path", avatarR2Ref = "avatar_r2_ref"
         case introLong = "intro_long", socialLinks = "social_links"
     }
 }
@@ -199,11 +200,14 @@ struct OrganizerPhoto: Decodable, Identifiable, Equatable {
     let eventId: String
     let storagePath: String
     let sortOrder: Int
+    /// `event_photos.r2_ref` (migration 153); nil/absent for legacy rows.
+    var r2Ref: String? = nil
     enum CodingKeys: String, CodingKey {
         case id
         case eventId = "event_id"
         case storagePath = "storage_path"
         case sortOrder = "sort_order"
+        case r2Ref = "r2_ref"
     }
 }
 private struct BookingBrief: Decodable {
@@ -306,9 +310,11 @@ private struct NotificationBookingRow: Decodable {
 private struct EventPhotoRow: Decodable {
     let eventId: String
     let storagePath: String
+    var r2Ref: String? = nil
     enum CodingKeys: String, CodingKey {
         case eventId = "event_id"
         case storagePath = "storage_path"
+        case r2Ref = "r2_ref"
     }
 }
 private struct ProfileAvatarRow: Decodable {
@@ -322,9 +328,11 @@ private struct ProfileAvatarRow: Decodable {
 private struct OrganizerAvatarRow: Decodable {
     let id: String
     let avatarPath: String?
+    var avatarR2Ref: String? = nil
     enum CodingKeys: String, CodingKey {
         case id
         case avatarPath = "avatar_path"
+        case avatarR2Ref = "avatar_r2_ref"
     }
 }
 /// Row shape for the payment_documents query loadAttendanceGuests() runs to
@@ -668,13 +676,14 @@ extension AppState {
             // observed stable, but that's physical row order, never
             // promised by Postgres). `id` as an explicit secondary sort key
             // makes this genuinely deterministic, not just observed-stable.
-            let organizers: [OrganizerRow] = try await SupabaseService.client
+            let organizers: [OrganizerRow] = try await MediaColumns.retrying { withR2 in
+                try await SupabaseService.client
                 .from("organizers")
-                .select("id, name, about, avatar_path, intro_long, social_links")
+                .select(MediaColumns.cols("id, name, about, avatar_path, intro_long, social_links", "avatar_r2_ref", withR2))
                 .or("owner_id.eq.\(uid.uuidString),user_id.eq.\(uid.uuidString)")
                 .order("created_at", ascending: true)
                 .order("id", ascending: true)
-                .execute().value
+                .execute().value }
             myOrganizerIDs = organizers.map(\.id)
             myOrganizerIdsStatus = "loaded"
             if !organizers.isEmpty {
@@ -690,6 +699,7 @@ extension AppState {
                 orgRegIntroLong = organizers.first?.introLong ?? ""
                 orgRegLinks = organizers.first?.socialLinks ?? []
                 myOrganizerAvatarPath = organizers.first?.avatarPath ?? ""
+                myOrganizerAvatarR2Ref = organizers.first?.avatarR2Ref
                 struct EventIDOrganizer: Decodable { let id: String; let organizerId: String
                     enum CodingKeys: String, CodingKey { case id; case organizerId = "organizer_id" } }
                 let events: [EventIDOrganizer] = try await SupabaseService.client
@@ -739,15 +749,37 @@ extension AppState {
         defer { eventPhotoUploadBusy[eventID] = false }
         let path = "\(eventID)/\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
         do {
-            _ = try await SupabaseService.client.storage.from("event-photos")
-                .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
-            // Same "bucket name baked into storage_path" convention the
-            // original seed rows already use (migration 010) — every read
-            // path (eventPhotoURL/organizerPhotoUrl/etc.) already strips
-            // this prefix defensively either way.
-            _ = try await SupabaseService.client.from("event_photos")
-                .insert(NewEventPhoto(eventId: eventID, storagePath: "event-photos/\(path)"))
-                .execute()
+            // Privacy fix: an invite-only event's photo must go to the
+            // private bucket (same rule as reconcileEventMedia). If the
+            // visibility can't be read, fail closed rather than risk
+            // publishing an invite-only photo to the public bucket.
+            struct VisRow: Decodable { let visibility: String? }
+            let vis: VisRow = try await SupabaseService.client
+                .from("events").select("visibility").eq("id", value: eventID).single().execute().value
+            let isInvite = vis.visibility == "invite"
+            let bucketID = isInvite ? "event-photos-private" : "event-photos"
+            // Hybrid media API first (public events only; server re-checks
+            // eligibility and answers `.legacy` otherwise).
+            var usedR2 = false
+            if !isInvite {
+                do {
+                    if case .uploaded = try await MediaUploader.uploadEventPhoto(image: image, eventID: eventID) { usedR2 = true }
+                } catch {
+                    print("uploadEventPhoto media finalize failed")
+                    throw error
+                }
+            }
+            if !usedR2 {
+                _ = try await SupabaseService.client.storage.from(bucketID)
+                    .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
+                // Same "bucket name baked into storage_path" convention the
+                // original seed rows already use (migration 010) — every read
+                // path (eventPhotoURL/organizerPhotoUrl/etc.) already strips
+                // this prefix defensively either way.
+                _ = try await SupabaseService.client.from("event_photos")
+                    .insert(NewEventPhoto(eventId: eventID, storagePath: "\(bucketID)/\(path)"))
+                    .execute()
+            }
             eventPhotoUploaded[eventID] = true
             Task {
                 try? await Task.sleep(nanoseconds: 1_800_000_000)
@@ -787,6 +819,9 @@ extension AppState {
         var removed = 0
         for photoID in removeExistingIDs {
             if let row = eventPhotos.first(where: { $0.id == photoID }) {
+                if row.r2Ref != nil { await MediaUploader.delete(ref: row.r2Ref) }
+            }
+            if let row = eventPhotos.first(where: { $0.id == photoID }), !MediaResolver.isR2Ref(row.storagePath) {
                 let rowBucket = row.storagePath.hasPrefix("event-photos-private/") ? "event-photos-private" : "event-photos"
                 let relative = row.storagePath.hasPrefix("\(rowBucket)/")
                     ? String(row.storagePath.dropFirst("\(rowBucket)/".count)) : row.storagePath
@@ -805,6 +840,20 @@ extension AppState {
         for (i, image) in newImages.enumerated() {
             guard let data = image.jpegData(compressionQuality: 0.85), data.count <= 50 * 1024 * 1024 else { continue }
             let path = "\(eventID)/\(Int(Date().timeIntervalSince1970 * 1000))-\(i).jpg"
+            // Hybrid media API first (never for invite-only events).
+            if visibility != "invite" {
+                do {
+                    if case let .uploaded(_, ref) = try await MediaUploader.uploadEventPhoto(
+                        image: image, eventID: eventID, setCover: i == coverNewIndex) {
+                        uploaded += 1
+                        if i == coverNewIndex { newCoverPath = ref }
+                        continue
+                    }
+                } catch {
+                    print("reconcileEventMedia media finalize failed")
+                    continue   // bytes already in R2; do not double-upload to legacy
+                }
+            }
             do {
                 _ = try await SupabaseService.client.storage.from(bucketID)
                     .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
@@ -849,6 +898,7 @@ extension AppState {
         // upload followed by a failed save can roll the upload back
         // instead of leaving it permanently orphaned in organizer-photos.
         var avatarPath: String?
+        var avatarR2Ref: String?
         if let avatarImage {
             guard let data = avatarImage.jpegData(compressionQuality: 0.85) else {
                 orgProfileSaving = false
@@ -865,12 +915,23 @@ extension AppState {
             }
             let path = "\(organizerID)/avatar-\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
             do {
-                _ = try await SupabaseService.client.storage.from("organizer-photos")
-                    .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
-                #if DEBUG
-                print("[orgAvatar] stage=upload result=OK path=\(path)")
-                #endif
-                avatarPath = path
+                // Hybrid media API first; `.legacy` (or init failure) falls through.
+                do {
+                    if case let .uploaded(_, ref) = try await MediaUploader.uploadOrganizerAvatar(image: avatarImage, organizerID: organizerID) {
+                        avatarR2Ref = ref   // server already set avatar_r2_ref + avatar_path
+                    }
+                } catch {
+                    print("saveOrganizerProfile media finalize failed")
+                    throw error
+                }
+                if avatarR2Ref == nil {
+                    _ = try await SupabaseService.client.storage.from("organizer-photos")
+                        .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
+                    #if DEBUG
+                    print("[orgAvatar] stage=upload result=OK path=\(path)")
+                    #endif
+                    avatarPath = path
+                }
             } catch {
                 #if DEBUG
                 print("[orgAvatar] stage=upload result=FAILED bucket=organizer-photos organizerID=\(organizerID) error=\(error)")
@@ -924,10 +985,12 @@ extension AppState {
                     #endif
                     _ = try? await SupabaseService.client.storage.from("organizer-photos").remove(paths: [avatarPath])
                 }
+                if let avatarR2Ref { await MediaUploader.delete(ref: avatarR2Ref) }
                 orgProfileSaving = false
                 return
             }
-            if let avatarPath { myOrganizerAvatarPath = avatarPath }
+            if let avatarPath { myOrganizerAvatarPath = avatarPath; myOrganizerAvatarR2Ref = nil }
+            if let avatarR2Ref { myOrganizerAvatarPath = avatarR2Ref; myOrganizerAvatarR2Ref = avatarR2Ref }
             // DATA FRESHNESS FIX — same root cause and fix as web's
             // saveOrganizerProfile (GocContext.jsx): `organizerProfile` is a
             // one-shot snapshot fetched by openOrganizerProfile(), never
@@ -940,7 +1003,8 @@ extension AppState {
             if organizerProfile?.id == organizerID {
                 organizerProfile?.name = orgRegName.trimmingCharacters(in: .whitespaces)
                 organizerProfile?.about = orgRegDesc.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let avatarPath { organizerProfile?.avatarPath = avatarPath }
+                if let avatarPath { organizerProfile?.avatarPath = avatarPath; organizerProfile?.avatarR2Ref = nil }
+                if let avatarR2Ref { organizerProfile?.avatarPath = avatarR2Ref; organizerProfile?.avatarR2Ref = avatarR2Ref }
                 organizerProfile?.introLong = orgRegIntroLong
                 organizerProfile?.socialLinks = links
             }
@@ -953,6 +1017,7 @@ extension AppState {
             if let avatarPath {
                 _ = try? await SupabaseService.client.storage.from("organizer-photos").remove(paths: [avatarPath])
             }
+            if let avatarR2Ref { await MediaUploader.delete(ref: avatarR2Ref) }
             orgProfileSaving = false
             orgProfileError = T("Không thể lưu. Vui lòng thử lại.", "Could not save. Please try again.")
         }
@@ -1005,7 +1070,7 @@ extension AppState {
     /// one screen visit, short enough that a leaked link doesn't stay
     /// valid indefinitely. Mirrors web's resolveEventPhotoUrlAsync
     /// (GocContext.jsx) exactly.
-    func resolveEventPhotoURL(_ storagePath: String) async -> URL? {
+    func resolveEventPhotoURL(_ storagePath: String, r2Ref: String? = nil, variant: MediaVariant = .card) async -> URL? {
         if storagePath.hasPrefix("event-photos-private/") {
             let relative = String(storagePath.dropFirst("event-photos-private/".count))
             do {
@@ -1026,18 +1091,18 @@ extension AppState {
                 return nil
             }
         }
-        let relative = storagePath.hasPrefix("event-photos/") ? String(storagePath.dropFirst("event-photos/".count)) : storagePath
-        return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative)
+        return MediaURLs.eventPhoto(storagePath: storagePath, r2Ref: r2Ref, variant: variant)
     }
 
     func loadEventPhotos(eventID: String) async {
         eventPhotosLoading = true
         do {
-            let photos: [OrganizerPhoto] = try await SupabaseService.client
-                .from("event_photos").select("id, event_id, storage_path, sort_order")
+            let photos: [OrganizerPhoto] = try await MediaColumns.retrying { withR2 in
+                try await SupabaseService.client
+                .from("event_photos").select(MediaColumns.cols("id, event_id, storage_path, sort_order", "r2_ref", withR2))
                 .eq("event_id", value: eventID)
                 .order("sort_order", ascending: true)
-                .execute().value
+                .execute().value }
             // Resolve every row's display URL BEFORE publishing `eventPhotos`
             // — CreateEventView's `.onChange(of: app.eventPhotos)` seeds its
             // gallery the instant that array changes and only ever seeds
@@ -1047,7 +1112,7 @@ extension AppState {
             // thumbnails for that session.
             var resolvedURLs: [UUID: URL] = [:]
             for photo in photos {
-                if let url = await resolveEventPhotoURL(photo.storagePath) {
+                if let url = await resolveEventPhotoURL(photo.storagePath, r2Ref: photo.r2Ref, variant: .full) {
                     resolvedURLs[photo.id] = url
                 }
             }
@@ -1076,11 +1141,12 @@ extension AppState {
     /// than reusing/widening that one.
     func loadEventGalleryURLs(eventID: String) async -> [URL] {
         do {
-            let photos: [OrganizerPhoto] = try await SupabaseService.client
-                .from("event_photos").select("id, event_id, storage_path, sort_order")
+            let photos: [OrganizerPhoto] = try await MediaColumns.retrying { withR2 in
+                try await SupabaseService.client
+                .from("event_photos").select(MediaColumns.cols("id, event_id, storage_path, sort_order", "r2_ref", withR2))
                 .eq("event_id", value: eventID)
                 .order("sort_order", ascending: true)
-                .execute().value
+                .execute().value }
             // Strict invite-only events (migration 113) — admin review
             // must be able to see a pending invite-only event's photos too
             // (is_event_host()/is_platform_admin() both grant the signed-
@@ -1088,7 +1154,7 @@ extension AppState {
             // resolver as loadEventPhotos, not a bare getPublicURL.
             var urls: [URL] = []
             for photo in photos {
-                if let url = await resolveEventPhotoURL(photo.storagePath) { urls.append(url) }
+                if let url = await resolveEventPhotoURL(photo.storagePath, r2Ref: photo.r2Ref, variant: .full) { urls.append(url) }
             }
             return urls
         } catch {
@@ -1128,11 +1194,12 @@ extension AppState {
             guard !eventIds.isEmpty else {
                 organizerPhotos = []; organizerPhotosLoading = false; return
             }
-            let photos: [OrganizerPhoto] = try await SupabaseService.client
-                .from("event_photos").select("id, event_id, storage_path, sort_order")
+            let photos: [OrganizerPhoto] = try await MediaColumns.retrying { withR2 in
+                try await SupabaseService.client
+                .from("event_photos").select(MediaColumns.cols("id, event_id, storage_path, sort_order", "r2_ref", withR2))
                 .in("event_id", values: eventIds)
                 .order("sort_order", ascending: true)
-                .execute().value
+                .execute().value }
             organizerPhotos = photos
             organizerPhotosLoading = false
             // Photo-interactions redesign (2026-09-26) — fire-and-forget,
@@ -1218,6 +1285,7 @@ extension AppState {
     @MainActor
     func loadMapEvents(bounds: (south: Double, north: Double, west: Double, east: Double)? = nil) async {
         do {
+            let rows: [MapEventRow] = try await MediaColumns.retrying { withR2 in
             var filter = SupabaseService.client
                 .from("events")
                 // Keyword-search fix (migration 108) — re-enabled
@@ -1230,7 +1298,7 @@ extension AppState {
                 // intro/organizers(name)) so the search document built by
                 // `Search.buildEventSearchDoc` has category/organizer/
                 // description text available regardless of `keywords`.
-                .select("id, cat_key, cat_label, name, area, city, country_code, state_province, neighborhood, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)")
+                .select(MediaColumns.cols("id, cat_key, cat_label, name, area, city, country_code, state_province, neighborhood, lat, lng, starts_at, price_vnd, seats_remaining, status, cover_image, keywords, description, intro, organizers(name)", "cover_r2_ref", withR2))
                 .eq("status", value: "live")
                 // Strict invite-only events (migration 113) — this query
                 // never filtered visibility at all, the exact same gap
@@ -1245,10 +1313,11 @@ extension AppState {
                     .gte("lat", value: bounds.south).lte("lat", value: bounds.north)
                     .gte("lng", value: bounds.west).lte("lng", value: bounds.east)
             }
-            let rows: [MapEventRow] = try await filter
+            return try await filter
                 .order("starts_at", ascending: true)
                 .limit(60)
                 .execute().value
+            }
             mapEvents = rows
 
             // Real-cover-photo fix (2026-10-19) — root cause: MapExploreView
@@ -1268,7 +1337,7 @@ extension AppState {
             let realIds = rows.filter { EventCatalog.find($0.id)?.key != $0.id }.map(\.id)
             var urls = await firstPhotoURLByEvent(realIds)
             for row in rows {
-                if let url = resolveCoverURL(row.coverImage) { urls[row.id] = url }
+                if let url = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref) { urls[row.id] = url }
             }
             mapEventCoverURLs = urls
         } catch {
@@ -1695,11 +1764,12 @@ extension AppState {
                 // which are bucket-RELATIVE. Passed as-is to
                 // getPublicURL(), this doubles the bucket segment, a broken
                 // URL. Stripped defensively so either convention resolves.
-                let photos: [EventPhotoRow] = try await SupabaseService.client
-                    .from("event_photos").select("event_id, storage_path, sort_order")
+                let photos: [EventPhotoRow] = try await MediaColumns.retrying { withR2 in
+                    try await SupabaseService.client
+                    .from("event_photos").select(MediaColumns.cols("event_id, storage_path, sort_order", "r2_ref", withR2))
                     .in("event_id", values: Array(eventIDs))
                     .order("sort_order", ascending: true)
-                    .execute().value
+                    .execute().value }
                 // Strict invite-only events (migration 113) — a
                 // notification thumbnail can legitimately belong to an
                 // invite-only event (e.g. the recipient's own booking
@@ -1707,7 +1777,7 @@ extension AppState {
                 // async/private-bucket-aware helper, not a bare
                 // getPublicURL() that would silently 403 on it.
                 for p in photos where maps.eventPhotoByEventId[p.eventId] == nil {
-                    if let url = await resolveEventPhotoURL(p.storagePath) {
+                    if let url = await resolveEventPhotoURL(p.storagePath, r2Ref: p.r2Ref, variant: .thumb) {
                         maps.eventPhotoByEventId[p.eventId] = url
                     }
                 }
@@ -1766,13 +1836,13 @@ extension AppState {
                 $0.kind == "organizer_invite" || $0.kind == "organizer_invite_response"
             }.compactMap { $0.data["organizer_id"]?.stringValue })
             if !organizerIDs.isEmpty {
-                let organizers: [OrganizerAvatarRow] = try await SupabaseService.client
-                    .from("organizers").select("id, avatar_path")
+                let organizers: [OrganizerAvatarRow] = try await MediaColumns.retrying { withR2 in
+                    try await SupabaseService.client
+                    .from("organizers").select(MediaColumns.cols("id, avatar_path", "avatar_r2_ref", withR2))
                     .in("id", values: Array(organizerIDs))
-                    .execute().value
+                    .execute().value }
                 for o in organizers {
-                    guard let path = o.avatarPath, !path.isEmpty,
-                          let url = try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: path)
+                    guard let url = MediaURLs.organizerAvatar(path: o.avatarPath, r2Ref: o.avatarR2Ref, variant: .thumb)
                     else { continue }
                     maps.organizerAvatarByOrganizerId[o.id] = url
                 }
@@ -3065,13 +3135,25 @@ extension AppState {
     // (booking-approval mode + withdrawal history); additive, same table,
     // so every other existing reader of this constant is unaffected.
     private static let realEventColumns = "id, name, cat_key, cat_label, area, lat, lng, starts_at, price_vnd, capacity, seats_remaining, status, cancelled_at, visibility, approval, organizer_id, description, event_date, event_time, submitted_at, reviewed_at, rejection_reason, withdrawal_reason, withdrawn_at, cover_image, included_items, intro, address_line, city, postal_code, address_verified, keywords, country_code, state_province, neighborhood"
+    private static func eventColumns(_ withR2: Bool) -> String { MediaColumns.cols(realEventColumns, "cover_r2_ref", withR2) }
 
     /// `events.cover_image` (migration 087) always wins over the gallery's
     /// own sort_order-first fallback when a host has explicitly picked one —
     /// same root-cause fix as web's resolveCoverUrl (GocContext.jsx): a
     /// batch upload's sort_order reflects upload order, not cover status.
-    private func resolveCoverURL(_ coverImagePath: String?) -> URL? {
+    private func resolveCoverURL(_ coverImagePath: String?, r2Ref: String? = nil) -> URL? {
+        // R2 cover (events.cover_r2_ref, or a cover_image that is itself an
+        // `r2:` ref). Only ever set for public events; `.card` variant.
+        let ref = r2Ref ?? coverImagePath.flatMap { MediaResolver.isR2Ref($0) ? $0 : nil }
+        if let ref {
+            let legacy = coverImagePath.flatMap { MediaResolver.isR2Ref($0) ? nil : legacyCoverURL($0) }
+            return MediaResolver.resolve(r2Ref: ref, legacyURL: legacy, variant: .card)
+        }
         guard let path = coverImagePath, !path.isEmpty else { return nil }
+        return legacyCoverURL(path)
+    }
+
+    private func legacyCoverURL(_ path: String) -> URL? {
         // Strict invite-only events (migration 113) — this sync helper
         // can't do a real network call for a private-bucket path
         // (createSignedURL is async); every call site reachable here
@@ -3094,13 +3176,14 @@ extension AppState {
         guard !eventIds.isEmpty else { return [:] }
         var byEvent: [String: URL] = [:]
         do {
-            let photos: [EventPhotoRow] = try await SupabaseService.client
-                .from("event_photos").select("event_id, storage_path, sort_order")
+            let photos: [EventPhotoRow] = try await MediaColumns.retrying { withR2 in
+                try await SupabaseService.client
+                .from("event_photos").select(MediaColumns.cols("event_id, storage_path, sort_order", "r2_ref", withR2))
                 .in("event_id", values: eventIds)
                 .order("sort_order", ascending: true)
-                .execute().value
+                .execute().value }
             for p in photos where byEvent[p.eventId] == nil {
-                if let url = await resolveEventPhotoURL(p.storagePath) {
+                if let url = await resolveEventPhotoURL(p.storagePath, r2Ref: p.r2Ref, variant: .card) {
                     byEvent[p.eventId] = url
                 }
             }
@@ -3180,9 +3263,10 @@ extension AppState {
         wanted.forEach { realEventsInFlight.insert($0) }
         defer { wanted.forEach { realEventsInFlight.remove($0) } }
         do {
-            let rows: [RealEventSummary] = try await SupabaseService.client
-                .from("events").select(Self.realEventColumns).in("id", values: wanted)
-                .execute().value
+            let rows: [RealEventSummary] = try await MediaColumns.retrying { withR2 in
+try await SupabaseService.client
+                .from("events").select(Self.eventColumns(withR2)).in("id", values: wanted)
+                .execute().value }
             let foundIDs = Set(rows.map(\.id))
             let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
             async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
@@ -3191,7 +3275,7 @@ extension AppState {
             let orgNameByID = await orgRows
             for row in rows {
                 var shaped = row
-                shaped.photoURL = resolveCoverURL(row.coverImage) ?? photos[row.id]
+                shaped.photoURL = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref) ?? photos[row.id]
                 if let orgId = row.organizerId { shaped.organizerName = orgNameByID[orgId] ?? "" }
                 realEventsByID[row.id] = CatalogEvent.fromReal(shaped)
             }
@@ -3220,13 +3304,14 @@ extension AppState {
         defer { weekendEventsLoading = false }
         let (start, end) = Countdown.thisWeekendWindow()
         do {
-            let rows: [RealEventSummary] = try await SupabaseService.client
-                .from("events").select(Self.realEventColumns)
+            let rows: [RealEventSummary] = try await MediaColumns.retrying { withR2 in
+try await SupabaseService.client
+                .from("events").select(Self.eventColumns(withR2))
                 .eq("status", value: "live").eq("visibility", value: "public")
                 .gte("starts_at", value: ISO8601DateFormatter().string(from: start))
                 .lte("starts_at", value: ISO8601DateFormatter().string(from: end))
                 .order("starts_at", ascending: true)
-                .execute().value
+                .execute().value }
             let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
             async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
             async let orgRows = organizerNames(for: organizerIDs)
@@ -3241,7 +3326,7 @@ extension AppState {
             var shaped: [(event: CatalogEvent, followed: Bool)] = []
             for row in rows {
                 var r = row
-                r.photoURL = resolveCoverURL(row.coverImage) ?? photos[row.id]
+                r.photoURL = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref) ?? photos[row.id]
                 if let orgId = row.organizerId { r.organizerName = orgNameByID[orgId] ?? "" }
                 shaped.append((CatalogEvent.fromReal(r), row.organizerId.map { followedOrgIDs.contains($0) } ?? false))
                 // Same rows just fetched — feeds the shared realEventsByID
@@ -3269,13 +3354,14 @@ extension AppState {
         discoveryEventsLoading = true
         defer { discoveryEventsLoading = false }
         do {
-            let rows: [RealEventSummary] = try await SupabaseService.client
-                .from("events").select(Self.realEventColumns)
+            let rows: [RealEventSummary] = try await MediaColumns.retrying { withR2 in
+try await SupabaseService.client
+                .from("events").select(Self.eventColumns(withR2))
                 .eq("visibility", value: "public")
                 .in("status", values: ["live", "cancelled", "ended"])
                 .order("starts_at", ascending: true)
                 .limit(300)
-                .execute().value
+                .execute().value }
             let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
             async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
             async let orgRows = organizerNames(for: organizerIDs)
@@ -3285,7 +3371,7 @@ extension AppState {
             var shaped: [CatalogEvent] = []
             for row in rows {
                 var r = row
-                r.photoURL = resolveCoverURL(row.coverImage) ?? photos[row.id]
+                r.photoURL = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref) ?? photos[row.id]
                 if let orgId = row.organizerId { r.organizerName = orgNameByID[orgId] ?? "" }
                 let event = CatalogEvent.fromReal(r)
                 shaped.append(event)
@@ -3427,8 +3513,9 @@ extension AppState {
             let ownRows = rows.filter { isMineOrFollowed($0.organizerId) }
 
             let orgIds = Array(Set(rows.map(\.organizerId)))
-            let orgRows: [OrganizerRow] = try await SupabaseService.client
-                .from("organizers").select("id, name, avatar_path").in("id", values: orgIds).execute().value
+            let orgRows: [OrganizerRow] = try await MediaColumns.retrying { withR2 in
+                try await SupabaseService.client
+                .from("organizers").select(MediaColumns.cols("id, name, avatar_path", "avatar_r2_ref", withR2)).in("id", values: orgIds).execute().value }
             let orgById = Dictionary(uniqueKeysWithValues: orgRows.map { ($0.id, $0.name) })
             // Avatar pass — see `StoryItem.hostAvatarURL`'s own doc comment.
             // Same public-bucket resolver `AppState+Data.swift`'s
@@ -3436,8 +3523,7 @@ extension AppState {
             // synchronous `getPublicURL` — no signing needed, same as every
             // other organizer avatar in this app).
             let orgAvatarURLById: [String: URL] = Dictionary(uniqueKeysWithValues: orgRows.compactMap { o in
-                guard let path = o.avatarPath, !path.isEmpty,
-                      let url = try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: path)
+                guard let url = MediaURLs.organizerAvatar(path: o.avatarPath, r2Ref: o.avatarR2Ref, variant: .thumb)
                 else { return nil }
                 return (o.id, url)
             })
@@ -4749,6 +4835,7 @@ extension AppState {
                     let _: JSONValue = try await SupabaseService.client
                         .rpc("set_event_visibility", params: SetVisibilityParams(eventId: eventID, visibility: createVisibility))
                         .execute().value
+                    MediaUploader.reconcile(eventID: eventID)
                 } catch {
                     print("set_event_visibility failed:", error)
                 }
@@ -4938,6 +5025,7 @@ extension AppState {
                     : T("Không thể rút lại lúc này.", "Unable to withdraw this submission right now.")
                 return false
             }
+            MediaUploader.reconcile(eventID: eventId)
             // Reflect the new 'draft' status locally without a full reload.
             await loadMyOrgEventSummaries()
             return true
@@ -5016,11 +5104,12 @@ extension AppState {
         adminEventError = ""
         defer { adminEventsLoading = false }
         do {
-            let rows: [RealEventSummary] = try await SupabaseService.client
-                .from("events").select(Self.realEventColumns)
+            let rows: [RealEventSummary] = try await MediaColumns.retrying { withR2 in
+try await SupabaseService.client
+                .from("events").select(Self.eventColumns(withR2))
                 .eq("status", value: "review")
                 .order("submitted_at", ascending: true)
-                .execute().value
+                .execute().value }
             let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
             async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
             async let orgNames = organizerNames(for: organizerIDs)
@@ -5030,7 +5119,7 @@ extension AppState {
             let identities = await orgIdentities
             adminEvents = rows.map { row in
                 var r = row
-                r.photoURL = resolveCoverURL(row.coverImage) ?? photos[row.id]
+                r.photoURL = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref) ?? photos[row.id]
                 if let orgId = row.organizerId {
                     r.organizerName = names[orgId] ?? ""
                     if let identity = identities[orgId] {
@@ -5106,9 +5195,10 @@ extension AppState {
         let realKeys = myOrgEventKeys.filter { key in EventCatalog.all.first(where: { $0.key == key }) == nil }
         guard !realKeys.isEmpty else { myOrgEventSummaries = []; return }
         do {
-            let rows: [RealEventSummary] = try await SupabaseService.client
-                .from("events").select(Self.realEventColumns).in("id", values: realKeys)
-                .execute().value
+            let rows: [RealEventSummary] = try await MediaColumns.retrying { withR2 in
+try await SupabaseService.client
+                .from("events").select(Self.eventColumns(withR2)).in("id", values: realKeys)
+                .execute().value }
             let organizerIDs = Array(Set(rows.compactMap(\.organizerId)))
             async let photoMap = firstPhotoURLByEvent(rows.map(\.id))
             async let orgNames = organizerNames(for: organizerIDs)
@@ -5116,7 +5206,7 @@ extension AppState {
             let names = await orgNames
             myOrgEventSummaries = rows.map { row in
                 var r = row
-                r.photoURL = resolveCoverURL(row.coverImage) ?? photos[row.id]
+                r.photoURL = resolveCoverURL(row.coverImage, r2Ref: row.coverR2Ref) ?? photos[row.id]
                 if let orgId = row.organizerId { r.organizerName = names[orgId] ?? "" }
                 return r
             }

@@ -35,8 +35,7 @@ private struct PulsePressButtonStyle: ButtonStyle {
 /// own eventPhotoByEventId map uses.
 private func eventPhotoURL(_ path: String?) -> String? {
     guard let path else { return nil }
-    let relative = path.hasPrefix("event-photos/") ? String(path.dropFirst("event-photos/".count)) : path
-    return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative).absoluteString
+    return MediaURLs.eventPhoto(storagePath: path, r2Ref: nil, variant: .card)?.absoluteString
 }
 
 struct PulseViewerView: View {

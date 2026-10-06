@@ -71,6 +71,8 @@ struct MapEventRow: Codable, Identifiable, Hashable {
     // falling back to `EventCatalog.find(_:)`, which always resolves to
     // the FIRST demo catalogue event for any real (non-demo) event id.
     var coverImage: String?
+    /// `events.cover_r2_ref` (migration 153); absent before it is applied.
+    var coverR2Ref: String? = nil
     // Keyword-search fix (migration 108) — same idea as web's identical
     // MapExplore.jsx change: a search term now also matches this event's
     // own `keywords` (category-derived by default when a host leaves the
@@ -112,6 +114,7 @@ struct MapEventRow: Codable, Identifiable, Hashable {
         case seatsRemaining = "seats_remaining"
         case status
         case coverImage = "cover_image"
+        case coverR2Ref = "cover_r2_ref"
         case keywords
         case catLabel = "cat_label"
         case city

@@ -46,8 +46,12 @@ final class StorageImageCache: URLProtocol {
         guard request.httpMethod == "GET",
               request.value(forHTTPHeaderField: "Range") == nil,
               URLProtocol.property(forKey: handledKey, in: request) == nil,
-              let url = request.url, let host = url.host, host.hasSuffix(".supabase.co")
+              let url = request.url, let host = url.host
         else { return false }
+        // R2 public media host (immutable, versioned keys). Images only: the
+        // response is cached only when it is image/* and <= maxFileBytes.
+        if let r2 = MediaConfig.current.host, host.lowercased() == r2 { return true }
+        guard host.hasSuffix(".supabase.co") else { return false }
         let p = url.path
         return p.hasPrefix("/storage/v1/object/public/")
             || p.hasPrefix("/storage/v1/object/sign/")

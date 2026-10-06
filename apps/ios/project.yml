@@ -129,6 +129,10 @@ targets:
         # second Info.plist. See .claude/notes/18-ios-personal-team-signing.md.
         CFBundleDisplayName: $(APP_DISPLAY_NAME)
         UILaunchScreen: {}
+        # R2 hybrid media (.claude/notes/28-r2-hybrid-media.md). Empty = off:
+        # resolver always uses the legacy Supabase URL.
+        MEDIA_PUBLIC_BASE_URL: ""
+        MEDIA_R2_READS: ""
         NSLocationWhenInUseUsageDescription: "banbe uses your location to show how far events are and to filter the area picker."
         NSCameraUsageDescription: "banbe uses your camera to scan a guest's ticket QR code at check-in, and to attach a photo to a chat message."
         NSFaceIDUsageDescription: "banbe uses Face ID to unlock the app for a returning signed-in user."

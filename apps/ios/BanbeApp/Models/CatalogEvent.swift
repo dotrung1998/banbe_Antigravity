@@ -199,6 +199,7 @@ struct RealEventSummary: Decodable {
     let reviewedAt: Date?
     let rejectionReason: String?
     let coverImage: String?
+    var coverR2Ref: String? = nil
     // Structured "Bao gồm" (migration 087) and "Giới thiệu sự kiện"
     // (migration 088) — same two fields web's shapeRealEvent exposes.
     let includedItems: [IncludedItem]?
@@ -266,6 +267,7 @@ struct RealEventSummary: Decodable {
         case withdrawalReason = "withdrawal_reason"
         case withdrawnAt = "withdrawn_at"
         case coverImage = "cover_image"
+        case coverR2Ref = "cover_r2_ref"
         case includedItems = "included_items"
         case intro
     }

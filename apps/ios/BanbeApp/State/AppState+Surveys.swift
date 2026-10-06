@@ -848,8 +848,7 @@ extension AppState {
             // synchronous `getPublicURL`) every other organizer avatar in
             // this app already uses — no signing, no extra network call.
             let avatarURL: URL? = {
-                guard let path = row.hostAvatarPath, !path.isEmpty else { return nil }
-                return try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: path)
+                MediaURLs.organizerAvatar(path: row.hostAvatarPath, r2Ref: nil, variant: .thumb)
             }()
             return SurveyDiscoveryCard(
                 organizerId: row.organizerId, surveyId: row.surveyId, publicId: row.publicId,

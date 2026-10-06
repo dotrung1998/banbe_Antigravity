@@ -54,7 +54,7 @@ struct DashboardView: View {
     /// Same pattern as OrganizerProfileView's own `organizerAvatarURL`.
     private var organizerAvatarURL: URL? {
         guard app.myOrganizerID != nil, !app.myOrganizerAvatarPath.isEmpty else { return nil }
-        return try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: app.myOrganizerAvatarPath)
+        return MediaURLs.organizerAvatar(path: app.myOrganizerAvatarPath, r2Ref: app.myOrganizerAvatarR2Ref, variant: .card)
     }
 
     private var verifyLabel: String {
@@ -696,14 +696,14 @@ struct PendingEventDetailSheet: View {
     }
 
     private func loadPhotos() async {
-        struct P: Decodable { let storage_path: String }
-        let rows: [P] = (try? await SupabaseService.client.from("event_photos")
-            .select("storage_path").eq("event_id", value: row.id)
-            .order("sort_order", ascending: true).execute().value) ?? []
-        photoURLs = rows.compactMap { r in
-            let rel = r.storage_path.hasPrefix("event-photos/") ? String(r.storage_path.dropFirst("event-photos/".count)) : r.storage_path
-            return try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: rel)
-        }
+        struct P: Decodable { let storage_path: String; var r2_ref: String? = nil }
+        let eid = row.id
+        let rows: [P] = (try? await MediaColumns.retrying { withR2 in
+            try await SupabaseService.client.from("event_photos")
+                .select(MediaColumns.cols("storage_path", "r2_ref", withR2)).eq("event_id", value: eid)
+                .order("sort_order", ascending: true).execute().value
+        }) ?? []
+        photoURLs = rows.compactMap { MediaURLs.eventPhoto(storagePath: $0.storage_path, r2Ref: $0.r2_ref, variant: .full) }
     }
 
     private func line(_ label: String, _ value: String?) -> some View {

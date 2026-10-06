@@ -113,6 +113,7 @@ struct OrganizerProfile: Decodable, Equatable {
     var name: String?
     var about: String?
     var avatarPath: String?
+    var avatarR2Ref: String? = nil   // organizers.avatar_r2_ref (migration 153), fetched separately
     let verified: Bool?
     let hostingSinceYear: Int?
     let eventCount: Int?
@@ -142,7 +143,7 @@ struct OrganizerUpcomingEvent: Decodable, Identifiable {
     var coverURL: String? = nil
     enum CodingKeys: String, CodingKey { case id, name }
 }
-private struct OrganizerUpcomingCoverRow: Decodable { let event_id: String; let storage_path: String }
+private struct OrganizerUpcomingCoverRow: Decodable { let event_id: String; let storage_path: String; var r2_ref: String? = nil }
 private struct OrganizerProfilePhotoEventRow: Decodable { let id: String }
 
 private struct SaveProfileResult: Decodable {
@@ -407,6 +408,18 @@ extension AppState {
             }
             organizerProfile = result
             organizerProfileLoading = false
+            // Best effort: organizers.avatar_r2_ref (migration 153) isn't in the RPC.
+            if !MediaColumns.missing, result.avatarR2Ref == nil {
+                struct RefRow: Decodable { let avatarR2Ref: String?
+                    enum CodingKeys: String, CodingKey { case avatarR2Ref = "avatar_r2_ref" } }
+                do {
+                    let rows: [RefRow] = try await SupabaseService.client
+                        .from("organizers").select("avatar_r2_ref").eq("id", value: organizerID).limit(1).execute().value
+                    if let ref = rows.first?.avatarR2Ref, organizerProfile?.id == organizerID { organizerProfile?.avatarR2Ref = ref }
+                } catch {
+                    if MediaColumns.isUndefinedColumn(error) { MediaColumns.markMissing() }
+                }
+            }
         } catch {
             print("loadOrganizerProfile failed:", error, "organizerID:", organizerID)
             organizerProfileLoading = false
@@ -450,15 +463,17 @@ extension AppState {
             let (upcoming, photoEvents) = try await (upcomingReq, photoEventsReq)
             var withCovers = upcoming
             if !withCovers.isEmpty {
-                let covers: [OrganizerUpcomingCoverRow] = (try? await SupabaseService.client
-                    .from("event_photos").select("event_id, storage_path")
-                    .in("event_id", values: withCovers.map(\.id))
-                    .order("sort_order", ascending: true)
-                    .execute().value) ?? []
+                let coverIDs = withCovers.map(\.id)
+                let covers: [OrganizerUpcomingCoverRow] = (try? await MediaColumns.retrying { withR2 in
+                    try await SupabaseService.client
+                        .from("event_photos").select(MediaColumns.cols("event_id, storage_path", "r2_ref", withR2))
+                        .in("event_id", values: coverIDs)
+                        .order("sort_order", ascending: true)
+                        .execute().value
+                }) ?? []
                 for i in withCovers.indices {
-                    guard let path = covers.first(where: { $0.event_id == withCovers[i].id })?.storage_path else { continue }
-                    let rel = path.hasPrefix("event-photos/") ? String(path.dropFirst("event-photos/".count)) : path
-                    withCovers[i].coverURL = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: rel).absoluteString
+                    guard let c = covers.first(where: { $0.event_id == withCovers[i].id }) else { continue }
+                    withCovers[i].coverURL = MediaURLs.eventPhoto(storagePath: c.storage_path, r2Ref: c.r2_ref, variant: .card)?.absoluteString
                 }
             }
             organizerProfileUpcoming = withCovers
@@ -466,11 +481,13 @@ extension AppState {
             if photoEventIDs.isEmpty {
                 organizerProfilePhotos = []
             } else {
-                organizerProfilePhotos = try await SupabaseService.client
-                    .from("event_photos").select("id, event_id, storage_path, sort_order")
-                    .in("event_id", values: photoEventIDs)
-                    .order("sort_order", ascending: true).limit(8)
-                    .execute().value
+                organizerProfilePhotos = try await MediaColumns.retrying { withR2 in
+                    try await SupabaseService.client
+                        .from("event_photos").select(MediaColumns.cols("id, event_id, storage_path, sort_order", "r2_ref", withR2))
+                        .in("event_id", values: photoEventIDs)
+                        .order("sort_order", ascending: true).limit(8)
+                        .execute().value
+                }
             }
         } catch {
             print("loadOrganizerProfileExtras failed:", error, "organizerID:", organizerID)

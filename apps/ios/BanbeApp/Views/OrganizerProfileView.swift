@@ -26,8 +26,7 @@ struct OrganizerProfileView: View {
         return URL(string: "banbe://org/\(id)")
     }
     private var organizerAvatarURL: URL? {
-        guard let path = org?.avatarPath, !path.isEmpty else { return nil }
-        return try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: path)
+        MediaURLs.organizerAvatar(path: org?.avatarPath, r2Ref: org?.avatarR2Ref, variant: .card)
     }
 
     var body: some View {
@@ -206,10 +205,7 @@ struct OrganizerProfileView: View {
 
     @ViewBuilder
     private func photoTile(_ photo: OrganizerPhoto) -> some View {
-        let relative = photo.storagePath.hasPrefix("event-photos/")
-            ? String(photo.storagePath.dropFirst("event-photos/".count))
-            : photo.storagePath
-        if let url = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative) {
+        if let url = MediaURLs.eventPhoto(storagePath: photo.storagePath, r2Ref: photo.r2Ref, variant: .card) {
             AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { app.palette.field }
                 .frame(height: 100).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }

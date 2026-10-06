@@ -1819,7 +1819,7 @@ struct AccountView: View {
 
     private var organizerAvatarURL: URL? {
         guard !app.myOrganizerAvatarPath.isEmpty else { return nil }
-        return try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: app.myOrganizerAvatarPath)
+        return MediaURLs.organizerAvatar(path: app.myOrganizerAvatarPath, r2Ref: app.myOrganizerAvatarR2Ref, variant: .card)
     }
 
     // TASK C — mirrors HomeView's own retryScrollRestoreIfNeeded() exactly

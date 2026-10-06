@@ -31,6 +31,10 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>MEDIA_PUBLIC_BASE_URL</key>
+	<string></string>
+	<key>MEDIA_R2_READS</key>
+	<string></string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>banbe adds an event to your calendar when you tap "Add to Calendar" on a ticket.</string>
 	<key>NSCameraUsageDescription</key>

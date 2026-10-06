@@ -32,10 +32,7 @@ struct OrganizerView: View {
     // bookmark could silently act on the wrong event.
     private var orgPhotos: [PhotoGalleryItem] {
         app.organizerPhotos.compactMap { photo in
-            let relative = photo.storagePath.hasPrefix("event-photos/")
-                ? String(photo.storagePath.dropFirst("event-photos/".count))
-                : photo.storagePath
-            guard let url = try? SupabaseService.client.storage.from("event-photos").getPublicURL(path: relative).absoluteString
+            guard let url = MediaURLs.eventPhoto(storagePath: photo.storagePath, r2Ref: photo.r2Ref, variant: .card)?.absoluteString
             else { return nil }
             return PhotoGalleryItem(id: photo.id.uuidString.lowercased(), url: url, eventId: photo.eventId)
         }

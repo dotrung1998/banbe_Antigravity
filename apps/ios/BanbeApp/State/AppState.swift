@@ -505,6 +505,8 @@ final class AppState: ObservableObject {
     // makes).
     @Published var myOrganizerID: String?
     @Published var myOrganizerAvatarPath = ""
+    /// organizers.avatar_r2_ref (migration 153); nil when absent/not migrated.
+    @Published var myOrganizerAvatarR2Ref: String?
     // Stage 1 (2026-09-27 nav/discovery pass) — Account host card's own
     // "Tổ chức từ <year> ▪︎ <N> sự kiện", read straight from real event
     // rows by organizer_id (never a stored/static total), same published-

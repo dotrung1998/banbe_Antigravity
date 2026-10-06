@@ -589,7 +589,7 @@ private struct ShareSurveyToStoryConfirmView: View {
 
     private var organizerAvatarURL: URL? {
         guard !app.myOrganizerAvatarPath.isEmpty else { return nil }
-        return try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: app.myOrganizerAvatarPath)
+        return MediaURLs.organizerAvatar(path: app.myOrganizerAvatarPath, r2Ref: app.myOrganizerAvatarR2Ref, variant: .card)
     }
 
     var body: some View {
@@ -882,7 +882,7 @@ extension AppState {
     func beginSurveyStory(_ survey: SurveySummary) async {
         var avatar: UIImage?
         if !myOrganizerAvatarPath.isEmpty,
-           let url = try? SupabaseService.client.storage.from("organizer-photos").getPublicURL(path: myOrganizerAvatarPath),
+           let url = MediaURLs.organizerAvatar(path: myOrganizerAvatarPath, r2Ref: myOrganizerAvatarR2Ref, variant: .full),
            let (data, _) = try? await URLSession.shared.data(from: url) {
             avatar = UIImage(data: data)
         }
