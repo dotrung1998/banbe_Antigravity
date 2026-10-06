@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGoc } from '../state/GocContext.jsx';
 import { bg } from '../data/events.js';
-import { formatVnd } from '../lib/paymentDocument.js';
-import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass, honey, honeyBg } from '../theme.js';
-import DisputeChatPanel from './DisputeChatPanel.jsx';
+import { paper, ink, rule, alert, display, fieldGlass, inkButton, cardGlass } from '../theme.js';
 import { HeaderIconButton, HeaderWordmark } from './Notifications.jsx';
 import { isActiveDisputeChat } from './ConversationDispute.jsx';
 
@@ -12,155 +10,6 @@ import { isActiveDisputeChat } from './ConversationDispute.jsx';
 // chat.md), so a chat that's concluded or got a new message while you sit on
 // the Inbox can otherwise stay visibly stale until you leave and come back.
 const DISPUTE_POLL_MS = 6000;
-
-// "Dispute over, disappears in ~N days" — the same static, render-time
-// countdown idea as DisputeChatPanel's retentionLabel, for a COLLAPSED row.
-// Kept in days rather than hours because this window is 7 days wide and an
-// hour-granularity label here would just read as noise.
-function daysLeftLabel(purgeAfter, T) {
-  if (!purgeAfter) return null;
-  const msLeft = new Date(purgeAfter).getTime() - Date.now();
-  if (msLeft <= 0) return null;
-  const days = Math.ceil(msLeft / 86400000);
-  return days <= 1
-    ? T('tự xoá trong ~1 ngày', 'deletes in ~1 day')
-    : T(`tự xoá sau ~${days} ngày`, `deletes in ~${days} days`);
-}
-
-// "Ticket returns to inventory in ~Nh" for the 2-day not-found window.
-function windowLeftLabel(expiresAt, T) {
-  const msLeft = new Date(expiresAt).getTime() - Date.now();
-  if (!(msLeft > 0)) return T('sắp đóng', 'closing soon');
-  const h = Math.ceil(msLeft / 3600000);
-  return h >= 24
-    ? T(`đóng sau ~${Math.ceil(h / 24)} ngày`, `closes in ~${Math.ceil(h / 24)}d`)
-    : T(`đóng sau ~${h} giờ`, `closes in ~${h}h`);
-}
-
-/**
- * The yellow "dispute" section pinned above the conversation list (migration
- * 129). One entry per live dispute chat this account is a party to — a goer
- * who reported a missing refund, or an organizer of either side of one. Each
- * expands INLINE into its own temporary chat, for both parties, rather than
- * pushing a separate screen: it is a short, bounded exchange about one
- * specific sum of money, so keeping it in place next to the message list is
- * the whole point — it stays visible while the ordinary conversations scroll
- * underneath it.
- *
- * Shares nothing with the swipe-to-star/archive InboxRow on purpose: these
- * are ephemeral records that purge themselves on a timer, so there is
- * nothing here to star or archive.
- */
-function InboxDisputeSection({ T }) {
-  const { state, T: _T, toggleDisputeChat, loadDisputeChats } = useGoc();
-  const s = state;
-
-  useEffect(() => {
-    loadDisputeChats();
-    const id = setInterval(loadDisputeChats, DISPUTE_POLL_MS);
-    return () => clearInterval(id);
-  }, [loadDisputeChats]);
-
-  // Hidden entirely in the archived view, and whenever there's genuinely
-  // nothing to say — including while the very first load is still in flight,
-  // since an empty yellow band flashing on every Inbox open would be worse
-  // than a brief absence. A genuine load failure DOES render, so the section
-  // can't fail silently.
-  if (s.inboxView !== 'active') return null;
-  if (s.disputeChats.length === 0 && !s.disputeChatsError) return null;
-
-  return (
-    <div
-      style={{ margin: '0 24px 16px', borderRadius: 14, overflow: 'hidden', background: honeyBg, border: `1px solid ${honey}` }}
-      data-testid="inbox-dispute-section"
-    >
-      <div style={{ padding: '12px 14px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-        <span style={{ ...display(15), color: honey }} data-testid="inbox-dispute-section-title">
-          {s.disputeChats.length > 1
-            ? T('Tranh chấp', 'Disputes')
-            : T('Tranh chấp', 'Dispute')}
-        </span>
-        {s.disputeChats.length > 0 && (
-          <span style={{ fontSize: 10.5, fontWeight: 600, color: honey, opacity: 0.8 }}>
-            {T('Tạm thời', 'Temporary')}
-          </span>
-        )}
-      </div>
-
-      {s.disputeChatsError && (
-        <div style={{ padding: '0 14px 12px', fontSize: 11.5, color: honey }} data-testid="inbox-dispute-section-error">
-          {s.disputeChatsError}
-        </div>
-      )}
-
-      {s.disputeChats.map(chat => {
-        const expanded = s.openDisputeChatThreadId === chat.thread_id;
-        const concluded = !!chat.resolved_at;
-        return (
-          <div
-            key={chat.thread_id}
-            style={{ borderTop: `1px solid ${honey}`, opacity: concluded ? 0.72 : 1 }}
-            data-testid="inbox-dispute-entry"
-            data-thread-id={chat.thread_id}
-            data-open={expanded ? 'true' : 'false'}
-          >
-            <div
-              onClick={() => toggleDisputeChat(chat.thread_id)}
-              style={{ padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer' }}
-              data-testid="inbox-dispute-entry-toggle"
-            >
-              <span style={{ flex: 'none', fontSize: 13, color: honey, transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }} aria-hidden>›</span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {chat.event_name || T('Tranh chấp', 'Dispute')}
-                </span>
-                <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>
-                  {chat.kind === 'refund'
-                    ? T('Chưa nhận được khoản hoàn', 'Refund not received')
-                    : chat.expires_at && chat.booking_payment_state !== 'disputed'
-                      ? T('Chưa tìm thấy chuyển khoản — trao đổi để thống nhất', 'Transfer not found — sort it out in the chat')
-                      : T('Chờ banbe quyết định', "Awaiting banbe's decision")}
-                  {chat.amount_vnd != null && ` ▪︎ ${formatVnd(chat.amount_vnd)}`}
-                </span>
-                {chat.last_message_body && (
-                  <span style={{ fontSize: 11.5, color: ink, opacity: 0.6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {chat.last_message_body}
-                  </span>
-                )}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flex: 'none' }}>
-                {chat.message_count > 0 && (
-                  <span style={{ fontSize: 10.5, fontWeight: 600, color: honey }}>
-                    {chat.message_count} {T('tin nhắn', chat.message_count === 1 ? 'message' : 'messages')}
-                  </span>
-                )}
-                {!concluded && chat.expires_at && chat.booking_payment_state !== 'disputed' && (
-                  <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--alert, #c0392b)' }} data-testid="inbox-dispute-window">
-                    {windowLeftLabel(chat.expires_at, T)}
-                  </span>
-                )}
-                {concluded && (
-                  <span style={{ fontSize: 10, color: ink, opacity: 0.6 }}>
-                    {daysLeftLabel(chat.purge_after, T) || T('đã kết thúc', 'ended')}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {expanded && (
-              <div style={{ padding: '0 14px 14px' }} data-testid="inbox-dispute-entry-chat">
-                <DisputeChatPanel
-                  bookingId={chat.booking_id || undefined}
-                  refundClaimId={chat.refund_claim_id || undefined}
-                />
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 // Swipe-left reveal width — two 72px actions (Task 2, 2026-09-21 follow-up).
 const ACTION_WIDTH = 72;
@@ -208,7 +57,7 @@ function InboxRow({ c, onOpen, onStar, onArchive, T, disputeActive }) {
   const unread = !!c.unread;
 
   return (
-    <div style={{ position: 'relative', overflow: 'hidden', borderBottom: `1px solid ${rule}` }}>
+    <div style={{ position: 'relative', overflow: 'hidden', borderBottom: `1px solid ${rule}`, ...(disputeActive ? { margin: '0 -10px' } : null) }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: REVEAL_WIDTH, display: 'flex' }}>
         <div
           onClick={(e) => { e.stopPropagation(); onStar(); setOffset(0); }}
@@ -244,8 +93,10 @@ function InboxRow({ c, onOpen, onStar, onArchive, T, disputeActive }) {
           display: 'flex', gap: 16, alignItems: 'center', padding: '16px 0', cursor: 'pointer',
           // iOS parity: a full-row rounded pale-red surface, not a left bar.
           background: disputeActive ? 'color-mix(in srgb, var(--bb-alert) 10%, var(--bb-bg))' : paper,
+          // Same full-row rounded fill as an unread notification (10px side
+          // bleed via the wrapper's negative margin keeps content aligned).
           borderRadius: disputeActive ? 12 : 0,
-          paddingLeft: disputeActive ? 8 : 0, paddingRight: disputeActive ? 4 : 0, transform: `translateX(${offset}px)`, transition: dragRef.current.active ? 'none' : 'transform 0.2s ease',
+          paddingLeft: disputeActive ? 10 : 0, paddingRight: disputeActive ? 10 : 0, transform: `translateX(${offset}px)`, transition: dragRef.current.active ? 'none' : 'transform 0.2s ease',
           touchAction: 'pan-y',
         }}
       >
@@ -278,7 +129,7 @@ function InboxRow({ c, onOpen, onStar, onArchive, T, disputeActive }) {
             <span style={{ ...display(18, { lineHeight: 1.15, fontWeight: 700, opacity: unread ? 1 : 0.62 }) }}>{c.name}</span>
           </div>
           {disputeActive && (
-            <span data-testid="inbox-row-dispute" style={{ fontSize: 11.5, fontWeight: 700, color: alert }}>{T('Đang tranh chấp', 'Dispute in progress')}</span>
+            <span data-testid="inbox-row-dispute" style={{ fontSize: 11.5, fontWeight: 700, color: alert }}>{T('Tranh chấp đang diễn ra', 'Dispute in progress')}</span>
           )}
           <span style={{ fontSize: 13, color: ink, opacity: unread ? 1 : 0.72, fontWeight: unread ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.snippet}</span>
         </div>
@@ -404,8 +255,17 @@ function FeedbackFlow({ onClose, T }) {
 }
 
 export default function Inbox() {
-  const { state, T, openThread, toggleThreadStar, archiveThread, unarchiveThread, setInboxView } = useGoc();
+  const { state, T, openThread, toggleThreadStar, archiveThread, unarchiveThread, setInboxView, loadDisputeChats } = useGoc();
   const s = state;
+
+  // Keeps the dispute index fresh — it drives the "Dispute in progress" row
+  // highlight (the removed yellow band used to own this poll).
+  useEffect(() => {
+    if (s.inboxView !== 'active') return undefined;
+    loadDisputeChats();
+    const id = setInterval(loadDisputeChats, DISPUTE_POLL_MS);
+    return () => clearInterval(id);
+  }, [loadDisputeChats, s.inboxView]);
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -479,10 +339,8 @@ export default function Inbox() {
         </div>
       )}
 
-      {/* Pinned ABOVE the conversation list, and only in the active view —
-          a dispute is never archived, so the archived list has nothing to
-          show here. */}
-      <InboxDisputeSection T={T} />
+      {/* iOS parity: no standalone dispute band. A dispute lives inside its
+          conversation; the row below is just highlighted. */}
 
       {visible.length > 0 ? (
         <div style={{ padding: '6px 24px 40px' }}>
