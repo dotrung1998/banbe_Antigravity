@@ -5,11 +5,13 @@
 import escalateVerifications from './_lib/handlers/cronEscalateVerifications.js';
 import purgePaymentDocuments from './_lib/handlers/cronPurgePaymentDocuments.js';
 import walletPassSweep from './_lib/handlers/cronWalletPassSweep.js';
+import mediaSweep from './_lib/handlers/cronMediaSweep.js';
 
 const JOBS = {
   'escalate-verifications': escalateVerifications,
   'purge-payment-documents': purgePaymentDocuments,
   'wallet-pass-sweep': walletPassSweep,
+  'media-sweep': mediaSweep,
 };
 
 export default async function handler(req, res) {

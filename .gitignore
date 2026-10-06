@@ -62,3 +62,4 @@ dist-ssr
 # which is worthless (and misleading) anywhere but a throwaway container.
 # Run it with ./supabase/_localtest/run.sh
 /supabase/_localtest/
+.migration-state/
