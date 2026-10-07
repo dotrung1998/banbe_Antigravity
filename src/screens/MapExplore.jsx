@@ -1,4 +1,6 @@
 import { screenHeight } from '../lib/viewport.js';
+import { loadMapStyle } from '../lib/mapStyle.js';
+import { SHEET_SNAPS, computeMapLayout, snapForSelection } from '../lib/mapLayout.js';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useBanBe, resolveCoverUrl, firstPhotoUrlByEvent } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
@@ -44,7 +46,6 @@ const DISABLED_OPACITY = 0.16;
 // this app has no realtime subscriptions anywhere, everything polls.
 const POLL_MS = 5000;
 
-const SHEET_SNAPS = { tall: 0.30, mid: 0.58, peek: 0.86 }; // fraction of viewport height reserved for the visible map strip above the sheet
 
 async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
   const buildQuery = (withR2) => {
@@ -255,7 +256,6 @@ export default function MapExplore() {
   // can compute the sheet's current pixel height for the camera padding.
   const [dragOffsetVh, setDragOffsetVh] = useState(0);
   const mapStripFraction = Math.min(0.95, Math.max(0.05, SHEET_SNAPS[sheetSnap] + dragOffsetVh));
-  const sheetTopVh = mapStripFraction * 100;
   // Bug 1 fix: the selected-event preview card's own vertical anchor is
   // deliberately NOT tied to the sheet's continuous, freely-dragged
   // position above — only two states exist for the card: "upper" (used for
@@ -278,32 +278,51 @@ export default function MapExplore() {
   const compassRef = useRef(null);
   const searchHereRef = useRef(null);
   const cardRef = useRef(null);
-  const [topControlsBottom, setTopControlsBottom] = useState(56);
+  const rootRef = useRef(null);
+  const [topControlsBottom, setTopControlsBottom] = useState(56); // px from the TOP of this screen's own box
   const [cardHeight, setCardHeight] = useState(150);
-  const [viewportHeight, setViewportHeight] = useState(() => screenHeight());
-  const CARD_TOP_GAP = 12;
+  const [containerH, setContainerH] = useState(() => screenHeight());
+  const [dockClear, setDockClear] = useState(110); // px the floating dock occupies at the bottom
 
+  // This screen's OWN box (a fixed layer, which on desktop is the phone frame), not the
+  // window: sheet, card and camera padding all derive from it, so Safari toolbar changes,
+  // rotation and the desktop frame all stay consistent. Also dock clearance for the list.
   useEffect(() => {
-    const onResize = () => setViewportHeight(screenHeight());
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    const root = rootRef.current;
+    if (!root) return undefined;
+    const measure = () => {
+      const r = root.getBoundingClientRect();
+      if (r.height > 0) setContainerH(r.height);
+      const tab = document.querySelector('[data-testid="tab-map"]');
+      if (tab) {
+        const tr = tab.getBoundingClientRect();
+        if (tr.height > 0) setDockClear(Math.max(0, Math.round(r.bottom - tr.top)));
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(root);
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); window.removeEventListener('orientationchange', measure); };
   }, []);
 
-  // Re-measures whenever "Tìm ở đây" appears/disappears (it can be the
-  // taller of the row when shown, on some locales/font sizes) or the
-  // viewport itself resizes/rotates.
+  // Re-measures whenever "Tìm ở đây" appears/disappears or the box resizes.
   useEffect(() => {
     const els = [backRef.current, compassRef.current, searchHereRef.current].filter(Boolean);
-    if (!els.length) return;
-    const measure = () => setTopControlsBottom(Math.max(...els.map(el => el.getBoundingClientRect().bottom)));
+    if (!els.length || !rootRef.current) return undefined;
+    const measure = () => {
+      const top = rootRef.current.getBoundingClientRect().top;
+      setTopControlsBottom(Math.max(...els.map(el => el.getBoundingClientRect().bottom)) - top);
+    };
     measure();
     const ro = new ResizeObserver(measure);
     els.forEach(el => ro.observe(el));
     return () => ro.disconnect();
-  }, [boundsChanged]);
+  }, [boundsChanged, containerH]);
 
   useEffect(() => {
-    if (!cardRef.current) return;
+    if (!cardRef.current) return undefined;
     const measure = () => setCardHeight(cardRef.current.getBoundingClientRect().height);
     measure();
     const ro = new ResizeObserver(measure);
@@ -311,16 +330,29 @@ export default function MapExplore() {
     return () => ro.disconnect();
   }, [selectedId]);
 
-  // A single, always-px `bottom` value (never mixing vh/px units across
-  // states) so the CSS `transition` below interpolates smoothly whichever
-  // way the anchor changes — same reasoning as the iOS fix's single
-  // `cardBottomPadding` (both replace what used to be a fixed-fraction
-  // computation with one driven by real, measured geometry for the
-  // "upper" case; "peek" is unchanged, already nowhere near the top
-  // controls).
-  const cardBottomPx = sheetSnap === 'peek'
-    ? viewportHeight * (1 - SHEET_SNAPS.peek) + 10
-    : Math.max(8, viewportHeight - topControlsBottom - CARD_TOP_GAP - cardHeight - 8);
+  // ---- layout geometry (all px, relative to this screen's box) ----
+  // Visible map = [topControlsBottom + gap, sheetTop - attribution strip]. The selected-event card
+  // sits at the bottom of that region (directly above the sheet), the camera pads to match, and
+  // when the region is too short for the card (sheet dragged up) the card hides instead of
+  // overlapping controls or the sheet.
+  const lay = computeMapLayout({ containerH, topControlsBottom, cardHeight, stripFraction: mapStripFraction });
+  const { sheetTopPx, cardFits, cardBottomPx } = lay;
+  const dims = { containerH, topControlsBottom, cardHeight };
+  const layRef = useRef(lay);
+  layRef.current = lay;
+  const cameraPadding = () => layRef.current.cameraPadding;
+
+  // Basemap follows the app theme (derived Liberty light/dark, src/lib/mapStyle.js); camera,
+  // markers and selection survive a style swap.
+  const themeRef = useRef(s.theme === 'dark' ? 'dark' : 'light');
+  useEffect(() => {
+    const mode = s.theme === 'dark' ? 'dark' : 'light';
+    if (themeRef.current === mode) return undefined;
+    themeRef.current = mode;
+    let cancelled = false;
+    loadMapStyle(mode).then(style => { if (!cancelled && mapRef.current) mapRef.current.setStyle(style); });
+    return () => { cancelled = true; };
+  }, [s.theme]);
 
   // ---- location permission state (drives the compass button's opacity) ----
   const [locPermission, setLocPermission] = useState('prompt'); // 'granted' | 'denied' | 'prompt'
@@ -368,21 +400,20 @@ export default function MapExplore() {
     // compact preview card that's about to appear just above it (point 2 —
     // "not hidden beneath the bottom sheet"), rather than flying to a
     // geometric center that a real user can't actually see. sheetPx here
-    // mirrors the exact same math the sheet's own `top: ${sheetTopVh}vh`
+    // mirrors the exact same math the sheet's own `top: sheetTopPx`
     // style uses, so this stays correct across List lớn/List nhỏ/mid-drag.
     // Stage 3 — an event with no coordinates (see hasLocation) has
     // nowhere on the map to fly to; still selects it (the compact card
     // still shows its real info), just skips the camera move.
     if (!ev.hasLocation) return;
-    const sheetPx = screenHeight() * (1 - mapStripFraction);
-    const CARD_ALLOWANCE = 150; // approx. compact card height + gap
     map.flyTo({
       center: [ev.lng, ev.lat],
       zoom: Math.max(map.getZoom(), 15.5),
-      padding: { top: 80, bottom: sheetPx + CARD_ALLOWANCE, left: 30, right: 30 },
+      padding: cameraPadding(),
       duration: 550,
     });
-  }, [mapStripFraction]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const clearSelection = useCallback(() => setSelectedId(null), []);
 
@@ -446,11 +477,22 @@ export default function MapExplore() {
 
       const map = new maplibregl.Map({
         container: mapDivRef.current,
-        style: 'https://tiles.openfreemap.org/styles/positron',
+        style: await loadMapStyle(themeRef.current),
+        attributionControl: false,
         center: [center.lng, center.lat],
         zoom: restored?.cameraZoom ?? 13,
       });
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+      // Required OpenFreeMap/OSM credit stays fully visible (not collapsed behind the "i" button);
+      // the CSS below lifts it above the bottom sheet.
+      map.addControl(new maplibregl.AttributionControl({ compact: false, customAttribution: undefined }), 'bottom-right');
+      // The map container is `inset: 0` of this screen's box; keep the canvas in sync with any
+      // container change (sheet/viewport/Safari toolbar), not just window resizes.
+      if (typeof ResizeObserver !== 'undefined' && mapDivRef.current) {
+        const mro = new ResizeObserver(() => map.resize());
+        mro.observe(mapDivRef.current);
+        map.__bbResizeObserver = mro;
+      }
       map.on('moveend', () => {
         if (!lastQueriedBounds.current) { lastQueriedBounds.current = map.getBounds(); return; }
         setBoundsChanged(true);
@@ -486,6 +528,7 @@ export default function MapExplore() {
       if (typeof window !== 'undefined' && window.__mapExploreMapForTests === mapRef.current) {
         window.__mapExploreMapForTests = null;
       }
+      mapRef.current?.__bbResizeObserver?.disconnect();
       mapRef.current?.remove();
       mapRef.current = null;
     };
@@ -816,12 +859,20 @@ export default function MapExplore() {
   // selecting at "tall" then switching to "List nhỏ" afterward.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !selectedEvent) return;
-    const sheetPx = screenHeight() * (1 - mapStripFraction);
-    const CARD_ALLOWANCE = 150;
-    map.easeTo({ padding: { top: 80, bottom: sheetPx + CARD_ALLOWANCE, left: 30, right: 30 }, duration: 300 });
+    if (!map || !selectedEvent || !cardFits) return;
+    map.easeTo({ padding: cameraPadding(), duration: 300 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sheetSnap]);
+  }, [sheetSnap, containerH, cardHeight, topControlsBottom, cardFits]);
+
+  // A selection must never leave the card without room: if the current sheet level leaves
+  // too little map for the card, step the sheet down (tall -> mid -> peek). Runs on selection
+  // and on viewport/card changes only — a manual drag afterwards is respected (the card just
+  // hides while it does not fit).
+  useEffect(() => {
+    if (!selectedId) return;
+    setSheetSnap(prev => snapForSelection(prev, dims));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, containerH, cardHeight, topControlsBottom]);
 
   // Bug 2: snapshot everything MapExplore itself owns right before handing
   // off to the full-screen Event Detail screen, so returning restores it
@@ -890,7 +941,7 @@ export default function MapExplore() {
   };
   const onHandlePointerMove = (e) => {
     if (!dragState.current) return;
-    const deltaVh = ((e.clientY - dragState.current.startY) / screenHeight());
+    const deltaVh = ((e.clientY - dragState.current.startY) / containerH);
     setDragOffsetVh(deltaVh);
   };
   const onHandlePointerUp = () => {
@@ -932,12 +983,13 @@ export default function MapExplore() {
   const topInset = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(min-width: 700px) and (min-height: 560px) and (hover: hover) and (pointer: fine)').matches) ? 50 : 0;
   const capsuleGlass = { borderRadius: 999 };
   return (
-    <div style={{ position: 'fixed', inset: 0, background: paper }} data-screen-label="MapExplore">
+    <div ref={rootRef} style={{ position: 'fixed', inset: 0, background: paper }} data-screen-label="MapExplore">
       {/* iOS has no map zoom controls (mapControls {}); the web +/- sits below the compass pill. */}
       <style>{`[data-screen-label="MapExplore"] .maplibregl-ctrl-top-right { top: ${topInset + 56}px; right: 6px; } [data-screen-label="MapExplore"] .bb-noscroll::-webkit-scrollbar { display: none; }
-        /* Dark theme: the OpenFreeMap "positron" basemap is light-only, so invert just the tile canvas
-           (markers/controls are separate DOM and stay untouched) into a dark, low-glare map. */
-        [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-canvas { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.7); }
+        /* Attribution (required) lives just above the sheet, in the visible map strip. */
+        [data-screen-label="MapExplore"] .maplibregl-ctrl-bottom-right { bottom: ${Math.max(0, Math.round(containerH - sheetTopPx))}px; z-index: 3; max-width: calc(100% - 12px); }
+        [data-screen-label="MapExplore"] .maplibregl-ctrl-attrib { font-size: 10px; line-height: 1.3; max-width: 100%; }
+        [data-screen-label="MapExplore"] .maplibregl-ctrl-bottom-left { display: none; }
         [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl-group { background: var(--bb-field); box-shadow: 0 0 0 1px var(--bb-rule); }
         [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl-group button + button { border-top: 1px solid var(--bb-rule); }
         [data-bb-theme="dark"] [data-screen-label="MapExplore"] .maplibregl-ctrl button .maplibregl-ctrl-icon { filter: invert(1); }
@@ -1001,9 +1053,12 @@ export default function MapExplore() {
           ref={cardRef}
           data-testid="map-selected-card"
           style={{
-            ...cardGlass({ borderRadius: 14 }), position: 'absolute', left: 16, right: 16, zIndex: 4,
+            ...cardGlass({ borderRadius: 14 }), position: 'absolute',
+            left: 'max(16px, env(safe-area-inset-left, 0px))', right: 'max(16px, env(safe-area-inset-right, 0px))', zIndex: 4,
             bottom: cardBottomPx,
-            transition: 'bottom 0.28s cubic-bezier(.22,.61,.36,1)',
+            // Hidden (not overlapping) when the sheet leaves no room; the selection itself persists.
+            opacity: cardFits ? 1 : 0, pointerEvents: cardFits ? 'auto' : 'none',
+            transition: dragState.current ? 'opacity 0.15s' : 'bottom 0.28s cubic-bezier(.22,.61,.36,1), opacity 0.15s',
             padding: 12, display: 'flex', flexDirection: 'column', gap: 10,
             boxShadow: '0 10px 28px rgba(27,25,22,0.22)',
           }}
@@ -1059,7 +1114,7 @@ export default function MapExplore() {
         ref={sheetRef}
         data-testid="map-sheet"
         style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0, top: `${sheetTopVh}vh`, zIndex: 4,
+          position: 'absolute', left: 0, right: 0, bottom: 0, top: sheetTopPx, zIndex: 4,
           background: paper, borderRadius: '20px 20px 0 0', boxShadow: '0 -6px 24px rgba(27,25,22,0.18)',
           display: 'flex', flexDirection: 'column',
           // ANIMATION REQUIREMENT: the extra `transform` (only non-identity
@@ -1200,7 +1255,7 @@ export default function MapExplore() {
         <div
           ref={listRef}
           data-testid="map-list-scroll"
-          style={{ flex: 1, overflowY: 'auto', padding: '0 16px 110px', position: 'relative', touchAction: 'pan-y' }}
+          style={{ flex: 1, overflowY: 'auto', padding: `0 16px calc(${dockClear + 16}px + env(safe-area-inset-bottom, 0px))`, position: 'relative', touchAction: 'pan-y', overscrollBehavior: 'contain' }}
           onScroll={(e) => {
             const el = e.currentTarget;
             if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) loadMore();

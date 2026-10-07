@@ -111,34 +111,35 @@ async function dragHandle(page, dyPx) {
 }
 
 test.describe('Map Explore — bug fixes (card anchor, state restore, mid-detent scrolling)', () => {
-  test('bug 1: the preview card stays in the upper area at both tall and mid, and only moves down at peek', async ({ page }) => {
+  test('bug 1: the preview card sits in the visible map area above the sheet at every detent, and never overlaps controls or the sheet', async ({ page }) => {
     const pin = await openMapWithAPin(page);
     await pin.click();
     const card = page.locator('[data-testid="map-selected-card"]');
+    const sheet = page.locator('[data-testid="map-sheet"]');
     await expect(card).toBeVisible();
-    // The card's "upper" anchor is now measured from real geometry (the
-    // top controls' and the card's own rendered height, via ResizeObserver
-    // — 11-realtime-map.md follow-up, "preview card overlaps top
-    // controls"), which settles a frame or two after the card's first
-    // paint (it renders once at a sane fallback height, then again at its
-    // real one) — wait for that to settle before treating this as the
-    // baseline "tall" position.
-    await page.waitForTimeout(150);
-    const tallBox = await card.boundingBox();
-
-    // Drag from tall toward mid (roughly a quarter of the viewport height).
-    await dragHandle(page, 200);
-    await page.waitForTimeout(400);
-    const midBox = await card.boundingBox();
-    // The card must NOT have moved down with the sheet — same anchor as tall.
-    expect(Math.abs(midBox.y - tallBox.y)).toBeLessThan(5);
-
-    // Now snap all the way to peek via the explicit "List nhỏ" control.
+    await page.waitForTimeout(400); // measured card height + auto-fit settle
+    const controls = await Promise.all(['map-back', 'map-compass'].map(id => page.locator(`[data-testid="${id}"]`).boundingBox()));
+    const vp = page.viewportSize();
+    const assertInside = async (label) => {
+      const c = await card.boundingBox();
+      const sh = await sheet.boundingBox();
+      expect(c.y + c.height, `${label}: card clears the sheet`).toBeLessThanOrEqual(sh.y + 1);
+      for (const b of controls) expect(c.y, `${label}: card clears top controls`).toBeGreaterThanOrEqual(b.y + b.height - 1);
+      expect(c.x, `${label}: left margin`).toBeGreaterThanOrEqual(12);
+      expect(c.x + c.width, `${label}: right margin`).toBeLessThanOrEqual(vp.width - 12 + 1);
+      // Required attribution stays visible above the sheet.
+      const attr = await page.locator('.maplibregl-ctrl-attrib').boundingBox();
+      expect(attr.y + attr.height, `${label}: attribution above sheet`).toBeLessThanOrEqual(sh.y + 1);
+    };
+    await assertInside('initial');
     await page.click('[data-testid="map-sheet-list-small"]');
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(450);
+    await assertInside('peek');
     const peekBox = await card.boundingBox();
-    // Only now should the card have moved substantially further down.
-    expect(peekBox.y).toBeGreaterThan(tallBox.y + 100);
+    await dragHandle(page, -200); // back toward a taller sheet; card hides rather than overlapping
+    await page.waitForTimeout(450);
+    if (await card.evaluate(el => getComputedStyle(el).opacity) !== '0') await assertInside('dragged up');
+    expect(peekBox.y).toBeGreaterThan(0);
   });
 
   test('bug 2: map camera, sheet detent, filters and selection survive a round trip through Event Detail', async ({ page }) => {
