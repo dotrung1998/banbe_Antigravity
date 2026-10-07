@@ -1,6 +1,7 @@
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { PromoConsentSection } from '../components/HostPromo.jsx'; // account gate (web parity)
+import { useAccountGate } from '../lib/accountGate.js';
 
 // Account > Security — this account's password. The iOS app's version of
 // this screen (apps/ios/BanbeApp/Views/SecurityView.swift) also carries the
@@ -11,6 +12,7 @@ export default function Security() {
     state: s, T, set, securityPasswordType, securityPasswordConfirmType,
     saveSecurityPassword, sendSecurityPasswordReset,
   } = useBanBe();
+  const { status: gateStatus } = useAccountGate();
 
   const fieldStyle = {
     ...fieldGlass({ marginTop: 10, padding: 14, border: 'none', width: '100%', boxSizing: 'border-box' }),
@@ -94,6 +96,17 @@ export default function Security() {
                 </p>
               </>
             )}
+            {gateStatus?.phone_verified ? (
+              <p data-testid="security-phone-verified" style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, margin: '22px 0 0' }}>
+                ✓ {T('Số điện thoại đã được xác minh.', 'Your phone number is verified.')}
+              </p>
+            ) : gateStatus?.phone_test_exempt ? (
+              // Distinct from "verified": the server waived the SMS step for a test
+              // account (migration 159). The number is NOT confirmed — no checkmark.
+              <p data-testid="security-phone-test-exempt" style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, margin: '22px 0 0' }}>
+                {T('Tài khoản thử nghiệm: bước xác minh SMS được miễn. Số điện thoại CHƯA được xác minh.', 'Test account: SMS verification is waived. Your phone number is NOT verified.')}
+              </p>
+            ) : null}
             <PromoConsentSection />{/* account gate (web parity) */}
           </>
         ) : (

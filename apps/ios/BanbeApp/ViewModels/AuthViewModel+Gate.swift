@@ -7,6 +7,9 @@ struct AccountGateStatus: Decodable, Equatable {
     let ready: Bool
     let phoneRequired: Bool
     let phoneVerified: Bool
+    /// Server-granted TEST exemption (migration 159): phone requirement waived,
+    /// phone NOT verified. Optional so an older server without 159 still decodes.
+    let phoneTestExempt: Bool?
     let dobEnrollmentRequired: Bool
     let dobConfirmationRequired: Bool
 
@@ -14,6 +17,7 @@ struct AccountGateStatus: Decodable, Equatable {
         case ready
         case phoneRequired = "phone_required"
         case phoneVerified = "phone_verified"
+        case phoneTestExempt = "phone_test_exempt"
         case dobEnrollmentRequired = "dob_enrollment_required"
         case dobConfirmationRequired = "dob_confirmation_required"
     }

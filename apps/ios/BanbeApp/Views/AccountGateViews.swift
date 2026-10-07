@@ -363,6 +363,20 @@ struct PhoneVerificationSection: View {
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .accessibilityIdentifier("security.phoneVerified")
             } else {
+                if auth.gateStatus?.phoneTestExempt == true {
+                    // Distinct from "verified": the server waived the SMS step for a test
+                    // account. The number is NOT confirmed and no checkmark is shown.
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.shield").foregroundStyle(app.palette.ink.opacity(0.75))
+                        Text(app.T("Tài khoản thử nghiệm: bước xác minh SMS được miễn. Số điện thoại CHƯA được xác minh.",
+                                   "Test account: SMS verification is waived. Your phone number is NOT verified."))
+                            .font(.system(size: 14))
+                    }
+                    .padding(.horizontal, 18).padding(.vertical, 15)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .accessibilityIdentifier("security.phoneTestExempt")
+                }
                 Text(app.T("Không bắt buộc với tài khoản của bạn. Thêm và xác minh số điện thoại để bảo vệ tài khoản và nhận hỗ trợ dễ hơn. Mã chỉ xác minh bạn nhận được SMS trên số này — không xác minh danh tính.",
                            "Optional for your account. Add and verify a phone number for easier account recovery. The code only confirms you can receive texts on this number — it doesn't verify who you are."))
                     .font(.system(size: 12)).foregroundStyle(app.palette.ink.opacity(0.75))

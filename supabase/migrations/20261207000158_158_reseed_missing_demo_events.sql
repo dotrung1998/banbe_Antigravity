@@ -26,8 +26,10 @@ BEGIN
     RETURN;
   END IF;
 
-  INSERT INTO public.profiles (id, display_name, phone, locale, role)
-  SELECT u.id, '', '', 'vi', 'participant' FROM auth.users u WHERE u.id = ANY(v_users)
+  -- profiles.handle is NOT NULL (migration 079); same synthetic formula as 079/081/082.
+  INSERT INTO public.profiles (id, display_name, phone, locale, role, handle)
+  SELECT u.id, '', '', 'vi', 'participant', left('u' || replace(u.id::text, '-', ''), 13)
+    FROM auth.users u WHERE u.id = ANY(v_users)
   ON CONFLICT (id) DO NOTHING;
 
   CREATE TEMP TABLE _demo_events (

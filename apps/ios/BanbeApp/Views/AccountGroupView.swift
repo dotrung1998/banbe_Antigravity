@@ -664,6 +664,8 @@ struct AccountGroupView: View {
             row(app.T("Tranh Chấp Thanh Toán", "Payment Disputes"), identifier: "admin.disputes", icon: "exclamationmark.bubble", trailing: "›") { app.openAdminDashboard() }
             Divider().overlay(app.palette.rule)
             row(app.T("Sự Kiện Chờ Duyệt", "Pending Events"), identifier: "admin.events", icon: "exclamationmark.shield", trailing: "›", badge: app.pendingEventsCount) { app.openAdminEvents() }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Tài khoản thử nghiệm", "Test accounts"), identifier: "admin.testAccounts", icon: "person.badge.shield.checkmark", trailing: "›") { if app.isAdmin { app.screen = .adminTestAccounts } }
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
