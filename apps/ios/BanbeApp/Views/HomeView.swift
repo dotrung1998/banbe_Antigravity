@@ -114,7 +114,7 @@ struct HomeView: View {
             app.palette.paper.ignoresSafeArea()
         VStack(alignment: .leading, spacing: 0) {
             header
-            ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.homeScrollAnchorID, refreshIndicatorTopPadding: 16, onRefresh: {
+            ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.homeScrollAnchorID, restoreOffsetY: app.homeScrollOffsetY, onScrollOffset: { app.homeScrollOffsetY = $0 }, refreshIndicatorTopPadding: 16, onRefresh: {
                 await app.loadHomeLiveEvents()
                 await app.loadWeekendEvents()
                 await app.loadDiscoveryEvents()
@@ -569,7 +569,7 @@ struct HomeView: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 10) {
-                    ForEach(app.savedStrip) { event in
+                    ForEach(sortedSavedStrip) { event in
                         SwipeSafeButton { app.goEvent(event.key) } label: {
                             VStack(alignment: .leading, spacing: 7) {
                                 ZStack(alignment: .topLeading) {
@@ -1040,6 +1040,17 @@ struct HomeView: View {
         }
         if app.isGoing(event.key) { return ("Đã thanh toán", BanbeTheme.Chip.going) }
         return ("Đã lưu", BanbeTheme.Chip.saved)
+    }
+
+    /// Reminder events (starting within 24h / happening now) lead the strip, "live" first;
+    /// sorted(by:) is not guaranteed stable, so ties fall back to the original index.
+    private var sortedSavedStrip: [CatalogEvent] {
+        func rank(_ e: CatalogEvent) -> Int {
+            switch reminderPhase(e) { case .live?: return 0; case .soon?: return 1; case nil: return 2 }
+        }
+        return app.savedStrip.enumerated()
+            .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
+            .map(\.element)
     }
 
     /// Reminder only for a ticket-holder's own event (not a hold, not merely saved).

@@ -26,9 +26,9 @@ struct ToastOverlay: View {
             ForEach(shown) { toast in
                 HStack(alignment: .top, spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(toast.notification.title)
+                        Text(toast.notification.kind == "event_announcement" ? "📣 " + app.T("Thông báo từ host", "Host announcement") : toast.notification.title)
                             .font(.system(size: 12.5, weight: .semibold))
-                            .foregroundStyle(app.palette.ink)
+                            .foregroundStyle(toast.notification.kind == "event_announcement" ? BanbeTheme.alert : app.palette.ink)
                         if !toast.notification.body.isEmpty {
                             Text(toast.notification.body)
                                 .font(.system(size: 12))
@@ -52,7 +52,8 @@ struct ToastOverlay: View {
                 .background(app.palette.field, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(app.palette.rule, lineWidth: 1)
+                        .stroke(toast.notification.kind == "event_announcement" ? BanbeTheme.alert : app.palette.rule,
+                                lineWidth: toast.notification.kind == "event_announcement" ? 1.5 : 1)
                 )
                 .contentShape(Rectangle())
                 // Notification banner fix pass (2026-09-30 third) — one

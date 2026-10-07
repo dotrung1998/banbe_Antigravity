@@ -500,6 +500,12 @@ struct ScreenScaffold<Content: View>: View {
     // for Map Explore) and gives each scrollable child a stable `.id(...)`
     // — see `HomeView`'s own use of this for its feed cards.
     var scrollPositionID: Binding<String?>? = nil
+    /// Exact-offset memory (Home): `restoreOffsetY` is re-applied for ~1s after the scroll view
+    /// appears (a LazyVStack may not have laid out far enough yet), and `onScrollOffset` reports the
+    /// live raw `contentOffset.y` once that restore has finished. Complements `scrollPositionID`,
+    /// which only restores when the target id is already materialized.
+    var restoreOffsetY: CGFloat? = nil
+    var onScrollOffset: ((CGFloat) -> Void)? = nil
     // Refresh-indicator fix pass (2026-09-27, follow-up A) — replaces each
     // root screen's own plain `.refreshable { await ... }` (whose system
     // spinner can't be reskinned, see RootRefreshIndicator's own doc
@@ -546,6 +552,7 @@ struct ScreenScaffold<Content: View>: View {
                     .background(
                         (tracksBottomBarScroll || onRefresh != nil)
                             ? AnyView(ScaffoldScrollProbe(
+                                restoreOffsetY: restoreOffsetY, onOffset: onScrollOffset,
                                 onChange: { offsetY in
                                     if tracksBottomBarScroll { app.noteScaffoldScroll(offsetY) }
                                 },
@@ -632,17 +639,22 @@ private struct ScrollPositionIDModifier: ViewModifier {
 enum ScaffoldPullPhase { case began, changed, ended, cancelled }
 
 struct ScaffoldScrollProbe: UIViewRepresentable {
+    var restoreOffsetY: CGFloat? = nil
+    var onOffset: ((CGFloat) -> Void)? = nil
     let onChange: (CGFloat) -> Void
     var onPullPhase: ((ScaffoldPullPhase, CGFloat) -> Void)? = nil
 
     func makeUIView(context: Context) -> ProbeView {
         let view = ProbeView()
+        view.restoreOffsetY = restoreOffsetY
+        view.onOffset = onOffset
         view.onChange = onChange
         view.onPullPhase = onPullPhase
         return view
     }
 
     func updateUIView(_ uiView: ProbeView, context: Context) {
+        uiView.onOffset = onOffset
         uiView.onChange = onChange
         uiView.onPullPhase = onPullPhase
     }
@@ -650,6 +662,11 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
     final class ProbeView: UIView {
         var onChange: ((CGFloat) -> Void)?
         var onPullPhase: ((ScaffoldPullPhase, CGFloat) -> Void)?
+        var restoreOffsetY: CGFloat?
+        var onOffset: ((CGFloat) -> Void)?
+        /// True while the saved offset is still being re-applied; live offsets are not reported
+        /// then, so the initial layout's offset 0 never overwrites the value being restored.
+        private var restoring = false
         private weak var observedScrollView: UIScrollView?
         private var observation: NSKeyValueObservation?
         private weak var attachedGesture: UIPanGestureRecognizer?
@@ -675,7 +692,9 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
                     // sign, so nothing downstream needed to change.
                     observation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] sv, _ in
                         self?.onChange?(-sv.contentOffset.y)
+                        if self?.restoring == false { self?.onOffset?(sv.contentOffset.y) }
                     }
+                    beginRestoreIfNeeded(scrollView)
                     onChange?(-scrollView.contentOffset.y)
                     if onPullPhase != nil {
                         scrollView.panGestureRecognizer.addTarget(self, action: #selector(handlePanStateChange(_:)))
@@ -684,6 +703,31 @@ struct ScaffoldScrollProbe: UIViewRepresentable {
                     return
                 }
                 responder = candidate.superview
+            }
+        }
+
+        private func beginRestoreIfNeeded(_ sv: UIScrollView) {
+            guard let target = restoreOffsetY else { return }
+            restoring = true
+            restoreStep(sv, target: target, tick: 0)
+        }
+
+        // 20 ticks x 50ms. Re-applies the target whenever the content is tall enough and the
+        // offset drifted (e.g. the id-based restore moved it), and gives up the moment the user
+        // touches the scroll view. A target at (or above) the top is a no-op.
+        private func restoreStep(_ sv: UIScrollView, target: CGFloat, tick: Int) {
+            let topY = -sv.adjustedContentInset.top
+            if sv.isTracking || sv.isDragging || tick >= 20 || target <= topY + 1 {
+                restoring = false
+                return
+            }
+            let maxY = sv.contentSize.height - sv.bounds.height + sv.adjustedContentInset.bottom
+            if maxY >= target - 1, abs(sv.contentOffset.y - target) > 1 {
+                sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: target), animated: false)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak sv] in
+                guard let self, let sv else { return }
+                self.restoreStep(sv, target: target, tick: tick + 1)
             }
         }
 

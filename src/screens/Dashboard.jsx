@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, findEvent, bg } from '../data/events.js';
-import { liveEventOverrides } from '../lib/countdown.js';
+import { liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
+import { reminderPhase, REMINDER_CSS, reminderRank } from '../lib/eventReminder.js';
 import { paper, ink, rule, alert, display } from '../theme.js';
 import { fieldGlass, cardGlass, inkButton } from './hostStyle.js';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
@@ -24,6 +25,19 @@ function organizerAvatarUrl(path, r2Ref, variant = 'thumb') {
 import { useSubmittedEvents, useFormatWhen } from '../lib/submittedEvents.jsx';
 import PendingEventSheet from './sheets/PendingEventSheet.jsx';
 
+// Section header that expands/collapses its content; shows the item count.
+function CollapseHeader({ title, count, open, onToggle, testId }) {
+  return (
+    <div onClick={onToggle} role="button" aria-expanded={open} data-testid={testId}
+         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '4px 0' }}>
+      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>
+        {title}{count > 0 && <span style={{ fontWeight: 400, opacity: 0.65 }}> ▪︎ {count}</span>}
+      </span>
+      <span aria-hidden="true" style={{ fontSize: 12, color: ink, display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>›</span>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const {
     state, T, trStatus, stripKm, curEvent, backFromDashboard, goCreate, openAttendance, goEvent, requestVerify, loadHomeLiveEvents,
@@ -40,6 +54,12 @@ export default function Dashboard() {
   // time (never more than one pending event's own withdraw form open),
   // matching this screen's existing "Sửa & gửi lại" inline-action style
   // rather than introducing a separate modal component.
+  // Back label names the screen Back actually returns to (same pattern as Attendance/Verifications).
+  const backLabel = ({ profile: T('Tài khoản', 'Account'), home: T('Nhà', 'Home'), notifications: T('Thông báo', 'Notifications') })[s.dashboardBack] || T('Quay lại', 'Back');
+  const [teamOpen, setTeamOpen] = useState(false);
+  // Collapsed by default to save space.
+  const [pastOpen, setPastOpen] = useState(false);
+  const [submittedOpen, setSubmittedOpen] = useState(false);
   const [withdrawTargetKey, setWithdrawTargetKey] = useState(null);
   const [withdrawReasonDraft, setWithdrawReasonDraft] = useState('');
   // Event review queue — a real, host-created event isn't in the static
@@ -58,6 +78,7 @@ export default function Dashboard() {
   useEffect(() => { if (s.myOrganizerId) loadOrgTeamRoster(s.myOrganizerId); }, [s.myOrganizerId, loadOrgTeamRoster]);
   const ROLE_STATUS_LABEL = { invited: T('Đang chờ', 'Pending'), accepted: T('Đã tham gia', 'Joined'), declined: T('Đã từ chối', 'Declined'), removed: T('Đã xoá', 'Removed') };
   const myRealEvents = myRealOrgKeys.map(k => s.realEventsById[k]).filter(Boolean);
+  const teamCount = s.orgTeamRoster.filter(m => m.status !== 'removed').length;
   // Review tracking reads live rows (polled), not the one-shot realEventsById
   // cache, so an admin approving / sending an event back shows up on its own.
   const submitted = useSubmittedEvents(true);
@@ -168,9 +189,27 @@ export default function Dashboard() {
     const overrides = liveEventOverrides(s.homeLiveEvents[e.key], e);
     return overrides ? { ...e, ...overrides } : e;
   });
-  const upcoming = myEvents.filter(e => !e.cancelled && e.endedHoursAgo == null)
-    .sort((a, c) => (a.until ?? 999) - (c.until ?? 999));
-  const past = myEvents.filter(e => !e.cancelled && e.endedHoursAgo != null)
+  // Real (host-created) events are not in the static catalogue, so they were missing from this list
+  // (and had no Check-in button). Shape them like a catalogue row; iOS already does the same.
+  const realRows = myOrgEventKeysForEv.filter(k => !EVENTS.some(e => e.key === k)).map(k => s.realEventsById[k])
+    .filter(r => r && (r.status === 'live' || r.status === 'ended'))
+    .map(r => {
+      const startsAt = r.startsAt ? new Date(r.startsAt) : null;
+      const { weekdayShort, dayMonth, time } = startsAt ? formatVnEventDate(startsAt) : {};
+      return {
+        key: r.key, name: r.name, img: r.photoUrl || '', startDate: startsAt, cancelled: false,
+        meta: [r.catLabel, r.area, startsAt ? `${weekdayShort}, ${dayMonth} ▪︎ ${time}` : ''].filter(Boolean).join(' ▪︎ '),
+        endedHoursAgo: r.status === 'ended' && startsAt ? Math.max(0, Math.round((Date.now() - startsAt.getTime()) / 3600000)) : null,
+        until: startsAt ? Math.round((startsAt.getTime() - Date.now()) / 86400000) : 999,
+        agoLabel: (h) => T(`${h} giờ trước`, `${h}h ago`), isReal: true,
+      };
+    });
+  const allEvents = [...myEvents, ...realRows];
+  // Reminder events (starting within 24h / happening now) lead the list, "live" first — same as Home.
+  const withReminder = (e) => ({ ...e, reminder: reminderPhase(e.startDate) });
+  const upcoming = allEvents.filter(e => !e.cancelled && e.endedHoursAgo == null).map(withReminder)
+    .sort((a, c) => reminderRank(a.reminder) - reminderRank(c.reminder) || (a.until ?? 999) - (c.until ?? 999));
+  const past = allEvents.filter(e => !e.cancelled && e.endedHoursAgo != null)
     .sort((a, c) => a.endedHoursAgo - c.endedHoursAgo);
 
   return (
@@ -179,7 +218,7 @@ export default function Dashboard() {
       <div style={{ padding: '66px 22px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div onClick={backFromDashboard} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
           <span style={{ fontSize: 14, color: ink, lineHeight: 1 }}>‹</span>
-          <img src="/banbe-mark.png" alt="banbe" crossOrigin="anonymous" style={{ height: 34, width: 'auto' }} />
+          <span data-testid="dashboard-back-label" style={{ fontSize: 12, color: ink }}>{backLabel}</span>
         </div>
       </div>
       <div style={{ padding: '16px 22px 0', display: 'flex', gap: 14, alignItems: 'center' }}>
@@ -237,81 +276,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Organizer Team pass (2026-09-27, Stage 1) — owner-only roster
-          management. Public role is display-only (never authorization —
-          this account's own owner_id/user_id on `organizers` is still the
-          only thing any event/payment/refund/bank action ever checks).
-          The owner can invite/remove but never flip a member's own
-          public_visible switch (that row simply isn't writable from
-          here). */}
-      {s.myOrganizerId && (
-        <div style={{ margin: '16px 22px 0' }} data-testid="dashboard-team-section">
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đội ngũ', 'Team')}</span>
-          <div style={{ ...fieldGlass({ marginTop: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }) }}>
-            <input
-              value={s.orgTeamInviteHandle} onChange={orgTeamInviteHandleType}
-              placeholder={T('Tên người dùng (@handle)', 'Handle (@handle)')}
-              data-testid="dashboard-team-invite-handle"
-              style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: ink }}
-            />
-            <input
-              value={s.orgTeamInviteRole} onChange={orgTeamInviteRoleType}
-              placeholder={T('Vai trò công khai (VD: Điều phối)', 'Public role (e.g. Coordinator)')}
-              data-testid="dashboard-team-invite-role"
-              style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: ink }}
-            />
-            {s.orgTeamInviteError && <span style={{ fontSize: 11.5, color: alert }}>{s.orgTeamInviteError}</span>}
-            <div
-              onClick={s.orgTeamInviteBusy ? undefined : () => inviteOrganizerMember(s.myOrganizerId)}
-              data-testid="dashboard-team-invite-submit"
-              style={{ ...inkButton({ opacity: s.orgTeamInviteBusy ? 0.6 : 1 }) }}
-            >
-              {s.orgTeamInviteBusy ? T('Đang gửi…', 'Sending…') : T('Mời thành viên', 'Invite member')}
-            </div>
-          </div>
-          {s.orgTeamRoster.filter(m => m.status !== 'removed').map(m => (
-            <div key={m.id} style={{ ...fieldGlass({ marginTop: 8, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`dashboard-team-member-${m.id}`}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                <span style={{ fontSize: 13, color: ink }}>{m.profiles?.display_name || m.profiles?.handle}</span>
-                <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>
-                  {m.public_role} ▪︎ {ROLE_STATUS_LABEL[m.status]}{m.status === 'accepted' && !m.public_visible ? ` ▪︎ ${T('đã ẩn công khai', 'hidden from public')}` : ''}
-                </span>
-              </div>
-              <div onClick={() => removeOrganizerMember(m.id, s.myOrganizerId)} data-testid={`dashboard-team-remove-${m.id}`} style={{ fontSize: 12, color: alert, cursor: 'pointer' }}>
-                {T('Xoá', 'Remove')}
-              </div>
-            </div>
-          ))}
-          {/* Organizer Team pass (2026-09-27, Stage 2) — credits a real,
-              ACCEPTED team member for a real event this account owns.
-              Never the owner's own name; never a stranger who hasn't
-              accepted the Team invite (assign_event_credit itself
-              re-checks both server-side regardless). */}
-          {myRealEvents.length > 0 && s.orgTeamRoster.some(m => m.status === 'accepted') && (
-            <div style={{ ...fieldGlass({ marginTop: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }) }}>
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Ghi nhận đóng góp sự kiện', 'Credit an event contribution')}</span>
-              <select value={creditEventKey} onChange={e => setCreditEventKey(e.target.value)} data-testid="dashboard-credit-event-select" style={{ fontSize: 12.5, padding: 8 }}>
-                <option value="">{T('Chọn sự kiện…', 'Choose an event…')}</option>
-                {myRealEvents.map(e => <option key={e.key} value={e.key}>{e.name}</option>)}
-              </select>
-              <select value={creditUserId} onChange={e => setCreditUserId(e.target.value)} data-testid="dashboard-credit-member-select" style={{ fontSize: 12.5, padding: 8 }}>
-                <option value="">{T('Chọn thành viên…', 'Choose a member…')}</option>
-                {s.orgTeamRoster.filter(m => m.status === 'accepted').map(m => (
-                  <option key={m.user_id} value={m.user_id}>{m.profiles?.display_name || m.profiles?.handle}</option>
-                ))}
-              </select>
-              <div
-                onClick={creditEventKey && creditUserId ? async () => { await assignEventCredit(creditEventKey, creditUserId); setCreditEventKey(''); setCreditUserId(''); } : undefined}
-                data-testid="dashboard-credit-submit"
-                style={{ ...inkButton({ opacity: creditEventKey && creditUserId ? 1 : 0.5 }) }}
-              >
-                {T('Ghi nhận', 'Credit')}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {verifyState === 'none' && (
         <div style={{ ...cardGlass({ margin: '16px 22px 0', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }) }}>
           <p style={{ fontSize: 12.5, lineHeight: 1.55, color: ink, margin: 0 }}>{T('Xác minh hồ sơ để khách tin tưởng hơn.', 'Get verified so guests trust you faster.')}</p>
@@ -329,8 +293,8 @@ export default function Dashboard() {
           SAME event row (resubmit_event_for_review), never a duplicate. */}
       {(pendingReal.length > 0 || needsFixReal.length > 0) && (
         <div style={{ margin: '24px 22px 0' }}>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Sự kiện đã gửi', 'Submitted events')}</span>
-          <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
+          <CollapseHeader title={T('Sự kiện đã gửi', 'Submitted events')} count={pendingReal.length + needsFixReal.length} open={submittedOpen} onToggle={() => setSubmittedOpen(o => !o)} testId="dashboard-submitted-toggle" />
+          {submittedOpen && <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
             {needsFixReal.map((e, i) => (
               <div key={e.key} data-testid={`dashboard-needs-fix-${e.key}`} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '13px 16px', borderBottom: (i < needsFixReal.length - 1 || pendingReal.length) ? `1px solid ${rule}` : 'none' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
@@ -429,7 +393,7 @@ export default function Dashboard() {
                 )}
               </div>
             ))}
-          </div>
+          </div>}
         </div>
       )}
 
@@ -443,8 +407,17 @@ export default function Dashboard() {
         <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
           {upcoming.map((e, i, arr) => (
             <div key={e.key} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '13px 16px', borderBottom: i < arr.length - 1 ? `1px solid ${rule}` : 'none' }}>
-              <div onClick={() => goEvent(e.key)} style={bg(e.img, { flex: 'none', width: 52, height: 52, cursor: 'pointer' })} />
+              <div className={e.reminder ? 'bb-rem-card' : undefined} data-testid={e.reminder ? 'dashboard-event-reminder' : undefined} data-reminder={e.reminder || undefined}
+                   style={{ position: 'relative', flex: 'none', width: 52, height: 52, '--bb-rem-r': '14px' }}>
+                {e.reminder && <style>{REMINDER_CSS}</style>}
+                <div onClick={() => goEvent(e.key)} style={bg(e.img, { width: 52, height: 52, cursor: 'pointer' })} />
+              </div>
               <div onClick={() => goEvent(e.key)} style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1, cursor: 'pointer' }}>
+                {e.reminder && (
+                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#7A5200' }}>
+                    <span aria-hidden="true" style={{ color: '#E0A526' }}>★ </span>{e.reminder === 'live' ? T('Đang diễn ra', 'Happening now') : T('Sắp diễn ra', 'Starting soon')}
+                  </span>
+                )}
                 <span style={{ ...display(15, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</span>
                 <span style={{ fontSize: 11.5, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{trStatus(stripKm(e.meta, e))}</span>
               </div>
@@ -462,7 +435,10 @@ export default function Dashboard() {
               >
                 {s.eventPhotoUploaded[e.key] ? T('Đã thêm ✓', 'Added ✓') : s.eventPhotoUploadBusy[e.key] ? T('Đang tải…', 'Uploading…') : T('+ Ảnh', '+ Photo')}
               </span>
-              <span onClick={() => openAttendance(e.key)} style={{ fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', flex: 'none', cursor: 'pointer' }}>{T('Điểm danh', 'Check-in')}</span>
+              <span onClick={() => openAttendance(e.key)} data-testid={`dashboard-checkin-${e.key}`}
+                    style={e.reminder
+                      ? { fontSize: 11, fontWeight: 700, color: paper, background: ink, borderRadius: 12, padding: '7px 12px', flex: 'none', cursor: 'pointer' }
+                      : { fontSize: 11, fontWeight: 600, color: ink, border: '1px solid rgba(27,25,22,0.16)', borderRadius: 12, padding: '6px 10px', flex: 'none', cursor: 'pointer' }}>{T('Điểm danh', 'Check-in')}</span>
             </div>
           ))}
           {upcoming.length === 0 && (
@@ -471,9 +447,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div style={{ margin: '22px 22px 100px' }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Sự kiện đã qua', 'Past events')}</span>
-        <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
+      <div style={{ margin: '22px 22px 24px' }}>
+        <CollapseHeader title={T('Sự kiện đã qua', 'Past events')} count={past.length} open={pastOpen} onToggle={() => setPastOpen(o => !o)} testId="dashboard-past-toggle" />
+        {pastOpen && <div style={{ ...fieldGlass({ marginTop: 10, display: 'flex', flexDirection: 'column' }) }}>
           {past.map((e, i, arr) => (
             <div key={e.key} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '13px 16px', borderBottom: i < arr.length - 1 ? `1px solid ${rule}` : 'none' }}>
               <div onClick={() => goEvent(e.key)} style={bg(e.img, { flex: 'none', width: 52, height: 52, filter: 'grayscale(0.5)', cursor: 'pointer' })} />
@@ -496,9 +472,98 @@ export default function Dashboard() {
           {past.length === 0 && (
             <p style={{ fontSize: 12.5, color: ink, padding: '14px 16px', margin: 0 }}>{T('Chưa có sự kiện nào đã qua.', 'No past events yet.')}</p>
           )}
-        </div>
+        </div>}
       </div>
 
+      {/* Organizer Team pass (2026-09-27, Stage 1) — owner-only roster
+          management. Public role is display-only (never authorization —
+          this account's own owner_id/user_id on `organizers` is still the
+          only thing any event/payment/refund/bank action ever checks).
+          The owner can invite/remove but never flip a member's own
+          public_visible switch (that row simply isn't writable from
+          here). */}
+      {s.myOrganizerId && (
+        <div style={{ margin: '0 22px 24px' }} data-testid="dashboard-team-section">
+          {/* Collapsed by default to save space; the toggle shows the member count. */}
+          <div
+            onClick={() => setTeamOpen(o => !o)} role="button" aria-expanded={teamOpen} data-testid="dashboard-team-toggle"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '4px 0' }}
+          >
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>
+              {T('Đội ngũ', 'Team')}
+              {teamCount > 0 && <span style={{ fontWeight: 400, opacity: 0.65 }}> ▪︎ {teamCount}</span>}
+            </span>
+            <span aria-hidden="true" style={{ fontSize: 12, color: ink, display: 'inline-block', transform: teamOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>›</span>
+          </div>
+          {teamOpen && (<>
+          <div style={{ ...fieldGlass({ marginTop: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }) }}>
+            <input
+              value={s.orgTeamInviteHandle} onChange={orgTeamInviteHandleType}
+              placeholder={T('Tên người dùng (@handle)', 'Handle (@handle)')}
+              data-testid="dashboard-team-invite-handle"
+              style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: ink }}
+            />
+            <input
+              value={s.orgTeamInviteRole} onChange={orgTeamInviteRoleType}
+              placeholder={T('Vai trò công khai (VD: Điều phối)', 'Public role (e.g. Coordinator)')}
+              data-testid="dashboard-team-invite-role"
+              style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: ink }}
+            />
+            {s.orgTeamInviteError && <span style={{ fontSize: 11.5, color: alert }}>{s.orgTeamInviteError}</span>}
+            <div
+              onClick={s.orgTeamInviteBusy ? undefined : () => inviteOrganizerMember(s.myOrganizerId)}
+              data-testid="dashboard-team-invite-submit"
+              style={{ ...inkButton({ opacity: s.orgTeamInviteBusy ? 0.6 : 1 }) }}
+            >
+              {s.orgTeamInviteBusy ? T('Đang gửi…', 'Sending…') : T('Mời thành viên', 'Invite member')}
+            </div>
+          </div>
+          {s.orgTeamRoster.filter(m => m.status !== 'removed').map(m => (
+            <div key={m.id} style={{ ...fieldGlass({ marginTop: 8, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }) }} data-testid={`dashboard-team-member-${m.id}`}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                <span style={{ fontSize: 13, color: ink }}>{m.profiles?.display_name || m.profiles?.handle}</span>
+                <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>
+                  {m.public_role} ▪︎ {ROLE_STATUS_LABEL[m.status]}{m.status === 'accepted' && !m.public_visible ? ` ▪︎ ${T('đã ẩn công khai', 'hidden from public')}` : ''}
+                </span>
+              </div>
+              <div onClick={() => removeOrganizerMember(m.id, s.myOrganizerId)} data-testid={`dashboard-team-remove-${m.id}`} style={{ fontSize: 12, color: alert, cursor: 'pointer' }}>
+                {T('Xoá', 'Remove')}
+              </div>
+            </div>
+          ))}
+          {/* Organizer Team pass (2026-09-27, Stage 2) — credits a real,
+              ACCEPTED team member for a real event this account owns.
+              Never the owner's own name; never a stranger who hasn't
+              accepted the Team invite (assign_event_credit itself
+              re-checks both server-side regardless). */}
+          {myRealEvents.length > 0 && s.orgTeamRoster.some(m => m.status === 'accepted') && (
+            <div style={{ ...fieldGlass({ marginTop: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }) }}>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Ghi nhận đóng góp sự kiện', 'Credit an event contribution')}</span>
+              <select value={creditEventKey} onChange={e => setCreditEventKey(e.target.value)} data-testid="dashboard-credit-event-select" style={{ fontSize: 12.5, padding: 8 }}>
+                <option value="">{T('Chọn sự kiện…', 'Choose an event…')}</option>
+                {myRealEvents.map(e => <option key={e.key} value={e.key}>{e.name}</option>)}
+              </select>
+              <select value={creditUserId} onChange={e => setCreditUserId(e.target.value)} data-testid="dashboard-credit-member-select" style={{ fontSize: 12.5, padding: 8 }}>
+                <option value="">{T('Chọn thành viên…', 'Choose a member…')}</option>
+                {s.orgTeamRoster.filter(m => m.status === 'accepted').map(m => (
+                  <option key={m.user_id} value={m.user_id}>{m.profiles?.display_name || m.profiles?.handle}</option>
+                ))}
+              </select>
+              <div
+                onClick={creditEventKey && creditUserId ? async () => { await assignEventCredit(creditEventKey, creditUserId); setCreditEventKey(''); setCreditUserId(''); } : undefined}
+                data-testid="dashboard-credit-submit"
+                style={{ ...inkButton({ opacity: creditEventKey && creditUserId ? 1 : 0.5 }) }}
+              >
+                {T('Ghi nhận', 'Credit')}
+              </div>
+            </div>
+          )}
+          </>)}
+        </div>
+      )}
+
+
+      <div aria-hidden="true" style={{ height: 76 }} />
       <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={onEventPhotoChosen} />
       {s.eventPhotoUploadError && (
         <p style={{ fontSize: 12, color: alert, margin: '0 22px 16px' }}>{s.eventPhotoUploadError}</p>

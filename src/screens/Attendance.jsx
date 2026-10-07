@@ -8,6 +8,8 @@ import { paper, ink, rule, display, alert } from '../theme.js';
 import { fieldGlass, cardGlass, inkButton, insetField } from './hostStyle.js';
 import CancelEventModal from '../components/CancelEventModal.jsx';
 import { HostPromoSheet } from '../components/HostPromo.jsx'; // account gate (web parity)
+import AnnouncementSheet from '../components/AnnouncementSheet.jsx';
+import { reminderPhase } from '../lib/eventReminder.js';
 
 const REFUND_STATUS_LABEL = {
   needsDestination: ['Cần tài khoản nhận tiền', 'Needs destination'],
@@ -27,7 +29,7 @@ export default function Attendance() {
   const {
     state, set, T, trStatus, backFromAttendance, toggleCheckin, openQrScan, openCancelBooking, markGuestPaid, uploadPaymentDocument,
     openVerificationDetail, openRejectGuest, loadAttendanceGuests, openDocumentFromNotification, loadHomeLiveEvents,
-    cancelEvent, loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo, markRefundSent,
+    cancelEvent, sendEventAnnouncement, loadRefundCenter, toggleRefundCenterSelect, selectAllEligibleRefundCenter, clearRefundCenterSelection, confirmRefundBatch, resendRefundTransferInfo, markRefundSent,
   } = useBanBe();
   const s = state;
   // Same documentBack-style pattern (07-notifications.md's 2026-09-18
@@ -38,6 +40,7 @@ export default function Attendance() {
   const fileInputRef = useRef(null);
   const [cancelEventOpen, setCancelEventOpen] = useState(false);
   const [promoOpen, setPromoOpen] = useState(false); // account gate (web parity)
+  const [announceOpen, setAnnounceOpen] = useState(false);
   const [uploadingFor, setUploadingFor] = useState(null);
   const [uploadErrorFor, setUploadErrorFor] = useState(null);
   // Replacing an existing live receipt requires a reason
@@ -242,6 +245,22 @@ export default function Attendance() {
         </div>
         <div onClick={openQrScan} style={{ flex: 'none', fontSize: 12, fontWeight: 600, color: paper, background: ink, borderRadius: 12, padding: '9px 14px', cursor: 'pointer', whiteSpace: 'nowrap' }}>{T('Quét QR', 'Scan QR')}</div>
       </div>
+      {/* Announcements are live only from 24h before the start until 12h after (the server enforces
+          the same window) — a prominent red card, since this is the in-event tool. */}
+      {reminderPhase(attEvLive.startDate) && (
+        <div onClick={() => setAnnounceOpen(true)} data-testid="attendance-announce" role="button"
+             style={{ margin: '14px 22px 0', padding: '14px 16px', borderRadius: 16, border: `1.5px solid ${alert}`, display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+          <span aria-hidden="true" style={{ fontSize: 22 }}>📣</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: alert }}>{T('Gửi thông báo cho khách', 'Announce to guests')}</span>
+            <span style={{ display: 'block', fontSize: 11.5, opacity: 0.7, marginTop: 2 }}>{T('Mẫu có sẵn hoặc tự viết · gửi cho tất cả người giữ vé', 'Quick templates or your own · sent to all ticket holders')}</span>
+          </span>
+          <span aria-hidden="true" style={{ color: alert, fontSize: 18 }}>›</span>
+        </div>
+      )}
+      {announceOpen && (
+        <AnnouncementSheet eventKey={attKey} eventName={attEv.name} lang={s.lang} T={T} send={sendEventAnnouncement} onClose={() => setAnnounceOpen(false)} />
+      )}
       <p onClick={() => setPromoOpen(true)} data-testid="attendance-promo"
          style={{ fontSize: 12.5, color: ink, cursor: 'pointer', margin: '10px 22px 0' }}>✉ {T('Nhắn tin quảng bá sự kiện', 'Text a promo about this event')}</p>
       {promoOpen && <HostPromoSheet eventKey={attKey} onClose={() => setPromoOpen(false)} />}

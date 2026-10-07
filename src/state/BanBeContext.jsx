@@ -8553,10 +8553,17 @@ export function BanBeProvider({ children }) {
       }, { ...prev.chatAttachmentUrls }),
     }));
   }, [set]);
+  // Host -> every confirmed ticket-holder (migration 166). Server enforces host-only, the
+  // 24h-before..12h-after window and a rate limit; returns { success, sent } or { success:false, error }.
+  const sendEventAnnouncement = useCallback(async (eventKey, category, body, templateId) => {
+    const { data, error } = await supabase.rpc('send_event_announcement', { p_event: eventKey, p_category: category, p_body: body, p_template_id: templateId || null });
+    if (error) { console.warn('send_event_announcement failed:', error); return { success: false, error: 'FAILED' }; }
+    return data;
+  }, []);
   const loadChatMessages = useCallback(async (threadId, computeDivider) => {
     const { data, error } = await supabase
       .from('messages')
-      .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id')
+      .select('id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id, announcement_category')
       .eq('thread_id', threadId)
       .order('created_at', { ascending: true });
     if (error) return;
@@ -10119,6 +10126,7 @@ export function BanBeProvider({ children }) {
     //     targetIsGone() guard above, before this switch even runs.
     switch (n.kind) {
       case 'new_message':
+      case 'event_announcement':
         if (n.data?.thread_id) openThread(n.data.thread_id, n.data.event_id, 'notifications');
         break;
       case 'booking_requested':
@@ -10510,7 +10518,7 @@ export function BanBeProvider({ children }) {
 
   const value = useMemo(() => ({
     state: s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
-    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
+    isSaved, isGoing, isAwaitingConfirmation, sendEventAnnouncement, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
     loadNotifications, loadInboxThreads,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,
@@ -10549,7 +10557,7 @@ export function BanBeProvider({ children }) {
     toggleCheckin, openQrScan, closeQrScan, checkInByScan, openCancelBooking, openRejectGuest, closeReasonPrompt, submitReasonPrompt, confirmCheckin,
   }), [
     s, set, EN, T, trStatus, located, stripKm, curEvent, palette, curArea, locationTree,
-    isSaved, isGoing, isAwaitingConfirmation, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
+    isSaved, isGoing, isAwaitingConfirmation, sendEventAnnouncement, toggleFav, toggleFollow, loadHomeLiveEvents, loadOrganizerPhotos, loadEventPhotos, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, uploadEventPhoto,
     goHome, goProfile, goInbox, backFromInbox, goEvent, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, backToEvent, goMapExplore, backFromMapExplore, setMapExploreState, openEventOnMap, openEventSearch,
     loadNotifications, loadInboxThreads,
     goChat, goLogin, goDashboard, goCreate, openAttendance, backFromAttendance, loadAttendanceGuests, openHeld, goHostIntro, createBack,

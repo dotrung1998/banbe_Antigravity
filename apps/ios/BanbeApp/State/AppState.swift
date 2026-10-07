@@ -1870,6 +1870,9 @@ final class AppState: ObservableObject {
     /// `ScreenScaffold`'s `.scrollPosition(id:)` binding. `nil` means "no
     /// scroll to restore" — top of the feed.
     @Published var homeScrollAnchorID: String?
+    /// Home's raw scroll offset, remembered across tab switches (see ScreenScaffold.restoreOffsetY).
+    /// Deliberately NOT @Published — it changes every frame while scrolling.
+    var homeScrollOffsetY: CGFloat?
     /// TASK C — same mechanism, for AccountView (see its own doc comment):
     /// the id of whichever section was at the top of Account's own scroll
     /// view; survives AccountView being torn down/recreated on navigating
@@ -2289,6 +2292,13 @@ final class AppState: ObservableObject {
     // properties' own doc comments. `myOrganizerID == nil` (never signed
     // in as a real organizer yet) falls through to the untouched
     // name-matched demo fallback below.
+    /// Most urgent reminder phase across this host's open events (live before soon), nil when none.
+    /// Drives the Account host card's highlight + "Check-in" hint.
+    var hostReminderPhase: EventReminder.Phase? {
+        let phases = myOrgEvents.filter(\.isOpen).compactMap { EventReminder.phase(startsAt: $0.startDate) }
+        return phases.contains(.live) ? .live : phases.first
+    }
+
     var myOrgEvents: [CatalogEvent] {
         let scopedKeys = myOrgEventKeys.filter { myOrgEventOrganizerID[$0] == myOrganizerID }
         if scopedKeys.isEmpty {

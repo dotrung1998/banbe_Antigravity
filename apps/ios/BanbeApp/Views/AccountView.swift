@@ -31,6 +31,8 @@ let ROW_ACCENT_COLORS: [String: Color] = [
 /// going/saved counters, links to messages and preferences, the organizer
 /// mode switch, and sign in/out.
 struct AccountView: View {
+    /// Bumped whenever Account becomes visible; replays the host card's reminder halo.
+    @State private var hostHaloTrigger = 0
     @EnvironmentObject var app: AppState
     // Task 3 (07-notifications.md) — story creation, hosts only.
     // TASK 1 (dock "+" native-menu pass) — the three trigger flags this
@@ -95,7 +97,7 @@ struct AccountView: View {
             verifications: app.verifications, refundQueue: app.refundQueue, orgHolding: app.organizerHoldingSummary,
             onOpenVerifications: { app.openVerifications(back: .profile) },
             onOpenRefundCenter: { app.openVerifications(back: .profile) },
-            onOpenDashboard: { app.goDashboard() },
+            onOpenDashboard: { app.goDashboard(back: .profile) },
             onOpenAttendance: { key in app.openAttendance(key, back: .profile) },
             // Same single-dispute shortcut as the goer half, so the host's own
             // link reaches the same dispute the goer's does.
@@ -227,7 +229,8 @@ struct AccountView: View {
         .task(id: app.myOrganizerID) {
             if app.canHost, app.myOrganizerID != nil { await app.loadMyOrgStats(); await app.loadMyOrgEventSummaries() }   // summaries feed the Host tab's badge
         }
-        .onAppear { retryScrollRestoreIfNeeded(); syncAccountTabToRole(); consumeTeamHighlightsIfNeeded() }
+        .onAppear { hostHaloTrigger += 1; retryScrollRestoreIfNeeded(); syncAccountTabToRole(); consumeTeamHighlightsIfNeeded() }
+        .onChange(of: app.screen) { _, new in if new == .profile { hostHaloTrigger += 1 } }
         .onChange(of: app.teamInviteHighlightOrganizerId) { _, _ in consumeTeamHighlightsIfNeeded() }
         .onChange(of: app.eventCreditHighlightId) { _, _ in consumeTeamHighlightsIfNeeded() }
         // Account extension (2026-09-27, Stage 1/2) — a role change
@@ -1858,7 +1861,13 @@ struct AccountView: View {
                             }
                         }
                         Spacer(minLength: 0)
-                        Text("›").font(.system(size: 20)).opacity(0.55)
+                        if app.hostReminderPhase != nil {
+                            // An event is starting soon / in progress: tell the host where this card goes.
+                            Text(app.T("Điểm danh", "Check-in"))
+                                .font(.system(size: 12, weight: .bold)).foregroundStyle(Color(hex: 0x7A5200))
+                                .accessibilityIdentifier("org.profile.checkinHint")
+                        }
+                        Text("›").font(.system(size: 20)).opacity(app.hostReminderPhase != nil ? 1 : 0.55)
                             .accessibilityIdentifier("org.profile.viewPublic")
                     }
                     if !app.orgRegDesc.isEmpty {
@@ -1883,6 +1892,9 @@ struct AccountView: View {
                 in: RoundedRectangle(cornerRadius: 14, style: .continuous)
             )
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(app.palette.rule, lineWidth: 1))
+            .overlay {
+                if app.hostReminderPhase != nil { EventReminderHalo(trigger: hostHaloTrigger, cornerRadius: 14) }
+            }
             .padding(.top, 22)
             .accessibilityIdentifier("org.profile.card")
         }

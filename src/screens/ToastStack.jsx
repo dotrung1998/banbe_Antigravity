@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
-import { ink, rule, cardGlass } from '../theme.js';
+import { ink, rule, alert, cardGlass } from '../theme.js';
 
 // Small, ephemeral in-app toasts — separate from Notifications.jsx (the
 // permanent, pull-based inbox): this is what actually surfaces an event
@@ -39,6 +39,7 @@ function ToastCard({ t, markVisible, onOpen, onDismiss, onPause, onResume }) {
   // behind "Xem thêm" until now). `markToastVisible` itself is idempotent,
   // so a re-render of an already-ticking toast never restarts its clock.
   useEffect(() => { markVisible(t.id); }, [markVisible, t.id]);
+  const isAnnouncement = t.notification?.kind === 'event_announcement';
   return (
     <div
       key={t.id}
@@ -50,14 +51,14 @@ function ToastCard({ t, markVisible, onOpen, onDismiss, onPause, onResume }) {
       onTouchEnd={onResume}
       style={{
         ...cardGlass({ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 2 }),
-        border: `1px solid ${rule}`,
+        border: isAnnouncement ? `1.5px solid ${alert}` : `1px solid ${rule}`,
         cursor: 'pointer', pointerEvents: 'auto',
         animation: t.leaving ? 'banbeToastOut 0.28s ease both' : 'banbeToastIn 0.3s cubic-bezier(.22,.61,.36,1) both',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-          {t.notification?.title && <span style={{ fontSize: 12.5, fontWeight: 600, color: ink }}>{t.notification.title}</span>}
+          {t.notification?.title && <span style={{ fontSize: 12.5, fontWeight: 600, color: isAnnouncement ? alert : ink }}>{isAnnouncement ? '📣 ' : ''}{t.notification.title}</span>}
           {t.notification?.body && <span style={{ fontSize: 12, color: ink, opacity: 0.75, lineHeight: 1.4 }}>{t.notification.body}</span>}
         </div>
         <button

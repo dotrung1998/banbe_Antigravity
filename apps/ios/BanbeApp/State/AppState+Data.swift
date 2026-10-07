@@ -2117,7 +2117,7 @@ extension AppState {
         // specifically, not Home or wherever else
         // (07-notifications.md's 2026-09-18 follow-up).
         switch notification.kind {
-        case "new_message":
+        case "new_message", "event_announcement":
             if let threadID = notification.data["thread_id"]?.stringValue,
                let uuid = UUID(uuidString: threadID) {
                 let key = notification.data["event_id"]?.stringValue ?? self.eventKey
@@ -3050,7 +3050,7 @@ extension AppState {
         do {
             let rows: [ChatMessage] = try await SupabaseService.client
                 .from("messages")
-                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id")
+                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id, announcement_category")
                 .eq("thread_id", value: threadID)
                 .order("created_at", ascending: true)
                 .execute().value
@@ -3127,7 +3127,7 @@ extension AppState {
             let sent: [ChatMessage] = try await SupabaseService.client
                 .from("messages")
                 .insert(NewAttachmentMessage(threadId: threadID, senderId: uid, body: body, kind: "text", attachmentPath: path, attachmentType: contentType, attachmentWidth: width, attachmentHeight: height, replyToMessageId: replyToMessageId))
-                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id")
+                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id, announcement_category")
                 .execute().value
             if let message = sent.first { chatMessages.append(message) }
             await signChatAttachmentUrls([path])
@@ -3163,7 +3163,7 @@ extension AppState {
             let sent: [ChatMessage] = try await SupabaseService.client
                 .from("messages")
                 .insert(NewTextReply(threadId: threadID, senderId: uid, body: trimmed, kind: "text", replyToMessageId: replyToMessageId))
-                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id")
+                .select("id, thread_id, sender_id, body, kind, created_at, read_at, attachment_path, attachment_type, attachment_width, attachment_height, reply_to_message_id, announcement_category")
                 .execute().value
             if let message = sent.first {
                 chatMessages.append(message)
@@ -5676,6 +5676,32 @@ extension AppState {
         } catch {
             print("loadTicketHolders failed:", error)
             return nil
+        }
+    }
+
+    /// Host -> every confirmed ticket-holder (migration 166). Server enforces host-only, the
+    /// 24h-before..12h-after window and a rate limit. Returns (sent, nil) or (nil, message).
+    func sendEventAnnouncement(eventKey: String, category: String, body: String, templateID: String?) async -> (sent: Int?, error: String?) {
+        struct Params: Encodable {
+            let pEvent: String, pCategory: String, pBody: String, pTemplateId: String?
+            enum CodingKeys: String, CodingKey { case pEvent = "p_event", pCategory = "p_category", pBody = "p_body", pTemplateId = "p_template_id" }
+        }
+        struct Result: Decodable { let success: Bool; let sent: Int?; let error: String? }
+        do {
+            let res: Result = try await SupabaseService.client
+                .rpc("send_event_announcement", params: Params(pEvent: eventKey, pCategory: category, pBody: body, pTemplateId: templateID))
+                .execute().value
+            if res.success { return (res.sent ?? 0, nil) }
+            switch res.error {
+            case "OUTSIDE_WINDOW": return (nil, T("Chỉ gửi được từ 24 giờ trước đến 12 giờ sau giờ bắt đầu.", "You can only send from 24h before to 12h after the start."))
+            case "RATE_LIMITED": return (nil, T("Bạn đã gửi quá nhiều thông báo. Thử lại sau ít phút.", "You've sent too many announcements. Try again in a few minutes."))
+            case "NOT_AUTHORIZED": return (nil, T("Bạn không có quyền gửi thông báo cho sự kiện này.", "You can't send announcements for this event."))
+            case "INVALID_BODY": return (nil, T("Nội dung phải từ 1 đến 300 ký tự.", "Message must be 1 to 300 characters."))
+            default: return (nil, T("Không gửi được. Thử lại nhé.", "Couldn't send. Please try again."))
+            }
+        } catch {
+            print("sendEventAnnouncement failed:", error)
+            return (nil, T("Không gửi được. Thử lại nhé.", "Couldn't send. Please try again."))
         }
     }
 

@@ -40,6 +40,8 @@ struct ChatMessage: Codable, Identifiable, Hashable {
     // sent from the chat-photo viewer's own composer; nil for every
     // ordinary message.
     var replyToMessageId: UUID?
+    // Migration 166 — non-nil marks a host announcement (rendered red).
+    var announcementCategory: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -54,6 +56,7 @@ struct ChatMessage: Codable, Identifiable, Hashable {
         case attachmentWidth = "attachment_width"
         case attachmentHeight = "attachment_height"
         case replyToMessageId = "reply_to_message_id"
+        case announcementCategory = "announcement_category"
     }
 }
 

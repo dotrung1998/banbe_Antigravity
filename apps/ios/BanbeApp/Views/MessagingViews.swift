@@ -632,6 +632,7 @@ struct ChatView: View {
             VStack(spacing: 0) {
                 header
                 Divider().overlay(app.palette.rule)
+                if recentAnnouncement { announcementBanner }
                 messages
                 composer
             }
@@ -724,6 +725,24 @@ struct ChatView: View {
         .padding(.bottom, 14)
     }
 
+    /// Red strip while a host announcement from the last 12h (the announcement window) is in this thread.
+    private var recentAnnouncement: Bool {
+        app.chatMessages.contains { $0.announcementCategory != nil && Date().timeIntervalSince($0.createdAt) < 12 * 3600 }
+    }
+
+    private var announcementBanner: some View {
+        HStack(spacing: 8) {
+            Text("📣")
+            Text(app.T("Host vừa gửi thông báo cho sự kiện này", "The host sent an announcement for this event"))
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundStyle(BanbeTheme.onAlert)
+        .padding(.horizontal, 22).padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(BanbeTheme.alert)
+        .accessibilityIdentifier("chat.announcementBanner")
+    }
+
     private var messages: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -757,7 +776,8 @@ struct ChatView: View {
                                 createdAt: message.createdAt,
                                 attachmentPath: message.attachmentPath, attachmentType: message.attachmentType,
                                 attachmentWidth: message.attachmentWidth, attachmentHeight: message.attachmentHeight,
-                                replyToMessageId: message.replyToMessageId
+                                replyToMessageId: message.replyToMessageId,
+                                announcement: message.announcementCategory != nil
                             )
                             .id(message.id)
                         }
@@ -1040,7 +1060,7 @@ struct ChatView: View {
     // Task 3c — each bubble shows its own sender + timestamp, not just a
     // bare bubble. `createdAt` is nil only for the static greeting
     // placeholder (no real row to time-stamp).
-    private func bubble(text: String, mine: Bool, messageID: UUID?, senderLabel: String, createdAt: Date?, attachmentPath: String?, attachmentType: String?, attachmentWidth: Int? = nil, attachmentHeight: Int? = nil, replyToMessageId: UUID? = nil) -> some View {
+    private func bubble(text: String, mine: Bool, messageID: UUID?, senderLabel: String, createdAt: Date?, attachmentPath: String?, attachmentType: String?, attachmentWidth: Int? = nil, attachmentHeight: Int? = nil, replyToMessageId: UUID? = nil, announcement: Bool = false) -> some View {
         VStack(alignment: mine ? .trailing : .leading, spacing: 3) {
             if let createdAt {
                 Text("\(senderLabel) · \(formattedTime(createdAt))")
@@ -1126,19 +1146,27 @@ struct ChatView: View {
                         .accessibilityIdentifier("chat.attachment")
                     }
                 } else {
-                    Text(text)
-                        .font(.system(size: 13.5))
-                        .lineSpacing(3)
-                        .foregroundStyle(mine ? app.palette.paper : app.palette.ink)
+                    VStack(alignment: .leading, spacing: 5) {
+                        if announcement {
+                            Text("📣 " + app.T("Thông báo từ host", "Host announcement"))
+                                .font(.system(size: 10.5, weight: .bold)).kerning(0.4).textCase(.uppercase)
+                                .foregroundStyle(BanbeTheme.alert)
+                        }
+                        Text(text)
+                            .font(.system(size: 13.5))
+                            .lineSpacing(3)
+                    }
+                        .foregroundStyle(announcement ? app.palette.ink : mine ? app.palette.paper : app.palette.ink)
                         .padding(.horizontal, 14).padding(.vertical, 11)
                         .background(
-                            mine ? app.palette.ink : app.palette.paper,
+                            announcement ? BanbeTheme.alert.opacity(0.10) : mine ? app.palette.ink : app.palette.paper,
                             in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(mine ? .clear : app.palette.rule, lineWidth: 1)
+                                .stroke(announcement ? BanbeTheme.alert : mine ? .clear : app.palette.rule, lineWidth: announcement ? 1.5 : 1)
                         )
+                        .accessibilityIdentifier(announcement ? "chat.announcement" : "chat.bubble")
                 }
                 if !mine { Spacer(minLength: 40) }
             }
@@ -1237,7 +1265,7 @@ private let notificationKindCategory: [String: String] = [
     "checked_in": "booking", "checkin_undo": "booking", "checkin_undone": "booking", "undo_check_in": "booking",
     "reject_pending_guest": "booking", "receipt_requested": "booking",
     "event_share": "event", "referral_joined": "event",
-    "new_message": "message",
+    "new_message": "message", "event_announcement": "message",
     // iPhone fix pass (2026-09-27), Issue 1 — these fell to "system" (the
     // generic bell) before; mirrors web's own new 'team' KIND_CATEGORY
     // entry (Notifications.jsx) exactly.
@@ -1656,9 +1684,10 @@ struct NotificationsView: View {
                             // BUG 3: bold only while unread — reading a
                             // notification unbolds it in place (fontWeight
                             // only), it never moves sections.
-                            Text(item.title)
+                            Text(item.kind == "event_announcement" ? "📣 " + app.T("Thông báo từ host", "Host announcement") : item.title)
                                 .font(BanbeTheme.display(15))
                                 .fontWeight(unread ? .bold : .regular)
+                                .foregroundStyle(item.kind == "event_announcement" ? BanbeTheme.alert : app.palette.ink)
                                 .lineLimit(1)
                             NotificationKindIcon(category: notificationCategory(item.kind))
                             Spacer(minLength: 12)
@@ -1675,6 +1704,9 @@ struct NotificationsView: View {
                     }
                 }
                 .contentShape(Rectangle())
+                .overlay(alignment: .leading) {
+                    if item.kind == "event_announcement" { Rectangle().fill(BanbeTheme.alert).frame(width: 3).padding(.leading, -8) }
+                }
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("notification.row")

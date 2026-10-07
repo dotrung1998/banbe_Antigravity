@@ -27,7 +27,7 @@ const KIND_CATEGORY = {
   checked_in: 'booking', checkin_undo: 'booking', checkin_undone: 'booking', undo_check_in: 'booking',
   reject_pending_guest: 'booking', receipt_requested: 'booking',
   event_share: 'event', referral_joined: 'event',
-  new_message: 'message',
+  new_message: 'message', event_announcement: 'message',
   // iPhone fix pass (2026-09-27), Issue 1 — these fell to 'system' (the
   // generic bell/circle glyph) before; a distinct people icon reads as "a
   // Team thing" instead.
@@ -190,6 +190,7 @@ export default function Notifications() {
 
   const withAgo = (n) => ({
     ...n,
+    ...(n.kind === 'event_announcement' ? { title: T('Thông báo từ host', 'Host announcement') } : {}),
     ago: trStatus(agoLabel(Math.max(1, Math.round((Date.now() - new Date(n.created_at).getTime()) / 3600000)))),
   });
 
@@ -483,6 +484,7 @@ function Row({ n, unread, avatar, onClick, onOpenMenu, selectionMode, selected }
         // row (including its icon) rather than just distinguishing the two
         // states via background.
         background: unread ? 'rgba(27,25,22,0.07)' : 'transparent',
+        ...(n.kind === 'event_announcement' ? { borderLeft: `3px solid ${alert}`, paddingLeft: 12 } : {}),
       }}
     >
       {/* TASK 2 (2026-09-22 seventeenth follow-up) — a checkbox affordance
@@ -510,7 +512,7 @@ function Row({ n, unread, avatar, onClick, onOpenMenu, selectionMode, selected }
           {/* BUG 3: bold only while unread — reading a notification unbolds
               it in place (fontWeight only), it never moves sections. */}
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-            <span style={{ ...display(15, { lineHeight: 1.3 }), fontWeight: unread ? 700 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.title}</span>
+            <span style={{ ...display(15, { lineHeight: 1.3 }), fontWeight: unread ? 700 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...(n.kind === 'event_announcement' ? { color: alert } : {}) }}>{n.kind === 'event_announcement' ? '📣 ' : ''}{n.title}</span>
             <KindIcon category={notificationCategory(n.kind)} />
           </span>
           <span style={{ fontSize: 11, color: ink, flex: 'none', whiteSpace: 'nowrap' }}>{n.ago}</span>

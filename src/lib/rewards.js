@@ -85,6 +85,18 @@ export function redemptionTermsLines(T) {
   ];
 }
 
+/** Short, always-visible explanation for the Streak card. Mirrors iOS RewardsView.streakHint. */
+export function streakHint(T, activeToday) {
+  return {
+    status: activeToday
+      ? T('✓ Hôm nay đã được tính', "✓ Today's counted")
+      : T('Hôm nay chưa được tính', "Today isn't counted yet"),
+    how: activeToday
+      ? T('Quay lại ngày mai để giữ chuỗi.', 'Come back tomorrow to keep it going.')
+      : T('Lưu 1 sự kiện hoặc đi 1 sự kiện để được +1 ngày. Chỉ mở app thì chưa tính.', 'Save an event or attend one to earn +1 day. Just opening the app does not count.'),
+  };
+}
+
 export function streakLines(T, streak, tz) {
   return [
     T('Một ngày được tính khi bạn lưu một sự kiện (đã được máy chủ xác minh) hoặc được xác nhận tham dự. Mở ứng dụng hay tìm kiếm không được tính.',

@@ -13,6 +13,7 @@ struct AttendanceView: View {
     @State private var uploadTarget: UUID?
     @State private var promoSheetOpen = false
     @State private var cancelEventOpen = false
+    @State private var announceOpen = false
     @State private var uploadErrorFor: UUID?
     // Replacing an existing live receipt requires a reason
     // (upload_payment_document()'s own REASON_REQUIRED gate, migration
@@ -87,6 +88,11 @@ struct AttendanceView: View {
         .sheet(isPresented: $promoSheetOpen) {
             if let key = app.attendanceEventKey {
                 HostPromoSheet(eventKey: key).environmentObject(app)
+            }
+        }
+        .sheet(isPresented: $announceOpen) {
+            if let key = app.attendanceEventKey, let event = liveEvent {
+                EventAnnouncementSheet(eventKey: key, eventName: event.name).environmentObject(app)
             }
         }
         .sheet(isPresented: $cancelEventOpen) {
@@ -176,6 +182,28 @@ struct AttendanceView: View {
                             .buttonStyle(.plain)
                     }
                     .padding(.top, 14)
+
+                    // In-event announcements: live from 24h before the start until 12h after (the
+                    // server enforces the same window) — a prominent red card.
+                    if EventReminder.phase(startsAt: liveEvent?.startDate ?? event.startDate) != nil {
+                        Button { announceOpen = true } label: {
+                            HStack(spacing: 12) {
+                                Text("📣").font(.system(size: 22))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(app.T("Gửi thông báo cho khách", "Announce to guests")).font(.system(size: 14, weight: .bold)).foregroundStyle(BanbeTheme.alert)
+                                    Text(app.T("Mẫu có sẵn hoặc tự viết · gửi cho tất cả người giữ vé", "Quick templates or your own · sent to all ticket holders"))
+                                        .font(.system(size: 11.5)).opacity(0.7).multilineTextAlignment(.leading)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right").foregroundStyle(BanbeTheme.alert)
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 14)
+                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(BanbeTheme.alert, lineWidth: 1.5))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 14)
+                        .accessibilityIdentifier("attendance.announce")
+                    }
 
                     // Host promo by text — one consenting recipient at a time;
                     // the server rechecks consent/permission (see HostPromoSheet).

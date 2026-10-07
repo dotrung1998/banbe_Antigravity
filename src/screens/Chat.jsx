@@ -146,7 +146,7 @@ export default function Chat() {
     ? resolveChatGreeting({ vi: s.chatGreeting, en: s.chatGreetingEn, lang: s.lang, eventKey: s.eventKey, hostName: s.chatOtherName || ev.orgName })
     : '';
   const greetingRow = greetingText ? [{ who: 'host', text: greetingText, isGreeting: true }] : [];
-  const thread = [...greetingRow, ...s.chatMessages.map(m => ({ id: m.id, who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body, kind: m.kind, createdAt: m.created_at, attachmentPath: m.attachment_path, attachmentType: m.attachment_type, attachmentWidth: m.attachment_width, attachmentHeight: m.attachment_height, replyToMessageId: m.reply_to_message_id }))];
+  const thread = [...greetingRow, ...s.chatMessages.map(m => ({ id: m.id, who: m.sender_id === s.user?.id ? 'me' : 'host', text: m.body, kind: m.kind, createdAt: m.created_at, attachmentPath: m.attachment_path, attachmentType: m.attachment_type, attachmentWidth: m.attachment_width, attachmentHeight: m.attachment_height, replyToMessageId: m.reply_to_message_id, announcementCategory: m.announcement_category || null }))];
   // Task 3 (2026-09-22 follow-up) — the chat-photo viewer's reply composer
   // sets `reply_to_message_id` (migration 067); resolved client-side
   // against the same already-loaded `chatMessages` rather than a second
@@ -174,6 +174,8 @@ export default function Chat() {
   // notification tap) doesn't know it; until then fall back to the ORGANIZER
   // name (ev.orgName), never the demo persona (ev.hostShort).
   const headerTitle = s.chatOtherName || ev.orgName || '';
+  // Red strip while a host announcement from the last 12h (the announcement window) is in this thread.
+  const recentAnnouncement = s.chatMessages.some(m => m.announcement_category && Date.now() - new Date(m.created_at).getTime() < 12 * 3600000);
   // A draft chat (no threads row yet, see ensureChatThread) can already send.
   const canCompose = !!(s.chatThreadId || s.chatDraftOrganizerId);
 
@@ -194,6 +196,11 @@ export default function Chat() {
           {T('Chi tiết', 'Details')}
         </div>
       </div>
+      {recentAnnouncement && (
+        <div data-testid="chat-announcement-banner" style={{ padding: '9px 22px', background: alert, color: 'var(--bb-on-alert, #fff)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span aria-hidden="true">📣</span>{T('Host vừa gửi thông báo cho sự kiện này', 'The host sent an announcement for this event')}
+        </div>
+      )}
       <div ref={messagesListRef} style={{ flex: 1, overflow: 'auto', padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {thread.map((m, i) => {
           const rows = [];
@@ -311,13 +318,20 @@ export default function Chat() {
                     </a>
                   )
                 ) : (
-                  <div style={{
+                  <div data-testid={m.announcementCategory ? 'chat-announcement' : undefined} style={{
                     maxWidth: '78%', padding: '11px 14px', fontSize: 13.5, lineHeight: 1.5,
                     borderRadius: m.who === 'me' ? '16px 16px 5px 16px' : '16px 16px 16px 5px',
-                    background: m.who === 'me' ? ink : paper,
-                    color: m.who === 'me' ? paper : ink,
-                    border: m.who === 'me' ? 'none' : `1px solid ${rule}`,
-                  }}>{m.kind === 'system' ? localizeSystemMessage(m.text, s.lang) : m.text}</div>
+                    background: m.announcementCategory ? 'rgba(var(--bb-alert-rgb, 180,60,40),0.10)' : m.who === 'me' ? ink : paper,
+                    color: m.announcementCategory ? ink : m.who === 'me' ? paper : ink,
+                    border: m.announcementCategory ? `1.5px solid ${alert}` : m.who === 'me' ? 'none' : `1px solid ${rule}`,
+                  }}>
+                    {m.announcementCategory && (
+                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: alert, marginBottom: 5 }}>
+                        📣 {T('Thông báo từ host', 'Host announcement')}
+                      </div>
+                    )}
+                    {m.kind === 'system' ? localizeSystemMessage(m.text, s.lang) : m.text}
+                  </div>
                 )}
               </div>
             </div>

@@ -6,6 +6,19 @@ import PhotosUI
 /// "create new event" pinned at the bottom.
 struct DashboardView: View {
     @EnvironmentObject var app: AppState
+    @State private var teamOpen = false
+    /// Names the screen Back actually returns to (same pattern as Attendance/Verifications).
+    private var backLabel: String {
+        switch app.dashboardBack {
+        case .profile: return app.T("Tài khoản", "Account")
+        case .home: return app.T("Nhà", "Home")
+        case .notifications: return app.T("Thông báo", "Notifications")
+        default: return app.T("Quay lại", "Back")
+        }
+    }
+    // Collapsed by default to save space.
+    @State private var pastOpen = false
+    @State private var submittedOpen = false
     // STAGE C (2026-09-25) — the real "add a photo to one of my own
     // events" flow; one shared picker item/target-event pair (same
     // pattern EditProfileView's own avatar picker uses), since there's one
@@ -38,8 +51,16 @@ struct DashboardView: View {
     // (and its Check-in button) instead of staying there forever.
     private var myEvents: [CatalogEvent] { app.myOrgEvents }
     private var upcoming: [CatalogEvent] {
-        myEvents.filter { $0.isOpen }.sorted { ($0.until ?? 999) < ($1.until ?? 999) }
+        // Reminder events (starting within 24h / happening now) lead the list, "live" first — same as Home.
+        myEvents.filter { $0.isOpen }.enumerated()
+            .sorted { (rank(reminder($0.element)), $0.element.until ?? 999, $0.offset) < (rank(reminder($1.element)), $1.element.until ?? 999, $1.offset) }
+            .map(\.element)
     }
+    private func reminder(_ e: CatalogEvent) -> EventReminder.Phase? { EventReminder.phase(startsAt: e.startDate) }
+    private func rank(_ p: EventReminder.Phase?) -> Int {
+        switch p { case .live?: return 0; case .soon?: return 1; case nil: return 2 }
+    }
+    @State private var reminderHaloTrigger = 0
     private var past: [CatalogEvent] {
         myEvents.filter { !$0.cancelled && $0.endedHoursAgo != nil }
             .sorted { ($0.endedHoursAgo ?? 0) < ($1.endedHoursAgo ?? 0) }
@@ -90,7 +111,8 @@ struct DashboardView: View {
                             Button { app.backFromDashboard() } label: {
                                 HStack(spacing: 6) {
                                     Text("‹").font(.system(size: 14))
-                                    BanbeLogo(kind: .mark, height: 34)
+                                    Text(backLabel).font(.system(size: 12))
+                                        .accessibilityIdentifier("dashboard.backLabel")
                                 }
                             }
                             .buttonStyle(.plain)
@@ -175,7 +197,6 @@ struct DashboardView: View {
                             .accessibilityIdentifier("dashboard.organizerPublicProfile")
                             .padding(.top, 16)
 
-                            teamSection(organizerID: organizerID)
                         }
 
                         if !event.orgTrusted && !app.orgVerifyRequested {
@@ -211,9 +232,11 @@ struct DashboardView: View {
                         // (goEditEvent), which resubmits the SAME row
                         // (resubmit_event_for_review), never a duplicate.
                         if !app.myPendingEvents.isEmpty || !app.myNeedsFixEvents.isEmpty {
-                            Text(app.T("Sự kiện đã gửi", "Submitted events"))
-                                .font(.system(size: 11.5, weight: .semibold))
+                            collapsibleHeader(app.T("Sự kiện đã gửi", "Submitted events"),
+                                              count: app.myPendingEvents.count + app.myNeedsFixEvents.count,
+                                              open: $submittedOpen, id: "submitted")
                                 .padding(.top, 24)
+                            if submittedOpen {
                             VStack(spacing: 0) {
                                 ForEach(app.myNeedsFixEvents, id: \.id) { row in
                                     VStack(alignment: .leading, spacing: 6) {
@@ -261,6 +284,7 @@ struct DashboardView: View {
                                 }
                             }
                             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
                         }
 
                         HStack(alignment: .firstTextBaseline) {
@@ -285,7 +309,21 @@ struct DashboardView: View {
                                     Button { app.goEvent(item.key) } label: {
                                         HStack(spacing: 12) {
                                             CatalogPhoto(path: item.img, height: 52, width: 52)
+                                                .overlay {
+                                                    if reminder(item) != nil {
+                                                        EventReminderHalo(trigger: reminderHaloTrigger, cornerRadius: 14).frame(width: 52, height: 52)
+                                                    }
+                                                }
+                                                .accessibilityIdentifier(reminder(item) != nil ? "dashboard.eventReminder" : "dashboard.eventPhoto")
                                             VStack(alignment: .leading, spacing: 2) {
+                                                if let phase = reminder(item) {
+                                                    HStack(spacing: 3) {
+                                                        Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(hex: 0xE0A526))
+                                                        Text(phase == .live ? app.T("Đang diễn ra", "Happening now") : app.T("Sắp diễn ra", "Starting soon"))
+                                                            .font(.system(size: 10, weight: .bold)).kerning(0.4).textCase(.uppercase)
+                                                    }
+                                                    .foregroundStyle(Color(hex: 0x7A5200))
+                                                }
                                                 Text(item.name).font(BanbeTheme.display(15)).lineLimit(1)
                                                 Text(app.trStatus(app.stripKm(item.meta, event: item)))
                                                     .font(.system(size: 11.5)).lineLimit(1)
@@ -297,10 +335,13 @@ struct DashboardView: View {
                                     .buttonStyle(.plain)
                                     addPhotoButton(for: item.key)
                                     Button(app.T("Điểm danh", "Check-in")) { app.openAttendance(item.key) }
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .padding(.horizontal, 10).padding(.vertical, 6)
-                                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule, lineWidth: 1))
+                                        .font(.system(size: 11, weight: reminder(item) != nil ? .bold : .semibold))
+                                        .foregroundStyle(reminder(item) != nil ? app.palette.paper : app.palette.ink)
+                                        .padding(.horizontal, 10).padding(.vertical, reminder(item) != nil ? 7 : 6)
+                                        .background(reminder(item) != nil ? app.palette.ink : .clear, in: RoundedRectangle(cornerRadius: 12))
+                                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(reminder(item) != nil ? .clear : app.palette.rule, lineWidth: 1))
                                         .buttonStyle(.plain)
+                                        .accessibilityIdentifier("dashboard.checkin.\(item.key)")
                                 }
                                 .padding(.horizontal, 16).padding(.vertical, 13)
                                 if item.key != upcoming.last?.key { Divider().overlay(app.palette.rule) }
@@ -309,10 +350,10 @@ struct DashboardView: View {
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .padding(.top, 10)
 
-                        Text(app.T("Sự kiện đã qua", "Past events"))
-                            .font(.system(size: 11.5, weight: .semibold))
+                        collapsibleHeader(app.T("Sự kiện đã qua", "Past events"), count: past.count, open: $pastOpen, id: "past")
                             .padding(.top, 22)
 
+                        if pastOpen {
                         VStack(spacing: 0) {
                             if past.isEmpty {
                                 Text(app.T("Chưa có sự kiện nào đã qua.", "No past events yet."))
@@ -349,11 +390,16 @@ struct DashboardView: View {
                         }
                         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .padding(.top, 10)
+                        }
 
                         if !app.eventPhotoUploadError.isEmpty {
                             Text(app.eventPhotoUploadError)
                                 .font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
                                 .padding(.top, 10)
+                        }
+
+                        if let organizerID = app.myOrganizerID {
+                            teamSection(organizerID: organizerID).padding(.top, 24)
                         }
                     }
                     .foregroundStyle(app.palette.ink)
@@ -390,6 +436,8 @@ struct DashboardView: View {
             // it reads myOrgEventKeys, which THAT call is what populates.
             await app.loadMyOrgEventSummaries()
         }
+        .onAppear { reminderHaloTrigger += 1 }
+        .onChange(of: app.screen) { _, new in if new == .dashboard { reminderHaloTrigger += 1 } }
         .task { await app.loadHomeLiveEvents() }
         .task { if let id = app.myOrganizerID { await app.loadOrganizerStats(organizerID: id) } }
         // Organizer Team pass (2026-09-27, Stage 1) — owner-only, the FULL
@@ -428,10 +476,54 @@ struct DashboardView: View {
     // thing any event/payment/refund/bank action ever checks). The owner
     // can invite/remove but never flip a member's own public_visible
     // switch (no control here writes that field at all).
+    /// Section header that expands/collapses its content; shows the item count.
+    private func collapsibleHeader(_ title: String, count: Int, open: Binding<Bool>, id: String) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) { open.wrappedValue.toggle() }
+        } label: {
+            HStack {
+                Text(title).font(.system(size: 11.5, weight: .semibold))
+                if count > 0 { Text("▪︎ \(count)").font(.system(size: 11.5)).opacity(0.65) }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                    .rotationEffect(.degrees(open.wrappedValue ? 90 : 0))
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("dashboard.\(id).toggle")
+        .accessibilityValue(open.wrappedValue ? app.T("Đang mở", "Expanded") : app.T("Đã thu gọn", "Collapsed"))
+    }
+
+    /// Collapsed by default (saves space); lives at the very bottom of the screen.
     @ViewBuilder
     private func teamSection(organizerID: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(app.T("Đội ngũ", "Team")).font(.system(size: 11.5, weight: .semibold))
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { teamOpen.toggle() }
+            } label: {
+                HStack {
+                    let n = app.orgTeamRoster.filter { $0.status != "removed" }.count
+                    Text(app.T("Đội ngũ", "Team")).font(.system(size: 11.5, weight: .semibold))
+                    if n > 0 { Text("▪︎ \(n)").font(.system(size: 11.5)).opacity(0.65) }
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                        .rotationEffect(.degrees(teamOpen ? 90 : 0))
+                }
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("dashboard.team.toggle")
+            .accessibilityValue(teamOpen ? app.T("Đang mở", "Expanded") : app.T("Đã thu gọn", "Collapsed"))
+            if teamOpen { teamSectionBody(organizerID: organizerID) }
+        }
+    }
+
+    @ViewBuilder
+    private func teamSectionBody(organizerID: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 8) {
                 TextField(app.T("Tên người dùng (@handle)", "Handle (@handle)"), text: $app.orgTeamInviteHandle)
                     .font(.system(size: 13)).accessibilityIdentifier("dashboard.team.inviteHandle")

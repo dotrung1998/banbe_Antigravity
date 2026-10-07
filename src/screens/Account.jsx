@@ -13,7 +13,8 @@ import { takeSearchState, resetSearchState } from '../lib/accountSearch.js';
 import { useSubmittedEvents, SubmittedEventsRow } from '../lib/submittedEvents.jsx';
 import ProfileShareSheet, { ShareCardRow, profileShareLinks } from './sheets/ProfileShareSheet.jsx';
 import { KeychainFrame, useMyKeychain } from '../components/KeychainCharm.jsx';
-import { pickSoonest } from '../lib/countdown.js';
+import { pickSoonest, liveEventOverrides } from '../lib/countdown.js';
+import { reminderPhase, REMINDER_CSS } from '../lib/eventReminder.js';
 import { computeAdminModerationCount, computeHostActionCount, computeMyTicketsActionCount, computeMyRefundActionCount, computePersonalActionCount, formatBadgeCount } from '../lib/badges.js';
 
 function organizerAvatarUrl(path, r2Ref, variant = 'thumb') {
@@ -163,7 +164,7 @@ export default function Account() {
     openMyRefunds, openEditProfile,
     loadHomeStories, openStoryViewer, openStoryLibraryPicker, openStoryCameraPicker,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadPendingEventsCount,
-    openPaymentDetails, goDashboard,
+    openPaymentDetails, goDashboard, loadHomeLiveEvents, loadRealEventsById,
     loadMyOrgStats, setAccountTab, openPublicProfile, openReports, openAccountGroup, goSurveysHosting,
     loadMyOrganizerMemberships,
     loadMyEventCredits, loadMyConfirmedEventCredits,
@@ -286,7 +287,7 @@ export default function Account() {
     verifications: s.verifications || [], refundQueue: s.refundQueue || [], orgHolding: s.organizerHoldingSummary,
     onOpenVerifications: () => openVerifications('profile'),
     onOpenRefundCenter: () => openVerifications('profile'),
-    onOpenDashboard: goDashboard,
+    onOpenDashboard: () => goDashboard('profile'),
   })) : [];
   const actionItems = s.organizerMode ? goerActionItems : sortActionCenterItems([...goerActionItems, ...hostActionItems]);
   const myStoryGroup = s.myOrganizerIds.length ? s.homeStories.find(g => s.myOrganizerIds.includes(g.organizerId)) : null;
@@ -312,6 +313,26 @@ export default function Account() {
   // question is genuinely "is this account eligible," not "is host UI on
   // right now."
   const isOrganizer = s.organizerMode;
+  // Host card highlight: this host has an open event starting within 24h or in progress.
+  const hostOwnKeys = s.myOrgEventKeys.filter(k => s.myOrgEventOrganizerId[k] === s.myOrganizerId);
+  const hostRealKeys = hostOwnKeys.filter(k => !EVENTS.some(e => e.key === k));
+  useEffect(() => {
+    if (!canHost || !s.myOrganizerId) return;
+    loadHomeLiveEvents();
+    if (hostRealKeys.length) loadRealEventsById(hostRealKeys);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canHost, s.myOrganizerId, hostRealKeys.join(','), loadHomeLiveEvents, loadRealEventsById]);
+  const hostPhases = hostOwnKeys.map(k => {
+    const cat = EVENTS.find(e => e.key === k);
+    if (cat) {
+      const o = liveEventOverrides(s.homeLiveEvents[k], cat);
+      const merged = o ? { ...cat, ...o } : cat;
+      return merged.cancelled || merged.endedHoursAgo != null ? null : reminderPhase(merged.startDate);
+    }
+    const r = s.realEventsById[k];
+    return r ? reminderPhase(r.startsAt, { status: r.status }) : null;
+  }).filter(Boolean);
+  const hostReminder = hostPhases.includes('live') ? 'live' : hostPhases[0] || null;
   const profileSub = s.accountType === 'admin' ? T('Quản trị viên', 'Admin') : isOrganizer ? T('Người tham gia ▪︎ Người tổ chức', 'Goer ▪︎ Host') : T('Người tham gia', 'Goer');
 
   return (
@@ -840,8 +861,11 @@ export default function Account() {
       {canHost && s.myOrganizerId && (
         <div
           onClick={() => goDashboard('profile')}
+          className={hostReminder ? 'bb-rem-card' : undefined}
+          data-reminder={hostReminder || undefined}
           style={{
             ...cardGlass({ margin: '22px 20px 0', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer' }),
+            position: 'relative', '--bb-rem-r': '12px',
             // Account regression fix pass (2026-09-27), Item 4 — same
             // visual quality as the personal card's own gradient wash
             // (account-profile-card, above), but a deliberately DIFFERENT
@@ -852,6 +876,7 @@ export default function Account() {
           }}
           data-testid="org-profile-card"
         >
+          {hostReminder && <style>{REMINDER_CSS}</style>}
           <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
             {/* Real avatar only — a rounded-SQUARE frame (never the
                 personal card's circular one), so the two are never
@@ -893,10 +918,13 @@ export default function Account() {
                 personal profile card's own right-side "›" — an
                 accessible, large tap target (the whole card, not just
                 this glyph). */}
+            {hostReminder && (
+              <span data-testid="org-profile-checkin-hint" style={{ flex: 'none', fontSize: 12, fontWeight: 700, color: '#7A5200' }}>{T('Điểm danh', 'Check-in')}</span>
+            )}
             <span
               aria-hidden
               data-testid="org-profile-view-public"
-              style={{ flex: 'none', fontSize: 20, color: ink, opacity: 0.55 }}
+              style={{ flex: 'none', fontSize: 20, color: ink, opacity: hostReminder ? 1 : 0.55 }}
             >›</span>
           </div>
           {s.orgRegDesc && (

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { useKeychainManifest } from '../components/KeychainCharm.jsx';
 import { designUrl, keychainFocus } from '../lib/keychain.js';
-import { historyLabel, ruleLines, noCoinLines, redemptionTermsLines, streakLines, shortfall } from '../lib/rewards.js';
+import { historyLabel, ruleLines, noCoinLines, redemptionTermsLines, streakLines, streakHint, shortfall } from '../lib/rewards.js';
 import { paper, ink, rule, display, fieldGlass, alert } from '../theme.js';
 import { RowIcon } from './Account.jsx';
 
@@ -76,6 +76,12 @@ export default function Rewards() {
                 <span style={{ fontSize: 11.5, color: ink, opacity: 0.7 }}>{T('Chuỗi ngày', 'Streak')}</span>
                 <span style={{ ...display(30), display: 'flex', alignItems: 'center', gap: 6 }}><span aria-hidden="true">🔥</span>{r.streak?.current ?? 0}</span>
                 <span style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{T(`Dài nhất: ${r.streak?.longest ?? 0} ngày`, `Longest: ${r.streak?.longest ?? 0} days`)}</span>
+                {(() => { const h = streakHint(T, r.streak?.active_today === true); return (
+                  <>
+                    <span data-testid="rewards-streak-status" style={{ fontSize: 11.5, fontWeight: 600, color: ink, marginTop: 6 }}>{h.status}</span>
+                    <span data-testid="rewards-streak-how" style={{ fontSize: 11, lineHeight: 1.4, color: ink, opacity: 0.75 }}>{h.how}</span>
+                  </>
+                ); })()}
               </div>
             </div>
 

@@ -8,7 +8,7 @@ import { forYouRankEvents } from '../lib/forYou.js';
 import { forYouEventVersion } from '../lib/forYouAlert.js';
 import { useForYouAlert } from '../lib/useForYouAlert.js';
 import ForYouChip from './ForYouChip.jsx';
-import { reminderPhase } from '../lib/eventReminder.js';
+import { reminderPhase, REMINDER_CSS, reminderRank } from '../lib/eventReminder.js';
 import { compactCoins, shortcutLabels } from '../lib/rewards.js';
 import { HEADER, titleFits } from '../lib/homeHeaderLayout.js';
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass, barGlass } from '../theme.js';
@@ -406,14 +406,6 @@ export const FILTER_DEFS = [
   { key: 'music', vi: 'Nhạc', en: 'Music' },
 ];
 
-// Event reminder card (see src/lib/eventReminder.js): gold border + a halo that pulses
-// each time Home mounts (i.e. whenever the user navigates back). The keyframes are
-// finite, so staying on the screen lets the halo fade out; the border stays.
-const REMINDER_CSS = `
-@keyframes bb-rem-halo { 0% { box-shadow: 0 0 0 0 rgba(224,165,38,0.65), 0 0 18px 2px rgba(224,165,38,0.55); } 100% { box-shadow: 0 0 0 10px rgba(224,165,38,0), 0 0 0 0 rgba(224,165,38,0); } }
-.bb-rem-card::after { content: ''; position: absolute; left: 0; top: 0; width: 164px; height: 104px; box-sizing: border-box; border-radius: 18px; border: 2px solid #E0A526; pointer-events: none; animation: bb-rem-halo 1.4s ease-out 3; }
-@media (prefers-reduced-motion: reduce) { .bb-rem-card::after { animation: none; } }
-`;
 
 export default function Home() {
   const {
@@ -845,7 +837,10 @@ export default function Home() {
       };
     })
     .filter(Boolean)
-    .filter(e => !(e.endedHoursAgo != null && e.endedHoursAgo > 48));
+    .filter(e => !(e.endedHoursAgo != null && e.endedHoursAgo > 48))
+    // Reminder events (starting within 24h / happening now) lead the strip, "live" first;
+    // Array.sort is stable so everything else keeps its existing order.
+    .sort((a, b) => reminderRank(a.reminder) - reminderRank(b.reminder));
 
   const feedEmptyMsg = T(
     'Chưa có buổi nào ở ' + (curArea.key === 'all' ? 'mục này' : curArea.label) + ' tuần này, thử mục khác xem sao!',
@@ -946,7 +941,7 @@ export default function Home() {
           <div data-hscroll="true" style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '12px 14px 6px', margin: '-12px -14px 0' }}>
             {savedList.map(sv => (
               <div key={sv.key} onClick={sv.unavailable ? undefined : () => openSaved(sv)} style={{ flex: 'none', width: 164, cursor: sv.unavailable ? 'default' : 'pointer' }}>
-                <div style={{ position: 'relative' }} className={sv.reminder ? 'bb-rem-card' : undefined} data-testid={sv.reminder ? 'home-event-reminder' : undefined} data-reminder={sv.reminder || undefined}>
+                <div style={{ position: 'relative', '--bb-rem-r': '18px' }} className={sv.reminder ? 'bb-rem-card' : undefined} data-testid={sv.reminder ? 'home-event-reminder' : undefined} data-reminder={sv.reminder || undefined}>
                   {sv.reminder && <style>{REMINDER_CSS}</style>}
                   {sv.photoUrl ? (
                     <div style={bg(sv.photoUrl, { width: 164, height: 104, borderRadius: 18, filter: 'none' })} />

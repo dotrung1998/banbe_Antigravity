@@ -91,6 +91,14 @@ struct RewardsView: View {
                 Text(app.T("Chuỗi ngày", "Streak")).font(.system(size: 11.5)).opacity(0.7)
                 HStack(spacing: 6) { Text("🔥").accessibilityHidden(true); Text("\(r.streak.current)") }.font(BanbeTheme.display(30))
                 Text(app.T("Dài nhất: \(r.streak.longest) ngày", "Longest: \(r.streak.longest) days")).font(.system(size: 11)).opacity(0.7)
+                let today = r.streak.activeToday == true
+                Text(today ? app.T("✓ Hôm nay đã được tính", "✓ Today's counted") : app.T("Hôm nay chưa được tính", "Today isn't counted yet"))
+                    .font(.system(size: 11.5, weight: .semibold)).padding(.top, 6)
+                    .accessibilityIdentifier("rewards.streak.status")
+                Text(today ? app.T("Quay lại ngày mai để giữ chuỗi.", "Come back tomorrow to keep it going.")
+                           : app.T("Lưu 1 sự kiện hoặc đi 1 sự kiện để được +1 ngày. Chỉ mở app thì chưa tính.", "Save an event or attend one to earn +1 day. Just opening the app does not count."))
+                    .font(.system(size: 11)).lineSpacing(2).opacity(0.75)
+                    .accessibilityIdentifier("rewards.streak.how")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(16)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
