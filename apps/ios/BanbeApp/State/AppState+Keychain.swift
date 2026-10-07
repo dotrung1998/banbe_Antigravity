@@ -133,6 +133,8 @@ extension AppState {
         switch (code ?? "").lowercased() {
         case "quota_exceeded", "quota": return KeychainArtError.quotaExceeded.message(T)
         case "rate_limited": return KeychainArtError.rateLimited.message(T)
+        case "design_locked":
+            return T("Mẫu này chưa được mở khoá. Mở khoá trong Phần thưởng & huy hiệu.", "This design is not unlocked yet. Unlock it in Rewards & badges.")
         case "custom_asset_not_ready", "custom_asset_required", "invalid_asset":
             return T("Ảnh tuỳ chỉnh chưa sẵn sàng. Hãy tải lại.", "Your custom art isn't ready. Please upload it again.")
         default: return T("Không lưu được móc khoá. Vui lòng thử lại.", "Couldn't save the keychain. Please try again.")

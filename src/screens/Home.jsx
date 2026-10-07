@@ -4,10 +4,12 @@ import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, bg, agoLabel } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
 import { prefsIsEmpty } from '../lib/eventPrefs.js';
-import { forYouRank, forYouTimeZone, forYouPriceCurrency } from '../lib/forYou.js';
+import { forYouRankEvents } from '../lib/forYou.js';
 import { forYouEventVersion } from '../lib/forYouAlert.js';
 import { useForYouAlert } from '../lib/useForYouAlert.js';
 import ForYouChip from './ForYouChip.jsx';
+import { compactCoins, shortcutLabels } from '../lib/rewards.js';
+import { HEADER, titleFits } from '../lib/homeHeaderLayout.js';
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass, barGlass } from '../theme.js';
 import { BAR_HEIGHT, BAR_BOTTOM_OFFSET, DOCK_MARGIN } from './BottomTabBar.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
@@ -636,20 +638,7 @@ export default function Home() {
   // area filter. Recomputed when preferences change (eventPrefs is replaced on save).
   const forYouRanked = useMemo(() => {
     if (!s.eventPrefs || prefsIsEmpty(s.eventPrefs)) return [];
-    const cands = discoveryShaped
-      .map(withLive)
-      .filter(e => curArea.match(e))
-      .map(e => ({
-        key: e.key,
-        categories: [e.catKey, e.cat2Key].filter(c => c && c !== 'all'),
-        priceAmount: e.isFree === true || !e.priceVnd ? 0 : e.priceVnd,
-        priceCurrency: forYouPriceCurrency(e.countryCode),
-        isFree: !e.priceVnd,
-        startsAt: e.startsAtRaw ? new Date(e.startsAtRaw).getTime() : null,
-        timeZone: forYouTimeZone(e.countryCode, e.stateProvince),
-        isBookable: e.status === 'live' && !e.cancelled && e.endedHoursAgo == null && !e.soldOut && !e.inviteOnly,
-      }));
-    return forYouRank(cands, s.eventPrefs, Date.now());
+    return forYouRankEvents(discoveryShaped.map(withLive).filter(e => curArea.match(e)), s.eventPrefs, true, Date.now());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [discoveryShaped, s.eventPrefs, s.eventPrefsVersion, curArea, s.homeLiveEvents]);
   const hasForYou = forYouRanked.length > 0;
@@ -851,6 +840,27 @@ export default function Home() {
   const homeHostLinkLabel = hasHosted ? T('Trang tổ chức của bạn', 'Your host page') : T('Dành cho người tổ chức ▪︎ hoàn toàn miễn phí', 'For organizers ▪︎ completely free');
   const homeHostLink = hasHosted ? () => switchToHost('home') : becomeHost;
 
+  // Header row: drop the "Home" title first when the wordmark + shortcuts + search would not fit
+  // (same rule as iOS ViewThatFits; every control keeps its 44px touch target).
+  const headerRef = useRef(null);
+  const shortcutsOn = s.rewardsSummaryStatus === 'loaded' && !!s.rewardsSummary;
+  const streakChars = String(s.rewardsSummary?.streak ?? 0).length;
+  const coinChars = compactCoins(s.rewardsSummary?.balance ?? 0).length;
+  const [showTitle, setShowTitle] = useState(true);
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const w = el.clientWidth + HEADER.sidePad * 2;
+      setShowTitle(shortcutsOn ? titleFits(w, { streakChars, coinChars }) : true);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [shortcutsOn, streakChars, coinChars]);
+
   return (
     <>
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Home">
@@ -859,22 +869,44 @@ export default function Home() {
           theme). Search lives here again (same openEventSearch action and
           data-testid as the old floating button). */}
       <div style={{ padding: '62px 20px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-            <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: 96, height: 'auto', display: 'block' }} />
-            <span style={{ ...display(27), lineHeight: 1.1 }}>{T('Nhà', 'Home')}</span>
+        <div ref={headerRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: shortcutsOn ? HEADER.wordmarkGap : 10, minWidth: 0 }}>
+            <img src="/banbe-wordmark.png" alt="banbe" crossOrigin="anonymous" style={{ width: shortcutsOn ? HEADER.wordmark : 96, height: 'auto', display: 'block', flex: 'none' }} />
+            {showTitle && <span className="bb-home-title" style={{ ...display(27), lineHeight: 1.1, whiteSpace: 'nowrap' }}>{T('Nhà', 'Home')}</span>}
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }} data-testid="home-header-actions">
+          {shortcutsOn && (() => {
+            const sum = s.rewardsSummary;
+            const lbl = shortcutLabels(T, sum);
+            const open = () => set({ screen: 'rewards' });
+            const key = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+            const btn = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: HEADER.iconGap, minHeight: HEADER.minTouch, minWidth: HEADER.minTouch, padding: `0 ${HEADER.btnPad}px`, fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, cursor: 'pointer', flex: 'none' };
+            return (
+              <div style={{ ...homeCapsule(), height: HEADER.minTouch, padding: 0, gap: 0, alignItems: 'stretch', flex: 'none' }} data-testid="home-reward-shortcuts">
+                <div onClick={open} onKeyDown={key} role="button" tabIndex={0} aria-label={lbl.streak} data-testid="home-streak" style={btn}>
+                  <span aria-hidden="true" style={{ fontSize: HEADER.icon, lineHeight: 1, opacity: sum.streak > 0 ? 1 : 0.45 }}>🔥</span>
+                  <span>{sum.streak}</span>
+                </div>
+                <span aria-hidden="true" style={{ width: HEADER.divider, alignSelf: 'stretch', margin: '10px 0', background: 'currentColor', opacity: 0.18 }} />
+                <div onClick={open} onKeyDown={key} role="button" tabIndex={0} aria-label={lbl.coins} data-testid="home-coins" style={btn}>
+                  <svg aria-hidden="true" width={HEADER.icon} height={HEADER.icon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5v9M9.6 9.6c.5-.8 1.4-1.2 2.4-1.2 1.4 0 2.4.7 2.4 1.8 0 2.4-4.8 1.2-4.8 3.6 0 1.1 1 1.8 2.4 1.8 1 0 1.9-.4 2.4-1.2" /></svg>
+                  <span>{compactCoins(sum.balance)}</span>
+                </div>
+              </div>
+            );
+          })()}
           <div
             onClick={openEventSearch}
             data-testid="home-search-fab"
             aria-label={T('Tìm sự kiện', 'Search events')}
             role="button"
-            style={{ ...homeCapsule(), width: 48, height: 48, borderRadius: '50%', padding: 0, justifyContent: 'center', flex: 'none' }}
+            style={{ ...homeCapsule(), width: shortcutsOn ? HEADER.search : 48, height: shortcutsOn ? HEADER.search : 48, borderRadius: '50%', padding: 0, justifyContent: 'center', flex: 'none' }}
           >
             <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="7" />
               <path d="M21 21l-4.35-4.35" />
             </svg>
+          </div>
           </div>
         </div>
         <div data-hscroll="true" style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', padding: '2px 0 4px' }}>

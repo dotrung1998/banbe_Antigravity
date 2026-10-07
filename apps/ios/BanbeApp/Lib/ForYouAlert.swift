@@ -124,6 +124,16 @@ final class ForYouAlertModel: ObservableObject {
         }
     }
 
+    /// Read-only attach (Map): loads this account's persisted state WITHOUT observing, so a
+    /// partial viewport set can never baseline/flag matches — Home owns observation.
+    func attach(userID: String?) {
+        guard let userID, self.userID != userID else { return }
+        self.userID = userID
+        animated = []
+        animating = false
+        state = ForYouAlert.load(userID: userID)
+    }
+
     func acknowledge(loadedIDs: [String]) {
         let next = ForYouAlert.acknowledge(state, loadedIDs: loadedIDs)
         guard next != state else { return }

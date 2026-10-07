@@ -13,6 +13,7 @@ enum Screen: String {
     case reserve, confirmed, refunded, login, chat, dashboard, hostIntro
     case create, attendance, preferences, editName, notifications, eventList
     case security
+    case following, rewards
     case paymentDetails, billing, payout, documents, documentView
     case verifications, disputes, adminEvents, adminTestAccounts
     case policy
@@ -504,6 +505,23 @@ final class AppState: ObservableObject {
     // MARK: Feed state
     @Published var favorites: [String] = []
     @Published var following: [String] = []
+    // Canonical, account-scoped follow state (AppState+Following.swift).
+    @Published var followedOrgIDs: Set<String> = []
+    @Published var followedHosts: [FollowedHost] = []
+    @Published var followedStatus: FollowedStatus = .idle
+    @Published var followedError = ""
+    @Published var followWriteError = ""
+    var followBusy = Set<String>()
+    var followOwnerID: UUID?
+    // Rewards & badges (AppState+Rewards.swift). Server-computed; nil/unavailable hides the feature.
+    @Published var rewardsSummary: RewardSummary?
+    @Published var rewardsSummaryStatus: RewardsStatus = .idle
+    @Published var rewards: RewardsPayload?
+    @Published var rewardsStatus: RewardsStatus = .idle
+    @Published var rewardsUnlocked: [String] = []
+    @Published var rewardsRedeemBusy = ""
+    @Published var rewardsRedeemResult: RewardsRedeemResult?
+    var rewardsOwnerID: UUID?
     @Published var attending: [String] = []
     @Published var tickets: [String: Int] = [:]
     @Published var myOrgEventKeys: [String] = []
@@ -3340,6 +3358,7 @@ final class AppState: ObservableObject {
             screen = eventPrefsReturnScreen ?? accountSubBack
             eventPrefsReturnScreen = nil
         case .preferences, .security: screen = accountSubBack
+        case .following, .rewards: screen = .profile
         // TASK 4 (Reserve→edit-name pass) — `.editName` is now reachable
         // from more than one place (AccountView's own root identity card,
         // AND ReserveView's "Đổi trong Tài khoản"), so its back target is
@@ -3473,6 +3492,7 @@ final class AppState: ObservableObject {
         case .attendance: return attendanceBack
         case .eventPreferences: return eventPrefsReturnScreen ?? accountSubBack
         case .preferences, .security: return accountSubBack
+        case .following, .rewards: return .profile
         case .editName: return editNameReturnScreen
         case .login: return authBackScreen
         case .confirmed: return confirmedBack

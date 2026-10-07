@@ -157,3 +157,43 @@ export function forYouRank(events, p, now = Date.now()) {
     return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
   });
 }
+
+// ---- shared candidate builder (Home feed + Map) ----
+// ONE place that turns an app event into a For You candidate, so Home and Map can never
+// score differently. Input is the normalized event both surfaces already have:
+//   { key, catKey, cat2Key?, priceVnd, isFree?, countryCode, stateProvince,
+//     startsAtRaw|startsAt, status, soldOut, cancelled, endedHoursAgo, inviteOnly }
+export function forYouCandidateFromEvent(e) {
+  const startsAt = e.startsAtRaw ?? e.startsAt ?? null;
+  return {
+    key: e.key,
+    categories: [e.catKey, e.cat2Key].filter(c => c && c !== 'all'),
+    priceAmount: e.isFree === true || !e.priceVnd ? 0 : e.priceVnd,
+    priceCurrency: forYouPriceCurrency(e.countryCode),
+    isFree: !e.priceVnd,
+    startsAt: startsAt ? new Date(startsAt).getTime() : null,
+    timeZone: forYouTimeZone(e.countryCode, e.stateProvince),
+    isBookable: e.status === 'live' && !e.cancelled && e.endedHoursAgo == null && !e.soldOut && !e.inviteOnly,
+  };
+}
+
+/** Ranked matches for already-area-filtered events. `hasPrefs` false -> []. */
+export function forYouRankEvents(events, prefs, hasPrefs, now = Date.now()) {
+  if (!prefs || !hasPrefs) return [];
+  return forYouRank(events.map(forYouCandidateFromEvent), prefs, now);
+}
+
+// ---- Map composition (pure, so Home/Map parity and filter composition are testable) ----
+/** Match set for Map's loaded events under the shared area rule (`areaMatch` null = all areas). */
+export function mapForYouSet(events, areaMatch, prefs, hasPrefs, now = Date.now()) {
+  const pool = events.filter(e => !areaMatch || areaMatch(e)).map(e => ({ ...e, key: e.id }));
+  const ranked = forYouRankEvents(pool, prefs, hasPrefs, now);
+  return { ranked, order: new Map(ranked.map((m, i) => [m.key, i])) };
+}
+
+/** AND the For You set onto an already-filtered list; rank order unless the caller sorts by distance. */
+export function applyForYouFilter(list, active, order, { keepOrder = false } = {}) {
+  if (!active) return list;
+  const out = list.filter(e => order.has(e.id));
+  return keepOrder ? out : out.sort((a, b) => order.get(a.id) - order.get(b.id));
+}

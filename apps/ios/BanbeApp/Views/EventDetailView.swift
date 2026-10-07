@@ -382,7 +382,8 @@ struct EventDetailView: View {
                 }
                 Button { app.openEventOrganizer(eventKey: app.eventKey) } label: {
                     detailRow(app.T("Người tổ chức", "Organizer"),
-                              value: app.T("Ghé", "Visit") + " \(event.orgName) ›")
+                              value: (app.isFollowing(app.eventOrganizerID[event.key]) ? "✓ " + app.T("Đang theo dõi", "Following") + "  " : "")
+                                   + app.T("Ghé", "Visit") + " \(event.orgName) ›")
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("event.organizer")

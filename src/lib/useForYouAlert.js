@@ -4,7 +4,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { observe, acknowledge, hasPending, pendingIds, loadAlertState, saveAlertState, emptyAlertState } from './forYouAlert.js';
 
-export function useForYouAlert({ userId, matches, prefsVersion, loading }) {
+// `passive`: read + acknowledge only (Map). Observation stays with Home so a partial viewport
+// set can never baseline/flag matches on its own.
+export function useForYouAlert({ userId, matches, prefsVersion, loading, passive = false }) {
   const [st, setSt] = useState(() => loadAlertState(userId));
   const userRef = useRef(userId);
   const animated = useRef(new Set());
@@ -21,13 +23,13 @@ export function useForYouAlert({ userId, matches, prefsVersion, loading }) {
   }, [userId]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || passive) return;
     setSt(prev => {
       const next = observe(prev, matches, { prefsVersion, loading });
       if (next !== prev) saveAlertState(userId, next);
       return next;
     });
-  }, [userId, matches, prefsVersion, loading]);
+  }, [userId, matches, prefsVersion, loading, passive]);
 
   // Animate only when the pending set gains an id not yet animated for.
   useEffect(() => {

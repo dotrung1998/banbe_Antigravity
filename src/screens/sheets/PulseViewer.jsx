@@ -1,3 +1,4 @@
+import FollowingBadge from '../../components/FollowingBadge.jsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useBanBe } from '../../state/BanBeContext.jsx';
 import { supabase } from '../../lib/supabase.js';
@@ -419,6 +420,7 @@ export default function PulseViewer() {
               </div>
               <span data-testid="pulse-organizer-identity" style={{ fontSize: 11.5, color: ink, opacity: 0.75 }}>
                 {item.organizer_name}{item.organizer_verified ? ' ✓' : ''}
+                {s.followedOrgIds.includes(item.organizer_id) && <FollowingBadge T={T} testId="pulse-following-badge" style={{ marginInlineStart: 8, opacity: 1 }} />}
               </span>
               {!!item.included && (
                 <span style={{ fontSize: 10, color: ink, opacity: 0.55, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -487,7 +489,10 @@ export default function PulseViewer() {
                   <span style={{ fontSize: 11, fontWeight: 700, color: ink, opacity: 0.5 }}>#{i + 1}</span>
                   <span style={{ ...display(14, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{item.event_name}</span>
                 </div>
-                <span style={{ fontSize: 11.5, color: ink, opacity: 0.75 }}>{item.organizer_name}{item.organizer_verified ? ' ✓' : ''}</span>
+                <span style={{ fontSize: 11.5, color: ink, opacity: 0.75 }}>
+                  {item.organizer_name}{item.organizer_verified ? ' ✓' : ''}
+                  {s.followedOrgIds.includes(item.organizer_id) && <FollowingBadge T={T} testId="pulse-following-badge" style={{ marginInlineStart: 8, opacity: 1 }} />}
+                </span>
               </div>
               {/* B4 — quick like/share, own tap targets. */}
               <div style={{ width: 60, flex: 'none', padding: '10px 12px 10px 0', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', gap: 8 }}>
@@ -589,6 +594,8 @@ export default function PulseViewer() {
             <div
               onClick={() => followPulseOrganizer(s.pulseOrganizerSheet.organizer_id)}
               data-testid="pulse-follow"
+              role="button"
+              aria-pressed={!!s.pulseOrganizerSheet.following}
               style={{
                 flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 600, padding: '14px 10px', minHeight: 44, boxSizing: 'border-box', borderRadius: 18, cursor: 'pointer',
                 background: s.pulseOrganizerSheet.following ? 'transparent' : ink,
@@ -596,7 +603,7 @@ export default function PulseViewer() {
                 border: s.pulseOrganizerSheet.following ? `1px solid ${rule}` : 'none',
               }}
             >
-              {s.pulseOrganizerSheet.following ? T('Đang theo dõi', 'Following') : T('Theo dõi tổ chức này', 'Follow this host')}
+              {s.pulseOrganizerSheet.following ? <><span aria-hidden="true">✓ </span>{T('Đang theo dõi', 'Following')}</> : T('Theo dõi tổ chức này', 'Follow this host')}
             </div>
             <div
               onClick={() => { closePulseOrganizerSheet(); closePulseViewer(); goEvent(s.pulseOrganizerSheet.event_id); }}

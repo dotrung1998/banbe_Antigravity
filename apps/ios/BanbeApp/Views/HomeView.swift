@@ -233,6 +233,7 @@ struct HomeView: View {
         .onChange(of: app.eventPrefsVersion) { _, _ in observeForYouAlert() }
         .onChange(of: app.userID) { _, _ in observeForYouAlert() }
         .onAppear { observeForYouAlert() }
+        .task { await app.loadRewardsSummary() }
         // The area menu's searchable fallback (see `header`): a native Menu
         // can't hold a text field, so "Search locations…" opens this sheet
         // instead. Same picker Map Explore uses, same `app.area` selection.
@@ -387,6 +388,84 @@ struct HomeView: View {
     // event captions like "Th 5, 09.07 ▪ 21:00") rather than a new divider
     // style. Wired to the SAME `toggleTheme` Preferences already uses — no
     // parallel theme state.
+    // MARK: header top row (wordmark + title, streak/coin shortcuts, search)
+
+    /// Shown only once the server has answered (migration 165 applied); never a placeholder number.
+    private var rewardShortcutsVisible: Bool { app.rewardsSummaryStatus == .loaded && app.rewardsSummary != nil }
+
+    /// With the shortcuts the row can get tight on narrow iPhones, so it degrades in a fixed order
+    /// (ViewThatFits): full -> drop the "Home" title -> smaller wordmark. Every control keeps a 44pt
+    /// touch target and the search button never moves.
+    @ViewBuilder
+    private var headerTopRow: some View {
+        if rewardShortcutsVisible {
+            ViewThatFits(in: .horizontal) {
+                headerTopRow(wordmark: 96, showTitle: true)
+                headerTopRow(wordmark: 96, showTitle: false)
+                headerTopRow(wordmark: 80, showTitle: false)
+            }
+        } else {
+            headerTopRow(wordmark: BanbeLogo.headerWordmarkWidth, showTitle: true)
+        }
+    }
+
+    private func headerTopRow(wordmark: CGFloat, showTitle: Bool) -> some View {
+        HStack(alignment: .center, spacing: 6) {
+            HStack(spacing: 10) {
+                BanbeLogo(kind: .wordmark, width: wordmark)
+                if showTitle {
+                    // Home-specific label, same font/color as the other sections' titles.
+                    Text(app.T("Nhà", "Home"))
+                        .font(BanbeTheme.display(27))
+                        .foregroundStyle(app.palette.ink)
+                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                }
+            }
+            Spacer(minLength: 0)
+            if rewardShortcutsVisible { rewardShortcuts }
+            // Search lives in the header's top-right corner, part of the fixed header.
+            HomeSearchButton()
+        }
+    }
+
+    /// One glass capsule, two separate buttons (streak, coins), both opening Account > Rewards & badges.
+    private var rewardShortcuts: some View {
+        let sum = app.rewardsSummary ?? RewardSummary(balance: 0, streak: 0, activeToday: false)
+        return HStack(spacing: 0) {
+            Button {
+                Haptics.light()
+                app.screen = .rewards
+            } label: {
+                HStack(spacing: 4) {
+                    Text("🔥").font(.system(size: 16)).opacity(sum.streak > 0 ? 1 : 0.45).accessibilityHidden(true)
+                    Text("\(sum.streak)").font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                }
+                .padding(.horizontal, 8).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(app.T("Chuỗi \(sum.streak) ngày. Mở phần thưởng", "\(sum.streak)-day streak. Open rewards"))
+            .accessibilityIdentifier("home.streak")
+            Rectangle().fill(app.palette.ink.opacity(0.18)).frame(width: 1, height: 22).accessibilityHidden(true)
+            Button {
+                Haptics.light()
+                app.screen = .rewards
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "circle.hexagongrid.circle").font(.system(size: 15, weight: .medium)).accessibilityHidden(true)
+                    Text(RewardsLogic.compactCoins(sum.balance)).font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                }
+                .padding(.horizontal, 8).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(app.T("\(sum.balance) xu. Mở phần thưởng và huy hiệu", "\(sum.balance) coins. Open rewards and badges"))
+            .accessibilityIdentifier("home.coins")
+        }
+        .foregroundStyle(app.palette.ink)
+        .background { homeGlassCapsule() }
+        .overlay(Capsule().stroke(app.palette.rule.opacity(0.7 * app.glassOpacity), lineWidth: 1))
+        .fixedSize()
+    }
+
     private var header: some View {
         // Alignment changed from `.firstTextBaseline` to `.center` (2026-09-29
         // follow-up, wordmark doubled in size) — baseline alignment anchors a
@@ -397,25 +476,7 @@ struct HomeView: View {
         // regardless of the wordmark's height, so the lang/area/theme
         // buttons stay fully visible at any wordmark size.
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center) {
-                HStack(spacing: 10) {
-                    BanbeLogo(kind: .wordmark, width: BanbeLogo.headerWordmarkWidth)
-                    // Home-specific label (2026-09-29, restyled 2026-09-29
-                    // follow-up) — Notifications/Messages/Account each got the
-                    // SAME wordmark placed before their own title (this pass),
-                    // so Home's own copy now says which section it is too,
-                    // in the SAME font/color those titles use
-                    // (`BanbeTheme.display`/full ink, not a small dim label).
-                    Text(app.T("Nhà", "Home"))
-                        .font(BanbeTheme.display(27))
-                        .foregroundStyle(app.palette.ink)
-                }
-                Spacer(minLength: 0)
-                // Search lives in the header's top-right corner now — part
-                // of the fixed header (a sibling above the feed's scroll
-                // view), so it is always visible, never hidden on scroll.
-                HomeSearchButton()
-            }
+            headerTopRow
             HStack {
                 Spacer(minLength: 0)
                 ScrollView(.horizontal, showsIndicators: false) {

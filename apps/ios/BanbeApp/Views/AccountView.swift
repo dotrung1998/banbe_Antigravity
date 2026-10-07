@@ -503,6 +503,34 @@ struct AccountView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("account.personalProfile")
                 groupDivider()
+                SwipeSafeButton { app.screen = .following } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "heart").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
+                        Text(app.T("Đang theo dõi", "Following")).font(.system(size: 14))
+                        Spacer()
+                        Text(app.followedStatus == .loaded ? "\(app.followedOrgIDs.count) ›" : "›").font(.system(size: 15)).opacity(0.85)
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(.horizontal, 16).padding(.vertical, 15)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("account.following")
+                groupDivider()
+                SwipeSafeButton { app.screen = .rewards } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "circle.hexagongrid.circle").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
+                        Text(app.T("Phần thưởng & huy hiệu", "Rewards & badges")).font(.system(size: 14))
+                        Spacer()
+                        Text("›").font(.system(size: 15)).opacity(0.85)
+                    }
+                    .foregroundStyle(app.palette.ink)
+                    .padding(.horizontal, 16).padding(.vertical, 15)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("account.rewards")
+                groupDivider()
                 // App Preferences is the destination name for language,
                 // appearance, and Liquid Glass controls.
                 // (reads more accurately for its actual contents). `groupKey`/
@@ -755,6 +783,10 @@ struct AccountView: View {
               "profile hồ sơ tên name avatar ảnh đại diện handle chỉnh sửa edit public trang cá nhân") {
                   if let handle = app.user?.handle, !handle.isEmpty { app.openPublicProfile(handle: handle, back: .profile) }
               },
+            e("following", "personal", setVi, setEn, "Đang theo dõi", "Following", "heart",
+              "following theo dõi follow host tổ chức organizer followed unfollow bỏ theo dõi") { app.screen = .following },
+            e("rewards", "personal", setVi, setEn, "Phần thưởng & huy hiệu", "Rewards & badges", "circle.hexagongrid.circle",
+              "rewards phần thưởng huy hiệu badges coin xu streak chuỗi ngày milestone thành tích") { app.screen = .rewards },
             e("preferences", "personal", setVi, setEn, "Tùy Chỉnh", "App Preferences", "slider.horizontal.3",
               "settings cài đặt tùy chỉnh preferences") { openGroup("preferences") },
             e("language", "personal", setVi, setEn, "Ngôn ngữ & Hiển thị", "Language & Appearance", "slider.horizontal.3",

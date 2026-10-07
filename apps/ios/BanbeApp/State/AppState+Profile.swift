@@ -353,35 +353,12 @@ extension AppState {
     /// holds this organizer id — never both unconditionally, since only
     /// one is ever the actual match.
     func toggleFollowOrganizer(_ organizerID: String) async {
-        guard let uid = userID else { return }
-        let matchesPublicProfile = publicProfile?.organizer?.id == organizerID
-        let matchesOrganizerProfile = organizerProfile?.id == organizerID
-        guard matchesPublicProfile || matchesOrganizerProfile else { return }
-        let wasFollowing = matchesPublicProfile ? (publicProfile?.organizer?.following ?? false) : (organizerProfile?.following ?? false)
-        func apply(_ following: Bool) {
-            let sign = following ? 1 : -1
-            if matchesPublicProfile {
-                publicProfile?.organizer?.following = following
-                publicProfile?.organizer?.followerCount += sign
-            }
-            if matchesOrganizerProfile {
-                organizerProfile?.following = following
-                organizerProfile?.followerCount = (organizerProfile?.followerCount ?? 0) + sign
-            }
-        }
-        apply(!wasFollowing)
-        do {
-            if wasFollowing {
-                _ = try await SupabaseService.client.from("follows")
-                    .delete().eq("user_id", value: uid.uuidString).eq("organizer_id", value: organizerID).execute()
-            } else {
-                _ = try await SupabaseService.client.from("follows")
-                    .insert(["user_id": uid.uuidString, "organizer_id": organizerID]).execute()
-            }
-        } catch {
-            print("toggleFollowOrganizer failed:", error)
-            apply(wasFollowing)
-        }
+        guard userID != nil else { return }
+        // A server-fresh flag a profile loaded with wins over a possibly stale local list.
+        let fresh: Bool? = publicProfile?.organizer?.id == organizerID ? publicProfile?.organizer?.following
+            : (organizerProfile?.id == organizerID ? organizerProfile?.following : nil)
+        let wasFollowing = fresh ?? followedOrgIDs.contains(organizerID)
+        await setFollowing(organizerID, !wasFollowing)
     }
 
     /// The organizer's own, separate public profile — reachable by
@@ -414,6 +391,7 @@ extension AppState {
             }
             organizerProfile = result
             organizerProfileLoading = false
+            if let id = result.id { reconcileFollow(id, following: result.following ?? false) }
             // Best effort: organizers.avatar_r2_ref (migration 153) isn't in the RPC.
             if !MediaColumns.missing, result.avatarR2Ref == nil {
                 struct RefRow: Decodable { let avatarR2Ref: String?

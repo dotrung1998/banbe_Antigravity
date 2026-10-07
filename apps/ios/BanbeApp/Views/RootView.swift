@@ -1257,6 +1257,8 @@ struct RootView: View {
         case .attendance: AttendanceView()
         case .preferences: PreferencesView()
         case .eventPreferences: EventPreferencesView()
+        case .following: FollowingView()
+        case .rewards: RewardsView()
         case .editName: EditNameView()
         case .notifications: NotificationsView()
         case .eventList: EventListView()

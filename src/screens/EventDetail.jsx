@@ -5,6 +5,7 @@ import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
 import { EVENTS } from '../data/events.js';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
+import FollowingBadge from '../components/FollowingBadge.jsx';
 
 export default function EventDetail() {
   const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
@@ -98,6 +99,9 @@ export default function EventDetail() {
   // Track record is live (get_organizer_profile via loadEventOrgStats), not the
   // catalogue's baked-in orgSince/orgCount; the row is hidden until real stats
   // exist for this host.
+  // Real events carry their organizer id; the demo catalogue has none (never marked followed).
+  const evOrganizerId = s.realEventsById[ev.key]?.organizerId;
+  const evOrgFollowed = !!evOrganizerId && s.followedOrgIds.includes(evOrganizerId);
   const orgStats = s.eventOrgStats[ev.key];
   const evOrgStats = orgStats && orgStats.count > 0
     ? (orgStats.sinceYear
@@ -344,7 +348,10 @@ export default function EventDetail() {
           ) : null}
           <div onClick={() => openOrganizerOfEvent(ev.key, 'event')} data-testid="event-organizer-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13, cursor: 'pointer' }}>
             <span style={{ color: ink }}>{T('Người tổ chức', 'Organizer')}</span>
-            <span style={{ color: ink }}>{T('Ghé', 'Visit')} {ev.orgName} ›</span>
+            <span style={{ color: ink, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              {evOrgFollowed && <FollowingBadge T={T} testId="event-organizer-following" />}
+              <span>{T('Ghé', 'Visit')} {ev.orgName} ›</span>
+            </span>
           </div>
           {/* Moved here from the retired Organizer screen (merged into the
               host profile): message the host straight from the event. */}

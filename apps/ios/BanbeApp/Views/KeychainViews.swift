@@ -467,7 +467,8 @@ struct KeychainSettingsSection: View {
 
     private func picker(_ m: KeychainManifest) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(m.groups) { g in
+            // Reward designs are only offered once rewards are live for this account.
+            ForEach(m.groups.filter { $0.id != "rewards" || app.rewardsSummaryStatus == .loaded }) { g in
                 Text(app.isEN ? g.en : g.vi).font(.system(size: 11, weight: .semibold)).opacity(0.7)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 52), spacing: 8)], alignment: .leading, spacing: 8) {
                     ForEach(m.designs(in: g.id)) { d in tile(d) }
@@ -499,18 +500,28 @@ struct KeychainSettingsSection: View {
 
     private func tile(_ d: KeychainManifest.Design) -> some View {
         let selected = draft.designId == d.id
-        return Button { draft.designId = d.id } label: {
+        let locked = d.reward == true && !app.rewardsUnlocked.contains(d.id)
+        return Button {
+            if locked { app.screen = .rewards } else { draft.designId = d.id }
+        } label: {
             Group {
                 if let ui = KeychainArtwork.bundledImage(d) { Image(uiImage: ui).resizable().scaledToFit() } else { Color.clear }
             }
+            .opacity(locked ? 0.4 : 1)
             .frame(width: 44, height: 62).padding(4)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(app.palette.ink, lineWidth: selected ? 2 : 0))
+            .overlay(alignment: .bottomTrailing) {
+                if locked { Image(systemName: "lock.fill").font(.system(size: 11)).padding(4).accessibilityHidden(true) }
+            }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(app.isEN ? d.en : d.vi)
+        .accessibilityLabel(locked
+            ? app.T("\(app.isEN ? d.en : d.vi), chưa mở khoá. Mở khoá trong Phần thưởng", "\(app.isEN ? d.en : d.vi), locked. Unlock in Rewards")
+            : (app.isEN ? d.en : d.vi))
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("keychain.design.\(d.id)")
+        .task { if d.reward == true, app.rewardsSummaryStatus == .loaded, app.rewardsUnlocked.isEmpty { await app.loadRewardsUnlocked() } }
     }
 
     private var anchorPicker: some View {

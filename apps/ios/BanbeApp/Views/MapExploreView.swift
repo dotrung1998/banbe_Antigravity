@@ -67,7 +67,12 @@ struct MapExploreView: View {
     // doc comment. `startFocusedOnSearch` is read once, at construction
     // (mirrors `hadRestoredState`'s own one-shot capture), so a later
     // unrelated re-render can't re-focus the field out from under the user.
-    @State private var searchQuery = ""
+    @State private var searchQuery: String
+    // For You (34/35 notes) — local to Map, never touches Home's `app.filterForYou`.
+    // Matching is `app.mapForYouMatches` (same ForYou.rank + same area rule as Home).
+    @State private var forYouOn: Bool
+    @StateObject private var forYouAlert = ForYouAlertModel()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // Location hierarchy (migration 112) — Map's own presentation of the
     // shared location picker (selection itself is `app.area`, shared with
     // Home).
@@ -237,6 +242,8 @@ struct MapExploreView: View {
                 span: MKCoordinateSpan(latitudeDelta: restored.cameraSpanLat, longitudeDelta: restored.cameraSpanLng)
             )))
             _catFilter = State(initialValue: restored.catFilter)
+            _forYouOn = State(initialValue: restored.forYou)
+            _searchQuery = State(initialValue: restored.searchQuery)
             _openNowOnly = State(initialValue: restored.openNowOnly)
             _sortByDistance = State(initialValue: restored.sortByDistance)
             _sheetDetent = State(initialValue: MapExploreView.detent(for: restored.sheetFraction))
@@ -274,6 +281,8 @@ struct MapExploreView: View {
         } else {
             _cameraPosition = State(initialValue: .automatic)
             _catFilter = State(initialValue: "all")
+            _forYouOn = State(initialValue: false)
+            _searchQuery = State(initialValue: "")
             _openNowOnly = State(initialValue: false)
             _sortByDistance = State(initialValue: false)
             _sheetDetent = State(initialValue: .fraction(0.72))
@@ -740,7 +749,8 @@ struct MapExploreView: View {
     /// re-initializing from scratch. Saved onto `AppState` (not kept only
     /// here) because RootView recreates this whole view the instant
     /// `screen` changes away from `.mapExplore`.
-    private func openEventDetail(_ id: String) {
+    /// Snapshot of everything this screen owns, shared by Event Detail and Edit preferences.
+    private func saveSnapshot() {
         // Bug 3 follow-up: `currentCameraRegion` (updated on EVERY camera
         // callback), not `lastQueriedRegion` (frozen after its first call —
         // see `onMapCameraChange`'s own comment). Reading the frozen value
@@ -761,8 +771,20 @@ struct MapExploreView: View {
             catFilter: catFilter,
             openNowOnly: openNowOnly,
             sortByDistance: sortByDistance,
-            selectedId: selectedId
+            selectedId: selectedId,
+            forYou: forYouActive,
+            searchQuery: searchQuery
         )
+    }
+
+    private func editPreferences() {
+        saveSnapshot()
+        Haptics.selection()
+        app.openEventPreferences(returnTo: .mapExplore)
+    }
+
+    private func openEventDetail(_ id: String) {
+        saveSnapshot()
         // Search-result-selection fix pass (2026-09-28) — a belt-and-
         // suspenders clear alongside the `!hadRestoredState` guard on the
         // focus probe above (that guard's own doc comment has the full
@@ -1250,6 +1272,11 @@ struct MapExploreView: View {
         var list = app.mapEvents
         if catFilter != "all" { list = list.filter { effectiveCatKey($0) == catFilter } }
         if openNowOnly { list = list.filter { ($0.seatsRemaining ?? 0) > 0 } }
+        // For You — the SAME match set drives pins (visibleIdSet) and this list.
+        if forYouActive {
+            let order = forYouOrder
+            list = list.filter { order[$0.id] != nil }
+        }
         // Location hierarchy (migration 112) — Map previously applied NO
         // location filter at all (same bug as web's MapExplore.jsx). Now
         // the same `app.area` node selection Home uses, ANDed with the
@@ -1270,8 +1297,18 @@ struct MapExploreView: View {
         }
         if sortByDistance, let coords = app.userCoords {
             list.sort { distanceKm(coords, $0) ?? .greatestFiniteMagnitude < distanceKm(coords, $1) ?? .greatestFiniteMagnitude }
+        } else if forYouActive {
+            let order = forYouOrder
+            list.sort { (order[$0.id] ?? .max) < (order[$1.id] ?? .max) }
         }
         return list
+    }
+
+    /// A stale `forYouOn` (signed out / account switch / prefs cleared) must never filter anything.
+    private var hasForYouPrefs: Bool { !(app.eventPrefs?.isEmpty ?? true) }
+    private var forYouActive: Bool { forYouOn && hasForYouPrefs }
+    private var forYouOrder: [String: Int] {
+        Dictionary(app.mapForYouMatches.enumerated().map { ($1.key, $0) }, uniquingKeysWith: { a, _ in a })
     }
 
     // BUG 2 (2026-09-22 tenth follow-up) — was its own hand-duplicated
@@ -1379,6 +1416,14 @@ struct MapExploreView: View {
             }
             .padding(.top, 8)
 
+            // For You pinned at the leading edge (never scrolls); only the other chips scroll.
+            HStack(spacing: 8) {
+            if hasForYouPrefs {
+                forYouChip
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
+                    .padding(.leading, 16)
+            }
             ScrollView(.horizontal, showsIndicators: false) {
               HStack(spacing: 8) {
                 Text("\(app.currentAreaLabel) ▾")
@@ -1402,9 +1447,25 @@ struct MapExploreView: View {
                         .onTapGesture { Haptics.selection(); sortByDistance.toggle() }
                 }
               }
-              .padding(.horizontal, 16)
+              .padding(.leading, hasForYouPrefs ? 0 : 16)
+              .padding(.trailing, 16)
+            }
             }
             .padding(.top, 8)
+
+            if forYouActive {
+                Button { editPreferences() } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "slider.horizontal.3").font(.system(size: 12, weight: .semibold))
+                        Text(app.T("Chỉnh sở thích của bạn", "Edit preferences"))
+                            .font(.system(size: 12.5, weight: .semibold)).underline()
+                    }
+                    .padding(.horizontal, 16).padding(.top, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("map.foryou.editPrefs")
+            }
 
             ScrollViewReader { proxy in
                 List(visibleEvents) { ev in
@@ -1485,6 +1546,7 @@ struct MapExploreView: View {
                     )
                 }
                 .listStyle(.plain)
+                .overlay { forYouEmptyState }
                 // Pull-to-refresh hold fix (2026-09-29) — see
                 // `AppState.rootPullContentOffset`'s own doc comment.
                 .offset(y: app.rootPullContentOffset)
@@ -1508,6 +1570,77 @@ struct MapExploreView: View {
             }
         }
         .foregroundStyle(app.palette.ink)
+    }
+
+    /// Gold-star chip. No recenter, no detent change, no refetch on toggle.
+    private var forYouChip: some View {
+        let gold = Color(red: 0.80, green: 0.62, blue: 0.16)
+        let active = forYouActive
+        return Button {
+            Haptics.selection()
+            if !forYouOn { forYouAlert.acknowledge(loadedIDs: app.mapForYouMatches.map(\.key)) }
+            forYouOn.toggle()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(active ? app.palette.paper : gold)
+                Text(app.T("Dành cho bạn", "For You"))
+                    .font(.system(size: 11, weight: active ? .bold : .regular))
+                    .lineLimit(1)
+                if forYouAlert.hasPending {
+                    Text(app.T("Mới", "New"))
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Capsule().fill(Color(red: 0.478, green: 0.322, blue: 0)))
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .foregroundStyle(active ? app.palette.paper : app.palette.ink)
+            .background(active ? AnyShapeStyle(app.palette.ink) : AnyShapeStyle(.thinMaterial), in: Capsule())
+            .overlay(Capsule().stroke(active ? app.palette.ink : gold.opacity(0.7), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .modifier(ForYouAttentionEffect(animating: forYouAlert.animating && forYouAlert.hasPending, reduceMotion: reduceMotion))
+        .accessibilityIdentifier("map.filter.foryou")
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityLabel(forYouAlert.hasPending && !active
+            ? app.T("Dành cho bạn, có gợi ý mới", "For You, new recommendations")
+            : app.T("Dành cho bạn", "For You"))
+        .onAppear { forYouAlert.attach(userID: app.userID?.uuidString) }
+        .onChange(of: app.userID) { _, id in forYouAlert.attach(userID: id?.uuidString) }
+    }
+
+    /// Loading / empty states while For You is on and the list has nothing to show.
+    @ViewBuilder
+    private var forYouEmptyState: some View {
+        if forYouActive && visibleEvents.isEmpty {
+            VStack(spacing: 10) {
+                if app.mapEventsLoading || app.eventPrefs == nil {
+                    ProgressView()
+                    Text(app.T("Đang tìm sự kiện hợp với bạn…", "Finding events for you…"))
+                        .font(.system(size: 13)).opacity(0.6)
+                        .accessibilityIdentifier("map.foryou.loading")
+                } else {
+                    Text(app.mapForYouMatches.isEmpty
+                         ? app.T("Chưa có sự kiện nào hợp với sở thích của bạn trong khu vực/vùng bản đồ này.",
+                                 "No events match your preferences in this area or map view yet.")
+                         : app.T("Các sự kiện hợp với bạn không khớp bộ lọc hiện tại.",
+                                 "Your For You matches don't fit the current filters."))
+                        .font(.system(size: 13)).opacity(0.7).multilineTextAlignment(.center)
+                        .accessibilityIdentifier("map.foryou.empty")
+                    Button { editPreferences() } label: {
+                        Text(app.T("Chỉnh sở thích của bạn", "Edit preferences"))
+                            .font(.system(size: 13, weight: .semibold)).underline()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("map.foryou.emptyEdit")
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
     }
 
     private func distanceSuffix(_ ev: MapEventRow) -> String {
