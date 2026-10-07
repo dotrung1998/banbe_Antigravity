@@ -445,6 +445,8 @@ extension AppState {
             userEmail = nil
             user = nil
             resetEventPrefsState()
+            resetFollowState()
+            resetRewardsState()
             resetKeychainState()
             accountType = "participant"
             organizerMode = false
@@ -480,6 +482,8 @@ extension AppState {
         }
         userID = session.user.id
         userEmail = session.user.email
+        syncFollowOwner()
+        syncRewardsOwner()
         // Once per session: the flag is reset on sign-out, so token refreshes
         // don't re-read (and re-open a step the user skipped locally).
         if !eventPrefsLoaded { Task { await loadEventPreferences() } }
@@ -3209,6 +3213,8 @@ extension AppState {
             } else {
                 try await SupabaseService.client.from("favorites")
                     .upsert(FavoriteRow(userId: uid, eventId: eventKey), onConflict: "user_id,event_id").execute()
+                // The server verifies this save before it counts as an active day (never blocks the save).
+                if userID == uid { Task { await recordSaveDay(eventKey: eventKey) } }
             }
         } catch {
             print("persistFavoriteToggle failed:", error)

@@ -8,16 +8,20 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const src = path.join(root, 'assets/keychains');
 const dirs = [path.join(root, 'public/keychains'), path.join(root, 'apps/ios/BanbeApp/Resources/Keychains')];
 const m = JSON.parse(fs.readFileSync(path.join(src, 'manifest.json'), 'utf8'));
-const expected = { sky: 3, love: 3, bloom: 4, cafe: 3, pals: 3, trip: 4, banbe: 4 };
+const expected = { sky: 3, love: 3, bloom: 4, cafe: 3, pals: 3, trip: 4, banbe: 4, rewards: 3 };
+const FREE = 24; // built-in charms: always free. The 3 `reward` designs unlock via Rewards (migration 165).
 
 test('manifest shape, ids and groups', () => {
   assert.equal(m.version, 1);
   assert.deepEqual(m.pivot, { x: 0.5, y: 0.045 });
   assert.deepEqual(m.imageSize, { width: 256, height: 384 });
   assert.equal(m.baseWidth, 64);
-  assert.equal(m.designs.length, 24);
-  assert.equal(new Set(m.designs.map((d) => d.id)).size, 24);
-  assert.equal(m.groups.length, 7);
+  assert.equal(m.designs.length, FREE + 3);
+  assert.equal(new Set(m.designs.map((d) => d.id)).size, FREE + 3);
+  assert.equal(m.designs.filter((d) => !d.reward).length, FREE, 'the free basic charms remain');
+  assert.deepEqual(m.designs.filter((d) => d.reward).map((d) => d.id), ['rwd-comet', 'rwd-lantern', 'rwd-crown']);
+  assert.ok(m.designs.filter((d) => d.reward).every((d) => d.group === 'rewards'));
+  assert.equal(m.groups.length, 8);
   for (const g of m.groups) { assert.ok(g.vi && g.en); assert.equal(m.designs.filter((d) => d.group === g.id).length, expected[g.id], g.id); }
   for (const d of m.designs) { assert.ok(d.vi && d.en); assert.equal(d.file, d.id + '.png'); }
 });
@@ -46,4 +50,15 @@ test('SVG sources are safe', () => {
     assert.ok(!/(?:xlink:)?href\s*=\s*["']\s*(?:https?:)?\/\//i.test(s), d.id + ' remote href');
     assert.ok(s.length < 6144, d.id + ' size');
   }
+});
+
+test('reward designs match the server catalog (migration 165) and its prices', () => {
+  const sql = fs.readFileSync(path.join(root, 'supabase/migrations/20261212000165_165_rewards_badges_streaks.sql'), 'utf8');
+  const rows = [...sql.matchAll(/\('(rwd-[a-z]+)',\s*'keychain_design',\s*'(rwd-[a-z]+)',\s*(\d+),/g)].map((r) => ({ code: r[1], design: r[2], price: Number(r[3]) }));
+  assert.deepEqual(rows.map((r) => r.design), m.designs.filter((d) => d.reward).map((d) => d.id));
+  assert.deepEqual(rows.map((r) => r.price), [40, 80, 120]);
+  for (const r of rows) assert.equal(r.code, r.design);
+  // every manifest id is allowed by the table CHECK
+  const check = sql.slice(sql.indexOf('profile_keychains_design_id_check CHECK'), sql.indexOf("'custom'));"));
+  for (const d of m.designs) assert.ok(check.includes(`'${d.id}'`), d.id);
 });

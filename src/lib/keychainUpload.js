@@ -61,6 +61,7 @@ export const KEYCHAIN_ERRORS = {
   QUOTA: ['Bạn đã dùng hết 3 ảnh tuỳ chỉnh. Hãy xoá bớt một ảnh trước.', 'You have reached the limit of 3 custom images. Remove one first.'],
   RATE_LIMITED: ['Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.', 'Too many attempts. Please try again in a few minutes.'],
   DECODE: ['Không đọc được ảnh này.', 'This image could not be read.'],
+  DESIGN_LOCKED: ['Mẫu này chưa được mở khoá. Mở khoá trong Phần thưởng & huy hiệu.', 'This design is not unlocked yet. Unlock it in Rewards & badges.'],
   AUTH: ['Vui lòng đăng nhập lại.', 'Please sign in again.'],
   NETWORK: ['Lỗi mạng. Vui lòng thử lại.', 'Network error. Please try again.'],
   GENERIC: ['Không thể lưu ảnh. Vui lòng thử lại.', 'Could not save the image. Please try again.'],

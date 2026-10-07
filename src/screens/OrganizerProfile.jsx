@@ -42,6 +42,8 @@ export default function OrganizerProfile() {
   const avatarInputRef = useRef(null);
   const org = s.organizerProfile;
   const isOwner = !!(org && org.id === s.myOrganizerId);
+  // The canonical follow list (same one Account > Following edits) once loaded; the RPC's own flag until then.
+  const following = !!org && (s.followedStatus === 'loaded' ? s.followedOrgIds.includes(org.id) : !!org.following);
   // Who may EDIT + publish this host's share card (migration 155 checks
   // owner_id/user_id server-side too). Wider than `isOwner` on purpose: an
   // account owning several organizers still owns each one's card.
@@ -170,14 +172,19 @@ export default function OrganizerProfile() {
           <div
             onClick={() => toggleFollowOrganizer(org.id)}
             data-testid="organizer-profile-follow"
+            role="button"
+            aria-pressed={following}
             style={{
               marginTop: 10, fontSize: 13, fontWeight: 600, padding: '10px 24px', borderRadius: 999, cursor: 'pointer',
-              background: org.following ? 'transparent' : ink, color: org.following ? ink : paper,
-              border: org.following ? `1px solid ${rule}` : 'none',
+              background: following ? 'transparent' : ink, color: following ? ink : paper,
+              border: following ? `1px solid ${rule}` : 'none',
             }}
           >
-            {org.following ? T('Đang theo dõi', 'Following') : T('Theo dõi', 'Follow')}
+            {following ? <><span aria-hidden="true">✓ </span>{T('Đang theo dõi', 'Following')}</> : T('Theo dõi', 'Follow')}
           </div>
+        )}
+        {!isOwner && s.followWriteError && (
+          <span role="alert" data-testid="organizer-profile-follow-error" style={{ fontSize: 11.5, color: alert, marginTop: 6 }}>{s.followWriteError}</span>
         )}
       </div>
 

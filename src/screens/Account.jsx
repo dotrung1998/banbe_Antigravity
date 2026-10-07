@@ -86,6 +86,8 @@ export function RowIcon({ kind, size = 22, accent }) {
     switch: <><rect x="3" y="9" width="18" height="6" rx="3" /><circle cx="8" cy="12" r="2.1" /></>,
     logout: <><path d="M9.2 4.3H5v15.4h4.2" /><path d="M12.3 12h8.7M21 12l-3.3-3.3M21 12l-3.3 3.3" /></>,
     login: <><path d="M9.2 4.3H5v15.4h4.2" /><path d="M12.3 12h8.7M17.7 8.7l3.3 3.3-3.3 3.3" /></>,
+    heart: <path d="M12 20.2s-7.4-4.4-7.4-10a4.3 4.3 0 0 1 7.4-2.9 4.3 4.3 0 0 1 7.4 2.9c0 5.6-7.4 10-7.4 10z" />,
+    coin: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5v9M9.6 9.6c.5-.8 1.4-1.2 2.4-1.2 1.4 0 2.4.7 2.4 1.8 0 2.4-4.8 1.2-4.8 3.6 0 1.1 1 1.8 2.4 1.8 1 0 1.9-.4 2.4-1.2" /></>,
     alertShield: <><path d="M12 3.2l6.8 2.8v5.7c0 4.7-3 7.4-6.8 8.7-3.8-1.3-6.8-4-6.8-8.7V6z" /><path d="M12 8.5v4.3M12 15.4v0" /></>,
   };
   return (
@@ -644,6 +646,28 @@ export default function Account() {
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
           <RowIcon kind="pencil" />{T('Hồ Sơ Cá Nhân', 'Personal Profile')}
+        </span>
+        <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+      </div>
+
+      {/* Following + Rewards & badges: standalone rows, same destination from Home's coin shortcut. */}
+      <div
+        onClick={() => set({ screen: 'following' })}
+        data-testid="account-following"
+        style={{ ...fieldGlass({ margin: '8px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
+          <RowIcon kind="heart" />{T('Đang theo dõi', 'Following')}
+        </span>
+        <span style={{ fontSize: 13, color: ink }}>{s.followedStatus === 'loaded' ? `${s.followedOrgIds.length} ›` : '›'}</span>
+      </div>
+      <div
+        onClick={() => set({ screen: 'rewards' })}
+        data-testid="account-rewards"
+        style={{ ...fieldGlass({ margin: '8px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
+          <RowIcon kind="coin" />{T('Phần thưởng & huy hiệu', 'Rewards & badges')}
         </span>
         <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
       </div>

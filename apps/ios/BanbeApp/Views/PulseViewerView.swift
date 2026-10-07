@@ -399,9 +399,12 @@ struct PulseViewerView: View {
                         Text("#\(rank)").font(.system(size: 11, weight: .bold)).foregroundStyle(app.palette.ink.opacity(0.5))
                         Text(item.eventName).font(BanbeTheme.display(14)).lineLimit(1)
                     }
-                    Text(item.organizerName + (item.organizerVerified ? " ✓" : ""))
-                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.75))
-                        .accessibilityIdentifier("pulse.organizerIdentity")
+                    HStack(spacing: 8) {
+                        Text(item.organizerName + (item.organizerVerified ? " ✓" : ""))
+                            .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                            .accessibilityIdentifier("pulse.organizerIdentity")
+                        if app.isFollowing(item.organizerId) { FollowingBadge() }
+                    }
                     if let included = item.included, !included.isEmpty {
                         Text(app.T("Bao gồm: ", "Includes: ") + included)
                             .font(.system(size: 10)).foregroundStyle(app.palette.ink.opacity(0.55))
@@ -655,7 +658,7 @@ struct PulseViewerView: View {
                 Button {
                     Task { await app.followPulseOrganizer(item.organizerId) }
                 } label: {
-                    Text(item.following ? app.T("Đang theo dõi", "Following") : app.T("Theo dõi tổ chức này", "Follow this host"))
+                    Text((item.following ? "✓ " : "") + (item.following ? app.T("Đang theo dõi", "Following") : app.T("Theo dõi tổ chức này", "Follow this host")))
                         .font(.system(size: 13.5, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14).padding(.horizontal, 10)
@@ -751,8 +754,11 @@ struct PulseViewerView: View {
                     Text("#\(rank)").font(.system(size: 11, weight: .bold)).foregroundStyle(app.palette.ink.opacity(0.5))
                     Text(item.eventName).font(BanbeTheme.display(14)).lineLimit(1)
                 }
-                Text(item.organizerName + (item.organizerVerified ? " ✓" : ""))
-                    .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                HStack(spacing: 8) {
+                    Text(item.organizerName + (item.organizerVerified ? " ✓" : ""))
+                        .font(.system(size: 11.5)).foregroundStyle(app.palette.ink.opacity(0.75))
+                    if app.isFollowing(item.organizerId) { FollowingBadge() }
+                }
             }
             .padding(.horizontal, 14)
             Spacer(minLength: 0)

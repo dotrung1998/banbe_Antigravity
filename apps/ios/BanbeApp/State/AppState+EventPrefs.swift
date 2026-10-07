@@ -164,13 +164,9 @@ extension AppState {
         discoveryEvents.map { raw in
             let e = withLive(raw)
             let loc = eventLocation(e)
-            let cats = [e.catKey, e.cat2Key].compactMap { $0 }
-            return ForYouCandidate(
-                key: e.key, categories: cats,
-                priceAmount: e.isFree ? 0 : e.priceVnd,
-                priceCurrency: ForYou.priceCurrency(countryCode: loc.countryCode),
-                isFree: e.isFree, startsAt: e.startDate,
-                timeZone: ForYou.timeZone(countryCode: loc.countryCode, stateProvince: loc.stateProvince),
+            return ForYou.candidate(
+                key: e.key, catKey: e.catKey, cat2Key: e.cat2Key, priceVnd: e.priceVnd, isFree: e.isFree,
+                countryCode: loc.countryCode, stateProvince: loc.stateProvince, startsAt: e.startDate,
                 isBookable: !e.inviteOnly && e.isOpen && !e.soldOut)
         }
     }
@@ -185,4 +181,23 @@ extension AppState {
 
     /// The gold star shows only when at least one matching event exists.
     var hasForYouMatches: Bool { !forYouMatches.isEmpty }
+
+    // MARK: For You on Map
+
+    /// Same ranker, same area rule as Home — fed with Map's loaded rows (public + live only,
+    /// RLS-filtered by `loadMapEvents`). Map rows carry no invite flag because the query is
+    /// `visibility = 'public'`; a sold-out/ended row is not bookable and never matches.
+    var mapForYouMatches: [ForYouMatch] {
+        guard let prefs = eventPrefs, !prefs.isEmpty else { return [] }
+        let now = Date()
+        let cands = mapEvents
+            .filter { area == LocationHierarchy.allID || matchesArea($0) }
+            .map { row in
+                ForYou.candidate(
+                    key: row.id, catKey: row.catKey, cat2Key: nil, priceVnd: row.priceVnd, isFree: row.priceVnd == 0,
+                    countryCode: row.countryCode, stateProvince: row.stateProvince, startsAt: row.startsAt,
+                    isBookable: row.status == "live" && (row.seatsRemaining ?? 1) > 0)
+            }
+        return ForYou.rank(cands, prefs: prefs, now: now)
+    }
 }

@@ -12,6 +12,8 @@ import { buildLocationTree, eventMatchesLocation, locationShortLabel, migrateLeg
 import { surveyPublicUrl } from '../lib/surveyLink.js';
 import { metricLabel } from '../lib/reportMetricLabels.js';
 import { useAccountGate } from '../lib/accountGate.js';
+import { createFollowSync } from '../lib/followSync.js';
+import { isRewardsUnavailable, normalizeSummary } from '../lib/rewards.js';
 import { normalizeForSave as normalizeEventPrefsForSave, isMissingFunctionError as isEventPrefsFnMissing, everyone as everyoneCriteria, normalizeCriteria, criteriaIsEveryone } from '../lib/eventPrefs.js';
 import { useEnsureOrganizer } from '../lib/useEnsureOrganizer.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
@@ -1172,6 +1174,21 @@ const initialState = {
   accountGroupKey: null,
   guideKey: null,
   following: [],
+  // Canonical, account-scoped follow state (src/lib/follows.js). `followedOrgIds` is the
+  // single source every "Following" marker reads; `followedHosts` backs Account > Following.
+  followedOrgIds: [],
+  followedHosts: [],
+  followedStatus: 'idle', // idle | loading | loaded | error
+  followedError: '',
+  followWriteError: '',
+  // Rewards & badges (migration 165). Every number is server-computed; null/unavailable = feature hidden.
+  rewardsSummary: null,          // { balance, streak, activeToday } for the Home shortcut
+  rewardsSummaryStatus: 'idle',  // idle | loaded | unavailable | error
+  rewards: null,                 // full get_my_rewards payload for Account > Rewards & badges
+  rewardsStatus: 'idle',         // idle | loading | loaded | unavailable | error
+  rewardsUnlocked: [],           // keychain design ids this account redeemed
+  rewardsRedeemBusy: '',
+  rewardsRedeemResult: null,     // { code, ok, error?, balance? } of the last redeem attempt
   refunds: {},
   gaveTicket: false,
   areaAsking: false,
@@ -5001,6 +5018,7 @@ export function BanBeProvider({ children }) {
   // `s.user` is still this same account by the time the request settles,
   // so a fast logout/login in between can't have it clobber the new
   // account's own favorites.
+  const recordSaveDayRef = useRef(null); // assigned by the rewards block below (defined later in this component)
   const toggleFav = useCallback((k) => {
     if (favToggleInFlightRef.current.has(k)) return;
     const wasSaved = s.favorites.includes(k);
@@ -5014,6 +5032,7 @@ export function BanBeProvider({ children }) {
           ? await supabase.from('favorites').delete().eq('user_id', uid).eq('event_id', k)
           : await supabase.from('favorites').upsert({ user_id: uid, event_id: k }, { onConflict: 'user_id,event_id' });
         if (error) throw error;
+        if (!wasSaved) recordSaveDayRef.current?.(k); // server verifies the save before it counts as an active day
       } catch (error) {
         console.warn('Failed to persist favorite toggle:', error);
         set(prev => (prev.user?.id === uid ? {
@@ -5045,6 +5064,145 @@ export function BanBeProvider({ children }) {
       await supabase.from('follows').insert({ user_id: s.user.id, organizer_id: event.organizer_id }, { onConflict: 'user_id,organizer_id' });
     }
   }, [set, s.following, s.user]);
+
+  // ============ Following (Account > Following + shared markers) ============
+  // All logic lives in src/lib/followSync.js (account-guarded, one write per host, honest
+  // revert, unit-tested). This only mirrors its snapshot into context state and lets the other
+  // views that carry a per-host `following` flag patch themselves.
+  const followUidRef = useRef(null);
+  followUidRef.current = s.user?.id || null;
+  const followMsgRef = useRef({});
+  Object.assign(followMsgRef.current, {
+    loadFailed: T('Không tải được danh sách đang theo dõi.', "Couldn't load the hosts you follow."),
+    followFailed: T('Không thể theo dõi lúc này. Thử lại nhé.', "Couldn't follow right now. Please try again."),
+    unfollowFailed: T('Không thể bỏ theo dõi lúc này. Thử lại nhé.', "Couldn't unfollow right now. Please try again."),
+  });
+  const followSyncRef = useRef(null);
+  if (!followSyncRef.current) {
+    followSyncRef.current = createFollowSync({
+      getUid: () => followUidRef.current,
+      messages: followMsgRef.current,
+      api: {
+        listFollows: (uid) => supabase.from('follows').select('organizer_id').eq('user_id', uid),
+        listOrganizers: (ids) => withR2Columns(withR2 => supabase.from('organizers').select(withR2 ? 'id, name, avatar_path, avatar_r2_ref, verified' : 'id, name, avatar_path, verified').in('id', ids)),
+        insertFollow: (uid, organizerId) => supabase.from('follows').insert({ user_id: uid, organizer_id: organizerId }),
+        deleteFollow: (uid, organizerId) => supabase.from('follows').delete().eq('user_id', uid).eq('organizer_id', organizerId),
+      },
+      onState: (st) => set({ followedOrgIds: st.ids, followedHosts: st.hosts, followedStatus: st.status, followedError: st.error, followWriteError: st.writeError }),
+      onFollowChange: (organizerId, following) => set(prev => {
+        const bump = (cur) => Math.max(0, (cur || 0) + (following ? 1 : -1));
+        return {
+          ...(prev.publicProfile?.organizer?.id === organizerId && !!prev.publicProfile.organizer.following !== following ? {
+            publicProfile: { ...prev.publicProfile, organizer: { ...prev.publicProfile.organizer, following, follower_count: bump(prev.publicProfile.organizer.follower_count) } },
+          } : {}),
+          ...(prev.organizerProfile?.id === organizerId && !!prev.organizerProfile.following !== following ? {
+            organizerProfile: { ...prev.organizerProfile, following, follower_count: bump(prev.organizerProfile.follower_count) },
+          } : {}),
+          ...(prev.pulseOrganizerSheet?.organizer_id === organizerId ? { pulseOrganizerSheet: { ...prev.pulseOrganizerSheet, following } } : {}),
+        };
+      }),
+    });
+  }
+  const loadFollowedHosts = useCallback((opts) => followSyncRef.current.load(opts), []);
+  /** Follow/unfollow one organizer by id. Resolves true on success; a failure reverts the UI and sets `followWriteError`. */
+  const setFollowing = useCallback((organizerId, following) => followSyncRef.current.setFollowing(organizerId, following), []);
+  // Load per signed-in account; the instant the account changes or signs out the previous one's list is cleared.
+  useEffect(() => {
+    followSyncRef.current.sync();
+    if (s.user?.id && !s.authSyncing) followSyncRef.current.load({ silent: true });
+  }, [s.user?.id, s.authSyncing]);
+  // Another device may have followed/unfollowed: re-read when the tab/app returns to the foreground.
+  useEffect(() => {
+    if (!s.user?.id) return undefined;
+    let last = Date.now();
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - last < 15000) return;
+      last = Date.now();
+      followSyncRef.current.load({ silent: true });
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [s.user?.id]);
+
+  // ============ Rewards & badges (migration 165) ============
+  // Read-only mirror of server state + one transactional redeem. The client never supplies a
+  // balance, an attendance or an amount; a missing RPC (migration not applied) just hides the feature.
+  const rewardsUidRef = useRef(null);
+  const resetRewardsState = useCallback(() => set({
+    rewardsSummary: null, rewardsSummaryStatus: 'idle', rewards: null, rewardsStatus: 'idle',
+    rewardsUnlocked: [], rewardsRedeemBusy: '', rewardsRedeemResult: null,
+  }), [set]);
+  const loadRewardsSummary = useCallback(async () => {
+    const uid = s.user?.id;
+    if (!uid) return;
+    const { data, error } = await supabase.rpc('get_my_reward_summary');
+    if (rewardsUidRef.current !== uid) return; // account changed meanwhile
+    if (error) { set({ rewardsSummaryStatus: isRewardsUnavailable(error) ? 'unavailable' : 'error' }); return; }
+    const sum = normalizeSummary(data);
+    set(sum ? { rewardsSummary: sum, rewardsSummaryStatus: 'loaded' } : { rewardsSummaryStatus: 'error' });
+  }, [s.user?.id, set]);
+  const loadRewards = useCallback(async () => {
+    const uid = s.user?.id;
+    if (!uid) return;
+    set(prev => ({ rewardsStatus: prev.rewardsStatus === 'loaded' ? 'loaded' : 'loading' }));
+    const [full, unlocked] = await Promise.all([supabase.rpc('get_my_rewards'), supabase.rpc('get_my_unlocked_cosmetics')]);
+    if (rewardsUidRef.current !== uid) return;
+    if (full.error) { set({ rewardsStatus: isRewardsUnavailable(full.error) ? 'unavailable' : 'error' }); return; }
+    if (full.data?.success !== true) { set({ rewardsStatus: 'error' }); return; }
+    set({
+      rewards: full.data, rewardsStatus: 'loaded',
+      rewardsSummary: normalizeSummary({ ...full.data, streak: full.data.streak?.current, active_today: full.data.streak?.active_today }),
+      rewardsSummaryStatus: 'loaded',
+      rewardsUnlocked: Array.isArray(unlocked.data?.design_ids) ? unlocked.data.design_ids : [],
+    });
+  }, [s.user?.id, set]);
+  const loadRewardsUnlocked = useCallback(async () => {
+    const uid = s.user?.id;
+    if (!uid) return;
+    const { data, error } = await supabase.rpc('get_my_unlocked_cosmetics');
+    if (rewardsUidRef.current !== uid || error) return;
+    if (Array.isArray(data?.design_ids)) set({ rewardsUnlocked: data.design_ids });
+  }, [s.user?.id, set]);
+  /** Redeems one catalog item. The server re-checks the balance inside a per-account lock; a retry is never double-charged. */
+  const redeemReward = useCallback(async (code) => {
+    const uid = s.user?.id;
+    if (!uid || s.rewardsRedeemBusy) return null;
+    set({ rewardsRedeemBusy: code, rewardsRedeemResult: null });
+    const { data, error } = await supabase.rpc('redeem_reward', { p_item_code: code });
+    if (rewardsUidRef.current !== uid) return null;
+    const result = error ? { code, ok: false, error: 'NETWORK' } : { code, ok: data?.success === true, error: data?.error, balance: data?.balance, already: data?.already_unlocked === true };
+    set({ rewardsRedeemBusy: '', rewardsRedeemResult: result });
+    await loadRewards(); // refresh from the server whatever the outcome
+    return result;
+  }, [s.user?.id, s.rewardsRedeemBusy, set, loadRewards]);
+  /** After a successful save: ask the server to verify it and count the day. Fire-and-forget; never blocks the save. */
+  const recordSaveDay = useCallback(async (eventId) => {
+    const uid = s.user?.id;
+    if (!uid || s.rewardsSummaryStatus === 'unavailable') return;
+    try {
+      const { error } = await supabase.rpc('record_active_day', { p_source: 'save', p_ref: eventId });
+      if (!error && rewardsUidRef.current === uid) loadRewardsSummary();
+    } catch { /* streak is best-effort */ }
+  }, [s.user?.id, s.rewardsSummaryStatus, loadRewardsSummary]);
+  recordSaveDayRef.current = recordSaveDay;
+  // Per account: clear when it changes/signs out, then load the Home summary once signed in.
+  useEffect(() => {
+    const uid = s.user?.id || null;
+    if (rewardsUidRef.current !== uid) { rewardsUidRef.current = uid; resetRewardsState(); }
+    if (uid && !s.authSyncing) loadRewardsSummary();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.user?.id, s.authSyncing]);
+  useEffect(() => {
+    if (!s.user?.id) return undefined;
+    let last = Date.now();
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - last < 15000) return;
+      last = Date.now();
+      loadRewardsSummary();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [s.user?.id, loadRewardsSummary]);
 
   // ============ Stories (Task 3, 07-notifications.md) ============
   // RLS (migration 066) already does every access check that matters here —
@@ -5414,37 +5572,14 @@ export function BanBeProvider({ children }) {
   }, [set]);
   const setPulseTab = useCallback((tab) => set({ pulseTab: tab }), [set]);
   const openPulseOrganizerSheet = useCallback((item) => {
-    set({ pulseOrganizerSheet: item });
-    // `following` isn't part of the RPC row — hydrate it from `follows` so the
-    // button reflects (and toggles) the real state.
-    if (!s.user?.id || !item?.organizer_id) return;
-    supabase.from('follows').select('organizer_id')
-      .eq('user_id', s.user.id).eq('organizer_id', item.organizer_id).limit(1)
-      .then(({ data }) => {
-        set(prev => (prev.pulseOrganizerSheet?.organizer_id === item.organizer_id
-          ? { pulseOrganizerSheet: { ...prev.pulseOrganizerSheet, following: !!data?.length } }
-          : {}));
-      });
-  }, [set, s.user?.id]);
+    set(prev => ({ pulseOrganizerSheet: { ...item, following: prev.followedOrgIds.includes(item?.organizer_id) } }));
+  }, [set]);
   const closePulseOrganizerSheet = useCallback(() => set({ pulseOrganizerSheet: null }), [set]);
-  /** Follow straight from the Pulse organizer sheet — same plain optimistic
-   * table write as toggleFollowOrganizer (TASK D), just patching the
-   * lighter Pulse item shape instead of a full public-profile object. */
+  /** Follow straight from the Pulse organizer sheet — same single write path as every other control. */
   const followPulseOrganizer = useCallback(async (organizerId) => {
-    if (!s.user?.id) return;
-    const wasFollowing = !!s.pulseOrganizerSheet?.following;
-    const patch = (following) => set(prev => ({
-      pulseOrganizerSheet: prev.pulseOrganizerSheet ? { ...prev.pulseOrganizerSheet, following } : null,
-    }));
-    patch(!wasFollowing);
-    const { error } = wasFollowing
-      ? await supabase.from('follows').delete().eq('user_id', s.user.id).eq('organizer_id', organizerId)
-      : await supabase.from('follows').insert({ user_id: s.user.id, organizer_id: organizerId });
-    if (error) {
-      console.warn('followPulseOrganizer failed:', error);
-      patch(wasFollowing);
-    }
-  }, [set, s.user?.id, s.pulseOrganizerSheet?.following]);
+    if (!s.user?.id || !organizerId) return;
+    await setFollowing(organizerId, !s.followedOrgIds.includes(organizerId));
+  }, [s.user?.id, s.followedOrgIds, setFollowing]);
 
   // 2026-09-25 fix pass — the ranked-photo popup: photo + organizer
   // identity/verified badge + a "view event" action, per this ticket's own
@@ -6340,7 +6475,10 @@ export function BanBeProvider({ children }) {
       set({ organizerProfileLoading: false, organizerProfileError: T('Không tìm thấy tổ chức này.', "This organizer couldn't be found.") });
       return;
     }
+    // The RPC's `following` is server-fresh (e.g. changed on another device): fold it into the
+    // canonical list so every Following marker agrees with this screen.
     set({ organizerProfile: data, organizerProfileLoading: false });
+    if (followSyncRef.current.reconcile(organizerId, !!data?.following)) followSyncRef.current.load({ silent: true });
   }, [set, T]);
   const backFromOrganizerProfile = useCallback(() => set(prev => ({ screen: prev.organizerProfileBack || 'profile' })), [set]);
   /** Live "track record" for an event's host (EventDetail's Track record row):
@@ -6829,33 +6967,13 @@ export function BanBeProvider({ children }) {
 
   const toggleFollowOrganizer = useCallback(async (organizerId) => {
     if (!s.user?.id || !organizerId) return;
-    const wasFollowing = !!(
-      (s.publicProfile?.organizer?.id === organizerId && s.publicProfile.organizer.following)
-      || (s.organizerProfile?.id === organizerId && s.organizerProfile.following)
-    );
-    // Optimistic — this is a plain, instantly-reversible social toggle
-    // (unlike refund/payment state), reconciled by the real table write
-    // below; reverted on failure. Bumps WHICHEVER of the two screens
-    // (personal profile's merged organizer summary, or the organizer's
-    // own standalone page) currently holds this organizer id — never both
-    // unconditionally, since only one is ever the actual match.
-    const bump = (sign) => (prev) => ({
-      ...(prev.publicProfile?.organizer?.id === organizerId ? {
-        publicProfile: { ...prev.publicProfile, organizer: { ...prev.publicProfile.organizer, following: sign > 0, follower_count: prev.publicProfile.organizer.follower_count + sign } },
-      } : {}),
-      ...(prev.organizerProfile?.id === organizerId ? {
-        organizerProfile: { ...prev.organizerProfile, following: sign > 0, follower_count: prev.organizerProfile.follower_count + sign },
-      } : {}),
-    });
-    set(bump(wasFollowing ? -1 : 1));
-    const { error } = wasFollowing
-      ? await supabase.from('follows').delete().eq('user_id', s.user.id).eq('organizer_id', organizerId)
-      : await supabase.from('follows').insert({ user_id: s.user.id, organizer_id: organizerId });
-    if (error) {
-      console.warn('toggleFollowOrganizer failed:', error);
-      set(bump(wasFollowing ? 1 : -1));
-    }
-  }, [set, s.user?.id, s.publicProfile, s.organizerProfile]);
+    // The server-fresh flag a profile loaded with wins over a possibly stale local list
+    // (another device may have changed it); fall back to the canonical list.
+    const fresh = s.publicProfile?.organizer?.id === organizerId ? s.publicProfile.organizer.following
+      : s.organizerProfile?.id === organizerId ? s.organizerProfile.following : undefined;
+    const wasFollowing = fresh !== undefined ? !!fresh : s.followedOrgIds.includes(organizerId);
+    await setFollowing(organizerId, !wasFollowing);
+  }, [s.user?.id, s.publicProfile, s.organizerProfile, s.followedOrgIds, setFollowing]);
 
   // ---- Account extension (2026-09-27, Stage 3) — KPI reports ----
   // One RPC (get_account_kpis, migration 097) serves the on-screen cards,
@@ -10414,7 +10532,7 @@ export function BanBeProvider({ children }) {
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
-    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
+    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
@@ -10453,7 +10571,7 @@ export function BanBeProvider({ children }) {
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
-    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
+    loadFollowedHosts, setFollowing, loadRewardsSummary, loadRewards, loadRewardsUnlocked, redeemReward, toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,

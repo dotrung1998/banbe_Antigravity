@@ -288,16 +288,32 @@ struct OrganizerProfileView: View {
                 .font(.system(size: 11)).foregroundStyle(app.palette.ink.opacity(0.7))
 
             if !isOwner, app.userID != nil, let id = org.id {
-                Button((org.following ?? false) ? app.T("Đang theo dõi", "Following") : app.T("Theo dõi", "Follow")) {
+                // The canonical follow list (what Account > Following edits) once loaded; the RPC flag until then.
+                let following = app.followedStatus == .loaded ? app.isFollowing(id) : (org.following ?? false)
+                Button {
                     Task { await app.toggleFollowOrganizer(id) }
+                } label: {
+                    if following {
+                        HStack(spacing: 5) {
+                            Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).accessibilityHidden(true)
+                            Text(app.T("Đang theo dõi", "Following"))
+                        }
+                    } else {
+                        Text(app.T("Theo dõi", "Follow"))
+                    }
                 }
                 .font(.system(size: 13, weight: .semibold))
                 .padding(.horizontal, 24).padding(.vertical, 10)
-                .background((org.following ?? false) ? Color.clear : app.palette.ink, in: Capsule())
-                .foregroundStyle((org.following ?? false) ? app.palette.ink : app.palette.paper)
-                .overlay(Capsule().stroke((org.following ?? false) ? app.palette.rule : .clear))
+                .background(following ? Color.clear : app.palette.ink, in: Capsule())
+                .foregroundStyle(following ? app.palette.ink : app.palette.paper)
+                .overlay(Capsule().stroke(following ? app.palette.rule : .clear))
                 .padding(.top, 6)
+                .accessibilityAddTraits(following ? .isSelected : [])
                 .accessibilityIdentifier("organizerProfile.follow")
+                if !app.followWriteError.isEmpty {
+                    Text(app.followWriteError).font(.system(size: 11.5)).foregroundStyle(BanbeTheme.alert)
+                        .accessibilityIdentifier("organizerProfile.followError")
+                }
             }
         }
         .frame(maxWidth: .infinity)

@@ -68,6 +68,8 @@ import SurveysHosting from './screens/SurveysHosting.jsx';
 import RootRefreshIndicator from './screens/RootRefreshIndicator.jsx';
 import AccountGate from './screens/AccountGate.jsx'; // account gate (web parity)
 import EventPreferences from './screens/EventPreferences.jsx';
+import Following from './screens/Following.jsx';
+import Rewards from './screens/Rewards.jsx';
 import EventOnboarding, { useEventOnboardingActive } from './screens/EventOnboarding.jsx';
 
 const SCREENS = {
@@ -91,6 +93,8 @@ const SCREENS = {
   attendance: Attendance,
   preferences: Preferences,
   eventPreferences: EventPreferences,
+  following: Following,
+  rewards: Rewards,
   editName: EditName,
   notifications: Notifications,
   eventList: EventList,

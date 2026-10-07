@@ -55,6 +55,11 @@
       "id": "banbe",
       "vi": "Banbe",
       "en": "Banbe"
+    },
+    {
+      "id": "rewards",
+      "vi": "Phần thưởng",
+      "en": "Rewards"
     }
   ],
   "designs": [
@@ -225,6 +230,30 @@
       "vi": "Sóng",
       "en": "Wave",
       "file": "banbe-wave.png"
+    },
+    {
+      "id": "rwd-comet",
+      "group": "rewards",
+      "vi": "Sao chổi",
+      "en": "Comet",
+      "file": "rwd-comet.png",
+      "reward": true
+    },
+    {
+      "id": "rwd-lantern",
+      "group": "rewards",
+      "vi": "Đèn lồng",
+      "en": "Lantern",
+      "file": "rwd-lantern.png",
+      "reward": true
+    },
+    {
+      "id": "rwd-crown",
+      "group": "rewards",
+      "vi": "Vương miện",
+      "en": "Crown",
+      "file": "rwd-crown.png",
+      "reward": true
     }
   ]
 }

@@ -72,6 +72,20 @@ enum ForYou {
         (countryCode ?? "VN").uppercased() == "VN" ? "VND" : nil
     }
 
+    /// ONE constructor for a candidate, shared by Home (CatalogEvent) and Map (MapEventRow),
+    /// so the two surfaces can never normalise price/zone/bookability differently.
+    static func candidate(key: String, catKey: String?, cat2Key: String?, priceVnd: Int, isFree: Bool,
+                          countryCode: String?, stateProvince: String?, startsAt: Date?,
+                          isBookable: Bool) -> ForYouCandidate {
+        ForYouCandidate(
+            key: key, categories: [catKey, cat2Key].compactMap { $0 },
+            priceAmount: isFree ? 0 : priceVnd,
+            priceCurrency: priceCurrency(countryCode: countryCode),
+            isFree: isFree, startsAt: startsAt,
+            timeZone: timeZone(countryCode: countryCode, stateProvince: stateProvince),
+            isBookable: isBookable)
+    }
+
     // MARK: matching
 
     /// nil = excluded (a hard rule failed) or no positive signal at all.

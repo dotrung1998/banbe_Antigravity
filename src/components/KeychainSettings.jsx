@@ -27,8 +27,12 @@ function Chip({ on, onClick, children, testId, disabled }) {
 }
 
 export default function KeychainSettings() {
-  const { T, state } = useBanBe();
+  const { T, state, set: setApp, loadRewardsUnlocked } = useBanBe();
   const lang = state.lang;
+  // Reward designs (migration 165) are optional and only offered once rewards are live for this account.
+  const rewardsLive = state.rewardsSummaryStatus === 'loaded';
+  const unlocked = state.rewardsUnlocked || [];
+  useEffect(() => { if (state.user?.id && rewardsLive) loadRewardsUnlocked(); }, [state.user?.id, rewardsLive, loadRewardsUnlocked]);
   const manifest = useKeychainManifest();
   const rootRef = useRef(null);
   useEffect(() => {
@@ -140,17 +144,24 @@ export default function KeychainSettings() {
           {tilt && <span role="status" style={{ fontSize: 11, color: ink, opacity: 0.7 }}>{tilt}</span>}
         </div>
 
-        {manifest.groups.map(g => (
+        {manifest.groups.filter(g => g.id !== 'rewards' || rewardsLive).map(g => (
           <div key={g.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ ...label, opacity: 0.7 }}>{isLabel(g)}</span>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {designsOf(g.id).map(d => (
-                <button key={d.id} type="button" onClick={() => { setPendingArt(null); set({ designId: d.id }); }} data-testid={`keychain-design-${d.id}`}
-                  aria-label={isLabel(d)} aria-pressed={previewCfg.designId === d.id} title={isLabel(d)}
-                  style={{ width: 48, height: 64, padding: 2, borderRadius: 10, background: 'transparent', cursor: 'pointer', border: previewCfg.designId === d.id ? `2px solid ${ink}` : `1px solid ${rule}` }}>
-                  <img src={designUrl(manifest, d.id)} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              {designsOf(g.id).map(d => {
+                const locked = !!d.reward && !unlocked.includes(d.id);
+                return (
+                <button key={d.id} type="button"
+                  onClick={() => { if (locked) { setApp({ screen: 'rewards' }); return; } setPendingArt(null); set({ designId: d.id }); }}
+                  data-testid={`keychain-design-${d.id}`} data-locked={locked ? 'true' : 'false'}
+                  aria-label={locked ? T(`${isLabel(d)}, chưa mở khoá. Mở khoá trong Phần thưởng`, `${isLabel(d)}, locked. Unlock in Rewards`) : isLabel(d)}
+                  aria-pressed={locked ? undefined : previewCfg.designId === d.id} title={isLabel(d)}
+                  style={{ position: 'relative', width: 48, height: 64, padding: 2, borderRadius: 10, background: 'transparent', cursor: 'pointer', border: previewCfg.designId === d.id ? `2px solid ${ink}` : `1px solid ${rule}` }}>
+                  <img src={designUrl(manifest, d.id)} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', opacity: locked ? 0.4 : 1 }} />
+                  {locked && <span aria-hidden="true" style={{ position: 'absolute', right: 3, bottom: 3, fontSize: 12, lineHeight: 1 }}>🔒</span>}
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}

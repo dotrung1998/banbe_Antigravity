@@ -101,6 +101,8 @@ struct KeychainManifest: Decodable, Equatable {
     struct Group: Decodable, Equatable, Identifiable { let id: String; let vi: String; let en: String }
     struct Design: Decodable, Equatable, Identifiable {
         let id: String; let group: String; let vi: String; let en: String; let file: String
+        /// Optional cosmetic unlocked via Rewards (migration 165); the built-in charms are always free.
+        var reward: Bool? = nil
     }
     let version: Int
     let pivot: Point

@@ -12,7 +12,8 @@
     { "id": "cafe", "vi": "Cà phê & nhạc", "en": "Cafe & music" },
     { "id": "pals", "vi": "Thú cưng", "en": "Pals" },
     { "id": "trip", "vi": "Du lịch", "en": "Trip" },
-    { "id": "banbe", "vi": "Banbe", "en": "Banbe" }
+    { "id": "banbe", "vi": "Banbe", "en": "Banbe" },
+    { "id": "rewards", "vi": "Phần thưởng", "en": "Rewards" }
   ],
   "designs": [
     { "id": "sky-star", "group": "sky", "vi": "Ngôi sao", "en": "Star", "file": "sky-star.png" },
@@ -38,6 +39,9 @@
     { "id": "banbe-b", "group": "banbe", "vi": "Chữ B", "en": "Letter B", "file": "banbe-b.png" },
     { "id": "banbe-stub", "group": "banbe", "vi": "Cuống vé", "en": "Ticket stub", "file": "banbe-stub.png" },
     { "id": "banbe-spark", "group": "banbe", "vi": "Tia sáng", "en": "Spark", "file": "banbe-spark.png" },
-    { "id": "banbe-wave", "group": "banbe", "vi": "Sóng", "en": "Wave", "file": "banbe-wave.png" }
+    { "id": "banbe-wave", "group": "banbe", "vi": "Sóng", "en": "Wave", "file": "banbe-wave.png" },
+    { "id": "rwd-comet", "group": "rewards", "vi": "Sao chổi", "en": "Comet", "file": "rwd-comet.png", "reward": true },
+    { "id": "rwd-lantern", "group": "rewards", "vi": "Đèn lồng", "en": "Lantern", "file": "rwd-lantern.png", "reward": true },
+    { "id": "rwd-crown", "group": "rewards", "vi": "Vương miện", "en": "Crown", "file": "rwd-crown.png", "reward": true }
   ]
 }

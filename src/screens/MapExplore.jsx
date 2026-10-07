@@ -10,6 +10,10 @@ import { liveEventOverrides } from '../lib/countdown.js';
 import { formatVnd } from '../lib/paymentDocument.js';
 import { densityHotspot } from '../lib/densityHotspot.js';
 import { buildEventSearchDoc, matchesSearchQuery } from '../lib/search.js';
+import { prefsIsEmpty } from '../lib/eventPrefs.js';
+import { mapForYouSet, applyForYouFilter } from '../lib/forYou.js';
+import { useForYouAlert } from '../lib/useForYouAlert.js';
+import ForYouChip from './ForYouChip.jsx';
 import { FILTER_DEFS } from './Home.jsx';
 import { paper, ink, rule, alert, photoPill, fieldGlass, cardGlass, inkButton } from '../theme.js';
 import RootRefreshIndicator from './RootRefreshIndicator.jsx';
@@ -155,6 +159,10 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
       hasLocation: row.lat != null && row.lng != null,
       seatsRemaining: row.seats_remaining,
       startsAt: row.starts_at,
+      // Raw fields the shared For You candidate builder (src/lib/forYou.js) reads —
+      // the same ones Home's events carry, so Home and Map can never score differently.
+      priceVnd: row.price_vnd || 0,
+      status: row.status,
       // Map price bug fix (2026-09-29) — root cause: this was ALWAYS
       // `cosmetic?.price` (the static demo catalogue's own hand-written
       // price string), never the real row's own `price_vnd` (already
@@ -185,7 +193,7 @@ async function fetchLiveEvents({ bounds, limit = 60, offset = 0 } = {}) {
 }
 
 export default function MapExplore() {
-  const { state: s, T, goEvent, backFromMapExplore, allowLocation, setMapExploreState, curArea, openArea } = useBanBe();
+  const { state: s, T, goEvent, backFromMapExplore, allowLocation, setMapExploreState, curArea, openArea, openEventPreferences } = useBanBe();
   // Restored once, at mount, if MapExplore.jsx's own CTA saved a snapshot
   // right before navigating to Event Detail (bug 2) — App.jsx's Shell
   // unmounts/remounts this whole component on every `screen` change, so
@@ -208,7 +216,10 @@ export default function MapExplore() {
   // Home quick event search (2026-09-27) — a by-name/area text filter,
   // ANDed with the existing category/open-now/nearby filters above (never
   // a separate search index — same `events` this screen already loads).
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => restored?.searchQuery ?? '');
+  // For You (34/35 notes): local to Map (never touches Home's own `filterForYou`),
+  // matching comes from the shared forYouRankEvents so both surfaces score alike.
+  const [forYouOn, setForYouOn] = useState(() => restored?.forYou ?? false);
   const searchInputRef = useRef(null);
   // Home quick event search — real-device follow-up (2026-09-28): focusing
   // via a plain `useEffect` (further down, on mount) fires the `.focus()`
@@ -564,6 +575,20 @@ export default function MapExplore() {
     return docs;
   }, [events]);
 
+  // For You candidates = loaded events under the selected area (exactly Home's rule:
+  // area first, then the shared ranker). Recomputed on events/prefs/area only, so
+  // toggling the chip never refetches, recenters or resets the sheet/list.
+  const hasPrefs = !!s.eventPrefs && !prefsIsEmpty(s.eventPrefs);
+  // A stale `forYouOn` (signed out / account switch / prefs cleared) must never filter anything.
+  const forYouActive = forYouOn && hasPrefs;
+  const { ranked: forYouRanked, order: forYouOrder } = useMemo(
+    () => mapForYouSet(events, curArea.key === 'all' ? null : curArea.match, s.eventPrefs, hasPrefs, Date.now()),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [events, curArea, s.eventPrefs, s.eventPrefsVersion, hasPrefs]);
+  // Read-only view of Home's persisted "new matches" state (Home owns observation).
+  const forYouAlert = useForYouAlert({ userId: s.user?.id, passive: true });
+  const prefsLoading = !!s.user && !s.eventPrefsLoaded;
+
   const visibleEvents = useMemo(() => {
     let list = events;
     // Location hierarchy (2026-09-30) — the SAME selected location node
@@ -574,6 +599,8 @@ export default function MapExplore() {
     if (curArea.key !== 'all') list = list.filter(e => curArea.match(e));
     if (catFilter !== 'all') list = list.filter(e => e.catKey === catFilter);
     if (openNowOnly) list = list.filter(e => e.seatsRemaining > 0);
+    // For You — the SAME match set drives pins (via visibleIdSet) and this list.
+    list = applyForYouFilter(list, forYouActive, forYouOrder, { keepOrder: sortByDistance && !!s.userCoords });
     // Home quick event search — matched against the canonical search
     // document (name/category/area/city/organizer/description/keywords),
     // ANDed with the filters above, never a replacement for them.
@@ -593,7 +620,7 @@ export default function MapExplore() {
       });
     }
     return list;
-  }, [events, curArea, catFilter, openNowOnly, searchQuery, sortByDistance, s.userCoords, eventSearchDocs]);
+  }, [events, curArea, catFilter, openNowOnly, forYouActive, forYouOrder, searchQuery, sortByDistance, s.userCoords, eventSearchDocs]);
 
   // B1 — the ONE filtered event-id set the list below and the map's own
   // markers (the draw effect right after this) both key off, so they can
@@ -886,7 +913,7 @@ export default function MapExplore() {
   // instead of re-initializing from scratch. Saved into BanBeContext (not
   // local state) because App.jsx's Shell unmounts this whole component the
   // instant `screen` changes away from 'mapExplore'.
-  const openEventDetail = useCallback((id) => {
+  const saveSnapshot = useCallback(() => {
     const map = mapRef.current;
     const center = map?.getCenter();
     setMapExploreState({
@@ -896,11 +923,26 @@ export default function MapExplore() {
       catFilter,
       openNowOnly,
       sortByDistance,
+      forYou: forYouOn,
+      searchQuery,
       selectedId,
       listScrollTop: listRef.current?.scrollTop ?? 0,
     });
+  }, [sheetSnap, catFilter, openNowOnly, sortByDistance, forYouOn, searchQuery, selectedId, setMapExploreState]);
+  const openEventDetail = useCallback((id) => {
+    saveSnapshot();
     goEvent(id);
-  }, [sheetSnap, catFilter, openNowOnly, sortByDistance, selectedId, goEvent, setMapExploreState]);
+  }, [saveSnapshot, goEvent]);
+  // "Edit preferences": same snapshot/restore as Event Detail, so Back returns to the
+  // same camera, sheet, list position and filters.
+  const editPreferences = useCallback(() => {
+    saveSnapshot();
+    openEventPreferences('mapExplore');
+  }, [saveSnapshot, openEventPreferences]);
+  const toggleForYou = useCallback(() => {
+    if (!forYouOn) forYouAlert.acknowledge(forYouRanked.map(m => m.key));
+    setForYouOn(!forYouOn);
+  }, [forYouOn, forYouRanked, forYouAlert.acknowledge]);
 
   // Task 1 (11-realtime-map.md follow-up): web has no edge-swipe-back
   // gesture at all (confirmed by inspection, App.jsx's Shell has no
@@ -1231,7 +1273,21 @@ export default function MapExplore() {
           ))}
         </div>
 
-        <div className="bb-noscroll" style={{ display: 'flex', gap: 8, padding: '0 16px 10px', overflowX: 'auto', flex: 'none', scrollbarWidth: 'none' }}>
+        {/* For You is pinned at the leading edge (never scrolls away); only the other chips
+            live in the horizontal scroller, which keeps data-hscroll so the root tab swipe
+            ignores it. Hidden until the account has saved preferences. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 0 10px', paddingInlineStart: 16, flex: 'none' }}>
+        {hasPrefs && (
+          <ForYouChip
+            T={T}
+            active={forYouActive}
+            pending={forYouAlert.pending}
+            animate={forYouAlert.animate}
+            capsuleStyle={{ ...fieldGlass({ borderRadius: 999 }), display: 'inline-flex', alignItems: 'center', padding: '5px 10px', fontSize: 11, cursor: 'pointer', color: ink, fontWeight: forYouActive ? 700 : 400, border: forYouActive ? `1px solid ${ink}` : 'none', whiteSpace: 'nowrap' }}
+            onClick={toggleForYou}
+          />
+        )}
+        <div data-hscroll="true" data-testid="map-filter-extra-scroller" className="bb-noscroll" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', gap: 8, paddingInlineEnd: 16, overflowX: 'auto', scrollbarWidth: 'none' }}>
           {/* Location hierarchy — opens the same shared area sheet Home
               uses (AreaSheet.jsx); shows the current short label. */}
           <div
@@ -1258,6 +1314,19 @@ export default function MapExplore() {
             </div>
           )}
         </div>
+        </div>
+        {forYouActive && (
+          <div style={{ padding: '0 16px 8px' }}>
+            <span
+              onClick={editPreferences}
+              data-testid="map-foryou-edit-prefs"
+              role="button"
+              style={{ fontSize: 12.5, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', color: ink }}
+            >
+              {T('Chỉnh sở thích của bạn', 'Edit preferences')}
+            </span>
+          </div>
+        )}
 
         <div
           ref={listRef}
@@ -1289,8 +1358,23 @@ export default function MapExplore() {
               )}
             </div>
           )}
-          {loading && visibleEvents.length === 0 && <div style={{ padding: 20, color: ink, opacity: 0.6, fontSize: 13 }}>{T('Đang tải…', 'Loading…')}</div>}
-          {!loading && visibleEvents.length === 0 && (
+          {forYouActive && visibleEvents.length === 0 && (loading || prefsLoading) && (
+            <div data-testid="map-foryou-loading" style={{ padding: 20, color: ink, opacity: 0.6, fontSize: 13 }}>{T('Đang tìm sự kiện hợp với bạn…', 'Finding events for you…')}</div>
+          )}
+          {forYouActive && visibleEvents.length === 0 && !loading && !prefsLoading && (
+            <div data-testid="map-foryou-empty" style={{ padding: 20, color: ink, fontSize: 13 }}>
+              <div style={{ opacity: 0.7 }}>
+                {forYouRanked.length === 0
+                  ? T('Chưa có sự kiện nào hợp với sở thích của bạn trong khu vực/vùng bản đồ này.', 'No events match your preferences in this area or map view yet.')
+                  : T('Các sự kiện hợp với bạn không khớp bộ lọc hiện tại.', 'Your For You matches don\'t fit the current filters.')}
+              </div>
+              <span onClick={editPreferences} data-testid="map-foryou-empty-edit" role="button" style={{ display: 'inline-block', marginTop: 8, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer' }}>
+                {T('Chỉnh sở thích của bạn', 'Edit preferences')}
+              </span>
+            </div>
+          )}
+          {loading && !forYouActive && visibleEvents.length === 0 && <div style={{ padding: 20, color: ink, opacity: 0.6, fontSize: 13 }}>{T('Đang tải…', 'Loading…')}</div>}
+          {!loading && !forYouActive && visibleEvents.length === 0 && (
             <div style={{ padding: 20, color: ink, opacity: 0.6, fontSize: 13 }} data-testid="map-search-no-results">
               {searchQuery.trim()
                 ? T(`Không tìm thấy sự kiện nào khớp với "${searchQuery.trim()}".`, `No events match "${searchQuery.trim()}".`)

@@ -71,12 +71,14 @@ final class KeychainManifestTests: XCTestCase {
         return try XCTUnwrap(KeychainManifest.decode(data))
     }
 
-    func testManifestHas24DesignsInSevenGroups() throws {
+    func testManifestHas24FreeDesignsPlus3RewardDesigns() throws {
         let m = try loadManifest()
-        XCTAssertEqual(m.designs.count, 24)
-        XCTAssertEqual(Set(m.designs.map(\.id)).count, 24)
-        XCTAssertEqual(m.groups.count, 7)
-        let expected = ["sky": 3, "love": 3, "bloom": 4, "cafe": 3, "pals": 3, "trip": 4, "banbe": 4]
+        XCTAssertEqual(m.designs.count, 27)
+        XCTAssertEqual(Set(m.designs.map(\.id)).count, 27)
+        XCTAssertEqual(m.designs.filter { $0.reward != true }.count, 24, "the free basic charms remain")
+        XCTAssertEqual(m.designs.filter { $0.reward == true }.map(\.id), ["rwd-comet", "rwd-lantern", "rwd-crown"])
+        XCTAssertEqual(m.groups.count, 8)
+        let expected = ["sky": 3, "love": 3, "bloom": 4, "cafe": 3, "pals": 3, "trip": 4, "banbe": 4, "rewards": 3]
         for (g, n) in expected { XCTAssertEqual(m.designs(in: g).count, n, g) }
         XCTAssertEqual(m.pivot.x, 0.5, accuracy: 1e-9)
         XCTAssertEqual(m.pivot.y, 0.045, accuracy: 1e-9)
