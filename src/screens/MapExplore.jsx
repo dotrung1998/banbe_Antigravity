@@ -661,9 +661,12 @@ export default function MapExplore() {
         // positioning shell, so Marker is free to fully own its own
         // transform forever without erasing anything of ours.
         const el = document.createElement('div');
-        el.style.cssText = 'position:relative;';
+        // NOT `position:relative`: that overrides maplibre's own `.maplibregl-marker{position:absolute}`,
+        // turning the shell into a full-width in-flow block, so Marker's translate(-50%,-50%) shifted every
+        // pin by half the map width (selected pin landed at the left edge, not the camera centre).
+        // The badge dot anchors to `pinEl` (position:relative below) instead.
         const pinEl = document.createElement('div');
-        pinEl.style.cssText = `width:30px;height:30px;border-radius:50%;background:${paper};border:1.5px solid ${ink};display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;box-shadow:${isSelected ? `0 0 0 3px ${ink}, ` : ''}0 2px 6px rgba(27,25,22,0.3);transform:scale(${isSelected ? 1.15 : 1});z-index:${isSelected ? 1 : 0};`;
+        pinEl.style.cssText = `width:30px;height:30px;border-radius:50%;background:${paper};border:1.5px solid ${ink};position:relative;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;box-shadow:${isSelected ? `0 0 0 3px ${ink}, ` : ''}0 2px 6px rgba(27,25,22,0.3);transform:scale(${isSelected ? 1.15 : 1});z-index:${isSelected ? 1 : 0};`;
         pinEl.setAttribute('data-testid', `map-pin-${ev.id}`);
         pinEl.textContent = CAT_GLYPH[ev.catKey] || CAT_GLYPH.all;
         if (ev.urgent || ev.isNew) {
