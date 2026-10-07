@@ -53,6 +53,8 @@ import AdminEvents from './screens/AdminEvents.jsx';
 import AdminTestAccounts from './screens/AdminTestAccounts.jsx';
 import ToastStack from './screens/ToastStack.jsx';
 import Policy from './screens/Policy.jsx';
+import Guide from './screens/Guide.jsx';
+import Faq from './screens/Faq.jsx';
 import MapExplore from './screens/MapExplore.jsx';
 import DockCreateButton from './screens/DockCreateButton.jsx';
 import StoryCreateOverlay from './screens/StoryCreateOverlay.jsx';
@@ -102,6 +104,8 @@ const SCREENS = {
   adminEvents: AdminEvents,
   adminTestAccounts: AdminTestAccounts,
   policy: Policy,
+  guide: Guide,
+  faq: Faq,
   mapExplore: MapExplore,
   editProfile: EditProfile,
   publicProfile: PublicProfile,

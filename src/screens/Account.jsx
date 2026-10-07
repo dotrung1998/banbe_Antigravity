@@ -163,7 +163,7 @@ export default function Account() {
     openPaymentDetails, goDashboard,
     loadMyOrgStats, setAccountTab, openPublicProfile, openReports, openAccountGroup, goSurveysHosting,
     loadMyOrganizerMemberships,
-    loadMyEventCredits, loadMyConfirmedEventCredits, openPolicy,
+    loadMyEventCredits, loadMyConfirmedEventCredits,
     loadMyAdminInvite, respondToAdminInvite, loadAdminTeam,
   } = useBanBe();
   const s = state;
@@ -658,11 +658,10 @@ export default function Account() {
           (`openPolicy`/`Policy.jsx`, the same bilingual policy text used at
           signup consent and reachable read-only here, `backFromPolicy`
           returning to whichever screen opened it). This row is therefore
-          the Legal half only; the "Help" half has no real destination to
-          point to yet (a genuine gap, not fabricated here — flagged in
-          09-auth-onboarding.md's dated fix-pass section). */}
+          the Legal half only. It now opens the `helpLegal` group (Terms ->
+          the policy screen, Guides, Q&A) — see AccountGroup.jsx. */}
       <div
-        onClick={openPolicy}
+        onClick={() => openAccountGroup('helpLegal')}
         data-testid="account-help-legal"
         style={{ ...fieldGlass({ margin: '8px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
       >

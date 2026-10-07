@@ -59,7 +59,7 @@ export function useAccountSearchEntries() {
     e('security', 'personal', setVi, setEn, 'Bảo mật', 'Security', 'shield',
       'security mật khẩu password face id sinh trắc biometric đăng nhập login khóa lock đổi mật khẩu', () => g.openSecurity()),
     e('help', 'personal', setVi, setEn, 'Trợ Giúp & Pháp Lý', 'Help & Legal', 'shield',
-      'help trợ giúp hỗ trợ support policy chính sách điều khoản terms privacy quyền riêng tư pháp lý legal liên hệ contact', () => g.openPolicy()),
+      'help trợ giúp hỗ trợ support policy chính sách điều khoản terms privacy quyền riêng tư pháp lý legal liên hệ contact hướng dẫn guide hỏi đáp faq q&a câu hỏi questions', () => g.openAccountGroup('helpLegal')),
     e('organizerMode', 'personal', 'Tổ Chức', 'Hosting', 'Chế độ tổ chức', 'Organizer mode', 'switch',
       'host tổ chức organizer bật tắt toggle tạo sự kiện create event quản lý manage', () => g.toggleOrganizerMode()),
     e('signOut', 'personal', setVi, setEn, s.user ? 'Đăng xuất' : 'Đăng nhập', s.user ? 'Sign out' : 'Sign in', s.user ? 'logout' : 'login',

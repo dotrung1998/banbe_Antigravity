@@ -42,6 +42,7 @@ const STATIC = {
   adminEvents: '/admin/events',
   adminTestAccounts: '/admin/test-accounts',
   policy: '/policy',
+  faq: '/help/faq',
   reports: '/reports',
   surveysHosting: '/surveys',
   confirmed: '/ticket',
@@ -68,6 +69,7 @@ export function screenToPath(st) {
     case 'publicProfile': return st.publicProfileHandle ? `/u/${enc(st.publicProfileHandle)}` : '/profile';
     case 'organizerProfile': return st.organizerProfileId ? `/org/${enc(st.organizerProfileId)}` : '/';
     case 'organizerTeam': return st.organizerTeamOrganizerId ? `/org/${enc(st.organizerTeamOrganizerId)}/team` : '/';
+    case 'guide': return st.guideKey ? `/help/guides/${enc(st.guideKey)}` : '/profile/group/helpLegal';
     case 'surveyPublic': return st.surveyPublicId ? `/surveys/${enc(st.surveyPublicId)}` : '/surveys';
     case 'documentView': return st.documentId ? `/documents/${enc(st.documentId)}` : '/documents';
     case 'attendance': return st.attendanceEventKey ? `/host/attendance/${enc(st.attendanceEventKey)}` : '/host/dashboard';
@@ -111,6 +113,7 @@ export function pathToRoute(pathname) {
   if ((m = path.match(/^\/u\/([^/]+)$/))) return { screen: 'publicProfile', params: {}, open: 'openPublicProfile', openArgs: [dec(m[1]).toLowerCase(), 'home'] };
   if ((m = path.match(/^\/org\/([^/]+)$/))) return { screen: 'organizerProfile', params: {}, open: 'openOrganizerProfile', openArgs: [dec(m[1]), 'home'] };
   if ((m = path.match(/^\/org\/([^/]+)\/team$/))) return { screen: 'organizerTeam', params: {}, open: 'openOrganizerTeam', openArgs: [dec(m[1]), 'organizerProfile'] };
+  if ((m = path.match(/^\/help\/guides\/([^/]+)$/))) return { screen: 'guide', params: { guideKey: dec(m[1]) } };
   if ((m = path.match(/^\/surveys\/([^/]+)$/))) return { screen: 'surveyPublic', params: {}, open: 'goSurveyPublic', openArgs: [dec(m[1]), 'home'] };
   if ((m = path.match(/^\/documents\/([^/]+)$/))) {
     const id = dec(m[1]);

@@ -1269,6 +1269,8 @@ struct RootView: View {
         case .accountGroup: AccountGroupView()
         case .surveyPublic: SurveyPublicView()
         case .surveysHosting: SurveysHostingView()
+        case .helpGuide: HelpGuideView()
+        case .helpFaq: HelpFaqView()
         }
     }
 

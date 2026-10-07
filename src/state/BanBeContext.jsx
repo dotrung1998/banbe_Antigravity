@@ -1138,6 +1138,7 @@ const initialState = {
   // was actually on.
   accountTab: 'personal',
   accountGroupKey: null,
+  guideKey: null,
   following: [],
   refunds: {},
   gaveTicket: false,

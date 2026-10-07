@@ -33,6 +33,7 @@ struct AccountGroupView: View {
         // "circle" placeholder below; matches the Admin Team row's own
         // icon (AccountView.swift's groupCardRow call).
         case "adminTeam": return "person.3.fill"
+        case "helpLegal": return "lock.shield"
         default: return "circle"
         }
     }
@@ -74,6 +75,7 @@ struct AccountGroupView: View {
                     case "hostOps": hostOpsContent
                     case "adminReview": adminReviewContent
                     case "adminTeam": adminTeamContent
+                    case "helpLegal": helpLegalContent
                     default: EmptyView()
                     }
                 }
@@ -659,6 +661,30 @@ struct AccountGroupView: View {
     // shield" glyph, with no visual way to tell them apart at a glance;
     // each now has its own distinct icon (destinations/badges unchanged).
     @ViewBuilder
+    // Help & Legal — Terms (the full policy screen), the text guides (Admin
+    // guide only for admins) and the Q&A. Mirrors web's `helpLegal` group.
+    private var helpLegalContent: some View {
+        VStack(spacing: 0) {
+            row(app.T("Điều khoản", "Terms"), identifier: "help.terms", icon: "doc.text", trailing: "›") { app.openPolicy() }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Hướng dẫn: Người tham gia", "Guide: Personal"), identifier: "help.guide.personal", icon: "checklist", trailing: "›") { openGuide("personal") }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Hướng dẫn: Người tổ chức (Host)", "Guide: Host"), identifier: "help.guide.host", icon: "checklist", trailing: "›") { openGuide("host") }
+            if app.isAdmin {
+                Divider().overlay(app.palette.rule)
+                row(app.T("Hướng dẫn: Quản trị", "Guide: Admin"), identifier: "help.guide.admin", icon: "exclamationmark.shield", trailing: "›") { openGuide("admin") }
+            }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Hỏi & Đáp", "Q&A"), identifier: "help.faq", icon: "questionmark.bubble", trailing: "›") { app.screen = .helpFaq }
+        }
+        .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func openGuide(_ key: String) {
+        app.helpGuideKey = key
+        app.screen = .helpGuide
+    }
+
     private var adminReviewContent: some View {
         VStack(spacing: 0) {
             row(app.T("Tranh Chấp Thanh Toán", "Payment Disputes"), identifier: "admin.disputes", icon: "exclamationmark.bubble", trailing: "›") { app.openAdminDashboard() }

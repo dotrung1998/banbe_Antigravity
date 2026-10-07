@@ -24,6 +24,7 @@ enum Screen: String {
     case accountGroup
     case surveyPublic
     case surveysHosting
+    case helpGuide, helpFaq
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -531,6 +532,8 @@ final class AppState: ObservableObject {
     // "team" | "activity" | "payments" | "preferences" | "hostOps" |
     // "adminReview". `accountTab` itself is untouched by opening a group.
     @Published var accountGroupKey: String?
+    /// Which Help & Legal guide `.helpGuide` shows: personal | host | admin.
+    @Published var helpGuideKey: String = "personal"
     @Published var orgProfileSaving = false
     @Published var orgProfileError = ""
     // Retention roadmap follow-up — canonical real-event cache, keyed by
@@ -3355,6 +3358,8 @@ final class AppState: ObservableObject {
         // (`policyBackScreen`, set by `openPolicy()`), so both exit paths
         // can never drift apart.
         case .policy: screen = policyBackScreen
+        // Help & Legal guides / Q&A go back to the Help & Legal group.
+        case .helpGuide, .helpFaq: accountGroupKey = "helpLegal"; screen = .accountGroup
         default: break
         }
     }
@@ -3379,6 +3384,7 @@ final class AppState: ObservableObject {
         case "hostOps": return T("Vận Hành & Thanh Toán Tổ Chức", "Event Operations & Payments")
         case "adminReview": return T("Duyệt & Kiểm Duyệt", "Review & Moderation")
         case "adminTeam": return T("Đội Ngũ Quản Trị", "Admin Team")
+        case "helpLegal": return T("Trợ Giúp & Pháp Lý", "Help & Legal")
         default: return ""
         }
     }
@@ -3459,6 +3465,7 @@ final class AppState: ObservableObject {
         // wherever Help & Legal was actually opened from, same as every
         // other screen this exact bug class already hit).
         case .policy: return policyBackScreen
+        case .helpGuide, .helpFaq: return .accountGroup
         default: return .home
         }
     }

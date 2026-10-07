@@ -30,6 +30,7 @@ const GROUP_META = {
   hostOps: { vi: 'Vận Hành & Thanh Toán Tổ Chức', en: 'Event Operations & Payments' },
   adminReview: { vi: 'Duyệt & Kiểm Duyệt', en: 'Review & Moderation' },
   adminTeam: { vi: 'Đội Ngũ Quản Trị', en: 'Admin Team' },
+  helpLegal: { vi: 'Trợ Giúp & Pháp Lý', en: 'Help & Legal' },
 };
 
 // TASK 5 real-device follow-up — `badge` (0/undefined = hidden) so a child
@@ -58,7 +59,7 @@ export default function AccountGroup() {
     state: s, T, set,
     goCompletedList, respondToEventCredit, goEvent, openTicketImport, openImportedTicket, loadImportedTickets,
     respondToOrganizerInvite, setOrganizerMemberVisibility,
-    openPreferences, openSecurity, openDocuments, openRefundAccounts, openMyRefunds,
+    openPreferences, openSecurity, openPolicy, openDocuments, openRefundAccounts, openMyRefunds,
     openVerifications, openVerificationsRefunds, openPayout, openDisputes, openAdminEvents,
     loadPaymentBookings, openBookingConfirmed, openDeleteAccount,
     respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft,
@@ -108,7 +109,7 @@ export default function AccountGroup() {
       </div>
       <div style={{ padding: '16px 20px 40px' }}>
         <h1 style={{ ...display(27, { margin: 0, lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: 10 }) }}>
-          <RowIcon kind={{ team: 'users', activity: 'calendarCheck', payments: 'banknote', preferences: 'sliders', hostOps: 'checklist', adminReview: 'alertShield', adminTeam: 'users' }[key]} size={26} accent={ROW_ACCENT_COLORS[key]} />
+          <RowIcon kind={{ team: 'users', activity: 'calendarCheck', payments: 'banknote', preferences: 'sliders', hostOps: 'checklist', adminReview: 'alertShield', adminTeam: 'users', helpLegal: 'shield' }[key]} size={26} accent={ROW_ACCENT_COLORS[key]} />
           {title}
         </h1>
 
@@ -327,6 +328,20 @@ export default function AccountGroup() {
             <Row icon="receipt" label={T('Biên nhận', 'Receipts')} trailing="›" testId="account-receipts" onClick={() => openDocuments('receipt', 'guest')} />
             <Row icon="banknote" label={T('Tài khoản thanh toán & nhận hoàn tiền', 'Payment & refund accounts')} trailing="›" testId="account-refund-accounts" onClick={() => openRefundAccounts('profile')} />
             <Row icon="checklist" label={T('Hoàn tiền', 'Refunds')} trailing="›" testId="account-refunds" badge={computeMyRefundActionCount(s)} onClick={() => openMyRefunds('profile')} border={false} />
+          </div>
+        )}
+
+        {/* Help & Legal — Terms (the full policy screen), then the text guides
+            (Personal, Host; Admin guide only for admins), then the Q&A. */}
+        {key === 'helpLegal' && (
+          <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
+            <Row icon="document" label={T('Điều khoản', 'Terms')} trailing="›" testId="help-terms" onClick={openPolicy} />
+            <Row icon="checklist" label={T('Hướng dẫn: Người tham gia', 'Guide: Personal')} trailing="›" testId="help-guide-personal" onClick={() => set({ screen: 'guide', guideKey: 'personal' })} />
+            <Row icon="checklist" label={T('Hướng dẫn: Người tổ chức (Host)', 'Guide: Host')} trailing="›" testId="help-guide-host" onClick={() => set({ screen: 'guide', guideKey: 'host' })} />
+            {s.accountType === 'admin' && (
+              <Row icon="alertShield" label={T('Hướng dẫn: Quản trị', 'Guide: Admin')} trailing="›" testId="help-guide-admin" onClick={() => set({ screen: 'guide', guideKey: 'admin' })} />
+            )}
+            <Row icon="receipt" label={T('Hỏi & Đáp', 'Q&A')} trailing="›" testId="help-faq" onClick={() => set({ screen: 'faq' })} border={false} />
           </div>
         )}
 

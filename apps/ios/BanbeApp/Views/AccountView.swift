@@ -508,7 +508,7 @@ struct AccountView: View {
                 // identifier/route unchanged.
                 groupCardRow(groupKey: "preferences", icon: "slider.horizontal.3", label: app.T("Tùy Chỉnh", "App Preferences"))
                 groupDivider()
-                SwipeSafeButton { app.openPolicy() } label: {
+                SwipeSafeButton { openGroup("helpLegal") } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "lock.shield").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
                         Text(app.T("Trợ Giúp & Pháp Lý", "Help & Legal")).font(.system(size: 14))
@@ -761,7 +761,7 @@ struct AccountView: View {
             e("security", "personal", setVi, setEn, "Bảo mật", "Security", "lock.shield",
               "security mật khẩu password face id sinh trắc biometric đăng nhập login khóa lock đổi mật khẩu") { app.openSecurity() },
             e("help", "personal", setVi, setEn, "Trợ Giúp & Pháp Lý", "Help & Legal", "lock.shield",
-              "help trợ giúp hỗ trợ support policy chính sách điều khoản terms privacy quyền riêng tư pháp lý legal liên hệ contact") { app.openPolicy() },
+              "help trợ giúp hỗ trợ support policy chính sách điều khoản terms privacy quyền riêng tư pháp lý legal liên hệ contact hướng dẫn guide hỏi đáp faq q&a câu hỏi questions") { openGroup("helpLegal") },
             e("organizerMode", "personal", "Tổ Chức", "Hosting", "Chế độ tổ chức", "Organizer mode", "person.2.badge.gearshape",
               "host tổ chức organizer bật tắt toggle tạo sự kiện create event quản lý manage") { app.toggleOrganizerMode() },
             e("clearCache", "personal", setVi, setEn, "Xoá bộ nhớ đệm hình ảnh", "Clear Image Cache", "photo.stack",
