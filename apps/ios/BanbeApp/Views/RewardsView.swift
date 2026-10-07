@@ -152,11 +152,13 @@ struct RewardsView: View {
     }
 
     private func bullets(_ lines: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(lines.enumerated()), id: \.offset) { _, l in
-                HStack(alignment: .top, spacing: 8) {
-                    Text("•").accessibilityHidden(true)
-                    Text(l).font(.system(size: 12.5)).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("•").font(.system(size: 12.5)).frame(width: 10, alignment: .leading).accessibilityHidden(true)
+                    Text(l).font(.system(size: 12.5)).lineSpacing(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
