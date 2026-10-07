@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { supabase } from '../lib/supabase.js';
 import { paper, ink, display, fieldGlass, inkButton, alert } from '../theme.js';
@@ -24,11 +24,25 @@ export default function AdminTestAccounts() {
   const { state: s, T, set } = useBanBe();
   const [email, setEmail] = useState('');
   const [found, setFound] = useState(null);
+  const [nameQuery, setNameQuery] = useState('');
+  const [matches, setMatches] = useState([]);
   const [phone, setPhone] = useState('');
   const [dob, setDob] = useState('');
   const [grant, setGrant] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState({ text: '', bad: false });
+
+  // Search by display name (migration 161): debounced, picks an account by email.
+  useEffect(() => {
+    const q = nameQuery.trim();
+    if (s.accountType !== 'admin' || q.length < 2) { setMatches([]); return undefined; }
+    let live = true;
+    const t = setTimeout(async () => {
+      const { data, error } = await supabase.rpc('admin_phone_exempt_search', { p_query: q });
+      if (live) setMatches(!error && data?.success ? (data.results || []) : []);
+    }, 300);
+    return () => { live = false; clearTimeout(t); };
+  }, [nameQuery, s.accountType]);
 
   if (s.accountType !== 'admin') return null;
 
@@ -36,9 +50,9 @@ export default function AdminTestAccounts() {
   const fail = (code) => { const e = ERRORS[code]; say(e ? T(e[0], e[1]) : T('Không thực hiện được. Thử lại.', "Couldn't do that. Try again."), true); };
   const fieldStyle = { ...fieldGlass({ marginTop: 10, padding: 14, border: 'none', width: '100%', boxSizing: 'border-box' }), fontSize: 14, fontFamily: "'Be Vietnam Pro', sans-serif", color: ink, outline: 'none' };
 
-  const lookup = async () => {
+  const lookup = async (target = email) => {
     setBusy(true); say(''); setFound(null);
-    const { data, error } = await supabase.rpc('admin_phone_exempt_lookup', { p_email: email });
+    const { data, error } = await supabase.rpc('admin_phone_exempt_lookup', { p_email: target });
     setBusy(false);
     if (error || !data?.success) { fail(data?.error); return; }
     setFound(data); setPhone(data.profile_phone || ''); setDob(''); setGrant(!data.grandfathered);
@@ -51,8 +65,8 @@ export default function AdminTestAccounts() {
     });
     setBusy(false);
     if (error || !data?.success) { fail(data?.error); return; }
+    await lookup(found.email);
     say(T('Đã lưu. Số điện thoại vẫn CHƯA được xác minh.', 'Saved. The phone number is still NOT verified.'));
-    lookup();
   };
 
   return (
@@ -70,6 +84,18 @@ export default function AdminTestAccounts() {
         <div onClick={() => !busy && email.trim() && lookup()} style={{ ...inkButton({ marginTop: 12, borderRadius: 18, padding: 14, fontSize: 14 }), opacity: !busy && email.trim() ? 1 : 0.45, cursor: 'pointer' }} data-testid="admin-test-find">
           {T('Tìm tài khoản', 'Find account')}
         </div>
+
+        <input value={nameQuery} onChange={e => setNameQuery(e.target.value)} placeholder={T('Hoặc tìm theo tên hiển thị', 'Or search by display name')} data-testid="admin-test-name" style={fieldStyle} />
+        {matches.length > 0 && (
+          <div style={{ ...fieldGlass({ marginTop: 8, padding: 6 }) }} data-testid="admin-test-matches">
+            {matches.map(m => (
+              <div key={m.user_id} onClick={() => { setEmail(m.email); setNameQuery(''); setMatches([]); lookup(m.email); }}
+                style={{ padding: '9px 10px', cursor: 'pointer', fontSize: 13 }} data-testid="admin-test-match">
+                <b>{m.display_name || '—'}</b> <span style={{ opacity: 0.7 }}>· {m.email} · {m.role}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {found && (
           <div style={{ ...fieldGlass({ marginTop: 18, padding: 16 }) }} data-testid="admin-test-card">

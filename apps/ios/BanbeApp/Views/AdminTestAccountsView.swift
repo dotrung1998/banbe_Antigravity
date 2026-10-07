@@ -31,6 +31,13 @@ struct AdminTestAccountsView: View {
         }
     }
 
+    private struct Match: Decodable, Identifiable {
+        let userId: UUID, email: String, displayName: String?, role: String?
+        var id: UUID { userId }
+        enum CodingKeys: String, CodingKey { case email, role, userId = "user_id", displayName = "display_name" }
+    }
+    private struct SearchResult: Decodable { let success: Bool?; let results: [Match]? }
+
     private struct SaveResult: Decodable { let success: Bool?; let error: String? }
 
     private struct SaveParams: Encodable {
@@ -48,6 +55,8 @@ struct AdminTestAccountsView: View {
 
     @State private var email = ""
     @State private var found: Found?
+    @State private var nameQuery = ""
+    @State private var matches: [Match] = []
     @State private var phone = ""
     @State private var setDOB = false
     @State private var dob = Calendar.current.date(from: DateComponents(year: 2000, month: 1, day: 1)) ?? Date()
@@ -89,12 +98,12 @@ struct AdminTestAccountsView: View {
             .accessibilityIdentifier(id)
     }
 
-    private func lookup() async {
+    private func lookup(_ target: String? = nil) async {
         busy = true; message = ""; found = nil
         defer { busy = false }
         do {
             let r: Found = try await SupabaseService.client
-                .rpc("admin_phone_exempt_lookup", params: ["p_email": email]).execute().value
+                .rpc("admin_phone_exempt_lookup", params: ["p_email": target ?? email]).execute().value
             guard r.success == true, r.userId != nil else { show(errorText(r.error), error: true); return }
             found = r
             phone = r.profilePhone ?? ""
@@ -115,10 +124,20 @@ struct AdminTestAccountsView: View {
                     dob: (setDOB && found?.hasDob != true) ? isoDOB : nil, grant: grant)).execute().value
             guard r.success == true else { show(errorText(r.error), error: true); return }
             show(app.T("Đã lưu. Số điện thoại vẫn CHƯA được xác minh.", "Saved. The phone number is still NOT verified."), error: false)
-            await lookup()
+            await lookup(found?.email)
             // lookup() clears the message; show the confirmation again.
             show(app.T("Đã lưu. Số điện thoại vẫn CHƯA được xác minh.", "Saved. The phone number is still NOT verified."), error: false)
         } catch { show(errorText(nil), error: true) }
+    }
+
+    private func search() async {
+        let q = nameQuery.trimmingCharacters(in: .whitespaces)
+        guard q.count >= 2 else { matches = []; return }
+        try? await Task.sleep(nanoseconds: 300_000_000)   // debounce; a newer keystroke cancels this task
+        guard !Task.isCancelled else { return }
+        let r: SearchResult? = try? await SupabaseService.client
+            .rpc("admin_phone_exempt_search", params: ["p_query": q]).execute().value
+        if !Task.isCancelled { matches = (r?.success == true) ? (r?.results ?? []) : [] }
     }
 
     private func show(_ text: String, error: Bool) { message = text; messageIsError = error }
@@ -144,6 +163,28 @@ struct AdminTestAccountsView: View {
                     .disabled(busy || email.trimmingCharacters(in: .whitespaces).isEmpty)
                     .padding(.top, 12)
                     .accessibilityIdentifier("adminTest.find")
+
+                field(app.T("Hoặc tìm theo tên hiển thị", "Or search by display name"), text: $nameQuery, id: "adminTest.name")
+                    .padding(.top, 10)
+                    .task(id: nameQuery) { await search() }
+                if !matches.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(matches) { m in
+                            Button {
+                                email = m.email; nameQuery = ""; matches = []
+                                Task { await lookup(m.email) }
+                            } label: {
+                                Text("\(m.displayName ?? "—") · \(m.email) · \(m.role ?? "")")
+                                    .font(.system(size: 13)).multilineTextAlignment(.leading)
+                                    .frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("adminTest.match")
+                        }
+                    }
+                    .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.top, 8)
+                }
 
                 if let f = found {
                     VStack(alignment: .leading, spacing: 8) {

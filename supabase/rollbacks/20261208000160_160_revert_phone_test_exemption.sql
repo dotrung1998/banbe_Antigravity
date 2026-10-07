@@ -68,6 +68,7 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.admin_phone_exempt_search(text);  -- migration 161
 DROP FUNCTION IF EXISTS public.admin_phone_exempt_lookup(text);
 DROP FUNCTION IF EXISTS public.admin_set_phone_exemption(uuid, text, date, boolean);
 DROP TABLE IF EXISTS public.account_phone_test_exempt;

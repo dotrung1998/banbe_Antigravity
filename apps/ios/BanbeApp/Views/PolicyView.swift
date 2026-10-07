@@ -20,7 +20,11 @@ struct PolicyView: View {
     /// never sees this mode at all.
     private var gateActive: Bool { app.policyGateActive }
 
+    /// Hidden once tapped (the gate's "Jump to end" shortcut, below).
+    @State private var jumped = false
+
     var body: some View {
+        ScrollViewReader { proxy in
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
                     HStack {
@@ -75,6 +79,8 @@ struct PolicyView: View {
                     .padding(.top, 18)
                     .overlay(alignment: .top) { Rectangle().fill(app.palette.rule).frame(height: 1) }
                     .padding(.top, 20)
+
+                    Color.clear.frame(height: 1).id("policyEnd")
                 }
                 .foregroundStyle(app.palette.ink)
                 .padding(.horizontal, 22)
@@ -83,22 +89,57 @@ struct PolicyView: View {
         .safeAreaInset(edge: .bottom) {
             policyGateBar
         }
+        .overlay(alignment: .bottomTrailing) {
+            if gateActive && !jumped {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.45)) { proxy.scrollTo("policyEnd", anchor: .bottom) }
+                    jumped = true
+                } label: {
+                    Text("↓ Xuống cuối / Jump to end")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .background(app.palette.ink, in: Capsule())
+                        .foregroundStyle(app.palette.paper)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 16).padding(.bottom, 84)
+                .accessibilityIdentifier("policy.gate.jump")
+            }
+        }
+        }
     }
 
     @ViewBuilder
     private var policyGateBar: some View {
             if gateActive {
-                Button {
-                    app.acceptPolicyGate()
-                } label: {
-                    Text("Tôi đồng ý ▪︎ Tiếp tục / I agree ▪︎ Continue")
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .background(app.palette.ink)
-                        .foregroundStyle(app.palette.paper)
+                HStack(spacing: 10) {
+                    Button {
+                        app.policyGateActive = false
+                        Task { await app.signOut() }
+                    } label: {
+                        Text("Từ chối / Decline")
+                            .font(.system(size: 14, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 15)
+                            .overlay(Rectangle().stroke(app.palette.ink, lineWidth: 1))
+                            .foregroundStyle(app.palette.ink)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("policy.gate.decline")
+                    Button {
+                        app.acceptPolicyGate()
+                    } label: {
+                        Text("Tôi đồng ý ▪︎ Tiếp tục / I agree ▪︎ Continue")
+                            .font(.system(size: 15, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 15)
+                            .background(app.palette.ink)
+                            .foregroundStyle(app.palette.paper)
+                    }
+                    .buttonStyle(.plain)
+                    .layoutPriority(1)
+                    .accessibilityIdentifier("policy.gate.accept")
                 }
-                .buttonStyle(.plain)
                 .padding(.horizontal, 22).padding(.vertical, 10)
                 .background(app.palette.paper)
                 .overlay(alignment: .top) { Rectangle().fill(app.palette.rule).frame(height: 1) }

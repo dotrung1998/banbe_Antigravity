@@ -18,6 +18,7 @@ echo "--- apply 159 (twice: idempotent)"
 psql_ -q < $M/20261208000159_159_phone_test_exemption.sql
 psql_ -q < $M/20261208000159_159_phone_test_exemption.sql
 psql_ -q -t -A < 10_exempt.sql 2>&1 | grep -v '^{"sub"'
+docker cp $M/20261209000161_161_admin_phone_exempt_search.sql gate159:/tmp/161.sql
 psql_ -q -t -A < 15_admin.sql 2>&1 | grep -v "^{\"sub\""
 echo "--- apply rollback 160"
 psql_ -q < ../../rollbacks/20261208000160_160_revert_phone_test_exemption.sql

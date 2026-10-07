@@ -72,3 +72,16 @@ reset role;
 set role authenticated;
 do $$ begin perform 1 from public.phone_test_exempt_audit; raise exception 'LEAK'; exception when insufficient_privilege then raise notice 'ok: audit denied to clients'; end $$;
 reset role;
+
+\echo === A5 search by display name (migration 161): admin only, no private fields
+\i /tmp/161.sql
+set role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub',:ME,'session_id','d2000000-0000-0000-0000-000000000002')::text, false);
+select (public.admin_phone_exempt_search('tar')->>'error')='NOT_AUTHORIZED' as ok_member_denied;
+select set_config('request.jwt.claims', json_build_object('sub',:AD,'session_id','d1000000-0000-0000-0000-000000000001')::text, false);
+select jsonb_array_length(public.admin_phone_exempt_search('TARG')->'results')=1 as ok_one_match,
+       (public.admin_phone_exempt_search('TARG')->'results'->0->>'email')='target@example.com' as ok_email,
+       not (public.admin_phone_exempt_search('TARG')->'results'->0 ? 'profile_phone') as ok_no_private_fields;
+select jsonb_array_length(public.admin_phone_exempt_search('t')->'results')=0 as ok_too_short_empty;
+select jsonb_array_length(public.admin_phone_exempt_search('%')->'results')=0 as ok_wildcard_escaped;
+reset role;

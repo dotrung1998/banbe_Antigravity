@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display } from '../theme.js';
 import { POLICY_VERSION } from '../lib/policy.js';
@@ -7,8 +8,8 @@ import { POLICY_VERSION } from '../lib/policy.js';
 // document's own alternating structure) — not a paraphrase or summary.
 // Where the source and English differ, the Vietnamese text prevails (A1).
 export default function Policy() {
-  const { state, backFromPolicy, acceptPolicyGate } = useBanBe();
-  return <PolicyView state={state} backFromPolicy={backFromPolicy} acceptPolicyGate={acceptPolicyGate} />;
+  const { state, backFromPolicy, acceptPolicyGate, declinePolicyGate } = useBanBe();
+  return <PolicyView state={state} backFromPolicy={backFromPolicy} acceptPolicyGate={acceptPolicyGate} declinePolicyGate={declinePolicyGate} />;
 }
 
 // Public, signed-out, context-free rendering for /privacy (Meta/Google app
@@ -17,7 +18,7 @@ export function PublicPolicy() {
   return <PolicyView state={{}} standalone />;
 }
 
-function PolicyView({ state, backFromPolicy, acceptPolicyGate, standalone }) {
+function PolicyView({ state, backFromPolicy, acceptPolicyGate, declinePolicyGate, standalone }) {
   // Set only for a brand-new OAuth (Google/Facebook) profile that reached a
   // session with no policy_accepted_at yet (syncUser(), note 10's OAuth
   // consent fix) — no back-out (there's nowhere legitimate to go; the
@@ -26,6 +27,19 @@ function PolicyView({ state, backFromPolicy, acceptPolicyGate, standalone }) {
   // email/password (already gated by Login.jsx's own checkbox), never sees
   // this mode at all.
   const gateActive = state.policyGateActive;
+
+  // "Jump to the end" (gate only): the accept/decline bar is pinned, but the
+  // text is long — this scrolls straight to the consent box and hides itself
+  // once that is on screen.
+  const endRef = useRef(null);
+  const [atEnd, setAtEnd] = useState(false);
+  useEffect(() => {
+    const el = endRef.current;
+    if (!gateActive || !el || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(([e]) => setAtEnd(e.isIntersecting), { threshold: 0.1 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [gateActive]);
 
   return (
     <div style={{ animation: 'banbeIn 0.32s cubic-bezier(.22,.61,.36,1) both', minHeight: '100%', background: paper }} data-screen-label="Policy">
@@ -89,8 +103,7 @@ function PolicyView({ state, backFromPolicy, acceptPolicyGate, standalone }) {
         </ol>
 
         <div style={{ marginTop: 16, padding: 14, border: `1px solid ${rule}`, borderRadius: 10 }}>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, lineHeight: 1.5, color: ink }}>
-            <input type="checkbox" disabled style={{ marginTop: 2, flex: 'none' }} />
+          <label style={{ display: 'block', fontSize: 12.5, lineHeight: 1.5, color: ink }}>
             <span>
               Tôi đồng ý với Điều khoản sử dụng (Phần A) và để CÔNG TY TNHH CÓMPANY xử lý dữ liệu cá nhân của tôi theo Thông báo quyền riêng tư (Phần B), gồm việc host của sự kiện tôi đặt nhận được số điện thoại của tôi, và việc lưu trữ ngoài Việt Nam.
               <br /><br />
@@ -360,14 +373,33 @@ function PolicyView({ state, backFromPolicy, acceptPolicyGate, standalone }) {
         </div>
       </div>
 
+      <div ref={endRef} style={{ height: 1 }} />
+
+      {gateActive && !atEnd && (
+        <div
+          onClick={() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+          style={{ position: 'fixed', right: 16, bottom: 96, padding: '10px 14px', fontSize: 12.5, fontWeight: 600, background: ink, color: paper, borderRadius: 20, cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }}
+          data-testid="policy-gate-jump"
+        >
+          ↓ Xuống cuối / Jump to end
+        </div>
+      )}
+
       {gateActive && (
         <div
-          style={{ position: 'fixed', left: 0, right: 0, bottom: 0, padding: '16px 22px 22px', background: paper, borderTop: `1px solid ${rule}` }}
+          style={{ position: 'fixed', left: 0, right: 0, bottom: 0, padding: '16px 22px 22px', background: paper, borderTop: `1px solid ${rule}`, display: 'flex', gap: 10 }}
           data-testid="policy-gate-bar"
         >
           <div
+            onClick={declinePolicyGate}
+            style={{ flex: 1, fontSize: 14, fontWeight: 600, textAlign: 'center', padding: 15, border: `1px solid ${ink}`, color: ink, cursor: 'pointer' }}
+            data-testid="policy-gate-decline"
+          >
+            Từ chối / Decline
+          </div>
+          <div
             onClick={acceptPolicyGate}
-            style={{ fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 15, background: ink, color: paper, cursor: 'pointer' }}
+            style={{ flex: 2, fontSize: 15, fontWeight: 600, textAlign: 'center', padding: 15, background: ink, color: paper, cursor: 'pointer' }}
             data-testid="policy-gate-accept"
           >
             Tôi đồng ý ▪︎ Tiếp tục / I agree ▪︎ Continue
