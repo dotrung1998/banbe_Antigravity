@@ -3,10 +3,14 @@ import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg, mapsUrl } from '../data/events.js';
 import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
+import { EVENTS } from '../data/events.js';
+import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
 
 export default function EventDetail() {
   const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
   const s = state;
+  // Host reservation criteria (migration 162): real events only; pre-check only when restricted.
+  const crit = useReservationCriteria(ev.key, { isReal: !EVENTS.some(e => e.key === ev.key) });
   // Structured "Bao gồm" (migration 087) — up to 3 { label, detail } items.
   // Legacy `ev.included` (plain text) stays readable as before when no
   // structured items exist yet (an event created before this pass); never
@@ -141,8 +145,12 @@ export default function EventDetail() {
     : ev.soldOut
     ? T('Hết chỗ ▪︎ nhắn để vào danh sách chờ', 'Sold out ▪︎ message for waitlist')
     : (T('Giữ chỗ ▪︎ ', 'Reserve ▪︎ ') + trStatus(ev.price));
-  const reserveBarTap = myBooking ? openHeld : (ev.cancelled || ended) ? undefined : (ev.soldOut ? goChat : goReserve);
-  const reserveBarStyle = (myBooking || (!ev.soldOut && !ended && !ev.cancelled))
+  // Blocked only when the server said ineligible and there is no booking/closed state to show.
+  const criteriaBlocked = crit.blocked && !myBooking && !ev.cancelled && !ended && !ev.soldOut;
+  const reserveBarTap = myBooking ? openHeld : (ev.cancelled || ended || criteriaBlocked) ? undefined : (ev.soldOut ? goChat : goReserve);
+  const reserveBarStyle = criteriaBlocked
+    ? { flex: 'none', margin: '0 20px 22px', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 0', borderRadius: 18, cursor: 'default', background: 'var(--bb-field)', color: ink, opacity: 0.6 }
+    : (myBooking || (!ev.soldOut && !ended && !ev.cancelled))
     ? { ...inkButton({ flex: 'none', margin: '0 20px 22px', padding: '15px 0' }) }
     : { flex: 'none', margin: '0 20px 22px', fontSize: 15, fontWeight: 600, textAlign: 'center', padding: '15px 0', borderRadius: 18, cursor: (ended || ev.cancelled) ? 'default' : 'pointer', background: 'var(--bb-field)', color: ink };
 
@@ -288,6 +296,10 @@ export default function EventDetail() {
           // — a truthful statement instead of an invented feature.
           <div style={{ fontSize: 12.5, color: ink, marginTop: 6 }}>{T('Sự kiện này chỉ dành cho người được mời.', 'This event is invite-only.')}</div>
         )}
+        <WhoCanReserve criteria={crit.criteria} style={{ marginTop: 6 }} />
+        {crit.restricted && crit.blocked && !myBooking && !ev.cancelled && !ended && (
+          <CriteriaUnmetCard eligibility={crit.eligibility} returnTo="event" style={{ marginTop: 12 }} />
+        )}
         <p style={{ fontSize: 14, lineHeight: 1.55, color: ink, margin: '20px 0 0' }}>{ev.desc}</p>
         <div style={{ marginTop: 22, borderTop: `1px solid ${rule}` }}>
           {/* Intro/included-presentation pass (2026-09-28) — was two
@@ -383,7 +395,7 @@ export default function EventDetail() {
         </div>
       </div>
       </div>
-      <div onClick={reserveBarTap} style={reserveBarStyle}>{reserveBarLabel}</div>
+      <div onClick={reserveBarTap} style={reserveBarStyle} data-testid="event-reserve-bar" aria-disabled={criteriaBlocked || undefined}>{reserveBarLabel}</div>
       {includedSheetOpen && (
         <div
           onClick={() => setIncludedSheetOpen(false)}

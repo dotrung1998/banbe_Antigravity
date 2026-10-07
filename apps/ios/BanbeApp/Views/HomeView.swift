@@ -220,6 +220,11 @@ struct HomeView: View {
         // sign-in within the same session), so a new account must not
         // inherit a previous account's "already revealed 23 rows" state.
         .onChange(of: app.userID) { _, _ in visibleSurveyDiscoveryCount = 3 }
+        // For You: recomputes (computed property) on any of these; reset if stale.
+        .onChange(of: app.eventPrefsVersion) { _, _ in resetForYouIfStale() }
+        .onChange(of: app.area) { _, _ in resetForYouIfStale() }
+        .onChange(of: app.hasForYouMatches) { _, _ in resetForYouIfStale() }
+        .onChange(of: app.discoveryEventsLoading) { _, _ in resetForYouIfStale() }
         // The area menu's searchable fallback (see `header`): a native Menu
         // can't hold a text field, so "Search locations…" opens this sheet
         // instead. Same picker Map Explore uses, same `app.area` selection.
@@ -969,6 +974,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 8) {
             filterRow(zone: "homeFilterCategories") { filterTabs }
             filterRow(zone: "homeFilterStatus") { homeExtraFilterChips }
+            if app.filterForYou && app.hasForYouMatches { forYouEditRow }
         }
         .padding(.top, 16)
         .padding(.bottom, 14)
@@ -1036,6 +1042,7 @@ struct HomeView: View {
             ("ended", "Đã kết thúc", "Ended", app.filterEnded),
         ]
         return HStack(spacing: 8) {
+            if app.hasForYouMatches { forYouChip }
             ForEach(chips, id: \.key) { chip in
                 SwipeSafeButton {
                     Haptics.selection()
@@ -1053,6 +1060,56 @@ struct HomeView: View {
             }
         }
         .foregroundStyle(app.palette.ink)
+    }
+
+    /// Quick shortcut while For You is active: edit the answers, and Back /
+    /// swipe-back returns here with For You still on (`eventPrefsReturnScreen`).
+    private var forYouEditRow: some View {
+        Button {
+            Haptics.selection()
+            app.openEventPreferences(returnTo: .home)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "slider.horizontal.3").font(.system(size: 12, weight: .semibold))
+                Text(app.T("Chỉnh câu trả lời của bạn", "Edit my answers"))
+                    .font(.system(size: 12.5, weight: .semibold)).underline()
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(.horizontal, 20)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("foryou.editAnswers")
+    }
+
+    /// Gold-star "For You" chip — only rendered when `hasForYouMatches`.
+    private var forYouChip: some View {
+        let gold = Color(red: 0.80, green: 0.62, blue: 0.16)
+        let active = app.filterForYou
+        return SwipeSafeButton {
+            Haptics.selection()
+            app.toggleHomeFilter("forYou")
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(active ? app.palette.paper : gold)
+                Text(app.T("Dành cho bạn", "For You"))
+                    .font(.system(size: 12, weight: active ? .bold : .regular))
+            }
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .foregroundStyle(active ? app.palette.paper : app.palette.ink)
+            .background { homeGlassCapsule(active: active) }
+            .overlay(Capsule().stroke(active ? app.palette.ink : gold.opacity(0.7), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("filter.foryou")
+        .accessibilityLabel(app.T("Dành cho bạn", "For You"))
+    }
+
+    /// Never leave a stale empty "For You" list: once data has settled, a
+    /// vanished match set (prefs edited, area changed) clears the filter.
+    private func resetForYouIfStale() {
+        guard app.filterForYou, !app.discoveryEventsLoading, !app.hasForYouMatches else { return }
+        app.filterForYou = false
     }
 
     // MARK: Empty / footer

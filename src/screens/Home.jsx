@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, bg, agoLabel } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
+import { prefsIsEmpty } from '../lib/eventPrefs.js';
+import { forYouRank, forYouTimeZone, forYouPriceCurrency } from '../lib/forYou.js';
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass, barGlass } from '../theme.js';
 import { BAR_HEIGHT, BAR_BOTTOM_OFFSET, DOCK_MARGIN } from './BottomTabBar.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
@@ -408,7 +410,7 @@ export default function Home() {
     loadHomeStories, openStoryViewer, openSurveyStoryModal,
     loadMyRefunds, openMyRefunds, loadRefundQueue, goNotifications,
     openPulseViewer, loadWeekendEvents, loadDiscoveryEvents, loadRealEventsById, loadPulse,
-    loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery,
+    loadHomeSurveyDiscovery, loadMoreHomeSurveyDiscovery, openEventPreferences,
   } = useBanBe();
 
   const s = state;
@@ -620,8 +622,48 @@ export default function Home() {
         // THEMSELVES chronologically before merging into the feed, never
         // read past that point.
         startsAtRaw: e.startsAt || null,
+        // For You candidates (src/lib/forYou.js) need the raw price.
+        priceVnd: e.priceVnd || 0,
+        status: e.status,
       };
     }), [s.discoveryEvents]);
+
+  // "For You" (34-onboarding-for-you-criteria.md): REAL discoverable events only
+  // (discoveryShaped never contains the static demo catalogue), under the current
+  // area filter. Recomputed when preferences change (eventPrefs is replaced on save).
+  const forYouRanked = useMemo(() => {
+    if (!s.eventPrefs || prefsIsEmpty(s.eventPrefs)) return [];
+    const cands = discoveryShaped
+      .map(withLive)
+      .filter(e => curArea.match(e))
+      .map(e => ({
+        key: e.key,
+        categories: [e.catKey, e.cat2Key].filter(c => c && c !== 'all'),
+        priceAmount: e.isFree === true || !e.priceVnd ? 0 : e.priceVnd,
+        priceCurrency: forYouPriceCurrency(e.countryCode),
+        isFree: !e.priceVnd,
+        startsAt: e.startsAtRaw ? new Date(e.startsAtRaw).getTime() : null,
+        timeZone: forYouTimeZone(e.countryCode, e.stateProvince),
+        isBookable: e.status === 'live' && !e.cancelled && e.endedHoursAgo == null && !e.soldOut && !e.inviteOnly,
+      }));
+    return forYouRank(cands, s.eventPrefs, Date.now());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discoveryShaped, s.eventPrefs, s.eventPrefsVersion, curArea, s.homeLiveEvents]);
+  const hasForYou = forYouRanked.length > 0;
+  const forYouOrder = useMemo(() => new Map(forYouRanked.map((m, i) => [m.key, i])), [forYouRanked]);
+  // Refresh discovery when the preferences version changes (not on first mount,
+  // Home already loads once).
+  const prefsVersionSeen = useRef(s.eventPrefsVersion);
+  useEffect(() => {
+    if (prefsVersionSeen.current === s.eventPrefsVersion) return;
+    prefsVersionSeen.current = s.eventPrefsVersion;
+    if (s.eventPrefsVersion > 0) loadDiscoveryEvents();
+  }, [s.eventPrefsVersion, loadDiscoveryEvents]);
+  // Auto-reset when matches vanish, but never while discovery is still loading.
+  useEffect(() => {
+    if (s.filterForYou && !hasForYou && !s.discoveryEventsLoading) set({ filterForYou: false });
+  }, [s.filterForYou, hasForYou, s.discoveryEventsLoading, set]);
+  const forYouActive = s.filterForYou && hasForYou;
 
   const demoted = e => (e.cancelled && (e.cancelledHoursAgo == null || e.cancelledHoursAgo >= 2)) ? 1 : 0;
   // Home-visibility fix (2026-09-29) — real root cause of "an approved
@@ -662,7 +704,9 @@ export default function Home() {
     .filter(e => !s.filterSoldOut || e.soldOut)
     .filter(e => !s.filterUpcoming || (!e.cancelled && e.endedHoursAgo == null))
     .filter(e => !s.filterEnded || e.endedHoursAgo != null)
+    .filter(e => !forYouActive || forYouOrder.has(e.key))
     .sort((a, b) => demoted(a) - demoted(b))
+    .sort((a, b) => (forYouActive ? forYouOrder.get(a.key) - forYouOrder.get(b.key) : 0))
     .map(e => {
       let seats = e.seats;
       if (e.cancelled) seats = 'Đã hủy';
@@ -679,7 +723,7 @@ export default function Home() {
         goingLabel: trStatus('Đang tham gia' + ((s.tickets[e.key] || 1) > 1 ? ' ▪︎ ' + s.tickets[e.key] + ' vé' : '')),
         saveLabel: saved ? T('Đã lưu', 'Saved') : T('Lưu', 'Save'),
       };
-    }), [realEventsSorted, s.filter, s.filterAttending, s.filterNotConfirmed, s.filterSaved, s.filterSoldOut, s.filterUpcoming, s.filterEnded, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, isAwaitingConfirmation, trStatus, stripKm, T]);
+    }), [realEventsSorted, s.filter, s.filterAttending, s.filterNotConfirmed, s.filterSaved, s.filterSoldOut, s.filterUpcoming, s.filterEnded, forYouActive, forYouOrder, s.tickets, s.homeLiveEvents, curArea, isSaved, isGoing, isAwaitingConfirmation, trStatus, stripKm, T]);
 
   // Retention roadmap P1 ("Cuối tuần này") — reuses the SAME district
   // (curArea) and category (s.filter) picks already driving the main feed
@@ -1070,6 +1114,18 @@ export default function Home() {
           chip is now always visible (wraps to a second line if it doesn't
           fit), no swipe needed to see the rest. */}
       <div data-hscroll="true" style={{ display: 'flex', gap: 8, padding: '0 20px 14px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {hasForYou && (
+          <span
+            onClick={() => toggleHomeFilter('forYou')}
+            data-testid="home-filter-foryou"
+            aria-label={T('Dành cho bạn', 'For You')}
+            aria-pressed={!!s.filterForYou}
+            style={homeCapsule({ fontWeight: s.filterForYou ? 600 : 400, gap: 6 }, !!s.filterForYou)}
+          >
+            <span aria-hidden="true" style={{ color: '#E0A526', fontSize: 15, lineHeight: 1 }}>★</span>
+            {T('Dành cho bạn', 'For You')}
+          </span>
+        )}
         {HOME_EXTRA_FILTERS.map(f => {
           // Every filter key maps to its state field by simple
           // capitalization (attending -> filterAttending, notConfirmed ->
@@ -1087,6 +1143,18 @@ export default function Home() {
           );
         })}
       </div>
+      {forYouActive && (
+        <div style={{ padding: '0 20px 12px' }}>
+          <span
+            onClick={() => openEventPreferences('home')}
+            data-testid="home-foryou-edit-answers"
+            role="button"
+            style={{ fontSize: 12.5, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer' }}
+          >
+            {T('Chỉnh câu trả lời của bạn', 'Edit my answers')}
+          </span>
+        </div>
+      )}
 
       {feed.map(ev => (
         <div key={ev.key} data-testid={`home-event-${ev.key}`} onClick={() => goEvent(ev.key)} style={{ cursor: 'pointer', paddingBottom: 6 }}>

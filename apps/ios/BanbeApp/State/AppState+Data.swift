@@ -444,6 +444,7 @@ extension AppState {
             userID = nil
             userEmail = nil
             user = nil
+            resetEventPrefsState()
             accountType = "participant"
             organizerMode = false
             hasHosted = false
@@ -478,6 +479,9 @@ extension AppState {
         }
         userID = session.user.id
         userEmail = session.user.email
+        // Once per session: the flag is reset on sign-out, so token refreshes
+        // don't re-read (and re-open a step the user skipped locally).
+        if !eventPrefsLoaded { Task { await loadEventPreferences() } }
 
         // Stage 1 (retention roadmap P0) — real `favorites` rows, not the
         // local-only array this used to be. See favoritesLoadedForUID's own
@@ -2740,6 +2744,12 @@ extension AppState {
             // distinguishes real causes elsewhere in this file, so a
             // cancelled/ended event says so instead of a vague "try again".
             let code = (error as? PostgrestError)?.message ?? ""
+            if let block = AppState.eligibility(fromBookingError: error) {
+                // Criteria not met: show the guidance card, not a generic error.
+                reserveEligibilityBlock = block
+                reserveError = ""
+                return
+            }
             reserveError = [
                 "NOT_AUTHENTICATED": T("Bạn cần đăng nhập để giữ chỗ.", "You need to sign in to hold a spot."),
                 "INVALID_QTY": T("Số lượng chỗ không hợp lệ.", "That number of spots isn’t valid."),
@@ -4881,7 +4891,11 @@ try await SupabaseService.client
 
         do {
             var eventID: String?
-            if let editID = createEditEventId {
+            if let retryID = createCriteriaRetryEventID {
+                // Earlier attempt created the draft (already in review, so NOT
+                // resubmittable) but the criteria save failed — redo only that.
+                eventID = retryID
+            } else if let editID = createEditEventId {
                 let result: [String: JSONValue] = try await SupabaseService.client
                     .rpc("resubmit_event_for_review", params: ResubmitEventParams(
                         eventId: editID,
@@ -5040,6 +5054,26 @@ try await SupabaseService.client
                 } catch {
                     print("set_event_visibility failed:", error)
                 }
+
+                // Reservation criteria (migration 162). A host who chose a
+                // restriction must never see the event go out unrestricted
+                // because this call failed — block with a message and keep
+                // them on the form (re-submitting is idempotent).
+                let wantedCriteria = createCriteria.normalizedForSave()
+                if !wantedCriteria.isEveryone || createEditEventId != nil || createCriteriaRetryEventID != nil {
+                    let ok = await setReservationCriteria(eventID: eventID, wantedCriteria)
+                    if !ok {
+                        loading = false
+                        // Retry must reuse THIS event (not create a duplicate, and
+                        // not resubmit: a fresh draft is already in 'review').
+                        createCriteriaRetryEventID = eventID
+                        createError = T(
+                            "Không lưu được điều kiện đặt chỗ nên sự kiện chưa được gửi đi công khai. Vui lòng thử lại.",
+                            "We couldn’t save the reservation criteria, so the event was not released unrestricted. Please try again.")
+                        return false
+                    }
+                    createCriteriaRetryEventID = nil
+                }
             }
 
             if let eventID, !newImages.isEmpty || !removeExistingPhotoIDs.isEmpty || (existingCoverPath?.isEmpty == false) {
@@ -5185,6 +5219,16 @@ try await SupabaseService.client
         createCity = real.city ?? ""
         createPostalCode = real.postalCode ?? ""
         createVisibility = real.visibility
+        createCriteria = .everyone
+        do {
+            let editID = real.id
+            Task { [weak self] in
+                guard let self else { return }
+                let c = await self.fetchEventCriteria(eventKey: editID)
+                guard self.createEditEventId == editID else { return }
+                self.createCriteria = c ?? .everyone
+            }
+        }
         // nil = "not re-picked this session" → omitted from the resubmit
         // payload, so the RPC COALESCE-preserves the row's own values.
         createCountryCode = nil

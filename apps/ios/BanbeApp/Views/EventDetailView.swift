@@ -109,6 +109,31 @@ struct EventDetailView: View {
         // events without ever being torn down, e.g. via `goEvent`).
         .task(id: event.key) { await app.loadEventPhotos(eventID: event.key) }
         .task(id: event.key) { await app.loadEventOrgStats(forEventKey: event.key) }
+        // Reservation criteria (migration 162): small per-event read; only a
+        // restricted event triggers the eligibility pre-check (Everyone = no
+        // extra calls/UI). Re-runs when the guest saves new preferences.
+        .task(id: "\(event.key)|\(app.eventPrefsVersion)|\(app.isSignedIn)") {
+            app.reserveEligibilityBlock = nil
+            await app.loadEventCriteria(eventKey: event.key)
+            if app.isSignedIn, let c = app.eventCriteriaByKey[event.key], !c.isEveryone {
+                await app.recheckReservationEligibility(eventKey: event.key)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var criteriaSection: some View {
+        if let c = app.eventCriteriaByKey[event.key], !c.isEveryone {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(app.T("Ai được đặt chỗ: ", "Who can reserve: ") + c.summary(vi: !app.isEN))
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .accessibilityIdentifier("event.criteria.summary")
+                if let block = app.reserveEligibilityBlock {
+                    CriteriaUnmetCard(eligibility: block, returnTo: .event, idPrefix: "event")
+                }
+            }
+            .padding(.bottom, 14)
+        }
     }
 
     // BUG 4 fix (2026-09-22 follow-up) — event cover preview, title/date,
@@ -222,6 +247,7 @@ struct EventDetailView: View {
                     .buttonStyle(.plain)
                     .padding(.bottom, 10)
             }
+            criteriaSection
             // Task 1a: only when this screen was reached from Home, not
             // from tapping the event inside Map's own sheet list — reuses
             // the exact same `eventBackScreen` convention the "Về trang
@@ -604,7 +630,8 @@ struct EventDetailView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                InkButton(title: app.T("Giữ chỗ ▪︎ ", "Reserve ▪︎ ") + app.trStatus(event.price)) {
+                InkButton(title: app.T("Giữ chỗ ▪︎ ", "Reserve ▪︎ ") + app.trStatus(event.price),
+                          enabled: app.reserveEligibilityBlock == nil) {
                     app.goReserve()
                 }
             }

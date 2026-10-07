@@ -222,6 +222,8 @@ final class BottomTabBarOverlay {
     // states inside it) since they all funnel through the same published
     // field.
     private var surveyModalOpen = false
+    /// Event onboarding (settings review / five questions) is full-screen — no dock.
+    private var onboardingOpen = false
     /// A profile share card sheet (personal or host) is up. Presented as a
     /// `.sheet` from several screens, so the card itself reports in, and the
     /// dock hides exactly as it does for Pulse.
@@ -371,6 +373,11 @@ final class BottomTabBarOverlay {
         applyVisibility()
     }
 
+    func setOnboardingOpen(_ open: Bool) {
+        onboardingOpen = open
+        applyVisibility()
+    }
+
     func setSurveyModalOpen(_ open: Bool) {
         surveyModalOpen = open
         applyVisibility()
@@ -427,7 +434,7 @@ final class BottomTabBarOverlay {
     }
 
     private func applyVisibility() {
-        let shouldShow = !(appLocked || forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || surveyModalOpen || shareCardOpen)
+        let shouldShow = !(appLocked || forcedHidden || storyViewerOpen || pulseViewerOpen || modalActionSheetPresented || surveyModalOpen || onboardingOpen || shareCardOpen)
             && BottomTabBar.visibleScreens.contains(currentScreen)
         guard shouldShow != lastShown else { return }
         lastShown = shouldShow

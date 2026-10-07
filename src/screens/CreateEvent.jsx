@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ReservationCriteriaPicker } from './ReservationCriteria.jsx';
+import { criteriaSummary, normalizeCriteria } from '../lib/eventPrefs.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS, CREATE_PALETTES, bg, mapsUrl } from '../data/events.js';
 import { liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
@@ -38,7 +40,7 @@ export default function CreateEvent() {
     orgRegNameType, orgRegIgType, orgRegDescType,
     createNameType, createDescType, createIntroType, createKeywordsType, createChatGreetingType, createChatGreetingEnType, createLocType, createEventDateType, createEventTimeType, createPriceType, createSeatsType,
     retryCreateAddressSearch, selectCreateAddressSuggestion, clearCreateAddressSelection,
-    pickCreateCat, pickCreatePalette, pickCreateVisibility,
+    pickCreateCat, pickCreatePalette, pickCreateVisibility, setCreateCriteria,
     addCreateIncludedItem, removeCreateIncludedItem, setCreateIncludedItem, importParsedEvent,
     createSubmit, goEvent, loadHomeLiveEvents,
     goCreate, goHome, goDashboard, goProfile,
@@ -486,6 +488,8 @@ export default function CreateEvent() {
           </p>
         </div>
 
+        <ReservationCriteriaPicker criteria={s.createCriteria} onChange={setCreateCriteria} loadState={s.createCriteriaLoad} />
+
         <div style={{ marginTop: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <span style={{ fontSize: 11.5, color: ink }}>{T('Danh mục', 'Category')} <span style={{ color: alert }}>*</span></span>
@@ -876,6 +880,7 @@ function ReviewStep({ T, trStatus, stripKm, s, items, coverKey, createCatLabel, 
               {row(T('Số chỗ', 'Capacity'), seatsLabel)}
               {row(T('Giá vé', 'Price'), priceLabel)}
               {row(T('Quyền riêng tư', 'Privacy'), s.createVisibility === 'invite' ? T('Chỉ mời', 'Invite-only') : T('Công khai', 'Public'))}
+              {row(T('Ai có thể đặt', 'Who can reserve'), criteriaSummary(normalizeCriteria(s.createCriteria), T(true, false)))}
               {s.createDesc.trim() && row(T('Mô tả', 'Description'), s.createDesc.trim())}
               {s.createIntro.trim() && row(T('Giới thiệu sự kiện', 'Event introduction'), s.createIntro.trim())}
             </div>

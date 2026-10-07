@@ -16,7 +16,7 @@ struct ReserveView: View {
     // input that writes via setNameAtHold() (rename_display_name(), same
     // RPC Account's "Đổi tên" uses) instead of a value that goes nowhere.
     private var hasName: Bool { !(app.user?.displayName ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
-    private var formOK: Bool { hasName && app.attendeesComplete }
+    private var formOK: Bool { hasName && app.attendeesComplete && app.reserveEligibilityBlock == nil }
     private var totalLabel: String {
         event.isFree ? "Miễn phí" : EventLabels.vnd(event.priceVnd * app.qty)
     }
@@ -179,6 +179,11 @@ struct ReserveView: View {
                 .lineSpacing(3)
                 .padding(.top, 22)
 
+                if let block = app.reserveEligibilityBlock {
+                    CriteriaUnmetCard(eligibility: block, returnTo: .reserve, idPrefix: "reserve")
+                        .padding(.top, 18)
+                }
+
                 InkButton(title: app.loading
                           ? app.T("Đang giữ chỗ…", "Holding…")
                           : app.T("Giữ chỗ ▪︎ 30 phút", "Hold ▪︎ 30 minutes"),
@@ -199,6 +204,11 @@ struct ReserveView: View {
             .padding(.horizontal, 22)
             .padding(.top, 16)
             .padding(.bottom, 40)
+        }
+        // Pre-check + re-check after the guest edits preferences (the screen
+        // reappears and/or eventPrefsVersion bumps). Server still enforces.
+        .task(id: "\(app.eventKey)|\(app.eventPrefsVersion)") {
+            await app.recheckReservationEligibility(eventKey: app.eventKey)
         }
     }
 

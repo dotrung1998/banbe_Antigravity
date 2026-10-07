@@ -25,6 +25,7 @@ enum Screen: String {
     case surveyPublic
     case surveysHosting
     case helpGuide, helpFaq
+    case eventPreferences
 }
 
 /// Which set of events EventListView shows — ports the same split used by
@@ -436,6 +437,27 @@ final class AppState: ObservableObject {
     @Published var filterNotConfirmed = false
     @Published var filterUpcoming = false
     @Published var filterEnded = false
+    /// Gold-star "For You" chip (migration 162 / note 34) — composes with the
+    /// area/category/status filters above like every other chip.
+    @Published var filterForYou = false
+
+    // MARK: Event preferences + onboarding (migration 162, note 34)
+    /// The signed-in user's own declared preferences (nil = never answered).
+    @Published var eventPrefs: EventPreferences?
+    /// Bumps on every successful save; Home keys its For You refresh on it.
+    @Published var eventPrefsVersion = 0
+    /// False until the first server read for this account finished.
+    @Published var eventPrefsLoaded = false
+    /// Server says this (new / explicitly prompted) account still owes the step.
+    @Published var needsSettingsOnboarding = false
+    @Published var needsPreferencesOnboarding = false
+    /// Defaults-ON only apply to a brand-new account; an existing user prompted
+    /// once must see (and keep) their CURRENT settings instead.
+    @Published var eventOnboardingIsNewAccount = false
+    /// Where Account > Event preferences returns to (set by the entry row).
+    /// When set (e.g. from the "Update my preferences" prompt on a reservation),
+    /// Back/Done from Event preferences returns HERE instead of the Account group.
+    @Published var eventPrefsReturnScreen: Screen?
 
     // MARK: Session
     @Published var user: Profile?
@@ -1765,6 +1787,16 @@ final class AppState: ObservableObject {
     // form): visibility is who can even see/book the event; approval is
     // whether a booking still needs the host's manual OK.
     @Published var createVisibility = "public"
+    /// Host "Reservation criteria" (migration 162) — default Everyone.
+    @Published var createCriteria: ReservationCriteria = .everyone
+    /// Set when a create succeeded but saving criteria failed: the retry reuses this event.
+    var createCriteriaRetryEventID: String?
+    /// Guest side: set when the caller doesn't meet the event's criteria
+    /// (pre-check or server CRITERIA_NOT_MET). nil = eligible / unknown.
+    @Published var reserveEligibilityBlock: ReservationEligibility?
+    @Published var reserveEligibilityChecking = false
+    /// Per-event criteria for the detail screen's "Who can reserve" line.
+    @Published var eventCriteriaByKey: [String: ReservationCriteria] = [:]
     @Published var createCats: [String] = []
     @Published var createSent = false
     @Published var createError = ""
@@ -2211,7 +2243,7 @@ final class AppState: ObservableObject {
     /// Merges a real DB row's live status onto a static catalogue event —
     /// the batched counterpart of `curEvent`'s own single-event
     /// `applyingLiveStatus` call, applied to every event Home might list.
-    private func withLive(_ e: CatalogEvent) -> CatalogEvent { e.applyingLiveStatus(homeLiveEvents[e.key]) }
+    func withLive(_ e: CatalogEvent) -> CatalogEvent { e.applyingLiveStatus(homeLiveEvents[e.key]) }
 
     /// TASK 3 (organizer Check-in ended-event filtering) — the organizer's
     /// own events (Dashboard's "upcoming"/"past" lists and the Check-in
@@ -2294,7 +2326,12 @@ final class AppState: ObservableObject {
             .filter { !filterSoldOut || $0.soldOut }
             .filter { !filterUpcoming || (!$0.cancelled && $0.endedHoursAgo == nil) }
             .filter { !filterEnded || $0.endedHoursAgo != nil }
-        return savedAndStatus.sorted { a, b in demoted(a) < demoted(b) }
+        let sorted = savedAndStatus.sorted { a, b in demoted(a) < demoted(b) }
+        // For You (gold star): AND-composed with every chip above, then
+        // ordered by match score (the matcher's own deterministic order).
+        guard filterForYou else { return sorted }
+        let order = Dictionary(forYouMatches.enumerated().map { ($1.key, $0) }, uniquingKeysWith: { a, _ in a })
+        return sorted.filter { order[$0.key] != nil }.sorted { order[$0.key]! < order[$1.key]! }
     }
 
     private func demoted(_ e: CatalogEvent) -> Int {
@@ -3134,6 +3171,8 @@ final class AppState: ObservableObject {
         createPrice = ""
         createSeats = ""
         createVisibility = "public"
+        createCriteria = .everyone
+        createCriteriaRetryEventID = nil
         createIntro = ""
         createChatGreeting = ""
         createChatGreetingEn = ""
@@ -3293,6 +3332,9 @@ final class AppState: ObservableObject {
         // AccountGroupView's "preferences" group page, so `.profile`
         // skipped that group page, same class of bug as `.documents`'s own
         // fix.
+        case .eventPreferences:
+            screen = eventPrefsReturnScreen ?? accountSubBack
+            eventPrefsReturnScreen = nil
         case .preferences, .security: screen = accountSubBack
         // TASK 4 (Reserve→edit-name pass) — `.editName` is now reachable
         // from more than one place (AccountView's own root identity card,
@@ -3425,6 +3467,7 @@ final class AppState: ObservableObject {
         case .hostIntro: return .profile
         case .create: return createOriginScreen
         case .attendance: return attendanceBack
+        case .eventPreferences: return eventPrefsReturnScreen ?? accountSubBack
         case .preferences, .security: return accountSubBack
         case .editName: return editNameReturnScreen
         case .login: return authBackScreen
@@ -3511,6 +3554,7 @@ final class AppState: ObservableObject {
         filterAttending = false; filterSaved = false; filterSoldOut = false
         filterNotConfirmed = false
         filterUpcoming = false; filterEnded = false
+        filterForYou = false
     }
 
     /// Home's second chip row (12-home-filters.md, extended 2026-09-21) —
@@ -3524,6 +3568,7 @@ final class AppState: ObservableObject {
         case "soldOut": filterSoldOut.toggle()
         case "upcoming": filterUpcoming.toggle()
         case "ended": filterEnded.toggle()
+        case "forYou": filterForYou.toggle()
         default: break
         }
     }

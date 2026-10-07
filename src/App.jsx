@@ -67,6 +67,8 @@ import SurveyPublic from './screens/SurveyPublic.jsx';
 import SurveysHosting from './screens/SurveysHosting.jsx';
 import RootRefreshIndicator from './screens/RootRefreshIndicator.jsx';
 import AccountGate from './screens/AccountGate.jsx'; // account gate (web parity)
+import EventPreferences from './screens/EventPreferences.jsx';
+import EventOnboarding, { useEventOnboardingActive } from './screens/EventOnboarding.jsx';
 
 const SCREENS = {
   splash: Splash,
@@ -88,6 +90,7 @@ const SCREENS = {
   create: CreateEvent,
   attendance: Attendance,
   preferences: Preferences,
+  eventPreferences: EventPreferences,
   editName: EditName,
   notifications: Notifications,
   eventList: EventList,
@@ -239,7 +242,9 @@ function Shell() {
   // sheet's own dimmed backdrop. Suppressed here the same centralized way
   // StoryViewer/Pulse already are, rather than a second, independent
   // visibility flag or another UIWindow-style overlay.
-  const showBar = showsBottomBar(state.screen) && !state.storyViewer && !state.pulseOpen && !state.areaAsking && !state.storySurveyModalPublicId;
+  // Post-signup onboarding overlay (note 34): the dock is hidden while it is up.
+  const eventOnboardingActive = useEventOnboardingActive();
+  const showBar = showsBottomBar(state.screen) && !state.storyViewer && !state.pulseOpen && !state.areaAsking && !state.storySurveyModalPublicId && !eventOnboardingActive;
 
   // Stage 2 (2026-09-27 nav/discovery pass) — root-tab swipe + pull-to-
   // refresh, both gated on the SAME "is a root tab actually showing right
@@ -695,6 +700,8 @@ function Shell() {
       <ToastStack />
       {/* account gate (web parity) — blocking overlay above every screen until the server gate clears */}
       <AccountGate />
+      {/* event onboarding (note 34) — below the gate, above every screen */}
+      <EventOnboarding />
      </div></div>
     </div>
   );

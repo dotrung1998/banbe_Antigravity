@@ -58,6 +58,8 @@ export function useAccountSearchEntries() {
       'ngôn ngữ language tiếng việt english vn en theme giao diện sáng tối dark light mode hiển thị appearance kính glass độ trong suốt', () => g.openPreferences()),
     e('security', 'personal', setVi, setEn, 'Bảo mật', 'Security', 'shield',
       'security mật khẩu password face id sinh trắc biometric đăng nhập login khóa lock đổi mật khẩu', () => g.openSecurity()),
+    e('eventPreferences', 'personal', setVi, setEn, 'Sở thích sự kiện', 'Event preferences', 'sliders',
+      'sở thích interests gợi ý for you ngân sách budget mục tiêu goals thời gian rảnh availability ngôn ngữ sự kiện preferences', () => g.openEventPreferences(null)),
     e('help', 'personal', setVi, setEn, 'Trợ Giúp & Pháp Lý', 'Help & Legal', 'shield',
       'help trợ giúp hỗ trợ support policy chính sách điều khoản terms privacy quyền riêng tư pháp lý legal liên hệ contact hướng dẫn guide hỏi đáp faq q&a câu hỏi questions', () => g.openAccountGroup('helpLegal')),
     e('organizerMode', 'personal', 'Tổ Chức', 'Hosting', 'Chế độ tổ chức', 'Organizer mode', 'switch',

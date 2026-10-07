@@ -1,5 +1,7 @@
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg } from '../data/events.js';
+import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
+import { EVENTS } from '../data/events.js';
 import { paper, ink, FACE, display, fieldGlass, alert } from '../theme.js';
 
 export default function Reserve() {
@@ -25,7 +27,10 @@ export default function Reserve() {
   const todayIso = new Date().toISOString().slice(0, 10);
   const attendeesOk = s.attendeeDrafts.length === s.qty
     && s.attendeeDrafts.every(a => a.name.trim().length >= 2 && a.dob && a.dob <= todayIso);
-  const formOk = hasName && attendeesOk;
+  // Host reservation criteria (migration 162): always pre-check on opening this screen,
+  // block only when the server says ineligible; re-checks on every eventPrefsVersion change.
+  const crit = useReservationCriteria(s.eventKey, { alwaysCheck: true, isReal: !EVENTS.some(e => e.key === s.eventKey) });
+  const formOk = hasName && attendeesOk && !crit.blocked;
   const submitNameAtHold = async () => {
     await setNameAtHold(s.formName);
   };
@@ -148,7 +153,9 @@ export default function Reserve() {
       <div style={{ margin: '22px 22px 0', fontSize: 12, lineHeight: 1.55, color: ink }}>
         {T('banbe không thu tiền. Bạn giữ chỗ 30 phút để chuyển khoản trực tiếp cho người tổ chức. Bấm "Tôi đã chuyển khoản" là đồng hồ dừng và chỗ được khoá cho tới khi người tổ chức xác nhận.', 'banbe does not collect money. Your seat is held for 30 minutes while you transfer to the organizer directly. Tapping "I have transferred" stops the clock and locks your seat until they confirm.')}
       </div>
-      <div onClick={() => submitReserve(formOk)} style={reserveBtnStyle}>{reserveBtnLabel}</div>
+      {crit.restricted && <WhoCanReserve criteria={crit.criteria} style={{ margin: '14px 22px 0' }} />}
+      {crit.blocked && <CriteriaUnmetCard eligibility={crit.eligibility} returnTo="reserve" style={{ margin: '12px 22px 0' }} />}
+      <div onClick={() => submitReserve(formOk)} style={reserveBtnStyle} data-testid="reserve-submit" aria-disabled={!formOk || undefined}>{reserveBtnLabel}</div>
       {s.reserveError && <div style={{ margin: '12px 22px 0', fontSize: 12, lineHeight: 1.5, color: alert }}>{s.reserveError}</div>}
       <div style={{ height: 40 }} />
     </div>

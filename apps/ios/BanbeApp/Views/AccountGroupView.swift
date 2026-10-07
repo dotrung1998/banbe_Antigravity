@@ -577,6 +577,9 @@ struct AccountGroupView: View {
             }
             Divider().overlay(app.palette.rule)
             row(app.T("Bảo mật", "Security"), identifier: "account.security", icon: "lock.shield", trailing: "›") { app.openSecurity() }
+            Divider().overlay(app.palette.rule)
+            row(app.T("Sở thích sự kiện", "Event preferences"), identifier: "account.eventPreferences",
+                icon: "sparkles", trailing: "›") { app.openEventPreferences() }
         }
         .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 

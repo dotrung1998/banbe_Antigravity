@@ -1030,6 +1030,8 @@ struct CreateEventView: View {
                             .font(.system(size: 11)).opacity(0.6).foregroundStyle(app.palette.ink)
                     }
 
+                    ReservationCriteriaPicker()
+
                     HStack(spacing: 4) {
                         Text(app.T("Hạng mục ▪︎ chọn tối đa 2", "Categories ▪︎ up to 2"))
                             .font(.system(size: 11.5))

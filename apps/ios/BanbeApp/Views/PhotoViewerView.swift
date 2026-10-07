@@ -57,7 +57,7 @@ struct PhotoViewerView: View {
     // line (~13pt at 10.5pt) + 8pt gap above the photo, 8pt gap + the 34pt
     // tagline/actions row below it — rounded up — plus breathing room
     // above and below the whole column.
-    private let stageChromeHeight: CGFloat = 64
+    private let stageChromeHeight: CGFloat = 82
     private let stageVerticalMargin: CGFloat = 24
 
     // How far (pt) a downward drag has to travel before the backdrop is
@@ -120,6 +120,31 @@ struct PhotoViewerView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + dismissDuration) {
             app.closePhoto()
         }
+    }
+
+    /// Which photo of how many: dots for a short gallery, "n / N" beyond 8.
+    /// Always reserves its height so the photo never jumps on a 1-photo gallery.
+    @ViewBuilder
+    private var pageIndicator: some View {
+        let total = item.gallery.count
+        Group {
+            if total > 1 && total <= 8 {
+                HStack(spacing: 6) {
+                    ForEach(0..<total, id: \.self) { i in
+                        Circle().fill(Color.white.opacity(i == item.index ? 0.95 : 0.35))
+                            .frame(width: i == item.index ? 7 : 6, height: i == item.index ? 7 : 6)
+                    }
+                }
+            } else if total > 8 {
+                Text("\(item.index + 1) / \(total)")
+                    .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(Color.white.opacity(0.9))
+            } else {
+                Color.clear
+            }
+        }
+        .frame(height: 10)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(app.T("Ảnh \(item.index + 1) trên \(total)", "Photo \(item.index + 1) of \(total)"))
     }
 
     var body: some View {
@@ -264,6 +289,9 @@ struct PhotoViewerView: View {
                                 }
                         )
                         .accessibilityIdentifier("photoViewer.photo")
+
+                    pageIndicator
+                        .accessibilityIdentifier("photoViewer.pageIndicator")
 
                     // Top-aligned, not bottom: the row is as tall as the
                     // 34pt icon buttons, and bottom-aligning the tagline

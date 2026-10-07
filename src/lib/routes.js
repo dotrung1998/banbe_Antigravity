@@ -30,6 +30,7 @@ const STATIC = {
   notifications: '/notifications',
   preferences: '/settings',
   security: '/settings/security',
+  eventPreferences: '/settings/event-preferences',
   editName: '/profile/name',
   editProfile: '/profile/edit',
   refundAccounts: '/refunds/accounts',

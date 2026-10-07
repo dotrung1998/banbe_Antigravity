@@ -11,6 +11,8 @@ import { refundClaimPresentation } from '../lib/refundPresentation.js';
 import { buildLocationTree, eventMatchesLocation, locationShortLabel, migrateLegacyAreaKey, LOCATION_ALL } from '../lib/locationTree.js';
 import { surveyPublicUrl } from '../lib/surveyLink.js';
 import { metricLabel } from '../lib/reportMetricLabels.js';
+import { useAccountGate } from '../lib/accountGate.js';
+import { normalizeForSave as normalizeEventPrefsForSave, isMissingFunctionError as isEventPrefsFnMissing, everyone as everyoneCriteria, normalizeCriteria, criteriaIsEveryone } from '../lib/eventPrefs.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
 import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, isMissingColumnError } from '../lib/mediaUrls.js';
 
@@ -424,6 +426,19 @@ const initialState = {
   // Task 4 (migration 056): one-time, account-level opt-in — mirrors
   // profiles.auto_email_documents, loaded in syncUser() like locale/theme.
   autoEmailDocuments: false,
+  // Event preferences + onboarding (note 34, migration 162). Loaded once per
+  // signed-in session by loadEventPreferences() once the account gate has
+  // cleared; reset on sign-out/account switch. eventPrefs is null until
+  // loaded (or when nothing was ever answered); eventPrefsVersion bumps on
+  // every save (the For You refresh key); eventPrefsReturnScreen makes Back /
+  // "Save and go back" land on that screen instead of the Account group.
+  eventPrefs: null,
+  eventPrefsVersion: 0,
+  eventPrefsLoaded: false,
+  needsSettingsOnboarding: false,
+  needsPreferencesOnboarding: false,
+  eventOnboardingIsNewAccount: false,
+  eventPrefsReturnScreen: null,
   // BUG 4 (07-notifications.md's 2026-09-18 follow-up): the "•••" menu's
   // "Tắt loại thông báo này" action — filtered client-side only (see
   // loadNotifications()/the toast poll), no insert-side change to any of
@@ -492,6 +507,14 @@ const initialState = {
   filterNotConfirmed: false,
   filterUpcoming: false,
   filterEnded: false,
+  // Home "For You" gold-star chip (34-onboarding-for-you-criteria.md). Only ever
+  // true while Home has >=1 matching event; Home auto-resets it otherwise.
+  filterForYou: false,
+  // Host reservation criteria (migration 162): criteria cache by event id,
+  // the guest eligibility pre-check, and the create-flow retry target.
+  eventCriteriaByKey: {},
+  eligibilityByKey: {},
+  createCriteriaRetryEventId: null,
   // Reserve.jsx's Name field, ONLY used for the empty-display_name case
   // (08-payment-documents.md/01-hold-payment.md's 2026-09-17 follow-up #6):
   // once a real profiles.display_name exists it's shown read-only from
@@ -1069,6 +1092,12 @@ const initialState = {
   // visibility() never touches `approval`, and admin review (085) still
   // applies to every event regardless of visibility.
   createVisibility: 'public',
+  // Host reservation criteria (migration 162). createCriteria is the form value;
+  // createCriteriaLoaded is what the event had when editing started;
+  // createCriteriaLoad: 'ready' | 'loading' | 'failed' | 'unsupported'.
+  createCriteria: { version: 1, mode: 'everyone' },
+  createCriteriaLoaded: { version: 1, mode: 'everyone' },
+  createCriteriaLoad: 'ready',
   createPhotos: 0,
   // Real cover/gallery + structured "Bao gồm" (migration 087) — the actual
   // picked File objects live in CreateEvent.jsx's OWN local component state
@@ -4756,6 +4785,99 @@ export function BanBeProvider({ children }) {
   }, [s.lang]);
 
   const openPreferences = useCallback(() => set({ screen: 'preferences' }), [set]);
+
+  // ---- Event preferences + onboarding (note 34, migration 162) ----
+  // Every read/write goes through owner-scoped SECURITY DEFINER RPCs. A project
+  // without migration 162 simply owes nothing (no gate, no preferences); a
+  // flaky read never traps the user in onboarding.
+  const eventPrefsUidRef = useRef(null);
+  const eventPrefsGate = useAccountGate();
+  const resetEventPrefsState = useCallback(() => set({
+    eventPrefs: null, eventPrefsVersion: 0, eventPrefsLoaded: false,
+    needsSettingsOnboarding: false, needsPreferencesOnboarding: false,
+    eventOnboardingIsNewAccount: false, eventPrefsReturnScreen: null,
+    filterForYou: false, eligibilityByKey: {},
+  }), [set]);
+
+  const loadEventPreferences = useCallback(async () => {
+    const uid = s.user?.id;
+    if (!uid) return;
+    eventPrefsUidRef.current = uid;
+    try {
+      const { data, error } = await supabase.rpc('get_my_event_preferences');
+      if (eventPrefsUidRef.current !== uid) return; // signed out / switched account meanwhile
+      if (error) {
+        if (isEventPrefsFnMissing(error)) set({ needsSettingsOnboarding: false, needsPreferencesOnboarding: false, eventPrefsLoaded: true });
+        else { console.warn('loadEventPreferences failed:', error); set({ needsSettingsOnboarding: false, needsPreferencesOnboarding: false }); }
+        return;
+      }
+      if (data?.success !== true) { set({ eventPrefsLoaded: true }); return; }
+      set({
+        eventPrefs: data.preferences && typeof data.preferences === 'object' ? data.preferences : null,
+        eventPrefsVersion: data.preferences_version || 0,
+        needsSettingsOnboarding: data.needs_settings_step === true,
+        needsPreferencesOnboarding: data.needs_preferences_step === true,
+        eventOnboardingIsNewAccount: data.is_new_account === true,
+        eventPrefsLoaded: true,
+      });
+    } catch (e) {
+      console.warn('loadEventPreferences failed:', e);
+      if (eventPrefsUidRef.current === uid) set({ needsSettingsOnboarding: false, needsPreferencesOnboarding: false });
+    }
+  }, [s.user?.id, set]);
+
+  // Load once per signed-in session, after the account gate and profile sync
+  // have settled; reset when the user leaves or a different account arrives.
+  useEffect(() => {
+    const uid = s.user?.id || null;
+    if (eventPrefsUidRef.current && eventPrefsUidRef.current !== uid) {
+      eventPrefsUidRef.current = null;
+      resetEventPrefsState();
+    }
+    if (!uid || eventPrefsUidRef.current === uid) return;
+    if (eventPrefsGate.gate !== 'ready' || s.authSyncing || s.policyGateActive) return;
+    loadEventPreferences();
+  }, [s.user?.id, s.authSyncing, s.policyGateActive, eventPrefsGate.gate, loadEventPreferences, resetEventPrefsState]);
+
+  /** Opens Account > Event preferences. `returnTo` (a screen name) makes Back / "Save and go back" land there; omit for the normal Account entry. */
+  const openEventPreferences = useCallback((returnTo = null) => set({ eventPrefsReturnScreen: returnTo || null, screen: 'eventPreferences' }), [set]);
+
+  /** Account > Event preferences (and the onboarding questions). Resolves true on success. */
+  const saveEventPreferences = useCallback(async (prefs) => {
+    const body = normalizeEventPrefsForSave(prefs);
+    try {
+      const { data, error } = await supabase.rpc('save_my_event_preferences', { p_preferences: body });
+      if (error || data?.success !== true) { if (error) console.warn('saveEventPreferences failed:', error); return false; }
+      set(prev => ({ eventPrefs: body, eventPrefsVersion: data.preferences_version || (prev.eventPrefsVersion + 1) }));
+      return true;
+    } catch (e) { console.warn('saveEventPreferences failed:', e); return false; }
+  }, [set]);
+
+  /** Marks the settings-review step done. Never writes any setting itself. */
+  const completeSettingsOnboarding = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.rpc('complete_settings_onboarding');
+      if (error && isEventPrefsFnMissing(error)) { set({ needsSettingsOnboarding: false }); return true; }
+      if (error || data?.success !== true) { if (error) console.warn('completeSettingsOnboarding failed:', error); return false; }
+      set({ needsSettingsOnboarding: false });
+      return true;
+    } catch (e) { console.warn('completeSettingsOnboarding failed:', e); return false; }
+  }, [set]);
+
+  /** Finishes the five-question step. null = skipped everything (marker only). */
+  const completePreferencesOnboarding = useCallback(async (prefsOrNull) => {
+    const body = prefsOrNull ? normalizeEventPrefsForSave(prefsOrNull) : null;
+    try {
+      const { data, error } = await supabase.rpc('complete_preferences_onboarding', { p_preferences: body });
+      if (error && isEventPrefsFnMissing(error)) { set({ needsPreferencesOnboarding: false }); return true; }
+      if (error || data?.success !== true) { if (error) console.warn('completePreferencesOnboarding failed:', error); return false; }
+      set(prev => ({
+        needsPreferencesOnboarding: false,
+        ...(body ? { eventPrefs: body, eventPrefsVersion: data.preferences_version || (prev.eventPrefsVersion + 1) } : {}),
+      }));
+      return true;
+    } catch (e) { console.warn('completePreferencesOnboarding failed:', e); return false; }
+  }, [set]);
   const openSecurity = useCallback(() => set({
     screen: 'security', securityPassword: '', securityPasswordConfirm: '',
     securityError: '', securitySaved: false, securityResetSent: false,
@@ -5865,6 +5987,7 @@ export function BanBeProvider({ children }) {
       createAddressSuggestions: [], createAddressSearching: false, createAddressSearchError: '',
       createEventDate: '', createEventTime: '', createPrice: '', createSeats: '',
       createIncludedItems: [], createIntro: '', createKeywords: '', createChatGreeting: '', createChatGreetingEn: '', createVisibility: 'public',
+      createCriteria: everyoneCriteria(), createCriteriaLoaded: everyoneCriteria(), createCriteriaLoad: 'ready', createCriteriaRetryEventId: null,
     }));
   }, [set, s.user, canHost, enableOrganizerMode]);
   const openHeld = useCallback(() => set({ screen: 'confirmed' }), [set]);
@@ -7485,12 +7608,13 @@ export function BanBeProvider({ children }) {
   const clearFilters = useCallback(() => set({
     filter: 'all', area: LOCATION_ALL,
     filterAttending: false, filterSaved: false, filterSoldOut: false,
-    filterNotConfirmed: false, filterUpcoming: false, filterEnded: false,
+    filterNotConfirmed: false, filterUpcoming: false, filterEnded: false, filterForYou: false,
   }), [set]);
   // Home's second chip row (12-home-filters.md, extended 2026-09-21) — each
   // independent, AND-combined with `filter`/`area` and with each other, not
   // mutually exclusive.
   const toggleHomeFilter = useCallback((key) => set(prev => {
+    if (key === 'forYou') return { filterForYou: !prev.filterForYou };
     const stateKey = HOME_FILTER_STATE_KEY[key];
     return stateKey ? { [stateKey]: !prev[stateKey] } : {};
   }), [set]);
@@ -7616,6 +7740,18 @@ export function BanBeProvider({ children }) {
       // — mapped here the same way `submitPaymentProof`'s own RPC errors
       // already are, so a cancelled/ended event says so instead of a vague
       // "try again".
+      // Host reservation criteria (migration 162): hold_seats raises CRITERIA_NOT_MET
+      // with the eligibility JSON in DETAIL (PostgREST `.details`). Show the unmet
+      // card (Reserve.jsx) instead of the generic failure message.
+      if (String(err?.message || '').includes('CRITERIA_NOT_MET')) {
+        let detail = null;
+        try { detail = JSON.parse(err.details || ''); } catch { /* keep generic card */ }
+        set(prev => ({
+          loading: false, reserveError: '',
+          eligibilityByKey: { ...prev.eligibilityByKey, [prev.eventKey]: { ...(detail || {}), success: true, eligible: false, mode: 'declared' } },
+        }));
+        return;
+      }
       const message = {
         NOT_AUTHENTICATED: T('Bạn cần đăng nhập để giữ chỗ.', 'You need to sign in to hold a spot.'),
         INVALID_QTY: T('Số lượng chỗ không hợp lệ.', 'That number of spots isn’t valid.'),
@@ -9105,8 +9241,84 @@ export function BanBeProvider({ children }) {
    * "submitted, but N photos didn't upload" — never silently claimed as
    * fully successful.
    */
+  // ---- Reservation criteria (migration 162; .claude/notes/34-onboarding-for-you-criteria.md) ----
+  // A missing column/function means "feature off": treat as Everyone / eligible.
+  const isMissingCriteriaColumn = (error) => !!error && (error.code === '42703' || error.code === 'PGRST204' || /reservation_criteria/i.test(error.message || ''));
+  const setCreateCriteria = useCallback((c) => set({ createCriteria: c }), [set]);
+  /** Loads an event's criteria into the cache; resolves to the criteria (Everyone when unsupported). */
+  const loadEventCriteria = useCallback(async (eventId) => {
+    if (!eventId) return everyoneCriteria();
+    const { data, error } = await supabase.from('events').select('reservation_criteria').eq('id', eventId).maybeSingle();
+    if (error) {
+      if (!isMissingCriteriaColumn(error)) console.warn('loadEventCriteria failed:', error);
+      return isMissingCriteriaColumn(error) ? everyoneCriteria() : null;
+    }
+    const c = normalizeCriteria(data?.reservation_criteria);
+    set(prev => ({ eventCriteriaByKey: { ...prev.eventCriteriaByKey, [eventId]: c } }));
+    return c;
+  }, [set]);
+  /** Pre-check for the signed-in guest; never blocks unless the server says ineligible. */
+  const checkReservationEligibility = useCallback(async (eventId) => {
+    if (!eventId || !s.user) return;
+    const { data, error } = await supabase.rpc('check_my_reservation_eligibility', { p_event_id: eventId });
+    if (error) { if (!isEventPrefsFnMissing(error)) console.warn('check_my_reservation_eligibility failed:', error); return; }
+    if (data?.success !== true) return;
+    set(prev => ({ eligibilityByKey: { ...prev.eligibilityByKey, [eventId]: data } }));
+  }, [set, s.user]);
+  /** Host edit: load the event's current criteria, ignoring a stale answer if the host moved to another event. */
+  const loadCreateCriteria = useCallback(async (eventId) => {
+    set({ createCriteria: everyoneCriteria(), createCriteriaLoaded: everyoneCriteria(), createCriteriaLoad: 'loading' });
+    const { data, error } = await supabase.from('events').select('reservation_criteria').eq('id', eventId).maybeSingle();
+    if (error) {
+      const missing = isMissingCriteriaColumn(error);
+      if (!missing) console.warn('loadCreateCriteria failed:', error);
+      set(prev => (prev.createEditEventId === eventId ? { createCriteriaLoad: missing ? 'unsupported' : 'failed' } : {}));
+      return;
+    }
+    const c = normalizeCriteria(data?.reservation_criteria);
+    set(prev => (prev.createEditEventId === eventId
+      ? { createCriteria: c, createCriteriaLoaded: c, createCriteriaLoad: 'ready', eventCriteriaByKey: { ...prev.eventCriteriaByKey, [eventId]: c } }
+      : {}));
+  }, [set]);
+  /** Does this submit need a set_event_reservation_criteria call? Create: only a restriction. Edit: only a change. */
+  const criteriaNeedsSave = () => {
+    const want = normalizeCriteria(s.createCriteria);
+    if (s.createEditEventId) {
+      return s.createCriteriaLoad === 'ready' && JSON.stringify(want) !== JSON.stringify(normalizeCriteria(s.createCriteriaLoaded));
+    }
+    return !criteriaIsEveryone(want);
+  };
+  /** Resolves null on success, or an error object. Missing function while a restriction is wanted is a failure (never silently unrestricted). */
+  const saveCriteriaFor = async (eventId) => {
+    const { error } = await supabase.rpc('set_event_reservation_criteria', {
+      p_event_id: eventId, p_criteria: normalizeCriteria(s.createCriteria),
+    });
+    if (error) { console.warn('set_event_reservation_criteria failed:', error); return error; }
+    set(prev => ({ eventCriteriaByKey: { ...prev.eventCriteriaByKey, [eventId]: normalizeCriteria(s.createCriteria) } }));
+    return null;
+  };
+  const criteriaSaveFailedMessage = () => T(
+    'Sự kiện đã được gửi nhưng điều kiện đặt chỗ chưa được lưu. Hãy thử lại, sự kiện sẽ không mở cho mọi người nếu bạn đã chọn giới hạn.',
+    'Your event was submitted but the reservation criteria were not saved. Please try again, the event will not go out unrestricted.'
+  );
+
   const createSubmit = useCallback(async (photoFiles = [], coverIndex = 0, mediaOpts = {}) => {
     if (!s.createName.trim()) return;
+    // Retry of ONLY the criteria save for an event that is already submitted
+    // (status 'review' is not resubmittable): no second create, no media rerun.
+    if (s.createCriteriaRetryEventId) {
+      if (createSubmitInFlightRef.current) return;
+      createSubmitInFlightRef.current = true;
+      set({ loading: true, createError: '' });
+      try {
+        if (criteriaNeedsSave()) {
+          const err = await saveCriteriaFor(s.createCriteriaRetryEventId);
+          if (err) { set({ loading: false, createError: criteriaSaveFailedMessage() }); return false; }
+        }
+        set({ loading: false, createSent: true, hasHosted: true, mode: 'host', createCriteriaRetryEventId: null });
+        return true;
+      } finally { createSubmitInFlightRef.current = false; }
+    }
     // Client-side submit-in-flight guard (task 1) — a SYNCHRONOUS,
     // non-reactive check-and-set, same pattern this app's own organizer-
     // mode toggle uses for the identical "repeated tap before the first
@@ -9188,6 +9400,10 @@ export function BanBeProvider({ children }) {
         throw new Error('ADDRESS_NOT_VERIFIED');
       }
 
+      // Editing: never overwrite criteria the host has not actually seen.
+      if (s.createEditEventId && s.createCriteriaLoad === 'loading') throw new Error('CRITERIA_LOADING');
+      if (s.createEditEventId && s.createCriteriaLoad === 'failed') throw new Error('CRITERIA_LOAD_FAILED');
+      let criteriaError = null;
       let eventId = s.createEditEventId;
       if (s.createEditEventId) {
         const { data, error } = await supabase.rpc('resubmit_event_for_review', {
@@ -9277,6 +9493,12 @@ export function BanBeProvider({ children }) {
         });
         if (visibilityError) console.warn('set_event_visibility failed:', visibilityError);
 
+        // Reservation criteria (migration 162). NOT best-effort: a restriction the
+        // host chose must not silently go out unrestricted. The event is already
+        // in review (not resubmittable), so on failure we finish the remaining
+        // steps and then report an error that retries ONLY this call.
+        if (criteriaNeedsSave()) criteriaError = await saveCriteriaFor(eventId);
+
         // Host's opening message (migration 156) — plain owner update on
         // events (events_update_own); best-effort like keywords/visibility.
         // Skipped when the column isn't deployed yet, and on create when
@@ -9333,11 +9555,16 @@ export function BanBeProvider({ children }) {
               `Sự kiện cần 3-8 ảnh khả dụng (hiện có ${finalizeData.count}). Sự kiện đã được chuyển về bản nháp — hãy thêm/bớt ảnh rồi gửi lại.`,
               `This event needs 3-8 available photos (it has ${finalizeData.count}). It's been moved back to draft — add or remove photos, then resubmit.`
             ),
+            createCriteriaRetryEventId: null,
           });
           return false;
         }
       }
-      set({ loading: false, createSent: true, hasHosted: true, mode: 'host', createMediaError: mediaNote });
+      if (criteriaError) {
+        set({ loading: false, createError: criteriaSaveFailedMessage(), createCriteriaRetryEventId: eventId, hasHosted: true });
+        return false;
+      }
+      set({ loading: false, createSent: true, hasHosted: true, mode: 'host', createMediaError: mediaNote, createCriteriaRetryEventId: null });
       // TASK 3 (event creation validation pass) — the post-submission
       // chooser (CreateEvent.jsx) needs a real success/failure signal,
       // not just `createSent` (which this same function also sets, so a
@@ -9346,7 +9573,11 @@ export function BanBeProvider({ children }) {
       return true;
     } catch (err) {
       console.warn('Event draft creation failed:', err);
-      const message = err.message === 'PAST_EVENT_NOT_ALLOWED'
+      const message = err.message === 'CRITERIA_LOADING'
+        ? T('Đang tải điều kiện đặt chỗ hiện tại. Vui lòng thử lại sau giây lát.', 'Still loading the current reservation criteria. Please try again in a moment.')
+        : err.message === 'CRITERIA_LOAD_FAILED'
+        ? T('Không tải được điều kiện đặt chỗ hiện tại nên chưa thể gửi lại. Hãy mở lại sự kiện để sửa.', 'Could not load the current reservation criteria, so this cannot be resubmitted yet. Reopen the event to edit it.')
+        : err.message === 'PAST_EVENT_NOT_ALLOWED'
         ? T('Ngày giờ sự kiện đã ở trong quá khứ.', "This event's date/time is in the past.")
         : err.message === 'INVALID_INCLUDED_ITEMS'
         ? T('Mỗi mục "Bao gồm" cần tên (tối đa 60 ký tự) và mô tả tối đa 300 ký tự.', 'Each "Included" item needs a label (max 60 chars) and detail under 300 chars.')
@@ -9369,7 +9600,7 @@ export function BanBeProvider({ children }) {
     } finally {
       createSubmitInFlightRef.current = false;
     }
-  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createCountryCode, s.createStateProvince, s.createNeighborhood, s.createLat, s.createLng, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.createChatGreeting, s.createChatGreetingEn, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
+  }, [set, s.createName, s.createCats, s.createDesc, s.createLoc, s.createLocConfirmed, s.createAddressLine, s.createDistrict, s.createCity, s.createPostalCode, s.createCountryCode, s.createStateProvince, s.createNeighborhood, s.createLat, s.createLng, s.createDate, s.createPrice, s.createSeats, s.createIncludedItems, s.createIntro, s.createKeywords, s.createChatGreeting, s.createChatGreetingEn, s.createCriteria, s.createCriteriaLoaded, s.createCriteriaLoad, s.createCriteriaRetryEventId, s.orgRegName, s.orgRegIg, s.orgRegDesc, s.createEditEventId, canHost, applyOrganizerMode, reconcileEventMedia, T]);
   const requestVerify = useCallback(() => set({ orgVerifyRequested: true }), [set]);
 
   /**
@@ -9427,9 +9658,11 @@ export function BanBeProvider({ children }) {
       createKeywords: Array.isArray(real.keywords) ? real.keywords.join(', ') : '',
       createChatGreeting: real.chatGreeting || '',
       createChatGreetingEn: real.chatGreetingEn || '',
+      createCriteriaRetryEventId: null,
     });
     loadEventPhotos(eventId);
-  }, [set, s.realEventsById, loadEventPhotos]);
+    loadCreateCriteria(eventId);
+  }, [set, s.realEventsById, loadEventPhotos, loadCreateCriteria]);
 
   /**
    * Owner-only withdrawal of a PENDING ('review') submission (migration
@@ -10177,7 +10410,7 @@ export function BanBeProvider({ children }) {
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
-    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
+    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,
@@ -10216,7 +10449,7 @@ export function BanBeProvider({ children }) {
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
     canHost, toggleOrganizerMode, enableOrganizerMode,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
-    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
+    toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
     pickFilter, clearFilters, toggleHomeFilter, shareEvent, referralLink, shareReferral,
     qtyMinus, qtyPlus, pickPayNow, pickHold, formNameType, setNameAtHold, submitReserve, payHoldNow, confirmPayment, cancelBooking, cancelEvent,

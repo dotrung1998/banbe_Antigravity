@@ -59,7 +59,7 @@ export default function AccountGroup() {
     state: s, T, set,
     goCompletedList, respondToEventCredit, goEvent, openTicketImport, openImportedTicket, loadImportedTickets,
     respondToOrganizerInvite, setOrganizerMemberVisibility,
-    openPreferences, openSecurity, openPolicy, openDocuments, openRefundAccounts, openMyRefunds,
+    openPreferences, openSecurity, openEventPreferences, openPolicy, openDocuments, openRefundAccounts, openMyRefunds,
     openVerifications, openVerificationsRefunds, openPayout, openDisputes, openAdminEvents,
     loadPaymentBookings, openBookingConfirmed, openDeleteAccount,
     respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft,
@@ -350,6 +350,7 @@ export default function AccountGroup() {
               testId="account-preferences"
               onClick={openPreferences}
             />
+            <Row icon="sliders" label={T('Sở thích sự kiện', 'Event preferences')} trailing="›" testId="account-event-preferences" onClick={() => openEventPreferences(null)} />
             <Row icon="shield" label={T('Bảo mật', 'Security')} trailing="›" testId="account-security" onClick={openSecurity} border={false} />
           </div>
         )}
