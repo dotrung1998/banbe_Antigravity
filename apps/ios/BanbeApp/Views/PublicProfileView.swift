@@ -70,28 +70,21 @@ struct PublicProfileView: View {
                         .accessibilityIdentifier("publicProfile.creditedEvents")
                     }
 
-                    Button(app.T("Hiển thị mã QR", "Show QR code")) { qrOpen = true }
-                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
-                        .frame(maxWidth: .infinity).padding(.vertical, 13)
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
-                        .padding(.top, 16)
-                        .accessibilityIdentifier("publicProfile.qrCta")
-
-                    // iPhone fix pass — "Chỉnh sửa hồ sơ" beneath "Hiển thị
-                    // mã QR", own-profile only (never rendered for a
-                    // visitor viewing someone else's page — the edit RPC
-                    // itself is owner-gated server-side regardless). Edits
-                    // profiles fields ONLY — never organizers.name/about/
-                    // avatarPath, which live on the organizer's own
-                    // separate editor now (OrganizerProfileView).
-                    if isOwnProfile {
-                        Button(app.T("Chỉnh sửa hồ sơ", "Edit profile")) { app.openEditProfile() }
-                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(app.palette.ink)
-                            .frame(maxWidth: .infinity).padding(.vertical, 13)
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
-                            .padding(.top, 10)
-                            .accessibilityIdentifier("publicProfile.editPersonal")
+                    // Own profile: QR / Edit profile / Edit charm as one row of
+                    // small icon buttons. Visitors only get the QR button.
+                    HStack(spacing: 10) {
+                        profileActionButton(icon: "qrcode", label: app.T("Mã QR", "QR code"), id: "publicProfile.qrCta") { qrOpen = true }
+                        if isOwnProfile {
+                            // Edits profiles fields ONLY — never organizers.name/about/
+                            // avatarPath (OrganizerProfileView owns those).
+                            profileActionButton(icon: "pencil", label: app.T("Sửa hồ sơ", "Edit profile"), id: "publicProfile.editPersonal") { app.openEditProfile() }
+                            profileActionButton(icon: "key.fill", label: app.T("Sửa móc khoá", "Edit charm"), id: "publicProfile.editCharm") {
+                                KeychainStore.shared.focusKeychainOnEdit = true
+                                app.openEditProfile()
+                            }
+                        }
                     }
+                    .padding(.top, 16)
                 } else {
                     Text(app.publicProfileError.isEmpty ? app.T("Không tìm thấy hồ sơ này.", "This profile couldn't be found.") : app.publicProfileError)
                         .font(.system(size: 13)).foregroundStyle(app.palette.ink)
@@ -115,6 +108,23 @@ struct PublicProfileView: View {
                     isOwner: p.handle != nil && p.handle?.lowercased() == app.user?.handle?.lowercased())
             }
         }
+    }
+
+    private func profileActionButton(icon: String, label: String, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 17, weight: .regular))
+                    .frame(width: 24, height: 24)
+                Text(label).font(.system(size: 11, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(app.palette.ink)
+            .frame(maxWidth: .infinity, minHeight: 64, maxHeight: 64)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(app.palette.rule))
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
     }
 
     /// QR for the in-app `banbe://u/<handle>` link — a phone camera scan

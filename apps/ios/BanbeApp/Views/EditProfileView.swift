@@ -18,6 +18,7 @@ struct EditProfileView: View {
     }
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
@@ -97,7 +98,7 @@ struct EditProfileView: View {
                     }
 
                     // Profile keychain (note 35): own Save/Cancel, independent of the profile Save below.
-                    KeychainSettingsSection()
+                    KeychainSettingsSection().id("editProfile.keychain")
 
                     if !app.editProfileError.isEmpty {
                         Text(app.editProfileError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
@@ -121,6 +122,15 @@ struct EditProfileView: View {
             }
             .foregroundStyle(app.palette.ink)
             .padding(.horizontal, 20).padding(.top, 16)
+        }
+        .onAppear {
+            // "Edit charm" on the profile opens straight at the Keychain section.
+            guard KeychainStore.shared.focusKeychainOnEdit else { return }
+            KeychainStore.shared.focusKeychainOnEdit = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                withAnimation { proxy.scrollTo("editProfile.keychain", anchor: .top) }
+            }
+        }
         }
     }
 

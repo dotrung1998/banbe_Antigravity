@@ -4,6 +4,7 @@ import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
 import { KeychainFrame, useProfileKeychain } from '../components/KeychainCharm.jsx';
+import { keychainFocus } from '../lib/keychain.js';
 import { APP_STORE_URL } from '../lib/appStore.js';
 import ProfileShareSheet, { profileShareLinks } from './sheets/ProfileShareSheet.jsx';
 import { LongIntroPreview, SocialLinksRow } from './LongIntro.jsx';
@@ -25,6 +26,16 @@ const isMobileBrowser = typeof navigator !== 'undefined' && /iPhone|iPad|Android
 // events/photos, its own shareable /org/<id> link, its own owner-only
 // edit) is OrganizerProfile.jsx, reached from the management page
 // (Dashboard.jsx's "Hồ sơ công khai của tổ chức" button), never from here.
+function ProfileActionButton({ testId, label, onClick, children }) {
+  return (
+    <button type="button" onClick={onClick} data-testid={testId} aria-label={label}
+      style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, height: 64, boxSizing: "border-box", justifyContent: "center", padding: "0 4px", background: 'transparent', color: ink, border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+      <svg width="22" height="22" style={{ flex: "none" }} viewBox="0 0 24 24" fill="none" stroke={ink} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
+      <span style={{ fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{label}</span>
+    </button>
+  );
+}
+
 export default function PublicProfile() {
   const { state, T, backFromPublicProfile, sharePublicProfile, openEditProfile, openOrganizerTeam, goEvent } = useBanBe();
   const s = state;
@@ -189,22 +200,25 @@ export default function PublicProfile() {
         </div>
       )}
 
-      <div onClick={() => setQrOpen(true)} data-testid="public-profile-qr-cta" style={{ margin: '16px 20px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '13px 0', border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer' }}>
-        {T('Hiển thị mã QR', 'Show QR code')}
+      {/* Own profile: QR / Edit profile / Edit charm as one row of small icon
+          buttons. Visitors only get the QR button. Edit profile touches
+          profiles fields ONLY (organizer fields live on OrganizerProfile.jsx). */}
+      <div style={{ margin: '16px 20px 0', display: 'flex', gap: 10 }}>
+        <ProfileActionButton testId="public-profile-qr-cta" label={T('Mã QR', 'QR code')} onClick={() => setQrOpen(true)}>
+          <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M14 14h2.5v2.5H14zM18 18h2M17.5 20v-1.5" /></>
+        </ProfileActionButton>
+        {isOwnProfile && (
+          <ProfileActionButton testId="public-profile-edit-personal" label={T('Sửa hồ sơ', 'Edit profile')} onClick={openEditProfile}>
+            <path d="M15.2 4.3l4.5 4.5L8.4 20.1H4v-4.4z" />
+          </ProfileActionButton>
+        )}
+        {isOwnProfile && (
+          <ProfileActionButton testId="public-profile-edit-charm" label={T('Sửa móc khoá', 'Edit charm')}
+            onClick={() => { keychainFocus.pending = true; openEditProfile(); }}>
+            <><circle cx="8" cy="12" r="3.6" /><path d="M11.6 12H21M17.5 12v3M20.8 12v2.2" /></>
+          </ProfileActionButton>
+        )}
       </div>
-
-      {/* iPhone fix pass — "Chỉnh sửa hồ sơ" beneath "Hiển thị mã QR",
-          own-profile only (never rendered for a visitor viewing someone
-          else's page — `isOwnProfile` is a server-independent client
-          check, but the actual edit RPC is owner-gated server-side
-          regardless). Edits profiles fields ONLY — never
-          organizers.name/about/avatar_path, which live on the organizer's
-          own separate editor now (OrganizerProfile.jsx). */}
-      {isOwnProfile && (
-        <div onClick={openEditProfile} data-testid="public-profile-edit-personal" style={{ margin: '10px 20px 0', textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: ink, padding: '13px 0', border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer' }}>
-          {T('Chỉnh sửa hồ sơ', 'Edit profile')}
-        </div>
-      )}
 
       {qrOpen && (
         <div onClick={() => setQrOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>

@@ -441,9 +441,10 @@ export default function Account() {
           separate small "Chỉnh sửa" affordance (not the whole card) opens
           EditProfile, so it can't conflict with those. */}
       <KeychainFrame config={myKeychain} margin="22px 20px 0" cardHeight={92} testId="account-keychain-frame">
+      {({ reserveLeft, reserveRight }) => (
       <div
         style={{
-          ...cardGlass({ margin: 0, padding: '18px 16px', display: 'flex', gap: 14, alignItems: 'center' }),
+          ...cardGlass({ margin: 0, padding: `18px ${16 + reserveRight}px 18px ${16 + reserveLeft}px`, display: 'flex', gap: 14, alignItems: 'center' }),
           background: `linear-gradient(165deg, ${PROFILE_PALETTE_COLORS[s.user?.profileTheme] || PROFILE_PALETTE_COLORS.default}55, transparent 70%)`,
         }}
         data-testid="account-profile-card"
@@ -532,6 +533,7 @@ export default function Account() {
           </span>
         )}
       </div>
+      )}
       </KeychainFrame>
 
       {s.user?.handle && (

@@ -47,7 +47,7 @@ export function KeychainFrame({ config, margin, cardHeight = 92, children, testI
   const lay = cfg ? charmLayout(cfg, manifest, cardHeight) : null;
   return (
     <div style={{ position: 'relative', margin, paddingLeft: lay?.gutterLeft || 0, paddingRight: lay?.gutterRight || 0, paddingBottom: lay?.extraBottom || 0, ...style }} data-testid={testId}>
-      {children}
+      {typeof children === 'function' ? children({ reserveLeft: lay?.reserveLeft || 0, reserveRight: lay?.reserveRight || 0 }) : children}
       {cfg && <KeychainCharm config={cfg} manifest={manifest} layout={lay} label={label} onController={onController} srcOverride={srcOverride} />}
     </div>
   );

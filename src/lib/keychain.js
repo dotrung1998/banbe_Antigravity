@@ -32,9 +32,8 @@ export function normalizeKeychain(k) {
 /**
  * Geometry of the charm relative to a "frame" wrapping a profile card.
  * Anchors are PHYSICAL (left/right of the screen, not start/end), so a charm never
- * jumps to the other side under dir=rtl. Top anchors hang in a side gutter OUTSIDE the
- * card (the frame pads the card narrower by `gutter`, the charm may use 16px of the
- * screen margin); bottom anchors hang below the card (the frame reserves bottom space).
+ * jumps to the other side under dir=rtl. Anchors overlay INSIDE the
+ * card corner as an overlay inside the card; bottom anchors sit in the bottom corner.
  * Gravity is always down, so nothing is mirrored; the pivot is the attach point.
  */
 export function charmLayout(cfg, manifest = FALLBACK_MANIFEST, cardHeight = 92) {
@@ -45,11 +44,16 @@ export function charmLayout(cfg, manifest = FALLBACK_MANIFEST, cardHeight = 92) 
   const pivotY = h * (manifest.pivot?.y ?? 0.045);
   const bottom = cfg.anchor.startsWith('bottom');
   const left = cfg.anchor.endsWith('left');
-  const gutter = bottom ? 0 : Math.max(0, w - 16);
   const pos = { position: 'absolute', width: w, height: h };
-  if (bottom) { pos.bottom = 6; pos[left ? 'left' : 'right'] = 12; } else { pos.top = -pivotY; pos[left ? 'left' : 'right'] = -16; }
-  const extraBottom = bottom ? Math.round(h - pivotY + 6) : Math.max(0, Math.round(h - pivotY - cardHeight + 4));
-  return { w, h, pivotX, pivotY, gutterLeft: !bottom && left ? gutter : 0, gutterRight: !bottom && !left ? gutter : 0, extraBottom, pos };
+  // Overlay INSIDE the card corner (never narrows the card, like iOS). Top anchors hang from the
+  // card's top edge; bottom anchors sit in the bottom corner with the pivot at the frame top.
+  if (bottom) pos.bottom = 6; else pos.top = 8 - pivotY;
+  pos[left ? 'left' : 'right'] = 10;
+  // Only when a charm is taller than the card does the frame reserve space below it.
+  const extraBottom = bottom ? 0 : Math.max(0, Math.round(h - pivotY + 8 - cardHeight + 4));
+  // Optional inline padding a leading-aligned card can apply so its text/chevron clear the charm.
+  const reserve = Math.max(0, w - 2);
+  return { w, h, pivotX, pivotY, gutterLeft: 0, gutterRight: 0, reserveLeft: left ? reserve : 0, reserveRight: left ? 0 : reserve, extraBottom, pos };
 }
 
 // ---- manifest (static bundled asset, same origin) ----
@@ -107,3 +111,6 @@ export const getMineSnapshot = () => mine;
 export function setMine(value, uid) { mine = { loaded: true, value, uid: uid ?? mine.uid }; subs.forEach(f => f()); }
 export function subscribeMine(f) { subs.add(f); return () => subs.delete(f); }
 export function resetMine() { mine = { loaded: false, value: null, uid: null }; subs.forEach(f => f()); }
+
+// Set by the profile's "Edit charm" button; KeychainSettings scrolls itself into view once on mount.
+export const keychainFocus = { pending: false };

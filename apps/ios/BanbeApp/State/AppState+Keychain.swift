@@ -7,6 +7,8 @@ import Supabase
 @MainActor
 final class KeychainStore: ObservableObject {
     static let shared = KeychainStore()
+    /// Set by the profile's "Edit charm" button; EditProfileView scrolls to the Keychain section once.
+    var focusKeychainOnEdit = false
 
     @Published private(set) var mine: KeychainConfig?
     @Published private(set) var mineLoaded = false

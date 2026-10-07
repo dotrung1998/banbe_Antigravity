@@ -6,6 +6,7 @@ import { KeychainFrame, useKeychainManifest } from './KeychainCharm.jsx';
 import {
   ANCHORS, SIZES, DEFAULT_KEYCHAIN, designUrl, fetchMyKeychain, saveMyKeychain, setMine, getMineSnapshot, normalizeKeychain,
 } from '../lib/keychain.js';
+import { keychainFocus } from '../lib/keychain.js';
 import {
   KEYCHAIN_INPUT_ACCEPT, KEYCHAIN_ERRORS, mapKeychainError, prepareCustomArt, uploadAndSaveCustomArt, deleteCustomArt,
 } from '../lib/keychainUpload.js';
@@ -29,6 +30,13 @@ export default function KeychainSettings() {
   const { T, state } = useBanBe();
   const lang = state.lang;
   const manifest = useKeychainManifest();
+  const rootRef = useRef(null);
+  useEffect(() => {
+    if (!keychainFocus.pending) return;
+    keychainFocus.pending = false;
+    const t = setTimeout(() => rootRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }), 150);
+    return () => clearTimeout(t);
+  }, []);
   const [saved, setSaved] = useState(null);       // server config
   const [draft, setDraft] = useState(null);       // editing copy; nothing persisted until Save
   const [pendingArt, setPendingArt] = useState(null); // {blob,url,width,height,contentType}
@@ -107,7 +115,7 @@ export default function KeychainSettings() {
   const label = { fontSize: 11.5, color: ink };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="keychain-settings">
+    <div ref={rootRef} style={{ display: 'flex', flexDirection: 'column', gap: 10, scrollMarginTop: 12 }} data-testid="keychain-settings">
       <span style={label}>{T('Móc khoá', 'Keychain')}</span>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: ink }}>
         <input type="checkbox" checked={draft.enabled} onChange={e => set({ enabled: e.target.checked })} data-testid="keychain-enabled" />
