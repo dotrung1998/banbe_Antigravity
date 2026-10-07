@@ -332,15 +332,12 @@ export default function AccountGroup() {
         )}
 
         {/* Help & Legal — Terms (the full policy screen), then the text guides
-            (Personal, Host; Admin guide only for admins), then the Q&A. */}
+            (Personal, Host; the Admin guide lives on the Admin tab), then the Q&A. */}
         {key === 'helpLegal' && (
           <div style={{ ...fieldGlass({ marginTop: 24, display: 'flex', flexDirection: 'column' }) }}>
             <Row icon="document" label={T('Điều khoản', 'Terms')} trailing="›" testId="help-terms" onClick={openPolicy} />
             <Row icon="checklist" label={T('Hướng dẫn: Người tham gia', 'Guide: Personal')} trailing="›" testId="help-guide-personal" onClick={() => set({ screen: 'guide', guideKey: 'personal' })} />
             <Row icon="checklist" label={T('Hướng dẫn: Người tổ chức (Host)', 'Guide: Host')} trailing="›" testId="help-guide-host" onClick={() => set({ screen: 'guide', guideKey: 'host' })} />
-            {s.accountType === 'admin' && (
-              <Row icon="alertShield" label={T('Hướng dẫn: Quản trị', 'Guide: Admin')} trailing="›" testId="help-guide-admin" onClick={() => set({ screen: 'guide', guideKey: 'admin' })} />
-            )}
             <Row icon="receipt" label={T('Hỏi & Đáp', 'Q&A')} trailing="›" testId="help-faq" onClick={() => set({ screen: 'faq' })} border={false} />
           </div>
         )}

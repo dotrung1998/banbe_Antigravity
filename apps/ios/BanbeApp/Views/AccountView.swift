@@ -807,6 +807,8 @@ struct AccountView: View {
                   "admin quản trị viên mời invite thành viên team đội ngũ") { openGroup("adminTeam") },
                 e("reportsAdmin", "admin", aVi, aEn, "Số Liệu & Báo Cáo", "Metrics & Reports", "chart.bar.doc.horizontal",
                   "thống kê statistics analytics báo cáo report số liệu") { app.openReports(scope: "admin", back: .profile) },
+                e("adminGuide", "admin", aVi, aEn, "Hướng Dẫn Quản Trị", "Admin Guide", "checklist",
+                  "admin guide hướng dẫn quản trị help trợ giúp") { app.helpGuideKey = "admin"; app.screen = .helpGuide },
             ]
         }
         return list
@@ -1497,6 +1499,21 @@ struct AccountView: View {
             reportsGroupRow(app.T("Số Liệu & Báo Cáo", "Metrics & Reports"), identifier: "account.reportsAdmin") {
                 app.openReports(scope: "admin", back: .profile)
             }
+            groupDivider()
+            // Concise admin-only guide (Help & Legal holds the user guides).
+            SwipeSafeButton { app.helpGuideKey = "admin"; app.screen = .helpGuide } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "checklist").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
+                    Text(app.T("Hướng Dẫn Quản Trị", "Admin Guide")).font(.system(size: 14))
+                    Spacer()
+                    Text("›").font(.system(size: 15))
+                }
+                .foregroundStyle(app.palette.ink)
+                .padding(16)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("account.adminGuide")
         }
         .padding(.top, 14)
     }

@@ -3359,6 +3359,7 @@ final class AppState: ObservableObject {
         // can never drift apart.
         case .policy: screen = policyBackScreen
         // Help & Legal guides / Q&A go back to the Help & Legal group.
+        case .helpGuide where helpGuideKey == "admin": screen = .profile
         case .helpGuide, .helpFaq: accountGroupKey = "helpLegal"; screen = .accountGroup
         default: break
         }
@@ -3465,6 +3466,7 @@ final class AppState: ObservableObject {
         // wherever Help & Legal was actually opened from, same as every
         // other screen this exact bug class already hit).
         case .policy: return policyBackScreen
+        case .helpGuide where helpGuideKey == "admin": return .profile
         case .helpGuide, .helpFaq: return .accountGroup
         default: return .home
         }

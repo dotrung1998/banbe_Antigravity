@@ -11,6 +11,9 @@ struct HelpReaderView: View {
     let idPrefix: String
     let onBack: () -> Void
 
+    /// "Account" for the admin guide (opened from the Admin tab), else Help & Legal.
+    private var backLabel: String { doc.adminOnly ? app.T("Tài khoản", "Account") : app.accountGroupTitle(for: "helpLegal") }
+
     @State private var query = ""
     @State private var tocOpen = true
 
@@ -82,7 +85,7 @@ struct HelpReaderView: View {
             ScreenScaffold {
                 VStack(alignment: .leading, spacing: 0) {
                     Color.clear.frame(height: 1).id("helpTop")
-                    BackLink(label: app.accountGroupTitle(for: "helpLegal"), action: onBack)
+                    BackLink(label: backLabel, action: onBack)
                         .accessibilityIdentifier("\(idPrefix).back")
                     Text(pick(doc.vi, doc.en)).font(BanbeTheme.display(26)).padding(.top, 14)
                     Text(pick(doc.introVi, doc.introEn)).font(.system(size: 13)).opacity(0.75).padding(.top, 8)

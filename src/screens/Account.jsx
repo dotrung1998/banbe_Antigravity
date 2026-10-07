@@ -156,7 +156,7 @@ export function SectionHeader({ label, testId, marginTop = 22 }) {
 
 export default function Account() {
   const {
-    state, T, goHome, goEditName, goGoingList, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
+    state, T, set, goHome, goEditName, goGoingList, goSavedList, openVerifications, goLogin, logout, canHost, toggleOrganizerMode, referralLink, shareReferral,
     openMyRefunds, openEditProfile,
     loadHomeStories, openStoryViewer, openStoryLibraryPicker, openStoryCameraPicker,
     loadPaymentBookings, loadMyRefunds, loadVerifications, loadRefundQueue, loadOrganizerHoldingSummary, loadPendingEventsCount,
@@ -1023,6 +1023,17 @@ export default function Account() {
             marginTop={10}
           />
           <ReportsRow label={T('Số Liệu & Báo Cáo', 'Metrics & Reports')} testId="account-reports-admin" onClick={() => openReports('admin', null, 'profile')} />
+          {/* Concise admin-only guide (Help & Legal holds the user guides). */}
+          <div
+            onClick={() => set({ screen: 'guide', guideKey: 'admin' })}
+            data-testid="account-admin-guide"
+            style={{ ...fieldGlass({ margin: '10px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
+              <RowIcon kind="checklist" />{T('Hướng Dẫn Quản Trị', 'Admin Guide')}
+            </span>
+            <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
+          </div>
           <div style={{ height: 24 }} />
         </div>
       )}

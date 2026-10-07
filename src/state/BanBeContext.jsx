@@ -2909,12 +2909,6 @@ export function BanBeProvider({ children }) {
     if (error) { console.warn('Failed to record policy consent:', error); return; }
     set(prev => ({ policyGateActive: false, ...postAuthDestination(prev) }));
   }, [set, s.user?.id]);
-  // "Decline" on the same gate: no consent is recorded; the session is signed out
-  // and the flag cleared so the next ordinary read of the policy isn't a gate.
-  const declinePolicyGate = useCallback(async () => {
-    set({ policyGateActive: false });
-    await logout();
-  }, [set, logout]);
   // Tapping a photo in either gallery ("Hình ảnh" on an event, "Ảnh của X"
   // on an organizer page) opens it larger, over a dimmed backdrop, with the
   // whole gallery loaded in behind it so left/right swipes can move through
@@ -5965,6 +5959,14 @@ export function BanBeProvider({ children }) {
       myRefunds: [], paymentRefundClaim: null, attendanceGuests: [],
     });
   }, [set]);
+  // (Defined after `logout` — a const used in a deps array before its
+  // declaration is a TDZ crash that blanks the whole app.)
+  // "Decline" on the policy gate: no consent is recorded; the session is signed out
+  // and the flag cleared so the next ordinary read of the policy isn't a gate.
+  const declinePolicyGate = useCallback(async () => {
+    set({ policyGateActive: false });
+    await logout();
+  }, [set, logout]);
 
   // ---- display name ----
   // TASK 4 (Reserve→edit-name pass) — captures the CALLER's screen (e.g.

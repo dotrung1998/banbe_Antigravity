@@ -670,10 +670,6 @@ struct AccountGroupView: View {
             row(app.T("Hướng dẫn: Người tham gia", "Guide: Personal"), identifier: "help.guide.personal", icon: "checklist", trailing: "›") { openGuide("personal") }
             Divider().overlay(app.palette.rule)
             row(app.T("Hướng dẫn: Người tổ chức (Host)", "Guide: Host"), identifier: "help.guide.host", icon: "checklist", trailing: "›") { openGuide("host") }
-            if app.isAdmin {
-                Divider().overlay(app.palette.rule)
-                row(app.T("Hướng dẫn: Quản trị", "Guide: Admin"), identifier: "help.guide.admin", icon: "exclamationmark.shield", trailing: "›") { openGuide("admin") }
-            }
             Divider().overlay(app.palette.rule)
             row(app.T("Hỏi & Đáp", "Q&A"), identifier: "help.faq", icon: "questionmark.bubble", trailing: "›") { app.screen = .helpFaq }
         }
