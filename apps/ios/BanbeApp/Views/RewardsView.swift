@@ -16,7 +16,7 @@ struct RewardsView: View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
                 BackLink(label: app.T("Tài khoản", "Account")) { app.goBack() }
-                Text(app.T("Phần thưởng & huy hiệu", "Rewards & badges"))
+                Text(app.T("Phần thưởng & huy hiệu", "Rewards & Badges"))
                     .font(BanbeTheme.display(27)).padding(.top, 16)
                     .accessibilityAddTraits(.isHeader)
                 Text(app.T("Chỉ mình bạn thấy trang này. Huy hiệu và lịch sử không hiển thị công khai.",
@@ -81,7 +81,7 @@ struct RewardsView: View {
                         .font(.system(size: 11)).opacity(0.7)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading).padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(16)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .accessibilityElement(children: .combine)
             .accessibilityLabel(app.T("Số dư \(r.balance) xu", "Balance \(r.balance) coins"))
@@ -92,12 +92,13 @@ struct RewardsView: View {
                 HStack(spacing: 6) { Text("🔥").accessibilityHidden(true); Text("\(r.streak.current)") }.font(BanbeTheme.display(30))
                 Text(app.T("Dài nhất: \(r.streak.longest) ngày", "Longest: \(r.streak.longest) days")).font(.system(size: 11)).opacity(0.7)
             }
-            .frame(maxWidth: .infinity, alignment: .leading).padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(16)
             .background(app.palette.field, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .accessibilityElement(children: .combine)
             .accessibilityLabel(app.T("Chuỗi \(r.streak.current) ngày, dài nhất \(r.streak.longest)", "\(r.streak.current)-day streak, longest \(r.streak.longest)"))
             .accessibilityIdentifier("rewards.streak")
         }
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 16)
 
         section(app.T("Huy hiệu", "Badges")) {

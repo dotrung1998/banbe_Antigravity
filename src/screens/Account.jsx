@@ -667,7 +667,7 @@ export default function Account() {
         style={{ ...fieldGlass({ margin: '8px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, color: ink }}>
-          <RowIcon kind="coin" />{T('Phần thưởng & huy hiệu', 'Rewards & badges')}
+          <RowIcon kind="coin" />{T('Phần Thưởng & Huy Hiệu', 'Rewards & Badges')}
         </span>
         <span style={{ fontSize: 15, color: ink, lineHeight: 1 }}>›</span>
       </div>
