@@ -382,6 +382,9 @@ export default function MapExplore() {
     );
   }, [allowLocation]);
 
+  const flightTargetRef = useRef(null); // {center, zoom} of an in-progress selection flight
+  const flightTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(flightTimerRef.current), []);
   // ---- pin/list-row selection: camera zoom + compact in-map preview card ----
   // Reuses the same `events`/`visibleEvents` this screen already loads —
   // selecting is just remembering an id, never a second query.
@@ -406,12 +409,11 @@ export default function MapExplore() {
     // nowhere on the map to fly to; still selects it (the compact card
     // still shows its real info), just skips the camera move.
     if (!ev.hasLocation) return;
-    map.flyTo({
-      center: [ev.lng, ev.lat],
-      zoom: Math.max(map.getZoom(), 15.5),
-      padding: cameraPadding(),
-      duration: 550,
-    });
+    const target = { center: [ev.lng, ev.lat], zoom: Math.max(map.getZoom(), 15.5) };
+    flightTargetRef.current = target;
+    clearTimeout(flightTimerRef.current);
+    flightTimerRef.current = setTimeout(() => { flightTargetRef.current = null; }, 1000); // flight 550ms + one retarget ease
+    map.flyTo({ ...target, padding: cameraPadding(), duration: 550 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -860,7 +862,9 @@ export default function MapExplore() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !selectedEvent || !cardFits) return;
-    map.easeTo({ padding: cameraPadding(), duration: 300 });
+    // If the selection flight is still running, retarget it (padding-only easeTo would cancel it
+    // mid-air and leave the pin off-centre); otherwise only the padding changes, never the user's camera.
+    map.easeTo({ ...(flightTargetRef.current || {}), padding: cameraPadding(), duration: 300 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sheetSnap, containerH, cardHeight, topControlsBottom, cardFits]);
 
