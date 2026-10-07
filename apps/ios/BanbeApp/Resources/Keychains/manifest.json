@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "pivot": {
+    "x": 0.5,
+    "y": 0.045
+  },
+  "imageSize": {
+    "width": 256,
+    "height": 384
+  },
+  "anchors": [
+    "top_left",
+    "top_right",
+    "bottom_left",
+    "bottom_right"
+  ],
+  "sizes": {
+    "s": 0.7,
+    "m": 1,
+    "l": 1.35
+  },
+  "baseWidth": 64,
+  "groups": [
+    {
+      "id": "sky",
+      "vi": "Bầu trời",
+      "en": "Sky"
+    },
+    {
+      "id": "love",
+      "vi": "Yêu thương",
+      "en": "Love"
+    },
+    {
+      "id": "bloom",
+      "vi": "Hoa quả",
+      "en": "Bloom"
+    },
+    {
+      "id": "cafe",
+      "vi": "Cà phê & nhạc",
+      "en": "Cafe & music"
+    },
+    {
+      "id": "pals",
+      "vi": "Thú cưng",
+      "en": "Pals"
+    },
+    {
+      "id": "trip",
+      "vi": "Du lịch",
+      "en": "Trip"
+    },
+    {
+      "id": "banbe",
+      "vi": "Banbe",
+      "en": "Banbe"
+    }
+  ],
+  "designs": [
+    {
+      "id": "sky-star",
+      "group": "sky",
+      "vi": "Ngôi sao",
+      "en": "Star",
+      "file": "sky-star.png"
+    },
+    {
+      "id": "sky-moon",
+      "group": "sky",
+      "vi": "Trăng khuyết",
+      "en": "Crescent moon",
+      "file": "sky-moon.png"
+    },
+    {
+      "id": "sky-cloud",
+      "group": "sky",
+      "vi": "Đám mây",
+      "en": "Cloud",
+      "file": "sky-cloud.png"
+    },
+    {
+      "id": "love-heart",
+      "group": "love",
+      "vi": "Trái tim",
+      "en": "Heart",
+      "file": "love-heart.png"
+    },
+    {
+      "id": "love-ribbon",
+      "group": "love",
+      "vi": "Ruy băng",
+      "en": "Ribbon",
+      "file": "love-ribbon.png"
+    },
+    {
+      "id": "love-bow",
+      "group": "love",
+      "vi": "Nơ",
+      "en": "Bow",
+      "file": "love-bow.png"
+    },
+    {
+      "id": "bloom-flower",
+      "group": "bloom",
+      "vi": "Bông hoa",
+      "en": "Flower",
+      "file": "bloom-flower.png"
+    },
+    {
+      "id": "bloom-tulip",
+      "group": "bloom",
+      "vi": "Hoa tulip",
+      "en": "Tulip",
+      "file": "bloom-tulip.png"
+    },
+    {
+      "id": "bloom-strawberry",
+      "group": "bloom",
+      "vi": "Dâu tây",
+      "en": "Strawberry",
+      "file": "bloom-strawberry.png"
+    },
+    {
+      "id": "bloom-lemon",
+      "group": "bloom",
+      "vi": "Chanh vàng",
+      "en": "Lemon",
+      "file": "bloom-lemon.png"
+    },
+    {
+      "id": "cafe-cup",
+      "group": "cafe",
+      "vi": "Tách cà phê",
+      "en": "Coffee cup",
+      "file": "cafe-cup.png"
+    },
+    {
+      "id": "cafe-note",
+      "group": "cafe",
+      "vi": "Nốt nhạc",
+      "en": "Music note",
+      "file": "cafe-note.png"
+    },
+    {
+      "id": "cafe-vinyl",
+      "group": "cafe",
+      "vi": "Đĩa than",
+      "en": "Vinyl record",
+      "file": "cafe-vinyl.png"
+    },
+    {
+      "id": "pals-cat",
+      "group": "pals",
+      "vi": "Mèo con",
+      "en": "Kitty",
+      "file": "pals-cat.png"
+    },
+    {
+      "id": "pals-bear",
+      "group": "pals",
+      "vi": "Gấu nhỏ",
+      "en": "Little bear",
+      "file": "pals-bear.png"
+    },
+    {
+      "id": "pals-paw",
+      "group": "pals",
+      "vi": "Dấu chân",
+      "en": "Paw print",
+      "file": "pals-paw.png"
+    },
+    {
+      "id": "trip-ticket",
+      "group": "trip",
+      "vi": "Vé",
+      "en": "Ticket",
+      "file": "trip-ticket.png"
+    },
+    {
+      "id": "trip-plane",
+      "group": "trip",
+      "vi": "Máy bay giấy",
+      "en": "Paper plane",
+      "file": "trip-plane.png"
+    },
+    {
+      "id": "trip-compass",
+      "group": "trip",
+      "vi": "La bàn",
+      "en": "Compass",
+      "file": "trip-compass.png"
+    },
+    {
+      "id": "trip-suitcase",
+      "group": "trip",
+      "vi": "Vali",
+      "en": "Suitcase",
+      "file": "trip-suitcase.png"
+    },
+    {
+      "id": "banbe-b",
+      "group": "banbe",
+      "vi": "Chữ B",
+      "en": "Letter B",
+      "file": "banbe-b.png"
+    },
+    {
+      "id": "banbe-stub",
+      "group": "banbe",
+      "vi": "Cuống vé",
+      "en": "Ticket stub",
+      "file": "banbe-stub.png"
+    },
+    {
+      "id": "banbe-spark",
+      "group": "banbe",
+      "vi": "Tia sáng",
+      "en": "Spark",
+      "file": "banbe-spark.png"
+    },
+    {
+      "id": "banbe-wave",
+      "group": "banbe",
+      "vi": "Sóng",
+      "en": "Wave",
+      "file": "banbe-wave.png"
+    }
+  ]
+}

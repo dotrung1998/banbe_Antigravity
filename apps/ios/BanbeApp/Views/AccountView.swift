@@ -398,6 +398,7 @@ struct AccountView: View {
                     .accessibilityIdentifier("account.editProfile")
                 }
             }
+            .keychainProfileCharm(handle: app.user?.handle, layout: .leading, outset: 16)
             .padding(16)
             .background(
                 LinearGradient(
@@ -1752,7 +1753,26 @@ struct AccountView: View {
     // như khách" button.
     @ViewBuilder
     private func orgProfileCard() -> some View {
-        if app.canHost, app.myOrganizerID != nil {
+        if app.canHost, app.organizerMode, app.myOrganizerID == nil, app.myOrganizerIdsStatus == "loaded", app.myOrganizerIDs.isEmpty {
+            // ensure_my_organizer (migration 163) progress / error + one explicit Retry.
+            VStack(alignment: .leading, spacing: 8) {
+                if app.ensureOrganizerStatus == "error" {
+                    Text(app.T("Chưa tạo được hồ sơ tổ chức. Vui lòng thử lại.", "We could not set up your organizer profile. Please try again."))
+                        .font(.system(size: 13))
+                    Button(app.T("Thử lại", "Retry")) { app.retryEnsureOrganizer() }
+                        .accessibilityIdentifier("account.ensureOrganizerRetry")
+                } else {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text(app.T("Đang chuẩn bị hồ sơ tổ chức…", "Setting up your organizer profile…")).font(.system(size: 13))
+                    }
+                }
+            }
+            .foregroundStyle(app.palette.ink)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("account.ensureOrganizer")
+        } else if app.canHost, app.myOrganizerID != nil {
             SwipeSafeButton {
                 app.goDashboard(back: .profile)
             } label: {

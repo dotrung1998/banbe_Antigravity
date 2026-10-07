@@ -12,6 +12,7 @@ import AccountSearchResults from './AccountSearch.jsx';
 import { takeSearchState, resetSearchState } from '../lib/accountSearch.js';
 import { useSubmittedEvents, SubmittedEventsRow } from '../lib/submittedEvents.jsx';
 import ProfileShareSheet, { ShareCardRow, profileShareLinks } from './sheets/ProfileShareSheet.jsx';
+import { KeychainFrame, useMyKeychain } from '../components/KeychainCharm.jsx';
 import { pickSoonest } from '../lib/countdown.js';
 import { computeAdminModerationCount, computeHostActionCount, computeMyTicketsActionCount, computeMyRefundActionCount, computePersonalActionCount, formatBadgeCount } from '../lib/badges.js';
 
@@ -164,9 +165,10 @@ export default function Account() {
     loadMyOrgStats, setAccountTab, openPublicProfile, openReports, openAccountGroup, goSurveysHosting,
     loadMyOrganizerMemberships,
     loadMyEventCredits, loadMyConfirmedEventCredits,
-    loadMyAdminInvite, respondToAdminInvite, loadAdminTeam,
+    loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, retryEnsureOrganizer,
   } = useBanBe();
   const s = state;
+  const myKeychain = useMyKeychain();
   const [shareCardFor, setShareCardFor] = useState(null); // 'member' | 'host' | null
   // Account search — restored only when we're coming back from a search result
   // (see lib/accountSearch.js); a normal visit starts with it closed.
@@ -438,9 +440,10 @@ export default function Account() {
           menu keep their own existing nested tap targets unchanged — a
           separate small "Chỉnh sửa" affordance (not the whole card) opens
           EditProfile, so it can't conflict with those. */}
+      <KeychainFrame config={myKeychain} margin="22px 20px 0" cardHeight={92} testId="account-keychain-frame">
       <div
         style={{
-          ...cardGlass({ margin: '22px 20px 0', padding: '18px 16px', display: 'flex', gap: 14, alignItems: 'center' }),
+          ...cardGlass({ margin: 0, padding: '18px 16px', display: 'flex', gap: 14, alignItems: 'center' }),
           background: `linear-gradient(165deg, ${PROFILE_PALETTE_COLORS[s.user?.profileTheme] || PROFILE_PALETTE_COLORS.default}55, transparent 70%)`,
         }}
         data-testid="account-profile-card"
@@ -529,6 +532,7 @@ export default function Account() {
           </span>
         )}
       </div>
+      </KeychainFrame>
 
       {s.user?.handle && (
         <ShareCardRow onClick={() => setShareCardFor('member')} testId="account-share-card-personal" />
@@ -792,6 +796,21 @@ export default function Account() {
           profiles.display_name. Only shown once this account has ever
           hosted; a never-hosted account instead sees the same "Host your
           first event" pitch further down (unchanged from before). */}
+      {/* ensure_my_organizer (migration 163): organizer mode is on but no owned
+          organizer yet (created lazily at first event before) — show progress,
+          or an error with ONE explicit Retry (no automatic retry loop). */}
+      {canHost && s.organizerMode && !s.myOrganizerId && s.myOrganizerIdsStatus === 'loaded' && !s.myOrganizerIds.length && (
+        <div data-testid="org-profile-ensure" style={{ ...cardGlass({ margin: '22px 20px 0', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 8 }) }}>
+          {s.ensureOrganizerStatus === 'error' ? (
+            <>
+              <span style={{ fontSize: 13 }}>{T('Chưa tạo được hồ sơ tổ chức. Vui lòng thử lại.', 'We could not set up your organizer profile. Please try again.')}</span>
+              <button type="button" data-testid="org-profile-ensure-retry" onClick={retryEnsureOrganizer} style={{ alignSelf: 'flex-start', padding: '8px 14px', borderRadius: 999, border: '1px solid currentColor', background: 'transparent', color: 'inherit', cursor: 'pointer' }}>{T('Thử lại', 'Retry')}</button>
+            </>
+          ) : (
+            <span style={{ fontSize: 13, opacity: 0.8 }}>{T('Đang chuẩn bị hồ sơ tổ chức…', 'Setting up your organizer profile…')}</span>
+          )}
+        </div>
+      )}
       {canHost && s.myOrganizerId && (
         <div
           onClick={() => goDashboard('profile')}

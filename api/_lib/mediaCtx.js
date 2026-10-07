@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from './authLookup.js';
 import { accountGateStatus } from './accountGate.js';
 import { makeMediaDb } from './mediaDb.js';
+import { makeKeychainDb } from './keychainArt.js';
 import { r2Config, presignUrl, getObject, putObject, deleteObject, purgeUrls } from './r2.js';
 
 /** Builds the production ctx for media.js, or null if R2/Supabase are not configured. */
@@ -24,6 +25,7 @@ export function buildMediaCtx(env = process.env) {
     admin,
     r2,
     db: admin ? makeMediaDb(admin) : null,
+    keychain: admin ? makeKeychainDb(admin) : null,
     auth: {
       async verify(token) { const { data, error } = await admin.auth.getUser(token); return error || !data?.user ? null : data.user.id; },
       async gate(token) { return (await accountGateStatus(token)).ok; },

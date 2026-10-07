@@ -96,6 +96,9 @@ struct EditProfileView: View {
                         }
                     }
 
+                    // Profile keychain (note 35): own Save/Cancel, independent of the profile Save below.
+                    KeychainSettingsSection()
+
                     if !app.editProfileError.isEmpty {
                         Text(app.editProfileError).font(.system(size: 12)).foregroundStyle(BanbeTheme.alert)
                     }

@@ -12,6 +12,7 @@
 // here at init, finalize and delete. Never log tokens, URLs or file content.
 import { randomUUID, createHash } from 'node:crypto';
 import { inspectImage, MIME_TO_EXT } from './imageSafe.js';
+import { handleKeychainOp } from './keychainArt.js';
 
 export const VARIANTS = {
   thumb: { maxEdge: 320, maxBytes: 200 * 1024 },
@@ -304,6 +305,10 @@ export async function handleMediaRequest(ctx, { method, headers, body }) {
     if (method !== 'POST') fail(405, 'METHOD_NOT_ALLOWED');
     const token = String(headers?.authorization || '').replace(/^Bearer\s+/i, '').trim();
     const b = body && typeof body === 'object' ? body : {};
+    if (typeof b.op === 'string' && b.op.startsWith('keychain_')) {
+      const out = await handleKeychainOp(ctx, token, b, { fail, authenticate });
+      if (out !== undefined) return { status: 200, json: out };
+    }
     if (b.op === 'init') return { status: 200, json: await opInit(ctx, token, b) };
     if (b.op === 'finalize') return { status: 200, json: await opFinalize(ctx, token, b) };
     if (b.op === 'reconcile') return { status: 200, json: await opReconcile(ctx, token, b) };

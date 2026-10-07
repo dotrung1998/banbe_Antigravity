@@ -445,6 +445,7 @@ extension AppState {
             userEmail = nil
             user = nil
             resetEventPrefsState()
+            resetKeychainState()
             accountType = "participant"
             organizerMode = false
             hasHosted = false
@@ -729,6 +730,9 @@ extension AppState {
             // from "confirmed empty" instead of inferring it from `.isEmpty`.
             myOrganizerIdsStatus = "error"
         }
+        // Organizer Mode on but no owned organizer (it used to be created
+        // only lazily by create_event_draft): create the default one now.
+        await ensureOrganizerIfNeeded()
     }
 
     /// STAGE C (2026-09-25) — the real "add a photo to one of my own
@@ -1506,6 +1510,7 @@ extension AppState {
                     if accountTab == "host" { accountTab = "personal" }
                 }
             }
+            if confirmed { await ensureOrganizerIfNeeded() }
         } catch {
             // Rolling back in silence is what makes the switch look like it
             // "turns itself back off" — always say why it went back.
@@ -3501,6 +3506,7 @@ try await SupabaseService.client
                 shaped.append(event)
                 realEventsByID[row.id] = event
             }
+            discoveryAlertVersions = Dictionary(rows.map { ($0.id, ForYouAlert.version(reviewedAt: $0.reviewedAt, submittedAt: $0.submittedAt, status: $0.status, visibility: $0.visibility)) }, uniquingKeysWith: { a, _ in a })
             discoveryEvents = shaped
         } catch {
             print("loadDiscoveryEvents failed:", error)

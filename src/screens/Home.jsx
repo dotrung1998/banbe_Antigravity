@@ -5,6 +5,9 @@ import { EVENTS, bg, agoLabel } from '../data/events.js';
 import { formatCountdown, msUntil, pickSoonest, useTicking, liveEventOverrides, formatVnEventDate } from '../lib/countdown.js';
 import { prefsIsEmpty } from '../lib/eventPrefs.js';
 import { forYouRank, forYouTimeZone, forYouPriceCurrency } from '../lib/forYou.js';
+import { forYouEventVersion } from '../lib/forYouAlert.js';
+import { useForYouAlert } from '../lib/useForYouAlert.js';
+import ForYouChip from './ForYouChip.jsx';
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass, barGlass } from '../theme.js';
 import { BAR_HEIGHT, BAR_BOTTOM_OFFSET, DOCK_MARGIN } from './BottomTabBar.jsx';
 import { buildActionCenterItems, sortActionCenterItems } from '../lib/actionCenter.js';
@@ -664,6 +667,19 @@ export default function Home() {
     if (s.filterForYou && !hasForYou && !s.discoveryEventsLoading) set({ filterForYou: false });
   }, [s.filterForYou, hasForYou, s.discoveryEventsLoading, set]);
   const forYouActive = s.filterForYou && hasForYou;
+  // New-match attention state (src/lib/forYouAlert.js). Version = publication
+  // moment + status + visibility of the raw discovery row (no updated_at today).
+  const forYouAlertMatches = useMemo(() => {
+    const raw = new Map((s.discoveryEvents || []).map(e => [e.key, e]));
+    return forYouRanked.map(m => {
+      const e = raw.get(m.key);
+      return { id: m.key, version: forYouEventVersion(e), status: e?.status, accessible: e ? e.visibility === 'public' : false };
+    });
+  }, [forYouRanked, s.discoveryEvents]);
+  const forYouAlert = useForYouAlert({
+    userId: s.user?.id, matches: forYouAlertMatches, prefsVersion: s.eventPrefsVersion,
+    loading: !!s.discoveryEventsLoading || !s.eventPrefs,
+  });
 
   const demoted = e => (e.cancelled && (e.cancelledHoursAgo == null || e.cancelledHoursAgo >= 2)) ? 1 : 0;
   // Home-visibility fix (2026-09-29) — real root cause of "an approved
@@ -1113,19 +1129,25 @@ export default function Home() {
           `overflowX` instead of a horizontally-scrolling single row: every
           chip is now always visible (wraps to a second line if it doesn't
           fit), no swipe needed to see the rest. */}
-      <div data-hscroll="true" style={{ display: 'flex', gap: 8, padding: '0 20px 14px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+      {/* For You is pinned at the leading edge (not scrollable); only the extra
+          chips live in the scroller. The scroller keeps data-hscroll so the
+          root tab swipe ignores it, and keeps one stable position whether or
+          not For You is rendered (no remount, scroll offset preserved). */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 0 14px', paddingInlineStart: 20 }}>
         {hasForYou && (
-          <span
-            onClick={() => toggleHomeFilter('forYou')}
-            data-testid="home-filter-foryou"
-            aria-label={T('Dành cho bạn', 'For You')}
-            aria-pressed={!!s.filterForYou}
-            style={homeCapsule({ fontWeight: s.filterForYou ? 600 : 400, gap: 6 }, !!s.filterForYou)}
-          >
-            <span aria-hidden="true" style={{ color: '#E0A526', fontSize: 15, lineHeight: 1 }}>★</span>
-            {T('Dành cho bạn', 'For You')}
-          </span>
+          <ForYouChip
+            T={T}
+            active={!!s.filterForYou}
+            pending={forYouAlert.pending}
+            animate={forYouAlert.animate}
+            capsuleStyle={homeCapsule({ fontWeight: s.filterForYou ? 600 : 400 }, !!s.filterForYou)}
+            onClick={() => {
+              if (!s.filterForYou) forYouAlert.acknowledge(forYouRanked.map(m => m.key));
+              toggleHomeFilter('forYou');
+            }}
+          />
         )}
+        <div data-hscroll="true" data-testid="home-filter-extra-scroller" style={{ flex: '1 1 0', minWidth: 0, display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', paddingInlineEnd: 20 }}>
         {HOME_EXTRA_FILTERS.map(f => {
           // Every filter key maps to its state field by simple
           // capitalization (attending -> filterAttending, notConfirmed ->
@@ -1142,6 +1164,7 @@ export default function Home() {
             </span>
           );
         })}
+        </div>
       </div>
       {forYouActive && (
         <div style={{ padding: '0 20px 12px' }}>

@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, fieldGlass, alert, inkButton } from '../theme.js';
 import { PROFILE_PALETTES } from '../lib/profileTheme.js';
+import KeychainSettings from '../components/KeychainSettings.jsx';
 import { LINK_PLATFORMS, SocialLinksEditor } from './SocialLinksEditor.jsx';
 
 // TASK D (2026-10-01 UX foundation pass) — the owner's own editable public
@@ -105,6 +106,8 @@ export default function EditProfile() {
             ))}
           </div>
         </div>
+
+        <KeychainSettings />
 
         {s.editProfileError && <p style={{ fontSize: 12, color: alert, margin: 0 }}>{s.editProfileError}</p>}
 

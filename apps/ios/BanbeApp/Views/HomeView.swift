@@ -36,6 +36,8 @@ struct HomeView: View {
     /// location list — a native `Menu` can't host a text field, so this is
     /// where typing a place name still works. See `LocationPickerSheet`.
     @State private var areaSearchOpen = false
+    @StateObject private var forYouAlert = ForYouAlertModel()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let filters: [(key: String, vi: String, en: String)] = [
         ("all", "Tất cả", "All"),
@@ -225,6 +227,12 @@ struct HomeView: View {
         .onChange(of: app.area) { _, _ in resetForYouIfStale() }
         .onChange(of: app.hasForYouMatches) { _, _ in resetForYouIfStale() }
         .onChange(of: app.discoveryEventsLoading) { _, _ in resetForYouIfStale() }
+        // New-match attention (Lib/ForYouAlert.swift): observe on any input change.
+        .onChange(of: app.forYouMatches) { _, _ in observeForYouAlert() }
+        .onChange(of: app.discoveryEventsLoading) { _, _ in observeForYouAlert() }
+        .onChange(of: app.eventPrefsVersion) { _, _ in observeForYouAlert() }
+        .onChange(of: app.userID) { _, _ in observeForYouAlert() }
+        .onAppear { observeForYouAlert() }
         // The area menu's searchable fallback (see `header`): a native Menu
         // can't hold a text field, so "Search locations…" opens this sheet
         // instead. Same picker Map Explore uses, same `app.area` selection.
@@ -973,11 +981,50 @@ struct HomeView: View {
     private var filterSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             filterRow(zone: "homeFilterCategories") { filterTabs }
-            filterRow(zone: "homeFilterStatus") { homeExtraFilterChips }
+            statusFilterRow
             if app.filterForYou && app.hasForYouMatches { forYouEditRow }
         }
         .padding(.top, 16)
         .padding(.bottom, 14)
+    }
+
+    /// Second row: For You pinned at the leading edge (never scrolls, never shrinks);
+    /// the remaining chips scroll on their own to its right, registered as the same
+    /// root-gesture exclusion zone as before. The ScrollView keeps one stable position
+    /// whether or not For You is shown (no remount, offset preserved). HStack's leading
+    /// edge follows the layout direction (RTL-safe).
+    private var statusFilterRow: some View {
+        let hasForYou = app.hasForYouMatches
+        return HStack(spacing: 8) {
+            if hasForYou {
+                forYouChip
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
+                    .padding(.leading, 20)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                homeExtraFilterChips
+                    .padding(.leading, hasForYou ? 0 : 20)
+                    .padding(.trailing, 20)
+            }
+            .background {
+                GeometryReader { geo in
+                    Color.clear.preference(
+                        key: RootGestureExclusionZonePreferenceKey.self,
+                        value: ["homeFilterStatus": geo.frame(in: .named("rootGesture"))]
+                    )
+                }
+            }
+        }
+    }
+
+    private func observeForYouAlert() {
+        let matches = app.forYouMatches.map { m in
+            ForYouAlertMatch(id: m.key, version: app.discoveryAlertVersions[m.key] ?? "")
+        }
+        forYouAlert.observe(userID: app.userID?.uuidString, matches: matches,
+                            prefsVersion: app.eventPrefsVersion,
+                            loading: app.discoveryEventsLoading || app.eventPrefs == nil)
     }
 
     private func filterRow<Content: View>(zone: String, @ViewBuilder content: () -> Content) -> some View {
@@ -1042,7 +1089,6 @@ struct HomeView: View {
             ("ended", "Đã kết thúc", "Ended", app.filterEnded),
         ]
         return HStack(spacing: 8) {
-            if app.hasForYouMatches { forYouChip }
             ForEach(chips, id: \.key) { chip in
                 SwipeSafeButton {
                     Haptics.selection()
@@ -1087,6 +1133,7 @@ struct HomeView: View {
         let active = app.filterForYou
         return SwipeSafeButton {
             Haptics.selection()
+            if !app.filterForYou { forYouAlert.acknowledge(loadedIDs: app.forYouMatches.map(\.key)) }
             app.toggleHomeFilter("forYou")
         } label: {
             HStack(spacing: 4) {
@@ -1094,6 +1141,16 @@ struct HomeView: View {
                     .foregroundStyle(active ? app.palette.paper : gold)
                 Text(app.T("Dành cho bạn", "For You"))
                     .font(.system(size: 12, weight: active ? .bold : .regular))
+                    .lineLimit(1)
+                if forYouAlert.hasPending {
+                    // White on #7A5200 = ~6.9:1 (AA); static, retained until acknowledged.
+                    Text(app.T("Mới", "New"))
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Capsule().fill(Color(red: 0.478, green: 0.322, blue: 0)))
+                        .accessibilityHidden(true)
+                }
             }
             .padding(.horizontal, 12).padding(.vertical, 6)
             .foregroundStyle(active ? app.palette.paper : app.palette.ink)
@@ -1101,8 +1158,11 @@ struct HomeView: View {
             .overlay(Capsule().stroke(active ? app.palette.ink : gold.opacity(0.7), lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .modifier(ForYouAttentionEffect(animating: forYouAlert.animating && forYouAlert.hasPending, reduceMotion: reduceMotion))
         .accessibilityIdentifier("filter.foryou")
-        .accessibilityLabel(app.T("Dành cho bạn", "For You"))
+        .accessibilityLabel(forYouAlert.hasPending && !active
+            ? app.T("Dành cho bạn, có gợi ý mới", "For You, new recommendations")
+            : app.T("Dành cho bạn", "For You"))
     }
 
     /// Never leave a stale empty "For You" list: once data has settled, a

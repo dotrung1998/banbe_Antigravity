@@ -373,6 +373,11 @@ async function handleDeleteAccount(req, res, admin, body) {
     if (avatarFiles?.length) {
       await admin.storage.from('avatars').remove(avatarFiles.map(f => `${userId}/${f.name}`));
     }
+    // Keychain custom art (private bucket, `<user_id>/...`); rows cascade with the account.
+    const { data: keychainFiles } = await admin.storage.from('keychain-art').list(userId);
+    if (keychainFiles?.length) {
+      await admin.storage.from('keychain-art').remove(keychainFiles.map(f => `${userId}/${f.name}`));
+    }
     await markStep(admin, requestId, 'avatar_storage', 'ok');
   } catch (error) {
     // Non-fatal — a leftover avatar file is not a reason to abort deleting

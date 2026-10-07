@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, display, cardGlass } from '../theme.js';
 import { PROFILE_PALETTE_COLORS } from '../lib/profileTheme.js';
+import { KeychainFrame, useProfileKeychain } from '../components/KeychainCharm.jsx';
 import { APP_STORE_URL } from '../lib/appStore.js';
 import ProfileShareSheet, { profileShareLinks } from './sheets/ProfileShareSheet.jsx';
 import { LongIntroPreview, SocialLinksRow } from './LongIntro.jsx';
@@ -31,6 +32,7 @@ export default function PublicProfile() {
   const [shareCardOpen, setShareCardOpen] = useState(false);
   const [qrSrc, setQrSrc] = useState(null);
   const p = s.publicProfile;
+  const theirKeychain = useProfileKeychain(p?.handle);
 
   useEffect(() => {
     if (!qrOpen || !p?.handle) return;
@@ -80,10 +82,12 @@ export default function PublicProfile() {
           same existing spacing value Account.jsx's own profile/org cards
           already use for this exact "gap below a top bar" (not a new
           token). */}
+      <KeychainFrame config={theirKeychain} margin="22px 20px 0" cardHeight={260} testId="public-profile-keychain-frame"
+        label={T(`Móc khoá của ${p.display_name || p.handle}`, `${p.display_name || p.handle}'s keychain`)}>
       <div
         data-testid="public-profile-card"
         style={{
-          ...cardGlass({ margin: '22px 20px 0', padding: '28px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }),
+          ...cardGlass({ margin: 0, padding: '28px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }),
           background: `linear-gradient(165deg, ${paletteColor}CC, ${paletteColor}55)`,
         }}
       >
@@ -167,6 +171,7 @@ export default function PublicProfile() {
           </div>
         )}
       </div>
+      </KeychainFrame>
 
       {/* Real, explicit, ACCEPTED event contributions only — never derived
           from ticket attendance/bookings/check-ins. Empty if none. */}

@@ -516,6 +516,8 @@ final class AppState: ObservableObject {
     /// loading"/"failed" apart from "confirmed owns zero organizers" just
     /// from `myOrganizerIDs.isEmpty`. 'idle' | 'loading' | 'loaded' | 'error'.
     @Published var myOrganizerIdsStatus = "idle"
+    /// ensure_my_organizer (migration 163): "idle" | "loading" | "error".
+    @Published var ensureOrganizerStatus = "idle"
     // Part B audit (2026-09-28) — Dashboard-identity-mismatch fix (mirrors
     // web's BanBeContext.jsx `myOrgEventOrganizerId`). `myOrgEventKeys` above
     // stays the full union across every organizer row this account owns
@@ -582,6 +584,8 @@ final class AppState: ObservableObject {
     // web's identical `discoveryEvents`/`loadDiscoveryEvents`.
     @Published var discoveryEvents: [CatalogEvent] = []
     @Published var discoveryEventsLoading = false
+    /// For You alert version per discovery event id (ForYouAlert.version); set just before `discoveryEvents`.
+    var discoveryAlertVersions: [String: String] = [:]
     // Event review queue (event submission -> review -> publish) — this
     // account's own REAL (non-catalogue) events, raw (status, rejection
     // reason, submitted/reviewed timestamps included) rather than shaped

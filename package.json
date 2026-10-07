@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:keychains": "node scripts/build-keychains.mjs",
     "preview": "vite preview",
     "test:unit": "node --test 'tests/unit/**/*.test.mjs'"
   },

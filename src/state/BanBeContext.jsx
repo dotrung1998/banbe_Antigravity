@@ -13,6 +13,7 @@ import { surveyPublicUrl } from '../lib/surveyLink.js';
 import { metricLabel } from '../lib/reportMetricLabels.js';
 import { useAccountGate } from '../lib/accountGate.js';
 import { normalizeForSave as normalizeEventPrefsForSave, isMissingFunctionError as isEventPrefsFnMissing, everyone as everyoneCriteria, normalizeCriteria, criteriaIsEveryone } from '../lib/eventPrefs.js';
+import { useEnsureOrganizer } from '../lib/useEnsureOrganizer.js';
 import { uploadViaMediaApi, deleteViaMediaApi, reconcileEventViaMediaApi } from '../lib/mediaUpload.js';
 import { publicEventPhotoUrl, organizerAvatarPublicUrl, withR2Columns, isChatGreetingColumnMissing, chatGreetingColumnList, isMissingColumnError } from '../lib/mediaUrls.js';
 
@@ -548,6 +549,8 @@ const initialState = {
   // "don't know yet" (loadRefundQueue, diagnostics) read this, never infer
   // it from `myOrganizerIds.length` alone.
   myOrganizerIdsStatus: 'idle',
+  // ensure_my_organizer (migration 163) wiring — see lib/useEnsureOrganizer.js.
+  ensureOrganizerStatus: 'idle', ensureOrganizerError: '',
   // Distinct from refundQueueLoading (in flight) — a transport error or
   // RPC success:false, surfaced in Verifications.jsx instead of silently
   // rendering as an empty queue ("do not show failed loading as empty").
@@ -5817,6 +5820,7 @@ export function BanBeProvider({ children }) {
     if (s.organizerModeBusy || organizerModeBusyRef.current) return;
     applyOrganizerMode(!s.organizerMode);
   }, [set, s.user, s.organizerMode, s.organizerModeBusy, applyOrganizerMode]);
+  const retryEnsureOrganizer = useEnsureOrganizer({ s, set, supabase, loadMyEvents });
 
   // ---- navigation ----
   const goHome = useCallback(() => set({ screen: 'home' }), [set]);
@@ -10408,7 +10412,7 @@ export function BanBeProvider({ children }) {
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
-    canHost, toggleOrganizerMode, enableOrganizerMode,
+    canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,
@@ -10447,7 +10451,7 @@ export function BanBeProvider({ children }) {
     openAdminEvents, loadPendingEvents, loadPendingEventsCount, reviewEvent, goEditEvent, withdrawEventSubmission, loadResubmissionStatus,
     switchToHost, backFromDashboard, switchToGoer, becomeHost, logout, dismissSplash, notifyLogomotionComplete,
     goEditName, editNameType, saveDisplayName, openEditProfile, backFromEditProfile, editProfileIntroLongType, toggleEditProfileLinksOpen, addEditProfileLink, setEditProfileLink, removeEditProfileLink, saveProfileFields, uploadAvatar, removeAvatar, openPublicProfile, backFromPublicProfile, openOrganizerProfile, backFromOrganizerProfile, loadOrganizerProfileExtras, shareOrganizerProfile, toggleFollowOrganizer, sharePublicProfile, openReports, backFromReports, setReportsRangeDays, setReportsCustomRange, toggleReportCard, expandAllReportCards, collapseAllReportCards, exportReportCardCsv, exportReportsJson, exportReportsPdf, loadAccountKpis, loadMyOrganizerMemberships, respondToOrganizerInvite, setOrganizerMemberVisibility, loadOrgTeamRoster, loadMyAdminInvite, respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft, requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite, requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite, requestRevokeAdminConfirm, cancelRevokeAdminConfirm, confirmRevokeAdmin, orgTeamInviteHandleType, orgTeamInviteRoleType, inviteOrganizerMember, removeOrganizerMember, openOrganizerTeam, backFromOrganizerTeam, loadMyEventCredits, loadMyConfirmedEventCredits, respondToEventCredit, assignEventCredit, goNotifications, markNotificationRead, markNotificationUnread, muteNotificationKind, deleteNotification, deleteNotifications, openNotification, clearChatHighlight, dismissToast, dismissAllToasts, markToastVisible, pauseToastTimer, resumeToastTimer, openDeleteAccount, closeDeleteAccount, setDeleteAccountStep, setDeleteAccountReasonCode, setDeleteAccountReasonText, setDeleteAccountPhraseInput, setDeleteAccountReauthCode, sendDeleteAccountReauthCode, verifyDeleteAccountReauthCode, confirmDeleteAccount, deleteAccountReadyToSubmit, deleteAccountPhraseMatches, DELETE_ACCOUNT_PHRASE,
-    canHost, toggleOrganizerMode, enableOrganizerMode,
+    canHost, toggleOrganizerMode, enableOrganizerMode, retryEnsureOrganizer,
     pickVi, pickEn, pickLight, pickDark, finishOnboarding, togglePolicyConsent, openPolicy, backFromPolicy, acceptPolicyGate, declinePolicyGate,
     toggleLang, openArea, pickArea, allowLocation, denyLocation, askLocation, toggleTheme, pickTheme, openPreferences, openSecurity, openEventPreferences, loadEventPreferences, setCreateCriteria, loadEventCriteria, checkReservationEligibility, saveEventPreferences, completeSettingsOnboarding, completePreferencesOnboarding, openAccountGroup, openPhoto, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, loadPhotoEngagement,
     securityPasswordType, securityPasswordConfirmType, saveSecurityPassword, sendSecurityPasswordReset,

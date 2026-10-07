@@ -260,6 +260,7 @@ struct PublicProfileView: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .keychainProfileCharm(handle: p.handle, layout: .centered, outset: 22)
         .padding(.vertical, 28).padding(.horizontal, 22)
         .background(LinearGradient(colors: [paletteColor.opacity(0.8), paletteColor.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .accessibilityIdentifier("publicProfile.card")
