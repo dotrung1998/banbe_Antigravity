@@ -31,6 +31,8 @@ export const PERSONAL_GUIDE = {
         ['"Your events" hiển thị các sự kiện bạn đang giữ chỗ / đã thanh toán.', '"Your events" shows events you are holding or have paid for.'],
         ['"Things to do" (Action Center) liệt kê việc cần làm: giữ chỗ sắp hết hạn, hoàn tiền cần xác nhận…', '"Things to do" (Action Center) lists what needs you: a hold about to expire, a refund to confirm…'],
         ['"Help Shape Upcoming Events" là các khảo sát công khai bạn có thể trả lời.', '"Help Shape Upcoming Events" lists public surveys you can answer.'],
+        ['Hàng bộ lọc thứ hai có chip ngôi sao vàng "For You" (Dành cho bạn), luôn đứng cố định ở đầu hàng; các chip còn lại vuốt ngang riêng. Chip chỉ hiện khi có sự kiện khớp câu trả lời sở thích của bạn.', 'The second filter row has a gold-star "For You" chip pinned at the start of the row; the other chips swipe sideways on their own. It only shows when events match your preference answers.'],
+        ['Khi có sự kiện mới khớp sở thích, chip "For You" lấp lánh vài giây rồi giữ nhãn "New" nhỏ cho đến khi bạn mở nó. Sự kiện cũ, sự kiện không khớp hoặc bản nháp không bao giờ gây báo. Nếu bật "Giảm chuyển động", chip chỉ hiện nhãn tĩnh.', 'When a new event matches your preferences, the "For You" chip shimmers for a few seconds, then keeps a small "New" label until you open it. Older events, non-matching events and drafts never trigger it. With Reduce Motion on, the chip just shows a static label.'],
       ]],
       ['h', 'Bản đồ', 'Map'],
       ['p', 'Tìm theo tên, khu vực, từ khóa hoặc danh mục. Dùng "Open now", "Nearby", "Search here"; chuyển giữa "Big list" và "Big map"; nhấn ghim rồi "View details".', 'Search by name, area, keyword or category. Use "Open now", "Nearby" and "Search here"; switch between "Big list" and "Big map"; tap a pin then "View details".'],
@@ -138,7 +140,29 @@ export const PERSONAL_GUIDE = {
         ['Trang công khai của bạn ở /u/<handle> ai có link cũng xem được.', 'Your public page lives at /u/<handle> and anyone with the link can view it.'],
         ['Thẻ chia sẻ: chọn màu, nền, "Save card", "Download image", "Copy link", "Share…".', 'Share card: pick colours and background, then "Save card", "Download image", "Copy link", "Share…".'],
         ['"Invite friends" tạo link mời cá nhân.', '"Invite friends" creates your personal invite link.'],
+        ['Trang hồ sơ của bạn có một hàng ba nút nhỏ: "QR code" (hiện mã QR), "Edit profile" (sửa hồ sơ) và "Edit charm" (sửa móc khoá). Người khác xem hồ sơ của bạn chỉ thấy nút QR.', 'Your own profile page has one row of three small buttons: "QR code" (show the QR), "Edit profile" and "Edit charm" (edit your keychain). Visitors only see the QR button.'],
         ['"Post a story": ảnh + văn bản + link, tự hết hạn sau 24 giờ.', '"Post a story": photo + text + link, expires after 24 hours.'],
+      ]],
+    ]},
+    { id: 'keychain', vi: 'Móc khoá trang trí hồ sơ', en: 'Profile keychain charm', blocks: [
+      ['p', 'Móc khoá là một món trang trí nhỏ treo ở góc thẻ hồ sơ. Mặc định tắt; khi bật, người xem hồ sơ của bạn cũng thấy nó.', 'The keychain is a small decoration hanging from a corner of your profile card. It is off by default; when on, people who view your profile see it too.'],
+      ['h', 'Bật và chỉnh móc khoá', 'Turn it on and customise it'],
+      ['ol', [
+        ['Mở hồ sơ của bạn rồi nhấn "Edit charm", hoặc vào Edit profile > Keychain.', 'Open your profile and tap "Edit charm", or go to Edit profile > Keychain.'],
+        ['Bật công tắc, chọn một trong 24 mẫu (nhóm sao/trăng/mây, tim/nơ, hoa/trái cây, cà phê/âm nhạc, mèo/gấu, du lịch/vé, họa tiết banbe).', 'Switch it on and pick one of 24 designs (stars/moon/clouds, hearts/ribbons, flowers/fruits, coffee/music, cats/bears, travel/tickets, banbe motifs).'],
+        ['Chọn một trong bốn góc, kích cỡ S/M/L và bật/tắt chuyển động. Xem trước ngay trong màn hình rồi nhấn Save; Cancel sẽ bỏ thay đổi.', 'Choose one of four corners, size S/M/L and motion on/off. Preview it on the screen, then tap Save; Cancel discards changes.'],
+      ]],
+      ['h', 'Tải ảnh mẫu & dùng ảnh riêng', 'Export artwork & use your own'],
+      ['ul', [
+        ['"Download artwork" / nút chia sẻ lưu ảnh PNG của mẫu đang chọn.', '"Download artwork" / the share button saves the PNG of the selected design.'],
+        ['"Use my own art": chọn tệp PNG hoặc WebP nền trong suốt bạn đã tải ở nơi khác (tối đa 512 px, 256 KB; ảnh được thu nhỏ trên máy và xoá siêu dữ liệu như vị trí). SVG, HTML và GIF không được chấp nhận. Mỗi tài khoản giữ tối đa 3 ảnh; "Remove my art" để xoá ảnh của bạn.', '"Use my own art": pick a transparent PNG or WebP you downloaded elsewhere (up to 512 px, 256 KB; it is resized on your device and metadata such as location is removed). SVG, HTML and GIF are not accepted. Each account keeps at most 3 images; "Remove my art" deletes yours.'],
+        ['Ảnh riêng chỉ được người dùng đăng nhập khác xem khi móc khoá của bạn đang bật. Hãy chỉ dùng ảnh bạn có quyền sử dụng.', 'Your own art can be seen by other signed-in users only while your keychain is on. Only use images you have the right to use.'],
+      ]],
+      ['h', 'Chơi với móc khoá', 'Playing with it'],
+      ['ul', [
+        ['Kéo móc khoá lên/xuống để kéo giãn, thả ra để nó đung đưa rồi dừng. Cuộn trang bình thường ở những chỗ khác.', 'Drag the charm up or down to stretch it, release and it swings then settles. Scroll the page as usual anywhere else.'],
+        ['Trên iPhone, móc khoá nhẹ nhàng phản ứng khi bạn nghiêng hoặc lắc máy và rung nhẹ khi chạm/thả (theo cài đặt Haptic của app). Trên web, nhấn "Enable tilt" trong màn hình Keychain để cho phép cảm biến (cần HTTPS và sự đồng ý của bạn).', 'On iPhone the charm gently responds to tilting or shaking and gives a light tap on grab/release (following the app Haptic setting). On the web, tap "Enable tilt" on the Keychain screen to allow the sensor (needs HTTPS and your permission).'],
+        ['Không muốn kéo? Dùng nút "Swing" hoặc, trên web, chọn móc khoá rồi nhấn Enter/Space. Khi bật "Giảm chuyển động" hoặc tắt chuyển động, móc khoá đứng yên.', 'Prefer not to drag? Use the "Swing" button or, on the web, focus the charm and press Enter/Space. With Reduce Motion on or motion off, the charm stays still.'],
       ]],
     ]},
     { id: 'settings', vi: 'Cài đặt, bảo mật & xóa tài khoản', en: 'Settings, security & deleting your account', blocks: [

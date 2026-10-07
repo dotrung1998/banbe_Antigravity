@@ -7,7 +7,8 @@ export const HOST_GUIDE = {
     { id: 'start', vi: 'Trở thành host', en: 'Becoming a host', blocks: [
       ['ol', [
         ['Vào Account, bật công tắc "Organizer mode" (tab Host xuất hiện; tắt bất cứ lúc nào).', 'Go to Account and switch on "Organizer mode" (the Host tab appears; turn it off any time).'],
-        ['Điền tên và phần giới thiệu trang tổ chức của bạn khi tạo sự kiện đầu tiên.', 'Fill in your organizer name and about text when you create your first event.'],
+        ['Ngay khi bật chế độ tổ chức, banbe tự tạo trang tổ chức cho bạn với tên mặc định "<tên hiển thị> Events" (hoặc "Sự kiện của tôi" nếu chưa có tên). Bạn có thể đổi tên bất cứ lúc nào; tên không lấy từ email hay số điện thoại và không có nghĩa là đã được xác minh. Nếu thẻ Host báo lỗi, nhấn "Retry". Thành viên nhóm của tổ chức khác không bị tạo thêm trang.', 'As soon as you switch on organizer mode, banbe creates your organizer page with a default name "<display name> Events" (or "My events" if you have no name). You can rename it any time; the name is never taken from your email or phone and does not mean you are verified. If the Host card shows an error, tap "Retry". Members of another organizer\'s team do not get a second page created.'],
+        ['Điền phần giới thiệu trang tổ chức của bạn khi tạo sự kiện đầu tiên (hoặc sửa tên/giới thiệu ở hồ sơ công khai của tổ chức).', 'Fill in your organizer about text when you create your first event (or edit the name/about on your organizer public profile).'],
         ['Chính sách yêu cầu host từ 18 tuổi trở lên.', 'The Terms require hosts to be 18 or older.'],
       ]],
       ['p', 'banbe hiện miễn phí cho host: không phí niêm yết hay phí giao dịch. Mọi sự kiện mới đều được quản trị viên banbe duyệt trước khi công khai.', 'banbe is currently free for hosts: no listing or transaction fees. Every new event is reviewed by a banbe admin before it goes public.'],
