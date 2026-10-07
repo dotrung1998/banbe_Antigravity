@@ -4924,6 +4924,7 @@ export function BanBeProvider({ children }) {
       .replace(/Hết chỗ/g, 'Sold out').replace(/Đã hủy/g, 'Cancelled')
       .replace(/Đã hoàn tiền/g, 'Refunded').replace(/Đã diễn ra/g, 'Ended')
       .replace(/Đang giữ/g, 'On hold').replace(/Đã thanh toán/g, 'Paid')
+      .replace(/Sắp diễn ra/g, 'Starting soon').replace(/Đang diễn ra/g, 'Happening now')
       .replace(/Đã lưu/g, 'Saved').replace(/Đang tham gia/g, 'Going')
       .replace(/Trả để xác nhận/g, 'Pay to confirm')
       .replace(/(\d+) vé/g, '$1 tix')

@@ -65,6 +65,8 @@ enum BanbeTheme {
         static let invite = Color(hex: 0x34545E).opacity(0.72)
         static let saved = Color(hex: 0x685430).opacity(0.74)
         static let past = Color(hex: 0x4E483A).opacity(0.70)
+        /// Gold — starting within 24h / happening now (web CHIP_COLORS.reminder).
+        static let reminder = Color(hex: 0x7A5200).opacity(0.82)
     }
 
     /// Display/title face: the web app uses Jost/Be Vietnam Pro at weight

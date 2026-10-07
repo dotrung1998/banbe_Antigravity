@@ -8,6 +8,7 @@ import { forYouRankEvents } from '../lib/forYou.js';
 import { forYouEventVersion } from '../lib/forYouAlert.js';
 import { useForYouAlert } from '../lib/useForYouAlert.js';
 import ForYouChip from './ForYouChip.jsx';
+import { reminderPhase } from '../lib/eventReminder.js';
 import { compactCoins, shortcutLabels } from '../lib/rewards.js';
 import { HEADER, titleFits } from '../lib/homeHeaderLayout.js';
 import { paper, ink, rule, display, fieldGlass, CHIP_COLORS, photoChip, lightChip, alert, cardGlass, barGlass } from '../theme.js';
@@ -405,6 +406,15 @@ export const FILTER_DEFS = [
   { key: 'music', vi: 'Nhạc', en: 'Music' },
 ];
 
+// Event reminder card (see src/lib/eventReminder.js): gold border + a halo that pulses
+// each time Home mounts (i.e. whenever the user navigates back). The keyframes are
+// finite, so staying on the screen lets the halo fade out; the border stays.
+const REMINDER_CSS = `
+@keyframes bb-rem-halo { 0% { box-shadow: 0 0 0 0 rgba(224,165,38,0.65), 0 0 18px 2px rgba(224,165,38,0.55); } 100% { box-shadow: 0 0 0 10px rgba(224,165,38,0), 0 0 0 0 rgba(224,165,38,0); } }
+.bb-rem-card::after { content: ''; position: absolute; left: 0; top: 0; width: 164px; height: 104px; box-sizing: border-box; border-radius: 18px; border: 2px solid #E0A526; pointer-events: none; animation: bb-rem-halo 1.4s ease-out 3; }
+@media (prefers-reduced-motion: reduce) { .bb-rem-card::after { animation: none; } }
+`;
+
 export default function Home() {
   const {
     state, set, T, trStatus, stripKm, curArea, isSaved, isGoing, isAwaitingConfirmation, toggleFav,
@@ -792,8 +802,11 @@ export default function Home() {
         else if (e.key === heldKey) { tag = 'Đang giữ'; status = 'Trả để xác nhận' + tixStr; chip = CHIP_COLORS.hold; }
         else if (isGoing(e.key)) { tag = 'Đã thanh toán'; status = e.untilLabel + tixStr; chip = CHIP_COLORS.going; }
         else { tag = 'Đã lưu'; status = e.untilLabel; chip = CHIP_COLORS.saved; }
+        // Reminder: a ticket-holder's event within 24h of starting, or ongoing.
+        const reminder = isGoing(e.key) && e.key !== heldKey ? reminderPhase(e.startDate) : null;
+        if (reminder) { tag = reminder === 'live' ? 'Đang diễn ra' : 'Sắp diễn ra'; chip = CHIP_COLORS.reminder; }
         return {
-          key: e.key, name: e.name, photoUrl: e.img, endedHoursAgo: e.endedHoursAgo,
+          key: e.key, name: e.name, photoUrl: e.img, endedHoursAgo: e.endedHoursAgo, reminder,
           status: trStatus(status), tag: trStatus(tag), chip,
           canRemove: !isGoing(e.key) && e.key !== heldKey && !invited,
           toEvent: e.cancelled ? 'refunded' : 'event',
@@ -822,8 +835,10 @@ export default function Home() {
       else if (k === heldKey) { tag = T('Đang giữ', 'Holding'); status = T('Trả để xác nhận', 'Pay to confirm'); chip = CHIP_COLORS.hold; }
       else if (isGoing(k)) { tag = T('Đã thanh toán', 'Paid'); status = untilLabel; chip = CHIP_COLORS.going; }
       else { tag = T('Đã lưu', 'Saved'); status = untilLabel; chip = CHIP_COLORS.saved; }
+      const reminder = !cancelled && endedHoursAgo == null && isGoing(k) && k !== heldKey ? reminderPhase(startsAt, { status: real.status }) : null;
+      if (reminder) { tag = reminder === 'live' ? T('Đang diễn ra', 'Happening now') : T('Sắp diễn ra', 'Starting soon'); chip = CHIP_COLORS.reminder; }
       return {
-        key: k, name: real.name, photoUrl: real.photoUrl, endedHoursAgo,
+        key: k, name: real.name, photoUrl: real.photoUrl, endedHoursAgo, reminder,
         status, tag, chip,
         canRemove: !isGoing(k) && k !== heldKey && !invited,
         toEvent: cancelled ? 'refunded' : 'event',
@@ -928,10 +943,11 @@ export default function Home() {
             <span style={{ ...display(18) }}>{T('Sự kiện của bạn', 'Your events')}</span>
             <span style={{ fontSize: 11.5, color: ink }}>{T('Sự kiện đã qua sẽ ẩn sau 48h', 'Past events clear after 48h')}</span>
           </div>
-          <div data-hscroll="true" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6 }}>
+          <div data-hscroll="true" style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '12px 14px 6px', margin: '-12px -14px 0' }}>
             {savedList.map(sv => (
               <div key={sv.key} onClick={sv.unavailable ? undefined : () => openSaved(sv)} style={{ flex: 'none', width: 164, cursor: sv.unavailable ? 'default' : 'pointer' }}>
-                <div style={{ position: 'relative' }}>
+                <div style={{ position: 'relative' }} className={sv.reminder ? 'bb-rem-card' : undefined} data-testid={sv.reminder ? 'home-event-reminder' : undefined} data-reminder={sv.reminder || undefined}>
+                  {sv.reminder && <style>{REMINDER_CSS}</style>}
                   {sv.photoUrl ? (
                     <div style={bg(sv.photoUrl, { width: 164, height: 104, borderRadius: 18, filter: 'none' })} />
                   ) : (
@@ -939,7 +955,7 @@ export default function Home() {
                       <span style={{ fontSize: 10.5, color: ink, opacity: 0.55 }}>{sv.unavailable ? sv.tag : T('Chưa có ảnh', 'No photo yet')}</span>
                     </div>
                   )}
-                  <span style={photoChip(sv.chip, { top: 8, left: 8, fontSize: 10, padding: '5px 11px', borderRadius: 999 })}>{sv.tag}</span>
+                  <span style={photoChip(sv.chip, { top: 8, left: 8, fontSize: 10, padding: '5px 11px', borderRadius: 999 })}>{sv.reminder && <span aria-hidden="true" style={{ color: '#FFD76A', marginInlineEnd: 4 }}>★</span>}{sv.tag}</span>
                   {sv.canRemove && (
                     <span onClick={(ev) => { ev.stopPropagation(); toggleFav(sv.key); }} style={lightChip({ top: 6, right: 6, fontSize: 10, padding: '4px 8px', borderRadius: 12 })}>{T('Bỏ', 'Remove')}</span>
                   )}

@@ -128,6 +128,7 @@ export const CHIP_COLORS = {
   hold: 'rgba(140,96,20,0.72)',       // honey — on hold
   invite: 'rgba(52,84,94,0.72)',      // mist — private/invite-only
   saved: 'rgba(104,84,48,0.74)',      // sand — saved
+  reminder: 'rgba(122,82,0,0.82)',    // gold — starting within 24h / happening now
   past: 'rgba(78,72,58,0.7)',         // neutral ink — past/ended
 };
 

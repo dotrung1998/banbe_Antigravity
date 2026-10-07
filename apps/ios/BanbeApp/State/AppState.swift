@@ -2070,6 +2070,8 @@ final class AppState: ObservableObject {
             ("Đã diễn ra", "Ended"),
             ("Đang giữ", "On hold"),
             ("Đã thanh toán", "Paid"),
+            ("Sắp diễn ra", "Starting soon"),
+            ("Đang diễn ra", "Happening now"),
             ("Đã lưu", "Saved"),
             ("Đang tham gia", "Going"),
             ("Trả để xác nhận", "Pay to confirm"),

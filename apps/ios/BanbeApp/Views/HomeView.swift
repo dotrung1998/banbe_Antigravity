@@ -26,6 +26,8 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var tickTask: Task<Void, Never>?
     @State private var tick = Date()
+    /// Bumped each time Home becomes the visible screen; replays the reminder halo.
+    @State private var reminderHaloTrigger = 0
     // TASK 4 (2026-09-22 nineteenth follow-up) — one-shot guard so the
     // retry below (see its own comment) only ever fires once per Home
     // mount, never repeatedly fighting the user's own subsequent scrolling
@@ -206,7 +208,9 @@ struct HomeView: View {
         // real (non-catalogue) event needs its own fetch for savedStrip to
         // resolve it instead of quietly skipping it.
         .task { await app.loadMissingRealEvents(for: app.favorites + app.attending) }
+        .onChange(of: app.screen) { _, new in if new == .home { reminderHaloTrigger += 1 } }
         .onAppear {
+            reminderHaloTrigger += 1
             startTickingIfNeeded()
             retryScrollRestoreIfNeeded()
         }
@@ -570,9 +574,19 @@ struct HomeView: View {
                             VStack(alignment: .leading, spacing: 7) {
                                 ZStack(alignment: .topLeading) {
                                     CatalogPhoto(path: event.img, height: 96, width: 152, cornerRadius: 12)
-                                    PhotoChip(text: app.trStatus(savedTag(event).0), background: savedTag(event).1)
-                                        .padding(6)
+                                    if reminderPhase(event) != nil {
+                                        EventReminderHalo(trigger: reminderHaloTrigger, cornerRadius: 12)
+                                            .frame(width: 152, height: 96)
+                                    }
+                                    HStack(spacing: 4) {
+                                        if reminderPhase(event) != nil {
+                                            Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(hex: 0xFFD76A))
+                                        }
+                                        PhotoChip(text: app.trStatus(savedTag(event).0), background: savedTag(event).1)
+                                    }
+                                    .padding(6)
                                 }
+                                .accessibilityIdentifier(reminderPhase(event) != nil ? "home.eventReminder" : "home.savedEvent")
                                 Text(event.name)
                                     .font(BanbeTheme.display(15))
                                     .lineLimit(1)
@@ -584,7 +598,10 @@ struct HomeView: View {
                         .buttonStyle(.plain)
                     }
                 }
+                // Room for the reminder halo (a ScrollView clips), cancelled out below.
+                .padding(.vertical, 12).padding(.horizontal, 12)
             }
+            .padding(.vertical, -12).padding(.horizontal, -12)
         }
         .foregroundStyle(app.palette.ink)
         .padding(.horizontal, 20)
@@ -1018,8 +1035,18 @@ struct HomeView: View {
         if event.cancelled { return ("Đã hủy", BanbeTheme.Chip.cancelled) }
         if event.endedHoursAgo != nil { return ("Đã diễn ra", BanbeTheme.Chip.past) }
         if event.key == app.heldEvent?.key { return ("Đang giữ", BanbeTheme.Chip.hold) }
+        if let phase = reminderPhase(event) {
+            return (phase == .live ? "Đang diễn ra" : "Sắp diễn ra", BanbeTheme.Chip.reminder)
+        }
         if app.isGoing(event.key) { return ("Đã thanh toán", BanbeTheme.Chip.going) }
         return ("Đã lưu", BanbeTheme.Chip.saved)
+    }
+
+    /// Reminder only for a ticket-holder's own event (not a hold, not merely saved).
+    private func reminderPhase(_ event: CatalogEvent) -> EventReminder.Phase? {
+        guard app.isGoing(event.key), event.key != app.heldEvent?.key,
+              !event.cancelled, event.endedHoursAgo == nil else { return nil }
+        return EventReminder.phase(startsAt: event.startDate)
     }
 
     private func savedStatus(_ event: CatalogEvent) -> String {
