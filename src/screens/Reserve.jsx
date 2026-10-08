@@ -1,7 +1,6 @@
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg } from '../data/events.js';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
-import { EVENTS } from '../data/events.js';
 import { paper, ink, FACE, display, fieldGlass, alert } from '../theme.js';
 
 export default function Reserve() {
@@ -29,7 +28,7 @@ export default function Reserve() {
     && s.attendeeDrafts.every(a => a.name.trim().length >= 2 && a.dob && a.dob <= todayIso);
   // Host reservation criteria (migration 162): always pre-check on opening this screen,
   // block only when the server says ineligible; re-checks on every eventPrefsVersion change.
-  const crit = useReservationCriteria(s.eventKey, { alwaysCheck: true, isReal: !EVENTS.some(e => e.key === s.eventKey) });
+  const crit = useReservationCriteria(s.eventKey, { alwaysCheck: true });
   const formOk = hasName && attendeesOk && !crit.blocked;
   const submitNameAtHold = async () => {
     await setNameAtHold(s.formName);

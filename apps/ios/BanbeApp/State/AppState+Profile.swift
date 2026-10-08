@@ -148,7 +148,9 @@ struct OrganizerUpcomingEvent: Decodable, Identifiable {
     /// The event's real first photo (lowest sort_order) as a public URL —
     /// filled in after the fetch; nil when the event has no photo yet.
     var coverURL: String? = nil
-    enum CodingKeys: String, CodingKey { case id, name }
+    var startsAt: Date? = nil
+    var status: String = "live"
+    enum CodingKeys: String, CodingKey { case id, name, status; case startsAt = "starts_at" }
 }
 private struct OrganizerUpcomingCoverRow: Decodable { let event_id: String; let storage_path: String; var r2_ref: String? = nil }
 
@@ -376,6 +378,7 @@ extension AppState {
         organizerProfileError = ""
         organizerProfileID = organizerID
         organizerProfileExtrasLoadedFor = ""
+        organizerProfilePast = []
         screen = .organizerProfile
         Task { await loadOrganizerProfile(organizerID: organizerID) }
     }
@@ -484,15 +487,21 @@ extension AppState {
         guard organizerProfileExtrasLoadedFor != organizerID else { return }
         organizerProfileExtrasLoadedFor = organizerID
         do {
-            async let upcomingReq: [OrganizerUpcomingEvent] = SupabaseService.client
-                .from("events").select("id, name")
-                .eq("organizer_id", value: organizerID).eq("status", value: "live")
-                .order("starts_at", ascending: true).limit(5)
+            // Live + ended in one query; split below. Events have no end time and the server only
+            // flips live -> ended on a cron, so a live row 12h+ past its start counts as past too.
+            let rows: [OrganizerUpcomingEvent] = try await SupabaseService.client
+                .from("events").select("id, name, status, starts_at")
+                .eq("organizer_id", value: organizerID).in("status", values: ["live", "ended"])
+                .order("starts_at", ascending: true).limit(200)
                 .execute().value
-            let upcoming = try await upcomingReq
-            var withCovers = upcoming
-            if !withCovers.isEmpty {
-                let coverIDs = withCovers.map(\.id)
+            let cutoff = Date().addingTimeInterval(-12 * 3600)
+            func isPast(_ e: OrganizerUpcomingEvent) -> Bool {
+                e.status == "ended" || (e.startsAt.map { $0 < cutoff } ?? false)
+            }
+            var upcoming = Array(rows.filter { !isPast($0) }.prefix(5))
+            var past = Array(rows.filter(isPast).sorted { ($0.startsAt ?? .distantPast) > ($1.startsAt ?? .distantPast) }.prefix(30))
+            let coverIDs = upcoming.map(\.id) + past.map(\.id)
+            if !coverIDs.isEmpty {
                 let covers: [OrganizerUpcomingCoverRow] = (try? await MediaColumns.retrying { withR2 in
                     try await SupabaseService.client
                         .from("event_photos").select(MediaColumns.cols("event_id, storage_path", "r2_ref", withR2))
@@ -500,12 +509,16 @@ extension AppState {
                         .order("sort_order", ascending: true)
                         .execute().value
                 }) ?? []
-                for i in withCovers.indices {
-                    guard let c = covers.first(where: { $0.event_id == withCovers[i].id }) else { continue }
-                    withCovers[i].coverURL = MediaURLs.eventPhoto(storagePath: c.storage_path, r2Ref: c.r2_ref, variant: .card)?.absoluteString
+                func fill(_ list: inout [OrganizerUpcomingEvent]) {
+                    for i in list.indices {
+                        guard let c = covers.first(where: { $0.event_id == list[i].id }) else { continue }
+                        list[i].coverURL = MediaURLs.eventPhoto(storagePath: c.storage_path, r2Ref: c.r2_ref, variant: .card)?.absoluteString
+                    }
                 }
+                fill(&upcoming); fill(&past)
             }
-            organizerProfileUpcoming = withCovers
+            organizerProfileUpcoming = upcoming
+            organizerProfilePast = past
         } catch {
             print("loadOrganizerProfileExtras failed:", error, "organizerID:", organizerID)
         }

@@ -13,6 +13,7 @@ import PhotosUI
 struct OrganizerProfileView: View {
     @EnvironmentObject private var app: AppState
     @State private var qrOpen = false
+    @State private var pastOpen = false
     @State private var shareCardOpen = false
     @State private var editing = false
     @State private var avatarPickerItem: PhotosPickerItem?
@@ -127,6 +128,45 @@ struct OrganizerProfileView: View {
                             }
                         }
                         .padding(.top, 8)
+                    }
+
+                    if !app.organizerProfilePast.isEmpty {
+                        Button { withAnimation(.easeInOut(duration: 0.2)) { pastOpen.toggle() } } label: {
+                            HStack(spacing: 8) {
+                                Text(app.T("Sự kiện đã qua", "Past events"))
+                                    .font(.system(size: 11.5, weight: .semibold))
+                                Text("\(app.organizerProfilePast.count)")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .padding(.horizontal, 7).padding(.vertical, 2)
+                                    .background(app.palette.field, in: Capsule())
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .rotationEffect(.degrees(pastOpen ? 180 : 0))
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 22)
+                        .accessibilityIdentifier("organizerProfile.pastToggle")
+                        if pastOpen {
+                            VStack(spacing: 0) {
+                                ForEach(app.organizerProfilePast) { e in
+                                    Button { app.goEvent(e.id) } label: {
+                                        HStack(spacing: 12) {
+                                            CatalogPhoto(path: e.coverURL ?? "", height: 48, width: 48, cornerRadius: 10)
+                                            Text(e.name).font(BanbeTheme.display(14)).lineLimit(1)
+                                            Spacer(minLength: 0)
+                                        }
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(.vertical, 8)
+                                    if e.id != app.organizerProfilePast.last?.id { Divider().overlay(app.palette.rule) }
+                                }
+                            }
+                            .padding(.top, 8)
+                        }
                     }
 
                     // Photo section carried over unchanged from the retired

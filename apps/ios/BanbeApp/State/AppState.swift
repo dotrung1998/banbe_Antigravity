@@ -1339,6 +1339,8 @@ final class AppState: ObservableObject {
     @Published var organizerProfileReturnsToPulse = false
     @Published var organizerProfileID = ""
     @Published var organizerProfileUpcoming: [OrganizerUpcomingEvent] = []
+    /// Host's ended events (collapsed "Past events" section on the organizer profile).
+    @Published var organizerProfilePast: [OrganizerUpcomingEvent] = []
     /// Event the organizer profile was opened from (back restores it).
     @Published var organizerProfileEventKey = ""
     /// Live "track record" per organizer id (events published + year of the
@@ -2350,6 +2352,8 @@ final class AppState: ObservableObject {
         let categoryAndArea = combined
             .map(withLive)
             .filter { !$0.inviteOnly }
+            // Ended events leave the feed; they live on the host's profile under "Past events".
+            .filter { $0.endedHoursAgo == nil }
             .filter { filter == "all" || $0.catKey == filter || $0.cat2Key == filter }
             .filter { matchesArea($0) }
         let attendance = categoryAndArea
@@ -2359,7 +2363,6 @@ final class AppState: ObservableObject {
             .filter { !filterSaved || isSaved($0.key) }
             .filter { !filterSoldOut || $0.soldOut }
             .filter { !filterUpcoming || (!$0.cancelled && $0.endedHoursAgo == nil) }
-            .filter { !filterEnded || $0.endedHoursAgo != nil }
         let sorted = savedAndStatus.sorted { a, b in demoted(a) < demoted(b) }
         // For You (gold star): AND-composed with every chip above, then
         // ordered by match score (the matcher's own deterministic order).
@@ -3477,6 +3480,7 @@ final class AppState: ObservableObject {
         switch target {
         case .accountGroup: return accountGroupTitle(for: accountGroupKey)
         case .notifications: return T("Thông báo", "Notifications")
+        case .event: return T("Sự kiện", "Event")
         default: return T("Tài khoản", "Account")
         }
     }

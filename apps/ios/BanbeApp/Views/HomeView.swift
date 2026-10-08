@@ -114,7 +114,7 @@ struct HomeView: View {
             app.palette.paper.ignoresSafeArea()
         VStack(alignment: .leading, spacing: 0) {
             header
-            ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: $app.homeScrollAnchorID, restoreOffsetY: app.homeScrollOffsetY, onScrollOffset: { app.homeScrollOffsetY = $0 }, refreshIndicatorTopPadding: 16, onRefresh: {
+            ScreenScaffold(tracksBottomBarScroll: true, scrollPositionID: homeScrollAnchorBinding, restoreOffsetY: app.homeScrollOffsetY, onScrollOffset: { app.homeScrollOffsetY = $0 }, refreshIndicatorTopPadding: 16, onRefresh: {
                 await app.loadHomeLiveEvents()
                 await app.loadWeekendEvents()
                 await app.loadDiscoveryEvents()
@@ -306,8 +306,20 @@ struct HomeView: View {
     /// before the peek reveals anything. Skipping the wait whenever the
     /// data needed to restore is already in hand fixes that without
     /// stacking another retry on top of this one.
+    /// True when Home was last left scrolled to the very top. The id anchor is then meaningless:
+    /// `.scrollPosition(id:)` reports the first feed card (the leading id-tagged child) even at
+    /// offset 0, and restoring it would jump past "Your events"/Pulse on return.
+    private var homeWasAtTop: Bool { (app.homeScrollOffsetY ?? 0) <= 1 }
+
+    private var homeScrollAnchorBinding: Binding<String?> {
+        Binding(
+            get: { homeWasAtTop ? nil : app.homeScrollAnchorID },
+            set: { app.homeScrollAnchorID = $0 }
+        )
+    }
+
     private func retryScrollRestoreIfNeeded() {
-        guard !didAttemptScrollRestore, let target = app.homeScrollAnchorID else { return }
+        guard !didAttemptScrollRestore, !homeWasAtTop, let target = app.homeScrollAnchorID else { return }
         didAttemptScrollRestore = true
         if !app.feed.isEmpty {
             app.homeScrollAnchorID = nil
@@ -1185,7 +1197,6 @@ struct HomeView: View {
             ("attending", "Đang tham gia", "Attending", app.filterAttending),
             ("notConfirmed", "Chưa xác nhận", "Not confirmed", app.filterNotConfirmed),
             ("soldOut", "Hết chỗ", "Sold out", app.filterSoldOut),
-            ("ended", "Đã kết thúc", "Ended", app.filterEnded),
         ]
         return HStack(spacing: 8) {
             ForEach(chips, id: \.key) { chip in

@@ -263,7 +263,10 @@ function mergePhotoEngagement(existing, rows) {
 export function shapeRealEventAsCurEvent(real) {
   const startsAt = real.startsAt ? new Date(real.startsAt) : null;
   const { weekdayShort, dayMonth, dayLong, time } = startsAt ? formatVnEventDate(startsAt) : {};
-  const endedHoursAgo = real.status === 'ended' && startsAt ? Math.max(0, Math.round((Date.now() - startsAt.getTime()) / 3600000)) : null;
+  // Events have no end time; the server flips live -> ended only on a cron (migration 167 makes it hourly).
+  // Until then a live row 12h+ past its start is already over, so treat it as ended.
+  const hoursSinceStart = startsAt ? Math.max(0, Math.round((Date.now() - startsAt.getTime()) / 3600000)) : null;
+  const endedHoursAgo = (real.status === 'ended' || (real.status === 'live' && hoursSinceStart != null && hoursSinceStart >= 12)) ? hoursSinceStart : null;
   return {
     key: real.key, catKey: real.catKey, cat: real.catLabel || '', cat2Key: null, catDisplay: real.catLabel || '',
     name: real.name, img: real.photoUrl || '', lat: real.lat ?? null, lng: real.lng ?? null,
@@ -828,7 +831,7 @@ const initialState = {
   // reachable by organizer id (never the owner's personal handle) so a
   // shared /org/<id> link works without knowing who owns it.
   organizerProfile: null, organizerProfileLoading: false, organizerProfileError: '', organizerProfileBack: 'profile', organizerProfileId: '',
-  organizerProfileUpcoming: [], organizerProfileExtrasLoadedFor: '',
+  organizerProfileUpcoming: [], organizerProfilePast: [], organizerProfileExtrasLoadedFor: '',
   // Interest surveys (Slice B) — the public/browser+in-app response
   // screen. `surveyPublic` is exactly get_survey_public()'s return shape
   // (never raw table rows) so the public route can never expose more than
@@ -6940,11 +6943,17 @@ export function BanBeProvider({ children }) {
   const loadOrganizerProfileExtras = useCallback(async (organizerId) => {
     if (!organizerId || s.organizerProfileExtrasLoadedFor === organizerId) return;
     set({ organizerProfileExtrasLoadedFor: organizerId });
-    const { data: eventRows } = await withR2Columns(withR2 => supabase.from('events').select(realEventColumns(withR2)).eq('organizer_id', organizerId).eq('status', 'live').order('starts_at', { ascending: true }).limit(5));
+    // Live + ended in one query, split below. Events have no end time and the server only flips
+    // live -> ended on a cron, so a live row 12h+ past its start counts as past too.
+    const { data: eventRows } = await withR2Columns(withR2 => supabase.from('events').select(realEventColumns(withR2)).eq('organizer_id', organizerId).in('status', ['live', 'ended']).order('starts_at', { ascending: true }).limit(200));
     const rows = eventRows || [];
-    const photoUrlByEvent = await firstPhotoUrlByEvent(rows.map(r => r.id));
-    const upcoming = rows.map(r => shapeRealEvent(r, { photoUrl: photoUrlByEvent[r.id] }));
-    set({ organizerProfileUpcoming: upcoming });
+    const cutoff = Date.now() - 12 * 3600000;
+    const isPast = r => r.status === 'ended' || (r.starts_at && new Date(r.starts_at).getTime() < cutoff);
+    const upcomingRows = rows.filter(r => !isPast(r)).slice(0, 5);
+    const pastRows = rows.filter(isPast).sort((a, b) => new Date(b.starts_at || 0) - new Date(a.starts_at || 0)).slice(0, 30);
+    const photoUrlByEvent = await firstPhotoUrlByEvent([...upcomingRows, ...pastRows].map(r => r.id));
+    const shape = r => shapeRealEvent(r, { photoUrl: photoUrlByEvent[r.id] });
+    set({ organizerProfileUpcoming: upcomingRows.map(shape), organizerProfilePast: pastRows.map(shape) });
   }, [set, s.organizerProfileExtrasLoadedFor]);
 
   /** Native share sheet with a clipboard-copy fallback — same pattern as

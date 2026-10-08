@@ -302,7 +302,10 @@ extension CatalogEvent {
     /// included list, organizer bio/trust stats, extra gallery photos) is
     /// an honest empty/neutral default, never invented.
     static func fromReal(_ real: RealEventSummary, now: Date = Date()) -> CatalogEvent {
-        let endedHoursAgo = real.status == "ended" ? Countdown.hoursAgo(real.startsAt, now: now) : nil
+        // Events have no end time; the server flips live -> ended only on a cron (migration 167 makes
+        // it hourly). Until then a live row 12h+ past its start is already over, so treat it as ended.
+        let lapsed = real.status == "live" && (Countdown.hoursAgo(real.startsAt, now: now) ?? 0) >= 12
+        let endedHoursAgo = (real.status == "ended" || lapsed) ? Countdown.hoursAgo(real.startsAt, now: now) : nil
         let cancelledHoursAgo = real.status == "cancelled" ? (Countdown.hoursAgo(real.cancelledAt, now: now) ?? 0) : nil
         let priceLabel = (real.priceVnd ?? 0) > 0 ? EventLabels.vnd(real.priceVnd ?? 0) : "Miễn phí"
         // Intro/included-parity fix pass (2026-09-28) — `included` mirrors

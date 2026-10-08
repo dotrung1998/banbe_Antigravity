@@ -3,15 +3,15 @@ import { useBanBe } from '../state/BanBeContext.jsx';
 import { bg, mapsUrl } from '../data/events.js';
 import { paper, ink, rule, display, photoPill, inkButton } from '../theme.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
-import { EVENTS } from '../data/events.js';
 import { useReservationCriteria, WhoCanReserve, CriteriaUnmetCard } from './ReservationCriteria.jsx';
 import FollowingBadge from '../components/FollowingBadge.jsx';
 
 export default function EventDetail() {
   const { state, T, trStatus, stripKm, curEvent: ev, eventListTitle, goHome, backFromEvent, openOrganizerOfEvent, loadEventOrgStats, goReserve, goChat, shareEvent, openPhoto, askLocation, openHeld, openEventOnMap, createEventShareStory, loadEventPhotos, isSaved, toggleFav } = useBanBe();
   const s = state;
-  // Host reservation criteria (migration 162): real events only; pre-check only when restricted.
-  const crit = useReservationCriteria(ev.key, { isReal: !EVENTS.some(e => e.key === ev.key) });
+  // Host reservation criteria (migration 162). Not gated on "real" events: a demo-catalogue key
+  // (e.g. 'bepnho') can also be a real DB row with criteria; a key with no row resolves to Everyone.
+  const crit = useReservationCriteria(ev.key);
   // Structured "Bao gồm" (migration 087) — up to 3 { label, detail } items.
   // Legacy `ev.included` (plain text) stays readable as before when no
   // structured items exist yet (an event created before this pass); never

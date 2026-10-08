@@ -34,6 +34,7 @@ export default function OrganizerProfile() {
   } = useBanBe();
   const s = state;
   const [qrOpen, setQrOpen] = useState(false);
+  const [pastOpen, setPastOpen] = useState(false);
   const [shareCardOpen, setShareCardOpen] = useState(false);
   const [qrSrc, setQrSrc] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -289,6 +290,32 @@ export default function OrganizerProfile() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {!!s.organizerProfilePast.length && (
+        <div style={{ margin: '22px 20px 0' }}>
+          <div
+            role="button"
+            aria-expanded={pastOpen}
+            data-testid="organizer-past-toggle"
+            onClick={() => setPastOpen(o => !o)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+          >
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Sự kiện đã qua', 'Past events')}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: ink, background: 'rgba(27,25,22,0.08)', borderRadius: 999, padding: '2px 7px' }}>{s.organizerProfilePast.length}</span>
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: ink, display: 'inline-block', transform: pastOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}>▾</span>
+          </div>
+          {pastOpen && (
+            <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
+              {s.organizerProfilePast.map((e, i, arr) => (
+                <div key={e.key} onClick={() => goEvent(e.key)} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '10px 0', borderBottom: i < arr.length - 1 ? `1px solid ${rule}` : 'none', cursor: 'pointer' }}>
+                  <div style={bg(e.img, { flex: 'none', width: 48, height: 48, borderRadius: 10 })} />
+                  <span style={{ ...display(14, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{e.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

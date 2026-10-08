@@ -380,7 +380,6 @@ const HOME_EXTRA_FILTERS = [
   { key: 'attending', vi: 'Đang tham gia', en: 'Attending' },
   { key: 'notConfirmed', vi: 'Chưa xác nhận', en: 'Not confirmed' },
   { key: 'soldOut', vi: 'Hết chỗ', en: 'Sold out' },
-  { key: 'ended', vi: 'Đã kết thúc', en: 'Ended' },
 ];
 
 // iOS HomeView.homeGlassCapsule parity: translucent ink-tinted fill, 1px
@@ -704,13 +703,15 @@ export default function Home() {
   }), [discoveryShaped]);
   const feed = useMemo(() => [...realEventsSorted, ...EVENTS]
     .map(withLive)
+    // Ended events leave the feed (they live on the host's profile under "Past events"). A live row
+    // 12h+ past its start is already over even if the server cron hasn't flipped it yet.
+    .filter(e => e.endedHoursAgo == null && !(e.startsAtRaw && Date.now() - new Date(e.startsAtRaw).getTime() > 12 * 3600000))
     .filter(e => !e.inviteOnly && (s.filter === 'all' || e.catKey === s.filter || e.cat2Key === s.filter) && curArea.match(e))
     .filter(e => !s.filterAttending || isGoing(e.key))
     .filter(e => !s.filterNotConfirmed || isAwaitingConfirmation(e.key))
     .filter(e => !s.filterSaved || isSaved(e.key))
     .filter(e => !s.filterSoldOut || e.soldOut)
     .filter(e => !s.filterUpcoming || (!e.cancelled && e.endedHoursAgo == null))
-    .filter(e => !s.filterEnded || e.endedHoursAgo != null)
     .filter(e => !forYouActive || forYouOrder.has(e.key))
     .sort((a, b) => demoted(a) - demoted(b))
     .sort((a, b) => (forYouActive ? forYouOrder.get(a.key) - forYouOrder.get(b.key) : 0))
