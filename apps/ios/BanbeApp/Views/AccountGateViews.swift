@@ -30,9 +30,9 @@ struct AccountGateOverlay: View {
                 }
             case .unavailable:
                 GateScaffold(
-                    title: app.T("Chưa thể kiểm tra tài khoản", "Couldn't check your account"),
-                    subtitle: app.T("Kiểm tra kết nối rồi thử lại. Bạn chưa vào được ứng dụng cho tới khi bước này hoàn tất.",
-                                    "Check your connection and try again. You can't use the app until this finishes.")
+                    title: app.T("Dịch vụ tạm thời không khả dụng", "Service temporarily unavailable"),
+                    subtitle: app.T("banbe chưa kết nối được tới máy chủ. Kiểm tra kết nối hoặc thử lại sau ít phút. Bạn chưa vào được ứng dụng cho tới khi bước này hoàn tất.",
+                                    "banbe can't reach its servers right now. Check your connection or try again in a little while. You can't use the app until this finishes.")
                 ) {
                     InkButton(title: app.T("Thử lại", "Try again")) { Task { await auth.refreshGate() } }
                 }
