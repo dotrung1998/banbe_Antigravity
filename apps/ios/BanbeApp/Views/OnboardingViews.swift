@@ -1661,9 +1661,6 @@ private struct CreateEventReviewSheet: View {
         // thiệu & Bao gồm"/"About & Included" TOGETHER (intro paragraphs
         // AND every included item's label+detail), never just Included
         // alone. Reused verbatim, not reinvented.
-        if includedSheetOpen {
-            BottomSheet(onDismiss: { includedSheetOpen = false }) { includedSheetContent }
-        }
 
         // Real-device follow-up — the REAL EventDetailView doesn't open a
         // small popup for Organizer at all: it navigates to a full,
@@ -1682,6 +1679,11 @@ private struct CreateEventReviewSheet: View {
         .fullScreenCover(isPresented: Binding(get: { viewerIndex != nil }, set: { if !$0 { viewerIndex = nil } })) {
             photoViewer
         }
+        .sheet(isPresented: $includedSheetOpen) {
+            CardSheet(title: app.T("Giới thiệu & Bao gồm", "About & Included"),
+                      closeID: "createEvent.preview.includedSheet.close",
+                      onClose: { includedSheetOpen = false }) { includedSheetContent }
+        }
     }
 
     // Real-device follow-up — matches the REAL EventDetailView's own
@@ -1689,13 +1691,6 @@ private struct CreateEventReviewSheet: View {
     // bare list of included items.
     private var includedSheetContent: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text(app.T("Giới thiệu & Bao gồm", "About & Included")).font(BanbeTheme.display(18))
-                Spacer()
-                Button { includedSheetOpen = false } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("createEvent.preview.includedSheet.close")
-            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     let intro = app.createIntro.trimmingCharacters(in: .whitespacesAndNewlines)

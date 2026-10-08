@@ -408,19 +408,23 @@ export default function EventDetail() {
         <div
           onClick={() => setIncludedSheetOpen(false)}
           data-testid="event-included-sheet"
-          style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.45)', display: 'flex', alignItems: 'flex-end', zIndex: 40 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(27,25,22,0.5)', display: 'flex', alignItems: 'flex-end', zIndex: 70, animation: 'banbeFade 0.22s ease both' }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{ background: paper, width: '100%', maxHeight: '70vh', overflowY: 'auto', borderRadius: '18px 18px 0 0', padding: '20px 22px 34px', display: 'flex', flexDirection: 'column', gap: 20 }}
+            role="dialog" aria-modal="true" aria-label={T('Giới thiệu & Bao gồm', 'About & Included')}
+            style={{ background: paper, width: '100%', maxHeight: '94%', overflowY: 'auto', borderRadius: '18px 18px 0 0', padding: '10px 20px 28px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20, animation: 'banbeSheetIn 0.32s cubic-bezier(.22,.61,.36,1) both' }}
           >
-            <div style={{ width: 36, height: 4, background: rule, borderRadius: 2, alignSelf: 'center' }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ ...display(18) }}>{T('Giới thiệu & Bao gồm', 'About & Included')}</span>
+            <div style={{ width: 36, height: 4, background: rule, borderRadius: 2, margin: '6px auto 0', flex: 'none' }} />
+            {/* Same header as the Share card sheet: centred title, but an X on the right instead of a Close pill. */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 36, flex: 'none' }}>
+              <span style={{ ...display(17) }}>{T('Giới thiệu & Bao gồm', 'About & Included')}</span>
               <span
                 onClick={() => setIncludedSheetOpen(false)}
+                role="button"
+                aria-label={T('Đóng', 'Close')}
                 data-testid="event-included-sheet-close"
-                style={{ fontSize: 18, color: ink, cursor: 'pointer', opacity: 0.6 }}
+                style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: 30, height: 30, borderRadius: '50%', background: rule, color: ink, fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
               >
                 ✕
               </span>

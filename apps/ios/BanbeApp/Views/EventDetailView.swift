@@ -99,10 +99,10 @@ struct EventDetailView: View {
             backShareRow
         }
         .sheet(isPresented: $shareConfirmOpen) { shareConfirmSheet }
-        .overlay {
-            if introIncludedSheetOpen {
-                BottomSheet(onDismiss: { introIncludedSheetOpen = false }) { introIncludedSheetContent }
-            }
+        .sheet(isPresented: $introIncludedSheetOpen) {
+            CardSheet(title: app.T("Giới thiệu & Bao gồm", "About & Included"),
+                      closeID: "event.includedSheet.close",
+                      onClose: { introIncludedSheetOpen = false }) { introIncludedSheetContent }
         }
         // STAGE D (2026-09-25) — re-fetched whenever the viewed event
         // changes (this view can be reached repeatedly for different
@@ -531,13 +531,6 @@ struct EventDetailView: View {
 
     private var introIncludedSheetContent: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text(app.T("Giới thiệu & Bao gồm", "About & Included")).font(BanbeTheme.display(18))
-                Spacer()
-                Button { introIncludedSheetOpen = false } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("event.includedSheet.close")
-            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if let intro = event.intro {

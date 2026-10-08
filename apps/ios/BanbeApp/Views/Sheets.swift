@@ -608,3 +608,41 @@ struct ReasonSheetView: View {
         }
     }
 }
+
+
+/// System sheet styled like the profile "Share card" sheet (inline centred title, paper
+/// background, grabber) but with an "X" on the trailing side instead of a Close/Cancel button.
+struct CardSheet<Content: View>: View {
+    @EnvironmentObject var app: AppState
+    let title: String
+    var closeID: String = "cardSheet.close"
+    let onClose: () -> Void
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        NavigationStack {
+            content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(20)
+                .foregroundStyle(app.palette.ink)
+            .background(app.palette.paper.ignoresSafeArea())
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(app.palette.ink)
+                            .frame(width: 30, height: 30)
+                            .background(app.palette.rule, in: Circle())
+                    }
+                    .accessibilityLabel(app.T("Đóng", "Close"))
+                    .accessibilityIdentifier(closeID)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
