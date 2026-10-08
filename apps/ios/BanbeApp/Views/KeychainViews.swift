@@ -502,7 +502,7 @@ struct KeychainSettingsSection: View {
         let selected = draft.designId == d.id
         let locked = d.reward == true && !app.rewardsUnlocked.contains(d.id)
         return Button {
-            if locked { app.screen = .rewards } else { draft.designId = d.id }
+            if locked { app.openRewards(from: .profile) } else { draft.designId = d.id }
         } label: {
             Group {
                 if let ui = KeychainArtwork.bundledImage(d) { Image(uiImage: ui).resizable().scaledToFit() } else { Color.clear }

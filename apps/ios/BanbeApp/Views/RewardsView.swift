@@ -15,7 +15,7 @@ struct RewardsView: View {
     var body: some View {
         ScreenScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                BackLink(label: app.T("Tài khoản", "Account")) { app.goBack() }
+                BackLink(label: app.rewardsBackScreen == .home ? app.T("Trang chủ", "Home") : app.T("Tài khoản", "Account")) { app.goBack() }
                 Text(app.T("Phần thưởng & huy hiệu", "Rewards & Badges"))
                     .font(BanbeTheme.display(27)).padding(.top, 16)
                     .accessibilityAddTraits(.isHeader)

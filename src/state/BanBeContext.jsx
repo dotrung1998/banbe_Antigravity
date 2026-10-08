@@ -493,6 +493,8 @@ const initialState = {
   // always entered from (and returned to) Account, so there's no need for
   // a whole back-stack, just which filter is showing.
   eventListMode: 'going',
+  // Where Back from Rewards & badges lands: 'home' when opened from Home's shortcuts, else Account ('profile').
+  rewardsBack: 'profile',
   // Which screen to return to from Inbox/Dashboard — both are reachable
   // from more than one place (Home's message icon vs Account's "Messages"
   // row; Home's host-page link vs Account's "Hosting" card), so a single

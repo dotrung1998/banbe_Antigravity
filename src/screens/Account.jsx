@@ -683,7 +683,7 @@ export default function Account() {
         <span style={{ fontSize: 13, color: ink }}>{s.followedStatus === 'loaded' ? `${s.followedOrgIds.length} ›` : '›'}</span>
       </div>
       <div
-        onClick={() => set({ screen: 'rewards' })}
+        onClick={() => set({ screen: 'rewards', rewardsBack: 'profile' })}
         data-testid="account-rewards"
         style={{ ...fieldGlass({ margin: '8px 20px 0', padding: '15px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }) }}
       >

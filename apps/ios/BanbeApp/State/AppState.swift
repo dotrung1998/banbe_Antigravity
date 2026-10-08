@@ -520,6 +520,9 @@ final class AppState: ObservableObject {
     @Published var rewardsStatus: RewardsStatus = .idle
     @Published var rewardsUnlocked: [String] = []
     @Published var rewardsRedeemBusy = ""
+    /// Where Back from Rewards & badges lands: Home when opened from Home's shortcuts, Account otherwise.
+    var rewardsBackScreen: Screen = .profile
+    func openRewards(from origin: Screen) { rewardsBackScreen = origin; screen = .rewards }
     @Published var rewardsRedeemResult: RewardsRedeemResult?
     var rewardsOwnerID: UUID?
     @Published var attending: [String] = []
@@ -3373,7 +3376,8 @@ final class AppState: ObservableObject {
             screen = eventPrefsReturnScreen ?? accountSubBack
             eventPrefsReturnScreen = nil
         case .preferences, .security: screen = accountSubBack
-        case .following, .rewards: screen = .profile
+        case .following: screen = .profile
+        case .rewards: screen = rewardsBackScreen
         // TASK 4 (Reserve→edit-name pass) — `.editName` is now reachable
         // from more than one place (AccountView's own root identity card,
         // AND ReserveView's "Đổi trong Tài khoản"), so its back target is
@@ -3508,7 +3512,8 @@ final class AppState: ObservableObject {
         case .attendance: return attendanceBack
         case .eventPreferences: return eventPrefsReturnScreen ?? accountSubBack
         case .preferences, .security: return accountSubBack
-        case .following, .rewards: return .profile
+        case .following: return .profile
+        case .rewards: return rewardsBackScreen
         case .editName: return editNameReturnScreen
         case .login: return authBackScreen
         case .confirmed: return confirmedBack

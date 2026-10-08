@@ -55,7 +55,7 @@ export function useAccountSearchEntries() {
     e('following', 'personal', setVi, setEn, 'Đang theo dõi', 'Following', 'heart',
       'following theo dõi follow host tổ chức organizer followed unfollow bỏ theo dõi', () => set({ screen: 'following' })),
     e('rewards', 'personal', setVi, setEn, 'Phần thưởng & huy hiệu', 'Rewards & badges', 'coin',
-      'rewards phần thưởng huy hiệu badges coin xu streak chuỗi ngày milestone thành tích', () => set({ screen: 'rewards' })),
+      'rewards phần thưởng huy hiệu badges coin xu streak chuỗi ngày milestone thành tích', () => set({ screen: 'rewards', rewardsBack: 'profile' })),
     e('preferences', 'personal', setVi, setEn, 'Cài Đặt', 'Settings', 'sliders',
       'settings cài đặt tùy chỉnh preferences', () => g.openAccountGroup('preferences')),
     e('language', 'personal', setVi, setEn, 'Ngôn ngữ & Hiển thị', 'Language & Appearance', 'sliders',

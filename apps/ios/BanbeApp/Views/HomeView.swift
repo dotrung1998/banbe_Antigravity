@@ -450,7 +450,7 @@ struct HomeView: View {
         return HStack(spacing: 0) {
             Button {
                 Haptics.light()
-                app.screen = .rewards
+                app.openRewards(from: .home)
             } label: {
                 HStack(spacing: 4) {
                     Text("🔥").font(.system(size: 16)).opacity(sum.streak > 0 ? 1 : 0.45).accessibilityHidden(true)
@@ -464,7 +464,7 @@ struct HomeView: View {
             Rectangle().fill(app.palette.ink.opacity(0.18)).frame(width: 1, height: 22).accessibilityHidden(true)
             Button {
                 Haptics.light()
-                app.screen = .rewards
+                app.openRewards(from: .home)
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "circle.hexagongrid.circle").font(.system(size: 15, weight: .medium)).accessibilityHidden(true)

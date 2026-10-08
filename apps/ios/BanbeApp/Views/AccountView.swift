@@ -520,7 +520,7 @@ struct AccountView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("account.following")
                 groupDivider()
-                SwipeSafeButton { app.screen = .rewards } label: {
+                SwipeSafeButton { app.openRewards(from: .profile) } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "circle.hexagongrid.circle").font(.system(size: 16, weight: .medium)).frame(width: 22, height: 22).opacity(0.72)
                         Text(app.T("Phần thưởng & huy hiệu", "Rewards & badges")).font(.system(size: 14))
@@ -789,7 +789,7 @@ struct AccountView: View {
             e("following", "personal", setVi, setEn, "Đang theo dõi", "Following", "heart",
               "following theo dõi follow host tổ chức organizer followed unfollow bỏ theo dõi") { app.screen = .following },
             e("rewards", "personal", setVi, setEn, "Phần thưởng & huy hiệu", "Rewards & badges", "circle.hexagongrid.circle",
-              "rewards phần thưởng huy hiệu badges coin xu streak chuỗi ngày milestone thành tích") { app.screen = .rewards },
+              "rewards phần thưởng huy hiệu badges coin xu streak chuỗi ngày milestone thành tích") { app.openRewards(from: .profile) },
             e("preferences", "personal", setVi, setEn, "Tùy Chỉnh", "App Preferences", "slider.horizontal.3",
               "settings cài đặt tùy chỉnh preferences") { openGroup("preferences") },
             e("language", "personal", setVi, setEn, "Ngôn ngữ & Hiển thị", "Language & Appearance", "slider.horizontal.3",

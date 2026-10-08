@@ -152,7 +152,7 @@ export default function KeychainSettings() {
                 const locked = !!d.reward && !unlocked.includes(d.id);
                 return (
                 <button key={d.id} type="button"
-                  onClick={() => { if (locked) { setApp({ screen: 'rewards' }); return; } setPendingArt(null); set({ designId: d.id }); }}
+                  onClick={() => { if (locked) { setApp({ screen: 'rewards', rewardsBack: 'profile' }); return; } setPendingArt(null); set({ designId: d.id }); }}
                   data-testid={`keychain-design-${d.id}`} data-locked={locked ? 'true' : 'false'}
                   aria-label={locked ? T(`${isLabel(d)}, chưa mở khoá. Mở khoá trong Phần thưởng`, `${isLabel(d)}, locked. Unlock in Rewards`) : isLabel(d)}
                   aria-pressed={locked ? undefined : previewCfg.designId === d.id} title={isLabel(d)}

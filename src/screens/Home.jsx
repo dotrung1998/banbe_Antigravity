@@ -889,7 +889,7 @@ export default function Home() {
           {shortcutsOn && (() => {
             const sum = s.rewardsSummary;
             const lbl = shortcutLabels(T, sum);
-            const open = () => set({ screen: 'rewards' });
+            const open = () => set({ screen: 'rewards', rewardsBack: 'home' });
             const key = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
             const btn = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: HEADER.iconGap, minHeight: HEADER.minTouch, minWidth: HEADER.minTouch, padding: `0 ${HEADER.btnPad}px`, fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, cursor: 'pointer', flex: 'none' };
             return (
