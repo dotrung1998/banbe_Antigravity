@@ -635,11 +635,22 @@ struct EventDetailView: View {
         .accessibilityIdentifier("event.actionBar")
     }
 
-    /// The web app copies a share link; iOS has a real share sheet.
+    /// Shares the event through `/api/photo-share?eid=` (api/photo-share.js), which serves Open Graph tags
+    /// with the event's COVER photo as the preview (banbe.app no longer exists, so the old link was dead).
+    /// The share sheet itself previews the cover straight from the cache via `PhotoShareSource`.
     private func share() {
-        guard let url = URL(string: "https://banbe.app/\(event.key)") else { return }
-        let activity = UIActivityViewController(activityItems: [event.name, url], applicationActivities: nil)
-        UIApplication.shared.topViewController?.present(activity, animated: true)
+        let origin = AppConfig.publicWebOrigin
+        guard let id = event.key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "\(origin)/api/photo-share?eid=\(id)") else { return }
+        let text = [event.name, event.where].filter { !$0.isEmpty }.joined(separator: " ▪︎ ")
+        Task {
+            let image = event.img.isEmpty ? nil : await PhotoLoader.load(path: event.img, maxPixel: 1600)
+            await MainActor.run {
+                let items: [Any] = [text, PhotoShareSource(image: image, title: event.name, url: url)]
+                let activity = UIActivityViewController(activityItems: items, applicationActivities: nil)
+                UIApplication.shared.topViewController?.present(activity, animated: true)
+            }
+        }
     }
 }
 

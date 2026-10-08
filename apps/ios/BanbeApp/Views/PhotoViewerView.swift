@@ -535,7 +535,7 @@ struct PhotoViewerView: View {
 /// text-document icon it picked when the items were just a string and a
 /// URL. What gets sent is text + link; the link previews the same photo
 /// wherever it lands, via the tags /api/photo-share serves.
-private final class PhotoShareSource: NSObject, UIActivityItemSource {
+final class PhotoShareSource: NSObject, UIActivityItemSource {
     private let image: UIImage?
     private let title: String
     private let url: URL?

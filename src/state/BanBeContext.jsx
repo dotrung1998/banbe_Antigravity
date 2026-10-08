@@ -7755,7 +7755,9 @@ export function BanBeProvider({ children }) {
 
   // ---- share ----
   const shareEvent = useCallback((ev) => {
-    const url = 'https://banbe.app/' + ev.key;
+    // banbe.app no longer exists. /api/photo-share?eid= serves Open Graph tags with the event's COVER photo
+    // as the link preview (same endpoint photo shares use with ?pid=), then sends people into the app.
+    const url = `https://banbe-two.vercel.app/api/photo-share?eid=${encodeURIComponent(ev.key)}`;
     const done = () => {
       set({ shared: true });
       setTimeout(() => set({ shared: false }), 1800);
