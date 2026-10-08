@@ -630,15 +630,22 @@ struct CardSheet<Content: View>: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: onClose) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(app.palette.ink)
-                            .frame(width: 30, height: 30)
-                            .background(app.palette.rule, in: Circle())
+                    if #available(iOS 26.0, *) {
+                        // The system close button: the glass "X" iOS 26+ draws on its own sheets
+                        // (same as the screenshot-markup close).
+                        Button(role: .close, action: onClose)
+                            .accessibilityIdentifier(closeID)
+                    } else {
+                        Button(action: onClose) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(app.palette.ink)
+                                .frame(width: 30, height: 30)
+                                .background(.ultraThinMaterial, in: Circle())
+                        }
+                        .accessibilityLabel(app.T("Đóng", "Close"))
+                        .accessibilityIdentifier(closeID)
                     }
-                    .accessibilityLabel(app.T("Đóng", "Close"))
-                    .accessibilityIdentifier(closeID)
                 }
             }
         }

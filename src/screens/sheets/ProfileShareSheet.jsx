@@ -473,12 +473,12 @@ export default function ProfileShareSheet({ open, onClose, kindLabel, name, subt
         }}
       >
         <div style={{ width: 36, height: 4, background: rule, borderRadius: 2, margin: '6px auto 12px' }} />
-        {/* Same header as iOS: Close pill leading, title centred. */}
+        {/* Same header as iOS: title centred, X on the right. */}
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 36 }}>
           <span
-            onClick={requestClose} role="button" data-testid={`${idPrefix}-close`}
-            style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', fontSize: 13, fontWeight: 600, color: ink, cursor: 'pointer', padding: '7px 16px', borderRadius: 999, background: rule }}
-          >{T('Đóng', 'Close')}</span>
+            onClick={requestClose} role="button" aria-label={T('Đóng', 'Close')} data-testid={`${idPrefix}-close`}
+            style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: 36, height: 36, borderRadius: '50%', background: 'rgba(120,120,128,0.16)', backdropFilter: 'blur(14px) saturate(1.6)', WebkitBackdropFilter: 'blur(14px) saturate(1.6)', boxShadow: 'inset 0 0 0 0.5px rgba(255,255,255,0.35), 0 1px 4px rgba(0,0,0,0.12)', color: ink, fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >✕</span>
           <span style={{ ...display(17) }}>{T('Thẻ chia sẻ', 'Share card')}</span>
         </div>
 

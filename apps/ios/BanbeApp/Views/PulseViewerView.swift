@@ -172,11 +172,13 @@ struct PulseViewerView: View {
                     // Liquid Glass close button (iOS 26); a thin material disc
                     // on older systems. `.interactive()` gives the native
                     // press/shimmer response.
+                    // Explicit xmark glyph (a bare `Button(role: .close)` outside a toolbar renders the
+                    // word "Close"); glass disc on iOS 26 like the sheet toolbars' system X.
                     Button { commitDismiss() } label: {
                         let icon = Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 22, weight: .regular))
                             .foregroundStyle(app.palette.ink)
-                            .frame(width: 38, height: 38)
+                            .frame(width: 44, height: 44)
                         if #available(iOS 26.0, *), !reduceTransparency {
                             icon.glassEffect(.regular.interactive(), in: Circle())
                         } else {

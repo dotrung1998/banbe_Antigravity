@@ -975,6 +975,7 @@ struct RootView: View {
             set: { if !$0 { app.closePulseViewer() } }
         )) {
             PulseViewerView().environmentObject(app)
+                .presentationDragIndicator(.visible)
         }
         // The session is owned by AuthViewModel (it also drives the Face ID
         // lock); AppState mirrors it into the profile/bookings/notifications

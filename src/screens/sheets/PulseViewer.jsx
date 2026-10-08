@@ -311,9 +311,9 @@ export default function PulseViewer() {
         <span
           onClick={commitDismiss} data-testid="pulse-close" role="button" aria-label={T('Đóng', 'Close')}
           style={{
-            width: 38, height: 38, borderRadius: 19, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: ink,
-            background: 'rgba(255,255,255,0.45)', backdropFilter: 'blur(14px) saturate(170%)', WebkitBackdropFilter: 'blur(14px) saturate(170%)',
-            border: '1px solid rgba(255,255,255,0.65)', boxShadow: '0 4px 14px rgba(27,25,22,0.14), inset 0 1px 0 rgba(255,255,255,0.8)',
+            width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: ink,
+            background: 'rgba(120,120,128,0.16)', backdropFilter: 'blur(14px) saturate(1.6)', WebkitBackdropFilter: 'blur(14px) saturate(1.6)',
+            boxShadow: 'inset 0 0 0 0.5px rgba(255,255,255,0.35), 0 1px 4px rgba(0,0,0,0.12)',
           }}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m2 2 10 10M12 2 2 12" /></svg>

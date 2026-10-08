@@ -331,10 +331,23 @@ struct ProfileShareSheet: View {
             .background(app.palette.paper.ignoresSafeArea())
             .navigationTitle(app.T("Thẻ chia sẻ", "Share card"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) {
-                Button(app.T("Đóng", "Close")) { dismiss() }.accessibilityIdentifier("\(idPrefix).shareCardClose")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) {
+                if #available(iOS 26.0, *) {
+                    Button(role: .close) { dismiss() }.accessibilityIdentifier("\(idPrefix).shareCardClose")
+                } else {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(app.palette.ink)
+                            .frame(width: 30, height: 30)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .accessibilityLabel(app.T("Đóng", "Close"))
+                    .accessibilityIdentifier("\(idPrefix).shareCardClose")
+                }
             } }
         }
+        .presentationDragIndicator(.visible)
         .task {
             let fetched = await ShareCardService.fetch(kind: cardKind, id: cardID) ?? .default
             published = fetched; style = fetched; loaded = true

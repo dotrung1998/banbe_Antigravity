@@ -424,7 +424,7 @@ export default function EventDetail() {
                 role="button"
                 aria-label={T('Đóng', 'Close')}
                 data-testid="event-included-sheet-close"
-                style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: 30, height: 30, borderRadius: '50%', background: rule, color: ink, fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: 36, height: 36, borderRadius: '50%', background: 'rgba(120,120,128,0.16)', backdropFilter: 'blur(14px) saturate(1.6)', WebkitBackdropFilter: 'blur(14px) saturate(1.6)', boxShadow: 'inset 0 0 0 0.5px rgba(255,255,255,0.35), 0 1px 4px rgba(0,0,0,0.12)', color: ink, fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
               >
                 ✕
               </span>
