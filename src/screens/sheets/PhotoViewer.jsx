@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBanBe } from '../../state/BanBeContext.jsx';
 import { bg } from '../../data/events.js';
+import { usePinnedOverlay } from '../../lib/usePinnedOverlay.js';
 
 // Minimal line icons — the app has no icon set, and emoji would sit badly
 // against this typography. Stroked paths inherit currentColor, so they
@@ -55,6 +56,7 @@ const DRAG_REVEAL_DISTANCE = 200;
 
 export default function PhotoViewer() {
   const { state: s, T, closePhoto, showPhotoAt, togglePhotoLike, sharePhoto, isSaved, toggleFav } = useBanBe();
+  const { ref: pinRef, pin } = usePinnedOverlay();
   const drag = useRef(null);
   const photoRef = useRef(null);
   // Task 2b follow-up: the blurred-copy backdrop and its dim overlay, so a
@@ -254,9 +256,10 @@ export default function PhotoViewer() {
 
   return (
     <div
+      ref={pinRef}
       data-screen-label="Photo viewer"
       style={{
-        position: 'absolute', inset: 0, zIndex: 24, overflow: 'hidden', containerType: 'size',
+        position: 'absolute', inset: 0, ...pin, zIndex: 24, overflow: 'hidden', containerType: 'size',
         animation: entered ? undefined : 'banbeFade 0.2s ease both',
         opacity: closing ? 0 : 1,
         // Always present, even before there's anything to transition —
@@ -337,7 +340,7 @@ export default function PhotoViewer() {
             width: 'auto',
             height: 'auto',
             maxWidth: 'calc(100cqw - 40px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))',
-            maxHeight: 'calc(100cqh - 64px - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
+            maxHeight: 'calc(100cqh - 84px - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
             objectFit: 'contain',
             // Same photo treatment `bg()` gives every other photo in the app.
             filter: 'saturate(0.92) contrast(1.07)',
@@ -360,6 +363,21 @@ export default function PhotoViewer() {
             transition: `transform ${DISMISS_MS}ms ${DISMISS_EASING}`,
           }}
         />
+        {/* Which photo of how many — same as iOS: dots for 2-8 photos, "n / N" beyond. Always reserves
+            its height so the photo never jumps on a 1-photo gallery. */}
+        <div
+          data-testid="photo-viewer-page-indicator"
+          role="img"
+          aria-label={T(`Ảnh ${index + 1} trên ${gallery.length}`, `Photo ${index + 1} of ${gallery.length}`)}
+          style={{ height: 10, marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: 0, minWidth: '100%', pointerEvents: 'none' }}
+        >
+          {gallery.length > 1 && gallery.length <= 8 && gallery.map((_, i) => (
+            <span key={i} style={{ width: i === index ? 7 : 6, height: i === index ? 7 : 6, borderRadius: '50%', background: `rgba(255,255,255,${i === index ? 0.95 : 0.35})` }} />
+          ))}
+          {gallery.length > 8 && (
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'rgba(255,255,255,0.9)', textShadow: '0 1px 3px rgba(27,25,22,0.55)' }}>{index + 1} / {gallery.length}</span>
+          )}
+        </div>
         {/* Top-aligned, not bottom: the row is as tall as the 34px icon
             buttons, and bottom-aligning the tagline text inside that box
             pushed it well below the photo — top-aligning puts it right

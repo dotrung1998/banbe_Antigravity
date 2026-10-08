@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useBanBe } from '../../state/BanBeContext.jsx';
 import { paper, ink, rule } from '../../theme.js';
 import { AttachMenuIcon } from '../Chat.jsx';
+import { usePinnedOverlay } from '../../lib/usePinnedOverlay.js';
 
 // Task 2 (2026-09-22 real-device follow-up, 07-notifications.md /
 // 14-photo-viewer.md) — revised interaction model for the chat photo
@@ -25,6 +26,7 @@ const DRAG_REVEAL_DISTANCE = 220; // px of travel over which chrome/backdrop ful
 const QUICK_EMOJI = ['❤️', '😂', '😮', '😢', '👏', '🔥'];
 
 export default function ChatPhotoViewer() {
+  const { ref: pinRef, pin } = usePinnedOverlay();
   const {
     state: s, T, closeChatPhoto, downloadChatPhoto, shareChatPhoto, openChatForward, closeChatForward, forwardChatPhoto,
     openPostToStoryConfirm, closePostToStoryConfirm, postChatPhotoToStory, sendChatViewerReply, sendChatAttachment, canHost,
@@ -164,9 +166,10 @@ export default function ChatPhotoViewer() {
 
   return (
     <div
+      ref={pinRef}
       data-screen-label="Chat photo viewer"
       data-chrome={chromeHidden ? 'hidden' : 'visible'}
-      style={{ position: 'absolute', inset: 0, zIndex: 26, overflow: 'hidden', background: '#000', opacity: closing ? 0 : 1, transition: `opacity ${DISMISS_MS}ms ease` }}
+      style={{ position: 'absolute', inset: 0, ...pin, zIndex: 26, overflow: 'hidden', background: '#000', opacity: closing ? 0 : 1, transition: `opacity ${DISMISS_MS}ms ease` }}
     >
       <div ref={backdropDimRef} aria-hidden style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.94)' }} />
 
