@@ -355,8 +355,9 @@ export default function EventDetail() {
           </div>
           {/* Moved here from the retired Organizer screen (merged into the
               host profile): message the host straight from the event. */}
-          <div onClick={goChat} data-testid="organizer-message" style={{ margin: '12px 0 0', textAlign: 'center', fontSize: 13, fontWeight: 600, color: ink, padding: '12px 0', border: `1px solid ${rule}`, borderRadius: 12, cursor: 'pointer' }}>
-            {T('Nhắn cho', 'Message')} {ev.orgName}
+          <div onClick={goChat} data-testid="organizer-message" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 13, cursor: 'pointer' }}>
+            <span style={{ color: ink }}>{T('Liên hệ', 'Contact')}</span>
+            <span style={{ color: ink }}>{T('Nhắn cho', 'Message')} {ev.orgName} ›</span>
           </div>
           {evOrgStats && (
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${rule}`, fontSize: 12 }}>

@@ -7,7 +7,7 @@ import { useEffect } from 'react';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { paper, ink, rule, fieldSolid, inkButton, alert } from '../theme.js';
 import {
-  INTERESTS, GOALS, everyone, normalizeCriteria, criteriaIsEveryone, criteriaSummary, eligibilityGuidance,
+  INTERESTS, GOALS, everyone, normalizeCriteria, criteriaIsEveryone, criteriaSummary, eligibilityGuidance, evaluateCriteria,
 } from '../lib/eventPrefs.js';
 
 const small = { fontSize: 11.5, lineHeight: 1.55, color: ink, opacity: 0.7 };
@@ -132,7 +132,10 @@ export function useReservationCriteria(eventKey, { alwaysCheck = false, isReal =
     if (!eventKey || !isReal || !s.user) return;
     if (alwaysCheck || restricted) checkReservationEligibility(eventKey);
   }, [eventKey, isReal, s.user, alwaysCheck, restricted, s.eventPrefsVersion, checkReservationEligibility]);
-  const elig = s.eligibilityByKey[eventKey] || null;
+  // Server answer wins; until it arrives (or if the RPC call fails) fall back to the same rule locally
+  // so a restricted event never looks open to someone who doesn't qualify.
+  const elig = s.eligibilityByKey[eventKey]
+    || (restricted && s.user && s.eventPrefsLoaded ? evaluateCriteria(criteria, s.eventPrefs) : null);
   return { criteria, restricted, eligibility: elig, blocked: !!elig && elig.eligible === false };
 }
 

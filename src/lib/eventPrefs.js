@@ -197,3 +197,23 @@ export function isMissingFunctionError(error) {
   return !!error && (error.code === 'PGRST202' || error.code === '42883'
     || /could not find the function/i.test(error.message || ''));
 }
+
+const missingForGroup = (group, declared) => {
+  if (!group || !Array.isArray(group.values)) return [];
+  if (group.rule === 'all') return group.values.filter(v => !declared.includes(v));
+  return group.values.some(v => declared.includes(v)) ? [] : [...group.values];
+};
+
+/** Client mirror of the server's event_criteria_check (same ANY/ALL rules), used only while the
+ * server pre-check has no answer. The server (hold_seats) stays the authority. */
+export function evaluateCriteria(criteria, prefs) {
+  if (criteriaIsEveryone(criteria)) return { success: true, eligible: true, mode: 'everyone', missing_interests: [], missing_goals: [] };
+  const missingInterests = missingForGroup(criteria.interests, declaredInterests(prefs));
+  const missingGoals = missingForGroup(criteria.goals, declaredGoals(prefs));
+  return {
+    success: true, mode: 'declared',
+    eligible: !missingInterests.length && !missingGoals.length,
+    interest_rule: criteria.interests?.rule, goal_rule: criteria.goals?.rule,
+    missing_interests: missingInterests, missing_goals: missingGoals,
+  };
+}
