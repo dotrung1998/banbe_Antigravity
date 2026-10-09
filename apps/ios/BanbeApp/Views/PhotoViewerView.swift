@@ -500,7 +500,7 @@ struct PhotoViewerView: View {
     /// "only on a genuine completed share, never on cancellation" rule.
     private func share() {
         let photoId = item.current.id
-        guard let url = URL(string: "https://banbe-two.vercel.app/api/photo-share?pid=\(photoId)") else { return }
+        guard let url = URL(string: "https://www.banbe.app/api/photo-share?pid=\(photoId)") else { return }
         let text = app.T(
             "Xem ảnh và các buổi sắp tới của \(item.organizer) trên banbe:",
             "See \(item.organizer)'s photos and what they have coming up on banbe:"

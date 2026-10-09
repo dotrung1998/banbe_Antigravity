@@ -3058,7 +3058,7 @@ export function BanBeProvider({ children }) {
    * their own gallery entry. */
   const sharePhoto = useCallback(async (item) => {
     const photoId = item.photo_id;
-    const url = `https://banbe-two.vercel.app/api/photo-share?pid=${encodeURIComponent(photoId)}`;
+    const url = `https://www.banbe.app/api/photo-share?pid=${encodeURIComponent(photoId)}`;
     const title = T(`Ảnh từ ${item.organizer_name} trên banbe`, `A photo from ${item.organizer_name} on banbe`);
     const text = T('Xem ảnh này trên banbe:', 'Check out this photo on banbe:');
     const done = () => {
@@ -7757,7 +7757,7 @@ export function BanBeProvider({ children }) {
   const shareEvent = useCallback((ev) => {
     // banbe.app no longer exists. /api/photo-share?eid= serves Open Graph tags with the event's COVER photo
     // as the link preview (same endpoint photo shares use with ?pid=), then sends people into the app.
-    const url = `https://banbe-two.vercel.app/api/photo-share?eid=${encodeURIComponent(ev.key)}`;
+    const url = `https://www.banbe.app/api/photo-share?eid=${encodeURIComponent(ev.key)}`;
     const done = () => {
       set({ shared: true });
       setTimeout(() => set({ shared: false }), 1800);
@@ -7773,7 +7773,7 @@ export function BanBeProvider({ children }) {
   // code, minted automatically at signup (migration 023). Redeemed by
   // whoever follows it via the module-level "?ref=" capture at the top of
   // this file + claimPendingReferralAndWelcome() above.
-  const referralLink = s.referralCode ? `https://banbe-two.vercel.app/?ref=${s.referralCode}` : null;
+  const referralLink = s.referralCode ? `https://www.banbe.app/?ref=${s.referralCode}` : null;
   const shareReferral = useCallback(() => {
     if (!referralLink) return;
     const title = T('Tham gia banbe cùng mình', 'Join me on banbe');

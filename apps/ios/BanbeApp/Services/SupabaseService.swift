@@ -45,7 +45,7 @@ enum AppConfig {
     /// because the web app is served from that origin; iOS has no origin
     /// of its own, so this needs to be an absolute URL to wherever the API
     /// is actually deployed. Update this if that changes.
-    static let apiBaseURL = "https://banbe-two.vercel.app"
+    static let apiBaseURL = "https://www.banbe.app"
 
     /// The ONE canonical origin for a public, unauthenticated /surveys/
     /// <publicId> link (and any other public web page this app links to) —

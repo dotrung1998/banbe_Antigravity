@@ -68,7 +68,7 @@ export default async function handler(req, res) {
     // here would confirm the id of somebody else's receipt.
     if (!doc) return res.status(404).json({ error: 'DOCUMENT_NOT_FOUND' });
 
-    const origin = `https://${req.headers.host || 'banbe-two.vercel.app'}`;
+    const origin = `https://${req.headers.host || 'www.banbe.app'}`;
     const html = renderPaymentDocument(doc, { lang, origin });
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');

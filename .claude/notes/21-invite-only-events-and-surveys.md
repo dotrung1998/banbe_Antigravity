@@ -120,7 +120,7 @@ Slice C was never built, nothing ever generated candidates.
   already-correct `apiBaseURL`) replace `SurveysHostingView.swift`'s
   hardcoded `https://banbe.app` (confirmed via `vercel project ls`/`vercel
   domains ls`: this project has 0 custom domains attached; the real,
-  currently-serving production origin is `https://banbe-two.vercel.app`,
+  currently-serving production origin is `https://www.banbe.app`,
   verified with a direct `curl` — 200 on both `/` and `/surveys/<id>`).
   Web's own Copy/Share Link already used `window.location.origin` (correct,
   just duplicated) — now routed through the one shared builder too.

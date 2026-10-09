@@ -190,7 +190,7 @@ function partyBlock(title, party, extraRows = []) {
  * @returns {string} a complete HTML page
  */
 export function renderPaymentDocument(doc, options = {}) {
-  const { lang = 'vi', origin = 'https://banbe-two.vercel.app' } = options;
+  const { lang = 'vi', origin = 'https://www.banbe.app' } = options;
   const isReceipt = doc.kind === 'receipt';
 
   const title = isReceipt ? 'PHIẾU THU' : 'HOÁ ĐƠN';

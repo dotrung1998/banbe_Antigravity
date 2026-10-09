@@ -331,7 +331,7 @@ struct PulseViewerView: View {
     // `logPulsePhotoShare`), so the bumped share count lands in the one
     // shared `photoEngagement` map every surface reads.
     private func sharePulsePhoto(_ item: PulsePhotoItem) {
-        guard let url = URL(string: "https://banbe-two.vercel.app/api/photo-share?pid=\(item.photoId)") else { return }
+        guard let url = URL(string: "https://www.banbe.app/api/photo-share?pid=\(item.photoId)") else { return }
         let title = app.T("Ảnh từ \(item.organizerName) trên banbe", "A photo from \(item.organizerName) on banbe")
         let activity = UIActivityViewController(activityItems: [title, url], applicationActivities: nil)
         activity.completionWithItemsHandler = { _, completed, _, _ in
