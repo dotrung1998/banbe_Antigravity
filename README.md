@@ -26,7 +26,7 @@ npm install nodemailer
 
 The project is JavaScript-only, so `@types/nodemailer` is not needed. For a TypeScript route, install it with `npm install -D @types/nodemailer`.
 
-Set `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `AUTH_REDIRECT_URL` in local `.env.local` and in Vercel Project Settings > Environment Variables. The app password is generated in Google Account > Security > 2-Step Verification > App passwords; regular Gmail passwords are not supported. Never expose `SUPABASE_SERVICE_ROLE_KEY` to the browser or prefix it with `VITE_`.
+Set `RESEND_API_KEY`, `EMAIL_FROM` (default `banbe <no-reply@banbe.app>`; the domain must be verified in Resend), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `AUTH_REDIRECT_URL` in local `.env.local` and in Vercel Project Settings > Environment Variables. Gmail (`GMAIL_USER`, `GMAIL_APP_PASSWORD`) is only a fallback when `RESEND_API_KEY` is unset; the app password is generated in Google Account > Security > 2-Step Verification > App passwords; regular Gmail passwords are not supported. Never expose `SUPABASE_SERVICE_ROLE_KEY` to the browser or prefix it with `VITE_`.
 
 For the deployed app, add all five variables to Vercel's **Production** environment and redeploy. Vercel does not deploy `.env.local`. Copy the Supabase service-role key from Supabase Project Settings > API directly into Vercel; never commit it to `.env.example` or expose it to the browser.
 

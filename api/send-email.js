@@ -1,17 +1,7 @@
-import nodemailer from 'nodemailer';
+import { getMissingEmailVariables, sendEmail } from './_lib/email.js';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_FIELD_LENGTH = 100_000;
-
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-});
 
 function isValidEmail(value) {
   return typeof value === 'string' && EMAIL_PATTERN.test(value.trim());
@@ -32,7 +22,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
   }
 
-  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+  if (getMissingEmailVariables().length) {
     return res.status(503).json({ error: 'EMAIL_SERVICE_NOT_CONFIGURED' });
   }
 
@@ -55,8 +45,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const info = await transporter.sendMail({
-      from: process.env.GMAIL_USER,
+    const info = await sendEmail({
       to,
       subject,
       ...(text ? { text } : {}),
