@@ -3,18 +3,16 @@
 --    server copies the birthday from user_private_dob, so it never reaches the client.
 --  * Each attendee may carry an optional email (stored on booking_attendees.email,
 --    readable only by the buyer/admin under the existing select policy).
---  * get_my_dob(): returns the caller's OWN birthday (only once the account gate is
---    satisfied, i.e. confirmed this session) so the form can show it for double-checking.
+--  * my_dob_on_file(): boolean only, so the form knows whether to hide the date picker.
 
 ALTER TABLE public.booking_attendees ADD COLUMN IF NOT EXISTS email text;
 
-CREATE OR REPLACE FUNCTION public.get_my_dob()
-RETURNS date LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
-  SELECT date_of_birth FROM public.user_private_dob
-   WHERE user_id = auth.uid() AND (SELECT public.account_gate_ok());
+CREATE OR REPLACE FUNCTION public.my_dob_on_file()
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+  SELECT EXISTS (SELECT 1 FROM public.user_private_dob WHERE user_id = auth.uid());
 $$;
-REVOKE ALL ON FUNCTION public.get_my_dob() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.get_my_dob() TO authenticated;
+REVOKE ALL ON FUNCTION public.my_dob_on_file() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.my_dob_on_file() TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.hold_seats_with_attendees(
   p_event text, p_attendees jsonb, p_note text DEFAULT NULL,
