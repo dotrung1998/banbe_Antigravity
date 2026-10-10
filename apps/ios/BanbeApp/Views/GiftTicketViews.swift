@@ -257,7 +257,7 @@ struct GiftImportView: View {
                         .font(BanbeTheme.display(24))
 
                     Text(app.T("Nhập mã nhận vé mà người tặng (hoặc người đặt vé nhóm) gửi cho bạn. Mã này khác với mã QR dùng điểm danh. Nếu bạn nhận được vé PDF, chạm nút \"Mở trong banbe\" trong PDF để mã tự điền.",
-                               "Enter the claim code the giver — or whoever booked the group — sent you. It is different from the check-in QR code. If you have the PDF, tap its \"Open in banbe\" button and the code fills itself in."))
+                               "Enter the claim code you received from the giver or from whoever booked the group. It is different from the check-in QR code. If you have the PDF, tap its \"Open in banbe\" button and the code fills itself in."))
                         .font(.system(size: 13)).lineSpacing(3).opacity(0.85)
 
                     BanbeField(label: app.T("Mã nhận vé", "Claim code"),

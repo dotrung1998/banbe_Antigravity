@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { loadHiddenTickets, reconcileTickets, removeTickets } from '../lib/ticketRetention.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
@@ -61,7 +62,7 @@ export default function AccountGroup() {
     respondToOrganizerInvite, setOrganizerMemberVisibility,
     openPreferences, openSecurity, openEventPreferences, openPolicy, openDocuments, openRefundAccounts, openMyRefunds,
     openVerifications, openVerificationsRefunds, openPayout, openDisputes, openAdminEvents,
-    loadPaymentBookings, openBookingConfirmed, openDeleteAccount,
+    loadPaymentBookings, loadMyRefunds, openBookingConfirmed, openDeleteAccount,
     respondToAdminInvite, loadAdminTeam, setAdminInviteEmailDraft,
     requestAdminInviteConfirm, cancelAdminInviteConfirm, confirmAdminInvite,
     requestRevokeAdminInviteConfirm, cancelRevokeAdminInviteConfirm, confirmRevokeAdminInvite,
@@ -69,6 +70,19 @@ export default function AccountGroup() {
     openAdminRemovalVote, castAdminRemovalVote, cancelAdminRemovalVote,
   } = useBanBe();
   const key = s.accountGroupKey;
+
+  // Cancelled / expired list housekeeping (select + delete, 30-day auto-clear) — mirrors iOS.
+  const uid = s.user?.id;
+  const [hiddenTickets, setHiddenTickets] = useState(() => loadHiddenTickets(uid));
+  const [selecting, setSelecting] = useState(false);
+  const [selectedTickets, setSelectedTickets] = useState(() => new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  useEffect(() => { if (key === 'activity') loadMyRefunds?.(); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const ids = (s.paymentBookings || []).filter(b => ['cancelled', 'expired', 'no_show'].includes(b.status)).map(b => b.id);
+    const openRefunds = new Set((s.myRefunds || []).map(c => c.booking_id).filter(Boolean));
+    setHiddenTickets(reconcileTickets(uid, ids, new Set(ids.filter(id => openRefunds.has(id)))));
+  }, [uid, s.paymentBookings, s.myRefunds]);
 
   // Safety net (mirrors Account.jsx's own accountTab role-sync effect) — a
   // role change while this screen happens to be open (organizer mode
@@ -232,7 +246,7 @@ export default function AccountGroup() {
             )}
             {(() => {
               const active = s.paymentBookings.filter(b => ['pending', 'confirmed', 'attended'].includes(b.status));
-              const inactive = s.paymentBookings.filter(b => ['cancelled', 'expired', 'no_show'].includes(b.status));
+              const inactive = s.paymentBookings.filter(b => ['cancelled', 'expired', 'no_show'].includes(b.status) && !hiddenTickets.has(b.id));
               const statusLabel = (b) => {
                 if (isBookingTicket(b)) return T('Vé đã sẵn sàng', 'Ticket ready');
                 if (b.status === 'attended') return T('Đã tham dự', 'Attended');
@@ -269,19 +283,66 @@ export default function AccountGroup() {
                   )}
                   {inactive.length > 0 && (
                     <div style={{ marginTop: 24 }} data-testid="my-tickets-inactive">
-                      <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đã hủy / hết hạn', 'Cancelled / expired')}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: ink }}>{T('Đã hủy / hết hạn', 'Cancelled / expired')}</span>
+                        <span
+                          role="button"
+                          onClick={() => { setSelecting(v => !v); setSelectedTickets(new Set()); setConfirmDelete(false); }}
+                          style={{ fontSize: 11.5, fontWeight: 600, color: ink, cursor: 'pointer' }}
+                          data-testid="tickets-inactive-select"
+                        >{selecting ? T('Xong', 'Done') : T('Chọn', 'Select')}</span>
+                      </div>
                       {inactive.map(b => (
                         <div
                           key={b.id}
-                          style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: 0.65 }) }}
+                          onClick={() => {
+                            if (!selecting) return;
+                            setSelectedTickets(prev => { const n = new Set(prev); n.has(b.id) ? n.delete(b.id) : n.add(b.id); return n; });
+                          }}
+                          style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, opacity: 0.65, cursor: selecting ? 'pointer' : 'default' }) }}
                           data-testid={`my-ticket-inactive-${b.id}`}
                         >
+                          {selecting && <span aria-hidden style={{ fontSize: 18, color: ink, flex: 'none' }}>{selectedTickets.has(b.id) ? '◉' : '○'}</span>}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                             <span style={{ fontSize: 13, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.events?.name || T('Một sự kiện', 'An event')}</span>
                             <span style={{ fontSize: 11, color: ink }}>{terminalLabel(b)}</span>
                           </div>
                         </div>
                       ))}
+                      {selecting && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, fontSize: 12.5, fontWeight: 600, color: ink }}>
+                          <span
+                            role="button"
+                            onClick={() => setSelectedTickets(selectedTickets.size === inactive.length ? new Set() : new Set(inactive.map(b => b.id)))}
+                            style={{ cursor: 'pointer' }}
+                            data-testid="tickets-inactive-select-all"
+                          >{selectedTickets.size === inactive.length ? T('Bỏ chọn tất cả', 'Deselect all') : T('Chọn tất cả', 'Select all')}</span>
+                          {confirmDelete ? (
+                            <span style={{ display: 'flex', gap: 14 }}>
+                              <span role="button" onClick={() => setConfirmDelete(false)} style={{ cursor: 'pointer' }}>{T('Hủy', 'Cancel')}</span>
+                              <span
+                                role="button"
+                                data-testid="tickets-inactive-delete-confirm"
+                                onClick={() => {
+                                  setHiddenTickets(removeTickets(uid, selectedTickets));
+                                  setSelectedTickets(new Set()); setSelecting(false); setConfirmDelete(false);
+                                }}
+                                style={{ cursor: 'pointer', color: alert }}
+                              >{T(`Xóa ${selectedTickets.size} mục?`, `Remove ${selectedTickets.size} item(s)?`)}</span>
+                            </span>
+                          ) : (
+                            <span
+                              role="button"
+                              data-testid="tickets-inactive-delete"
+                              onClick={() => selectedTickets.size && setConfirmDelete(true)}
+                              style={{ cursor: selectedTickets.size ? 'pointer' : 'default', opacity: selectedTickets.size ? 1 : 0.4, color: alert }}
+                            >{T(`Xóa (${selectedTickets.size})`, `Delete (${selectedTickets.size})`)}</span>
+                          )}
+                        </div>
+                      )}
+                      <p style={{ fontSize: 10.5, color: ink, opacity: 0.6, marginTop: 8 }}>
+                        {T('Các mục này tự động bị xóa sau 30 ngày. Xóa chỉ ẩn khỏi danh sách của bạn; hồ sơ hoàn tiền vẫn được giữ.', 'These are removed automatically after 30 days. Deleting only clears them from your list; any refund record is kept.')}
+                      </p>
                     </div>
                   )}
                 </>

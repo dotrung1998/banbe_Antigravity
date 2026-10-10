@@ -45,7 +45,7 @@ export function ImportSheet() {
     <SheetFrame onClose={closeTicketImport} testId="ticket-import-sheet" title={T('Nhập vé được tặng hoặc vé nhóm', 'Import a gift or group ticket')}>
       <p style={{ fontSize: 13, lineHeight: 1.55, color: ink, margin: '14px 0 0' }}>
         {T('Nhập mã nhận vé mà người tặng (hoặc người đặt vé nhóm) gửi cho bạn. Mã này khác với mã QR dùng điểm danh. Nếu bạn nhận được vé PDF, bấm nút "Mở trong banbe" trong PDF để mã tự điền.',
-          'Enter the claim code the giver — or whoever booked the group — sent you. It is different from the check-in QR code. If you have the PDF, click its "Open in banbe" button and the code fills itself in.')}
+          'Enter the claim code you received from the giver or from whoever booked the group. It is different from the check-in QR code. If you have the PDF, click its "Open in banbe" button and the code fills itself in.')}
       </p>
       <label style={{ display: 'block', fontSize: 11.5, color: ink, margin: '16px 0 5px' }}>{T('Mã nhận vé', 'Claim code')}</label>
       <input
