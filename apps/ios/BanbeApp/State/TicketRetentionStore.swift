@@ -1,4 +1,5 @@
 import Foundation
+import Supabase
 
 /// "Cancelled / expired" list housekeeping for Tickets & Bookings.
 ///
@@ -66,5 +67,34 @@ final class TicketRetentionStore: ObservableObject {
         load(for: user)
         hidden.formUnion(ids)
         save(for: user)
+        Task { await push(ids, user: user) }
+    }
+
+    // MARK: - Account sync (migration 176)
+
+    private struct HiddenRow: Codable { let userId: UUID; let bookingId: UUID
+        enum CodingKeys: String, CodingKey { case userId = "user_id", bookingId = "booking_id" } }
+
+    private func push(_ ids: Set<UUID>, user: UUID) async {
+        guard !ids.isEmpty else { return }
+        do {
+            try await SupabaseService.client.from("ticket_list_hidden")
+                .upsert(ids.map { HiddenRow(userId: user, bookingId: $0) }, onConflict: "user_id,booking_id", ignoreDuplicates: true)
+                .execute()
+        } catch { print("ticket_list_hidden push failed:", error) }
+    }
+
+    /// Merges the hidden ids other devices saved to the account into this one and
+    /// shares any that only exist here, so web and iOS show the same list.
+    func sync(user: UUID) async {
+        load(for: user)
+        do {
+            let rows: [HiddenRow] = try await SupabaseService.client.from("ticket_list_hidden")
+                .select("user_id, booking_id").eq("user_id", value: user.uuidString).execute().value
+            let remote = Set(rows.map(\.bookingId))
+            let localOnly = hidden.subtracting(remote)
+            if !remote.isSubset(of: hidden) { hidden.formUnion(remote); save(for: user) }
+            await push(localOnly, user: user)
+        } catch { print("ticket_list_hidden sync failed:", error) }
     }
 }

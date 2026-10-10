@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { loadHiddenTickets, reconcileTickets, removeTickets } from '../lib/ticketRetention.js';
+import { loadHiddenTickets, reconcileTickets, removeTickets, syncHiddenTickets } from '../lib/ticketRetention.js';
 import { useBanBe } from '../state/BanBeContext.jsx';
 import { EVENTS } from '../data/events.js';
 import { paper, ink, rule, display, fieldGlass, inkButton, alert } from '../theme.js';
 import { RowIcon, ROW_ACCENT_COLORS } from './Account.jsx';
 import { computeHostActionCount, computeRefundActionCount, computeMyRefundActionCount, formatBadgeCount } from '../lib/badges.js';
 import { isBookingTicket } from '../lib/bookingTicket.js';
+import { giftPdfData } from '../lib/giftTicket.js';
+import { downloadTicketPdfs } from '../lib/ticketPdf.js';
 
 // Account IA pass (2026-09-27) — the ONE shared child screen every
 // Account group entry card opens (`openAccountGroup(key)`), keyed by
@@ -55,6 +57,17 @@ function Row({ icon, label, trailing, onClick, testId, border = true, badge }) {
   );
 }
 
+// iOS `isEventEnded` twin for a booking's joined event row: the static catalogue's
+// endedHoursAgo, else a start time more than 4h ago.
+function isTicketEventEnded(b) {
+  const ev = b.events || {};
+  const cat = EVENTS.find(e => e.key === ev.key);
+  if (cat && cat.endedHoursAgo != null) return true;
+  if (!ev.event_date) return false;
+  const start = new Date(`${ev.event_date}T${ev.event_time || '00:00:00'}`);
+  return !isNaN(start) && start.getTime() < Date.now() - 4 * 3600 * 1000;
+}
+
 export default function AccountGroup() {
   const {
     state: s, T, set,
@@ -82,6 +95,10 @@ export default function AccountGroup() {
     const ids = (s.paymentBookings || []).filter(b => ['cancelled', 'expired', 'no_show'].includes(b.status)).map(b => b.id);
     const openRefunds = new Set((s.myRefunds || []).map(c => c.booking_id).filter(Boolean));
     setHiddenTickets(reconcileTickets(uid, ids, new Set(ids.filter(id => openRefunds.has(id)))));
+    // Account-wide hidden list (migration 176): merge what other devices hid, share what this one did.
+    let live = true;
+    syncHiddenTickets(uid).then(h => { if (live) setHiddenTickets(h); });
+    return () => { live = false; };
   }, [uid, s.paymentBookings, s.myRefunds]);
 
   // Safety net (mirrors Account.jsx's own accountTab role-sync effect) — a
@@ -245,8 +262,29 @@ export default function AccountGroup() {
               <p style={{ fontSize: 13, color: ink, opacity: 0.65, marginTop: 24 }} data-testid="my-tickets-empty">{T('Bạn chưa có vé nào.', "You don't have any tickets yet.")}</p>
             )}
             {(() => {
-              const active = s.paymentBookings.filter(b => ['pending', 'confirmed', 'attended'].includes(b.status));
-              const inactive = s.paymentBookings.filter(b => ['cancelled', 'expired', 'no_show'].includes(b.status) && !hiddenTickets.has(b.id));
+              // Mirrors iOS: an ended event leaves "My Tickets" (it lives under Past
+              // Events). A gifted one moves to the finished list so its PDF stays
+              // reachable; no status is written.
+              const live = ['pending', 'confirmed', 'attended'];
+              const endedGifts = s.paymentBookings.filter(b => live.includes(b.status) && b.recipient_name && isTicketEventEnded(b));
+              const endedGiftIds = new Set(endedGifts.map(b => b.id));
+              const active = s.paymentBookings.filter(b => live.includes(b.status) && !isTicketEventEnded(b));
+              const inactive = s.paymentBookings.filter(b => (['cancelled', 'expired', 'no_show'].includes(b.status) || endedGiftIds.has(b.id)) && !hiddenTickets.has(b.id));
+              const downloadGiftPdf = async (b) => {
+                try {
+                  const ev = b.events || {};
+                  await downloadTicketPdfs([giftPdfData({
+                    eventName: ev.name || '', organizer: ev.organizers?.name || '',
+                    whenText: ev.event_date ? `${ev.event_date}${ev.event_time ? ' ' + ev.event_time : ''}` : '',
+                    venue: ev.area || '', isEN: s.lang === 'en',
+                  }, { recipientName: b.recipient_name, ticketCode: b.code, admissionToken: b.admission_token || b.id, claimCode: b.claim_code, reference: b.id })], `banbe-gift-ticket-${b.code || b.id}.zip`);
+                } catch (e) { console.warn('gift PDF failed:', e); }
+              };
+              const pdfButton = (b) => (
+                <span role="button" onClick={(e) => { e.stopPropagation(); downloadGiftPdf(b); }}
+                  style={{ flex: 'none', marginLeft: 'auto', padding: '8px 12px', borderRadius: 999, border: `1px solid ${rule}`, fontSize: 12, fontWeight: 600, color: ink, cursor: 'pointer' }}
+                  data-testid={`my-ticket-gift-pdf-${b.id}`}>PDF</span>
+              );
               const statusLabel = (b) => {
                 if (isBookingTicket(b)) return T('Vé đã sẵn sàng', 'Ticket ready');
                 if (b.status === 'attended') return T('Đã tham dự', 'Attended');
@@ -254,7 +292,7 @@ export default function AccountGroup() {
                 if (b.status === 'pending') return T('Đang giữ chỗ', 'Holding');
                 return T('Đang xử lý', 'In progress');
               };
-              const terminalLabel = (b) => ({
+              const terminalLabel = (b) => endedGiftIds.has(b.id) ? T('Sự kiện đã kết thúc ▪︎ Đã tặng', 'Event ended ▪︎ Gifted') : ({
                 cancelled: T('Đã hủy', 'Cancelled'),
                 expired: T('Đã hết hạn', 'Expired'),
                 no_show: T('Không tham dự', 'No-show'),
@@ -267,16 +305,16 @@ export default function AccountGroup() {
                       {active.map(b => (
                         <div
                           key={b.id}
-                          onClick={() => openBookingConfirmed(b.id, b.event_id, 'accountGroup')}
-                          style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }) }}
+                          onClick={b.recipient_name ? undefined : () => openBookingConfirmed(b.id, b.event_id, 'accountGroup')}
+                          style={{ ...fieldGlass({ marginTop: 8, padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: b.recipient_name ? 'default' : 'pointer' }) }}
                           data-testid={`my-ticket-${b.id}`}
                         >
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                             <span style={{ fontSize: 13, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.events?.name || T('Một sự kiện', 'An event')}</span>
                             <span style={{ fontSize: 11, color: ink, opacity: 0.65 }}>{b.events?.event_date ? `${b.events.event_date}${b.events.event_time ? ' ▪︎ ' + b.events.event_time : ''}` : ''}</span>
-                            <span style={{ fontSize: 11, color: ink, opacity: 0.85 }}>{statusLabel(b)}</span>
+                            <span style={{ fontSize: 11, color: ink, opacity: 0.85 }}>{b.recipient_name ? T(`Đã tặng cho ${b.recipient_name}`, `Gifted to ${b.recipient_name}`) : statusLabel(b)}</span>
                           </div>
-                          <span aria-hidden style={{ fontSize: 18, color: ink, opacity: 0.5, flex: 'none' }}>›</span>
+                          {b.recipient_name ? pdfButton(b) : <span aria-hidden style={{ fontSize: 18, color: ink, opacity: 0.5, flex: 'none' }}>›</span>}
                         </div>
                       ))}
                     </div>
@@ -307,6 +345,7 @@ export default function AccountGroup() {
                             <span style={{ fontSize: 13, fontWeight: 600, color: ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.events?.name || T('Một sự kiện', 'An event')}</span>
                             <span style={{ fontSize: 11, color: ink }}>{terminalLabel(b)}</span>
                           </div>
+                          {b.recipient_name && pdfButton(b)}
                         </div>
                       ))}
                       {selecting && (

@@ -270,7 +270,8 @@ struct AccountGroupView: View {
         } else {
             let endedGiftIDs = Set(app.paymentBookings.filter { app.isFinishedGift($0) }.map(\.id))
             let active = app.paymentBookings.filter {
-                ["pending", "confirmed", "attended"].contains($0.status) && !endedGiftIDs.contains($0.id)
+                ["pending", "confirmed", "attended"].contains($0.status)
+                    && !endedGiftIDs.contains($0.id) && !app.isEventEnded(eventKey: $0.eventKey)
             }
             let allInactive = app.paymentBookings.filter {
                 ["cancelled", "expired", "no_show"].contains($0.status) || endedGiftIDs.contains($0.id)
@@ -484,6 +485,7 @@ struct AccountGroupView: View {
         let openRefunds = Set(app.myRefunds.compactMap(\.bookingId))
         retention.reconcile(user: uid, inactive: inactive.map(\.id),
                             protected: Set(inactive.map(\.id)).intersection(openRefunds))
+        Task { await retention.sync(user: uid) }
     }
 
     private func ticketStatusLabel(_ b: PayableBooking) -> String {

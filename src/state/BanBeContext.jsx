@@ -3108,6 +3108,7 @@ export function BanBeProvider({ children }) {
       .from('bookings')
       .select(`id, qty, total_vnd, code, status, expires_at, paid_marked_at, paid_method,
                proof_path, proof_uploaded_at, created_at, event_id,
+               recipient_name, admission_token, claim_code,
                payment_state, payment_ref, hold_expires_at, transaction_id, verify_due_at, dispute_reason, cancel_reason, nudge_count,
                events(id, key, name, event_date, event_time, area, organizer_id,
                       organizers(id, name, pay_methods, bank_name, bank_account_name,
