@@ -425,7 +425,7 @@ extension AppState {
     /// list WITHOUT changing any financial status — a completed event is not a
     /// cancelled one, and the purchase keeps its refund record either way.
     func isEventEnded(eventKey: String) -> Bool {
-        if let cat = EventCatalog.find(eventKey) {
+        if let cat = EventCatalog.all.first(where: { $0.key == eventKey }) { // exact match: find() falls back to a demo event
             let merged = cat.applyingLiveStatus(homeLiveEvents[eventKey])
             if merged.endedHoursAgo != nil { return true }
             if let start = merged.startDate, start < Date().addingTimeInterval(-4 * 3600) { return true }
